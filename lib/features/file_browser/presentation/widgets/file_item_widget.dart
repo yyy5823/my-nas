@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
@@ -21,103 +22,214 @@ class FileItemWidget extends StatelessWidget {
   Widget build(BuildContext context) =>
       isGridView ? _buildGridItem(context) : _buildListItem(context);
 
-  Widget _buildListItem(BuildContext context) => ListTile(
-        leading: _buildIcon(context, size: 40),
-        title: Text(
-          file.name,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        subtitle: Text(
-          _getSubtitle(),
-          style: context.textTheme.bodySmall?.copyWith(
-            color: context.colorScheme.onSurfaceVariant,
-          ),
-        ),
-        trailing: file.isDirectory
-            ? const Icon(Icons.chevron_right)
-            : Text(
-                file.displaySize,
-                style: context.textTheme.bodySmall,
-              ),
-        onTap: onTap,
-        onLongPress: onLongPress,
-      );
+  Widget _buildListItem(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-  Widget _buildGridItem(BuildContext context) => InkWell(
-        onTap: onTap,
-        onLongPress: onLongPress,
-        borderRadius: AppRadius.borderRadiusMd,
-        child: Container(
-          padding: AppSpacing.paddingSm,
-          decoration: BoxDecoration(
-            borderRadius: AppRadius.borderRadiusMd,
-            border: Border.all(
-              color: context.colorScheme.outlineVariant,
-            ),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Expanded(
-                child: Center(
-                  child: _buildIcon(context, size: 48),
-                ),
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              Text(
-                file.name,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: context.textTheme.bodySmall,
-              ),
-              if (!file.isDirectory) ...[
-                const SizedBox(height: 2),
-                Text(
-                  file.displaySize,
-                  style: context.textTheme.labelSmall?.copyWith(
-                    color: context.colorScheme.onSurfaceVariant,
+    return Container(
+      margin: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.xs,
+      ),
+      decoration: BoxDecoration(
+        color: isDark
+            ? AppColors.darkSurfaceVariant.withOpacity(0.3)
+            : context.colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDark
+              ? AppColors.darkOutline.withOpacity(0.2)
+              : context.colorScheme.outlineVariant.withOpacity(0.5),
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          onLongPress: onLongPress,
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            child: Row(
+              children: [
+                // 文件图标
+                _buildIconContainer(context, size: 48),
+                const SizedBox(width: AppSpacing.md),
+                // 文件信息
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        file.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: context.textTheme.bodyLarge?.copyWith(
+                          fontWeight: FontWeight.w500,
+                          color: isDark
+                              ? AppColors.darkOnSurface
+                              : context.colorScheme.onSurface,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _getSubtitle(),
+                        style: context.textTheme.bodySmall?.copyWith(
+                          color: isDark
+                              ? AppColors.darkOnSurfaceVariant
+                              : context.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+                // 右侧信息
+                if (file.isDirectory)
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: isDark
+                        ? AppColors.darkOnSurfaceVariant
+                        : context.colorScheme.onSurfaceVariant,
+                  )
+                else
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? AppColors.darkSurfaceElevated
+                          : context.colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      file.displaySize,
+                      style: context.textTheme.labelSmall?.copyWith(
+                        color: isDark
+                            ? AppColors.darkOnSurfaceVariant
+                            : context.colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
               ],
-            ],
+            ),
           ),
         ),
-      );
+      ),
+    );
+  }
 
-  Widget _buildIcon(BuildContext context, {required double size}) {
+  Widget _buildGridItem(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark
+            ? AppColors.darkSurfaceVariant.withOpacity(0.3)
+            : context.colorScheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isDark
+              ? AppColors.darkOutline.withOpacity(0.2)
+              : context.colorScheme.outlineVariant.withOpacity(0.5),
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          onLongPress: onLongPress,
+          borderRadius: BorderRadius.circular(20),
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Center(
+                    child: _buildIconContainer(context, size: 56),
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  file.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: context.textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w500,
+                    color: isDark
+                        ? AppColors.darkOnSurface
+                        : context.colorScheme.onSurface,
+                  ),
+                ),
+                if (!file.isDirectory) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    file.displaySize,
+                    style: context.textTheme.labelSmall?.copyWith(
+                      color: isDark
+                          ? AppColors.darkOnSurfaceVariant
+                          : context.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildIconContainer(BuildContext context, {required double size}) {
     final iconData = _getIconData();
-    final color = _getIconColor(context);
+    final color = _getIconColor();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Icon(iconData, size: size, color: color);
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: color.withOpacity(isDark ? 0.15 : 0.1),
+        borderRadius: BorderRadius.circular(size * 0.3),
+      ),
+      child: Icon(
+        iconData,
+        size: size * 0.5,
+        color: color,
+      ),
+    );
   }
 
   IconData _getIconData() => switch (file.type) {
-        FileType.folder => Icons.folder,
-        FileType.image => Icons.image_outlined,
-        FileType.video => Icons.video_file_outlined,
-        FileType.audio => Icons.audio_file_outlined,
-        FileType.document => Icons.description_outlined,
-        FileType.archive => Icons.folder_zip_outlined,
-        FileType.code => Icons.code,
-        FileType.text => Icons.article_outlined,
-        FileType.pdf => Icons.picture_as_pdf_outlined,
-        FileType.epub || FileType.comic => Icons.menu_book_outlined,
-        FileType.other => Icons.insert_drive_file_outlined,
+        FileType.folder => Icons.folder_rounded,
+        FileType.image => Icons.image_rounded,
+        FileType.video => Icons.play_circle_rounded,
+        FileType.audio => Icons.music_note_rounded,
+        FileType.document => Icons.description_rounded,
+        FileType.archive => Icons.folder_zip_rounded,
+        FileType.code => Icons.code_rounded,
+        FileType.text => Icons.article_rounded,
+        FileType.pdf => Icons.picture_as_pdf_rounded,
+        FileType.epub || FileType.comic => Icons.menu_book_rounded,
+        FileType.other => Icons.insert_drive_file_rounded,
       };
 
-  Color _getIconColor(BuildContext context) => switch (file.type) {
-        FileType.folder => context.colorScheme.primary,
-        FileType.image => Colors.pink,
-        FileType.video => Colors.red,
-        FileType.audio => Colors.purple,
-        FileType.document => Colors.blue,
-        FileType.archive => Colors.amber,
-        FileType.code => Colors.green,
-        FileType.pdf => Colors.red.shade700,
-        FileType.epub || FileType.comic => Colors.teal,
-        _ => context.colorScheme.onSurfaceVariant,
+  Color _getIconColor() => switch (file.type) {
+        FileType.folder => AppColors.fileFolder,
+        FileType.image => AppColors.fileImage,
+        FileType.video => AppColors.fileVideo,
+        FileType.audio => AppColors.fileAudio,
+        FileType.document => AppColors.fileDocument,
+        FileType.archive => AppColors.fileArchive,
+        FileType.code => AppColors.fileCode,
+        FileType.pdf => AppColors.error,
+        FileType.epub || FileType.comic => AppColors.accent,
+        FileType.text => AppColors.fileDocument,
+        FileType.other => AppColors.fileOther,
       };
 
   String _getSubtitle() {
@@ -127,7 +239,7 @@ class FileItemWidget extends StatelessWidget {
     if (file.modifiedTime != null) {
       parts.add(_formatDate(file.modifiedTime!));
     }
-    return parts.join(' · ');
+    return parts.isEmpty ? '文件' : parts.join(' · ');
   }
 
   String _formatDate(DateTime date) {

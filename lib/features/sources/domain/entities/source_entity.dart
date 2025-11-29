@@ -1,24 +1,45 @@
-import 'package:my_nas/nas_adapters/base/nas_adapter.dart';
+import 'package:uuid/uuid.dart';
 
-/// 连接实体
-class ConnectionEntity {
-  const ConnectionEntity({
-    required this.id,
+/// 源类型
+enum SourceType {
+  synology('Synology NAS', 'synology'),
+  qnap('QNAP NAS', 'qnap'),
+  webdav('WebDAV', 'webdav'),
+  smb('SMB/CIFS', 'smb'),
+  local('本地存储', 'local');
+
+  const SourceType(this.displayName, this.id);
+  final String displayName;
+  final String id;
+}
+
+/// 源连接状态
+enum SourceStatus {
+  disconnected,
+  connecting,
+  connected,
+  error,
+}
+
+/// 连接源实体
+class SourceEntity {
+  SourceEntity({
+    String? id,
     required this.name,
     required this.type,
     required this.host,
-    required this.port,
+    this.port = 5001,
     required this.username,
     this.useSsl = true,
     this.quickConnectId,
     this.lastConnected,
-    this.rememberLogin = false,
+    this.autoConnect = true,
     this.rememberDevice = false,
-  });
+  }) : id = id ?? const Uuid().v4();
 
   final String id;
   final String name;
-  final NasAdapterType type;
+  final SourceType type;
   final String host;
   final int port;
   final String username;
@@ -26,8 +47,8 @@ class ConnectionEntity {
   final String? quickConnectId;
   final DateTime? lastConnected;
 
-  /// 是否记住登录（自动登录）
-  final bool rememberLogin;
+  /// 是否自动连接（启动时自动连接）
+  final bool autoConnect;
 
   /// 是否记住设备（跳过二次验证）
   final bool rememberDevice;
@@ -39,20 +60,23 @@ class ConnectionEntity {
     return '$protocol://$host:$port';
   }
 
-  ConnectionEntity copyWith({
+  /// 获取唯一标识符（用于凭证存储）
+  String get credentialKey => '${type.id}_${host}_${port}_$username';
+
+  SourceEntity copyWith({
     String? id,
     String? name,
-    NasAdapterType? type,
+    SourceType? type,
     String? host,
     int? port,
     String? username,
     bool? useSsl,
     String? quickConnectId,
     DateTime? lastConnected,
-    bool? rememberLogin,
+    bool? autoConnect,
     bool? rememberDevice,
   }) =>
-      ConnectionEntity(
+      SourceEntity(
         id: id ?? this.id,
         name: name ?? this.name,
         type: type ?? this.type,
@@ -62,38 +86,40 @@ class ConnectionEntity {
         useSsl: useSsl ?? this.useSsl,
         quickConnectId: quickConnectId ?? this.quickConnectId,
         lastConnected: lastConnected ?? this.lastConnected,
-        rememberLogin: rememberLogin ?? this.rememberLogin,
+        autoConnect: autoConnect ?? this.autoConnect,
         rememberDevice: rememberDevice ?? this.rememberDevice,
       );
 
   Map<String, dynamic> toJson() => {
         'id': id,
         'name': name,
-        'type': type.name,
+        'type': type.id,
         'host': host,
         'port': port,
         'username': username,
         'useSsl': useSsl,
         'quickConnectId': quickConnectId,
         'lastConnected': lastConnected?.toIso8601String(),
-        'rememberLogin': rememberLogin,
+        'autoConnect': autoConnect,
         'rememberDevice': rememberDevice,
       };
 
-  factory ConnectionEntity.fromJson(Map<String, dynamic> json) =>
-      ConnectionEntity(
+  factory SourceEntity.fromJson(Map<String, dynamic> json) => SourceEntity(
         id: json['id'] as String,
         name: json['name'] as String,
-        type: NasAdapterType.values.byName(json['type'] as String),
+        type: SourceType.values.firstWhere(
+          (t) => t.id == json['type'],
+          orElse: () => SourceType.synology,
+        ),
         host: json['host'] as String,
-        port: json['port'] as int,
+        port: json['port'] as int? ?? 5001,
         username: json['username'] as String,
         useSsl: json['useSsl'] as bool? ?? true,
         quickConnectId: json['quickConnectId'] as String?,
         lastConnected: json['lastConnected'] != null
             ? DateTime.parse(json['lastConnected'] as String)
             : null,
-        rememberLogin: json['rememberLogin'] as bool? ?? false,
+        autoConnect: json['autoConnect'] as bool? ?? true,
         rememberDevice: json['rememberDevice'] as bool? ?? false,
       );
 }

@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:my_nas/core/storage/auth_storage_service.dart';
 import 'package:my_nas/core/storage/storage_service.dart';
+import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/connection/domain/entities/connection_entity.dart';
 import 'package:my_nas/nas_adapters/base/nas_adapter.dart';
 import 'package:my_nas/nas_adapters/base/nas_connection.dart';
@@ -7,6 +9,11 @@ import 'package:my_nas/nas_adapters/synology/synology_adapter.dart';
 
 /// 当前活跃的 NAS 适配器
 final activeAdapterProvider = StateProvider<NasAdapter?>((ref) => null);
+
+/// 认证存储服务
+final authStorageProvider = Provider<AuthStorageService>((ref) {
+  return AuthStorageService();
+});
 
 /// 当前连接状态
 final connectionStateProvider =
@@ -45,8 +52,12 @@ class ConnectionConnected extends NasConnectionState {
 }
 
 class ConnectionRequires2FAState extends NasConnectionState {
-  const ConnectionRequires2FAState({required this.adapter});
+  const ConnectionRequires2FAState({
+    required this.adapter,
+    this.rememberDevice = false,
+  });
   final NasAdapter adapter;
+  final bool rememberDevice;
 }
 
 class ConnectionError extends NasConnectionState {
@@ -60,6 +71,11 @@ class ConnectionStateNotifier extends StateNotifier<NasConnectionState> {
 
   final Ref _ref;
 
+  // 当前连接的相关信息
+  String? _currentConnectionId;
+  bool _rememberLogin = false;
+  bool _rememberDevice = false;
+
   Future<void> connect({
     required NasAdapterType type,
     required String host,
@@ -68,12 +84,30 @@ class ConnectionStateNotifier extends StateNotifier<NasConnectionState> {
     required String password,
     bool useSsl = true,
     bool verifySSL = true,
+    bool rememberLogin = false,
+    bool rememberDevice = false,
+    String? connectionId,
   }) async {
     state = const ConnectionLoading(message: '正在连接...');
+
+    // 保存记住设置
+    _rememberLogin = rememberLogin;
+    _rememberDevice = rememberDevice;
+    _currentConnectionId = connectionId ?? '${host}_${port}_$username';
+
+    final authStorage = _ref.read(authStorageProvider);
 
     NasAdapter? adapter;
     try {
       adapter = _createAdapter(type);
+
+      // 获取已保存的设备ID（用于跳过2FA）
+      String? deviceId;
+      if (rememberDevice) {
+        deviceId = await authStorage.getDeviceId(_currentConnectionId!);
+        logger.d('ConnectionStateNotifier: 已保存的设备ID => ${deviceId != null ? "有" : "无"}');
+      }
+
       final config = ConnectionConfig(
         type: type,
         host: host,
@@ -82,13 +116,25 @@ class ConnectionStateNotifier extends StateNotifier<NasConnectionState> {
         password: password,
         useSsl: useSsl,
         verifySSL: verifySSL,
+        deviceId: deviceId,
+        deviceName: rememberDevice ? authStorage.deviceName : null,
+        enableDeviceToken: rememberDevice,
       );
 
       final result = await adapter.connect(config);
 
       state = switch (result) {
-        ConnectionSuccess(:final serverInfo) => () {
+        ConnectionSuccess(:final serverInfo, :final deviceId) => () {
             _ref.read(activeAdapterProvider.notifier).state = adapter;
+
+            // 保存凭证和设备ID
+            _handleLoginSuccess(
+              connectionId: _currentConnectionId!,
+              username: username,
+              password: password,
+              deviceId: deviceId,
+            );
+
             return ConnectionConnected(
               adapter: adapter!,
               serverInfo: serverInfo,
@@ -98,11 +144,39 @@ class ConnectionStateNotifier extends StateNotifier<NasConnectionState> {
             adapter?.dispose();
             return ConnectionError(message: error);
           }(),
-        ConnectionRequires2FA() => ConnectionRequires2FAState(adapter: adapter!),
+        ConnectionRequires2FA() => ConnectionRequires2FAState(
+            adapter: adapter!,
+            rememberDevice: rememberDevice,
+          ),
       };
     } catch (e) {
       adapter?.dispose();
       state = ConnectionError(message: '连接失败: ${_getErrorMessage(e)}');
+    }
+  }
+
+  Future<void> _handleLoginSuccess({
+    required String connectionId,
+    required String username,
+    required String password,
+    String? deviceId,
+  }) async {
+    final authStorage = _ref.read(authStorageProvider);
+
+    // 保存凭证
+    if (_rememberLogin) {
+      await authStorage.saveCredentials(
+        connectionId: connectionId,
+        username: username,
+        password: password,
+      );
+      await authStorage.setRememberLogin(true);
+    }
+
+    // 保存设备ID
+    if (_rememberDevice && deviceId != null) {
+      await authStorage.saveDeviceId(connectionId, deviceId);
+      await authStorage.setRememberDevice(true);
     }
   }
 
@@ -123,19 +197,46 @@ class ConnectionStateNotifier extends StateNotifier<NasConnectionState> {
     return message;
   }
 
-  Future<void> verify2FA(String otpCode) async {
+  Future<void> verify2FA(String otpCode, {bool? rememberDevice}) async {
     final currentState = state;
     if (currentState is! ConnectionRequires2FAState) return;
 
     state = const ConnectionLoading(message: '正在验证...');
 
+    // 使用传入的 rememberDevice 或者之前保存的设置
+    final shouldRememberDevice = rememberDevice ?? _rememberDevice;
+    final authStorage = _ref.read(authStorageProvider);
+
     final adapter = currentState.adapter;
     if (adapter is SynologyAdapter) {
-      final result = await adapter.verify2FA(otpCode);
+      final result = await adapter.verify2FA(
+        otpCode,
+        rememberDevice: shouldRememberDevice,
+        deviceName: shouldRememberDevice ? authStorage.deviceName : null,
+      );
 
       state = switch (result) {
-        ConnectionSuccess(:final serverInfo) => () {
+        ConnectionSuccess(:final serverInfo, :final deviceId) => () {
             _ref.read(activeAdapterProvider.notifier).state = adapter;
+
+            // 保存设备ID（二次验证成功后）
+            if (shouldRememberDevice &&
+                deviceId != null &&
+                _currentConnectionId != null) {
+              authStorage.saveDeviceId(_currentConnectionId!, deviceId);
+              authStorage.setRememberDevice(true);
+            }
+
+            // 如果记住登录，也需要在 2FA 成功后保存凭证
+            if (_rememberLogin && adapter.connection != null) {
+              authStorage.saveCredentials(
+                connectionId: _currentConnectionId!,
+                username: adapter.connection!.username,
+                password: adapter.connection!.password,
+              );
+              authStorage.setRememberLogin(true);
+            }
+
             return ConnectionConnected(
               adapter: adapter,
               serverInfo: serverInfo,
@@ -156,6 +257,67 @@ class ConnectionStateNotifier extends StateNotifier<NasConnectionState> {
       _ref.read(activeAdapterProvider.notifier).state = null;
     }
     state = const ConnectionIdle();
+  }
+
+  /// 尝试自动登录
+  ///
+  /// 如果有保存的凭证且启用了记住登录，则自动进行登录
+  Future<bool> tryAutoLogin() async {
+    final authStorage = _ref.read(authStorageProvider);
+
+    // 检查是否启用了记住登录
+    final rememberLogin = await authStorage.getRememberLogin();
+    if (!rememberLogin) {
+      logger.d('ConnectionStateNotifier: 未启用记住登录');
+      return false;
+    }
+
+    // 获取保存的凭证
+    final credentials = await authStorage.getCredentials();
+    if (credentials == null) {
+      logger.d('ConnectionStateNotifier: 无保存的凭证');
+      return false;
+    }
+
+    // 获取保存的连接信息
+    final savedConnections = _ref.read(savedConnectionsProvider);
+    final connection = savedConnections.firstWhere(
+      (c) => c.id == credentials.connectionId,
+      orElse: () => savedConnections.firstWhere(
+        (c) =>
+            c.username == credentials.username &&
+            '${c.host}_${c.port}_${c.username}' == credentials.connectionId,
+        orElse: () => throw StateError('未找到保存的连接'),
+      ),
+    );
+
+    logger.i('ConnectionStateNotifier: 尝试自动登录 => ${connection.host}');
+
+    // 获取记住设备设置
+    final rememberDevice = await authStorage.getRememberDevice();
+
+    // 执行连接
+    await connect(
+      type: connection.type,
+      host: connection.host,
+      port: connection.port,
+      username: credentials.username,
+      password: credentials.password,
+      useSsl: connection.useSsl,
+      verifySSL: false,
+      rememberLogin: true,
+      rememberDevice: rememberDevice,
+      connectionId: credentials.connectionId,
+    );
+
+    return state is ConnectionConnected;
+  }
+
+  /// 清除自动登录数据
+  Future<void> clearAutoLogin() async {
+    final authStorage = _ref.read(authStorageProvider);
+    await authStorage.clearAll();
+    logger.i('ConnectionStateNotifier: 已清除自动登录数据');
   }
 
   NasAdapter _createAdapter(NasAdapterType type) => switch (type) {

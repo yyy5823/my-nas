@@ -3,6 +3,8 @@ import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/video/domain/entities/video_item.dart';
 import 'package:my_nas/features/video/presentation/providers/video_player_provider.dart';
+import 'package:my_nas/features/video/presentation/widgets/aspect_ratio_selector.dart';
+import 'package:my_nas/features/video/presentation/widgets/subtitle_selector.dart';
 
 class VideoControls extends StatelessWidget {
   const VideoControls({
@@ -16,6 +18,7 @@ class VideoControls extends StatelessWidget {
     required this.onSpeedChange,
     required this.onToggleFullscreen,
     required this.onBack,
+    this.hasSubtitles = false,
     super.key,
   });
 
@@ -29,6 +32,7 @@ class VideoControls extends StatelessWidget {
   final ValueChanged<double> onSpeedChange;
   final VoidCallback onToggleFullscreen;
   final VoidCallback onBack;
+  final bool hasSubtitles;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -81,20 +85,51 @@ class VideoControls extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
+            // 字幕按钮
+            IconButton(
+              onPressed: () => showSubtitleSelector(context),
+              icon: Icon(
+                hasSubtitles ? Icons.closed_caption : Icons.closed_caption_off,
+                color: Colors.white,
+              ),
+              tooltip: '字幕',
+            ),
             // 更多选项
             PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert, color: Colors.white),
               onSelected: (value) {
-                // TODO: Handle menu actions
+                switch (value) {
+                  case 'subtitle':
+                    showSubtitleSelector(context);
+                    break;
+                  case 'aspect':
+                    showAspectRatioSelector(context);
+                    break;
+                  case 'audio':
+                    // TODO: 音轨选择
+                    break;
+                }
               },
               itemBuilder: (context) => [
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: 'subtitle',
                   child: Row(
                     children: [
-                      Icon(Icons.subtitles),
+                      Icon(
+                        hasSubtitles ? Icons.closed_caption : Icons.closed_caption_off,
+                      ),
+                      const SizedBox(width: 12),
+                      const Text('字幕'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'aspect',
+                  child: Row(
+                    children: [
+                      Icon(Icons.aspect_ratio),
                       SizedBox(width: 12),
-                      Text('字幕'),
+                      Text('画面比例'),
                     ],
                   ),
                 ),
@@ -105,16 +140,6 @@ class VideoControls extends StatelessWidget {
                       Icon(Icons.audiotrack),
                       SizedBox(width: 12),
                       Text('音轨'),
-                    ],
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'pip',
-                  child: Row(
-                    children: [
-                      Icon(Icons.picture_in_picture),
-                      SizedBox(width: 12),
-                      Text('画中画'),
                     ],
                   ),
                 ),

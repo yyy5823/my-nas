@@ -1,6 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/video/data/services/subtitle_service.dart';
+import 'package:my_nas/features/video/data/services/video_history_service.dart';
 import 'package:my_nas/features/video/domain/entities/video_item.dart';
 
 /// 当前播放的视频
@@ -12,6 +17,12 @@ final videoPlayerControllerProvider =
   return VideoPlayerNotifier(ref);
 });
 
+/// 可用字幕列表
+final availableSubtitlesProvider = StateProvider<List<SubtitleItem>>((ref) => []);
+
+/// 当前选中的字幕
+final currentSubtitleProvider = StateProvider<SubtitleItem?>((ref) => null);
+
 /// 播放器状态
 class VideoPlayerState {
   const VideoPlayerState({
@@ -22,6 +33,7 @@ class VideoPlayerState {
     this.volume = 1.0,
     this.speed = 1.0,
     this.isFullscreen = false,
+    this.subtitleEnabled = true,
     this.errorMessage,
   });
 
@@ -32,6 +44,7 @@ class VideoPlayerState {
   final double volume;
   final double speed;
   final bool isFullscreen;
+  final bool subtitleEnabled;
   final String? errorMessage;
 
   double get progress =>
@@ -59,6 +72,7 @@ class VideoPlayerState {
     double? volume,
     double? speed,
     bool? isFullscreen,
+    bool? subtitleEnabled,
     String? errorMessage,
   }) =>
       VideoPlayerState(
@@ -69,6 +83,7 @@ class VideoPlayerState {
         volume: volume ?? this.volume,
         speed: speed ?? this.speed,
         isFullscreen: isFullscreen ?? this.isFullscreen,
+        subtitleEnabled: subtitleEnabled ?? this.subtitleEnabled,
         errorMessage: errorMessage,
       );
 }
@@ -82,6 +97,10 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
   final Ref _ref;
   late final Player _player;
   late final VideoController _videoController;
+  final VideoHistoryService _historyService = VideoHistoryService.instance;
+
+  Timer? _progressSaveTimer;
+  VideoItem? _currentVideo;
 
   Player get player => _player;
   VideoController get videoController => _videoController;
@@ -90,9 +109,21 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
     _player = Player();
     _videoController = VideoController(_player);
 
+    // 初始化历史服务
+    _historyService.init();
+
     // 监听播放状态
     _player.stream.playing.listen((playing) {
       state = state.copyWith(isPlaying: playing);
+
+      // 开始播放时启动进度保存定时器
+      if (playing) {
+        _startProgressSaveTimer();
+      } else {
+        _stopProgressSaveTimer();
+        // 暂停时保存一次进度
+        _saveCurrentProgress();
+      }
     });
 
     // 监听缓冲状态
@@ -126,18 +157,80 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
         state = state.copyWith(errorMessage: error);
       }
     });
+
+    // 监听播放完成
+    _player.stream.completed.listen((completed) {
+      if (completed && _currentVideo != null) {
+        // 播放完成，清除进度
+        _historyService.clearProgress(_currentVideo!.path);
+        logger.d('VideoPlayerNotifier: 播放完成，清除进度');
+      }
+    });
+  }
+
+  void _startProgressSaveTimer() {
+    _stopProgressSaveTimer();
+    // 每10秒保存一次进度
+    _progressSaveTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      _saveCurrentProgress();
+    });
+  }
+
+  void _stopProgressSaveTimer() {
+    _progressSaveTimer?.cancel();
+    _progressSaveTimer = null;
+  }
+
+  Future<void> _saveCurrentProgress() async {
+    if (_currentVideo == null) return;
+    if (state.position.inSeconds < 5) return; // 忽略前5秒
+    if (state.duration.inSeconds < 10) return; // 忽略太短的视频
+
+    await _historyService.saveProgress(
+      videoPath: _currentVideo!.path,
+      position: state.position,
+      duration: state.duration,
+    );
   }
 
   /// 播放视频
   Future<void> play(VideoItem video, {Duration? startPosition}) async {
+    // 保存当前视频进度
+    await _saveCurrentProgress();
+
+    _currentVideo = video;
     _ref.read(currentVideoProvider.notifier).state = video;
     state = state.copyWith(errorMessage: null);
 
     await _player.open(Media(video.url));
 
-    if (startPosition != null && startPosition > Duration.zero) {
-      await _player.seek(startPosition);
+    // 确定起始位置
+    Duration? resumePosition = startPosition;
+
+    // 如果没有指定起始位置，尝试从历史中恢复
+    if (resumePosition == null) {
+      final savedProgress = await _historyService.getProgress(video.path);
+      if (savedProgress != null && savedProgress.progressPercent < 0.95) {
+        resumePosition = savedProgress.position;
+        logger.i('VideoPlayerNotifier: 从上次位置恢复 ${resumePosition.inSeconds}s');
+      }
     }
+
+    if (resumePosition != null && resumePosition > Duration.zero) {
+      await _player.seek(resumePosition);
+    }
+
+    // 添加到播放历史
+    await _historyService.addToHistory(
+      VideoHistoryItem(
+        videoPath: video.path,
+        videoName: video.name,
+        videoUrl: video.url,
+        thumbnailUrl: video.thumbnailUrl,
+        size: video.size,
+        watchedAt: DateTime.now(),
+      ),
+    );
   }
 
   /// 播放/暂停切换
@@ -157,7 +250,10 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
 
   /// 停止
   Future<void> stop() async {
+    await _saveCurrentProgress();
+    _stopProgressSaveTimer();
     await _player.stop();
+    _currentVideo = null;
     _ref.read(currentVideoProvider.notifier).state = null;
   }
 
@@ -206,8 +302,55 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
     state = state.copyWith(isFullscreen: fullscreen);
   }
 
+  /// 设置字幕
+  Future<void> setSubtitle(SubtitleItem? subtitle) async {
+    _ref.read(currentSubtitleProvider.notifier).state = subtitle;
+
+    if (subtitle == null) {
+      // 关闭字幕
+      await _player.setSubtitleTrack(SubtitleTrack.no());
+      logger.i('VideoPlayerNotifier: 关闭字幕');
+    } else {
+      // 加载外部字幕
+      try {
+        await _player.setSubtitleTrack(
+          SubtitleTrack.uri(subtitle.url, title: subtitle.name),
+        );
+        logger.i('VideoPlayerNotifier: 加载字幕 ${subtitle.name}');
+      } catch (e) {
+        logger.e('VideoPlayerNotifier: 加载字幕失败', e);
+      }
+    }
+  }
+
+  /// 切换字幕显示
+  void toggleSubtitle() {
+    state = state.copyWith(subtitleEnabled: !state.subtitleEnabled);
+    if (!state.subtitleEnabled) {
+      _player.setSubtitleTrack(SubtitleTrack.no());
+    } else {
+      final current = _ref.read(currentSubtitleProvider);
+      if (current != null) {
+        _player.setSubtitleTrack(
+          SubtitleTrack.uri(current.url, title: current.name),
+        );
+      }
+    }
+  }
+
+  /// 获取内嵌字幕轨道
+  List<SubtitleTrack> get embeddedSubtitles => _player.state.tracks.subtitle;
+
+  /// 设置内嵌字幕轨道
+  Future<void> setEmbeddedSubtitleTrack(SubtitleTrack track) async {
+    await _player.setSubtitleTrack(track);
+    logger.i('VideoPlayerNotifier: 设置内嵌字幕 ${track.title ?? track.id}');
+  }
+
   @override
   void dispose() {
+    _saveCurrentProgress();
+    _stopProgressSaveTimer();
     _player.dispose();
     super.dispose();
   }

@@ -11,6 +11,9 @@ class ConnectionConfig {
     this.useSsl = true,
     this.verifySSL = true,
     this.quickConnectId,
+    this.deviceId,
+    this.deviceName,
+    this.enableDeviceToken = false,
   });
 
   final NasAdapterType type;
@@ -21,6 +24,15 @@ class ConnectionConfig {
   final bool useSsl;
   final bool verifySSL;
   final String? quickConnectId;
+
+  /// 设备ID，用于跳过二次验证
+  final String? deviceId;
+
+  /// 设备名称，用于记住设备
+  final String? deviceName;
+
+  /// 是否启用设备令牌
+  final bool enableDeviceToken;
 
   String get baseUrl {
     final protocol = useSsl ? 'https' : 'http';
@@ -36,6 +48,9 @@ class ConnectionConfig {
     bool? useSsl,
     bool? verifySSL,
     String? quickConnectId,
+    String? deviceId,
+    String? deviceName,
+    bool? enableDeviceToken,
   }) =>
       ConnectionConfig(
         type: type ?? this.type,
@@ -46,6 +61,9 @@ class ConnectionConfig {
         useSsl: useSsl ?? this.useSsl,
         verifySSL: verifySSL ?? this.verifySSL,
         quickConnectId: quickConnectId ?? this.quickConnectId,
+        deviceId: deviceId ?? this.deviceId,
+        deviceName: deviceName ?? this.deviceName,
+        enableDeviceToken: enableDeviceToken ?? this.enableDeviceToken,
       );
 
   Map<String, dynamic> toJson() => {
@@ -84,10 +102,14 @@ class ConnectionSuccess extends ConnectionResult {
   const ConnectionSuccess({
     required this.sessionId,
     this.serverInfo,
+    this.deviceId,
   });
 
   final String sessionId;
   final ServerInfo? serverInfo;
+
+  /// 设备ID，用于记住设备跳过二次验证
+  final String? deviceId;
 }
 
 /// 连接失败

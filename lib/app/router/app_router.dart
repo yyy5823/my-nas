@@ -5,6 +5,7 @@ import 'package:my_nas/features/connection/presentation/pages/connection_page.da
 import 'package:my_nas/features/file_browser/presentation/pages/file_browser_page.dart';
 import 'package:my_nas/features/music/presentation/pages/music_list_page.dart';
 import 'package:my_nas/features/settings/presentation/pages/settings_page.dart';
+import 'package:my_nas/features/startup/presentation/pages/startup_page.dart';
 import 'package:my_nas/features/video/presentation/pages/video_list_page.dart';
 import 'package:my_nas/shared/widgets/main_scaffold.dart';
 
@@ -13,9 +14,16 @@ final shellNavigatorKey = GlobalKey<NavigatorState>();
 
 final appRouter = GoRouter(
   navigatorKey: rootNavigatorKey,
-  initialLocation: Routes.connection,
+  initialLocation: Routes.startup,
   debugLogDiagnostics: true,
   routes: [
+    // Startup page (handles auto-login)
+    GoRoute(
+      path: Routes.startup,
+      name: 'startup',
+      builder: (context, state) => const StartupPage(),
+    ),
+
     // Connection page (without shell)
     GoRoute(
       path: Routes.connection,

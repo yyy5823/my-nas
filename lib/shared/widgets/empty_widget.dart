@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 
 class EmptyWidget extends StatelessWidget {
@@ -16,44 +18,82 @@ class EmptyWidget extends StatelessWidget {
   final Widget? action;
 
   @override
-  Widget build(BuildContext context) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 空状态图标容器
+            Container(
+              width: 100,
+              height: 100,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    (isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant),
+                    (isDark ? AppColors.darkSurfaceElevated : AppColors.lightSurface),
+                  ],
+                ),
+                border: Border.all(
+                  color: isDark
+                      ? AppColors.darkOutline.withOpacity(0.3)
+                      : AppColors.lightOutline.withOpacity(0.5),
+                  width: 2,
+                ),
+                boxShadow: isDark
+                    ? null
+                    : [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.05),
+                          blurRadius: 20,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+              ),
+              child: Icon(
                 icon ?? Icons.inbox_outlined,
-                size: 64,
-                color: context.colorScheme.onSurfaceVariant.withValues(
-                  alpha: 0.5,
-                ),
+                size: 44,
+                color: isDark
+                    ? AppColors.darkOnSurfaceVariant.withOpacity(0.6)
+                    : AppColors.lightOnSurfaceVariant.withOpacity(0.6),
               ),
-              const SizedBox(height: 16),
+            ),
+            const SizedBox(height: AppSpacing.xl),
+            Text(
+              title ?? '暂无内容',
+              style: context.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: isDark
+                    ? AppColors.darkOnSurface
+                    : context.colorScheme.onSurface,
+              ),
+            ),
+            if (message != null) ...[
+              const SizedBox(height: AppSpacing.sm),
               Text(
-                title ?? '暂无内容',
-                style: context.textTheme.titleMedium?.copyWith(
-                  color: context.colorScheme.onSurfaceVariant,
+                message!,
+                style: context.textTheme.bodyMedium?.copyWith(
+                  color: isDark
+                      ? AppColors.darkOnSurfaceVariant
+                      : context.colorScheme.onSurfaceVariant,
                 ),
+                textAlign: TextAlign.center,
               ),
-              if (message != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  message!,
-                  style: context.textTheme.bodyMedium?.copyWith(
-                    color: context.colorScheme.onSurfaceVariant.withValues(
-                      alpha: 0.7,
-                    ),
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-              if (action != null) ...[
-                const SizedBox(height: 24),
-                action!,
-              ],
             ],
-          ),
+            if (action != null) ...[
+              const SizedBox(height: AppSpacing.xl),
+              action!,
+            ],
+          ],
         ),
-      );
+      ),
+    );
+  }
 }

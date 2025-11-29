@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/connection/presentation/providers/connection_provider.dart';
@@ -14,8 +15,8 @@ import 'package:my_nas/shared/widgets/loading_widget.dart';
 
 /// 音乐列表状态
 final musicListProvider =
-    StateNotifierProvider<MusicListNotifier, MusicListState>((ref) =>
-        MusicListNotifier(ref));
+    StateNotifierProvider<MusicListNotifier, MusicListState>(
+        (ref) => MusicListNotifier(ref));
 
 sealed class MusicListState {}
 
@@ -48,7 +49,6 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
     }
 
     try {
-      // 递归扫描音乐文件 (简化版，只扫描根目录下一层)
       final shares = await adapter.fileSystem.listDirectory('/');
       final tracks = <FileItem>[];
 
@@ -78,36 +78,26 @@ class MusicListPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(musicListProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('音乐'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () => ref.read(musicListProvider.notifier).loadMusic(),
-            tooltip: '刷新',
-          ),
-        ],
-      ),
+      backgroundColor: isDark ? AppColors.darkBackground : null,
       body: Column(
         children: [
+          _buildAppBar(context, ref, isDark),
           Expanded(
             child: switch (state) {
               MusicListLoading() => const LoadingWidget(message: '扫描音乐中...'),
               MusicListError(:final message) => AppErrorWidget(
                   message: message,
-                  onRetry: () =>
-                      ref.read(musicListProvider.notifier).loadMusic(),
+                  onRetry: () => ref.read(musicListProvider.notifier).loadMusic(),
                 ),
-              MusicListLoaded(:final tracks) when tracks.isEmpty =>
-                const EmptyWidget(
+              MusicListLoaded(:final tracks) when tracks.isEmpty => const EmptyWidget(
                   icon: Icons.library_music_outlined,
                   title: '暂无音乐',
                   message: '在 NAS 中添加音乐后将显示在这里',
                 ),
-              MusicListLoaded(:final tracks) =>
-                _buildMusicList(context, ref, tracks),
+              MusicListLoaded(:final tracks) => _buildMusicList(context, ref, tracks, isDark),
             },
           ),
           // 底部迷你播放器
@@ -117,16 +107,89 @@ class MusicListPage extends ConsumerWidget {
     );
   }
 
+  Widget _buildAppBar(BuildContext context, WidgetRef ref, bool isDark) {
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
+        border: Border(
+          bottom: BorderSide(
+            color: isDark
+                ? AppColors.darkOutline.withOpacity(0.2)
+                : context.colorScheme.outlineVariant.withOpacity(0.5),
+          ),
+        ),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              Text(
+                '音乐',
+                style: context.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? AppColors.darkOnSurface : null,
+                ),
+              ),
+              const Spacer(),
+              _buildIconButton(
+                icon: Icons.refresh_rounded,
+                onTap: () => ref.read(musicListProvider.notifier).loadMusic(),
+                isDark: isDark,
+                tooltip: '刷新',
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildIconButton({
+    required IconData icon,
+    required VoidCallback onTap,
+    required bool isDark,
+    String? tooltip,
+  }) {
+    return Tooltip(
+      message: tooltip ?? '',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              icon,
+              color: isDark ? AppColors.darkOnSurfaceVariant : null,
+              size: 22,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildMusicList(
     BuildContext context,
     WidgetRef ref,
     List<FileItem> tracks,
+    bool isDark,
   ) =>
       ListView.builder(
-        padding: AppSpacing.paddingSm,
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
         itemCount: tracks.length,
-        itemBuilder: (context, index) =>
-            _MusicListTile(track: tracks[index], index: index),
+        itemBuilder: (context, index) => _MusicListTile(
+          track: tracks[index],
+          index: index,
+          isDark: isDark,
+        ),
       );
 }
 
@@ -134,76 +197,177 @@ class _MusicListTile extends ConsumerWidget {
   const _MusicListTile({
     required this.track,
     required this.index,
+    required this.isDark,
   });
 
   final FileItem track;
   final int index;
+  final bool isDark;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final currentMusic = ref.watch(currentMusicProvider);
     final isPlaying = currentMusic?.path == track.path;
 
-    return ListTile(
-      leading: Container(
-        width: 48,
-        height: 48,
-        decoration: BoxDecoration(
-          borderRadius: AppRadius.borderRadiusSm,
+    return Container(
+      margin: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.xs,
+      ),
+      decoration: BoxDecoration(
+        color: isPlaying
+            ? AppColors.fileAudio.withOpacity(isDark ? 0.15 : 0.1)
+            : (isDark
+                ? AppColors.darkSurfaceVariant.withOpacity(0.3)
+                : context.colorScheme.surface),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
           color: isPlaying
-              ? context.colorScheme.primary.withValues(alpha: 0.1)
-              : context.colorScheme.surfaceContainerHighest,
-        ),
-        child: Center(
-          child: Icon(
-            isPlaying ? Icons.equalizer : Icons.music_note,
-            color: isPlaying
-                ? context.colorScheme.primary
-                : context.colorScheme.onSurfaceVariant,
-          ),
+              ? AppColors.fileAudio.withOpacity(0.3)
+              : (isDark
+                  ? AppColors.darkOutline.withOpacity(0.2)
+                  : context.colorScheme.outlineVariant.withOpacity(0.5)),
         ),
       ),
-      title: Text(
-        track.name,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          color: isPlaying ? context.colorScheme.primary : null,
-          fontWeight: isPlaying ? FontWeight.bold : null,
-        ),
-      ),
-      subtitle: Text(
-        track.displaySize,
-        style: context.textTheme.bodySmall?.copyWith(
-          color: context.colorScheme.onSurfaceVariant,
-        ),
-      ),
-      trailing: PopupMenuButton<String>(
-        onSelected: (value) => _handleMenuAction(context, ref, value),
-        itemBuilder: (context) => [
-          const PopupMenuItem(
-            value: 'play_next',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _playTrack(context, ref),
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.md),
             child: Row(
               children: [
-                Icon(Icons.queue_play_next),
-                SizedBox(width: 12),
-                Text('下一首播放'),
+                // 专辑封面占位
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    gradient: isPlaying
+                        ? const LinearGradient(
+                            colors: [AppColors.fileAudio, AppColors.secondary],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          )
+                        : null,
+                    color: isPlaying
+                        ? null
+                        : (isDark
+                            ? AppColors.darkSurfaceElevated
+                            : context.colorScheme.surfaceContainerHighest),
+                  ),
+                  child: Icon(
+                    isPlaying ? Icons.equalizer_rounded : Icons.music_note_rounded,
+                    color: isPlaying
+                        ? Colors.white
+                        : (isDark
+                            ? AppColors.darkOnSurfaceVariant
+                            : context.colorScheme.onSurfaceVariant),
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.md),
+                // 歌曲信息
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        track.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: context.textTheme.bodyLarge?.copyWith(
+                          color: isPlaying
+                              ? AppColors.fileAudio
+                              : (isDark ? AppColors.darkOnSurface : null),
+                          fontWeight: isPlaying ? FontWeight.w600 : FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: (isDark
+                                      ? AppColors.darkSurfaceElevated
+                                      : context.colorScheme.surfaceContainerHighest)
+                                  .withOpacity(isDark ? 1 : 0.8),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              track.displaySize,
+                              style: context.textTheme.labelSmall?.copyWith(
+                                color: isDark
+                                    ? AppColors.darkOnSurfaceVariant
+                                    : context.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                // 菜单按钮
+                PopupMenuButton<String>(
+                  onSelected: (value) => _handleMenuAction(context, ref, value),
+                  icon: Icon(
+                    Icons.more_vert_rounded,
+                    color: isDark ? AppColors.darkOnSurfaceVariant : null,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  color: isDark ? AppColors.darkSurface : null,
+                  itemBuilder: (context) => [
+                    PopupMenuItem(
+                      value: 'play_next',
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.queue_play_next_rounded,
+                            color: isDark ? AppColors.darkOnSurface : null,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            '下一首播放',
+                            style: TextStyle(
+                              color: isDark ? AppColors.darkOnSurface : null,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'add_to_queue',
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.playlist_add_rounded,
+                            color: isDark ? AppColors.darkOnSurface : null,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            '添加到播放列表',
+                            style: TextStyle(
+                              color: isDark ? AppColors.darkOnSurface : null,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
-          const PopupMenuItem(
-            value: 'add_to_queue',
-            child: Row(
-              children: [
-                Icon(Icons.playlist_add),
-                SizedBox(width: 12),
-                Text('添加到播放列表'),
-              ],
-            ),
-          ),
-        ],
+        ),
       ),
-      onTap: () => _playTrack(context, ref),
     );
   }
 
@@ -211,18 +375,13 @@ class _MusicListTile extends ConsumerWidget {
     final adapter = ref.read(activeAdapterProvider);
     if (adapter == null) return;
 
-    // 获取音乐 URL
     final url = await adapter.fileSystem.getFileUrl(track.path);
-
-    // 创建音乐项
     final musicItem = MusicItem.fromFileItem(track, url);
 
     if (!context.mounted) return;
 
-    // 播放
     await ref.read(musicPlayerControllerProvider.notifier).play(musicItem);
 
-    // 导航到播放器页面
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (context) => const MusicPlayerPage(),

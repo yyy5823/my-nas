@@ -28,7 +28,7 @@ class VideoItem {
   final Duration? duration;
   final String? thumbnailUrl;
   final Duration? lastPosition;
-  final List<SubtitleTrack> subtitles;
+  final List<VideoSubtitle> subtitles;
 
   VideoItem copyWith({
     String? name,
@@ -38,7 +38,7 @@ class VideoItem {
     Duration? duration,
     String? thumbnailUrl,
     Duration? lastPosition,
-    List<SubtitleTrack>? subtitles,
+    List<VideoSubtitle>? subtitles,
   }) =>
       VideoItem(
         name: name ?? this.name,
@@ -53,8 +53,8 @@ class VideoItem {
 }
 
 /// 字幕轨道
-class SubtitleTrack {
-  const SubtitleTrack({
+class VideoSubtitle {
+  const VideoSubtitle({
     required this.id,
     required this.title,
     required this.url,
@@ -70,8 +70,8 @@ class SubtitleTrack {
 }
 
 /// 音频轨道
-class AudioTrack {
-  const AudioTrack({
+class VideoAudioTrack {
+  const VideoAudioTrack({
     required this.id,
     required this.title,
     this.language,

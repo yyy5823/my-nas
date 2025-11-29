@@ -61,12 +61,16 @@ class SynologyAdapter implements NasAdapter {
     final authResult = await _api.login(
       account: config.username,
       password: config.password,
+      deviceId: config.deviceId,
+      deviceName: config.deviceName,
+      enableDeviceToken: config.enableDeviceToken,
     );
 
     logger.i('SynologyAdapter: 登录结果 => ${authResult.runtimeType}');
 
     return switch (authResult) {
-      AuthSuccess(:final sid) => await _handleLoginSuccess(sid),
+      AuthSuccess(:final sid, :final deviceId) =>
+        await _handleLoginSuccess(sid, deviceId: deviceId),
       AuthFailure(:final error) => () {
           logger.e('SynologyAdapter: 登录失败 => $error');
           return ConnectionFailure(error: error);
@@ -80,7 +84,11 @@ class SynologyAdapter implements NasAdapter {
     };
   }
 
-  Future<ConnectionResult> verify2FA(String otpCode) async {
+  Future<ConnectionResult> verify2FA(
+    String otpCode, {
+    bool rememberDevice = false,
+    String? deviceName,
+  }) async {
     if (_config == null) {
       return const ConnectionFailure(error: '请先调用 connect');
     }
@@ -89,16 +97,22 @@ class SynologyAdapter implements NasAdapter {
       account: _config!.username,
       password: _config!.password,
       otpCode: otpCode,
+      deviceName: rememberDevice ? (deviceName ?? _config!.deviceName) : null,
+      enableDeviceToken: rememberDevice,
     );
 
     return switch (authResult) {
-      AuthSuccess(:final sid) => await _handleLoginSuccess(sid),
+      AuthSuccess(:final sid, :final deviceId) =>
+        await _handleLoginSuccess(sid, deviceId: deviceId),
       AuthFailure(:final error) => ConnectionFailure(error: error),
       AuthRequires2FA() => const ConnectionFailure(error: '二次验证失败'),
     };
   }
 
-  Future<ConnectionResult> _handleLoginSuccess(String sid) async {
+  Future<ConnectionResult> _handleLoginSuccess(
+    String sid, {
+    String? deviceId,
+  }) async {
     _connected = true;
     _fileSystem = SynologyFileSystem(api: _api);
 
@@ -118,6 +132,7 @@ class SynologyAdapter implements NasAdapter {
     return ConnectionSuccess(
       sessionId: sid,
       serverInfo: _serverInfo,
+      deviceId: deviceId,
     );
   }
 

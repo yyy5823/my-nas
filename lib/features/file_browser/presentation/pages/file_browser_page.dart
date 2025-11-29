@@ -1,5 +1,8 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/connection/presentation/providers/connection_provider.dart';
@@ -24,7 +27,6 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
   @override
   void initState() {
     super.initState();
-    // 初次加载根目录
     Future.microtask(
       () => ref.read(fileListProvider.notifier).loadDirectory('/'),
     );
@@ -36,83 +38,162 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
     final currentPath = ref.watch(currentPathProvider);
     final viewMode = ref.watch(viewModeProvider);
     final isGridView = viewMode == ViewMode.grid;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      appBar: AppBar(
-        leading: currentPath != '/'
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () =>
-                    ref.read(fileListProvider.notifier).navigateUp(),
-                tooltip: '返回上级',
-              )
-            : null,
-        title: const Text('文件'),
-        actions: [
-          IconButton(
-            icon: Icon(isGridView ? Icons.view_list : Icons.grid_view),
-            onPressed: () {
-              ref.read(viewModeProvider.notifier).state =
-                  isGridView ? ViewMode.list : ViewMode.grid;
-            },
-            tooltip: isGridView ? '列表视图' : '网格视图',
-          ),
-          IconButton(
-            icon: const Icon(Icons.sort),
-            onPressed: () => _showSortOptions(context),
-            tooltip: '排序',
-          ),
-          IconButton(
-            icon: const Icon(Icons.download),
-            onPressed: () => showDownloadManager(context),
-            tooltip: '下载管理',
-          ),
-          IconButton(
-            icon: const Icon(Icons.more_vert),
-            onPressed: () => _showMoreOptions(context),
-            tooltip: '更多',
-          ),
-        ],
-      ),
+      backgroundColor: isDark ? AppColors.darkBackground : null,
       body: Column(
         children: [
-          // Breadcrumb
-          _buildBreadcrumb(currentPath),
-          const Divider(height: 1),
-
-          // File list
+          // 自定义 AppBar
+          _buildAppBar(context, currentPath, isGridView, isDark),
+          // 面包屑导航
+          _buildBreadcrumb(currentPath, isDark),
+          // 文件列表
           Expanded(
             child: RefreshIndicator(
               onRefresh: () => ref.read(fileListProvider.notifier).refresh(),
-              child: _buildContent(fileState, isGridView),
+              color: AppColors.primary,
+              backgroundColor: isDark ? AppColors.darkSurface : null,
+              child: _buildContent(fileState, isGridView, isDark),
             ),
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _showCreateOptions(context),
-        child: const Icon(Icons.add),
+      floatingActionButton: _buildFab(isDark),
+    );
+  }
+
+  Widget _buildAppBar(BuildContext context, String currentPath, bool isGridView, bool isDark) {
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
+        border: Border(
+          bottom: BorderSide(
+            color: isDark
+                ? AppColors.darkOutline.withOpacity(0.2)
+                : context.colorScheme.outlineVariant.withOpacity(0.5),
+          ),
+        ),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          child: Row(
+            children: [
+              // 返回按钮
+              if (currentPath != '/')
+                _buildIconButton(
+                  icon: Icons.arrow_back_rounded,
+                  onTap: () => ref.read(fileListProvider.notifier).navigateUp(),
+                  isDark: isDark,
+                  tooltip: '返回上级',
+                )
+              else
+                const SizedBox(width: 48),
+              const SizedBox(width: 8),
+              // 标题
+              Expanded(
+                child: Text(
+                  '文件',
+                  style: context.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? AppColors.darkOnSurface : null,
+                  ),
+                ),
+              ),
+              // 操作按钮
+              _buildIconButton(
+                icon: isGridView ? Icons.view_list_rounded : Icons.grid_view_rounded,
+                onTap: () {
+                  ref.read(viewModeProvider.notifier).state =
+                      isGridView ? ViewMode.list : ViewMode.grid;
+                },
+                isDark: isDark,
+                tooltip: isGridView ? '列表视图' : '网格视图',
+              ),
+              _buildIconButton(
+                icon: Icons.sort_rounded,
+                onTap: () => _showSortOptions(context, isDark),
+                isDark: isDark,
+                tooltip: '排序',
+              ),
+              _buildIconButton(
+                icon: Icons.download_rounded,
+                onTap: () => showDownloadManager(context),
+                isDark: isDark,
+                tooltip: '下载管理',
+              ),
+              _buildIconButton(
+                icon: Icons.more_vert_rounded,
+                onTap: () => _showMoreOptions(context, isDark),
+                isDark: isDark,
+                tooltip: '更多',
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  Widget _buildBreadcrumb(String currentPath) {
+  Widget _buildIconButton({
+    required IconData icon,
+    required VoidCallback onTap,
+    required bool isDark,
+    String? tooltip,
+  }) {
+    return Tooltip(
+      message: tooltip ?? '',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              icon,
+              color: isDark ? AppColors.darkOnSurfaceVariant : null,
+              size: 22,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBreadcrumb(String currentPath, bool isDark) {
     final parts = currentPath.split('/').where((p) => p.isNotEmpty).toList();
 
     return Container(
-      height: 48,
-      padding: AppSpacing.paddingHorizontalLg,
+      height: 52,
+      decoration: BoxDecoration(
+        color: isDark
+            ? AppColors.darkSurfaceVariant.withOpacity(0.2)
+            : AppColors.lightSurfaceVariant.withOpacity(0.5),
+      ),
       child: ListView(
         scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
         children: [
-          _BreadcrumbItem(
+          _buildBreadcrumbItem(
+            context: context,
             label: '根目录',
+            icon: Icons.home_rounded,
             isFirst: true,
+            isDark: isDark,
             onTap: () => ref.read(fileListProvider.notifier).loadDirectory('/'),
           ),
           for (var i = 0; i < parts.length; i++)
-            _BreadcrumbItem(
+            _buildBreadcrumbItem(
+              context: context,
               label: parts[i],
+              isDark: isDark,
               onTap: () {
                 final newPath = '/${parts.sublist(0, i + 1).join('/')}';
                 ref.read(fileListProvider.notifier).loadDirectory(newPath);
@@ -123,7 +204,58 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
     );
   }
 
-  Widget _buildContent(FileListState state, bool isGridView) => switch (state) {
+  Widget _buildBreadcrumbItem({
+    required BuildContext context,
+    required String label,
+    required bool isDark,
+    required VoidCallback onTap,
+    IconData? icon,
+    bool isFirst = false,
+  }) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (!isFirst)
+          Icon(
+            Icons.chevron_right_rounded,
+            size: 20,
+            color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+          ),
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (icon != null) ...[
+                    Icon(
+                      icon,
+                      size: 16,
+                      color: AppColors.primary,
+                    ),
+                    const SizedBox(width: 6),
+                  ],
+                  Text(
+                    label,
+                    style: context.textTheme.bodyMedium?.copyWith(
+                      color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildContent(FileListState state, bool isGridView, bool isDark) => switch (state) {
         FileListLoading() => const LoadingWidget(message: '加载中...'),
         FileListError(:final message) => AppErrorWidget(
             message: message,
@@ -135,20 +267,20 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
             message: '此文件夹中没有文件或子文件夹',
           ),
         FileListLoaded(:final files) =>
-          isGridView ? _buildGrid(files) : _buildList(files),
+          isGridView ? _buildGrid(files, isDark) : _buildList(files, isDark),
       };
 
-  Widget _buildList(List<FileItem> files) => ListView.builder(
-        padding: AppSpacing.paddingVerticalSm,
+  Widget _buildList(List<FileItem> files, bool isDark) => ListView.builder(
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
         itemCount: files.length,
         itemBuilder: (context, index) => FileItemWidget(
           file: files[index],
           onTap: () => _handleFileTap(files[index]),
-          onLongPress: () => _showFileOptions(context, files[index]),
+          onLongPress: () => _showFileOptions(context, files[index], isDark),
         ),
       );
 
-  Widget _buildGrid(List<FileItem> files) => GridView.builder(
+  Widget _buildGrid(List<FileItem> files, bool isDark) => GridView.builder(
         padding: AppSpacing.paddingMd,
         gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
           maxCrossAxisExtent: context.isDesktop ? 160 : 120,
@@ -161,68 +293,105 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
           file: files[index],
           isGridView: true,
           onTap: () => _handleFileTap(files[index]),
-          onLongPress: () => _showFileOptions(context, files[index]),
+          onLongPress: () => _showFileOptions(context, files[index], isDark),
         ),
       );
 
+  Widget _buildFab(bool isDark) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        gradient: AppColors.primaryGradient,
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withOpacity(0.4),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _showCreateOptions(context, isDark),
+          borderRadius: BorderRadius.circular(18),
+          child: const SizedBox(
+            width: 60,
+            height: 60,
+            child: Icon(
+              Icons.add_rounded,
+              color: Colors.white,
+              size: 28,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   void _handleFileTap(FileItem file) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     if (file.isDirectory) {
       ref.read(fileListProvider.notifier).loadDirectory(file.path);
     } else {
-      // TODO: 打开文件预览或播放
-      _showFileOptions(context, file);
+      _showFileOptions(context, file, isDark);
     }
   }
 
-  void _showSortOptions(BuildContext context) {
+  void _showSortOptions(BuildContext context, bool isDark) {
     final sortMode = ref.read(sortModeProvider);
     final ascending = ref.read(sortAscendingProvider);
 
     showModalBottomSheet<void>(
       context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                '排序方式',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            for (final mode in SortMode.values)
-              ListTile(
-                leading: Icon(
-                  sortMode == mode
-                      ? Icons.radio_button_checked
-                      : Icons.radio_button_off,
-                ),
-                title: Text(_getSortModeName(mode)),
-                onTap: () {
-                  ref.read(sortModeProvider.notifier).state = mode;
-                  ref.read(fileListProvider.notifier).refresh();
-                  Navigator.pop(context);
-                },
-              ),
-            const Divider(),
-            SwitchListTile(
-              title: const Text('升序排列'),
-              value: ascending,
-              onChanged: (v) {
-                ref.read(sortAscendingProvider.notifier).state = v;
+      backgroundColor: Colors.transparent,
+      builder: (context) => _buildBottomSheet(
+        context,
+        isDark,
+        title: '排序方式',
+        children: [
+          for (final mode in SortMode.values)
+            _buildOptionTile(
+              context,
+              isDark,
+              icon: _getSortModeIcon(mode),
+              title: _getSortModeName(mode),
+              isSelected: sortMode == mode,
+              onTap: () {
+                ref.read(sortModeProvider.notifier).state = mode;
                 ref.read(fileListProvider.notifier).refresh();
+                Navigator.pop(context);
               },
             ),
-            const SizedBox(height: 16),
-          ],
-        ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+            child: Divider(
+              color: isDark
+                  ? AppColors.darkOutline.withOpacity(0.2)
+                  : AppColors.lightOutline.withOpacity(0.3),
+            ),
+          ),
+          _buildSwitchTile(
+            context,
+            isDark,
+            title: '升序排列',
+            value: ascending,
+            onChanged: (v) {
+              ref.read(sortAscendingProvider.notifier).state = v;
+              ref.read(fileListProvider.notifier).refresh();
+            },
+          ),
+        ],
       ),
     );
   }
+
+  IconData _getSortModeIcon(SortMode mode) => switch (mode) {
+        SortMode.name => Icons.sort_by_alpha_rounded,
+        SortMode.size => Icons.straighten_rounded,
+        SortMode.date => Icons.schedule_rounded,
+        SortMode.type => Icons.category_rounded,
+      };
 
   String _getSortModeName(SortMode mode) => switch (mode) {
         SortMode.name => '名称',
@@ -231,236 +400,450 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
         SortMode.type => '类型',
       };
 
-  void _showMoreOptions(BuildContext context) {
+  void _showMoreOptions(BuildContext context, bool isDark) {
     showModalBottomSheet<void>(
       context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.refresh),
-              title: const Text('刷新'),
-              onTap: () {
-                Navigator.pop(context);
-                ref.read(fileListProvider.notifier).refresh();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.select_all),
-              title: const Text('多选'),
-              onTap: () {
-                Navigator.pop(context);
-                // TODO: 实现多选模式
-              },
-            ),
-            const SizedBox(height: 16),
-          ],
-        ),
+      backgroundColor: Colors.transparent,
+      builder: (context) => _buildBottomSheet(
+        context,
+        isDark,
+        title: '更多选项',
+        children: [
+          _buildActionTile(
+            context,
+            isDark,
+            icon: Icons.refresh_rounded,
+            iconColor: AppColors.info,
+            title: '刷新',
+            onTap: () {
+              Navigator.pop(context);
+              ref.read(fileListProvider.notifier).refresh();
+            },
+          ),
+          _buildActionTile(
+            context,
+            isDark,
+            icon: Icons.select_all_rounded,
+            iconColor: AppColors.secondary,
+            title: '多选',
+            onTap: () {
+              Navigator.pop(context);
+              // TODO: 实现多选模式
+            },
+          ),
+        ],
       ),
     );
   }
 
-  void _showCreateOptions(BuildContext context) {
+  void _showCreateOptions(BuildContext context, bool isDark) {
     showModalBottomSheet<void>(
       context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.create_new_folder_outlined),
-              title: const Text('新建文件夹'),
-              onTap: () {
-                Navigator.pop(context);
-                _showCreateFolderDialog();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.upload_file),
-              title: const Text('上传文件'),
-              onTap: () {
-                Navigator.pop(context);
-                // TODO: 实现文件上传
-              },
-            ),
-            const SizedBox(height: 16),
-          ],
-        ),
+      backgroundColor: Colors.transparent,
+      builder: (context) => _buildBottomSheet(
+        context,
+        isDark,
+        title: '新建',
+        children: [
+          _buildActionTile(
+            context,
+            isDark,
+            icon: Icons.create_new_folder_rounded,
+            iconColor: AppColors.fileFolder,
+            title: '新建文件夹',
+            onTap: () {
+              Navigator.pop(context);
+              _showCreateFolderDialog(isDark);
+            },
+          ),
+          _buildActionTile(
+            context,
+            isDark,
+            icon: Icons.upload_file_rounded,
+            iconColor: AppColors.primary,
+            title: '上传文件',
+            onTap: () {
+              Navigator.pop(context);
+              // TODO: 实现文件上传
+            },
+          ),
+        ],
       ),
     );
   }
 
-  void _showCreateFolderDialog() {
+  void _showCreateFolderDialog(bool isDark) {
     final controller = TextEditingController();
 
     showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('新建文件夹'),
+        backgroundColor: isDark ? AppColors.darkSurface : null,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          '新建文件夹',
+          style: TextStyle(
+            color: isDark ? AppColors.darkOnSurface : null,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         content: TextField(
           controller: controller,
           autofocus: true,
-          decoration: const InputDecoration(
+          style: TextStyle(color: isDark ? AppColors.darkOnSurface : null),
+          decoration: InputDecoration(
             hintText: '文件夹名称',
+            hintStyle: TextStyle(
+              color: isDark ? AppColors.darkOnSurfaceVariant : null,
+            ),
+            filled: true,
+            fillColor: isDark
+                ? AppColors.darkSurfaceVariant.withOpacity(0.5)
+                : AppColors.lightSurfaceVariant,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: AppColors.primary, width: 2),
+            ),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
+            child: Text(
+              '取消',
+              style: TextStyle(
+                color: isDark ? AppColors.darkOnSurfaceVariant : null,
+              ),
+            ),
           ),
-          FilledButton(
-            onPressed: () {
-              if (controller.text.isNotEmpty) {
-                ref
-                    .read(fileListProvider.notifier)
-                    .createFolder(controller.text);
-                Navigator.pop(context);
-              }
-            },
-            child: const Text('创建'),
+          Container(
+            decoration: BoxDecoration(
+              gradient: AppColors.primaryGradient,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () {
+                  if (controller.text.isNotEmpty) {
+                    ref.read(fileListProvider.notifier).createFolder(controller.text);
+                    Navigator.pop(context);
+                  }
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  child: Text(
+                    '创建',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
-  void _showFileOptions(BuildContext context, FileItem file) {
+  void _showFileOptions(BuildContext context, FileItem file, bool isDark) {
     showModalBottomSheet<void>(
       context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Icon(
-                    file.isDirectory ? Icons.folder : Icons.insert_drive_file,
-                    size: 40,
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          file.name,
-                          style: context.textTheme.titleMedium,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _buildBottomSheet(
+        context,
+        isDark,
+        title: '',
+        children: [
+          // 文件信息头部
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.lg,
+              0,
+              AppSpacing.lg,
+              AppSpacing.lg,
+            ),
+            child: Row(
+              children: [
+                _buildFileIcon(file, isDark),
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        file.name,
+                        style: context.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? AppColors.darkOnSurface : null,
                         ),
-                        if (!file.isDirectory)
-                          Text(
-                            file.displaySize,
-                            style: context.textTheme.bodySmall,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (!file.isDirectory)
+                        Text(
+                          file.displaySize,
+                          style: context.textTheme.bodySmall?.copyWith(
+                            color: isDark
+                                ? AppColors.darkOnSurfaceVariant
+                                : AppColors.lightOnSurfaceVariant,
                           ),
-                      ],
-                    ),
+                        ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-            const Divider(),
-            if (!file.isDirectory) ...[
-              ListTile(
-                leading: const Icon(Icons.download),
-                title: const Text('下载'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _downloadFile(file);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.share),
-                title: const Text('分享'),
-                onTap: () {
-                  Navigator.pop(context);
-                  // TODO: 实现分享
-                },
-              ),
-            ],
-            ListTile(
-              leading: const Icon(Icons.edit),
-              title: const Text('重命名'),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+            child: Divider(
+              color: isDark
+                  ? AppColors.darkOutline.withOpacity(0.2)
+                  : AppColors.lightOutline.withOpacity(0.3),
+            ),
+          ),
+          if (!file.isDirectory) ...[
+            _buildActionTile(
+              context,
+              isDark,
+              icon: Icons.download_rounded,
+              iconColor: AppColors.primary,
+              title: '下载',
               onTap: () {
                 Navigator.pop(context);
-                _showRenameDialog(file);
+                _downloadFile(file);
               },
             ),
-            ListTile(
-              leading: Icon(Icons.delete, color: context.colorScheme.error),
-              title: Text('删除', style: TextStyle(color: context.colorScheme.error)),
+            _buildActionTile(
+              context,
+              isDark,
+              icon: Icons.share_rounded,
+              iconColor: AppColors.accent,
+              title: '分享',
               onTap: () {
                 Navigator.pop(context);
-                _showDeleteConfirm(file);
+                // TODO: 实现分享
               },
             ),
-            const SizedBox(height: 16),
           ],
-        ),
+          _buildActionTile(
+            context,
+            isDark,
+            icon: Icons.edit_rounded,
+            iconColor: AppColors.secondary,
+            title: '重命名',
+            onTap: () {
+              Navigator.pop(context);
+              _showRenameDialog(file, isDark);
+            },
+          ),
+          _buildActionTile(
+            context,
+            isDark,
+            icon: Icons.delete_rounded,
+            iconColor: AppColors.error,
+            title: '删除',
+            titleColor: AppColors.error,
+            onTap: () {
+              Navigator.pop(context);
+              _showDeleteConfirm(file, isDark);
+            },
+          ),
+        ],
       ),
     );
   }
 
-  void _showRenameDialog(FileItem file) {
+  Widget _buildFileIcon(FileItem file, bool isDark) {
+    final color = _getFileColor(file);
+    return Container(
+      width: 52,
+      height: 52,
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Icon(
+        _getFileIcon(file),
+        color: color,
+        size: 26,
+      ),
+    );
+  }
+
+  IconData _getFileIcon(FileItem file) => switch (file.type) {
+        FileType.folder => Icons.folder_rounded,
+        FileType.image => Icons.image_rounded,
+        FileType.video => Icons.play_circle_rounded,
+        FileType.audio => Icons.music_note_rounded,
+        FileType.document => Icons.description_rounded,
+        FileType.archive => Icons.folder_zip_rounded,
+        FileType.code => Icons.code_rounded,
+        FileType.text => Icons.article_rounded,
+        FileType.pdf => Icons.picture_as_pdf_rounded,
+        FileType.epub || FileType.comic => Icons.menu_book_rounded,
+        FileType.other => Icons.insert_drive_file_rounded,
+      };
+
+  Color _getFileColor(FileItem file) => switch (file.type) {
+        FileType.folder => AppColors.fileFolder,
+        FileType.image => AppColors.fileImage,
+        FileType.video => AppColors.fileVideo,
+        FileType.audio => AppColors.fileAudio,
+        FileType.document => AppColors.fileDocument,
+        FileType.archive => AppColors.fileArchive,
+        FileType.code => AppColors.fileCode,
+        FileType.pdf => AppColors.error,
+        FileType.epub || FileType.comic => AppColors.accent,
+        FileType.text => AppColors.fileDocument,
+        FileType.other => AppColors.fileOther,
+      };
+
+  void _showRenameDialog(FileItem file, bool isDark) {
     final controller = TextEditingController(text: file.name);
 
     showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('重命名'),
+        backgroundColor: isDark ? AppColors.darkSurface : null,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          '重命名',
+          style: TextStyle(
+            color: isDark ? AppColors.darkOnSurface : null,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         content: TextField(
           controller: controller,
           autofocus: true,
-          decoration: const InputDecoration(
+          style: TextStyle(color: isDark ? AppColors.darkOnSurface : null),
+          decoration: InputDecoration(
             hintText: '新名称',
+            hintStyle: TextStyle(
+              color: isDark ? AppColors.darkOnSurfaceVariant : null,
+            ),
+            filled: true,
+            fillColor: isDark
+                ? AppColors.darkSurfaceVariant.withOpacity(0.5)
+                : AppColors.lightSurfaceVariant,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: AppColors.primary, width: 2),
+            ),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
+            child: Text(
+              '取消',
+              style: TextStyle(
+                color: isDark ? AppColors.darkOnSurfaceVariant : null,
+              ),
+            ),
           ),
-          FilledButton(
-            onPressed: () {
-              if (controller.text.isNotEmpty &&
-                  controller.text != file.name) {
-                ref
-                    .read(fileListProvider.notifier)
-                    .rename(file.path, controller.text);
-                Navigator.pop(context);
-              }
-            },
-            child: const Text('确定'),
+          Container(
+            decoration: BoxDecoration(
+              gradient: AppColors.primaryGradient,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () {
+                  if (controller.text.isNotEmpty && controller.text != file.name) {
+                    ref.read(fileListProvider.notifier).rename(file.path, controller.text);
+                    Navigator.pop(context);
+                  }
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  child: Text(
+                    '确定',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
-  void _showDeleteConfirm(FileItem file) {
+  void _showDeleteConfirm(FileItem file, bool isDark) {
     showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('确认删除'),
-        content: Text('确定要删除 "${file.name}" 吗？此操作无法撤销。'),
+        backgroundColor: isDark ? AppColors.darkSurface : null,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          '确认删除',
+          style: TextStyle(
+            color: isDark ? AppColors.darkOnSurface : null,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: Text(
+          '确定要删除 "${file.name}" 吗？此操作无法撤销。',
+          style: TextStyle(
+            color: isDark ? AppColors.darkOnSurfaceVariant : null,
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () {
-              ref.read(fileListProvider.notifier).delete(file.path);
-              Navigator.pop(context);
-            },
-            style: FilledButton.styleFrom(
-              backgroundColor: context.colorScheme.error,
+            child: Text(
+              '取消',
+              style: TextStyle(
+                color: isDark ? AppColors.darkOnSurfaceVariant : null,
+              ),
             ),
-            child: const Text('删除'),
+          ),
+          Container(
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [AppColors.error, AppColors.errorDark],
+              ),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () {
+                  ref.read(fileListProvider.notifier).delete(file.path);
+                  Navigator.pop(context);
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  child: Text(
+                    '删除',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ),
         ],
       ),
@@ -471,15 +854,12 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
     final adapter = ref.read(activeAdapterProvider);
     if (adapter == null) return;
 
-    try {
-      // 获取文件下载 URL
-      final url = await adapter.fileSystem.getFileUrl(file.path);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-      // 创建下载任务
+    try {
+      final url = await adapter.fileSystem.getFileUrl(file.path);
       final service = ref.read(downloadServiceProvider);
       final task = await service.addTask(url: url, fileName: file.name);
-
-      // 开始下载
       await service.startDownload(task.id);
 
       if (!mounted) return;
@@ -487,8 +867,10 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('开始下载: ${file.name}'),
+          backgroundColor: isDark ? AppColors.darkSurfaceElevated : null,
           action: SnackBarAction(
             label: '查看',
+            textColor: AppColors.primary,
             onPressed: () => showDownloadManager(context),
           ),
         ),
@@ -499,43 +881,231 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('下载失败: $e'),
-          backgroundColor: context.colorScheme.error,
+          backgroundColor: AppColors.error,
         ),
       );
     }
   }
-}
 
-class _BreadcrumbItem extends StatelessWidget {
-  const _BreadcrumbItem({
-    required this.label,
-    required this.onTap,
-    this.isFirst = false,
-  });
+  Widget _buildBottomSheet(
+    BuildContext context,
+    bool isDark, {
+    required String title,
+    required List<Widget> children,
+  }) {
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
+          decoration: BoxDecoration(
+            color: isDark
+                ? AppColors.darkSurface.withOpacity(0.95)
+                : AppColors.lightSurface.withOpacity(0.98),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            border: Border(
+              top: BorderSide(
+                color: isDark ? AppColors.glassStroke : AppColors.lightOutline.withOpacity(0.2),
+              ),
+            ),
+          ),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  margin: const EdgeInsets.only(top: 12),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? AppColors.darkOnSurfaceVariant.withOpacity(0.3)
+                        : AppColors.lightOnSurfaceVariant.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                if (title.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.all(AppSpacing.lg),
+                    child: Text(
+                      title,
+                      style: context.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                      ),
+                    ),
+                  ),
+                ...children,
+                const SizedBox(height: AppSpacing.lg),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
-  final String label;
-  final VoidCallback onTap;
-  final bool isFirst;
+  Widget _buildOptionTile(
+    BuildContext context,
+    bool isDark, {
+    required IconData icon,
+    required String title,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.md,
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? AppColors.primary.withOpacity(0.15)
+                      : (isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant)
+                          .withOpacity(0.5),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  icon,
+                  color: isSelected
+                      ? AppColors.primary
+                      : (isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant),
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Text(
+                  title,
+                  style: context.textTheme.bodyLarge?.copyWith(
+                    color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                  ),
+                ),
+              ),
+              if (isSelected)
+                Container(
+                  width: 24,
+                  height: 24,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: AppColors.primaryGradient,
+                  ),
+                  child: const Icon(
+                    Icons.check_rounded,
+                    color: Colors.white,
+                    size: 16,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
-  @override
-  Widget build(BuildContext context) => Row(
-        mainAxisSize: MainAxisSize.min,
+  Widget _buildSwitchTile(
+    BuildContext context,
+    bool isDark, {
+    required String title,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.sm,
+      ),
+      child: Row(
         children: [
-          if (!isFirst)
-            Icon(
-              Icons.chevron_right,
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: (isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant)
+                  .withOpacity(0.5),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              value ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded,
+              color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
               size: 20,
-              color: context.colorScheme.onSurfaceVariant,
             ),
-          TextButton(
-            onPressed: onTap,
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Text(
+              title,
+              style: context.textTheme.bodyLarge?.copyWith(
+                color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+              ),
             ),
-            child: Text(label),
+          ),
+          Switch.adaptive(
+            value: value,
+            onChanged: onChanged,
+            activeColor: AppColors.primary,
           ),
         ],
-      );
+      ),
+    );
+  }
+
+  Widget _buildActionTile(
+    BuildContext context,
+    bool isDark, {
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    Color? titleColor,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.md,
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: iconColor.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  icon,
+                  color: iconColor,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Text(
+                title,
+                style: context.textTheme.bodyLarge?.copyWith(
+                  color: titleColor ??
+                      (isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

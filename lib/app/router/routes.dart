@@ -1,4 +1,7 @@
 abstract final class Routes {
+  // Startup
+  static const String startup = '/';
+
   // Auth & Connection
   static const String connection = '/connection';
 

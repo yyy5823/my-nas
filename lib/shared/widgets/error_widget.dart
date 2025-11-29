@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 
 class AppErrorWidget extends StatelessWidget {
@@ -12,33 +14,107 @@ class AppErrorWidget extends StatelessWidget {
   final VoidCallback? onRetry;
 
   @override
-  Widget build(BuildContext context) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.error_outline,
-                size: 64,
-                color: context.colorScheme.error,
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 错误图标容器
+            Container(
+              width: 88,
+              height: 88,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.error.withOpacity(0.1),
+                border: Border.all(
+                  color: AppColors.error.withOpacity(0.2),
+                  width: 2,
+                ),
               ),
-              const SizedBox(height: 16),
+              child: const Icon(
+                Icons.error_outline_rounded,
+                size: 44,
+                color: AppColors.error,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.xl),
+            Text(
+              '出错了',
+              style: context.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: isDark
+                    ? AppColors.darkOnSurface
+                    : context.colorScheme.onSurface,
+              ),
+            ),
+            if (message != null) ...[
+              const SizedBox(height: AppSpacing.sm),
               Text(
-                message ?? '出错了',
-                style: context.textTheme.titleMedium,
+                message!,
+                style: context.textTheme.bodyMedium?.copyWith(
+                  color: isDark
+                      ? AppColors.darkOnSurfaceVariant
+                      : context.colorScheme.onSurfaceVariant,
+                ),
                 textAlign: TextAlign.center,
               ),
-              if (onRetry != null) ...[
-                const SizedBox(height: 24),
-                FilledButton.icon(
-                  onPressed: onRetry,
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('重试'),
+            ],
+            if (onRetry != null) ...[
+              const SizedBox(height: AppSpacing.xl),
+              _buildRetryButton(context, isDark),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRetryButton(BuildContext context, bool isDark) {
+    return Container(
+      height: 48,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        gradient: const LinearGradient(
+          colors: [AppColors.error, AppColors.errorDark],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.error.withOpacity(0.3),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onRetry,
+          borderRadius: BorderRadius.circular(14),
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 32),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.refresh_rounded, color: Colors.white, size: 20),
+                SizedBox(width: 8),
+                Text(
+                  '重试',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ],
-            ],
+            ),
           ),
         ),
-      );
+      ),
+    );
+  }
 }

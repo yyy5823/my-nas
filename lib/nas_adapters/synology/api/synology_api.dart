@@ -21,13 +21,21 @@ class SynologyApi {
   }
 
   /// 登录认证
+  ///
+  /// [deviceName] 设备名称，用于记住设备。设置后，服务器会返回 deviceId
+  /// [deviceId] 之前登录返回的设备ID，传入后可以跳过二次验证
+  /// [enableDeviceToken] 是否启用设备令牌（记住此设备）
   Future<AuthResult> login({
     required String account,
     required String password,
     String? otpCode,
+    String? deviceName,
+    String? deviceId,
+    bool enableDeviceToken = false,
   }) async {
     logger.i('SynologyApi: 开始登录认证');
     logger.d('SynologyApi: 账号 => $account, OTP => ${otpCode != null ? "有" : "无"}');
+    logger.d('SynologyApi: 设备名 => $deviceName, 设备ID => ${deviceId != null ? "有" : "无"}');
 
     final params = <String, dynamic>{
       'account': account,
@@ -37,6 +45,17 @@ class SynologyApi {
 
     if (otpCode != null) {
       params['otp_code'] = otpCode;
+    }
+
+    // 设备记住功能
+    if (deviceName != null) {
+      params['device_name'] = deviceName;
+    }
+    if (deviceId != null) {
+      params['device_id'] = deviceId;
+    }
+    if (enableDeviceToken) {
+      params['enable_device_token'] = 'yes';
     }
 
     try {
