@@ -1,0 +1,196 @@
+import 'package:flutter/material.dart';
+import 'package:my_nas/app/theme/app_spacing.dart';
+import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
+
+class MusicPlayerControls extends StatelessWidget {
+  const MusicPlayerControls({
+    required this.state,
+    required this.onPlayPause,
+    required this.onNext,
+    required this.onPrevious,
+    required this.onSeek,
+    required this.onVolumeChange,
+    required this.onTogglePlayMode,
+    super.key,
+  });
+
+  final MusicPlayerState state;
+  final VoidCallback onPlayPause;
+  final VoidCallback onNext;
+  final VoidCallback onPrevious;
+  final ValueChanged<Duration> onSeek;
+  final ValueChanged<double> onVolumeChange;
+  final VoidCallback onTogglePlayMode;
+
+  @override
+  Widget build(BuildContext context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 进度条
+          _buildProgressBar(context),
+          const SizedBox(height: 16),
+          // 控制按钮
+          _buildControlButtons(context),
+          const SizedBox(height: 16),
+          // 额外控制
+          _buildExtraControls(context),
+        ],
+      );
+
+  Widget _buildProgressBar(BuildContext context) => Column(
+        children: [
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 4,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+            ),
+            child: Slider(
+              value: state.progress.clamp(0.0, 1.0),
+              onChanged: (value) {
+                final position = Duration(
+                  milliseconds: (value * state.duration.inMilliseconds).toInt(),
+                );
+                onSeek(position);
+              },
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  state.positionText,
+                  style: context.textTheme.labelSmall?.copyWith(
+                    color: context.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                Text(
+                  state.durationText,
+                  style: context.textTheme.labelSmall?.copyWith(
+                    color: context.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+
+  Widget _buildControlButtons(BuildContext context) => Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // 上一曲
+          IconButton(
+            onPressed: onPrevious,
+            iconSize: 40,
+            icon: const Icon(Icons.skip_previous),
+          ),
+          const SizedBox(width: 24),
+          // 播放/暂停
+          Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: context.colorScheme.primary,
+            ),
+            child: IconButton(
+              onPressed: onPlayPause,
+              iconSize: 48,
+              color: context.colorScheme.onPrimary,
+              icon: Icon(
+                state.isPlaying ? Icons.pause : Icons.play_arrow,
+              ),
+            ),
+          ),
+          const SizedBox(width: 24),
+          // 下一曲
+          IconButton(
+            onPressed: onNext,
+            iconSize: 40,
+            icon: const Icon(Icons.skip_next),
+          ),
+        ],
+      );
+
+  Widget _buildExtraControls(BuildContext context) => Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          // 播放模式
+          IconButton(
+            onPressed: onTogglePlayMode,
+            icon: Icon(_getPlayModeIcon()),
+            tooltip: _getPlayModeTooltip(),
+          ),
+          // 音量
+          _VolumeControl(
+            volume: state.volume,
+            onVolumeChange: onVolumeChange,
+          ),
+          // 播放列表
+          IconButton(
+            onPressed: () {
+              // TODO: 显示播放列表
+            },
+            icon: const Icon(Icons.queue_music),
+            tooltip: '播放列表',
+          ),
+        ],
+      );
+
+  IconData _getPlayModeIcon() => switch (state.playMode) {
+        PlayMode.loop => Icons.repeat,
+        PlayMode.repeatOne => Icons.repeat_one,
+        PlayMode.shuffle => Icons.shuffle,
+      };
+
+  String _getPlayModeTooltip() => switch (state.playMode) {
+        PlayMode.loop => '列表循环',
+        PlayMode.repeatOne => '单曲循环',
+        PlayMode.shuffle => '随机播放',
+      };
+}
+
+class _VolumeControl extends StatefulWidget {
+  const _VolumeControl({
+    required this.volume,
+    required this.onVolumeChange,
+  });
+
+  final double volume;
+  final ValueChanged<double> onVolumeChange;
+
+  @override
+  State<_VolumeControl> createState() => _VolumeControlState();
+}
+
+class _VolumeControlState extends State<_VolumeControl> {
+  bool _showSlider = false;
+
+  @override
+  Widget build(BuildContext context) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            onPressed: () => setState(() => _showSlider = !_showSlider),
+            icon: Icon(
+              widget.volume == 0
+                  ? Icons.volume_off
+                  : widget.volume < 0.5
+                      ? Icons.volume_down
+                      : Icons.volume_up,
+            ),
+            tooltip: '音量',
+          ),
+          if (_showSlider)
+            SizedBox(
+              width: 100,
+              child: Slider(
+                value: widget.volume,
+                onChanged: widget.onVolumeChange,
+              ),
+            ),
+        ],
+      );
+}

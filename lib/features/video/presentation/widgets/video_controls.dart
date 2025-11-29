@@ -1,0 +1,323 @@
+import 'package:flutter/material.dart';
+import 'package:my_nas/app/theme/app_spacing.dart';
+import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/features/video/domain/entities/video_item.dart';
+import 'package:my_nas/features/video/presentation/providers/video_player_provider.dart';
+
+class VideoControls extends StatelessWidget {
+  const VideoControls({
+    required this.video,
+    required this.state,
+    required this.onPlayPause,
+    required this.onSeek,
+    required this.onSeekForward,
+    required this.onSeekBackward,
+    required this.onVolumeChange,
+    required this.onSpeedChange,
+    required this.onToggleFullscreen,
+    required this.onBack,
+    super.key,
+  });
+
+  final VideoItem video;
+  final VideoPlayerState state;
+  final VoidCallback onPlayPause;
+  final ValueChanged<Duration> onSeek;
+  final VoidCallback onSeekForward;
+  final VoidCallback onSeekBackward;
+  final ValueChanged<double> onVolumeChange;
+  final ValueChanged<double> onSpeedChange;
+  final VoidCallback onToggleFullscreen;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.black54,
+              Colors.transparent,
+              Colors.transparent,
+              Colors.black54,
+            ],
+            stops: [0.0, 0.2, 0.8, 1.0],
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              // 顶部栏
+              _buildTopBar(context),
+
+              // 中间区域
+              const Spacer(),
+              _buildCenterControls(context),
+              const Spacer(),
+
+              // 底部控制栏
+              _buildBottomBar(context),
+            ],
+          ),
+        ),
+      );
+
+  Widget _buildTopBar(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Row(
+          children: [
+            IconButton(
+              onPressed: onBack,
+              icon: const Icon(Icons.arrow_back, color: Colors.white),
+            ),
+            Expanded(
+              child: Text(
+                video.name,
+                style: context.textTheme.titleMedium?.copyWith(
+                  color: Colors.white,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            // 更多选项
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert, color: Colors.white),
+              onSelected: (value) {
+                // TODO: Handle menu actions
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'subtitle',
+                  child: Row(
+                    children: [
+                      Icon(Icons.subtitles),
+                      SizedBox(width: 12),
+                      Text('字幕'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'audio',
+                  child: Row(
+                    children: [
+                      Icon(Icons.audiotrack),
+                      SizedBox(width: 12),
+                      Text('音轨'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'pip',
+                  child: Row(
+                    children: [
+                      Icon(Icons.picture_in_picture),
+                      SizedBox(width: 12),
+                      Text('画中画'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+
+  Widget _buildCenterControls(BuildContext context) => Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // 快退
+          IconButton(
+            onPressed: onSeekBackward,
+            iconSize: 48,
+            icon: const Icon(
+              Icons.replay_10,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(width: 32),
+          // 播放/暂停
+          IconButton(
+            onPressed: onPlayPause,
+            iconSize: 64,
+            icon: Icon(
+              state.isPlaying ? Icons.pause_circle : Icons.play_circle,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(width: 32),
+          // 快进
+          IconButton(
+            onPressed: onSeekForward,
+            iconSize: 48,
+            icon: const Icon(
+              Icons.forward_10,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      );
+
+  Widget _buildBottomBar(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 进度条
+            Row(
+              children: [
+                Text(
+                  state.positionText,
+                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                ),
+                Expanded(
+                  child: SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      trackHeight: 3,
+                      thumbShape:
+                          const RoundSliderThumbShape(enabledThumbRadius: 6),
+                      overlayShape:
+                          const RoundSliderOverlayShape(overlayRadius: 12),
+                      activeTrackColor: Colors.white,
+                      inactiveTrackColor: Colors.white30,
+                      thumbColor: Colors.white,
+                      overlayColor: Colors.white24,
+                    ),
+                    child: Slider(
+                      value: state.progress.clamp(0.0, 1.0),
+                      onChanged: (value) {
+                        final position = Duration(
+                          milliseconds:
+                              (value * state.duration.inMilliseconds).toInt(),
+                        );
+                        onSeek(position);
+                      },
+                    ),
+                  ),
+                ),
+                Text(
+                  state.durationText,
+                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                ),
+              ],
+            ),
+
+            // 控制按钮
+            Row(
+              children: [
+                // 音量
+                _VolumeButton(
+                  volume: state.volume,
+                  onVolumeChange: onVolumeChange,
+                ),
+                const Spacer(),
+                // 倍速
+                _SpeedButton(
+                  speed: state.speed,
+                  onSpeedChange: onSpeedChange,
+                ),
+                const SizedBox(width: 16),
+                // 全屏
+                IconButton(
+                  onPressed: onToggleFullscreen,
+                  icon: Icon(
+                    state.isFullscreen
+                        ? Icons.fullscreen_exit
+                        : Icons.fullscreen,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+}
+
+class _VolumeButton extends StatefulWidget {
+  const _VolumeButton({
+    required this.volume,
+    required this.onVolumeChange,
+  });
+
+  final double volume;
+  final ValueChanged<double> onVolumeChange;
+
+  @override
+  State<_VolumeButton> createState() => _VolumeButtonState();
+}
+
+class _VolumeButtonState extends State<_VolumeButton> {
+  bool _showSlider = false;
+
+  @override
+  Widget build(BuildContext context) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            onPressed: () => setState(() => _showSlider = !_showSlider),
+            icon: Icon(
+              widget.volume == 0
+                  ? Icons.volume_off
+                  : widget.volume < 0.5
+                      ? Icons.volume_down
+                      : Icons.volume_up,
+              color: Colors.white,
+            ),
+          ),
+          if (_showSlider)
+            SizedBox(
+              width: 100,
+              child: Slider(
+                value: widget.volume,
+                onChanged: widget.onVolumeChange,
+                activeColor: Colors.white,
+                inactiveColor: Colors.white30,
+              ),
+            ),
+        ],
+      );
+}
+
+class _SpeedButton extends StatelessWidget {
+  const _SpeedButton({
+    required this.speed,
+    required this.onSpeedChange,
+  });
+
+  final double speed;
+  final ValueChanged<double> onSpeedChange;
+
+  @override
+  Widget build(BuildContext context) => PopupMenuButton<double>(
+        onSelected: onSpeedChange,
+        offset: const Offset(0, -200),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.white54),
+            borderRadius: AppRadius.borderRadiusSm,
+          ),
+          child: Text(
+            '${speed}x',
+            style: const TextStyle(color: Colors.white, fontSize: 12),
+          ),
+        ),
+        itemBuilder: (context) => availableSpeeds
+            .map(
+              (s) => PopupMenuItem(
+                value: s,
+                child: Row(
+                  children: [
+                    if (s == speed) const Icon(Icons.check, size: 18),
+                    if (s != speed) const SizedBox(width: 18),
+                    const SizedBox(width: 8),
+                    Text('${s}x'),
+                  ],
+                ),
+              ),
+            )
+            .toList(),
+      );
+}
