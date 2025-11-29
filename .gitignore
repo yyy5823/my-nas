@@ -185,4 +185,9 @@ key.properties
 
 # Icon cache
 *.iconset
+
+# Claude Code
 .claude
+
+# Development docs (not for public)
+/docs/

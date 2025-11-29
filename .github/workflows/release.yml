@@ -1,0 +1,267 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  FLUTTER_VERSION: '3.32.0'
+
+jobs:
+  # 提取版本信息
+  extract-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      version_code: ${{ steps.version.outputs.version_code }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract version from pubspec.yaml
+        id: version
+        run: |
+          VERSION=$(grep "^version:" pubspec.yaml | sed 's/version: //' | cut -d'+' -f1)
+          VERSION_CODE=$(grep "^version:" pubspec.yaml | sed 's/version: //' | cut -d'+' -f2)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version_code=$VERSION_CODE" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION, Version Code: $VERSION_CODE"
+
+  # 构建 Android APK
+  build-android:
+    needs: extract-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build APK
+        run: flutter build apk --release --split-per-abi
+
+      - name: Rename APKs
+        run: |
+          cd build/app/outputs/flutter-apk
+          mv app-arm64-v8a-release.apk MyNAS-${{ needs.extract-version.outputs.version }}-arm64-v8a.apk
+          mv app-armeabi-v7a-release.apk MyNAS-${{ needs.extract-version.outputs.version }}-armeabi-v7a.apk
+          mv app-x86_64-release.apk MyNAS-${{ needs.extract-version.outputs.version }}-x86_64.apk
+
+      - name: Upload Android artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apks
+          path: build/app/outputs/flutter-apk/MyNAS-*.apk
+
+  # 构建 iOS IPA (需要 Apple 开发者账号)
+  build-ios:
+    needs: extract-version
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build iOS (no codesign)
+        run: flutter build ios --release --no-codesign
+
+      - name: Create unsigned IPA
+        run: |
+          cd build/ios/iphoneos
+          mkdir -p Payload
+          cp -r Runner.app Payload/
+          zip -r MyNAS-${{ needs.extract-version.outputs.version }}-unsigned.ipa Payload
+
+      - name: Upload iOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa
+          path: build/ios/iphoneos/MyNAS-*.ipa
+
+  # 构建 macOS DMG
+  build-macos:
+    needs: extract-version
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build macOS
+        run: flutter build macos --release
+
+      - name: Create DMG
+        run: |
+          brew install create-dmg
+          create-dmg \
+            --volname "MyNAS" \
+            --volicon "macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_512.png" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "MyNAS.app" 150 185 \
+            --hide-extension "MyNAS.app" \
+            --app-drop-link 450 185 \
+            "MyNAS-${{ needs.extract-version.outputs.version }}-macOS.dmg" \
+            "build/macos/Build/Products/Release/my_nas.app" || true
+
+          # 如果 create-dmg 失败，创建简单的 zip
+          if [ ! -f "MyNAS-${{ needs.extract-version.outputs.version }}-macOS.dmg" ]; then
+            cd build/macos/Build/Products/Release
+            zip -r ../../../../../MyNAS-${{ needs.extract-version.outputs.version }}-macOS.zip my_nas.app
+          fi
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-app
+          path: |
+            MyNAS-*.dmg
+            MyNAS-*.zip
+
+  # 构建 Windows
+  build-windows:
+    needs: extract-version
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build Windows
+        run: flutter build windows --release
+
+      - name: Create ZIP
+        run: |
+          Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath MyNAS-${{ needs.extract-version.outputs.version }}-Windows-x64.zip
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-app
+          path: MyNAS-*.zip
+
+  # 构建 Linux
+  build-linux:
+    needs: extract-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libmpv-dev
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build Linux
+        run: flutter build linux --release
+
+      - name: Create tarball
+        run: |
+          cd build/linux/x64/release
+          tar -czvf ../../../../MyNAS-${{ needs.extract-version.outputs.version }}-Linux-x64.tar.gz bundle
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-app
+          path: MyNAS-*.tar.gz
+
+  # 创建 Release
+  create-release:
+    needs: [extract-version, build-android, build-ios, build-macos, build-windows, build-linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List artifacts
+        run: find artifacts -type f
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: MyNAS v${{ needs.extract-version.outputs.version }}
+          tag_name: ${{ github.ref_name }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') }}
+          generate_release_notes: true
+          files: |
+            artifacts/android-apks/*
+            artifacts/ios-ipa/*
+            artifacts/macos-app/*
+            artifacts/windows-app/*
+            artifacts/linux-app/*
+          body: |
+            ## MyNAS v${{ needs.extract-version.outputs.version }}
+
+            ### Downloads
+
+            | Platform | Architecture | File |
+            |----------|--------------|------|
+            | Android | arm64-v8a | `MyNAS-${{ needs.extract-version.outputs.version }}-arm64-v8a.apk` |
+            | Android | armeabi-v7a | `MyNAS-${{ needs.extract-version.outputs.version }}-armeabi-v7a.apk` |
+            | Android | x86_64 | `MyNAS-${{ needs.extract-version.outputs.version }}-x86_64.apk` |
+            | iOS | Universal | `MyNAS-${{ needs.extract-version.outputs.version }}-unsigned.ipa` |
+            | macOS | Universal | `MyNAS-${{ needs.extract-version.outputs.version }}-macOS.dmg` |
+            | Windows | x64 | `MyNAS-${{ needs.extract-version.outputs.version }}-Windows-x64.zip` |
+            | Linux | x64 | `MyNAS-${{ needs.extract-version.outputs.version }}-Linux-x64.tar.gz` |
+
+            ### Notes
+            - iOS IPA is unsigned and requires sideloading
+            - macOS app is unsigned, you may need to allow it in Security & Privacy settings
+
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
