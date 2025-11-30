@@ -245,6 +245,7 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
   IconData _getSourceIcon() {
     return switch (widget.source.type) {
       SourceType.synology => Icons.storage,
+      SourceType.ugreen => Icons.storage,
       SourceType.qnap => Icons.storage,
       SourceType.webdav => Icons.cloud,
       SourceType.smb => Icons.folder_shared,

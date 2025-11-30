@@ -5,6 +5,7 @@ import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/nas_adapters/base/nas_adapter.dart';
 import 'package:my_nas/nas_adapters/base/nas_connection.dart';
 import 'package:my_nas/nas_adapters/synology/synology_adapter.dart';
+import 'package:my_nas/nas_adapters/ugreen/ugreen_adapter.dart';
 import 'package:my_nas/nas_adapters/webdav/webdav_adapter.dart';
 
 /// 源连接信息
@@ -307,12 +308,21 @@ class SourceManagerService {
     }
 
     final adapter = connection.adapter;
+    ConnectionResult? result;
+
     if (adapter is SynologyAdapter) {
-      final result = await adapter.verify2FA(
+      result = await adapter.verify2FA(
         otpCode,
         rememberDevice: rememberDevice,
       );
+    } else if (adapter is UGreenAdapter) {
+      result = await adapter.verify2FA(
+        otpCode,
+        rememberDevice: rememberDevice,
+      );
+    }
 
+    if (result != null) {
       final newConnection = switch (result) {
         ConnectionSuccess(:final deviceId) => () {
             // 保存设备ID
@@ -380,6 +390,7 @@ class SourceManagerService {
   NasAdapter _createAdapter(SourceType type) {
     return switch (type) {
       SourceType.synology => SynologyAdapter(),
+      SourceType.ugreen => UGreenAdapter(),
       SourceType.webdav => WebDavAdapter(),
       _ => throw UnimplementedError('适配器 $type 尚未实现'),
     };
@@ -388,6 +399,7 @@ class SourceManagerService {
   NasAdapterType _getAdapterType(SourceType type) {
     return switch (type) {
       SourceType.synology => NasAdapterType.synology,
+      SourceType.ugreen => NasAdapterType.ugreen,
       SourceType.webdav => NasAdapterType.webdav,
       SourceType.smb => NasAdapterType.smb,
       _ => throw UnimplementedError('适配器类型 $type 尚未实现'),

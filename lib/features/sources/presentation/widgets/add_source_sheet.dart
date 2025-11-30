@@ -312,7 +312,7 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
       runSpacing: 8,
       children: SourceType.values.map((type) {
         final isSelected = _sourceType == type;
-        final isSupported = type == SourceType.synology;
+        final isSupported = type.isSupported;
 
         return FilterChip(
           label: Text(type.displayName),
@@ -322,14 +322,8 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
                   if (selected) {
                     setState(() {
                       _sourceType = type;
-                      // 更新默认端口
-                      _portController.text = switch (type) {
-                        SourceType.synology => '5001',
-                        SourceType.qnap => '8080',
-                        SourceType.webdav => '443',
-                        SourceType.smb => '445',
-                        SourceType.local => '',
-                      };
+                      // 使用源类型的默认端口
+                      _portController.text = type.defaultPort.toString();
                     });
                   }
                 }
@@ -337,6 +331,7 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
           avatar: Icon(
             switch (type) {
               SourceType.synology => Icons.storage,
+              SourceType.ugreen => Icons.storage,
               SourceType.qnap => Icons.storage,
               SourceType.webdav => Icons.cloud,
               SourceType.smb => Icons.folder_shared,

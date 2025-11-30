@@ -3,6 +3,7 @@ import 'package:uuid/uuid.dart';
 /// 源类型
 enum SourceType {
   synology('Synology NAS', 'synology'),
+  ugreen('绿联 NAS', 'ugreen'),
   qnap('QNAP NAS', 'qnap'),
   webdav('WebDAV', 'webdav'),
   smb('SMB/CIFS', 'smb'),
@@ -11,6 +12,26 @@ enum SourceType {
   const SourceType(this.displayName, this.id);
   final String displayName;
   final String id;
+
+  /// 获取该源类型的默认端口
+  int get defaultPort => switch (this) {
+    SourceType.synology => 5001,
+    SourceType.ugreen => 9999,
+    SourceType.qnap => 8080,
+    SourceType.webdav => 443,
+    SourceType.smb => 445,
+    SourceType.local => 0,
+  };
+
+  /// 该源类型是否已实现
+  bool get isSupported => switch (this) {
+    SourceType.synology => true,
+    SourceType.ugreen => true,
+    SourceType.webdav => true,
+    SourceType.qnap => false,
+    SourceType.smb => false,
+    SourceType.local => false,
+  };
 }
 
 /// 源连接状态
