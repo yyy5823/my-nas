@@ -566,11 +566,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
             onRetry: () => ref.read(videoListProvider.notifier).loadVideos(),
           ),
         VideoListLoaded loaded => loaded.videos.isEmpty
-            ? const EmptyWidget(
-                icon: Icons.video_library_outlined,
-                title: '暂无视频',
-                message: '在 NAS 中添加视频后将显示在这里',
-              )
+            ? _buildEmptyState(context, ref, loaded, isDark)
             : _buildNetflixStyleContent(context, ref, loaded, isDark),
       },
     );
@@ -615,6 +611,107 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(
+    BuildContext context,
+    WidgetRef ref,
+    VideoListLoaded state,
+    bool isDark,
+  ) {
+    // 获取缓存信息
+    final cacheService = VideoLibraryCacheService.instance;
+    final cacheInfo = cacheService.getCacheInfo();
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 100,
+              height: 100,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.video_library_rounded,
+                size: 50,
+                color: AppColors.primary,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              '视频库为空',
+              style: context.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white : null,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '扫描 NAS 上的视频文件夹以填充您的媒体库',
+              style: context.textTheme.bodyMedium?.copyWith(
+                color: isDark ? Colors.grey[400] : Colors.grey,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            // 缓存信息
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: isDark ? Colors.grey[850] : Colors.grey[100],
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.storage_rounded,
+                    size: 14,
+                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    cacheInfo,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 32),
+            ElevatedButton.icon(
+              onPressed: () => ref.read(videoListProvider.notifier).loadVideos(forceRefresh: true),
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('扫描视频'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextButton.icon(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(builder: (_) => const SourcesPage()),
+              ),
+              icon: const Icon(Icons.settings_rounded),
+              label: const Text('配置媒体库'),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.primary,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -687,6 +784,9 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
         slivers: [
           // 顶部导航栏
           _buildAppBar(context, ref, state, isDark),
+
+          // 缓存信息条
+          _CacheInfoBar(state: state, isDark: isDark),
 
           // 继续观看
           _ContinueWatchingSection(isDark: isDark),
@@ -1311,8 +1411,8 @@ class _ContinueWatchingCard extends ConsumerWidget {
   }
 }
 
-/// 海报卡片
-class _PosterCard extends StatefulWidget {
+/// 海报卡片（带播放进度）
+class _PosterCard extends ConsumerStatefulWidget {
   const _PosterCard({
     required this.metadata,
     required this.onTap,
@@ -1326,16 +1426,21 @@ class _PosterCard extends StatefulWidget {
   final double? width;
 
   @override
-  State<_PosterCard> createState() => _PosterCardState();
+  ConsumerState<_PosterCard> createState() => _PosterCardState();
 }
 
-class _PosterCardState extends State<_PosterCard> {
+class _PosterCardState extends ConsumerState<_PosterCard> {
   bool _isHovered = false;
 
   @override
   Widget build(BuildContext context) {
     final displayPoster = widget.metadata.displayPosterUrl;
     final hasPoster = displayPoster != null && displayPoster.isNotEmpty;
+
+    // 获取播放进度
+    final progressAsync = ref.watch(allVideoProgressProvider);
+    final progress = progressAsync.valueOrNull?[widget.metadata.filePath];
+    final hasProgress = progress != null && progress.progressPercent > 0.02 && progress.progressPercent < 0.98;
 
     return Container(
       width: widget.width,
@@ -1401,6 +1506,39 @@ class _PosterCardState extends State<_PosterCard> {
                             ),
                           ),
 
+                          // 播放进度条
+                          if (hasProgress)
+                            Positioned(
+                              left: 0,
+                              right: 0,
+                              bottom: 0,
+                              child: Container(
+                                height: 4,
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.5),
+                                  borderRadius: const BorderRadius.only(
+                                    bottomLeft: Radius.circular(12),
+                                    bottomRight: Radius.circular(12),
+                                  ),
+                                ),
+                                child: FractionallySizedBox(
+                                  alignment: Alignment.centerLeft,
+                                  widthFactor: progress.progressPercent.clamp(0.0, 1.0),
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primary,
+                                      borderRadius: BorderRadius.only(
+                                        bottomLeft: const Radius.circular(12),
+                                        bottomRight: progress.progressPercent > 0.95
+                                            ? const Radius.circular(12)
+                                            : Radius.zero,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+
                           // 评分徽章
                           if (widget.metadata.rating != null &&
                               widget.metadata.rating! > 0)
@@ -1461,6 +1599,42 @@ class _PosterCardState extends State<_PosterCard> {
                                     fontSize: 9,
                                     fontWeight: FontWeight.bold,
                                   ),
+                                ),
+                              ),
+                            ),
+
+                          // 继续观看标记
+                          if (hasProgress)
+                            Positioned(
+                              bottom: 10,
+                              left: 8,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.7),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.play_arrow_rounded,
+                                      size: 12,
+                                      color: Colors.white,
+                                    ),
+                                    const SizedBox(width: 2),
+                                    Text(
+                                      '${(progress.progressPercent * 100).toInt()}%',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
