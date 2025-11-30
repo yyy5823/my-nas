@@ -79,7 +79,10 @@ class DownloadTask {
 
 /// 下载服务
 class DownloadService {
-  DownloadService._();
+  DownloadService._() {
+    // 立即发送初始状态，避免 StreamProvider 一直显示 loading
+    _notifyListeners();
+  }
   static final instance = DownloadService._();
 
   final Dio _dio = Dio();
@@ -87,7 +90,14 @@ class DownloadService {
   final Map<String, CancelToken> _cancelTokens = {};
 
   final _tasksController = StreamController<List<DownloadTask>>.broadcast();
-  Stream<List<DownloadTask>> get tasksStream => _tasksController.stream;
+
+  /// 获取任务流，首先发送当前状态
+  Stream<List<DownloadTask>> get tasksStream async* {
+    // 立即发送当前状态
+    yield tasks;
+    // 然后监听后续变化
+    yield* _tasksController.stream;
+  }
 
   List<DownloadTask> get tasks => _tasks.values.toList();
 

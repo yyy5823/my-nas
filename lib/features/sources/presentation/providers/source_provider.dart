@@ -77,9 +77,23 @@ class SourcesNotifier extends StateNotifier<AsyncValue<List<SourceEntity>>> {
 /// 活跃连接管理
 class ActiveConnectionsNotifier
     extends StateNotifier<Map<String, SourceConnection>> {
-  ActiveConnectionsNotifier(this._ref) : super({});
+  ActiveConnectionsNotifier(this._ref) : super({}) {
+    // 初始化时自动连接所有源
+    _initAutoConnect();
+  }
 
   final Ref _ref;
+  bool _hasInitialized = false;
+
+  /// 初始化自动连接
+  Future<void> _initAutoConnect() async {
+    if (_hasInitialized) return;
+    _hasInitialized = true;
+
+    // 延迟一点确保其他 provider 已初始化
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    await autoConnectAll();
+  }
 
   void refresh() {
     final manager = _ref.read(sourceManagerProvider);
