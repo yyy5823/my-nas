@@ -336,10 +336,11 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
               );
         }
       } else {
+        // 总是保存凭证，以便更新 deviceId
         await ref.read(activeConnectionsProvider.notifier).connect(
               widget.source,
               password: credential.password,
-              saveCredential: false,
+              saveCredential: true,
             );
       }
 

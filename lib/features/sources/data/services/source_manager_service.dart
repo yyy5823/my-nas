@@ -168,37 +168,44 @@ class SourceManagerService {
     await _sourcesBox.put('list', sources.map((s) => s.toJson()).toList());
   }
 
-  // ============ 凭证管理 ============
+  // ============ 凭证管理（使用安全存储）============
 
-  /// 保存凭证
+  /// 保存凭证到安全存储
   Future<void> saveCredential(String sourceId, SourceCredential credential) async {
-    if (!_initialized) await init();
-    await _credentialsBox.put(sourceId, credential.toJson());
-    logger.d('SourceManagerService: 保存凭证 $sourceId');
+    final key = '$_credentialPrefix$sourceId';
+    final value = jsonEncode(credential.toJson());
+    await _secureStorage.write(key: key, value: value);
+    logger.i('SourceManagerService: 保存凭证到安全存储 $sourceId (deviceId: ${credential.deviceId != null ? "有" : "无"})');
   }
 
-  /// 获取凭证
+  /// 从安全存储获取凭证
   Future<SourceCredential?> getCredential(String sourceId) async {
-    if (!_initialized) await init();
-
-    final data = _credentialsBox.get(sourceId);
-    if (data == null) return null;
+    final key = '$_credentialPrefix$sourceId';
+    final value = await _secureStorage.read(key: key);
+    if (value == null) {
+      logger.d('SourceManagerService: 未找到凭证 $sourceId');
+      return null;
+    }
 
     try {
-      return SourceCredential.fromJson(Map<String, dynamic>.from(data as Map));
+      final json = jsonDecode(value) as Map<String, dynamic>;
+      final credential = SourceCredential.fromJson(json);
+      logger.d('SourceManagerService: 读取凭证成功 $sourceId (deviceId: ${credential.deviceId != null ? "有" : "无"})');
+      return credential;
     } catch (e) {
       logger.e('SourceManagerService: 解析凭证失败', e);
       return null;
     }
   }
 
-  /// 删除凭证
+  /// 从安全存储删除凭证
   Future<void> removeCredential(String sourceId) async {
-    if (!_initialized) await init();
-    await _credentialsBox.delete(sourceId);
+    final key = '$_credentialPrefix$sourceId';
+    await _secureStorage.delete(key: key);
+    logger.i('SourceManagerService: 删除凭证 $sourceId');
   }
 
-  /// 更新设备ID
+  /// 更新设备ID（保留密码）
   Future<void> updateDeviceId(String sourceId, String deviceId) async {
     final credential = await getCredential(sourceId);
     if (credential != null) {
@@ -209,6 +216,9 @@ class SourceManagerService {
           deviceId: deviceId,
         ),
       );
+      logger.i('SourceManagerService: 更新设备ID $sourceId');
+    } else {
+      logger.w('SourceManagerService: 无法更新设备ID，未找到凭证 $sourceId');
     }
   }
 
@@ -239,12 +249,11 @@ class SourceManagerService {
       status: SourceStatus.connecting,
     );
 
-    // 获取已保存的设备ID
-    String? deviceId;
-    if (source.rememberDevice) {
-      final savedCredential = await getCredential(source.id);
-      deviceId = savedCredential?.deviceId;
-    }
+    // 总是尝试获取已保存的设备ID（用于跳过2FA）
+    final savedCredential = await getCredential(source.id);
+    final deviceId = savedCredential?.deviceId;
+
+    logger.d('SourceManagerService: 连接配置 - rememberDevice: ${source.rememberDevice}, deviceId: ${deviceId != null ? "有" : "无"}');
 
     final config = ConnectionConfig(
       type: _getAdapterType(source.type),
@@ -263,11 +272,13 @@ class SourceManagerService {
 
       final connection = switch (result) {
         ConnectionSuccess(:final deviceId) => () {
-            // 保存凭证
+            // 总是保存凭证（包括新的 deviceId）
             if (saveCredential) {
+              // 如果连接返回了新的 deviceId，使用新的；否则保留旧的
+              final newDeviceId = deviceId ?? savedCredential?.deviceId;
               this.saveCredential(
                 source.id,
-                SourceCredential(password: password, deviceId: deviceId),
+                SourceCredential(password: password, deviceId: newDeviceId),
               );
             }
 
@@ -308,10 +319,13 @@ class SourceManagerService {
   }
 
   /// 二次验证
+  ///
+  /// [rememberDevice] 是否记住此设备，如果为 true，下次连接时将跳过 2FA
   Future<SourceConnection> verify2FA(
     String sourceId,
     String otpCode, {
     bool rememberDevice = false,
+    String? password,
   }) async {
     final connection = _connections[sourceId];
     if (connection == null) {
@@ -336,10 +350,30 @@ class SourceManagerService {
     if (result != null) {
       final newConnection = switch (result) {
         ConnectionSuccess(:final deviceId) => () {
-            // 保存设备ID
-            if (rememberDevice && deviceId != null) {
-              updateDeviceId(sourceId, deviceId);
+            // 2FA 成功后，保存/更新凭证（包括设备ID）
+            if (deviceId != null) {
+              logger.i('SourceManagerService: 2FA 成功，保存设备ID');
+              // 获取现有凭证中的密码
+              getCredential(sourceId).then((credential) {
+                if (credential != null) {
+                  saveCredential(
+                    sourceId,
+                    SourceCredential(
+                      password: password ?? credential.password,
+                      deviceId: deviceId,
+                    ),
+                  );
+                } else if (password != null) {
+                  saveCredential(
+                    sourceId,
+                    SourceCredential(password: password, deviceId: deviceId),
+                  );
+                }
+              });
             }
+
+            // 更新最后连接时间
+            updateSource(connection.source.copyWith(lastConnected: DateTime.now()));
 
             return connection.copyWith(
               status: SourceStatus.connected,
@@ -382,20 +416,46 @@ class SourceManagerService {
   }
 
   /// 自动连接所有启用自动连接的源
+  ///
+  /// 会尝试使用保存的凭证和设备ID自动连接，如果有设备ID则可以跳过2FA
   Future<void> autoConnectAll() async {
     final sources = await getSources();
+    logger.i('SourceManagerService: 开始自动连接 ${sources.length} 个源');
+
     for (final source in sources) {
       if (source.autoConnect) {
         final credential = await getCredential(source.id);
         if (credential != null) {
+          logger.i('SourceManagerService: 自动连接 ${source.name} (deviceId: ${credential.deviceId != null ? "有" : "无"})');
           try {
-            await connect(source, password: credential.password, saveCredential: false);
+            // saveCredential=true 确保如果连接返回新的 deviceId，会被保存
+            final connection = await connect(
+              source,
+              password: credential.password,
+              saveCredential: true,
+            );
+
+            // 记录连接结果
+            switch (connection.status) {
+              case SourceStatus.connected:
+                logger.i('SourceManagerService: ${source.name} 自动连接成功');
+              case SourceStatus.requires2FA:
+                logger.w('SourceManagerService: ${source.name} 需要2FA (deviceId 可能已失效)');
+              case SourceStatus.error:
+                logger.e('SourceManagerService: ${source.name} 连接失败: ${connection.errorMessage}');
+              default:
+                break;
+            }
           } catch (e) {
-            logger.e('SourceManagerService: 自动连接失败 ${source.name}', e);
+            logger.e('SourceManagerService: 自动连接异常 ${source.name}', e);
           }
+        } else {
+          logger.d('SourceManagerService: ${source.name} 没有保存的凭证，跳过自动连接');
         }
       }
     }
+
+    logger.i('SourceManagerService: 自动连接完成');
   }
 
   NasAdapter _createAdapter(SourceType type) {
