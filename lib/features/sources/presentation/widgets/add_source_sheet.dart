@@ -387,15 +387,19 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
           );
         }
       } else {
-        // 添加源
-        await ref.read(sourcesProvider.notifier).addSource(source);
-
-        // 尝试连接
+        // 先尝试连接，只有连接成功才保存源
         final connection = await ref
             .read(activeConnectionsProvider.notifier)
-            .connect(source, password: password);
+            .connectNew(source, password: password);
 
         if (connection.status == SourceStatus.connected) {
+          // 连接成功，保存源和凭证
+          await ref.read(sourcesProvider.notifier).addSource(source);
+          final manager = ref.read(sourceManagerProvider);
+          await manager.saveCredential(
+            source.id,
+            SourceCredential(password: password),
+          );
           if (mounted) {
             Navigator.pop(context);
             ScaffoldMessenger.of(context).showSnackBar(
@@ -416,6 +420,13 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
                   );
 
               if (verified.status == SourceStatus.connected) {
+                // 2FA验证成功，保存源和凭证
+                await ref.read(sourcesProvider.notifier).addSource(source);
+                final manager = ref.read(sourceManagerProvider);
+                await manager.saveCredential(
+                  source.id,
+                  SourceCredential(password: password),
+                );
                 if (mounted) {
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -423,13 +434,20 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
                   );
                 }
               } else {
+                // 2FA失败，断开临时连接
+                await ref.read(activeConnectionsProvider.notifier).disconnect(source.id);
                 setState(() {
                   _errorMessage = verified.errorMessage ?? '二次验证失败';
                 });
               }
+            } else {
+              // 用户取消2FA，断开临时连接
+              await ref.read(activeConnectionsProvider.notifier).disconnect(source.id);
             }
           }
         } else {
+          // 连接失败，断开临时连接
+          await ref.read(activeConnectionsProvider.notifier).disconnect(source.id);
           setState(() {
             _errorMessage = connection.errorMessage ?? '连接失败';
           });

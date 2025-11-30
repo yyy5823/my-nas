@@ -82,6 +82,8 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
   @override
   void dispose() {
     _hideControlsTimer?.cancel();
+    // 停止播放
+    ref.read(videoPlayerControllerProvider.notifier).stop();
     // 恢复系统 UI
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setPreferredOrientations([]);

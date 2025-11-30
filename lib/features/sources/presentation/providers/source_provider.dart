@@ -109,6 +109,21 @@ class ActiveConnectionsNotifier
     return connection;
   }
 
+  /// 测试连接（不保存凭证，用于新建源时先验证连接）
+  Future<SourceConnection> connectNew(
+    SourceEntity source, {
+    required String password,
+  }) async {
+    final manager = _ref.read(sourceManagerProvider);
+    final connection = await manager.connect(
+      source,
+      password: password,
+      saveCredential: false,
+    );
+    state = {...state, source.id: connection};
+    return connection;
+  }
+
   Future<SourceConnection> verify2FA(
     String sourceId,
     String otpCode, {

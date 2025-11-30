@@ -6,8 +6,13 @@ import 'package:my_nas/nas_adapters/base/nas_connection.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/nas_adapters/ugreen/api/ugreen_api.dart';
 import 'package:my_nas/nas_adapters/ugreen/ugreen_file_system.dart';
+import 'package:my_nas/nas_adapters/webdav/webdav_file_system.dart';
+import 'package:webdav_client/webdav_client.dart' as webdav;
 
 /// 绿联 NAS 适配器
+///
+/// 使用 UGOS API 进行认证，文件操作优先使用 UGOS API，
+/// 如果失败则回退到 WebDAV。
 class UGreenAdapter implements NasAdapter {
   UGreenAdapter() {
     logger.i('UGreenAdapter: 初始化适配器');
@@ -17,11 +22,13 @@ class UGreenAdapter implements NasAdapter {
 
   late final DioClient _dioClient;
   late final UGreenApi _api;
-  late UGreenFileSystem _fileSystem;
+  NasFileSystem? _fileSystem;
+  webdav.Client? _webdavClient;
 
   ConnectionConfig? _config;
   ServerInfo? _serverInfo;
   bool _connected = false;
+  bool _useWebDav = false;
 
   @override
   NasAdapterInfo get info => NasAdapterInfo(
@@ -67,7 +74,7 @@ class UGreenAdapter implements NasAdapter {
 
     return switch (authResult) {
       UGreenAuthSuccess(:final token) =>
-        await _handleLoginSuccess(token),
+        await _handleLoginSuccess(config, token),
       UGreenAuthFailure(:final error) => () {
           logger.e('UGreenAdapter: 登录失败 => $error');
           return ConnectionFailure(error: error);
@@ -98,15 +105,17 @@ class UGreenAdapter implements NasAdapter {
 
     return switch (authResult) {
       UGreenAuthSuccess(:final token) =>
-        await _handleLoginSuccess(token),
+        await _handleLoginSuccess(_config!, token),
       UGreenAuthFailure(:final error) => ConnectionFailure(error: error),
       UGreenAuthRequires2FA() => const ConnectionFailure(error: '二次验证失败'),
     };
   }
 
-  Future<ConnectionResult> _handleLoginSuccess(String token) async {
+  Future<ConnectionResult> _handleLoginSuccess(
+    ConnectionConfig config,
+    String token,
+  ) async {
     _connected = true;
-    _fileSystem = UGreenFileSystem(api: _api);
 
     // 获取服务器信息
     try {
@@ -118,14 +127,82 @@ class UGreenAdapter implements NasAdapter {
         serial: deviceInfo.serial,
       );
     } on Exception catch (e) {
-      // 获取服务器信息失败不影响连接
       logger.w('UGreenAdapter: 获取设备信息失败', e);
+    }
+
+    // 测试 UGOS 文件 API 是否可用
+    _useWebDav = false;
+    try {
+      logger.i('UGreenAdapter: 测试 UGOS 文件 API...');
+      final shares = await _api.listShares();
+      if (shares.isNotEmpty) {
+        logger.i('UGreenAdapter: UGOS 文件 API 可用，找到 ${shares.length} 个共享文件夹');
+        _fileSystem = UGreenFileSystem(api: _api);
+      } else {
+        // 可能 API 返回空，尝试列出根目录
+        final rootFiles = await _api.listDirectory('/');
+        if (rootFiles.isNotEmpty) {
+          logger.i('UGreenAdapter: UGOS 文件 API 可用');
+          _fileSystem = UGreenFileSystem(api: _api);
+        } else {
+          logger.w('UGreenAdapter: UGOS 文件 API 返回空，切换到 WebDAV');
+          _useWebDav = true;
+        }
+      }
+    } catch (e) {
+      logger.w('UGreenAdapter: UGOS 文件 API 不可用，切换到 WebDAV', e);
+      _useWebDav = true;
+    }
+
+    // 如果 UGOS API 不可用，初始化 WebDAV
+    if (_useWebDav) {
+      try {
+        await _initWebDav(config);
+      } catch (e) {
+        logger.e('UGreenAdapter: WebDAV 初始化失败', e);
+        // 仍然标记为已连接，但文件操作可能失败
+      }
     }
 
     return ConnectionSuccess(
       sessionId: token,
       serverInfo: _serverInfo,
     );
+  }
+
+  /// 初始化 WebDAV 客户端
+  Future<void> _initWebDav(ConnectionConfig config) async {
+    logger.i('UGreenAdapter: 初始化 WebDAV 连接...');
+
+    // 绿联 UGOS WebDAV 路径通常是 /webdav 或 /dav
+    final webdavPaths = ['/webdav', '/dav', '/'];
+    final scheme = config.useSsl ? 'https' : 'http';
+
+    for (final davPath in webdavPaths) {
+      try {
+        final webdavUrl = '$scheme://${config.host}:${config.port}$davPath';
+        logger.d('UGreenAdapter: 尝试 WebDAV => $webdavUrl');
+
+        _webdavClient = webdav.newClient(
+          webdavUrl,
+          user: config.username,
+          password: config.password,
+          debug: false,
+        );
+
+        // 验证 WebDAV 连接
+        await _webdavClient!.ping();
+        final files = await _webdavClient!.readDir('/');
+
+        logger.i('UGreenAdapter: WebDAV 连接成功 (${files.length} 项)');
+        _fileSystem = WebDavFileSystem(client: _webdavClient!);
+        return;
+      } catch (e) {
+        logger.w('UGreenAdapter: WebDAV $davPath 失败', e);
+      }
+    }
+
+    throw Exception('WebDAV 连接失败');
   }
 
   @override
@@ -135,6 +212,9 @@ class UGreenAdapter implements NasAdapter {
     _connected = false;
     _config = null;
     _serverInfo = null;
+    _fileSystem = null;
+    _webdavClient = null;
+    _useWebDav = false;
     logger.i('UGreenAdapter: 已断开连接');
   }
 
@@ -143,7 +223,10 @@ class UGreenAdapter implements NasAdapter {
     if (!_connected) {
       throw StateError('未连接到 NAS');
     }
-    return _fileSystem;
+    if (_fileSystem == null) {
+      throw StateError('文件系统未初始化');
+    }
+    return _fileSystem!;
   }
 
   @override
