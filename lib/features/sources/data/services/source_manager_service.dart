@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
@@ -67,9 +70,18 @@ class SourceManagerService {
       _instance ??= SourceManagerService._();
 
   late Box<dynamic> _sourcesBox;
-  late Box<dynamic> _credentialsBox;
   late Box<dynamic> _libraryBox;
   bool _initialized = false;
+
+  /// 安全存储（用于凭证和设备ID，不受应用沙箱影响）
+  static const _secureStorage = FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+    iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock_this_device),
+    mOptions: MacOsOptions(accessibility: KeychainAccessibility.first_unlock_this_device),
+  );
+
+  /// 凭证存储键前缀
+  static const _credentialPrefix = 'source_credential_';
 
   /// 活跃的连接
   final Map<String, SourceConnection> _connections = {};
@@ -80,7 +92,6 @@ class SourceManagerService {
 
     await Hive.initFlutter();
     _sourcesBox = await Hive.openBox('sources');
-    _credentialsBox = await Hive.openBox('source_credentials');
     _libraryBox = await Hive.openBox('media_library');
     _initialized = true;
 
