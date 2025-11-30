@@ -4,6 +4,8 @@ import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/video/domain/entities/video_item.dart';
 import 'package:my_nas/features/video/presentation/providers/video_player_provider.dart';
 import 'package:my_nas/features/video/presentation/widgets/aspect_ratio_selector.dart';
+import 'package:my_nas/features/video/presentation/widgets/audio_track_selector.dart';
+import 'package:my_nas/features/video/presentation/widgets/playlist_sheet.dart';
 import 'package:my_nas/features/video/presentation/widgets/subtitle_selector.dart';
 
 class VideoControls extends StatelessWidget {
@@ -19,6 +21,11 @@ class VideoControls extends StatelessWidget {
     required this.onToggleFullscreen,
     required this.onBack,
     this.hasSubtitles = false,
+    this.hasPlaylist = false,
+    this.hasPrevious = false,
+    this.hasNext = false,
+    this.onPlayPrevious,
+    this.onPlayNext,
     super.key,
   });
 
@@ -33,6 +40,11 @@ class VideoControls extends StatelessWidget {
   final VoidCallback onToggleFullscreen;
   final VoidCallback onBack;
   final bool hasSubtitles;
+  final bool hasPlaylist;
+  final bool hasPrevious;
+  final bool hasNext;
+  final VoidCallback? onPlayPrevious;
+  final VoidCallback? onPlayNext;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -106,7 +118,7 @@ class VideoControls extends StatelessWidget {
                     showAspectRatioSelector(context);
                     break;
                   case 'audio':
-                    // TODO: 音轨选择
+                    showAudioTrackSelector(context);
                     break;
                 }
               },
@@ -152,6 +164,16 @@ class VideoControls extends StatelessWidget {
   Widget _buildCenterControls(BuildContext context) => Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
+          // 上一个（播放列表）
+          if (hasPlaylist)
+            IconButton(
+              onPressed: hasPrevious ? onPlayPrevious : null,
+              iconSize: 36,
+              icon: Icon(
+                Icons.skip_previous_rounded,
+                color: hasPrevious ? Colors.white : Colors.white38,
+              ),
+            ),
           // 快退
           IconButton(
             onPressed: onSeekBackward,
@@ -161,7 +183,7 @@ class VideoControls extends StatelessWidget {
               color: Colors.white,
             ),
           ),
-          const SizedBox(width: 32),
+          const SizedBox(width: 24),
           // 播放/暂停
           IconButton(
             onPressed: onPlayPause,
@@ -171,7 +193,7 @@ class VideoControls extends StatelessWidget {
               color: Colors.white,
             ),
           ),
-          const SizedBox(width: 32),
+          const SizedBox(width: 24),
           // 快进
           IconButton(
             onPressed: onSeekForward,
@@ -181,6 +203,16 @@ class VideoControls extends StatelessWidget {
               color: Colors.white,
             ),
           ),
+          // 下一个（播放列表）
+          if (hasPlaylist)
+            IconButton(
+              onPressed: hasNext ? onPlayNext : null,
+              iconSize: 36,
+              icon: Icon(
+                Icons.skip_next_rounded,
+                color: hasNext ? Colors.white : Colors.white38,
+              ),
+            ),
         ],
       );
 
@@ -237,6 +269,16 @@ class VideoControls extends StatelessWidget {
                   onVolumeChange: onVolumeChange,
                 ),
                 const Spacer(),
+                // 播放列表按钮
+                if (hasPlaylist)
+                  IconButton(
+                    onPressed: () => showPlaylistSheet(context),
+                    icon: const Icon(
+                      Icons.playlist_play_rounded,
+                      color: Colors.white,
+                    ),
+                    tooltip: '播放列表',
+                  ),
                 // 倍速
                 _SpeedButton(
                   speed: state.speed,

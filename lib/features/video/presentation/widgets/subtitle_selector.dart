@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart' show SubtitleTrack;
 import 'package:my_nas/features/video/presentation/providers/video_player_provider.dart';
+import 'package:my_nas/features/video/presentation/widgets/subtitle_style_sheet.dart';
 
 /// 字幕选择器弹窗
 class SubtitleSelectorSheet extends ConsumerWidget {
@@ -51,6 +52,15 @@ class SubtitleSelectorSheet extends ConsumerWidget {
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const Spacer(),
+                // 字幕样式按钮
+                IconButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    showSubtitleStyleSheet(context);
+                  },
+                  icon: const Icon(Icons.text_format_rounded),
+                  tooltip: '字幕样式',
+                ),
                 IconButton(
                   onPressed: () => Navigator.pop(context),
                   icon: const Icon(Icons.close),

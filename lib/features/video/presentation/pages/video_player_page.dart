@@ -7,9 +7,11 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/utils/logger.dart';
-import 'package:my_nas/features/connection/presentation/providers/connection_provider.dart';
+import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
+import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/features/video/data/services/subtitle_service.dart';
 import 'package:my_nas/features/video/domain/entities/video_item.dart';
+import 'package:my_nas/features/video/presentation/providers/playlist_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/video_player_provider.dart';
 import 'package:my_nas/features/video/presentation/widgets/aspect_ratio_selector.dart';
 import 'package:my_nas/features/video/presentation/widgets/video_controls.dart';
@@ -49,8 +51,13 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
 
   /// 加载字幕
   Future<void> _loadSubtitles() async {
-    final adapter = ref.read(activeAdapterProvider);
-    if (adapter == null) return;
+    // 查找第一个已连接的源
+    final connections = ref.read(activeConnectionsProvider);
+    final connectedEntry = connections.entries.firstWhere(
+      (e) => e.value.status == SourceStatus.connected,
+      orElse: () => throw Exception('No connected source'),
+    );
+    final adapter = connectedEntry.value.adapter;
 
     try {
       final subtitles = await SubtitleService.instance.findSubtitles(
@@ -235,10 +242,16 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
                 builder: (context, ref, _) {
                   final subtitles = ref.watch(availableSubtitlesProvider);
                   final currentSubtitle = ref.watch(currentSubtitleProvider);
+                  final playlist = ref.watch(playlistProvider);
+                  final hasPlaylist = playlist.items.length > 1;
+
                   return VideoControls(
                     video: widget.video,
                     state: playerState,
                     hasSubtitles: subtitles.isNotEmpty || currentSubtitle != null,
+                    hasPlaylist: hasPlaylist,
+                    hasPrevious: playlist.hasPrevious,
+                    hasNext: playlist.hasNext,
                     onPlayPause: () {
                       playerNotifier.playOrPause();
                       _startHideControlsTimer();
@@ -265,6 +278,14 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
                     },
                     onToggleFullscreen: playerNotifier.toggleFullscreen,
                     onBack: () => Navigator.of(context).pop(),
+                    onPlayPrevious: () {
+                      playerNotifier.playPrevious();
+                      _startHideControlsTimer();
+                    },
+                    onPlayNext: () {
+                      playerNotifier.playNext();
+                      _startHideControlsTimer();
+                    },
                   );
                 },
               ),

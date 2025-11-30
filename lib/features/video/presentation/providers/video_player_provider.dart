@@ -7,6 +7,7 @@ import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/video/data/services/subtitle_service.dart';
 import 'package:my_nas/features/video/data/services/video_history_service.dart';
 import 'package:my_nas/features/video/domain/entities/video_item.dart';
+import 'package:my_nas/features/video/presentation/providers/playlist_provider.dart';
 
 /// 当前播放的视频
 final currentVideoProvider = StateProvider<VideoItem?>((ref) => null);
@@ -164,8 +165,28 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
         // 播放完成，清除进度
         _historyService.clearProgress(_currentVideo!.path);
         logger.d('VideoPlayerNotifier: 播放完成，清除进度');
+
+        // 尝试播放下一个
+        _playNextFromPlaylist();
       }
     });
+  }
+
+  /// 尝试从播放列表播放下一个
+  Future<void> _playNextFromPlaylist() async {
+    final playlist = _ref.read(playlistProvider);
+
+    // 检查单曲循环
+    if (playlist.repeatMode == RepeatMode.one && _currentVideo != null) {
+      await play(_currentVideo!, startPosition: Duration.zero);
+      return;
+    }
+
+    // 播放下一个
+    final nextVideo = _ref.read(playlistProvider.notifier).playNext();
+    if (nextVideo != null) {
+      await play(nextVideo);
+    }
   }
 
   void _startProgressSaveTimer() {
@@ -346,6 +367,40 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
     await _player.setSubtitleTrack(track);
     logger.i('VideoPlayerNotifier: 设置内嵌字幕 ${track.title ?? track.id}');
   }
+
+  /// 获取可用音轨列表
+  List<AudioTrack> get audioTracks => _player.state.tracks.audio;
+
+  /// 获取当前音轨
+  AudioTrack? get currentAudioTrack => _player.state.track.audio;
+
+  /// 设置音轨
+  Future<void> setAudioTrack(AudioTrack track) async {
+    await _player.setAudioTrack(track);
+    logger.i('VideoPlayerNotifier: 设置音轨 ${track.title ?? track.id}');
+  }
+
+  /// 播放列表中的下一个
+  Future<void> playNext() async {
+    final nextVideo = _ref.read(playlistProvider.notifier).playNext();
+    if (nextVideo != null) {
+      await play(nextVideo);
+    }
+  }
+
+  /// 播放列表中的上一个
+  Future<void> playPrevious() async {
+    final prevVideo = _ref.read(playlistProvider.notifier).playPrevious();
+    if (prevVideo != null) {
+      await play(prevVideo);
+    }
+  }
+
+  /// 是否有下一个
+  bool get hasNext => _ref.read(playlistProvider).hasNext;
+
+  /// 是否有上一个
+  bool get hasPrevious => _ref.read(playlistProvider).hasPrevious;
 
   @override
   void dispose() {
