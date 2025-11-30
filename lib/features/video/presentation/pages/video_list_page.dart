@@ -1,5 +1,6 @@
 import 'dart:ui';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
@@ -11,13 +12,13 @@ import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/features/video/data/services/video_history_service.dart';
+import 'package:my_nas/features/video/data/services/video_library_cache_service.dart';
 import 'package:my_nas/features/video/data/services/video_metadata_service.dart';
 import 'package:my_nas/features/video/domain/entities/video_item.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
 import 'package:my_nas/features/video/presentation/pages/video_detail_page.dart';
 import 'package:my_nas/features/video/presentation/pages/video_player_page.dart';
 import 'package:my_nas/features/video/presentation/providers/video_history_provider.dart';
-import 'package:my_nas/features/video/presentation/widgets/poster_wall.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/shared/widgets/empty_widget.dart';
@@ -39,6 +40,15 @@ class VideoFileWithSource {
   DateTime? get modifiedTime => file.modifiedTime;
   String? get thumbnailUrl => file.thumbnailUrl;
   String get displaySize => file.displaySize;
+
+  VideoLibraryCacheEntry toCacheEntry() => VideoLibraryCacheEntry(
+        sourceId: sourceId,
+        filePath: path,
+        fileName: name,
+        thumbnailUrl: thumbnailUrl,
+        size: size,
+        modifiedTime: modifiedTime,
+      );
 }
 
 /// 视频列表状态
@@ -47,106 +57,152 @@ final videoListProvider =
   return VideoListNotifier(ref);
 });
 
-/// 视频排序方式
-enum VideoSortType { name, date, size, rating }
-
-/// 视频视图模式
-enum VideoViewMode { poster, grid, list }
+/// 视频分类标签
+enum VideoTab { all, movies, tvShows, recent }
 
 sealed class VideoListState {}
 
 class VideoListLoading extends VideoListState {
-  VideoListLoading({this.progress = 0, this.currentFolder});
+  VideoListLoading({this.progress = 0, this.currentFolder, this.fromCache = false});
   final double progress;
   final String? currentFolder;
+  final bool fromCache;
 }
 
 class VideoListLoaded extends VideoListState {
   VideoListLoaded({
     required this.videos,
-    this.sortType = VideoSortType.name,
-    this.viewMode = VideoViewMode.poster,
+    this.currentTab = VideoTab.all,
     this.searchQuery = '',
     this.metadataMap = const {},
     this.isLoadingMetadata = false,
     this.metadataProgress = 0,
+    this.fromCache = false,
   });
 
   final List<VideoFileWithSource> videos;
-  final VideoSortType sortType;
-  final VideoViewMode viewMode;
+  final VideoTab currentTab;
   final String searchQuery;
   final Map<String, VideoMetadata> metadataMap;
   final bool isLoadingMetadata;
   final double metadataProgress;
+  final bool fromCache;
 
-  List<VideoFileWithSource> get filteredVideos {
-    var result = List<VideoFileWithSource>.from(videos);
+  /// 根据当前分类过滤视频
+  List<VideoMetadata> get filteredMetadata {
+    var result = videos.map((v) {
+      final key = '${v.sourceId}_${v.path}';
+      return metadataMap[key] ??
+          VideoMetadata(
+            filePath: v.path,
+            sourceId: v.sourceId,
+            fileName: v.name,
+            thumbnailUrl: v.thumbnailUrl,
+          );
+    }).toList();
 
     // 搜索过滤
     if (searchQuery.isNotEmpty) {
       result = result
-          .where((v) {
-            final metadata = metadataMap['${v.sourceId}_${v.path}'];
-            final title = metadata?.title ?? v.name;
-            return title.toLowerCase().contains(searchQuery.toLowerCase());
-          })
+          .where((m) =>
+              m.displayTitle.toLowerCase().contains(searchQuery.toLowerCase()))
           .toList();
     }
 
-    // 排序
-    switch (sortType) {
-      case VideoSortType.name:
+    // 分类过滤
+    switch (currentTab) {
+      case VideoTab.all:
+        break;
+      case VideoTab.movies:
+        result = result.where((m) => m.category != MediaCategory.tvShow).toList();
+      case VideoTab.tvShows:
+        result = result.where((m) => m.category == MediaCategory.tvShow).toList();
+      case VideoTab.recent:
+        // 按最近修改时间排序
         result.sort((a, b) {
-          final metaA = metadataMap['${a.sourceId}_${a.path}'];
-          final metaB = metadataMap['${b.sourceId}_${b.path}'];
-          final titleA = metaA?.title ?? a.name;
-          final titleB = metaB?.title ?? b.name;
-          return titleA.compareTo(titleB);
+          final videoA = videos.firstWhere((v) => '${v.sourceId}_${v.path}' == a.uniqueKey,
+              orElse: () => videos.first);
+          final videoB = videos.firstWhere((v) => '${v.sourceId}_${v.path}' == b.uniqueKey,
+              orElse: () => videos.first);
+          return (videoB.modifiedTime ?? DateTime(1970))
+              .compareTo(videoA.modifiedTime ?? DateTime(1970));
         });
-      case VideoSortType.date:
-        result.sort((a, b) => (b.modifiedTime ?? DateTime(1970))
-            .compareTo(a.modifiedTime ?? DateTime(1970)));
-      case VideoSortType.size:
-        result.sort((a, b) => b.size.compareTo(a.size));
-      case VideoSortType.rating:
-        result.sort((a, b) {
-          final metaA = metadataMap['${a.sourceId}_${a.path}'];
-          final metaB = metadataMap['${b.sourceId}_${b.path}'];
-          final ratingA = metaA?.rating ?? 0;
-          final ratingB = metaB?.rating ?? 0;
-          return ratingB.compareTo(ratingA);
-        });
+        result = result.take(20).toList();
+    }
+
+    // 按评分排序（高评分优先）
+    if (currentTab != VideoTab.recent) {
+      result.sort((a, b) {
+        final ratingA = a.rating ?? 0;
+        final ratingB = b.rating ?? 0;
+        if (ratingA != ratingB) return ratingB.compareTo(ratingA);
+        return a.displayTitle.compareTo(b.displayTitle);
+      });
     }
 
     return result;
   }
 
-  /// 获取过滤后的元数据列表
-  List<VideoMetadata> get filteredMetadata {
-    return filteredVideos
-        .map((v) => metadataMap['${v.sourceId}_${v.path}'])
-        .whereType<VideoMetadata>()
-        .toList();
+  /// 获取电影列表
+  List<VideoMetadata> get movies => videos.map((v) {
+        final key = '${v.sourceId}_${v.path}';
+        return metadataMap[key] ??
+            VideoMetadata(
+              filePath: v.path,
+              sourceId: v.sourceId,
+              fileName: v.name,
+              thumbnailUrl: v.thumbnailUrl,
+            );
+      }).where((m) => m.category != MediaCategory.tvShow).toList();
+
+  /// 获取剧集列表（按剧集名分组）
+  Map<String, List<VideoMetadata>> get tvShowGroups {
+    final groups = <String, List<VideoMetadata>>{};
+    for (final video in videos) {
+      final key = '${video.sourceId}_${video.path}';
+      final metadata = metadataMap[key];
+      if (metadata?.category == MediaCategory.tvShow) {
+        final showTitle = metadata!.title ?? metadata.fileName;
+        groups.putIfAbsent(showTitle, () => []).add(metadata);
+      }
+    }
+    // 按季集排序
+    for (final episodes in groups.values) {
+      episodes.sort((a, b) {
+        final seasonA = a.seasonNumber ?? 0;
+        final seasonB = b.seasonNumber ?? 0;
+        if (seasonA != seasonB) return seasonA.compareTo(seasonB);
+        return (a.episodeNumber ?? 0).compareTo(b.episodeNumber ?? 0);
+      });
+    }
+    return groups;
+  }
+
+  /// 获取高分电影（评分 >= 7）
+  List<VideoMetadata> get topRatedMovies {
+    return movies
+        .where((m) => (m.rating ?? 0) >= 7)
+        .toList()
+      ..sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
   }
 
   VideoListLoaded copyWith({
     List<VideoFileWithSource>? videos,
-    VideoSortType? sortType,
-    VideoViewMode? viewMode,
+    VideoTab? currentTab,
     String? searchQuery,
     Map<String, VideoMetadata>? metadataMap,
     bool? isLoadingMetadata,
     double? metadataProgress,
+    bool? fromCache,
   }) =>
       VideoListLoaded(
         videos: videos ?? this.videos,
-        sortType: sortType ?? this.sortType,
-        viewMode: viewMode ?? this.viewMode,
+        currentTab: currentTab ?? this.currentTab,
         searchQuery: searchQuery ?? this.searchQuery,
         metadataMap: metadataMap ?? this.metadataMap,
         isLoadingMetadata: isLoadingMetadata ?? this.isLoadingMetadata,
         metadataProgress: metadataProgress ?? this.metadataProgress,
+        fromCache: fromCache ?? this.fromCache,
       );
 }
 
@@ -155,81 +211,69 @@ class VideoListError extends VideoListState {
   final String message;
 }
 
-/// 未连接到 NAS 的状态
 class VideoListNotConnected extends VideoListState {}
 
 class VideoListNotifier extends StateNotifier<VideoListState> {
   VideoListNotifier(this._ref) : super(VideoListLoading()) {
-    _initMetadataService();
-    loadVideos();
+    _init();
+  }
 
-    // 监听连接状态变化，自动刷新
-    _ref.listen<Map<String, SourceConnection>>(activeConnectionsProvider, (previous, next) {
-      // 检查是否有新的连接建立
-      final prevConnected = previous?.values.where((c) => c.status == SourceStatus.connected).length ?? 0;
-      final nextConnected = next.values.where((c) => c.status == SourceStatus.connected).length;
+  final Ref _ref;
+  final VideoMetadataService _metadataService = VideoMetadataService.instance;
+  final VideoLibraryCacheService _cacheService = VideoLibraryCacheService.instance;
 
-      // 如果连接数增加，且当前状态是未连接，则重新加载
+  Future<void> _init() async {
+    await _metadataService.init();
+    await _cacheService.init();
+    await loadVideos();
+
+    // 监听连接状态变化
+    _ref.listen<Map<String, SourceConnection>>(activeConnectionsProvider,
+        (previous, next) {
+      final prevConnected = previous?.values
+              .where((c) => c.status == SourceStatus.connected)
+              .length ??
+          0;
+      final nextConnected =
+          next.values.where((c) => c.status == SourceStatus.connected).length;
+
       if (nextConnected > prevConnected && state is VideoListNotConnected) {
         loadVideos();
       }
     });
   }
 
-  final Ref _ref;
-  int _scannedFolders = 0;
-  int _totalFolders = 0;
-  final VideoMetadataService _metadataService = VideoMetadataService.instance;
-
-  Future<void> _initMetadataService() async {
-    await _metadataService.init();
-  }
-
-  Future<void> loadVideos({int maxDepth = 3}) async {
-    state = VideoListLoading();
-    _scannedFolders = 0;
-    _totalFolders = 0;
-
+  /// 加载视频（优先使用缓存）
+  Future<void> loadVideos({bool forceRefresh = false, int maxDepth = 3}) async {
     final connections = _ref.read(activeConnectionsProvider);
     final configAsync = _ref.read(mediaLibraryConfigProvider);
 
-    // 等待配置加载完成
+    // 等待配置加载
     MediaLibraryConfig? config = configAsync.valueOrNull;
     if (config == null) {
-      // 配置正在加载中，等待加载完成
-      state = VideoListLoading(progress: 0, currentFolder: '正在加载配置...');
-
-      // 等待配置加载（最多5秒）
+      state = VideoListLoading(currentFolder: '正在加载配置...');
       for (var i = 0; i < 10; i++) {
         await Future<void>.delayed(const Duration(milliseconds: 500));
         final updated = _ref.read(mediaLibraryConfigProvider);
         config = updated.valueOrNull;
         if (config != null) break;
-
-        // 如果有错误，直接返回
         if (updated.hasError) {
           state = VideoListError('加载媒体库配置失败');
           return;
         }
       }
-
-      // 如果还是没有配置，显示空列表让用户去配置
       if (config == null) {
         state = VideoListLoaded(videos: []);
         return;
       }
     }
 
-    // 获取已启用的视频路径
     final videoPaths = config.getEnabledPathsForType(MediaType.video);
-
     if (videoPaths.isEmpty) {
-      // 如果没有配置视频目录，提示用户配置
       state = VideoListLoaded(videos: []);
       return;
     }
 
-    // 过滤出已连接的路径
     final connectedPaths = videoPaths.where((path) {
       final conn = connections[path.sourceId];
       return conn?.status == SourceStatus.connected;
@@ -240,63 +284,149 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       return;
     }
 
-    _totalFolders = connectedPaths.length;
+    final sourceIds = connectedPaths.map((p) => p.sourceId).toList();
 
-    try {
-      final videos = <VideoFileWithSource>[];
+    // 尝试使用缓存
+    if (!forceRefresh && _cacheService.isCacheValid(sourceIds)) {
+      final cache = _cacheService.getCache();
+      if (cache != null) {
+        state = VideoListLoading(fromCache: true, currentFolder: '加载缓存...');
 
-      for (final mediaPath in connectedPaths) {
-        final connection = connections[mediaPath.sourceId];
-        if (connection == null) continue;
+        final videos = cache.videos.map((entry) {
+          return VideoFileWithSource(
+            file: FileItem(
+              name: entry.fileName,
+              path: entry.filePath,
+              size: entry.size,
+              isDirectory: false,
+              modifiedTime: entry.modifiedTime,
+              thumbnailUrl: entry.thumbnailUrl,
+            ),
+            sourceId: entry.sourceId,
+          );
+        }).toList();
 
-        final fileSystem = connection.adapter.fileSystem;
-        state = VideoListLoading(
-          progress: _scannedFolders / _totalFolders,
-          currentFolder: mediaPath.displayName,
+        // 加载缓存的元数据
+        final metadataMap = <String, VideoMetadata>{};
+        for (final video in videos) {
+          final cached = _metadataService.getCached(video.sourceId, video.path);
+          if (cached != null) {
+            metadataMap[cached.uniqueKey] = cached;
+          }
+        }
+
+        state = VideoListLoaded(
+          videos: videos,
+          metadataMap: metadataMap,
+          fromCache: true,
         );
 
-        try {
+        // 后台加载缺失的元数据
+        _loadMissingMetadata(videos);
+
+        logger.i('从缓存加载了 ${videos.length} 个视频');
+        return;
+      }
+    }
+
+    // 扫描文件系统
+    state = VideoListLoading();
+    final videos = <VideoFileWithSource>[];
+    var scannedFolders = 0;
+    final totalFolders = connectedPaths.length;
+
+    for (final mediaPath in connectedPaths) {
+      final connection = connections[mediaPath.sourceId];
+      if (connection == null) continue;
+
+      state = VideoListLoading(
+        progress: scannedFolders / totalFolders,
+        currentFolder: mediaPath.displayName,
+      );
+
+      try {
+        await _scanFolderRecursively(
+          connection.adapter.fileSystem,
+          mediaPath.path,
+          videos,
+          sourceId: mediaPath.sourceId,
+          currentDepth: 0,
+          maxDepth: maxDepth,
+        );
+      } on Exception catch (e) {
+        logger.w('扫描文件夹失败: ${mediaPath.path} - $e');
+      }
+
+      scannedFolders++;
+    }
+
+    logger.i('视频扫描完成，共找到 ${videos.length} 个视频');
+
+    // 保存到缓存
+    final cacheEntries = videos.map((v) => v.toCacheEntry()).toList();
+    await _cacheService.saveCache(VideoLibraryCache(
+      videos: cacheEntries,
+      lastUpdated: DateTime.now(),
+      sourceIds: sourceIds,
+    ));
+
+    // 加载元数据
+    final metadataMap = <String, VideoMetadata>{};
+    for (final video in videos) {
+      final cached = _metadataService.getCached(video.sourceId, video.path);
+      if (cached != null) {
+        metadataMap[cached.uniqueKey] = cached;
+      }
+    }
+
+    state = VideoListLoaded(videos: videos, metadataMap: metadataMap);
+
+    // 后台加载缺失的元数据
+    _loadMissingMetadata(videos);
+  }
+
+  Future<void> _scanFolderRecursively(
+    NasFileSystem fileSystem,
+    String path,
+    List<VideoFileWithSource> videos, {
+    required String sourceId,
+    required int currentDepth,
+    required int maxDepth,
+  }) async {
+    if (currentDepth > maxDepth) return;
+
+    try {
+      final files = await fileSystem.listDirectory(path);
+
+      for (final file in files) {
+        if (file.type == FileType.video) {
+          videos.add(VideoFileWithSource(file: file, sourceId: sourceId));
+        } else if (file.isDirectory && currentDepth < maxDepth) {
+          if (file.name.startsWith('.') ||
+              file.name.startsWith('@') ||
+              file.name == '#recycle') {
+            continue;
+          }
+
           await _scanFolderRecursively(
             fileSystem,
-            mediaPath.path,
+            file.path,
             videos,
-            sourceId: mediaPath.sourceId,
-            currentDepth: 0,
+            sourceId: sourceId,
+            currentDepth: currentDepth + 1,
             maxDepth: maxDepth,
           );
-        } on Exception catch (e) {
-          logger.w('扫描文件夹失败: ${mediaPath.path} - $e');
-        }
-
-        _scannedFolders++;
-      }
-
-      logger.i('视频扫描完成，共找到 ${videos.length} 个视频');
-
-      // 加载缓存的元数据
-      final metadataMap = <String, VideoMetadata>{};
-      for (final video in videos) {
-        final cached = _metadataService.getCached(video.sourceId, video.path);
-        if (cached != null) {
-          metadataMap[cached.uniqueKey] = cached;
         }
       }
-
-      state = VideoListLoaded(videos: videos, metadataMap: metadataMap);
-
-      // 后台加载未缓存的元数据
-      _loadMissingMetadata(videos);
     } on Exception catch (e) {
-      state = VideoListError(e.toString());
+      logger.w('扫描子文件夹失败: $path - $e');
     }
   }
 
-  /// 后台加载缺失的元数据
   Future<void> _loadMissingMetadata(List<VideoFileWithSource> videos) async {
     final current = state;
     if (current is! VideoListLoaded) return;
 
-    // 找出没有元数据的视频
     final missingVideos = videos.where((v) {
       final key = '${v.sourceId}_${v.path}';
       return !current.metadataMap.containsKey(key);
@@ -320,7 +450,6 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
         );
         updatedMap[metadata.uniqueKey] = metadata;
 
-        // 每处理5个或最后一个时更新状态
         if ((i + 1) % 5 == 0 || i == missingVideos.length - 1) {
           final currentState = state;
           if (currentState is VideoListLoaded) {
@@ -334,7 +463,6 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
         logger.w('获取元数据失败: ${video.name} - $e');
       }
 
-      // 添加延迟避免 API 限制
       if (i < missingVideos.length - 1) {
         await Future<void>.delayed(const Duration(milliseconds: 300));
       }
@@ -346,89 +474,10 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     }
   }
 
-  /// 刷新元数据
-  Future<void> refreshMetadata() async {
+  void setTab(VideoTab tab) {
     final current = state;
-    if (current is! VideoListLoaded) return;
-
-    state = current.copyWith(isLoadingMetadata: true, metadataProgress: 0);
-
-    final videos = current.videos;
-    final updatedMap = <String, VideoMetadata>{};
-    final total = videos.length;
-
-    for (var i = 0; i < videos.length; i++) {
-      final video = videos[i];
-
-      try {
-        final metadata = await _metadataService.getOrFetch(
-          sourceId: video.sourceId,
-          filePath: video.path,
-          fileName: video.name,
-          forceRefresh: true,
-        );
-        updatedMap[metadata.uniqueKey] = metadata;
-
-        if ((i + 1) % 5 == 0 || i == videos.length - 1) {
-          final currentState = state;
-          if (currentState is VideoListLoaded) {
-            state = currentState.copyWith(
-              metadataMap: Map.from(updatedMap),
-              metadataProgress: (i + 1) / total,
-            );
-          }
-        }
-      } on Exception catch (e) {
-        logger.w('刷新元数据失败: ${video.name} - $e');
-      }
-
-      if (i < videos.length - 1) {
-        await Future<void>.delayed(const Duration(milliseconds: 300));
-      }
-    }
-
-    final finalState = state;
-    if (finalState is VideoListLoaded) {
-      state = finalState.copyWith(isLoadingMetadata: false);
-    }
-  }
-
-  Future<void> _scanFolderRecursively(
-    NasFileSystem fileSystem,
-    String path,
-    List<VideoFileWithSource> videos, {
-    required String sourceId,
-    required int currentDepth,
-    required int maxDepth,
-  }) async {
-    if (currentDepth > maxDepth) return;
-
-    try {
-      final files = await fileSystem.listDirectory(path);
-
-      for (final file in files) {
-        if (file.type == FileType.video) {
-          videos.add(VideoFileWithSource(file: file, sourceId: sourceId));
-        } else if (file.isDirectory && currentDepth < maxDepth) {
-          // 跳过隐藏文件夹和系统文件夹
-          if (file.name.startsWith('.') ||
-              file.name.startsWith('@') ||
-              file.name == '#recycle') {
-            continue;
-          }
-
-          await _scanFolderRecursively(
-            fileSystem,
-            file.path,
-            videos,
-            sourceId: sourceId,
-            currentDepth: currentDepth + 1,
-            maxDepth: maxDepth,
-          );
-        }
-      }
-    } on Exception catch (e) {
-      logger.w('扫描子文件夹失败: $path - $e');
+    if (current is VideoListLoaded) {
+      state = current.copyWith(currentTab: tab);
     }
   }
 
@@ -439,30 +488,10 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     }
   }
 
-  void setSortType(VideoSortType sortType) {
-    final current = state;
-    if (current is VideoListLoaded) {
-      state = current.copyWith(sortType: sortType);
-    }
-  }
-
-  void toggleViewMode() {
-    final current = state;
-    if (current is VideoListLoaded) {
-      final nextMode = switch (current.viewMode) {
-        VideoViewMode.poster => VideoViewMode.grid,
-        VideoViewMode.grid => VideoViewMode.list,
-        VideoViewMode.list => VideoViewMode.poster,
-      };
-      state = current.copyWith(viewMode: nextMode);
-    }
-  }
-
-  void setViewMode(VideoViewMode mode) {
-    final current = state;
-    if (current is VideoListLoaded) {
-      state = current.copyWith(viewMode: mode);
-    }
+  /// 强制刷新（从源重新扫描）
+  Future<void> forceRefresh() async {
+    await _cacheService.clearCache();
+    await loadVideos(forceRefresh: true);
   }
 }
 
@@ -489,275 +518,32 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: isDark ? AppColors.darkBackground : null,
-      body: Column(
-        children: [
-          _buildAppBar(context, ref, isDark, state),
-          Expanded(
-            child: switch (state) {
-              VideoListLoading(:final progress, :final currentFolder) =>
-                _buildLoadingState(progress, currentFolder),
-              VideoListNotConnected() => _buildNotConnectedPrompt(context, isDark),
-              VideoListError(:final message) => AppErrorWidget(
-                  message: message,
-                  onRetry: () => ref.read(videoListProvider.notifier).loadVideos(),
-                ),
-              VideoListLoaded loaded =>
-                loaded.filteredVideos.isEmpty
-                    ? const EmptyWidget(
-                        icon: Icons.video_library_outlined,
-                        title: '暂无视频',
-                        message: '在 NAS 中添加视频后将显示在这里',
-                      )
-                    : _buildVideoContent(context, ref, loaded.filteredVideos, loaded.viewMode, isDark, loaded),
-            },
+      backgroundColor: isDark ? const Color(0xFF0D0D0D) : null,
+      body: switch (state) {
+        VideoListLoading(:final progress, :final currentFolder, :final fromCache) =>
+          _buildLoadingState(progress, currentFolder, fromCache, isDark),
+        VideoListNotConnected() => _buildNotConnectedPrompt(context, isDark),
+        VideoListError(:final message) => AppErrorWidget(
+            message: message,
+            onRetry: () => ref.read(videoListProvider.notifier).loadVideos(),
           ),
-        ],
-      ),
+        VideoListLoaded loaded => loaded.videos.isEmpty
+            ? const EmptyWidget(
+                icon: Icons.video_library_outlined,
+                title: '暂无视频',
+                message: '在 NAS 中添加视频后将显示在这里',
+              )
+            : _buildNetflixStyleContent(context, ref, loaded, isDark),
+      },
     );
   }
 
-  Widget _buildAppBar(
-    BuildContext context,
-    WidgetRef ref,
-    bool isDark,
-    VideoListState state,
-  ) {
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
-        border: Border(
-          bottom: BorderSide(
-            color: isDark
-                ? AppColors.darkOutline.withOpacity(0.2)
-                : context.colorScheme.outlineVariant.withOpacity(0.5),
-          ),
-        ),
-      ),
-      child: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                children: [
-                  if (!_showSearch) ...[
-                    Text(
-                      '视频',
-                      style: context.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: isDark ? AppColors.darkOnSurface : null,
-                      ),
-                    ),
-                    if (state is VideoListLoaded)
-                      Container(
-                        margin: const EdgeInsets.only(left: 8),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          '${state.filteredVideos.length}',
-                          style: TextStyle(
-                            color: AppColors.primary,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                  ],
-                  if (_showSearch)
-                    Expanded(
-                      child: TextField(
-                        controller: _searchController,
-                        autofocus: true,
-                        decoration: InputDecoration(
-                          hintText: '搜索视频...',
-                          hintStyle: TextStyle(
-                            color: isDark
-                                ? AppColors.darkOnSurfaceVariant
-                                : context.colorScheme.onSurfaceVariant,
-                          ),
-                          border: InputBorder.none,
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                        style: TextStyle(
-                          color: isDark ? AppColors.darkOnSurface : null,
-                        ),
-                        onChanged: (value) {
-                          ref.read(videoListProvider.notifier).setSearchQuery(value);
-                        },
-                      ),
-                    ),
-                  const Spacer(),
-                  // 搜索按钮
-                  _buildIconButton(
-                    icon: _showSearch ? Icons.close : Icons.search_rounded,
-                    onTap: () {
-                      setState(() {
-                        _showSearch = !_showSearch;
-                        if (!_showSearch) {
-                          _searchController.clear();
-                          ref.read(videoListProvider.notifier).setSearchQuery('');
-                        }
-                      });
-                    },
-                    isDark: isDark,
-                    tooltip: _showSearch ? '关闭' : '搜索',
-                  ),
-                  // 视图切换
-                  if (state is VideoListLoaded)
-                    _buildIconButton(
-                      icon: switch (state.viewMode) {
-                        VideoViewMode.poster => Icons.grid_view_rounded,
-                        VideoViewMode.grid => Icons.view_list_rounded,
-                        VideoViewMode.list => Icons.photo_library_rounded,
-                      },
-                      onTap: () =>
-                          ref.read(videoListProvider.notifier).toggleViewMode(),
-                      isDark: isDark,
-                      tooltip: switch (state.viewMode) {
-                        VideoViewMode.poster => '切换到网格视图',
-                        VideoViewMode.grid => '切换到列表视图',
-                        VideoViewMode.list => '切换到海报墙',
-                      },
-                    ),
-                  // 排序
-                  if (state is VideoListLoaded)
-                    PopupMenuButton<VideoSortType>(
-                      icon: Icon(
-                        Icons.sort_rounded,
-                        color: isDark ? AppColors.darkOnSurfaceVariant : null,
-                      ),
-                      tooltip: '排序',
-                      onSelected: (type) =>
-                          ref.read(videoListProvider.notifier).setSortType(type),
-                      itemBuilder: (context) => [
-                        _buildSortMenuItem(
-                          context,
-                          VideoSortType.name,
-                          '按名称',
-                          Icons.sort_by_alpha_rounded,
-                          state.sortType,
-                          isDark,
-                        ),
-                        _buildSortMenuItem(
-                          context,
-                          VideoSortType.date,
-                          '按日期',
-                          Icons.calendar_today_rounded,
-                          state.sortType,
-                          isDark,
-                        ),
-                        _buildSortMenuItem(
-                          context,
-                          VideoSortType.size,
-                          '按大小',
-                          Icons.straighten_rounded,
-                          state.sortType,
-                          isDark,
-                        ),
-                        _buildSortMenuItem(
-                          context,
-                          VideoSortType.rating,
-                          '按评分',
-                          Icons.star_rounded,
-                          state.sortType,
-                          isDark,
-                        ),
-                      ],
-                    ),
-                  // 刷新
-                  _buildIconButton(
-                    icon: Icons.refresh_rounded,
-                    onTap: () => ref.read(videoListProvider.notifier).loadVideos(),
-                    isDark: isDark,
-                    tooltip: '刷新',
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  PopupMenuItem<VideoSortType> _buildSortMenuItem(
-    BuildContext context,
-    VideoSortType type,
-    String label,
-    IconData icon,
-    VideoSortType current,
+  Widget _buildLoadingState(
+    double progress,
+    String? currentFolder,
+    bool fromCache,
     bool isDark,
   ) {
-    final isSelected = type == current;
-    return PopupMenuItem(
-      value: type,
-      child: Row(
-        children: [
-          Icon(
-            icon,
-            size: 20,
-            color: isSelected
-                ? AppColors.primary
-                : (isDark ? AppColors.darkOnSurface : null),
-          ),
-          const SizedBox(width: 12),
-          Text(
-            label,
-            style: TextStyle(
-              color: isSelected
-                  ? AppColors.primary
-                  : (isDark ? AppColors.darkOnSurface : null),
-              fontWeight: isSelected ? FontWeight.w600 : null,
-            ),
-          ),
-          if (isSelected) ...[
-            const Spacer(),
-            Icon(Icons.check, size: 18, color: AppColors.primary),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildIconButton({
-    required IconData icon,
-    required VoidCallback onTap,
-    required bool isDark,
-    String? tooltip,
-  }) {
-    return Tooltip(
-      message: tooltip ?? '',
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              icon,
-              color: isDark ? AppColors.darkOnSurfaceVariant : null,
-              size: 22,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLoadingState(double progress, String? currentFolder) {
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -773,10 +559,11 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
           ),
           const SizedBox(height: 24),
           Text(
-            '扫描视频中...',
+            fromCache ? '加载缓存...' : '扫描视频中...',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w500,
+              color: isDark ? Colors.white : null,
             ),
           ),
           if (currentFolder != null) ...[
@@ -785,18 +572,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               currentFolder,
               style: TextStyle(
                 fontSize: 14,
-                color: Colors.grey,
-              ),
-            ),
-          ],
-          if (progress > 0) ...[
-            const SizedBox(height: 8),
-            Text(
-              '${(progress * 100).toInt()}%',
-              style: TextStyle(
-                fontSize: 14,
-                color: AppColors.primary,
-                fontWeight: FontWeight.bold,
+                color: isDark ? Colors.grey[400] : Colors.grey,
               ),
             ),
           ],
@@ -816,7 +592,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               width: 80,
               height: 80,
               decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.12),
+                color: AppColors.primary.withValues(alpha: 0.12),
                 shape: BoxShape.circle,
               ),
               child: Icon(
@@ -830,57 +606,29 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               '未连接到 NAS',
               style: context.textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.bold,
-                color: isDark ? AppColors.darkOnSurface : null,
+                color: isDark ? Colors.white : null,
               ),
             ),
             const SizedBox(height: 12),
             Text(
               '请先在设置中配置并连接到 NAS 服务器',
               style: context.textTheme.bodyMedium?.copyWith(
-                color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+                color: isDark ? Colors.grey[400] : Colors.grey,
               ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 32),
-            Container(
-              decoration: BoxDecoration(
-                gradient: AppColors.primaryGradient,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.primary.withOpacity(0.3),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
+            ElevatedButton.icon(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(builder: (_) => const SourcesPage()),
               ),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute<void>(builder: (_) => const SourcesPage()),
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 28, vertical: 14),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.add_rounded, color: Colors.white),
-                        SizedBox(width: 8),
-                        Text(
-                          '添加连接',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('添加连接'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               ),
             ),
           ],
@@ -889,121 +637,421 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     );
   }
 
-  Widget _buildVideoContent(
+  Widget _buildNetflixStyleContent(
     BuildContext context,
     WidgetRef ref,
-    List<VideoFileWithSource> videos,
-    VideoViewMode viewMode,
-    bool isDark,
     VideoListLoaded state,
+    bool isDark,
   ) {
     return RefreshIndicator(
-      onRefresh: () => ref.read(videoListProvider.notifier).loadVideos(),
+      onRefresh: () => ref.read(videoListProvider.notifier).forceRefresh(),
       child: CustomScrollView(
         slivers: [
-          // 继续观看区域
+          // 顶部导航栏
+          _buildAppBar(context, ref, state, isDark),
+
+          // 继续观看
           _ContinueWatchingSection(isDark: isDark),
+
+          // 分类标签
+          SliverToBoxAdapter(
+            child: _buildTabBar(context, ref, state, isDark),
+          ),
 
           // 元数据加载进度
           if (state.isLoadingMetadata)
             SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        value: state.metadataProgress > 0 ? state.metadataProgress : null,
-                        color: AppColors.primary,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Text(
-                      '正在获取影片信息... ${(state.metadataProgress * 100).toInt()}%',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[600],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              child: _buildMetadataProgress(state, isDark),
             ),
 
-          // 视频列表
-          if (viewMode == VideoViewMode.poster)
-            _buildPosterWall(context, ref, videos, state, isDark)
-          else if (viewMode == VideoViewMode.grid)
-            SliverPadding(
-              padding: AppSpacing.paddingMd,
-              sliver: SliverGrid(
-                gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: context.isDesktop ? 300 : 200,
-                  mainAxisSpacing: AppSpacing.md,
-                  crossAxisSpacing: AppSpacing.md,
-                  childAspectRatio: 16 / 12,
-                ),
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) => _VideoCard(
-                    video: videos[index],
-                    isDark: isDark,
-                  ),
-                  childCount: videos.length,
-                ),
-              ),
-            )
-          else
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-              sliver: SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) => _VideoListTile(
-                    video: videos[index],
-                    isDark: isDark,
-                  ),
-                  childCount: videos.length,
-                ),
-              ),
-            ),
+          // 内容区域
+          ..._buildContentSections(context, ref, state, isDark),
+
+          // 底部留白
+          const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
         ],
       ),
     );
   }
 
-  Widget _buildPosterWall(
+  Widget _buildAppBar(
     BuildContext context,
     WidgetRef ref,
-    List<VideoFileWithSource> videos,
     VideoListLoaded state,
     bool isDark,
   ) {
-    // 为每个视频创建或获取元数据
-    final metadataList = videos.map((video) {
-      final key = '${video.sourceId}_${video.path}';
-      final cached = state.metadataMap[key];
-      if (cached != null) {
-        // 如果有缓存但没有内置缩略图，补充进去
-        if (cached.thumbnailUrl == null && video.thumbnailUrl != null) {
-          return cached.copyWith(thumbnailUrl: video.thumbnailUrl);
-        }
-        return cached;
-      }
-      // 创建新的元数据时包含内置缩略图
-      return VideoMetadata(
-        filePath: video.path,
-        sourceId: video.sourceId,
-        fileName: video.name,
-        thumbnailUrl: video.thumbnailUrl,
-      );
-    }).toList();
+    return SliverAppBar(
+      floating: true,
+      backgroundColor: isDark ? const Color(0xFF0D0D0D) : Colors.white,
+      elevation: 0,
+      title: _showSearch
+          ? TextField(
+              controller: _searchController,
+              autofocus: true,
+              decoration: InputDecoration(
+                hintText: '搜索视频...',
+                hintStyle: TextStyle(color: isDark ? Colors.grey[500] : null),
+                border: InputBorder.none,
+              ),
+              style: TextStyle(color: isDark ? Colors.white : null),
+              onChanged: (v) =>
+                  ref.read(videoListProvider.notifier).setSearchQuery(v),
+            )
+          : Row(
+              children: [
+                Text(
+                  '视频库',
+                  style: context.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : null,
+                  ),
+                ),
+                if (state.fromCache)
+                  Container(
+                    margin: const EdgeInsets.only(left: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text(
+                      '缓存',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.green,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+      actions: [
+        IconButton(
+          onPressed: () {
+            setState(() {
+              _showSearch = !_showSearch;
+              if (!_showSearch) {
+                _searchController.clear();
+                ref.read(videoListProvider.notifier).setSearchQuery('');
+              }
+            });
+          },
+          icon: Icon(
+            _showSearch ? Icons.close : Icons.search_rounded,
+            color: isDark ? Colors.white : null,
+          ),
+        ),
+        IconButton(
+          onPressed: () => ref.read(videoListProvider.notifier).forceRefresh(),
+          icon: Icon(
+            Icons.refresh_rounded,
+            color: isDark ? Colors.white : null,
+          ),
+          tooltip: '刷新',
+        ),
+      ],
+    );
+  }
 
-    return SliverPosterWall(
-      items: metadataList,
-      onItemTap: (metadata) => _openVideoDetail(context, ref, metadata),
-      onItemLongPress: (metadata) => _playVideoDirectly(context, ref, metadata),
+  Widget _buildTabBar(
+    BuildContext context,
+    WidgetRef ref,
+    VideoListLoaded state,
+    bool isDark,
+  ) {
+    return Container(
+      height: 50,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: VideoTab.values.map((tab) {
+          final isSelected = state.currentTab == tab;
+          final label = switch (tab) {
+            VideoTab.all => '全部',
+            VideoTab.movies => '电影',
+            VideoTab.tvShows => '剧集',
+            VideoTab.recent => '最近',
+          };
+
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => ref.read(videoListProvider.notifier).setTab(tab),
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? AppColors.primary
+                        : (isDark ? Colors.grey[800] : Colors.grey[200]),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      color: isSelected
+                          ? Colors.white
+                          : (isDark ? Colors.grey[300] : Colors.grey[700]),
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildMetadataProgress(VideoListLoaded state, bool isDark) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              value: state.metadataProgress > 0 ? state.metadataProgress : null,
+              color: AppColors.primary,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            '正在获取影片信息... ${(state.metadataProgress * 100).toInt()}%',
+            style: TextStyle(
+              fontSize: 12,
+              color: isDark ? Colors.grey[400] : Colors.grey[600],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildContentSections(
+    BuildContext context,
+    WidgetRef ref,
+    VideoListLoaded state,
+    bool isDark,
+  ) {
+    if (state.searchQuery.isNotEmpty) {
+      // 搜索结果
+      return [
+        _buildPosterGrid(
+          context,
+          ref,
+          state.filteredMetadata,
+          '搜索结果',
+          isDark,
+        ),
+      ];
+    }
+
+    switch (state.currentTab) {
+      case VideoTab.all:
+        return _buildAllContent(context, ref, state, isDark);
+      case VideoTab.movies:
+        return [
+          _buildPosterGrid(context, ref, state.movies, '电影', isDark),
+        ];
+      case VideoTab.tvShows:
+        return _buildTvShowsContent(context, ref, state, isDark);
+      case VideoTab.recent:
+        return [
+          _buildPosterGrid(context, ref, state.filteredMetadata, '最近添加', isDark),
+        ];
+    }
+  }
+
+  List<Widget> _buildAllContent(
+    BuildContext context,
+    WidgetRef ref,
+    VideoListLoaded state,
+    bool isDark,
+  ) {
+    final sections = <Widget>[];
+
+    // 高分推荐
+    final topRated = state.topRatedMovies.take(10).toList();
+    if (topRated.isNotEmpty) {
+      sections.add(_buildHorizontalSection(
+        context,
+        ref,
+        topRated,
+        '高分推荐',
+        Icons.star_rounded,
+        Colors.amber,
+        isDark,
+      ));
+    }
+
+    // 电影
+    final movies = state.movies.take(15).toList();
+    if (movies.isNotEmpty) {
+      sections.add(_buildHorizontalSection(
+        context,
+        ref,
+        movies,
+        '电影',
+        Icons.movie_rounded,
+        AppColors.primary,
+        isDark,
+      ));
+    }
+
+    // 剧集
+    final tvShowGroups = state.tvShowGroups;
+    if (tvShowGroups.isNotEmpty) {
+      final tvShows = tvShowGroups.entries
+          .map((e) => e.value.first)
+          .take(15)
+          .toList();
+      sections.add(_buildHorizontalSection(
+        context,
+        ref,
+        tvShows,
+        '剧集',
+        Icons.live_tv_rounded,
+        AppColors.accent,
+        isDark,
+      ));
+    }
+
+    return sections;
+  }
+
+  List<Widget> _buildTvShowsContent(
+    BuildContext context,
+    WidgetRef ref,
+    VideoListLoaded state,
+    bool isDark,
+  ) {
+    final sections = <Widget>[];
+    final tvShowGroups = state.tvShowGroups;
+
+    // 按剧集分组展示
+    for (final entry in tvShowGroups.entries.take(10)) {
+      sections.add(_buildHorizontalSection(
+        context,
+        ref,
+        entry.value,
+        entry.key,
+        Icons.live_tv_rounded,
+        AppColors.accent,
+        isDark,
+        showSeeAll: entry.value.length > 6,
+      ));
+    }
+
+    return sections;
+  }
+
+  Widget _buildHorizontalSection(
+    BuildContext context,
+    WidgetRef ref,
+    List<VideoMetadata> items,
+    String title,
+    IconData icon,
+    Color iconColor,
+    bool isDark, {
+    bool showSeeAll = false,
+  }) {
+    return SliverToBoxAdapter(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 标题栏
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 24, 16, 12),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: iconColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(icon, size: 18, color: iconColor),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  title,
+                  style: context.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : null,
+                  ),
+                ),
+                const Spacer(),
+                if (showSeeAll)
+                  TextButton(
+                    onPressed: () {},
+                    child: Text(
+                      '查看全部',
+                      style: TextStyle(color: AppColors.primary, fontSize: 13),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          // 海报横向滚动
+          SizedBox(
+            height: 200,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: items.length,
+              itemBuilder: (context, index) {
+                final metadata = items[index];
+                return _PosterCard(
+                  metadata: metadata,
+                  onTap: () => _openVideoDetail(context, ref, metadata),
+                  isDark: isDark,
+                  width: 120,
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPosterGrid(
+    BuildContext context,
+    WidgetRef ref,
+    List<VideoMetadata> items,
+    String title,
+    bool isDark,
+  ) {
+    final width = MediaQuery.of(context).size.width;
+    final crossAxisCount = width > 1200 ? 7 : width > 900 ? 6 : width > 600 ? 5 : 3;
+
+    return SliverPadding(
+      padding: const EdgeInsets.all(16),
+      sliver: SliverGrid(
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: crossAxisCount,
+          childAspectRatio: 0.65,
+          mainAxisSpacing: 16,
+          crossAxisSpacing: 12,
+        ),
+        delegate: SliverChildBuilderDelegate(
+          (context, index) {
+            final metadata = items[index];
+            return _PosterCard(
+              metadata: metadata,
+              onTap: () => _openVideoDetail(context, ref, metadata),
+              isDark: isDark,
+            );
+          },
+          childCount: items.length,
+        ),
+      ),
     );
   }
 
@@ -1020,35 +1068,6 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
         ),
       ),
     );
-    ref.invalidate(continueWatchingProvider);
-  }
-
-  Future<void> _playVideoDirectly(
-    BuildContext context,
-    WidgetRef ref,
-    VideoMetadata metadata,
-  ) async {
-    final connections = ref.read(activeConnectionsProvider);
-    final connection = connections[metadata.sourceId];
-    if (connection == null) return;
-
-    final url = await connection.adapter.fileSystem.getFileUrl(metadata.filePath);
-
-    if (!context.mounted) return;
-
-    final videoItem = VideoItem(
-      name: metadata.displayTitle,
-      path: metadata.filePath,
-      url: url,
-      size: 0,
-    );
-
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (context) => VideoPlayerPage(video: videoItem),
-      ),
-    );
-
     ref.invalidate(continueWatchingProvider);
   }
 }
@@ -1076,43 +1095,30 @@ class _ContinueWatchingSection extends ConsumerWidget {
                 child: Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(8),
+                      padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
-                        color: AppColors.primary.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(10),
+                        color: Colors.red.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Icon(
-                        Icons.history_rounded,
-                        color: AppColors.primary,
-                        size: 20,
+                      child: const Icon(
+                        Icons.play_circle_rounded,
+                        color: Colors.red,
+                        size: 18,
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 10),
                     Text(
                       '继续观看',
                       style: context.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.bold,
-                        color: isDark ? AppColors.darkOnSurface : null,
-                      ),
-                    ),
-                    const Spacer(),
-                    TextButton(
-                      onPressed: () {
-                        // TODO: 查看全部历史
-                      },
-                      child: Text(
-                        '查看全部',
-                        style: TextStyle(
-                          color: AppColors.primary,
-                          fontSize: 13,
-                        ),
+                        color: isDark ? Colors.white : null,
                       ),
                     ),
                   ],
                 ),
               ),
               SizedBox(
-                height: 160,
+                height: 140,
                 child: ListView.builder(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -1122,15 +1128,6 @@ class _ContinueWatchingSection extends ConsumerWidget {
                     isDark: isDark,
                   ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              Divider(
-                height: 1,
-                indent: 16,
-                endIndent: 16,
-                color: isDark
-                    ? AppColors.darkOutline.withOpacity(0.2)
-                    : Colors.grey.withOpacity(0.2),
               ),
             ],
           ),
@@ -1161,39 +1158,32 @@ class _ContinueWatchingCard extends ConsumerWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: () => _playVideo(context, ref),
-          borderRadius: BorderRadius.circular(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 缩略图
-              Expanded(
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: isDark
-                        ? AppColors.darkSurfaceElevated
-                        : context.colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: isDark
-                          ? AppColors.darkOutline.withOpacity(0.2)
-                          : context.colorScheme.outlineVariant.withOpacity(0.5),
-                    ),
-                  ),
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            decoration: BoxDecoration(
+              color: isDark ? Colors.grey[900] : Colors.grey[100],
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 缩略图区域
+                Expanded(
                   child: Stack(
+                    fit: StackFit.expand,
                     children: [
-                      // 缩略图或占位符
-                      Center(
+                      ClipRRect(
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(12),
+                        ),
                         child: Container(
-                          width: 50,
-                          height: 50,
-                          decoration: BoxDecoration(
-                            color: AppColors.fileVideo.withOpacity(0.15),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.play_circle_rounded,
-                            size: 28,
-                            color: AppColors.fileVideo,
+                          color: isDark ? Colors.grey[800] : Colors.grey[200],
+                          child: const Center(
+                            child: Icon(
+                              Icons.play_circle_rounded,
+                              size: 40,
+                              color: Colors.white54,
+                            ),
                           ),
                         ),
                       ),
@@ -1203,48 +1193,47 @@ class _ContinueWatchingCard extends ConsumerWidget {
                         right: 0,
                         bottom: 0,
                         child: Container(
-                          height: 4,
-                          margin: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.white24,
-                            borderRadius: BorderRadius.circular(2),
-                          ),
+                          height: 3,
+                          color: Colors.black45,
                           child: FractionallySizedBox(
                             alignment: Alignment.centerLeft,
                             widthFactor: item.progressPercent.clamp(0.0, 1.0),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: AppColors.primary,
-                                borderRadius: BorderRadius.circular(2),
-                              ),
-                            ),
+                            child: Container(color: Colors.red),
                           ),
                         ),
                       ),
                     ],
                   ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              // 标题
-              Text(
-                item.videoName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: context.textTheme.bodySmall?.copyWith(
-                  fontWeight: FontWeight.w500,
-                  color: isDark ? AppColors.darkOnSurface : null,
-                ),
-              ),
-              // 进度信息
-              if (item.lastPosition != null && item.duration != null)
-                Text(
-                  '${_formatDuration(item.lastPosition!)} / ${_formatDuration(item.duration!)}',
-                  style: context.textTheme.labelSmall?.copyWith(
-                    color: AppColors.primary,
+                // 信息区域
+                Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.videoName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: isDark ? Colors.white : null,
+                        ),
+                      ),
+                      if (item.lastPosition != null && item.duration != null)
+                        Text(
+                          '${_formatDuration(item.lastPosition!)} / ${_formatDuration(item.duration!)}',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: isDark ? Colors.grey[400] : Colors.grey[600],
+                          ),
+                        ),
+                    ],
                   ),
                 ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -1257,13 +1246,12 @@ class _ContinueWatchingCard extends ConsumerWidget {
     final seconds = d.inSeconds.remainder(60);
 
     if (hours > 0) {
-      return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+      return '$hours:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
     }
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
 
   Future<void> _playVideo(BuildContext context, WidgetRef ref) async {
-    // 直接使用历史记录中保存的 URL 播放视频
     final videoItem = VideoItem(
       name: item.videoName,
       path: item.videoPath,
@@ -1281,264 +1269,201 @@ class _ContinueWatchingCard extends ConsumerWidget {
       ),
     );
 
-    // 刷新继续观看列表
     ref.invalidate(continueWatchingProvider);
   }
 }
 
-class _VideoCard extends ConsumerWidget {
-  const _VideoCard({
-    required this.video,
+/// 海报卡片
+class _PosterCard extends StatefulWidget {
+  const _PosterCard({
+    required this.metadata,
+    required this.onTap,
     required this.isDark,
+    this.width,
   });
 
-  final VideoFileWithSource video;
+  final VideoMetadata metadata;
+  final VoidCallback onTap;
   final bool isDark;
+  final double? width;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) => Container(
-        decoration: BoxDecoration(
-          color: isDark
-              ? AppColors.darkSurfaceVariant.withOpacity(0.3)
-              : context.colorScheme.surface,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isDark
-                ? AppColors.darkOutline.withOpacity(0.2)
-                : context.colorScheme.outlineVariant.withOpacity(0.5),
-          ),
-          boxShadow: isDark
-              ? null
-              : [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.04),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-        ),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: () => _playVideo(context, ref),
-            borderRadius: BorderRadius.circular(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // 缩略图
-                Expanded(
-                  child: ClipRRect(
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                    child: Container(
-                      color: isDark
-                          ? AppColors.darkSurfaceElevated
-                          : context.colorScheme.surfaceContainerHighest,
-                      child: video.thumbnailUrl != null
-                          ? Image.network(
-                              video.thumbnailUrl!,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => _buildPlaceholder(),
-                            )
-                          : _buildPlaceholder(),
-                    ),
-                  ),
-                ),
-                // 标题和信息
-                Padding(
-                  padding: const EdgeInsets.all(AppSpacing.md),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        video.name,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: context.textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.w500,
-                          color: isDark ? AppColors.darkOnSurface : null,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppColors.fileVideo.withOpacity(0.12),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              video.displaySize,
-                              style: context.textTheme.labelSmall?.copyWith(
-                                color: AppColors.fileVideo,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-
-  Widget _buildPlaceholder() => Center(
-        child: Container(
-          width: 60,
-          height: 60,
-          decoration: BoxDecoration(
-            color: AppColors.fileVideo.withOpacity(0.15),
-            shape: BoxShape.circle,
-          ),
-          child: const Icon(
-            Icons.play_circle_rounded,
-            size: 32,
-            color: AppColors.fileVideo,
-          ),
-        ),
-      );
-
-  Future<void> _playVideo(BuildContext context, WidgetRef ref) async {
-    final connections = ref.read(activeConnectionsProvider);
-    final connection = connections[video.sourceId];
-    if (connection == null) return;
-
-    final url = await connection.adapter.fileSystem.getFileUrl(video.path);
-
-    if (!context.mounted) return;
-
-    final videoItem = VideoItem.fromFileItem(video.file, url);
-
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (context) => VideoPlayerPage(video: videoItem),
-      ),
-    );
-
-    // 刷新继续观看列表
-    ref.invalidate(continueWatchingProvider);
-  }
+  State<_PosterCard> createState() => _PosterCardState();
 }
 
-class _VideoListTile extends ConsumerWidget {
-  const _VideoListTile({
-    required this.video,
-    required this.isDark,
-  });
-
-  final VideoFileWithSource video;
-  final bool isDark;
+class _PosterCardState extends State<_PosterCard> {
+  bool _isHovered = false;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
+    final displayPoster = widget.metadata.displayPosterUrl;
+    final hasPoster = displayPoster != null && displayPoster.isNotEmpty;
+
     return Container(
-      margin: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.md,
-        vertical: AppSpacing.xs,
-      ),
-      decoration: BoxDecoration(
-        color: isDark
-            ? AppColors.darkSurfaceVariant.withOpacity(0.3)
-            : context.colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isDark
-              ? AppColors.darkOutline.withOpacity(0.2)
-              : context.colorScheme.outlineVariant.withOpacity(0.5),
-        ),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () => _playVideo(context, ref),
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.all(AppSpacing.md),
-            child: Row(
+      width: widget.width,
+      margin: widget.width != null ? const EdgeInsets.only(right: 12) : null,
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _isHovered = true),
+        onExit: (_) => setState(() => _isHovered = false),
+        child: GestureDetector(
+          onTap: widget.onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            transform: Matrix4.identity()..scale(_isHovered ? 1.05 : 1.0),
+            transformAlignment: Alignment.center,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 缩略图
-                Container(
-                  width: 80,
-                  height: 60,
-                  decoration: BoxDecoration(
-                    color: isDark
-                        ? AppColors.darkSurfaceElevated
-                        : context.colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Center(
-                    child: Icon(
-                      Icons.play_circle_rounded,
-                      size: 28,
-                      color: AppColors.fileVideo,
+                // 海报
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: _isHovered ? 0.4 : 0.25),
+                          blurRadius: _isHovered ? 20 : 10,
+                          offset: Offset(0, _isHovered ? 10 : 5),
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          // 海报图片
+                          if (hasPoster)
+                            CachedNetworkImage(
+                              imageUrl: displayPoster,
+                              fit: BoxFit.cover,
+                              placeholder: (_, __) => _buildPlaceholder(),
+                              errorWidget: (_, __, ___) => _buildPlaceholder(),
+                            )
+                          else
+                            _buildPlaceholder(),
+
+                          // 渐变遮罩
+                          Positioned(
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            child: Container(
+                              height: 60,
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Colors.transparent,
+                                    Colors.black.withValues(alpha: 0.8),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+
+                          // 评分徽章
+                          if (widget.metadata.rating != null &&
+                              widget.metadata.rating! > 0)
+                            Positioned(
+                              top: 8,
+                              right: 8,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: _getRatingColor(),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.star_rounded,
+                                      size: 12,
+                                      color: Colors.white,
+                                    ),
+                                    const SizedBox(width: 2),
+                                    Text(
+                                      widget.metadata.ratingText,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+
+                          // 剧集标记
+                          if (widget.metadata.category == MediaCategory.tvShow)
+                            Positioned(
+                              top: 8,
+                              left: 8,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppColors.accent,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  widget.metadata.seasonNumber != null
+                                      ? 'S${widget.metadata.seasonNumber}'
+                                      : '剧集',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                          // 悬停边框
+                          if (_isHovered)
+                            Container(
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: AppColors.primary,
+                                  width: 2,
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-                const SizedBox(width: AppSpacing.md),
-                // 视频信息
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        video.name,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: context.textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w500,
-                          color: isDark ? AppColors.darkOnSurface : null,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppColors.fileVideo.withOpacity(0.12),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              video.displaySize,
-                              style: context.textTheme.labelSmall?.copyWith(
-                                color: AppColors.fileVideo,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              video.path.split('/').reversed.skip(1).firstOrNull ?? '',
-                              style: context.textTheme.labelSmall?.copyWith(
-                                color: isDark
-                                    ? AppColors.darkOnSurfaceVariant
-                                    : context.colorScheme.onSurfaceVariant,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                // 标题
+                const SizedBox(height: 8),
+                Text(
+                  widget.metadata.displayTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: widget.isDark ? Colors.white : null,
                   ),
                 ),
-                // 播放按钮
-                Icon(
-                  Icons.play_arrow_rounded,
-                  color: isDark ? AppColors.darkOnSurfaceVariant : null,
-                ),
+                // 年份
+                if (widget.metadata.year != null)
+                  Text(
+                    '${widget.metadata.year}',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: widget.isDark ? Colors.grey[500] : Colors.grey[600],
+                    ),
+                  ),
               ],
             ),
           ),
@@ -1547,24 +1472,25 @@ class _VideoListTile extends ConsumerWidget {
     );
   }
 
-  Future<void> _playVideo(BuildContext context, WidgetRef ref) async {
-    final connections = ref.read(activeConnectionsProvider);
-    final connection = connections[video.sourceId];
-    if (connection == null) return;
-
-    final url = await connection.adapter.fileSystem.getFileUrl(video.path);
-
-    if (!context.mounted) return;
-
-    final videoItem = VideoItem.fromFileItem(video.file, url);
-
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (context) => VideoPlayerPage(video: videoItem),
+  Widget _buildPlaceholder() {
+    return Container(
+      color: widget.isDark ? Colors.grey[850] : Colors.grey[200],
+      child: Center(
+        child: Icon(
+          widget.metadata.category == MediaCategory.tvShow
+              ? Icons.live_tv_rounded
+              : Icons.movie_rounded,
+          size: 40,
+          color: widget.isDark ? Colors.grey[600] : Colors.grey[400],
+        ),
       ),
     );
+  }
 
-    // 刷新继续观看列表
-    ref.invalidate(continueWatchingProvider);
+  Color _getRatingColor() {
+    final rating = widget.metadata.rating ?? 0;
+    if (rating >= 8) return Colors.green;
+    if (rating >= 6) return Colors.orange;
+    return Colors.red;
   }
 }

@@ -9,7 +9,8 @@ import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/note/data/services/markdown_parser.dart';
 import 'package:my_nas/features/note/domain/entities/note_item.dart';
-import 'package:my_nas/features/note/presentation/pages/note_editor_page.dart';
+import 'package:my_nas/features/note/presentation/widgets/note_tree_widget.dart';
+import 'package:my_nas/features/note/presentation/widgets/task_list_widget.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
@@ -17,55 +18,96 @@ import 'package:my_nas/features/sources/presentation/providers/source_provider.d
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/empty_widget.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
-import 'package:my_nas/shared/widgets/loading_widget.dart';
 import 'package:my_nas/shared/widgets/media_setup_widget.dart';
 
-/// 笔记列表状态
-final noteListProvider =
-    StateNotifierProvider<NoteListNotifier, NoteListState>(
-        (ref) => NoteListNotifier(ref));
+/// 笔记页面状态
+final notePageProvider =
+    StateNotifierProvider<NotePageNotifier, NotePageState>(
+        (ref) => NotePageNotifier(ref));
 
-sealed class NoteListState {}
+sealed class NotePageState {}
 
-class NoteListLoading extends NoteListState {
-  NoteListLoading({this.progress = 0, this.currentFolder});
-  final double progress;
-  final String? currentFolder;
+class NotePageLoading extends NotePageState {
+  NotePageLoading({this.message});
+  final String? message;
 }
 
-class NoteListNotConnected extends NoteListState {}
+class NotePageNotConnected extends NotePageState {}
 
-class NoteListLoaded extends NoteListState {
-  NoteListLoaded(this.notes);
-  final List<NoteItem> notes;
+class NotePageLoaded extends NotePageState {
+  NotePageLoaded({
+    required this.treeNodes,
+    this.selectedNode,
+    this.content,
+    this.tasks = const [],
+    this.isEditing = false,
+    this.hasChanges = false,
+    this.isLoadingContent = false,
+  });
+
+  final List<NoteTreeNode> treeNodes;
+  final NoteTreeNode? selectedNode;
+  final String? content;
+  final List<TaskItem> tasks;
+  final bool isEditing;
+  final bool hasChanges;
+  final bool isLoadingContent;
+
+  /// 当前选中的文件是否是任务文件
+  bool get isTaskFile => selectedNode?.isTaskFile ?? false;
+
+  NotePageLoaded copyWith({
+    List<NoteTreeNode>? treeNodes,
+    NoteTreeNode? selectedNode,
+    String? content,
+    List<TaskItem>? tasks,
+    bool? isEditing,
+    bool? hasChanges,
+    bool? isLoadingContent,
+    bool clearSelection = false,
+  }) {
+    return NotePageLoaded(
+      treeNodes: treeNodes ?? this.treeNodes,
+      selectedNode: clearSelection ? null : (selectedNode ?? this.selectedNode),
+      content: clearSelection ? null : (content ?? this.content),
+      tasks: tasks ?? this.tasks,
+      isEditing: isEditing ?? this.isEditing,
+      hasChanges: hasChanges ?? this.hasChanges,
+      isLoadingContent: isLoadingContent ?? this.isLoadingContent,
+    );
+  }
 }
 
-class NoteListError extends NoteListState {
-  NoteListError(this.message);
+class NotePageError extends NotePageState {
+  NotePageError(this.message);
   final String message;
 }
 
-class NoteListNotifier extends StateNotifier<NoteListState> {
-  NoteListNotifier(this._ref) : super(NoteListLoading()) {
-    loadNotes();
+class NotePageNotifier extends StateNotifier<NotePageState> {
+  NotePageNotifier(this._ref) : super(NotePageLoading()) {
+    loadTree();
 
     // 监听连接状态变化，自动刷新
-    _ref.listen<Map<String, SourceConnection>>(activeConnectionsProvider, (previous, next) {
-      // 检查是否有新的连接建立
-      final prevConnected = previous?.values.where((c) => c.status == SourceStatus.connected).length ?? 0;
-      final nextConnected = next.values.where((c) => c.status == SourceStatus.connected).length;
+    _ref.listen<Map<String, SourceConnection>>(activeConnectionsProvider,
+        (previous, next) {
+      final prevConnected = previous?.values
+              .where((c) => c.status == SourceStatus.connected)
+              .length ??
+          0;
+      final nextConnected =
+          next.values.where((c) => c.status == SourceStatus.connected).length;
 
-      // 如果连接数增加，且当前状态是未连接，则重新加载
-      if (nextConnected > prevConnected && state is NoteListNotConnected) {
-        loadNotes();
+      if (nextConnected > prevConnected && state is NotePageNotConnected) {
+        loadTree();
       }
     });
   }
 
   final Ref _ref;
 
-  Future<void> loadNotes({int maxDepth = 3}) async {
-    state = NoteListLoading();
+  /// 加载目录树
+  Future<void> loadTree() async {
+    state = NotePageLoading(message: '加载目录结构...');
 
     final connections = _ref.read(activeConnectionsProvider);
     final configAsync = _ref.read(mediaLibraryConfigProvider);
@@ -73,8 +115,6 @@ class NoteListNotifier extends StateNotifier<NoteListState> {
     // 等待配置加载完成
     MediaLibraryConfig? config = configAsync.valueOrNull;
     if (config == null) {
-      state = NoteListLoading(progress: 0, currentFolder: '正在加载配置...');
-
       for (var i = 0; i < 10; i++) {
         await Future<void>.delayed(const Duration(milliseconds: 500));
         final updated = _ref.read(mediaLibraryConfigProvider);
@@ -82,13 +122,13 @@ class NoteListNotifier extends StateNotifier<NoteListState> {
         if (config != null) break;
 
         if (updated.hasError) {
-          state = NoteListError('加载媒体库配置失败');
+          state = NotePageError('加载媒体库配置失败');
           return;
         }
       }
 
       if (config == null) {
-        state = NoteListLoaded([]);
+        state = NotePageLoaded(treeNodes: []);
         return;
       }
     }
@@ -97,7 +137,7 @@ class NoteListNotifier extends StateNotifier<NoteListState> {
     final notePaths = config.getEnabledPathsForType(MediaType.note);
 
     if (notePaths.isEmpty) {
-      state = NoteListLoaded([]);
+      state = NotePageLoaded(treeNodes: []);
       return;
     }
 
@@ -108,189 +148,511 @@ class NoteListNotifier extends StateNotifier<NoteListState> {
     }).toList();
 
     if (connectedPaths.isEmpty) {
-      state = NoteListNotConnected();
+      state = NotePageNotConnected();
       return;
     }
 
     try {
-      final noteFiles = <FileItem>[];
-      final sourceIds = <String, String>{};  // 文件路径 -> sourceId 映射
+      final rootNodes = <NoteTreeNode>[];
 
-      for (var i = 0; i < connectedPaths.length; i++) {
-        final mediaPath = connectedPaths[i];
+      for (final mediaPath in connectedPaths) {
         final connection = connections[mediaPath.sourceId];
         if (connection == null) continue;
 
-        state = NoteListLoading(
-          progress: i / connectedPaths.length,
-          currentFolder: mediaPath.displayName,
+        // 创建根节点
+        final rootNode = NoteTreeNode(
+          name: mediaPath.displayName,
+          path: mediaPath.path,
+          type: NoteTreeNodeType.folder,
+          sourceId: mediaPath.sourceId,
+          isExpanded: true,
         );
 
-        try {
-          await _scanForNotes(
-            connection.adapter.fileSystem,
-            mediaPath.path,
-            noteFiles,
-            sourceIds,
-            sourceId: mediaPath.sourceId,
-            depth: 0,
-            maxDepth: maxDepth,
-          );
-        } on Exception catch (e) {
-          logger.w('扫描笔记文件夹失败: ${mediaPath.path} - $e');
-        }
+        // 加载一级子目录
+        final children = await _loadFolderChildren(
+          connection.adapter.fileSystem,
+          mediaPath.path,
+          mediaPath.sourceId,
+        );
+
+        rootNodes.add(rootNode.copyWith(children: children));
       }
 
-      // 获取笔记详情（包括内容预览和任务解析）
-      final notes = <NoteItem>[];
-      for (final file in noteFiles) {
-        try {
-          final sourceId = sourceIds[file.path];
-          final connection = sourceId != null ? connections[sourceId] : null;
-          if (connection == null) continue;
-
-          final url = await connection.adapter.fileSystem.getFileUrl(file.path);
-          var note = NoteItem.fromFileItem(file, url);
-
-          // 尝试获取内容预览
-          final preview = await _fetchNotePreview(url);
-          if (preview != null) {
-            final tasks = MarkdownParser.parseTasks(preview);
-            final type = MarkdownParser.detectNoteType(preview);
-            final tags = MarkdownParser.extractTags(preview);
-            note = note.copyWith(
-              content: preview,
-              tasks: tasks,
-              type: type,
-              tags: tags,
-            );
-          }
-          notes.add(note);
-        } on Exception {
-          // 忽略无法加载的笔记
-        }
-      }
-
-      // 按修改时间排序
-      notes.sort((a, b) {
-        final aTime = a.modifiedAt ?? DateTime(1970);
-        final bTime = b.modifiedAt ?? DateTime(1970);
-        return bTime.compareTo(aTime);
-      });
-
-      logger.i('笔记扫描完成，共找到 ${notes.length} 个笔记');
-      state = NoteListLoaded(notes);
+      state = NotePageLoaded(treeNodes: rootNodes);
     } on Exception catch (e) {
-      state = NoteListError(e.toString());
+      state = NotePageError(e.toString());
     }
   }
 
-  Future<void> _scanForNotes(
+  /// 加载文件夹子节点
+  Future<List<NoteTreeNode>> _loadFolderChildren(
     NasFileSystem fs,
     String path,
-    List<FileItem> notes,
-    Map<String, String> sourceIds, {
-    required String sourceId,
-    required int depth,
-    int maxDepth = 3,
-  }) async {
-    if (depth > maxDepth) return;
-
+    String sourceId,
+  ) async {
     try {
       final items = await fs.listDirectory(path);
-      for (final item in items) {
-        // 跳过隐藏文件夹和系统文件夹
+      final nodes = <NoteTreeNode>[];
+
+      // 先排序：文件夹在前，文件在后，各自按名称排序
+      final folders = items.where((i) => i.isDirectory).toList()
+        ..sort((a, b) => a.name.compareTo(b.name));
+      final files = items.where((i) => !i.isDirectory && _isNoteFile(i.name)).toList()
+        ..sort((a, b) => a.name.compareTo(b.name));
+
+      for (final item in folders) {
+        // 跳过隐藏文件夹
         if (item.name.startsWith('.') ||
             item.name.startsWith('@') ||
             item.name == '#recycle') {
           continue;
         }
 
-        if (item.isDirectory) {
-          await _scanForNotes(
-            fs,
-            item.path,
-            notes,
-            sourceIds,
-            sourceId: sourceId,
-            depth: depth + 1,
-            maxDepth: maxDepth,
-          );
-        } else if (_isNoteFile(item.name)) {
-          notes.add(item);
-          sourceIds[item.path] = sourceId;
-        }
+        nodes.add(NoteTreeNode(
+          name: item.name,
+          path: item.path,
+          type: NoteTreeNodeType.folder,
+          sourceId: sourceId,
+        ));
       }
+
+      for (final item in files) {
+        // 跳过隐藏文件
+        if (item.name.startsWith('.')) continue;
+
+        final url = await fs.getFileUrl(item.path);
+        nodes.add(NoteTreeNode(
+          name: item.name,
+          path: item.path,
+          type: NoteTreeNodeType.file,
+          sourceId: sourceId,
+          fileItem: item,
+          url: url,
+        ));
+      }
+
+      return nodes;
     } on Exception catch (e) {
-      logger.w('扫描子文件夹失败: $path - $e');
+      logger.w('加载文件夹失败: $path - $e');
+      return [];
     }
   }
 
   bool _isNoteFile(String filename) {
     final lower = filename.toLowerCase();
-    return lower.endsWith('.md') || lower.endsWith('.markdown') || lower.endsWith('.txt');
+    return lower.endsWith('.md') ||
+        lower.endsWith('.markdown') ||
+        lower.endsWith('.txt');
   }
 
-  Future<String?> _fetchNotePreview(String url, {int maxBytes = 2000}) async {
-    try {
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {'Range': 'bytes=0-$maxBytes'},
-      );
-      if (response.statusCode == 200 || response.statusCode == 206) {
-        try {
-          return utf8.decode(response.bodyBytes);
-        } on FormatException {
-          return String.fromCharCodes(response.bodyBytes);
+  /// 切换文件夹展开状态
+  Future<void> toggleFolder(NoteTreeNode node) async {
+    final current = state;
+    if (current is! NotePageLoaded) return;
+
+    // 递归更新节点的展开状态
+    List<NoteTreeNode> updateNode(List<NoteTreeNode> nodes, String targetPath, bool expanded, List<NoteTreeNode>? newChildren) {
+      return nodes.map((n) {
+        if (n.path == targetPath) {
+          return n.copyWith(
+            isExpanded: expanded,
+            children: newChildren ?? n.children,
+          );
         }
-      }
-    } on Exception {
-      // 忽略预览加载失败
+        if (n.children.isNotEmpty) {
+          return n.copyWith(
+            children: updateNode(n.children, targetPath, expanded, newChildren),
+          );
+        }
+        return n;
+      }).toList();
     }
-    return null;
+
+    if (!node.isExpanded && node.children.isEmpty) {
+      // 需要加载子节点
+      final connection = _ref.read(activeConnectionsProvider)[node.sourceId];
+      if (connection == null) return;
+
+      final children = await _loadFolderChildren(
+        connection.adapter.fileSystem,
+        node.path,
+        node.sourceId,
+      );
+
+      final newTree = updateNode(current.treeNodes, node.path, true, children);
+      state = current.copyWith(treeNodes: newTree);
+    } else {
+      // 只切换展开状态
+      final newTree = updateNode(current.treeNodes, node.path, !node.isExpanded, null);
+      state = current.copyWith(treeNodes: newTree);
+    }
+  }
+
+  /// 选中文件并加载内容
+  Future<void> selectFile(NoteTreeNode node) async {
+    final current = state;
+    if (current is! NotePageLoaded) return;
+    if (node.type != NoteTreeNodeType.file) return;
+
+    // 先更新选中状态，显示加载中
+    state = current.copyWith(
+      selectedNode: node,
+      content: null,
+      tasks: [],
+      isLoadingContent: true,
+      hasChanges: false,
+      isEditing: false,
+    );
+
+    // 加载文件内容
+    try {
+      final url = node.url;
+      if (url == null) {
+        throw Exception('无法获取文件URL');
+      }
+
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode != 200) {
+        throw Exception('加载失败: ${response.statusCode}');
+      }
+
+      String content;
+      try {
+        content = utf8.decode(response.bodyBytes);
+      } on FormatException {
+        content = String.fromCharCodes(response.bodyBytes);
+      }
+
+      // 只有任务文件才解析任务
+      final tasks = node.isTaskFile ? MarkdownParser.parseTasks(content) : <TaskItem>[];
+
+      state = (state as NotePageLoaded).copyWith(
+        content: content,
+        tasks: tasks,
+        isLoadingContent: false,
+      );
+    } on Exception catch (e) {
+      state = (state as NotePageLoaded).copyWith(
+        content: '加载失败: $e',
+        isLoadingContent: false,
+      );
+    }
+  }
+
+  /// 进入编辑模式
+  void setEditing(bool editing) {
+    final current = state;
+    if (current is NotePageLoaded) {
+      state = current.copyWith(isEditing: editing);
+    }
+  }
+
+  /// 更新内容
+  void updateContent(String content) {
+    final current = state;
+    if (current is NotePageLoaded) {
+      final tasks = current.isTaskFile
+          ? MarkdownParser.parseTasks(content)
+          : <TaskItem>[];
+      state = current.copyWith(
+        content: content,
+        tasks: tasks,
+        hasChanges: true,
+      );
+    }
+  }
+
+  /// 切换任务状态
+  void toggleTask(int index) {
+    final current = state;
+    if (current is! NotePageLoaded) return;
+    if (index >= current.tasks.length) return;
+
+    final task = current.tasks[index];
+    final newStatus =
+        task.isCompleted ? TaskStatus.pending : TaskStatus.completed;
+    final newTasks = [...current.tasks];
+    newTasks[index] = task.copyWith(status: newStatus);
+
+    // 更新 Markdown 内容中对应的任务状态
+    final newContent =
+        _updateTaskInContent(current.content ?? '', index, newStatus);
+
+    state = current.copyWith(
+      tasks: newTasks,
+      content: newContent,
+      hasChanges: true,
+    );
+  }
+
+  String _updateTaskInContent(
+      String content, int taskIndex, TaskStatus newStatus) {
+    final lines = content.split('\n');
+    var currentTaskIndex = 0;
+
+    for (var i = 0; i < lines.length; i++) {
+      final line = lines[i];
+      if (RegExp(r'^[-*+]\s*\[([ xX/\-])\]').hasMatch(line.trim())) {
+        if (currentTaskIndex == taskIndex) {
+          final statusChar = switch (newStatus) {
+            TaskStatus.completed => 'x',
+            TaskStatus.inProgress => '/',
+            TaskStatus.cancelled => '-',
+            TaskStatus.pending => ' ',
+          };
+          lines[i] = line.replaceFirstMapped(
+            RegExp(r'\[([ xX/\-])\]'),
+            (m) => '[$statusChar]',
+          );
+          break;
+        }
+        currentTaskIndex++;
+      }
+    }
+
+    return lines.join('\n');
   }
 }
 
-class NoteListPage extends ConsumerWidget {
+class NoteListPage extends ConsumerStatefulWidget {
   const NoteListPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(noteListProvider);
+  ConsumerState<NoteListPage> createState() => _NoteListPageState();
+}
+
+class _NoteListPageState extends ConsumerState<NoteListPage> {
+  final TextEditingController _editController = TextEditingController();
+  final ScrollController _previewScrollController = ScrollController();
+
+  // 侧边栏宽度
+  double _sidebarWidth = 280;
+  static const double _minSidebarWidth = 200;
+  static const double _maxSidebarWidth = 400;
+
+  @override
+  void dispose() {
+    _editController.dispose();
+    _previewScrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(notePageProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       backgroundColor: isDark ? AppColors.darkBackground : null,
-      body: Column(
+      body: switch (state) {
+        NotePageLoading(:final message) => Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(color: AppColors.primary),
+                if (message != null) ...[
+                  const SizedBox(height: 16),
+                  Text(message),
+                ],
+              ],
+            ),
+          ),
+        NotePageNotConnected() => const MediaSetupWidget(
+            mediaType: MediaType.note,
+            icon: Icons.note_outlined,
+          ),
+        NotePageError(:final message) => AppErrorWidget(
+            message: message,
+            onRetry: () => ref.read(notePageProvider.notifier).loadTree(),
+          ),
+        NotePageLoaded(:final treeNodes) when treeNodes.isEmpty =>
+          const EmptyWidget(
+            icon: Icons.note_outlined,
+            title: '暂无笔记',
+            message: '在配置的目录中添加 Markdown 文件后将显示在这里',
+          ),
+        NotePageLoaded() => _buildMainLayout(context, state, isDark),
+      },
+    );
+  }
+
+  Widget _buildMainLayout(
+      BuildContext context, NotePageLoaded state, bool isDark) {
+    return Row(
+      children: [
+        // 左侧目录树
+        _buildSidebar(context, state, isDark),
+        // 可拖动分隔线
+        _buildResizeHandle(isDark),
+        // 右侧内容区
+        Expanded(
+          child: _buildContentArea(context, state, isDark),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSidebar(
+      BuildContext context, NotePageLoaded state, bool isDark) {
+    return Container(
+      width: _sidebarWidth,
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
+        border: Border(
+          right: BorderSide(
+            color: isDark
+                ? AppColors.darkOutline.withValues(alpha: 0.2)
+                : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
+          ),
+        ),
+      ),
+      child: Column(
         children: [
-          _buildAppBar(context, ref, isDark),
+          // 标题栏
+          _buildSidebarHeader(context, isDark),
+          // 目录树
           Expanded(
-            child: switch (state) {
-              NoteListLoading(:final progress, :final currentFolder) =>
-                _buildLoadingState(progress, currentFolder),
-              NoteListNotConnected() => const MediaSetupWidget(
-                  mediaType: MediaType.note,
-                  icon: Icons.note_outlined,
-                ),
-              NoteListError(:final message) => AppErrorWidget(
-                  message: message,
-                  onRetry: () => ref.read(noteListProvider.notifier).loadNotes(),
-                ),
-              NoteListLoaded(:final notes) when notes.isEmpty => const EmptyWidget(
-                  icon: Icons.note_outlined,
-                  title: '暂无笔记',
-                  message: '在配置的目录中添加 Markdown 文件后将显示在这里',
-                ),
-              NoteListLoaded(:final notes) => _buildNoteList(context, ref, notes, isDark),
-            },
+            child: NoteTreeWidget(
+              nodes: state.treeNodes,
+              selectedPath: state.selectedNode?.path,
+              onNodeSelected: (node) =>
+                  ref.read(notePageProvider.notifier).selectFile(node),
+              onFolderToggle: (node) =>
+                  ref.read(notePageProvider.notifier).toggleFolder(node),
+              onFolderLoad: (node) =>
+                  ref.read(notePageProvider.notifier).toggleFolder(node),
+              isDark: isDark,
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildAppBar(BuildContext context, WidgetRef ref, bool isDark) {
+  Widget _buildSidebarHeader(BuildContext context, bool isDark) {
     return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: isDark
+                ? AppColors.darkOutline.withValues(alpha: 0.2)
+                : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
+          ),
+        ),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Row(
+          children: [
+            Icon(
+              Icons.folder_rounded,
+              size: 20,
+              color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '笔记',
+              style: context.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: isDark ? AppColors.darkOnSurface : null,
+              ),
+            ),
+            const Spacer(),
+            IconButton(
+              onPressed: () => ref.read(notePageProvider.notifier).loadTree(),
+              icon: Icon(
+                Icons.refresh_rounded,
+                size: 20,
+                color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey,
+              ),
+              tooltip: '刷新',
+              splashRadius: 18,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildResizeHandle(bool isDark) {
+    return GestureDetector(
+      onHorizontalDragUpdate: (details) {
+        setState(() {
+          _sidebarWidth += details.delta.dx;
+          _sidebarWidth = _sidebarWidth.clamp(_minSidebarWidth, _maxSidebarWidth);
+        });
+      },
+      child: MouseRegion(
+        cursor: SystemMouseCursors.resizeColumn,
+        child: Container(
+          width: 4,
+          color: isDark
+              ? AppColors.darkOutline.withValues(alpha: 0.1)
+              : Colors.grey.withValues(alpha: 0.1),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContentArea(
+      BuildContext context, NotePageLoaded state, bool isDark) {
+    if (state.selectedNode == null) {
+      return _buildEmptyContent(context, isDark);
+    }
+
+    if (state.isLoadingContent) {
+      return Center(
+        child: CircularProgressIndicator(color: AppColors.primary),
+      );
+    }
+
+    return Column(
+      children: [
+        // 顶部工具栏
+        _buildContentHeader(context, state, isDark),
+        // 内容区
+        Expanded(
+          child: state.isEditing
+              ? _buildEditor(context, state, isDark)
+              : _buildPreview(context, state, isDark),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEmptyContent(BuildContext context, bool isDark) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.article_outlined,
+            size: 64,
+            color: isDark
+                ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.3)
+                : Colors.grey.withValues(alpha: 0.3),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            '选择一个笔记开始阅读',
+            style: context.textTheme.bodyLarge?.copyWith(
+              color: isDark
+                  ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.5)
+                  : Colors.grey,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildContentHeader(
+      BuildContext context, NotePageLoaded state, bool isDark) {
+    final node = state.selectedNode!;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
         border: Border(
@@ -303,23 +665,148 @@ class NoteListPage extends ConsumerWidget {
       ),
       child: SafeArea(
         bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Row(
-            children: [
-              Text(
-                '笔记',
-                style: context.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
+        child: Row(
+          children: [
+            // 文件图标
+            Icon(
+              node.isTaskFile ? Icons.checklist_rounded : Icons.article_outlined,
+              size: 20,
+              color: node.isTaskFile ? Colors.orange : AppColors.primary,
+            ),
+            const SizedBox(width: 8),
+            // 文件名
+            Expanded(
+              child: Text(
+                node.displayName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: context.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
                   color: isDark ? AppColors.darkOnSurface : null,
                 ),
               ),
-              const Spacer(),
-              _buildIconButton(
-                icon: Icons.refresh_rounded,
-                onTap: () => ref.read(noteListProvider.notifier).loadNotes(),
-                isDark: isDark,
-                tooltip: '刷新',
+            ),
+            // 任务文件标记
+            if (node.isTaskFile && state.tasks.isNotEmpty) ...[
+              _buildTaskProgress(state, isDark),
+              const SizedBox(width: 12),
+            ],
+            // 编辑/预览切换
+            _buildModeToggle(state, isDark),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTaskProgress(NotePageLoaded state, bool isDark) {
+    final completed = state.tasks.where((t) => t.isCompleted).length;
+    final total = state.tasks.length;
+    final progress = total > 0 ? completed / total : 0.0;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: completed == total
+            ? Colors.green.withValues(alpha: 0.1)
+            : Colors.orange.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(
+              value: progress,
+              strokeWidth: 2,
+              backgroundColor: Colors.grey.withValues(alpha: 0.2),
+              color: completed == total ? Colors.green : Colors.orange,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '$completed / $total',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: completed == total ? Colors.green : Colors.orange,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModeToggle(NotePageLoaded state, bool isDark) {
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark
+            ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
+            : Colors.grey.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildModeButton(
+            icon: Icons.visibility_rounded,
+            label: '预览',
+            isSelected: !state.isEditing,
+            onTap: () => ref.read(notePageProvider.notifier).setEditing(false),
+            isDark: isDark,
+          ),
+          _buildModeButton(
+            icon: Icons.edit_rounded,
+            label: '编辑',
+            isSelected: state.isEditing,
+            onTap: () => ref.read(notePageProvider.notifier).setEditing(true),
+            isDark: isDark,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModeButton({
+    required IconData icon,
+    required String label,
+    required bool isSelected,
+    required VoidCallback onTap,
+    required bool isDark,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: isSelected ? AppColors.primary.withValues(alpha: 0.15) : null,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 16,
+                color: isSelected
+                    ? AppColors.primary
+                    : (isDark ? AppColors.darkOnSurfaceVariant : Colors.grey),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                  color: isSelected
+                      ? AppColors.primary
+                      : (isDark ? AppColors.darkOnSurfaceVariant : Colors.grey),
+                ),
               ),
             ],
           ),
@@ -328,324 +815,385 @@ class NoteListPage extends ConsumerWidget {
     );
   }
 
-  Widget _buildIconButton({
-    required IconData icon,
-    required VoidCallback onTap,
-    required bool isDark,
-    String? tooltip,
-  }) {
-    return Tooltip(
-      message: tooltip ?? '',
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              icon,
-              color: isDark ? AppColors.darkOnSurfaceVariant : null,
-              size: 22,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  Widget _buildPreview(BuildContext context, NotePageLoaded state, bool isDark) {
+    // 如果是任务文件，显示任务列表视图
+    if (state.isTaskFile && state.tasks.isNotEmpty) {
+      return _buildTaskFilePreview(context, state, isDark);
+    }
 
-  Widget _buildLoadingState(double progress, String? currentFolder) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            width: 60,
-            height: 60,
-            child: CircularProgressIndicator(
-              value: progress > 0 ? progress : null,
-              strokeWidth: 4,
-              color: AppColors.primary,
-            ),
-          ),
-          const SizedBox(height: 24),
-          const Text(
-            '扫描笔记中...',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          if (currentFolder != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              currentFolder,
-              style: const TextStyle(
-                fontSize: 14,
-                color: Colors.grey,
-              ),
-            ),
-          ],
-          if (progress > 0) ...[
-            const SizedBox(height: 8),
-            Text(
-              '${(progress * 100).toInt()}%',
-              style: TextStyle(
-                fontSize: 14,
-                color: AppColors.primary,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildNoteList(
-    BuildContext context,
-    WidgetRef ref,
-    List<NoteItem> notes,
-    bool isDark,
-  ) {
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-      itemCount: notes.length,
-      itemBuilder: (context, index) => _NoteListTile(
-        note: notes[index],
+    // 普通 Markdown 预览
+    return SingleChildScrollView(
+      controller: _previewScrollController,
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      child: _MarkdownPreview(
+        content: state.content ?? '',
         isDark: isDark,
       ),
     );
   }
-}
 
-class _NoteListTile extends StatelessWidget {
-  const _NoteListTile({
-    required this.note,
-    required this.isDark,
-  });
-
-  final NoteItem note;
-  final bool isDark;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.md,
-        vertical: AppSpacing.xs,
-      ),
-      decoration: BoxDecoration(
-        color: isDark
-            ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
-            : context.colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isDark
-              ? AppColors.darkOutline.withValues(alpha: 0.2)
-              : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
-        ),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () => _openNote(context),
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.all(AppSpacing.md),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 图标
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: _getNoteTypeColor(note.type).withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    _getNoteTypeIcon(note.type),
-                    color: _getNoteTypeColor(note.type),
-                    size: 24,
-                  ),
-                ),
-                const SizedBox(width: AppSpacing.md),
-                // 内容
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // 标题行
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              note.displayName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: context.textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w600,
-                                color: isDark ? AppColors.darkOnSurface : null,
-                              ),
-                            ),
-                          ),
-                          if (note.hasTasks) ...[
-                            const SizedBox(width: 8),
-                            _buildTaskBadge(context),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      // 摘要
-                      if (note.content != null)
-                        Text(
-                          MarkdownParser.extractSummary(note.content!),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: context.textTheme.bodySmall?.copyWith(
-                            color: isDark
-                                ? AppColors.darkOnSurfaceVariant
-                                : context.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      const SizedBox(height: 8),
-                      // 底部信息
-                      Row(
-                        children: [
-                          // 标签
-                          if (note.tags.isNotEmpty) ...[
-                            ...note.tags.take(3).map((tag) => Container(
-                                  margin: const EdgeInsets.only(right: 6),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 2,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.primary.withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    '#$tag',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      color: AppColors.primary,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                )),
-                          ],
-                          const Spacer(),
-                          // 修改时间
-                          if (note.modifiedAt != null)
-                            Text(
-                              _formatDate(note.modifiedAt!),
-                              style: context.textTheme.labelSmall?.copyWith(
-                                color: isDark
-                                    ? AppColors.darkOnSurfaceVariant
-                                    : context.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+  Widget _buildTaskFilePreview(
+      BuildContext context, NotePageLoaded state, bool isDark) {
+    return Column(
+      children: [
+        // 任务列表
+        Expanded(
+          child: TaskListWidget(
+            tasks: state.tasks,
+            onToggle: (index) =>
+                ref.read(notePageProvider.notifier).toggleTask(index),
+            isDark: isDark,
           ),
         ),
-      ),
+      ],
     );
   }
 
-  Widget _buildTaskBadge(BuildContext context) {
-    final completed = note.completedTasks;
-    final total = note.totalTasks;
-    final hasOverdue = note.overdueTasks > 0;
+  Widget _buildEditor(BuildContext context, NotePageLoaded state, bool isDark) {
+    // 初始化编辑器内容
+    if (_editController.text != state.content && !state.hasChanges) {
+      _editController.text = state.content ?? '';
+    }
 
+    return Column(
+      children: [
+        // 工具栏
+        _buildEditorToolbar(context, isDark),
+        // 编辑区域
+        Expanded(
+          child: TextField(
+            controller: _editController,
+            maxLines: null,
+            expands: true,
+            textAlignVertical: TextAlignVertical.top,
+            style: TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 14,
+              color: isDark ? AppColors.darkOnSurface : null,
+              height: 1.6,
+            ),
+            decoration: InputDecoration(
+              contentPadding: const EdgeInsets.all(AppSpacing.md),
+              border: InputBorder.none,
+              hintText: '开始编写...',
+              hintStyle: TextStyle(
+                color: isDark
+                    ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.5)
+                    : null,
+              ),
+            ),
+            onChanged: (value) =>
+                ref.read(notePageProvider.notifier).updateContent(value),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEditorToolbar(BuildContext context, bool isDark) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: hasOverdue
-            ? Colors.red.withValues(alpha: 0.1)
-            : (completed == total
-                ? Colors.green.withValues(alpha: 0.1)
-                : Colors.orange.withValues(alpha: 0.1)),
-        borderRadius: BorderRadius.circular(8),
+        color: isDark
+            ? AppColors.darkSurfaceVariant
+            : context.colorScheme.surfaceContainerHighest,
+        border: Border(
+          bottom: BorderSide(
+            color: isDark
+                ? AppColors.darkOutline.withValues(alpha: 0.2)
+                : context.colorScheme.outlineVariant,
+          ),
+        ),
       ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            hasOverdue
-                ? Icons.warning_rounded
-                : (completed == total
-                    ? Icons.check_circle_rounded
-                    : Icons.pending_rounded),
-            size: 14,
-            color: hasOverdue
-                ? Colors.red
-                : (completed == total ? Colors.green : Colors.orange),
+          _buildToolButton(
+            icon: Icons.format_bold_rounded,
+            tooltip: '粗体',
+            onTap: () => _insertMarkdown('**', '**'),
           ),
-          const SizedBox(width: 4),
-          Text(
-            '$completed/$total',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: hasOverdue
-                  ? Colors.red
-                  : (completed == total ? Colors.green : Colors.orange),
-            ),
+          _buildToolButton(
+            icon: Icons.format_italic_rounded,
+            tooltip: '斜体',
+            onTap: () => _insertMarkdown('*', '*'),
+          ),
+          _buildToolButton(
+            icon: Icons.strikethrough_s_rounded,
+            tooltip: '删除线',
+            onTap: () => _insertMarkdown('~~', '~~'),
+          ),
+          const VerticalDivider(width: 16),
+          _buildToolButton(
+            icon: Icons.title_rounded,
+            tooltip: '标题',
+            onTap: () => _insertMarkdown('## ', ''),
+          ),
+          _buildToolButton(
+            icon: Icons.format_list_bulleted_rounded,
+            tooltip: '列表',
+            onTap: () => _insertMarkdown('- ', ''),
+          ),
+          _buildToolButton(
+            icon: Icons.check_box_outlined,
+            tooltip: '任务',
+            onTap: () => _insertMarkdown('- [ ] ', ''),
+          ),
+          const VerticalDivider(width: 16),
+          _buildToolButton(
+            icon: Icons.code_rounded,
+            tooltip: '代码',
+            onTap: () => _insertMarkdown('`', '`'),
+          ),
+          _buildToolButton(
+            icon: Icons.link_rounded,
+            tooltip: '链接',
+            onTap: () => _insertMarkdown('[', '](url)'),
           ),
         ],
       ),
     );
   }
 
-  IconData _getNoteTypeIcon(NoteType type) {
-    return switch (type) {
-      NoteType.normal => Icons.article_outlined,
-      NoteType.todo => Icons.checklist_rounded,
-      NoteType.diary => Icons.book_outlined,
-      NoteType.meeting => Icons.groups_outlined,
-    };
+  Widget _buildToolButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onTap,
+  }) {
+    return IconButton(
+      onPressed: onTap,
+      icon: Icon(icon, size: 20),
+      tooltip: tooltip,
+      splashRadius: 20,
+    );
   }
 
-  Color _getNoteTypeColor(NoteType type) {
-    return switch (type) {
-      NoteType.normal => AppColors.primary,
-      NoteType.todo => Colors.orange,
-      NoteType.diary => Colors.purple,
-      NoteType.meeting => Colors.teal,
-    };
-  }
+  void _insertMarkdown(String prefix, String suffix) {
+    final text = _editController.text;
+    final selection = _editController.selection;
 
-  String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    final diff = now.difference(date);
-
-    if (diff.inDays == 0) {
-      return '今天 ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-    } else if (diff.inDays == 1) {
-      return '昨天';
-    } else if (diff.inDays < 7) {
-      return '${diff.inDays} 天前';
+    if (selection.isValid) {
+      final selectedText = text.substring(selection.start, selection.end);
+      final newText = '$prefix$selectedText$suffix';
+      _editController.value = TextEditingValue(
+        text: text.replaceRange(selection.start, selection.end, newText),
+        selection: TextSelection.collapsed(
+          offset: selection.start + prefix.length + selectedText.length,
+        ),
+      );
     } else {
-      return '${date.month}/${date.day}';
+      final offset = _editController.selection.baseOffset;
+      _editController.value = TextEditingValue(
+        text:
+            text.substring(0, offset) + prefix + suffix + text.substring(offset),
+        selection: TextSelection.collapsed(offset: offset + prefix.length),
+      );
     }
+
+    ref.read(notePageProvider.notifier).updateContent(_editController.text);
+  }
+}
+
+/// 简单的 Markdown 预览组件
+class _MarkdownPreview extends StatelessWidget {
+  const _MarkdownPreview({
+    required this.content,
+    required this.isDark,
+  });
+
+  final String content;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    final lines = content.split('\n');
+    final widgets = <Widget>[];
+
+    for (final line in lines) {
+      widgets.add(_buildLine(context, line));
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: widgets,
+    );
   }
 
-  void _openNote(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (context) => NoteEditorPage(note: note),
+  Widget _buildLine(BuildContext context, String line) {
+    final trimmed = line.trim();
+
+    // 空行
+    if (trimmed.isEmpty) {
+      return const SizedBox(height: 8);
+    }
+
+    // 标题
+    if (trimmed.startsWith('# ')) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 12, top: 16),
+        child: Text(
+          trimmed.substring(2),
+          style: context.textTheme.headlineMedium?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: isDark ? AppColors.darkOnSurface : null,
+          ),
+        ),
+      );
+    }
+    if (trimmed.startsWith('## ')) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 10, top: 14),
+        child: Text(
+          trimmed.substring(3),
+          style: context.textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: isDark ? AppColors.darkOnSurface : null,
+          ),
+        ),
+      );
+    }
+    if (trimmed.startsWith('### ')) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8, top: 12),
+        child: Text(
+          trimmed.substring(4),
+          style: context.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: isDark ? AppColors.darkOnSurface : null,
+          ),
+        ),
+      );
+    }
+
+    // 任务项
+    final taskMatch =
+        RegExp(r'^[-*+]\s*\[([ xX/\-])\]\s*(.+)$').firstMatch(trimmed);
+    if (taskMatch != null) {
+      final isCompleted = taskMatch.group(1)!.toLowerCase() == 'x';
+      final taskContent = taskMatch.group(2)!;
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              isCompleted
+                  ? Icons.check_box_rounded
+                  : Icons.check_box_outline_blank_rounded,
+              size: 20,
+              color: isCompleted
+                  ? Colors.green
+                  : (isDark ? AppColors.darkOnSurfaceVariant : null),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                taskContent,
+                style: context.textTheme.bodyMedium?.copyWith(
+                  decoration: isCompleted ? TextDecoration.lineThrough : null,
+                  color: isCompleted
+                      ? (isDark ? AppColors.darkOnSurfaceVariant : Colors.grey)
+                      : (isDark ? AppColors.darkOnSurface : null),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 列表项
+    if (trimmed.startsWith('- ') ||
+        trimmed.startsWith('* ') ||
+        trimmed.startsWith('+ ')) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '•  ',
+              style: TextStyle(
+                color: isDark ? AppColors.darkOnSurface : null,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            Expanded(
+              child: _buildRichText(context, trimmed.substring(2)),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 代码块
+    if (trimmed.startsWith('```')) {
+      return Container(
+        margin: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isDark ? AppColors.darkSurfaceVariant : Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          trimmed.substring(3),
+          style: TextStyle(
+            fontFamily: 'monospace',
+            fontSize: 13,
+            color: isDark ? AppColors.darkOnSurface : null,
+          ),
+        ),
+      );
+    }
+
+    // 引用
+    if (trimmed.startsWith('> ')) {
+      return Container(
+        margin: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          border: Border(
+            left: BorderSide(
+              color: AppColors.primary,
+              width: 4,
+            ),
+          ),
+          color: isDark
+              ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
+              : Colors.grey.shade50,
+        ),
+        child: Text(
+          trimmed.substring(2),
+          style: context.textTheme.bodyMedium?.copyWith(
+            fontStyle: FontStyle.italic,
+            color: isDark ? AppColors.darkOnSurfaceVariant : null,
+          ),
+        ),
+      );
+    }
+
+    // 普通段落
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: _buildRichText(context, line),
+    );
+  }
+
+  Widget _buildRichText(BuildContext context, String text) {
+    return Text(
+      _stripMarkdown(text),
+      style: context.textTheme.bodyMedium?.copyWith(
+        color: isDark ? AppColors.darkOnSurface : null,
+        height: 1.6,
       ),
     );
+  }
+
+  String _stripMarkdown(String text) {
+    return text
+        .replaceAllMapped(RegExp(r'\*\*(.+?)\*\*'), (m) => m.group(1)!)
+        .replaceAllMapped(RegExp(r'\*(.+?)\*'), (m) => m.group(1)!)
+        .replaceAllMapped(RegExp(r'~~(.+?)~~'), (m) => m.group(1)!)
+        .replaceAllMapped(RegExp(r'`(.+?)`'), (m) => m.group(1)!)
+        .replaceAllMapped(RegExp(r'\[(.+?)\]\(.+?\)'), (m) => m.group(1)!);
   }
 }
