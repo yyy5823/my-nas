@@ -110,7 +110,7 @@ jobs:
             echo "tag_name=v${{ needs.check-release.outputs.version }}" >> $GITHUB_OUTPUT
           fi
 
-  # 构建 Android APK
+  # 构建 Android APK（多架构）
   build-android:
     needs: extract-version
     runs-on: ubuntu-latest
@@ -132,15 +132,25 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Build APK
+      # 构建分架构 APK
+      - name: Build APK (split per ABI)
         run: flutter build apk --release --split-per-abi
 
       - name: Rename APKs
         run: |
           cd build/app/outputs/flutter-apk
-          mv app-arm64-v8a-release.apk MyNAS-${{ needs.extract-version.outputs.version }}-arm64-v8a.apk
-          mv app-armeabi-v7a-release.apk MyNAS-${{ needs.extract-version.outputs.version }}-armeabi-v7a.apk
-          mv app-x86_64-release.apk MyNAS-${{ needs.extract-version.outputs.version }}-x86_64.apk
+          mv app-arm64-v8a-release.apk MyNAS-${{ needs.extract-version.outputs.version }}-android-arm64-v8a.apk
+          mv app-armeabi-v7a-release.apk MyNAS-${{ needs.extract-version.outputs.version }}-android-armeabi-v7a.apk
+          mv app-x86_64-release.apk MyNAS-${{ needs.extract-version.outputs.version }}-android-x86_64.apk
+
+      # 也构建一个通用 APK（包含所有架构）
+      - name: Build universal APK
+        run: flutter build apk --release
+
+      - name: Rename universal APK
+        run: |
+          cd build/app/outputs/flutter-apk
+          mv app-release.apk MyNAS-${{ needs.extract-version.outputs.version }}-android-universal.apk
 
       - name: Upload Android artifacts
         uses: actions/upload-artifact@v4
@@ -172,7 +182,7 @@ jobs:
           cd build/ios/iphoneos
           mkdir -p Payload
           cp -r Runner.app Payload/
-          zip -r MyNAS-${{ needs.extract-version.outputs.version }}-unsigned.ipa Payload
+          zip -r MyNAS-${{ needs.extract-version.outputs.version }}-ios-arm64.ipa Payload
 
       - name: Upload iOS artifact
         uses: actions/upload-artifact@v4
@@ -180,7 +190,7 @@ jobs:
           name: ios-ipa
           path: build/ios/iphoneos/MyNAS-*.ipa
 
-  # 构建 macOS
+  # 构建 macOS（Intel + Apple Silicon）
   build-macos:
     needs: extract-version
     runs-on: macos-latest
@@ -193,34 +203,63 @@ jobs:
           channel: 'stable'
           cache: true
 
+      # 检查是否有 macOS 支持
+      - name: Check macOS support
+        id: check_macos
+        run: |
+          if [ -d "macos" ]; then
+            echo "supported=true" >> $GITHUB_OUTPUT
+          else
+            echo "supported=false" >> $GITHUB_OUTPUT
+            echo "::warning::macOS platform not configured in this project"
+          fi
+
+      - name: Enable macOS desktop
+        if: steps.check_macos.outputs.supported == 'true'
+        run: flutter config --enable-macos-desktop
+
       - name: Get dependencies
+        if: steps.check_macos.outputs.supported == 'true'
         run: flutter pub get
 
       - name: Build macOS
+        if: steps.check_macos.outputs.supported == 'true'
         run: flutter build macos --release
 
+      - name: Get architecture
+        if: steps.check_macos.outputs.supported == 'true'
+        id: arch
+        run: |
+          ARCH=$(uname -m)
+          if [ "$ARCH" == "arm64" ]; then
+            echo "arch=arm64" >> $GITHUB_OUTPUT
+          else
+            echo "arch=x86_64" >> $GITHUB_OUTPUT
+          fi
+
       - name: Create DMG
+        if: steps.check_macos.outputs.supported == 'true'
         run: |
           brew install create-dmg
           create-dmg \
             --volname "MyNAS" \
-            --volicon "macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_512.png" \
             --window-pos 200 120 \
             --window-size 600 400 \
             --icon-size 100 \
-            --icon "MyNAS.app" 150 185 \
-            --hide-extension "MyNAS.app" \
+            --icon "my_nas.app" 150 185 \
+            --hide-extension "my_nas.app" \
             --app-drop-link 450 185 \
-            "MyNAS-${{ needs.extract-version.outputs.version }}-macOS.dmg" \
+            "MyNAS-${{ needs.extract-version.outputs.version }}-macos-${{ steps.arch.outputs.arch }}.dmg" \
             "build/macos/Build/Products/Release/my_nas.app" || true
 
           # 如果 create-dmg 失败，创建简单的 zip
-          if [ ! -f "MyNAS-${{ needs.extract-version.outputs.version }}-macOS.dmg" ]; then
+          if [ ! -f "MyNAS-${{ needs.extract-version.outputs.version }}-macos-${{ steps.arch.outputs.arch }}.dmg" ]; then
             cd build/macos/Build/Products/Release
-            zip -r ../../../../../MyNAS-${{ needs.extract-version.outputs.version }}-macOS.zip my_nas.app
+            zip -r ../../../../../MyNAS-${{ needs.extract-version.outputs.version }}-macos-${{ steps.arch.outputs.arch }}.zip my_nas.app
           fi
 
       - name: Upload macOS artifact
+        if: steps.check_macos.outputs.supported == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: macos-app
@@ -228,7 +267,7 @@ jobs:
             MyNAS-*.dmg
             MyNAS-*.zip
 
-  # 构建 Windows
+  # 构建 Windows x64
   build-windows:
     needs: extract-version
     runs-on: windows-latest
@@ -241,23 +280,43 @@ jobs:
           channel: 'stable'
           cache: true
 
+      # 检查是否有 Windows 支持
+      - name: Check Windows support
+        id: check_windows
+        shell: bash
+        run: |
+          if [ -d "windows" ]; then
+            echo "supported=true" >> $GITHUB_OUTPUT
+          else
+            echo "supported=false" >> $GITHUB_OUTPUT
+            echo "::warning::Windows platform not configured in this project"
+          fi
+
+      - name: Enable Windows desktop
+        if: steps.check_windows.outputs.supported == 'true'
+        run: flutter config --enable-windows-desktop
+
       - name: Get dependencies
+        if: steps.check_windows.outputs.supported == 'true'
         run: flutter pub get
 
       - name: Build Windows
+        if: steps.check_windows.outputs.supported == 'true'
         run: flutter build windows --release
 
       - name: Create ZIP
+        if: steps.check_windows.outputs.supported == 'true'
         run: |
-          Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath MyNAS-${{ needs.extract-version.outputs.version }}-Windows-x64.zip
+          Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath MyNAS-${{ needs.extract-version.outputs.version }}-windows-x64.zip
 
       - name: Upload Windows artifact
+        if: steps.check_windows.outputs.supported == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: windows-app
           path: MyNAS-*.zip
 
-  # 构建 Linux
+  # 构建 Linux x64
   build-linux:
     needs: extract-version
     runs-on: ubuntu-latest
@@ -275,18 +334,37 @@ jobs:
           channel: 'stable'
           cache: true
 
+      # 检查是否有 Linux 支持
+      - name: Check Linux support
+        id: check_linux
+        run: |
+          if [ -d "linux" ]; then
+            echo "supported=true" >> $GITHUB_OUTPUT
+          else
+            echo "supported=false" >> $GITHUB_OUTPUT
+            echo "::warning::Linux platform not configured in this project"
+          fi
+
+      - name: Enable Linux desktop
+        if: steps.check_linux.outputs.supported == 'true'
+        run: flutter config --enable-linux-desktop
+
       - name: Get dependencies
+        if: steps.check_linux.outputs.supported == 'true'
         run: flutter pub get
 
       - name: Build Linux
+        if: steps.check_linux.outputs.supported == 'true'
         run: flutter build linux --release
 
       - name: Create tarball
+        if: steps.check_linux.outputs.supported == 'true'
         run: |
           cd build/linux/x64/release
-          tar -czvf ../../../../MyNAS-${{ needs.extract-version.outputs.version }}-Linux-x64.tar.gz bundle
+          tar -czvf ../../../../MyNAS-${{ needs.extract-version.outputs.version }}-linux-x64.tar.gz bundle
 
       - name: Upload Linux artifact
+        if: steps.check_linux.outputs.supported == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: linux-app
@@ -346,6 +424,15 @@ jobs:
   # 创建 Release
   create-release:
     needs: [extract-version, build-android, build-ios, build-macos, build-windows, build-linux, generate-changelog]
+    # 只要有一个构建成功就创建 release
+    if: |
+      always() &&
+      needs.extract-version.result == 'success' &&
+      (needs.build-android.result == 'success' ||
+       needs.build-ios.result == 'success' ||
+       needs.build-macos.result == 'success' ||
+       needs.build-windows.result == 'success' ||
+       needs.build-linux.result == 'success')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -356,9 +443,56 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+        continue-on-error: true
 
       - name: List artifacts
-        run: find artifacts -type f
+        run: find artifacts -type f 2>/dev/null || echo "No artifacts found"
+
+      # 生成构建状态报告
+      - name: Generate build status
+        id: build_status
+        run: |
+          STATUS=""
+
+          if [ "${{ needs.build-android.result }}" == "success" ]; then
+            STATUS="${STATUS}✅ Android\n"
+          else
+            STATUS="${STATUS}❌ Android (构建失败)\n"
+          fi
+
+          if [ "${{ needs.build-ios.result }}" == "success" ]; then
+            STATUS="${STATUS}✅ iOS\n"
+          else
+            STATUS="${STATUS}❌ iOS (构建失败)\n"
+          fi
+
+          if [ "${{ needs.build-macos.result }}" == "success" ]; then
+            STATUS="${STATUS}✅ macOS\n"
+          elif [ "${{ needs.build-macos.result }}" == "skipped" ]; then
+            STATUS="${STATUS}⏭️ macOS (跳过 - 平台未配置)\n"
+          else
+            STATUS="${STATUS}❌ macOS (构建失败)\n"
+          fi
+
+          if [ "${{ needs.build-windows.result }}" == "success" ]; then
+            STATUS="${STATUS}✅ Windows\n"
+          elif [ "${{ needs.build-windows.result }}" == "skipped" ]; then
+            STATUS="${STATUS}⏭️ Windows (跳过 - 平台未配置)\n"
+          else
+            STATUS="${STATUS}❌ Windows (构建失败)\n"
+          fi
+
+          if [ "${{ needs.build-linux.result }}" == "success" ]; then
+            STATUS="${STATUS}✅ Linux\n"
+          elif [ "${{ needs.build-linux.result }}" == "skipped" ]; then
+            STATUS="${STATUS}⏭️ Linux (跳过 - 平台未配置)\n"
+          else
+            STATUS="${STATUS}❌ Linux (构建失败)\n"
+          fi
+
+          echo "status<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$STATUS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
@@ -368,11 +502,7 @@ jobs:
           draft: false
           prerelease: ${{ contains(needs.extract-version.outputs.version, 'beta') || contains(needs.extract-version.outputs.version, 'alpha') }}
           files: |
-            artifacts/android-apks/*
-            artifacts/ios-ipa/*
-            artifacts/macos-app/*
-            artifacts/windows-app/*
-            artifacts/linux-app/*
+            artifacts/**/*
           body: |
             ## MyNAS v${{ needs.extract-version.outputs.version }}
 
@@ -380,21 +510,44 @@ jobs:
 
             ---
 
+            ### 🔨 构建状态
+
+            ${{ steps.build_status.outputs.status }}
+
             ### 📦 下载
 
-            | 平台 | 架构 | 文件 |
+            #### Android
+            | 架构 | 说明 | 文件 |
             |------|------|------|
-            | Android | arm64-v8a | `MyNAS-${{ needs.extract-version.outputs.version }}-arm64-v8a.apk` |
-            | Android | armeabi-v7a | `MyNAS-${{ needs.extract-version.outputs.version }}-armeabi-v7a.apk` |
-            | Android | x86_64 | `MyNAS-${{ needs.extract-version.outputs.version }}-x86_64.apk` |
-            | iOS | Universal | `MyNAS-${{ needs.extract-version.outputs.version }}-unsigned.ipa` |
-            | macOS | Universal | `MyNAS-${{ needs.extract-version.outputs.version }}-macOS.dmg` |
-            | Windows | x64 | `MyNAS-${{ needs.extract-version.outputs.version }}-Windows-x64.zip` |
-            | Linux | x64 | `MyNAS-${{ needs.extract-version.outputs.version }}-Linux-x64.tar.gz` |
+            | arm64-v8a | 64位 ARM (推荐，大多数现代手机) | `MyNAS-*-android-arm64-v8a.apk` |
+            | armeabi-v7a | 32位 ARM (旧设备) | `MyNAS-*-android-armeabi-v7a.apk` |
+            | x86_64 | 64位 x86 (模拟器/Chromebook) | `MyNAS-*-android-x86_64.apk` |
+            | universal | 通用包 (包含所有架构，体积较大) | `MyNAS-*-android-universal.apk` |
+
+            #### iOS
+            | 架构 | 文件 |
+            |------|------|
+            | arm64 | `MyNAS-*-ios-arm64.ipa` (未签名) |
+
+            #### macOS
+            | 架构 | 文件 |
+            |------|------|
+            | arm64 | `MyNAS-*-macos-arm64.dmg` (Apple Silicon) |
+
+            #### Windows
+            | 架构 | 文件 |
+            |------|------|
+            | x64 | `MyNAS-*-windows-x64.zip` |
+
+            #### Linux
+            | 架构 | 文件 |
+            |------|------|
+            | x64 | `MyNAS-*-linux-x64.tar.gz` |
 
             ### ⚠️ 注意事项
-            - iOS IPA 未签名，需要自行签名后安装
-            - macOS 应用未签名，首次打开需要在「系统设置 → 隐私与安全性」中允许
+            - **iOS**: IPA 未签名，需要自行签名后安装（AltStore/Sideloadly）
+            - **macOS**: 应用未签名，首次打开需要在「系统设置 → 隐私与安全性」中允许
+            - **Linux**: 需要安装 `libmpv` 依赖：`sudo apt install libmpv1`
 
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
