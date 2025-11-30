@@ -407,14 +407,18 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
               SnackBar(content: Text('已连接到 ${source.displayName}')),
             );
           }
-        } else if (connection.errorMessage?.contains('二次验证') == true) {
+        } else if (connection.status == SourceStatus.requires2FA) {
           // 需要二次验证
           if (mounted) {
-            final otpCode = await _show2FADialog();
-            if (otpCode != null && otpCode.isNotEmpty) {
+            final result = await _show2FADialog();
+            if (result != null && result.otpCode.isNotEmpty) {
               final verified = await ref
                   .read(activeConnectionsProvider.notifier)
-                  .verify2FA(source.id, otpCode, rememberDevice: _rememberDevice);
+                  .verify2FA(
+                    source.id,
+                    result.otpCode,
+                    rememberDevice: result.rememberDevice,
+                  );
 
               if (verified.status == SourceStatus.connected) {
                 if (mounted) {
@@ -447,41 +451,81 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
     }
   }
 
-  Future<String?> _show2FADialog() async {
+  Future<_TwoFAResult?> _show2FADialog() async {
     final controller = TextEditingController();
-    return showDialog<String>(
+    bool rememberDevice = _rememberDevice;
+
+    return showDialog<_TwoFAResult>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('二次验证'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('请输入您的验证码'),
-            const SizedBox(height: 16),
-            TextField(
-              controller: controller,
-              decoration: const InputDecoration(
-                labelText: '验证码',
-                hintText: '6位数字',
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('二次验证'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('请输入验证器应用中的验证码'),
+              const SizedBox(height: 16),
+              TextField(
+                controller: controller,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: '验证码',
+                  hintText: '6 位数字',
+                  prefixIcon: Icon(Icons.security),
+                ),
+                autofocus: true,
+                maxLength: 6,
               ),
-              keyboardType: TextInputType.number,
-              autofocus: true,
-              maxLength: 6,
+              const SizedBox(height: 8),
+              CheckboxListTile(
+                value: rememberDevice,
+                onChanged: (value) {
+                  setDialogState(() {
+                    rememberDevice = value ?? false;
+                  });
+                },
+                title: const Text('记住此设备'),
+                subtitle: const Text(
+                  '下次登录时跳过二次验证',
+                  style: TextStyle(fontSize: 12),
+                ),
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                dense: true,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(
+                context,
+                _TwoFAResult(
+                  otpCode: controller.text,
+                  rememberDevice: rememberDevice,
+                ),
+              ),
+              child: const Text('验证'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, controller.text),
-            child: const Text('验证'),
-          ),
-        ],
       ),
     );
   }
+}
+
+/// 2FA 验证结果
+class _TwoFAResult {
+  const _TwoFAResult({
+    required this.otpCode,
+    required this.rememberDevice,
+  });
+
+  final String otpCode;
+  final bool rememberDevice;
 }

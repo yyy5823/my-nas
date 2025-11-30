@@ -10,11 +10,12 @@ import 'package:my_nas/features/connection/presentation/providers/connection_pro
 import 'package:my_nas/features/note/data/services/markdown_parser.dart';
 import 'package:my_nas/features/note/domain/entities/note_item.dart';
 import 'package:my_nas/features/note/presentation/pages/note_editor_page.dart';
+import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/empty_widget.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
 import 'package:my_nas/shared/widgets/loading_widget.dart';
-import 'package:my_nas/shared/widgets/not_connected_widget.dart';
+import 'package:my_nas/shared/widgets/media_setup_widget.dart';
 
 /// 笔记列表状态
 final noteListProvider =
@@ -166,9 +167,9 @@ class NoteListPage extends ConsumerWidget {
           Expanded(
             child: switch (state) {
               NoteListLoading() => const LoadingWidget(message: '扫描笔记中...'),
-              NoteListNotConnected() => const NotConnectedWidget(
+              NoteListNotConnected() => const MediaSetupWidget(
+                  mediaType: MediaType.note,
                   icon: Icons.note_outlined,
-                  message: '连接到 NAS 后即可浏览和编辑笔记',
                 ),
               NoteListError(:final message) => AppErrorWidget(
                   message: message,
@@ -177,7 +178,7 @@ class NoteListPage extends ConsumerWidget {
               NoteListLoaded(:final notes) when notes.isEmpty => const EmptyWidget(
                   icon: Icons.note_outlined,
                   title: '暂无笔记',
-                  message: '在 NAS 中添加 Markdown 文件后将显示在这里',
+                  message: '在配置的目录中添加 Markdown 文件后将显示在这里',
                 ),
               NoteListLoaded(:final notes) => _buildNoteList(context, ref, notes, isDark),
             },

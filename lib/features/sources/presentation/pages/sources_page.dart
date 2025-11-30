@@ -220,6 +220,7 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
     final (label, color) = switch (_status) {
       SourceStatus.connected => ('已连接', Colors.green),
       SourceStatus.connecting => ('连接中', Colors.orange),
+      SourceStatus.requires2FA => ('需要验证', Colors.amber),
       SourceStatus.error => ('错误', Colors.red),
       SourceStatus.disconnected => ('未连接', Colors.grey),
     };
@@ -255,6 +256,7 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
     return switch (_status) {
       SourceStatus.connected => Colors.green,
       SourceStatus.connecting => Colors.orange,
+      SourceStatus.requires2FA => Colors.amber,
       SourceStatus.error => Colors.red,
       SourceStatus.disconnected => Colors.grey,
     };
@@ -342,7 +344,20 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
 
       final connection =
           ref.read(activeConnectionsProvider)[widget.source.id];
-      if (connection?.status == SourceStatus.error) {
+
+      // 处理需要 2FA 验证的情况
+      if (connection?.status == SourceStatus.requires2FA) {
+        if (mounted) {
+          final result = await _show2FADialog();
+          if (result != null && result.otpCode.isNotEmpty) {
+            await ref.read(activeConnectionsProvider.notifier).verify2FA(
+                  widget.source.id,
+                  result.otpCode,
+                  rememberDevice: result.rememberDevice,
+                );
+          }
+        }
+      } else if (connection?.status == SourceStatus.error) {
         setState(() {
           _errorMessage = connection?.errorMessage;
         });
@@ -356,6 +371,73 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
         setState(() => _isConnecting = false);
       }
     }
+  }
+
+  Future<_TwoFAResult?> _show2FADialog() async {
+    final controller = TextEditingController();
+    bool rememberDevice = widget.source.rememberDevice;
+
+    return showDialog<_TwoFAResult>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('二次验证'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('请输入验证器应用中的验证码'),
+              const SizedBox(height: 16),
+              TextField(
+                controller: controller,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: '验证码',
+                  hintText: '6 位数字',
+                  prefixIcon: Icon(Icons.security),
+                ),
+                autofocus: true,
+                maxLength: 6,
+              ),
+              const SizedBox(height: 8),
+              CheckboxListTile(
+                value: rememberDevice,
+                onChanged: (value) {
+                  setDialogState(() {
+                    rememberDevice = value ?? false;
+                  });
+                },
+                title: const Text('记住此设备'),
+                subtitle: const Text(
+                  '下次登录时跳过二次验证',
+                  style: TextStyle(fontSize: 12),
+                ),
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                dense: true,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(
+                context,
+                _TwoFAResult(
+                  otpCode: controller.text,
+                  rememberDevice: rememberDevice,
+                ),
+              ),
+              child: const Text('验证'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<String?> _showPasswordDialog() async {
@@ -428,4 +510,15 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
       await ref.read(sourcesProvider.notifier).removeSource(widget.source.id);
     }
   }
+}
+
+/// 2FA 验证结果
+class _TwoFAResult {
+  const _TwoFAResult({
+    required this.otpCode,
+    required this.rememberDevice,
+  });
+
+  final String otpCode;
+  final bool rememberDevice;
 }

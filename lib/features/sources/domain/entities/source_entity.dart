@@ -17,6 +17,7 @@ enum SourceType {
 enum SourceStatus {
   disconnected,
   connecting,
+  requires2FA,
   connected,
   error,
 }

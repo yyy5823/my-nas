@@ -9,11 +9,12 @@ import 'package:my_nas/features/music/presentation/pages/music_player_page.dart'
 import 'package:my_nas/features/music/presentation/providers/music_favorites_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
 import 'package:my_nas/features/music/presentation/widgets/mini_player.dart';
+import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/empty_widget.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
 import 'package:my_nas/shared/widgets/loading_widget.dart';
-import 'package:my_nas/shared/widgets/not_connected_widget.dart';
+import 'package:my_nas/shared/widgets/media_setup_widget.dart';
 
 /// 音乐列表状态
 final musicListProvider =
@@ -92,9 +93,9 @@ class MusicListPage extends ConsumerWidget {
           Expanded(
             child: switch (state) {
               MusicListLoading() => const LoadingWidget(message: '扫描音乐中...'),
-              MusicListNotConnected() => const NotConnectedWidget(
+              MusicListNotConnected() => const MediaSetupWidget(
+                  mediaType: MediaType.music,
                   icon: Icons.library_music_outlined,
-                  message: '连接到 NAS 后即可浏览和播放音乐',
                 ),
               MusicListError(:final message) => AppErrorWidget(
                   message: message,
@@ -103,7 +104,7 @@ class MusicListPage extends ConsumerWidget {
               MusicListLoaded(:final tracks) when tracks.isEmpty => const EmptyWidget(
                   icon: Icons.library_music_outlined,
                   title: '暂无音乐',
-                  message: '在 NAS 中添加音乐后将显示在这里',
+                  message: '在配置的目录中添加音乐后将显示在这里',
                 ),
               MusicListLoaded(:final tracks) => _buildMusicList(context, ref, tracks, isDark),
             },

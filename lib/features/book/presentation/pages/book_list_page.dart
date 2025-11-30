@@ -6,11 +6,12 @@ import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
 import 'package:my_nas/features/book/presentation/pages/book_reader_page.dart';
 import 'package:my_nas/features/connection/presentation/providers/connection_provider.dart';
+import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/empty_widget.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
 import 'package:my_nas/shared/widgets/loading_widget.dart';
-import 'package:my_nas/shared/widgets/not_connected_widget.dart';
+import 'package:my_nas/shared/widgets/media_setup_widget.dart';
 
 /// 图书列表状态
 final bookListProvider =
@@ -119,9 +120,9 @@ class BookListPage extends ConsumerWidget {
           Expanded(
             child: switch (state) {
               BookListLoading() => const LoadingWidget(message: '扫描图书中...'),
-              BookListNotConnected() => const NotConnectedWidget(
+              BookListNotConnected() => const MediaSetupWidget(
+                  mediaType: MediaType.book,
                   icon: Icons.menu_book_outlined,
-                  message: '连接到 NAS 后即可浏览和阅读电子书',
                 ),
               BookListError(:final message) => AppErrorWidget(
                   message: message,
@@ -130,7 +131,7 @@ class BookListPage extends ConsumerWidget {
               BookListLoaded(:final books) when books.isEmpty => const EmptyWidget(
                   icon: Icons.menu_book_outlined,
                   title: '暂无图书',
-                  message: '在 NAS 中添加电子书后将显示在这里\n支持 EPUB、PDF、TXT 格式',
+                  message: '在配置的目录中添加电子书后将显示在这里\n支持 EPUB、PDF、TXT 格式',
                 ),
               BookListLoaded(:final books) => _buildBookGrid(context, ref, books, isDark),
             },

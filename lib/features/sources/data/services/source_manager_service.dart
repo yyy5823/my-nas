@@ -277,8 +277,7 @@ class SourceManagerService {
         ConnectionRequires2FA() => SourceConnection(
             source: source,
             adapter: adapter,
-            status: SourceStatus.connecting,
-            errorMessage: '需要二次验证',
+            status: SourceStatus.requires2FA,
           ),
       };
 
