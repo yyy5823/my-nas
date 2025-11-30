@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'pubspec.yaml'
   # 也支持手动推送 tag 触发
   create:
     tags:
