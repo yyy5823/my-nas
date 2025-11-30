@@ -162,32 +162,20 @@ class MediaLibraryConfig {
         'notePaths': notePaths.map((p) => p.toJson()).toList(),
       };
 
-  factory MediaLibraryConfig.fromJson(Map<String, dynamic> json) =>
-      MediaLibraryConfig(
-        videoPaths: (json['videoPaths'] as List<dynamic>?)
-                ?.map((e) =>
-                    MediaLibraryPath.fromJson(e as Map<String, dynamic>))
-                .toList() ??
-            [],
-        musicPaths: (json['musicPaths'] as List<dynamic>?)
-                ?.map((e) =>
-                    MediaLibraryPath.fromJson(e as Map<String, dynamic>))
-                .toList() ??
-            [],
-        comicPaths: (json['comicPaths'] as List<dynamic>?)
-                ?.map((e) =>
-                    MediaLibraryPath.fromJson(e as Map<String, dynamic>))
-                .toList() ??
-            [],
-        bookPaths: (json['bookPaths'] as List<dynamic>?)
-                ?.map((e) =>
-                    MediaLibraryPath.fromJson(e as Map<String, dynamic>))
-                .toList() ??
-            [],
-        notePaths: (json['notePaths'] as List<dynamic>?)
-                ?.map((e) =>
-                    MediaLibraryPath.fromJson(e as Map<String, dynamic>))
-                .toList() ??
-            [],
-      );
+  factory MediaLibraryConfig.fromJson(Map<String, dynamic> json) {
+    List<MediaLibraryPath> parsePaths(dynamic data) {
+      if (data == null) return [];
+      return (data as List<dynamic>)
+          .map((e) => MediaLibraryPath.fromJson(Map<String, dynamic>.from(e as Map)))
+          .toList();
+    }
+
+    return MediaLibraryConfig(
+      videoPaths: parsePaths(json['videoPaths']),
+      musicPaths: parsePaths(json['musicPaths']),
+      comicPaths: parsePaths(json['comicPaths']),
+      bookPaths: parsePaths(json['bookPaths']),
+      notePaths: parsePaths(json['notePaths']),
+    );
+  }
 }
