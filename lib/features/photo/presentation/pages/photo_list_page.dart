@@ -248,7 +248,41 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
 
       for (final file in files) {
         if (file.type == FileType.image) {
-          photos.add(PhotoFileWithSource(file: file, sourceId: sourceId));
+          // 尝试获取缩略图 URL
+          String? thumbnailUrl = file.thumbnailUrl;
+          if (thumbnailUrl == null || thumbnailUrl.isEmpty) {
+            try {
+              thumbnailUrl = await fileSystem.getThumbnailUrl(file.path);
+            } catch (e) {
+              // 忽略缩略图获取失败
+            }
+          }
+
+          // 如果还是没有缩略图，使用文件下载 URL 作为备用
+          if (thumbnailUrl == null || thumbnailUrl.isEmpty) {
+            try {
+              thumbnailUrl = await fileSystem.getFileUrl(file.path);
+            } catch (e) {
+              // 忽略
+            }
+          }
+
+          // 创建一个新的 FileItem，包含缩略图 URL
+          final fileWithThumbnail = FileItem(
+            name: file.name,
+            path: file.path,
+            isDirectory: file.isDirectory,
+            size: file.size,
+            modifiedTime: file.modifiedTime,
+            createdTime: file.createdTime,
+            mimeType: file.mimeType,
+            extension: file.extension,
+            thumbnailUrl: thumbnailUrl,
+            isHidden: file.isHidden,
+            isReadOnly: file.isReadOnly,
+          );
+
+          photos.add(PhotoFileWithSource(file: fileWithThumbnail, sourceId: sourceId));
         } else if (file.isDirectory && currentDepth < maxDepth) {
           // 跳过隐藏文件夹和系统文件夹
           if (file.name.startsWith('.') ||

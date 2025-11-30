@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/nas_adapters/base/nas_file_system.dart' show ThumbnailSize;
 import 'package:pointycastle/api.dart';
 import 'package:pointycastle/asn1.dart';
 import 'package:pointycastle/asymmetric/api.dart';
@@ -324,35 +325,65 @@ class UGreenApi {
 
     // 尝试不同的 API 端点和参数组合
     final attempts = [
-      // 尝试 1: filemgr/list 带 path 参数
+      // 尝试 1: filemgr/list 带 path 参数 (POST)
       {
         'endpoint': '/ugreen/v1/filemgr/list',
         'data': {'path': path, 'page': 1, 'page_size': 1000},
+        'method': 'POST',
       },
-      // 尝试 2: filemgr/list 带 dir 参数
+      // 尝试 2: filemgr/list (GET with query params)
+      {
+        'endpoint': '/ugreen/v1/filemgr/list',
+        'data': {'path': path, 'page': 1, 'page_size': 1000},
+        'method': 'GET',
+      },
+      // 尝试 3: filemgr/list 带 dir 参数
       {
         'endpoint': '/ugreen/v1/filemgr/list',
         'data': {'dir': path, 'page': 1, 'limit': 1000},
+        'method': 'POST',
       },
-      // 尝试 3: file/list
+      // 尝试 4: file/list
       {
         'endpoint': '/ugreen/v1/file/list',
         'data': {'path': path, 'page': 1, 'page_size': 1000},
+        'method': 'POST',
       },
-      // 尝试 4: file/list 带 folder 参数
+      // 尝试 5: file/list (GET)
+      {
+        'endpoint': '/ugreen/v1/file/list',
+        'data': {'path': path, 'page': 1, 'page_size': 1000},
+        'method': 'GET',
+      },
+      // 尝试 6: file/list 带 folder 参数
       {
         'endpoint': '/ugreen/v1/file/list',
         'data': {'folder': path, 'offset': 0, 'limit': 1000},
+        'method': 'POST',
       },
-      // 尝试 5: v2 file/list
+      // 尝试 7: v2 file/list
       {
         'endpoint': '/ugreen/v2/file/list',
         'data': {'path': path, 'page': 1, 'page_size': 1000},
+        'method': 'POST',
       },
-      // 尝试 6: filemgr/dir/list
+      // 尝试 8: filemgr/dir/list
       {
         'endpoint': '/ugreen/v1/filemgr/dir/list',
         'data': {'path': path},
+        'method': 'POST',
+      },
+      // 尝试 9: filemgr/dir/list (GET)
+      {
+        'endpoint': '/ugreen/v1/filemgr/dir/list',
+        'data': {'path': path},
+        'method': 'GET',
+      },
+      // 尝试 10: filestation API (类似群晖)
+      {
+        'endpoint': '/ugreen/v1/filestation/list',
+        'data': {'folder_path': path},
+        'method': 'POST',
       },
     ];
 
@@ -360,9 +391,10 @@ class UGreenApi {
       try {
         final endpoint = attempt['endpoint'] as String;
         final data = attempt['data'] as Map<String, dynamic>;
-        logger.d('UGreenApi: 尝试端点 => $endpoint, 参数 => $data');
+        final method = attempt['method'] as String? ?? 'POST';
+        logger.d('UGreenApi: 尝试端点 => $endpoint ($method), 参数 => $data');
 
-        final response = await _request(endpoint, data: data);
+        final response = await _request(endpoint, data: data, method: method);
 
         final respData = response.data;
         logger.d('UGreenApi: listDirectory 响应 => $respData');
@@ -412,6 +444,21 @@ class UGreenApi {
     return '$baseUrl/ugreen/v1/file/download?path=${Uri.encodeComponent(path)}&token=$_token';
   }
 
+  /// 获取缩略图 URL
+  String? getThumbnailUrl(String path, {ThumbnailSize? size}) {
+    final baseUrl = dio.options.baseUrl;
+    // UGOS 缩略图可能的端点
+    // 尝试使用 thumbnail 端点
+    final sizeParam = switch (size) {
+      ThumbnailSize.small => 'small',
+      ThumbnailSize.medium => 'medium',
+      ThumbnailSize.large => 'large',
+      ThumbnailSize.xlarge => 'xlarge',
+      null => 'medium',
+    };
+    return '$baseUrl/ugreen/v1/file/thumbnail?path=${Uri.encodeComponent(path)}&size=$sizeParam&token=$_token';
+  }
+
   /// 创建目录
   Future<void> createDirectory(String path) async {
     await _request(
@@ -448,6 +495,7 @@ class UGreenApi {
     // 尝试不同的共享端点和参数组合
     final attempts = [
       // 存储管理相关端点
+      {'endpoint': '/ugreen/v1/storage/pool/list', 'data': <String, dynamic>{}, 'method': 'GET'},
       {'endpoint': '/ugreen/v1/storage/share/list', 'data': <String, dynamic>{}},
       {'endpoint': '/ugreen/v1/storage/shares', 'data': <String, dynamic>{}},
       {'endpoint': '/ugreen/v1/storage/volume/list', 'data': <String, dynamic>{}},
@@ -467,15 +515,47 @@ class UGreenApi {
       try {
         final endpoint = attempt['endpoint'] as String;
         final data = attempt['data'] as Map<String, dynamic>;
-        logger.d('UGreenApi: 尝试共享端点 => $endpoint');
+        final method = attempt['method'] as String? ?? 'POST';
+        logger.d('UGreenApi: 尝试共享端点 => $endpoint ($method)');
 
-        final response = await _request(endpoint, data: data.isEmpty ? null : data);
+        final response = await _request(endpoint, data: data.isEmpty ? null : data, method: method);
 
         final respData = response.data;
         logger.d('UGreenApi: listShares 响应 => $respData');
 
         if (respData is Map && respData['code'] == 200) {
           final items = <UGreenFileInfo>[];
+
+          // 处理存储池响应格式 - 从 pool/list 提取卷信息
+          if (endpoint.contains('pool/list')) {
+            final pools = respData['data']?['pools'] ?? respData['data'] ?? [];
+            if (pools is List) {
+              for (final pool in pools) {
+                if (pool is Map) {
+                  // 从每个池提取共享文件夹
+                  final volumes = pool['volumes'] ?? pool['shares'] ?? [];
+                  if (volumes is List) {
+                    for (final vol in volumes) {
+                      if (vol is Map) {
+                        final name = vol['name']?.toString() ??
+                                     vol['volume_name']?.toString() ??
+                                     '';
+                        if (name.isEmpty) continue;
+                        final path = vol['path']?.toString() ??
+                                     vol['mount_point']?.toString() ??
+                                     '/$name';
+                        items.add(UGreenFileInfo(
+                          name: name,
+                          path: path,
+                          isDir: true,
+                        ));
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
 
           // 尝试不同的响应结构
           final shares = respData['data']?['list'] ??
@@ -519,18 +599,42 @@ class UGreenApi {
       }
     }
 
-    // 所有共享端点都失败，尝试直接列出根目录
+    // 所有共享端点都失败，尝试直接列出根目录 (使用不同的路径格式)
     logger.i('UGreenApi: 共享端点都失败，尝试直接列出根目录');
-    final rootFiles = await listDirectory('/');
-    if (rootFiles.isNotEmpty) {
-      return rootFiles;
+
+    // 尝试不同的根路径
+    for (final rootPath in ['/', '/Volume1', '/volume1', '/mnt', '/data']) {
+      try {
+        final rootFiles = await listDirectory(rootPath);
+        if (rootFiles.isNotEmpty) {
+          // 如果是子目录，调整路径
+          if (rootPath != '/') {
+            return rootFiles.map((f) => UGreenFileInfo(
+              name: f.name,
+              path: f.path,
+              isDir: f.isDir,
+              size: f.size,
+              modified: f.modified,
+              created: f.created,
+              mimeType: f.mimeType,
+            )).toList();
+          }
+          return rootFiles;
+        }
+      } catch (e) {
+        logger.d('UGreenApi: 尝试根路径 $rootPath 失败');
+      }
     }
 
-    // 如果根目录也为空，创建默认的共享文件夹列表
+    // 如果根目录也为空，创建常见的 UGOS 共享文件夹列表
     logger.w('UGreenApi: 无法获取共享列表，使用默认共享文件夹');
     return [
       const UGreenFileInfo(name: 'Public', path: '/Public', isDir: true),
       const UGreenFileInfo(name: 'home', path: '/home', isDir: true),
+      const UGreenFileInfo(name: 'video', path: '/video', isDir: true),
+      const UGreenFileInfo(name: 'music', path: '/music', isDir: true),
+      const UGreenFileInfo(name: 'photo', path: '/photo', isDir: true),
+      const UGreenFileInfo(name: 'download', path: '/download', isDir: true),
     ];
   }
 
@@ -572,26 +676,34 @@ class UGreenApi {
     final isDir = file['is_dir'] == true ||
                   file['isdir'] == true ||
                   file['type'] == 'dir' ||
-                  file['type'] == 'folder';
+                  file['type'] == 'folder' ||
+                  file['type'] == 'directory';
 
     DateTime? modified;
-    final modifiedValue = file['modified'] ?? file['mtime'];
+    // 尝试多种可能的时间字段名
+    final modifiedValue = file['modified'] ??
+                          file['mtime'] ??
+                          file['modify_time'] ??
+                          file['modifyTime'] ??
+                          file['last_modified'] ??
+                          file['lastModified'] ??
+                          file['update_time'] ??
+                          file['updateTime'] ??
+                          file['time'] ??
+                          file['date'];
     if (modifiedValue != null) {
-      if (modifiedValue is int) {
-        modified = DateTime.fromMillisecondsSinceEpoch(modifiedValue * 1000);
-      } else if (modifiedValue is String) {
-        modified = DateTime.tryParse(modifiedValue);
-      }
+      modified = _parseDateTime(modifiedValue);
     }
 
     DateTime? created;
-    final createdValue = file['created'] ?? file['ctime'];
+    final createdValue = file['created'] ??
+                         file['ctime'] ??
+                         file['create_time'] ??
+                         file['createTime'] ??
+                         file['creation_time'] ??
+                         file['creationTime'];
     if (createdValue != null) {
-      if (createdValue is int) {
-        created = DateTime.fromMillisecondsSinceEpoch(createdValue * 1000);
-      } else if (createdValue is String) {
-        created = DateTime.tryParse(createdValue);
-      }
+      created = _parseDateTime(createdValue);
     }
 
     return UGreenFileInfo(
@@ -603,5 +715,43 @@ class UGreenApi {
       created: created,
       mimeType: file['mime_type']?.toString() ?? file['mimetype']?.toString(),
     );
+  }
+
+  /// 解析日期时间，支持多种格式
+  DateTime? _parseDateTime(dynamic value) {
+    if (value == null) return null;
+
+    if (value is int) {
+      // 检查是秒还是毫秒 (Unix 时间戳)
+      // 如果值小于 10000000000，假设是秒；否则是毫秒
+      if (value < 10000000000) {
+        return DateTime.fromMillisecondsSinceEpoch(value * 1000);
+      } else {
+        return DateTime.fromMillisecondsSinceEpoch(value);
+      }
+    } else if (value is String) {
+      // 首先尝试标准解析
+      final parsed = DateTime.tryParse(value);
+      if (parsed != null) return parsed;
+
+      // 尝试解析常见的日期格式
+      // 格式: "2024-01-15 10:30:00"
+      final parts = value.split(RegExp(r'[\s\-/:]'));
+      if (parts.length >= 3) {
+        try {
+          final year = int.parse(parts[0]);
+          final month = int.parse(parts[1]);
+          final day = int.parse(parts[2]);
+          final hour = parts.length > 3 ? int.tryParse(parts[3]) ?? 0 : 0;
+          final minute = parts.length > 4 ? int.tryParse(parts[4]) ?? 0 : 0;
+          final second = parts.length > 5 ? int.tryParse(parts[5]) ?? 0 : 0;
+          return DateTime(year, month, day, hour, minute, second);
+        } catch (e) {
+          logger.d('UGreenApi: 无法解析日期 $value');
+        }
+      }
+    }
+
+    return null;
   }
 }

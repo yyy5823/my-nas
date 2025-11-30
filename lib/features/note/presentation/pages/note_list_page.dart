@@ -6,11 +6,13 @@ import 'package:http/http.dart' as http;
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
-import 'package:my_nas/features/connection/presentation/providers/connection_provider.dart';
+import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/note/data/services/markdown_parser.dart';
 import 'package:my_nas/features/note/domain/entities/note_item.dart';
 import 'package:my_nas/features/note/presentation/pages/note_editor_page.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
+import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
+import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/empty_widget.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
@@ -24,7 +26,11 @@ final noteListProvider =
 
 sealed class NoteListState {}
 
-class NoteListLoading extends NoteListState {}
+class NoteListLoading extends NoteListState {
+  NoteListLoading({this.progress = 0, this.currentFolder});
+  final double progress;
+  final String? currentFolder;
+}
 
 class NoteListNotConnected extends NoteListState {}
 
@@ -45,26 +51,80 @@ class NoteListNotifier extends StateNotifier<NoteListState> {
 
   final Ref _ref;
 
-  Future<void> loadNotes() async {
+  Future<void> loadNotes({int maxDepth = 3}) async {
     state = NoteListLoading();
 
-    final adapter = _ref.read(activeAdapterProvider);
-    if (adapter == null) {
+    final connections = _ref.read(activeConnectionsProvider);
+    final configAsync = _ref.read(mediaLibraryConfigProvider);
+
+    // 等待配置加载完成
+    MediaLibraryConfig? config = configAsync.valueOrNull;
+    if (config == null) {
+      state = NoteListLoading(progress: 0, currentFolder: '正在加载配置...');
+
+      for (var i = 0; i < 10; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+        final updated = _ref.read(mediaLibraryConfigProvider);
+        config = updated.valueOrNull;
+        if (config != null) break;
+
+        if (updated.hasError) {
+          state = NoteListError('加载媒体库配置失败');
+          return;
+        }
+      }
+
+      if (config == null) {
+        state = NoteListLoaded([]);
+        return;
+      }
+    }
+
+    // 获取已启用的笔记路径
+    final notePaths = config.getEnabledPathsForType(MediaType.note);
+
+    if (notePaths.isEmpty) {
+      state = NoteListLoaded([]);
+      return;
+    }
+
+    // 过滤出已连接的路径
+    final connectedPaths = notePaths.where((path) {
+      final conn = connections[path.sourceId];
+      return conn?.status == SourceStatus.connected;
+    }).toList();
+
+    if (connectedPaths.isEmpty) {
       state = NoteListNotConnected();
       return;
     }
 
     try {
-      final shares = await adapter.fileSystem.listDirectory('/');
       final noteFiles = <FileItem>[];
+      final sourceIds = <String, String>{};  // 文件路径 -> sourceId 映射
 
-      for (final share in shares) {
-        if (share.isDirectory) {
-          try {
-            await _scanForNotes(adapter.fileSystem, share.path, noteFiles, depth: 0);
-          } on Exception {
-            // 忽略无法访问的目录
-          }
+      for (var i = 0; i < connectedPaths.length; i++) {
+        final mediaPath = connectedPaths[i];
+        final connection = connections[mediaPath.sourceId];
+        if (connection == null) continue;
+
+        state = NoteListLoading(
+          progress: i / connectedPaths.length,
+          currentFolder: mediaPath.displayName,
+        );
+
+        try {
+          await _scanForNotes(
+            connection.adapter.fileSystem,
+            mediaPath.path,
+            noteFiles,
+            sourceIds,
+            sourceId: mediaPath.sourceId,
+            depth: 0,
+            maxDepth: maxDepth,
+          );
+        } on Exception catch (e) {
+          logger.w('扫描笔记文件夹失败: ${mediaPath.path} - $e');
         }
       }
 
@@ -72,7 +132,11 @@ class NoteListNotifier extends StateNotifier<NoteListState> {
       final notes = <NoteItem>[];
       for (final file in noteFiles) {
         try {
-          final url = await adapter.fileSystem.getFileUrl(file.path);
+          final sourceId = sourceIds[file.path];
+          final connection = sourceId != null ? connections[sourceId] : null;
+          if (connection == null) continue;
+
+          final url = await connection.adapter.fileSystem.getFileUrl(file.path);
           var note = NoteItem.fromFileItem(file, url);
 
           // 尝试获取内容预览
@@ -101,6 +165,7 @@ class NoteListNotifier extends StateNotifier<NoteListState> {
         return bTime.compareTo(aTime);
       });
 
+      logger.i('笔记扫描完成，共找到 ${notes.length} 个笔记');
       state = NoteListLoaded(notes);
     } on Exception catch (e) {
       state = NoteListError(e.toString());
@@ -110,19 +175,41 @@ class NoteListNotifier extends StateNotifier<NoteListState> {
   Future<void> _scanForNotes(
     NasFileSystem fs,
     String path,
-    List<FileItem> notes, {
+    List<FileItem> notes,
+    Map<String, String> sourceIds, {
+    required String sourceId,
     required int depth,
     int maxDepth = 3,
   }) async {
     if (depth > maxDepth) return;
 
-    final items = await fs.listDirectory(path);
-    for (final item in items) {
-      if (item.isDirectory) {
-        await _scanForNotes(fs, item.path, notes, depth: depth + 1);
-      } else if (_isNoteFile(item.name)) {
-        notes.add(item);
+    try {
+      final items = await fs.listDirectory(path);
+      for (final item in items) {
+        // 跳过隐藏文件夹和系统文件夹
+        if (item.name.startsWith('.') ||
+            item.name.startsWith('@') ||
+            item.name == '#recycle') {
+          continue;
+        }
+
+        if (item.isDirectory) {
+          await _scanForNotes(
+            fs,
+            item.path,
+            notes,
+            sourceIds,
+            sourceId: sourceId,
+            depth: depth + 1,
+            maxDepth: maxDepth,
+          );
+        } else if (_isNoteFile(item.name)) {
+          notes.add(item);
+          sourceIds[item.path] = sourceId;
+        }
       }
+    } on Exception catch (e) {
+      logger.w('扫描子文件夹失败: $path - $e');
     }
   }
 
@@ -166,7 +253,8 @@ class NoteListPage extends ConsumerWidget {
           _buildAppBar(context, ref, isDark),
           Expanded(
             child: switch (state) {
-              NoteListLoading() => const LoadingWidget(message: '扫描笔记中...'),
+              NoteListLoading(:final progress, :final currentFolder) =>
+                _buildLoadingState(progress, currentFolder),
               NoteListNotConnected() => const MediaSetupWidget(
                   mediaType: MediaType.note,
                   icon: Icons.note_outlined,
@@ -253,6 +341,54 @@ class NoteListPage extends ConsumerWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildLoadingState(double progress, String? currentFolder) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 60,
+            height: 60,
+            child: CircularProgressIndicator(
+              value: progress > 0 ? progress : null,
+              strokeWidth: 4,
+              color: AppColors.primary,
+            ),
+          ),
+          const SizedBox(height: 24),
+          const Text(
+            '扫描笔记中...',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          if (currentFolder != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              currentFolder,
+              style: const TextStyle(
+                fontSize: 14,
+                color: Colors.grey,
+              ),
+            ),
+          ],
+          if (progress > 0) ...[
+            const SizedBox(height: 8),
+            Text(
+              '${(progress * 100).toInt()}%',
+              style: TextStyle(
+                fontSize: 14,
+                color: AppColors.primary,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

@@ -3,15 +3,27 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
 import 'package:my_nas/features/book/presentation/pages/book_reader_page.dart';
-import 'package:my_nas/features/connection/presentation/providers/connection_provider.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
+import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
+import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/empty_widget.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
-import 'package:my_nas/shared/widgets/loading_widget.dart';
 import 'package:my_nas/shared/widgets/media_setup_widget.dart';
+
+/// 图书文件及其来源
+class BookFileWithSource {
+  BookFileWithSource({
+    required this.file,
+    required this.sourceId,
+  });
+
+  final FileItem file;
+  final String sourceId;
+}
 
 /// 图书列表状态
 final bookListProvider =
@@ -20,13 +32,17 @@ final bookListProvider =
 
 sealed class BookListState {}
 
-class BookListLoading extends BookListState {}
+class BookListLoading extends BookListState {
+  BookListLoading({this.progress = 0, this.currentFolder});
+  final double progress;
+  final String? currentFolder;
+}
 
 class BookListNotConnected extends BookListState {}
 
 class BookListLoaded extends BookListState {
   BookListLoaded(this.books);
-  final List<FileItem> books;
+  final List<BookFileWithSource> books;
 }
 
 class BookListError extends BookListState {
@@ -50,29 +66,82 @@ class BookListNotifier extends StateNotifier<BookListState> {
     '.azw3',
   ];
 
-  Future<void> loadBooks() async {
+  Future<void> loadBooks({int maxDepth = 3}) async {
     state = BookListLoading();
 
-    final adapter = _ref.read(activeAdapterProvider);
-    if (adapter == null) {
+    final connections = _ref.read(activeConnectionsProvider);
+    final configAsync = _ref.read(mediaLibraryConfigProvider);
+
+    // 等待配置加载完成
+    MediaLibraryConfig? config = configAsync.valueOrNull;
+    if (config == null) {
+      state = BookListLoading(progress: 0, currentFolder: '正在加载配置...');
+
+      for (var i = 0; i < 10; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+        final updated = _ref.read(mediaLibraryConfigProvider);
+        config = updated.valueOrNull;
+        if (config != null) break;
+
+        if (updated.hasError) {
+          state = BookListError('加载媒体库配置失败');
+          return;
+        }
+      }
+
+      if (config == null) {
+        state = BookListLoaded([]);
+        return;
+      }
+    }
+
+    // 获取已启用的书籍路径
+    final bookPaths = config.getEnabledPathsForType(MediaType.book);
+
+    if (bookPaths.isEmpty) {
+      state = BookListLoaded([]);
+      return;
+    }
+
+    // 过滤出已连接的路径
+    final connectedPaths = bookPaths.where((path) {
+      final conn = connections[path.sourceId];
+      return conn?.status == SourceStatus.connected;
+    }).toList();
+
+    if (connectedPaths.isEmpty) {
       state = BookListNotConnected();
       return;
     }
 
     try {
-      final shares = await adapter.fileSystem.listDirectory('/');
-      final books = <FileItem>[];
+      final books = <BookFileWithSource>[];
 
-      for (final share in shares) {
-        if (share.isDirectory) {
-          try {
-            await _scanForBooks(adapter.fileSystem, share.path, books, depth: 0);
-          } on Exception {
-            // 忽略无法访问的目录
-          }
+      for (var i = 0; i < connectedPaths.length; i++) {
+        final mediaPath = connectedPaths[i];
+        final connection = connections[mediaPath.sourceId];
+        if (connection == null) continue;
+
+        state = BookListLoading(
+          progress: i / connectedPaths.length,
+          currentFolder: mediaPath.displayName,
+        );
+
+        try {
+          await _scanForBooks(
+            connection.adapter.fileSystem,
+            mediaPath.path,
+            books,
+            sourceId: mediaPath.sourceId,
+            depth: 0,
+            maxDepth: maxDepth,
+          );
+        } on Exception catch (e) {
+          logger.w('扫描书籍文件夹失败: ${mediaPath.path} - $e');
         }
       }
 
+      logger.i('书籍扫描完成，共找到 ${books.length} 本书');
       state = BookListLoaded(books);
     } on Exception catch (e) {
       state = BookListError(e.toString());
@@ -82,19 +151,38 @@ class BookListNotifier extends StateNotifier<BookListState> {
   Future<void> _scanForBooks(
     NasFileSystem fs,
     String path,
-    List<FileItem> books, {
+    List<BookFileWithSource> books, {
+    required String sourceId,
     required int depth,
     int maxDepth = 3,
   }) async {
     if (depth > maxDepth) return;
 
-    final items = await fs.listDirectory(path);
-    for (final item in items) {
-      if (item.isDirectory) {
-        await _scanForBooks(fs, item.path, books, depth: depth + 1);
-      } else if (_isBookFile(item.name)) {
-        books.add(item);
+    try {
+      final items = await fs.listDirectory(path);
+      for (final item in items) {
+        // 跳过隐藏文件夹和系统文件夹
+        if (item.name.startsWith('.') ||
+            item.name.startsWith('@') ||
+            item.name == '#recycle') {
+          continue;
+        }
+
+        if (item.isDirectory) {
+          await _scanForBooks(
+            fs,
+            item.path,
+            books,
+            sourceId: sourceId,
+            depth: depth + 1,
+            maxDepth: maxDepth,
+          );
+        } else if (_isBookFile(item.name)) {
+          books.add(BookFileWithSource(file: item, sourceId: sourceId));
+        }
       }
+    } on Exception catch (e) {
+      logger.w('扫描子文件夹失败: $path - $e');
     }
   }
 
@@ -119,7 +207,8 @@ class BookListPage extends ConsumerWidget {
           _buildAppBar(context, ref, isDark),
           Expanded(
             child: switch (state) {
-              BookListLoading() => const LoadingWidget(message: '扫描图书中...'),
+              BookListLoading(:final progress, :final currentFolder) =>
+                _buildLoadingState(progress, currentFolder),
               BookListNotConnected() => const MediaSetupWidget(
                   mediaType: MediaType.book,
                   icon: Icons.menu_book_outlined,
@@ -136,6 +225,54 @@ class BookListPage extends ConsumerWidget {
               BookListLoaded(:final books) => _buildBookGrid(context, ref, books, isDark),
             },
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLoadingState(double progress, String? currentFolder) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 60,
+            height: 60,
+            child: CircularProgressIndicator(
+              value: progress > 0 ? progress : null,
+              strokeWidth: 4,
+              color: AppColors.primary,
+            ),
+          ),
+          const SizedBox(height: 24),
+          const Text(
+            '扫描图书中...',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          if (currentFolder != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              currentFolder,
+              style: const TextStyle(
+                fontSize: 14,
+                color: Colors.grey,
+              ),
+            ),
+          ],
+          if (progress > 0) ...[
+            const SizedBox(height: 8),
+            Text(
+              '${(progress * 100).toInt()}%',
+              style: TextStyle(
+                fontSize: 14,
+                color: AppColors.primary,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -213,7 +350,7 @@ class BookListPage extends ConsumerWidget {
   Widget _buildBookGrid(
     BuildContext context,
     WidgetRef ref,
-    List<FileItem> books,
+    List<BookFileWithSource> books,
     bool isDark,
   ) {
     return GridView.builder(
@@ -239,13 +376,14 @@ class _BookGridItem extends ConsumerWidget {
     required this.isDark,
   });
 
-  final FileItem book;
+  final BookFileWithSource book;
   final bool isDark;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final format = BookItem.formatFromExtension(book.name);
-    final displayName = _getDisplayName(book.name);
+    final file = book.file;
+    final format = BookItem.formatFromExtension(file.name);
+    final displayName = _getDisplayName(file.name);
 
     return GestureDetector(
       onTap: () => _openBook(context, ref),
@@ -331,7 +469,7 @@ class _BookGridItem extends ConsumerWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      book.displaySize,
+                      file.displaySize,
                       style: context.textTheme.labelSmall?.copyWith(
                         color: isDark
                             ? AppColors.darkOnSurfaceVariant
@@ -394,11 +532,13 @@ class _BookGridItem extends ConsumerWidget {
   }
 
   Future<void> _openBook(BuildContext context, WidgetRef ref) async {
-    final adapter = ref.read(activeAdapterProvider);
-    if (adapter == null) return;
+    final connections = ref.read(activeConnectionsProvider);
+    final connection = connections[book.sourceId];
+    if (connection == null) return;
 
-    final url = await adapter.fileSystem.getFileUrl(book.path);
-    final bookItem = BookItem.fromFileItem(book, url);
+    final file = book.file;
+    final url = await connection.adapter.fileSystem.getFileUrl(file.path);
+    final bookItem = BookItem.fromFileItem(file, url);
 
     if (!context.mounted) return;
 

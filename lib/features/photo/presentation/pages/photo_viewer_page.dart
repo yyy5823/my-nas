@@ -93,12 +93,13 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
 
     return Scaffold(
       backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          // 照片查看器
-          GestureDetector(
-            onTap: _toggleOverlay,
-            child: PageView.builder(
+      body: GestureDetector(
+        onTap: _toggleOverlay,
+        behavior: HitTestBehavior.opaque,
+        child: Stack(
+          children: [
+            // 照片查看器
+            PageView.builder(
               controller: _pageController,
               itemCount: widget.photos.length,
               onPageChanged: (index) {
@@ -111,7 +112,6 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
                 return _PhotoPage(photo: item);
               },
             ),
-          ),
 
           // 顶部工具栏
           FadeTransition(
@@ -155,6 +155,7 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
               ),
           ],
         ],
+        ),
       ),
     );
   }

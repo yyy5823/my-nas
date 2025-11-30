@@ -151,7 +151,7 @@ class UGreenFileSystem implements NasFileSystem {
 
   @override
   Future<String?> getThumbnailUrl(String path, {ThumbnailSize? size}) async {
-    // 绿联 NAS 可能不支持缩略图，返回 null
-    return null;
+    // 绿联 NAS 尝试获取缩略图
+    return api.getThumbnailUrl(path, size: size);
   }
 }
