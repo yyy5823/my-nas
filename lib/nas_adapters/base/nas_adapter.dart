@@ -5,6 +5,7 @@ import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 enum NasAdapterType {
   synology,
   ugreen,
+  fnos,
   webdav,
   smb,
   sftp,

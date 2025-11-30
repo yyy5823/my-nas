@@ -332,6 +332,7 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
             switch (type) {
               SourceType.synology => Icons.storage,
               SourceType.ugreen => Icons.storage,
+              SourceType.fnos => Icons.storage,
               SourceType.qnap => Icons.storage,
               SourceType.webdav => Icons.cloud,
               SourceType.smb => Icons.folder_shared,

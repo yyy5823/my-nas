@@ -492,23 +492,35 @@ class UGreenApi {
   Future<List<UGreenFileInfo>> listShares() async {
     logger.i('UGreenApi: 获取共享文件夹列表');
 
+    // 首先尝试通过存储池 API 获取共享文件夹
+    // 这是 Home Assistant 集成发现的可靠端点
+    try {
+      final poolResult = await _getSharesFromStoragePool();
+      if (poolResult.isNotEmpty) {
+        logger.i('UGreenApi: 从存储池获取到 ${poolResult.length} 个共享文件夹');
+        return poolResult;
+      }
+    } catch (e) {
+      logger.w('UGreenApi: 从存储池获取共享失败', e);
+    }
+
     // 尝试不同的共享端点和参数组合
     final attempts = [
       // 存储管理相关端点
-      {'endpoint': '/ugreen/v1/storage/pool/list', 'data': <String, dynamic>{}, 'method': 'GET'},
+      {'endpoint': '/ugreen/v1/storage/share/list', 'data': <String, dynamic>{}, 'method': 'GET'},
       {'endpoint': '/ugreen/v1/storage/share/list', 'data': <String, dynamic>{}},
-      {'endpoint': '/ugreen/v1/storage/shares', 'data': <String, dynamic>{}},
-      {'endpoint': '/ugreen/v1/storage/volume/list', 'data': <String, dynamic>{}},
+      {'endpoint': '/ugreen/v1/storage/shares', 'data': <String, dynamic>{}, 'method': 'GET'},
+      {'endpoint': '/ugreen/v1/storage/volume/list', 'data': <String, dynamic>{}, 'method': 'GET'},
       // 文件管理相关端点
-      {'endpoint': '/ugreen/v1/filemgr/share/list', 'data': <String, dynamic>{}},
-      {'endpoint': '/ugreen/v1/filemgr/shares', 'data': <String, dynamic>{}},
-      {'endpoint': '/ugreen/v1/filemgr/root', 'data': <String, dynamic>{}},
+      {'endpoint': '/ugreen/v1/filemgr/share/list', 'data': <String, dynamic>{}, 'method': 'GET'},
+      {'endpoint': '/ugreen/v1/filemgr/shares', 'data': <String, dynamic>{}, 'method': 'GET'},
+      {'endpoint': '/ugreen/v1/filemgr/root', 'data': <String, dynamic>{}, 'method': 'GET'},
       // 通用共享端点
-      {'endpoint': '/ugreen/v1/share/list', 'data': <String, dynamic>{}},
-      {'endpoint': '/ugreen/v1/shares', 'data': <String, dynamic>{}},
+      {'endpoint': '/ugreen/v1/share/list', 'data': <String, dynamic>{}, 'method': 'GET'},
+      {'endpoint': '/ugreen/v1/shares', 'data': <String, dynamic>{}, 'method': 'GET'},
       // 用户目录相关
-      {'endpoint': '/ugreen/v1/user/home', 'data': <String, dynamic>{}},
-      {'endpoint': '/ugreen/v1/user/shares', 'data': <String, dynamic>{}},
+      {'endpoint': '/ugreen/v1/user/home', 'data': <String, dynamic>{}, 'method': 'GET'},
+      {'endpoint': '/ugreen/v1/user/shares', 'data': <String, dynamic>{}, 'method': 'GET'},
     ];
 
     for (final attempt in attempts) {
@@ -521,41 +533,10 @@ class UGreenApi {
         final response = await _request(endpoint, data: data.isEmpty ? null : data, method: method);
 
         final respData = response.data;
-        logger.d('UGreenApi: listShares 响应 => $respData');
+        logger.d('UGreenApi: listShares 响应 ($endpoint) => $respData');
 
         if (respData is Map && respData['code'] == 200) {
           final items = <UGreenFileInfo>[];
-
-          // 处理存储池响应格式 - 从 pool/list 提取卷信息
-          if (endpoint.contains('pool/list')) {
-            final pools = respData['data']?['pools'] ?? respData['data'] ?? [];
-            if (pools is List) {
-              for (final pool in pools) {
-                if (pool is Map) {
-                  // 从每个池提取共享文件夹
-                  final volumes = pool['volumes'] ?? pool['shares'] ?? [];
-                  if (volumes is List) {
-                    for (final vol in volumes) {
-                      if (vol is Map) {
-                        final name = vol['name']?.toString() ??
-                                     vol['volume_name']?.toString() ??
-                                     '';
-                        if (name.isEmpty) continue;
-                        final path = vol['path']?.toString() ??
-                                     vol['mount_point']?.toString() ??
-                                     '/$name';
-                        items.add(UGreenFileInfo(
-                          name: name,
-                          path: path,
-                          isDir: true,
-                        ));
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
 
           // 尝试不同的响应结构
           final shares = respData['data']?['list'] ??
@@ -595,7 +576,7 @@ class UGreenApi {
           }
         }
       } catch (e) {
-        logger.w('UGreenApi: 尝试失败', e);
+        logger.w('UGreenApi: 尝试失败 ($attempt)', e);
       }
     }
 
@@ -607,6 +588,7 @@ class UGreenApi {
       try {
         final rootFiles = await listDirectory(rootPath);
         if (rootFiles.isNotEmpty) {
+          logger.i('UGreenApi: 从 $rootPath 获取到 ${rootFiles.length} 个文件夹');
           // 如果是子目录，调整路径
           if (rootPath != '/') {
             return rootFiles.map((f) => UGreenFileInfo(
@@ -626,16 +608,119 @@ class UGreenApi {
       }
     }
 
-    // 如果根目录也为空，创建常见的 UGOS 共享文件夹列表
-    logger.w('UGreenApi: 无法获取共享列表，使用默认共享文件夹');
-    return [
-      const UGreenFileInfo(name: 'Public', path: '/Public', isDir: true),
-      const UGreenFileInfo(name: 'home', path: '/home', isDir: true),
-      const UGreenFileInfo(name: 'video', path: '/video', isDir: true),
-      const UGreenFileInfo(name: 'music', path: '/music', isDir: true),
-      const UGreenFileInfo(name: 'photo', path: '/photo', isDir: true),
-      const UGreenFileInfo(name: 'download', path: '/download', isDir: true),
-    ];
+    // 如果所有尝试都失败，返回空列表而不是硬编码的默认值
+    // 这样用户可以知道实际上没有获取到共享文件夹
+    logger.e('UGreenApi: 无法获取共享列表！请检查 API 连接和权限');
+    logger.e('UGreenApi: 你可能需要在 NAS 上创建共享文件夹或检查用户权限');
+    return [];
+  }
+
+  /// 从存储池 API 获取共享文件夹
+  ///
+  /// 使用 /ugreen/v1/storage/pool/list 端点获取存储池信息
+  /// 然后从中提取共享文件夹路径
+  Future<List<UGreenFileInfo>> _getSharesFromStoragePool() async {
+    logger.d('UGreenApi: 尝试从存储池获取共享文件夹');
+
+    final response = await _request('/ugreen/v1/storage/pool/list', method: 'GET');
+    final respData = response.data;
+    logger.i('UGreenApi: storage/pool/list 完整响应 => $respData');
+
+    if (respData is! Map || respData['code'] != 200) {
+      return [];
+    }
+
+    final items = <UGreenFileInfo>[];
+    final data = respData['data'];
+
+    // 尝试多种可能的响应结构
+    // 结构 1: { pools: [ { volumes: [...] } ] }
+    final pools = data?['pools'] ?? data?['list'] ?? (data is List ? data : null) ?? [];
+    if (pools is List) {
+      for (final pool in pools) {
+        if (pool is! Map) continue;
+
+        logger.d('UGreenApi: 处理存储池: ${pool['name']} (${pool['id']})');
+
+        // 从池中提取卷/共享
+        final volumes = pool['volumes'] ?? pool['shares'] ?? pool['folders'] ?? [];
+        if (volumes is List) {
+          for (final vol in volumes) {
+            if (vol is! Map) continue;
+
+            final name = vol['name']?.toString() ??
+                         vol['volume_name']?.toString() ??
+                         vol['share_name']?.toString() ??
+                         '';
+            if (name.isEmpty) continue;
+
+            // 尝试获取路径
+            var path = vol['path']?.toString() ??
+                       vol['mount_point']?.toString() ??
+                       vol['share_path']?.toString();
+
+            // 如果没有路径，根据名称构造
+            if (path == null || path.isEmpty) {
+              path = '/$name';
+            }
+
+            logger.d('UGreenApi: 发现共享: $name => $path');
+            items.add(UGreenFileInfo(
+              name: name,
+              path: path,
+              isDir: true,
+            ));
+          }
+        }
+
+        // 有些 UGOS 版本可能将共享文件夹放在 pool 级别
+        final shareFolders = pool['share_folders'] ?? pool['shared_folders'] ?? [];
+        if (shareFolders is List) {
+          for (final folder in shareFolders) {
+            if (folder is! Map) continue;
+
+            final name = folder['name']?.toString() ?? '';
+            if (name.isEmpty) continue;
+
+            var path = folder['path']?.toString() ?? '/$name';
+
+            logger.d('UGreenApi: 发现共享文件夹: $name => $path');
+            items.add(UGreenFileInfo(
+              name: name,
+              path: path,
+              isDir: true,
+            ));
+          }
+        }
+      }
+    }
+
+    // 结构 2: 直接的共享列表
+    final directShares = data?['shares'] ?? data?['volumes'] ?? [];
+    if (directShares is List) {
+      for (final share in directShares) {
+        if (share is! Map) continue;
+
+        final name = share['name']?.toString() ?? '';
+        if (name.isEmpty) continue;
+
+        final path = share['path']?.toString() ??
+                     share['mount_point']?.toString() ??
+                     '/$name';
+
+        // 避免重复
+        if (!items.any((item) => item.path == path)) {
+          logger.d('UGreenApi: 发现直接共享: $name => $path');
+          items.add(UGreenFileInfo(
+            name: name,
+            path: path,
+            isDir: true,
+          ));
+        }
+      }
+    }
+
+    return items;
   }
 
   /// 发送 API 请求（自动处理 token）

@@ -3,11 +3,52 @@ name: CI
 on:
   push:
     branches: [main, develop]
+    paths:
+      - 'pubspec.yaml'
   pull_request:
     branches: [main, develop]
+    paths:
+      - 'pubspec.yaml'
 
 jobs:
+  # 检查是否需要运行 CI
+  check-version:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check if version changed
+        id: check
+        run: |
+          # 获取当前版本
+          CURRENT_VERSION=$(grep "^version:" pubspec.yaml | sed 's/version: //')
+          echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "Current version: $CURRENT_VERSION"
+
+          # PR 情况下总是运行
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "Pull request - will run CI"
+            exit 0
+          fi
+
+          # 检查版本是否改变
+          if git diff HEAD~1 HEAD -- pubspec.yaml | grep -q "^+version:"; then
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "Version changed - will run CI"
+          else
+            echo "should_run=false" >> $GITHUB_OUTPUT
+            echo "Version unchanged - skipping CI"
+          fi
+
   analyze:
+    needs: check-version
+    if: needs.check-version.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,6 +66,8 @@ jobs:
         run: flutter analyze --no-fatal-infos
 
   test:
+    needs: check-version
+    if: needs.check-version.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,59 +84,9 @@ jobs:
       - name: Run tests
         run: flutter test
 
-  # 检查是否需要构建
-  check-build-needed:
-    runs-on: ubuntu-latest
-    outputs:
-      should_build: ${{ steps.check.outputs.should_build }}
-      version: ${{ steps.check.outputs.version }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
-
-      - name: Check if build is needed
-        id: check
-        run: |
-          # 获取当前版本
-          CURRENT_VERSION=$(grep "^version:" pubspec.yaml | sed 's/version: //')
-          echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
-          echo "Current version: $CURRENT_VERSION"
-
-          # 检查上一次 build-check 是否失败
-          LAST_BUILD_STATUS="success"
-
-          # 尝试获取上一次工作流运行状态
-          if command -v gh &> /dev/null; then
-            LAST_RUN=$(gh run list --workflow=ci.yml --limit=2 --json conclusion,headSha | jq -r '.[1].conclusion // "success"' 2>/dev/null || echo "success")
-            if [ "$LAST_RUN" = "failure" ]; then
-              LAST_BUILD_STATUS="failure"
-            fi
-          fi
-
-          echo "Last build status: $LAST_BUILD_STATUS"
-
-          # 如果上次构建失败，本次需要构建
-          if [ "$LAST_BUILD_STATUS" = "failure" ]; then
-            echo "should_build=true" >> $GITHUB_OUTPUT
-            echo "Build needed: last build failed"
-            exit 0
-          fi
-
-          # 检查版本是否改变
-          if git diff HEAD~1 HEAD -- pubspec.yaml | grep -q "^+version:"; then
-            echo "should_build=true" >> $GITHUB_OUTPUT
-            echo "Build needed: version changed"
-          else
-            echo "should_build=false" >> $GITHUB_OUTPUT
-            echo "Build not needed: version unchanged and last build succeeded"
-          fi
-        env:
-          GH_TOKEN: ${{ github.token }}
-
   build-check:
-    needs: [analyze, check-build-needed]
-    if: needs.check-build-needed.outputs.should_build == 'true'
+    needs: [check-version, analyze]
+    if: needs.check-version.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -116,15 +109,17 @@ jobs:
       - name: Build Android (debug)
         run: flutter build apk --debug
 
-  # 当跳过构建时输出提示
-  build-skipped:
-    needs: [analyze, check-build-needed]
-    if: needs.check-build-needed.outputs.should_build == 'false'
+  # 当跳过 CI 时输出提示
+  ci-skipped:
+    needs: check-version
+    if: needs.check-version.outputs.should_run == 'false'
     runs-on: ubuntu-latest
     steps:
-      - name: Build skipped
+      - name: CI skipped
         run: |
-          echo "Build check skipped because:"
-          echo "- Version has not changed"
-          echo "- Previous build was successful"
-          echo "Current version: ${{ needs.check-build-needed.outputs.version }}"
+          echo "CI skipped because version has not changed"
+          echo "Current version: ${{ needs.check-version.outputs.version }}"
+          echo ""
+          echo "CI only runs when:"
+          echo "- pubspec.yaml version is updated"
+          echo "- A pull request is opened"

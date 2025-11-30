@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 enum SourceType {
   synology('Synology NAS', 'synology'),
   ugreen('绿联 NAS', 'ugreen'),
+  fnos('飞牛 fnOS', 'fnos'),
   qnap('QNAP NAS', 'qnap'),
   webdav('WebDAV', 'webdav'),
   smb('SMB/CIFS', 'smb'),
@@ -17,6 +18,7 @@ enum SourceType {
   int get defaultPort => switch (this) {
     SourceType.synology => 5001,
     SourceType.ugreen => 9999,
+    SourceType.fnos => 5666,
     SourceType.qnap => 8080,
     SourceType.webdav => 443,
     SourceType.smb => 445,
@@ -27,9 +29,10 @@ enum SourceType {
   bool get isSupported => switch (this) {
     SourceType.synology => true,
     SourceType.ugreen => true,
+    SourceType.fnos => true,
     SourceType.webdav => true,
+    SourceType.smb => true,
     SourceType.qnap => false,
-    SourceType.smb => false,
     SourceType.local => false,
   };
 }

@@ -7,6 +7,8 @@ import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/nas_adapters/base/nas_adapter.dart';
 import 'package:my_nas/nas_adapters/base/nas_connection.dart';
+import 'package:my_nas/nas_adapters/fnos/fnos_adapter.dart';
+import 'package:my_nas/nas_adapters/smb/smb_adapter.dart';
 import 'package:my_nas/nas_adapters/synology/synology_adapter.dart';
 import 'package:my_nas/nas_adapters/ugreen/ugreen_adapter.dart';
 import 'package:my_nas/nas_adapters/webdav/webdav_adapter.dart';
@@ -462,7 +464,9 @@ class SourceManagerService {
     return switch (type) {
       SourceType.synology => SynologyAdapter(),
       SourceType.ugreen => UGreenAdapter(),
+      SourceType.fnos => FnOSAdapter(),
       SourceType.webdav => WebDavAdapter(),
+      SourceType.smb => SmbAdapter(),
       _ => throw UnimplementedError('适配器 $type 尚未实现'),
     };
   }
@@ -471,6 +475,7 @@ class SourceManagerService {
     return switch (type) {
       SourceType.synology => NasAdapterType.synology,
       SourceType.ugreen => NasAdapterType.ugreen,
+      SourceType.fnos => NasAdapterType.fnos,
       SourceType.webdav => NasAdapterType.webdav,
       SourceType.smb => NasAdapterType.smb,
       _ => throw UnimplementedError('适配器类型 $type 尚未实现'),

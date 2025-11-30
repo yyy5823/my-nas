@@ -66,6 +66,7 @@ dependencies:
   file_picker: ^10.3.7
   webdav_client: ^1.2.2
   package_info_plus: ^9.0.0
+  smb_connect: ^0.0.9
 
 dev_dependencies:
   flutter_test:
