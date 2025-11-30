@@ -31,8 +31,14 @@ class MainScaffold extends StatelessWidget {
     const _Destination(
       icon: Icons.menu_book_outlined,
       selectedIcon: Icons.menu_book_rounded,
-      label: '阅读',
+      label: '图书',
       route: Routes.book,
+    ),
+    const _Destination(
+      icon: Icons.note_outlined,
+      selectedIcon: Icons.note_rounded,
+      label: '笔记',
+      route: Routes.note,
     ),
     const _Destination(
       icon: Icons.settings_outlined,
@@ -85,7 +91,7 @@ class MainScaffold extends StatelessWidget {
     final isExtended = context.screenWidth > 1400;
 
     return Container(
-      width: isExtended ? 220 : 80,
+      width: isExtended ? 220 : 72,
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
         border: Border(
@@ -100,14 +106,14 @@ class MainScaffold extends StatelessWidget {
         children: [
           // Logo
           Padding(
-            padding: const EdgeInsets.all(20),
+            padding: EdgeInsets.all(isExtended ? 20 : 16),
             child: Row(
               mainAxisAlignment:
                   isExtended ? MainAxisAlignment.start : MainAxisAlignment.center,
               children: [
                 Container(
-                  width: 40,
-                  height: 40,
+                  width: isExtended ? 40 : 36,
+                  height: isExtended ? 40 : 36,
                   decoration: BoxDecoration(
                     gradient: AppColors.primaryGradient,
                     borderRadius: BorderRadius.circular(12),

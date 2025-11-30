@@ -7,6 +7,7 @@ import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/video/data/services/subtitle_service.dart';
 import 'package:my_nas/features/video/data/services/video_history_service.dart';
 import 'package:my_nas/features/video/domain/entities/video_item.dart';
+import 'package:my_nas/features/video/presentation/providers/playback_settings_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/playlist_provider.dart';
 
 /// 当前播放的视频
@@ -113,6 +114,9 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
     // 初始化历史服务
     _historyService.init();
 
+    // 应用保存的设置
+    _applySettings();
+
     // 监听播放状态
     _player.stream.playing.listen((playing) {
       state = state.copyWith(isPlaying: playing);
@@ -170,6 +174,15 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
         _playNextFromPlaylist();
       }
     });
+  }
+
+  /// 应用保存的设置
+  Future<void> _applySettings() async {
+    final settings = _ref.read(playbackSettingsProvider);
+    await _player.setVolume(settings.volume * 100);
+    await _player.setRate(settings.speed);
+    state = state.copyWith(volume: settings.volume, speed: settings.speed);
+    logger.i('VideoPlayerNotifier: 应用设置 volume=${settings.volume}, speed=${settings.speed}');
   }
 
   /// 尝试从播放列表播放下一个
@@ -284,8 +297,10 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
   }
 
   /// 快进
-  Future<void> seekForward({Duration amount = const Duration(seconds: 10)}) async {
-    final newPosition = state.position + amount;
+  Future<void> seekForward({Duration? amount}) async {
+    final settings = _ref.read(playbackSettingsProvider);
+    final seekAmount = amount ?? Duration(seconds: settings.seekInterval);
+    final newPosition = state.position + seekAmount;
     if (newPosition < state.duration) {
       await seek(newPosition);
     } else {
@@ -294,8 +309,10 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
   }
 
   /// 快退
-  Future<void> seekBackward({Duration amount = const Duration(seconds: 10)}) async {
-    final newPosition = state.position - amount;
+  Future<void> seekBackward({Duration? amount}) async {
+    final settings = _ref.read(playbackSettingsProvider);
+    final seekAmount = amount ?? Duration(seconds: settings.seekInterval);
+    final newPosition = state.position - seekAmount;
     if (newPosition > Duration.zero) {
       await seek(newPosition);
     } else {
@@ -306,11 +323,15 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
   /// 设置音量 (0.0 - 1.0)
   Future<void> setVolume(double volume) async {
     await _player.setVolume(volume * 100);
+    // 保存音量设置
+    await _ref.read(playbackSettingsProvider.notifier).setVolume(volume);
   }
 
   /// 设置播放速度
   Future<void> setSpeed(double speed) async {
     await _player.setRate(speed);
+    // 保存速度设置
+    await _ref.read(playbackSettingsProvider.notifier).setSpeed(speed);
   }
 
   /// 切换全屏

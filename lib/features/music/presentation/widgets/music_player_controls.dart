@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
+import 'package:my_nas/features/music/presentation/widgets/music_queue_sheet.dart';
 
 class MusicPlayerControls extends StatelessWidget {
   const MusicPlayerControls({
@@ -11,6 +12,7 @@ class MusicPlayerControls extends StatelessWidget {
     required this.onSeek,
     required this.onVolumeChange,
     required this.onTogglePlayMode,
+    this.onShowQueue,
     super.key,
   });
 
@@ -21,6 +23,7 @@ class MusicPlayerControls extends StatelessWidget {
   final ValueChanged<Duration> onSeek;
   final ValueChanged<double> onVolumeChange;
   final VoidCallback onTogglePlayMode;
+  final VoidCallback? onShowQueue;
 
   @override
   Widget build(BuildContext context) => Column(
@@ -129,9 +132,7 @@ class MusicPlayerControls extends StatelessWidget {
           ),
           // 播放列表
           IconButton(
-            onPressed: () {
-              // TODO: 显示播放列表
-            },
+            onPressed: onShowQueue ?? () => showMusicQueueSheet(context),
             icon: const Icon(Icons.queue_music),
             tooltip: '播放列表',
           ),

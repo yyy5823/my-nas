@@ -14,6 +14,7 @@ import 'package:my_nas/features/video/domain/entities/video_item.dart';
 import 'package:my_nas/features/video/presentation/providers/playlist_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/video_player_provider.dart';
 import 'package:my_nas/features/video/presentation/widgets/aspect_ratio_selector.dart';
+import 'package:my_nas/features/video/presentation/widgets/bookmark_sheet.dart';
 import 'package:my_nas/features/video/presentation/widgets/video_controls.dart';
 import 'package:my_nas/features/video/presentation/widgets/video_gesture_controller.dart';
 
@@ -285,6 +286,18 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
                     onPlayNext: () {
                       playerNotifier.playNext();
                       _startHideControlsTimer();
+                    },
+                    onShowBookmarks: () {
+                      showBookmarkSheet(
+                        context,
+                        videoPath: widget.video.path,
+                        videoName: widget.video.name,
+                        currentPosition: playerState.position,
+                        onSeek: (position) {
+                          playerNotifier.seek(position);
+                          _startHideControlsTimer();
+                        },
+                      );
                     },
                   );
                 },

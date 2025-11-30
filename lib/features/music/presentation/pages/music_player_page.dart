@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/features/music/presentation/providers/music_favorites_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
 import 'package:my_nas/features/music/presentation/widgets/music_player_controls.dart';
+import 'package:my_nas/features/music/presentation/widgets/music_queue_sheet.dart';
+import 'package:my_nas/features/music/presentation/widgets/music_settings_sheet.dart';
 
 class MusicPlayerPage extends ConsumerWidget {
   const MusicPlayerPage({super.key});
@@ -25,37 +29,53 @@ class MusicPlayerPage extends ConsumerWidget {
       );
     }
 
+    // 检查是否已收藏
+    final isFavoriteAsync = ref.watch(isMusicFavoriteProvider(currentMusic.path));
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('正在播放'),
         centerTitle: true,
         actions: [
-          PopupMenuButton<String>(
-            onSelected: (value) {
-              // TODO: 处理菜单操作
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'add_to_playlist',
-                child: Row(
-                  children: [
-                    Icon(Icons.playlist_add),
-                    SizedBox(width: 12),
-                    Text('添加到播放列表'),
-                  ],
-                ),
+          // 收藏按钮
+          isFavoriteAsync.when(
+            data: (isFavorite) => IconButton(
+              onPressed: () async {
+                final result = await ref
+                    .read(musicFavoritesProvider.notifier)
+                    .toggleFavorite(currentMusic);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(result ? '已添加到收藏' : '已取消收藏')),
+                  );
+                }
+              },
+              icon: Icon(
+                isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                color: isFavorite ? AppColors.fileAudio : null,
               ),
-              const PopupMenuItem(
-                value: 'share',
-                child: Row(
-                  children: [
-                    Icon(Icons.share),
-                    SizedBox(width: 12),
-                    Text('分享'),
-                  ],
-                ),
-              ),
-            ],
+              tooltip: isFavorite ? '取消收藏' : '收藏',
+            ),
+            loading: () => const SizedBox(
+              width: 48,
+              child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+            ),
+            error: (_, __) => IconButton(
+              onPressed: null,
+              icon: const Icon(Icons.favorite_border_rounded),
+            ),
+          ),
+          // 队列按钮
+          IconButton(
+            onPressed: () => showMusicQueueSheet(context),
+            icon: const Icon(Icons.queue_music_rounded),
+            tooltip: '播放队列',
+          ),
+          // 设置按钮
+          IconButton(
+            onPressed: () => showMusicSettingsSheet(context),
+            icon: const Icon(Icons.settings_rounded),
+            tooltip: '播放设置',
           ),
         ],
       ),

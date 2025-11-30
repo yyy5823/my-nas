@@ -6,12 +6,14 @@ import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/connection/presentation/providers/connection_provider.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/presentation/pages/music_player_page.dart';
+import 'package:my_nas/features/music/presentation/providers/music_favorites_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
 import 'package:my_nas/features/music/presentation/widgets/mini_player.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/empty_widget.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
 import 'package:my_nas/shared/widgets/loading_widget.dart';
+import 'package:my_nas/shared/widgets/not_connected_widget.dart';
 
 /// 音乐列表状态
 final musicListProvider =
@@ -21,6 +23,8 @@ final musicListProvider =
 sealed class MusicListState {}
 
 class MusicListLoading extends MusicListState {}
+
+class MusicListNotConnected extends MusicListState {}
 
 class MusicListLoaded extends MusicListState {
   MusicListLoaded(this.tracks);
@@ -44,7 +48,7 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
 
     final adapter = _ref.read(activeAdapterProvider);
     if (adapter == null) {
-      state = MusicListError('未连接到 NAS');
+      state = MusicListNotConnected();
       return;
     }
 
@@ -88,6 +92,10 @@ class MusicListPage extends ConsumerWidget {
           Expanded(
             child: switch (state) {
               MusicListLoading() => const LoadingWidget(message: '扫描音乐中...'),
+              MusicListNotConnected() => const NotConnectedWidget(
+                  icon: Icons.library_music_outlined,
+                  message: '连接到 NAS 后即可浏览和播放音乐',
+                ),
               MusicListError(:final message) => AppErrorWidget(
                   message: message,
                   onRetry: () => ref.read(musicListProvider.notifier).loadMusic(),
@@ -361,6 +369,24 @@ class _MusicListTile extends ConsumerWidget {
                         ],
                       ),
                     ),
+                    PopupMenuItem(
+                      value: 'add_to_favorites',
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.favorite_border_rounded,
+                            color: isDark ? AppColors.darkOnSurface : null,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            '收藏',
+                            style: TextStyle(
+                              color: isDark ? AppColors.darkOnSurface : null,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -389,7 +415,51 @@ class _MusicListTile extends ConsumerWidget {
     );
   }
 
-  void _handleMenuAction(BuildContext context, WidgetRef ref, String action) {
-    // TODO: 实现菜单操作
+  Future<void> _handleMenuAction(BuildContext context, WidgetRef ref, String action) async {
+    final adapter = ref.read(activeAdapterProvider);
+    if (adapter == null) return;
+
+    final url = await adapter.fileSystem.getFileUrl(track.path);
+    final musicItem = MusicItem.fromFileItem(track, url);
+
+    switch (action) {
+      case 'play_next':
+        // 获取当前队列和索引
+        final queue = ref.read(playQueueProvider);
+        final playerState = ref.read(musicPlayerControllerProvider);
+
+        if (queue.isEmpty) {
+          // 如果队列为空，直接播放
+          await ref.read(musicPlayerControllerProvider.notifier).play(musicItem);
+        } else {
+          // 插入到当前播放的下一个位置
+          final insertIndex = playerState.currentIndex + 1;
+          final newQueue = [...queue];
+          newQueue.insert(insertIndex.clamp(0, newQueue.length), musicItem);
+          ref.read(playQueueProvider.notifier).setQueue(newQueue);
+
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('已添加到下一首播放')),
+            );
+          }
+        }
+
+      case 'add_to_queue':
+        ref.read(playQueueProvider.notifier).addToQueue(musicItem);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('已添加到播放队列')),
+          );
+        }
+
+      case 'add_to_favorites':
+        final isFav = await ref.read(musicFavoritesProvider.notifier).toggleFavorite(musicItem);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(isFav ? '已添加到收藏' : '已取消收藏')),
+          );
+        }
+    }
   }
 }

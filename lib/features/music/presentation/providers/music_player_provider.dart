@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
+import 'package:my_nas/features/music/presentation/providers/music_favorites_provider.dart';
+import 'package:my_nas/features/music/presentation/providers/music_settings_provider.dart';
 
 /// 当前播放的音乐
 final currentMusicProvider = StateProvider<MusicItem?>((ref) => null);
@@ -132,6 +134,9 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   void _initPlayer() {
     _player = AudioPlayer();
 
+    // 应用保存的设置
+    _applySettings();
+
     // 监听播放状态
     _player.playingStream.listen((playing) {
       state = state.copyWith(isPlaying: playing);
@@ -163,6 +168,16 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     });
   }
 
+  /// 应用保存的设置
+  Future<void> _applySettings() async {
+    final settings = _ref.read(musicSettingsProvider);
+    await _player.setVolume(settings.volume);
+    state = state.copyWith(
+      volume: settings.volume,
+      playMode: settings.playMode,
+    );
+  }
+
   void _onTrackCompleted() {
     switch (state.playMode) {
       case PlayMode.repeatOne:
@@ -188,6 +203,9 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       }
 
       await _player.play();
+
+      // 添加到播放历史
+      _ref.read(musicHistoryProvider.notifier).addToHistory(music);
     } catch (e) {
       state = state.copyWith(errorMessage: e.toString());
     }
@@ -283,18 +301,30 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   Future<void> setVolume(double volume) async {
     await _player.setVolume(volume);
     state = state.copyWith(volume: volume);
+    // 同步保存到设置
+    _ref.read(musicSettingsProvider.notifier).setVolume(volume);
   }
 
   /// 切换播放模式
   void togglePlayMode() {
     final modes = PlayMode.values;
     final nextIndex = (state.playMode.index + 1) % modes.length;
-    state = state.copyWith(playMode: modes[nextIndex]);
+    final newMode = modes[nextIndex];
+    state = state.copyWith(playMode: newMode);
+    // 同步保存到设置
+    _ref.read(musicSettingsProvider.notifier).setPlayMode(newMode);
   }
 
   /// 设置播放模式
   void setPlayMode(PlayMode mode) {
     state = state.copyWith(playMode: mode);
+    // 同步保存到设置
+    _ref.read(musicSettingsProvider.notifier).setPlayMode(mode);
+  }
+
+  /// 更新当前索引（用于队列重排序后同步）
+  void updateCurrentIndex(int index) {
+    state = state.copyWith(currentIndex: index);
   }
 
   @override

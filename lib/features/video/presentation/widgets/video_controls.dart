@@ -5,6 +5,7 @@ import 'package:my_nas/features/video/domain/entities/video_item.dart';
 import 'package:my_nas/features/video/presentation/providers/video_player_provider.dart';
 import 'package:my_nas/features/video/presentation/widgets/aspect_ratio_selector.dart';
 import 'package:my_nas/features/video/presentation/widgets/audio_track_selector.dart';
+import 'package:my_nas/features/video/presentation/widgets/playback_settings_sheet.dart';
 import 'package:my_nas/features/video/presentation/widgets/playlist_sheet.dart';
 import 'package:my_nas/features/video/presentation/widgets/subtitle_selector.dart';
 
@@ -26,6 +27,7 @@ class VideoControls extends StatelessWidget {
     this.hasNext = false,
     this.onPlayPrevious,
     this.onPlayNext,
+    this.onShowBookmarks,
     super.key,
   });
 
@@ -45,6 +47,7 @@ class VideoControls extends StatelessWidget {
   final bool hasNext;
   final VoidCallback? onPlayPrevious;
   final VoidCallback? onPlayNext;
+  final VoidCallback? onShowBookmarks;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -120,6 +123,10 @@ class VideoControls extends StatelessWidget {
                   case 'audio':
                     showAudioTrackSelector(context);
                     break;
+                  case 'bookmark':
+                    onShowBookmarks?.call();
+                  case 'settings':
+                    showPlaybackSettingsSheet(context);
                 }
               },
               itemBuilder: (context) => [
@@ -152,6 +159,26 @@ class VideoControls extends StatelessWidget {
                       Icon(Icons.audiotrack),
                       SizedBox(width: 12),
                       Text('音轨'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'bookmark',
+                  child: Row(
+                    children: [
+                      Icon(Icons.bookmark_rounded),
+                      SizedBox(width: 12),
+                      Text('书签'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'settings',
+                  child: Row(
+                    children: [
+                      Icon(Icons.settings_rounded),
+                      SizedBox(width: 12),
+                      Text('播放设置'),
                     ],
                   ),
                 ),
