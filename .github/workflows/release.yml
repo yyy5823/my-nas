@@ -2,26 +2,113 @@ name: Build and Release
 
 on:
   push:
+    branches:
+      - main
+  # 也支持手动推送 tag 触发
+  create:
     tags:
       - 'v*'
 
 jobs:
-  # 提取版本信息
-  extract-version:
+  # 检查是否需要发布
+  check-release:
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.version.outputs.version }}
-      version_code: ${{ steps.version.outputs.version_code }}
+      should_release: ${{ steps.check.outputs.should_release }}
+      version: ${{ steps.check.outputs.version }}
+      version_code: ${{ steps.check.outputs.version_code }}
+      is_tag: ${{ steps.check.outputs.is_tag }}
     steps:
       - uses: actions/checkout@v4
-      - name: Extract version from pubspec.yaml
-        id: version
+        with:
+          fetch-depth: 2
+
+      - name: Check version change
+        id: check
         run: |
-          VERSION=$(grep "^version:" pubspec.yaml | sed 's/version: //' | cut -d'+' -f1)
+          # 获取当前版本
+          CURRENT_VERSION=$(grep "^version:" pubspec.yaml | sed 's/version: //' | cut -d'+' -f1)
           VERSION_CODE=$(grep "^version:" pubspec.yaml | sed 's/version: //' | cut -d'+' -f2)
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
           echo "version_code=$VERSION_CODE" >> $GITHUB_OUTPUT
-          echo "Version: $VERSION, Version Code: $VERSION_CODE"
+          echo "Current version: $CURRENT_VERSION"
+
+          # 检查是否是 tag 触发
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "is_tag=true" >> $GITHUB_OUTPUT
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "Triggered by tag: ${{ github.ref_name }}"
+            exit 0
+          fi
+
+          echo "is_tag=false" >> $GITHUB_OUTPUT
+
+          # 检查 pubspec.yaml 是否在本次提交中被修改
+          if ! git diff HEAD~1 HEAD --name-only | grep -q "^pubspec.yaml$"; then
+            echo "should_release=false" >> $GITHUB_OUTPUT
+            echo "pubspec.yaml not changed, skipping release"
+            exit 0
+          fi
+
+          # 检查版本是否改变
+          if git diff HEAD~1 HEAD -- pubspec.yaml | grep -q "^+version:"; then
+            # 检查该版本的 tag 是否已存在
+            if git ls-remote --tags origin | grep -q "refs/tags/v$CURRENT_VERSION$"; then
+              echo "should_release=false" >> $GITHUB_OUTPUT
+              echo "Tag v$CURRENT_VERSION already exists, skipping release"
+            else
+              echo "should_release=true" >> $GITHUB_OUTPUT
+              echo "Version changed to $CURRENT_VERSION, will create release"
+            fi
+          else
+            echo "should_release=false" >> $GITHUB_OUTPUT
+            echo "Version not changed in pubspec.yaml, skipping release"
+          fi
+
+  # 创建 Tag
+  create-tag:
+    needs: check-release
+    if: needs.check-release.outputs.should_release == 'true' && needs.check-release.outputs.is_tag == 'false'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      tag_name: ${{ steps.create_tag.outputs.tag_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create and push tag
+        id: create_tag
+        run: |
+          TAG_NAME="v${{ needs.check-release.outputs.version }}"
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git tag -a "$TAG_NAME" -m "Release $TAG_NAME"
+          git push origin "$TAG_NAME"
+
+          echo "Created tag: $TAG_NAME"
+
+  # 提取版本信息（用于后续构建）
+  extract-version:
+    needs: [check-release, create-tag]
+    if: always() && needs.check-release.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ needs.check-release.outputs.version }}
+      version_code: ${{ needs.check-release.outputs.version_code }}
+      tag_name: ${{ steps.get_tag.outputs.tag_name }}
+    steps:
+      - name: Get tag name
+        id: get_tag
+        run: |
+          if [ "${{ needs.check-release.outputs.is_tag }}" == "true" ]; then
+            echo "tag_name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag_name=v${{ needs.check-release.outputs.version }}" >> $GITHUB_OUTPUT
+          fi
 
   # 构建 Android APK
   build-android:
@@ -61,7 +148,7 @@ jobs:
           name: android-apks
           path: build/app/outputs/flutter-apk/MyNAS-*.apk
 
-  # 构建 iOS IPA (需要 Apple 开发者账号)
+  # 构建 iOS IPA
   build-ios:
     needs: extract-version
     runs-on: macos-latest
@@ -93,7 +180,7 @@ jobs:
           name: ios-ipa
           path: build/ios/iphoneos/MyNAS-*.ipa
 
-  # 构建 macOS DMG
+  # 构建 macOS
   build-macos:
     needs: extract-version
     runs-on: macos-latest
@@ -205,9 +292,60 @@ jobs:
           name: linux-app
           path: MyNAS-*.tar.gz
 
+  # 生成更新日志
+  generate-changelog:
+    needs: extract-version
+    runs-on: ubuntu-latest
+    outputs:
+      changelog: ${{ steps.changelog.outputs.changelog }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # 获取上一个 tag
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+          if [ -z "$PREVIOUS_TAG" ]; then
+            COMMITS=$(git log --pretty=format:"- %s" --no-merges -10)
+          else
+            COMMITS=$(git log --pretty=format:"- %s" --no-merges $PREVIOUS_TAG..HEAD)
+          fi
+
+          # 分类提交
+          FEATURES=$(echo "$COMMITS" | grep -iE "^- (feat|feature|新增|添加)" || true)
+          FIXES=$(echo "$COMMITS" | grep -iE "^- (fix|修复|bugfix)" || true)
+          OTHERS=$(echo "$COMMITS" | grep -viE "^- (feat|feature|fix|修复|bugfix|新增|添加)" || true)
+
+          # 构建 changelog
+          CHANGELOG=""
+
+          if [ -n "$FEATURES" ]; then
+            CHANGELOG="${CHANGELOG}### ✨ 新功能\n${FEATURES}\n\n"
+          fi
+
+          if [ -n "$FIXES" ]; then
+            CHANGELOG="${CHANGELOG}### 🐛 修复\n${FIXES}\n\n"
+          fi
+
+          if [ -n "$OTHERS" ]; then
+            CHANGELOG="${CHANGELOG}### 📝 其他\n${OTHERS}\n\n"
+          fi
+
+          if [ -z "$CHANGELOG" ]; then
+            CHANGELOG="### 更新内容\n${COMMITS}\n"
+          fi
+
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
   # 创建 Release
   create-release:
-    needs: [extract-version, build-android, build-ios, build-macos, build-windows, build-linux]
+    needs: [extract-version, build-android, build-ios, build-macos, build-windows, build-linux, generate-changelog]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -226,10 +364,9 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           name: MyNAS v${{ needs.extract-version.outputs.version }}
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ needs.extract-version.outputs.tag_name }}
           draft: false
-          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') }}
-          generate_release_notes: true
+          prerelease: ${{ contains(needs.extract-version.outputs.version, 'beta') || contains(needs.extract-version.outputs.version, 'alpha') }}
           files: |
             artifacts/android-apks/*
             artifacts/ios-ipa/*
@@ -239,10 +376,14 @@ jobs:
           body: |
             ## MyNAS v${{ needs.extract-version.outputs.version }}
 
-            ### Downloads
+            ${{ needs.generate-changelog.outputs.changelog }}
 
-            | Platform | Architecture | File |
-            |----------|--------------|------|
+            ---
+
+            ### 📦 下载
+
+            | 平台 | 架构 | 文件 |
+            |------|------|------|
             | Android | arm64-v8a | `MyNAS-${{ needs.extract-version.outputs.version }}-arm64-v8a.apk` |
             | Android | armeabi-v7a | `MyNAS-${{ needs.extract-version.outputs.version }}-armeabi-v7a.apk` |
             | Android | x86_64 | `MyNAS-${{ needs.extract-version.outputs.version }}-x86_64.apk` |
@@ -251,9 +392,9 @@ jobs:
             | Windows | x64 | `MyNAS-${{ needs.extract-version.outputs.version }}-Windows-x64.zip` |
             | Linux | x64 | `MyNAS-${{ needs.extract-version.outputs.version }}-Linux-x64.tar.gz` |
 
-            ### Notes
-            - iOS IPA is unsigned and requires sideloading
-            - macOS app is unsigned, you may need to allow it in Security & Privacy settings
+            ### ⚠️ 注意事项
+            - iOS IPA 未签名，需要自行签名后安装
+            - macOS 应用未签名，首次打开需要在「系统设置 → 隐私与安全性」中允许
 
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
