@@ -145,29 +145,52 @@ class SourceManagerService {
 
   /// 删除源
   Future<void> removeSource(String sourceId) async {
+    logger.i('SourceManagerService: 开始删除源 $sourceId');
+
     if (!_initialized) await init();
 
-    // 断开连接
-    await disconnect(sourceId);
+    try {
+      // 断开连接
+      logger.d('SourceManagerService: 断开连接...');
+      await disconnect(sourceId);
+    } catch (e) {
+      logger.w('SourceManagerService: 断开连接时出错 (继续删除)', e);
+    }
 
-    // 删除凭证
-    await removeCredential(sourceId);
+    try {
+      // 删除凭证
+      logger.d('SourceManagerService: 删除凭证...');
+      await removeCredential(sourceId);
+    } catch (e) {
+      logger.w('SourceManagerService: 删除凭证时出错 (继续删除)', e);
+    }
 
     // 删除源
+    logger.d('SourceManagerService: 从列表中删除源...');
     final sources = await getSources();
+    final originalCount = sources.length;
     sources.removeWhere((s) => s.id == sourceId);
+    logger.d('SourceManagerService: 源数量 $originalCount -> ${sources.length}');
     await _saveSources(sources);
 
-    // 删除关联的媒体库路径
-    final config = await getMediaLibraryConfig();
-    final newConfig = config.removePathsForSource(sourceId);
-    await saveMediaLibraryConfig(newConfig);
+    try {
+      // 删除关联的媒体库路径
+      logger.d('SourceManagerService: 删除关联的媒体库路径...');
+      final config = await getMediaLibraryConfig();
+      final newConfig = config.removePathsForSource(sourceId);
+      await saveMediaLibraryConfig(newConfig);
+    } catch (e) {
+      logger.w('SourceManagerService: 删除媒体库路径时出错', e);
+    }
 
-    logger.i('SourceManagerService: 删除源 $sourceId');
+    logger.i('SourceManagerService: 删除源完成 $sourceId');
   }
 
   Future<void> _saveSources(List<SourceEntity> sources) async {
     await _sourcesBox.put('list', sources.map((s) => s.toJson()).toList());
+    // 确保数据已写入磁盘
+    await _sourcesBox.flush();
+    logger.d('SourceManagerService: 源列表已保存到磁盘');
   }
 
   // ============ 凭证管理（使用安全存储）============

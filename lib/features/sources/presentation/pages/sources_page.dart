@@ -509,8 +509,24 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
       ),
     );
 
-    if (confirm == true) {
-      await ref.read(sourcesProvider.notifier).removeSource(widget.source.id);
+    if (confirm == true && mounted) {
+      try {
+        await ref.read(sourcesProvider.notifier).removeSource(widget.source.id);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('已删除 "${widget.source.displayName}"')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('删除失败: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
     }
   }
 }

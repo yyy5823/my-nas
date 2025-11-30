@@ -161,6 +161,18 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
   VideoListNotifier(this._ref) : super(VideoListLoading()) {
     _initMetadataService();
     loadVideos();
+
+    // 监听连接状态变化，自动刷新
+    _ref.listen<Map<String, SourceConnection>>(activeConnectionsProvider, (previous, next) {
+      // 检查是否有新的连接建立
+      final prevConnected = previous?.values.where((c) => c.status == SourceStatus.connected).length ?? 0;
+      final nextConnected = next.values.where((c) => c.status == SourceStatus.connected).length;
+
+      // 如果连接数增加，且当前状态是未连接，则重新加载
+      if (nextConnected > prevConnected && state is VideoListNotConnected) {
+        loadVideos();
+      }
+    });
   }
 
   final Ref _ref;

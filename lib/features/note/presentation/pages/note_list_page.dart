@@ -10,6 +10,7 @@ import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/note/data/services/markdown_parser.dart';
 import 'package:my_nas/features/note/domain/entities/note_item.dart';
 import 'package:my_nas/features/note/presentation/pages/note_editor_page.dart';
+import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
@@ -47,6 +48,18 @@ class NoteListError extends NoteListState {
 class NoteListNotifier extends StateNotifier<NoteListState> {
   NoteListNotifier(this._ref) : super(NoteListLoading()) {
     loadNotes();
+
+    // 监听连接状态变化，自动刷新
+    _ref.listen<Map<String, SourceConnection>>(activeConnectionsProvider, (previous, next) {
+      // 检查是否有新的连接建立
+      final prevConnected = previous?.values.where((c) => c.status == SourceStatus.connected).length ?? 0;
+      final nextConnected = next.values.where((c) => c.status == SourceStatus.connected).length;
+
+      // 如果连接数增加，且当前状态是未连接，则重新加载
+      if (nextConnected > prevConnected && state is NoteListNotConnected) {
+        loadNotes();
+      }
+    });
   }
 
   final Ref _ref;

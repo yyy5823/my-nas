@@ -6,6 +6,7 @@ import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
 import 'package:my_nas/features/book/presentation/pages/book_reader_page.dart';
+import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
@@ -53,6 +54,18 @@ class BookListError extends BookListState {
 class BookListNotifier extends StateNotifier<BookListState> {
   BookListNotifier(this._ref) : super(BookListLoading()) {
     loadBooks();
+
+    // 监听连接状态变化，自动刷新
+    _ref.listen<Map<String, SourceConnection>>(activeConnectionsProvider, (previous, next) {
+      // 检查是否有新的连接建立
+      final prevConnected = previous?.values.where((c) => c.status == SourceStatus.connected).length ?? 0;
+      final nextConnected = next.values.where((c) => c.status == SourceStatus.connected).length;
+
+      // 如果连接数增加，且当前状态是未连接，则重新加载
+      if (nextConnected > prevConnected && state is BookListNotConnected) {
+        loadBooks();
+      }
+    });
   }
 
   final Ref _ref;

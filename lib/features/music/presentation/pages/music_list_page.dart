@@ -3,13 +3,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/connection/presentation/providers/connection_provider.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/presentation/pages/music_player_page.dart';
 import 'package:my_nas/features/music/presentation/providers/music_favorites_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
 import 'package:my_nas/features/music/presentation/widgets/mini_player.dart';
+import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
+import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
+import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/empty_widget.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
@@ -37,42 +41,142 @@ class MusicListError extends MusicListState {
   final String message;
 }
 
+/// 音乐文件及其来源
+class MusicFileWithSource {
+  MusicFileWithSource({
+    required this.file,
+    required this.sourceId,
+  });
+
+  final FileItem file;
+  final String sourceId;
+}
+
 class MusicListNotifier extends StateNotifier<MusicListState> {
   MusicListNotifier(this._ref) : super(MusicListLoading()) {
     loadMusic();
+
+    // 监听连接状态变化，自动刷新
+    _ref.listen<Map<String, SourceConnection>>(activeConnectionsProvider, (previous, next) {
+      // 检查是否有新的连接建立
+      final prevConnected = previous?.values.where((c) => c.status == SourceStatus.connected).length ?? 0;
+      final nextConnected = next.values.where((c) => c.status == SourceStatus.connected).length;
+
+      // 如果连接数增加，且当前状态是未连接，则重新加载
+      if (nextConnected > prevConnected && state is MusicListNotConnected) {
+        loadMusic();
+      }
+    });
   }
 
   final Ref _ref;
 
-  Future<void> loadMusic() async {
+  Future<void> loadMusic({int maxDepth = 3}) async {
     state = MusicListLoading();
 
-    final adapter = _ref.read(activeAdapterProvider);
-    if (adapter == null) {
+    final connections = _ref.read(activeConnectionsProvider);
+    final configAsync = _ref.read(mediaLibraryConfigProvider);
+
+    // 等待配置加载完成
+    MediaLibraryConfig? config = configAsync.valueOrNull;
+    if (config == null) {
+      for (var i = 0; i < 10; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+        final updated = _ref.read(mediaLibraryConfigProvider);
+        config = updated.valueOrNull;
+        if (config != null) break;
+
+        if (updated.hasError) {
+          state = MusicListError('加载媒体库配置失败');
+          return;
+        }
+      }
+
+      if (config == null) {
+        state = MusicListLoaded([]);
+        return;
+      }
+    }
+
+    // 获取已启用的音乐路径
+    final musicPaths = config.getEnabledPathsForType(MediaType.music);
+
+    if (musicPaths.isEmpty) {
+      state = MusicListLoaded([]);
+      return;
+    }
+
+    // 过滤出已连接的路径
+    final connectedPaths = musicPaths.where((path) {
+      final conn = connections[path.sourceId];
+      return conn?.status == SourceStatus.connected;
+    }).toList();
+
+    if (connectedPaths.isEmpty) {
       state = MusicListNotConnected();
       return;
     }
 
     try {
-      final shares = await adapter.fileSystem.listDirectory('/');
       final tracks = <FileItem>[];
 
-      for (final share in shares) {
-        if (share.isDirectory) {
-          try {
-            final files = await adapter.fileSystem.listDirectory(share.path);
-            tracks.addAll(
-              files.where((f) => f.type == FileType.audio),
-            );
-          } on Exception {
-            // 忽略无法访问的目录
-          }
+      for (final mediaPath in connectedPaths) {
+        final connection = connections[mediaPath.sourceId];
+        if (connection == null) continue;
+
+        try {
+          await _scanForMusic(
+            connection.adapter.fileSystem,
+            mediaPath.path,
+            tracks,
+            depth: 0,
+            maxDepth: maxDepth,
+          );
+        } on Exception catch (e) {
+          logger.w('扫描音乐文件夹失败: ${mediaPath.path} - $e');
         }
       }
 
+      logger.i('音乐扫描完成，共找到 ${tracks.length} 首音乐');
       state = MusicListLoaded(tracks);
     } on Exception catch (e) {
       state = MusicListError(e.toString());
+    }
+  }
+
+  Future<void> _scanForMusic(
+    NasFileSystem fs,
+    String path,
+    List<FileItem> tracks, {
+    required int depth,
+    int maxDepth = 3,
+  }) async {
+    if (depth > maxDepth) return;
+
+    try {
+      final items = await fs.listDirectory(path);
+      for (final item in items) {
+        // 跳过隐藏文件夹和系统文件夹
+        if (item.name.startsWith('.') ||
+            item.name.startsWith('@') ||
+            item.name == '#recycle') {
+          continue;
+        }
+
+        if (item.isDirectory) {
+          await _scanForMusic(
+            fs,
+            item.path,
+            tracks,
+            depth: depth + 1,
+            maxDepth: maxDepth,
+          );
+        } else if (item.type == FileType.audio) {
+          tracks.add(item);
+        }
+      }
+    } on Exception catch (e) {
+      logger.w('扫描子文件夹失败: $path - $e');
     }
   }
 }
