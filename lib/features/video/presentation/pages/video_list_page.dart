@@ -1,15 +1,12 @@
-import 'dart:ui';
-
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
-import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/utils/logger.dart';
-import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
+import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/features/video/data/services/video_history_service.dart';
 import 'package:my_nas/features/video/data/services/video_library_cache_service.dart';
@@ -20,8 +17,6 @@ import 'package:my_nas/features/video/presentation/pages/video_detail_page.dart'
 import 'package:my_nas/features/video/presentation/pages/video_player_page.dart';
 import 'package:my_nas/features/video/presentation/providers/video_history_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
-import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
-import 'package:my_nas/shared/widgets/empty_widget.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
 
 /// 视频文件及其来源
@@ -1704,5 +1699,148 @@ class _PosterCardState extends ConsumerState<_PosterCard> {
     if (rating >= 8) return Colors.green;
     if (rating >= 6) return Colors.orange;
     return Colors.red;
+  }
+}
+
+/// 缓存信息条
+class _CacheInfoBar extends ConsumerWidget {
+  const _CacheInfoBar({
+    required this.state,
+    required this.isDark,
+  });
+
+  final VideoListLoaded state;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cacheService = VideoLibraryCacheService.instance;
+    final cache = cacheService.getCache();
+
+    if (cache == null) {
+      return const SliverToBoxAdapter(child: SizedBox.shrink());
+    }
+
+    final videoCount = state.videos.length;
+    final movieCount = state.movies.length;
+    final tvShowCount = state.tvShowGroups.length;
+
+    // 计算缓存时间
+    final cacheAge = DateTime.now().difference(cache.lastUpdated);
+    final ageText = cacheAge.inHours < 1
+        ? '${cacheAge.inMinutes} 分钟前'
+        : cacheAge.inHours < 24
+            ? '${cacheAge.inHours} 小时前'
+            : '${cacheAge.inDays} 天前';
+
+    return SliverToBoxAdapter(
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: isDark ? Colors.grey[900] : Colors.grey[100],
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isDark ? Colors.grey[800]! : Colors.grey[300]!,
+            width: 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            // 视频统计
+            _buildStatItem(
+              icon: Icons.video_library_rounded,
+              label: '视频',
+              count: videoCount,
+              color: AppColors.primary,
+            ),
+            const SizedBox(width: 16),
+            _buildStatItem(
+              icon: Icons.movie_rounded,
+              label: '电影',
+              count: movieCount,
+              color: Colors.orange,
+            ),
+            const SizedBox(width: 16),
+            _buildStatItem(
+              icon: Icons.live_tv_rounded,
+              label: '剧集',
+              count: tvShowCount,
+              color: AppColors.accent,
+            ),
+            const Spacer(),
+            // 更新时间
+            Row(
+              children: [
+                Icon(
+                  Icons.update_rounded,
+                  size: 14,
+                  color: isDark ? Colors.grey[500] : Colors.grey[600],
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  ageText,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: isDark ? Colors.grey[500] : Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(width: 8),
+            // 刷新按钮
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => ref.read(videoListProvider.notifier).forceRefresh(),
+                borderRadius: BorderRadius.circular(6),
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Icon(
+                    Icons.refresh_rounded,
+                    size: 16,
+                    color: AppColors.primary,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatItem({
+    required IconData icon,
+    required String label,
+    required int count,
+    required Color color,
+  }) {
+    return Row(
+      children: [
+        Icon(icon, size: 14, color: color),
+        const SizedBox(width: 4),
+        Text(
+          '$count',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+            color: isDark ? Colors.white : Colors.black87,
+          ),
+        ),
+        const SizedBox(width: 2),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            color: isDark ? Colors.grey[500] : Colors.grey[600],
+          ),
+        ),
+      ],
+    );
   }
 }
