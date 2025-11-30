@@ -14,6 +14,7 @@ import 'package:my_nas/features/video/data/services/tmdb_service.dart';
 import 'package:my_nas/shared/providers/theme_provider.dart';
 import 'package:my_nas/shared/services/download_service.dart';
 import 'package:my_nas/shared/widgets/download_manager_sheet.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
@@ -162,30 +163,9 @@ class SettingsPage extends ConsumerWidget {
                   context,
                   isDark,
                   children: [
-                    _buildSettingsTile(
-                      context,
-                      isDark,
-                      icon: Icons.info_rounded,
-                      iconColor: AppColors.secondary,
-                      title: '版本',
-                      subtitle: '1.0.0',
-                      showChevron: false,
-                    ),
+                    _VersionTile(isDark: isDark),
                     _buildDivider(isDark),
-                    _buildSettingsTile(
-                      context,
-                      isDark,
-                      icon: Icons.description_rounded,
-                      iconColor: AppColors.tertiary,
-                      title: '开源许可',
-                      onTap: () {
-                        showLicensePage(
-                          context: context,
-                          applicationName: 'MyNAS',
-                          applicationVersion: '1.0.0',
-                        );
-                      },
-                    ),
+                    _LicenseTile(isDark: isDark),
                   ],
                 ),
                 const SizedBox(height: AppSpacing.xxxl),
@@ -545,6 +525,176 @@ class SettingsPage extends ConsumerWidget {
     );
   }
 
+}
+
+/// 版本号组件
+class _VersionTile extends StatefulWidget {
+  const _VersionTile({required this.isDark});
+
+  final bool isDark;
+
+  @override
+  State<_VersionTile> createState() => _VersionTileState();
+}
+
+class _VersionTileState extends State<_VersionTile> {
+  String _version = '加载中...';
+  String _buildNumber = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVersion();
+  }
+
+  Future<void> _loadVersion() async {
+    final packageInfo = await PackageInfo.fromPlatform();
+    if (mounted) {
+      setState(() {
+        _version = packageInfo.version;
+        _buildNumber = packageInfo.buildNumber;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.lg,
+          vertical: AppSpacing.md,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: AppColors.secondary.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                Icons.info_rounded,
+                color: AppColors.secondary,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '版本',
+                    style: context.textTheme.bodyLarge?.copyWith(
+                      color: widget.isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _buildNumber.isNotEmpty ? '$_version ($_buildNumber)' : _version,
+                    style: context.textTheme.bodySmall?.copyWith(
+                      color: widget.isDark
+                          ? AppColors.darkOnSurfaceVariant
+                          : AppColors.lightOnSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 开源许可组件
+class _LicenseTile extends StatefulWidget {
+  const _LicenseTile({required this.isDark});
+
+  final bool isDark;
+
+  @override
+  State<_LicenseTile> createState() => _LicenseTileState();
+}
+
+class _LicenseTileState extends State<_LicenseTile> {
+  String _version = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVersion();
+  }
+
+  Future<void> _loadVersion() async {
+    final packageInfo = await PackageInfo.fromPlatform();
+    if (mounted) {
+      setState(() {
+        _version = packageInfo.version;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          showLicensePage(
+            context: context,
+            applicationName: 'MyNAS',
+            applicationVersion: _version.isNotEmpty ? _version : null,
+          );
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.md,
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppColors.tertiary.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.description_rounded,
+                  color: AppColors.tertiary,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Text(
+                  '开源许可',
+                  style: context.textTheme.bodyLarge?.copyWith(
+                    color: widget.isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: widget.isDark
+                    ? AppColors.darkOnSurfaceVariant
+                    : AppColors.lightOnSurfaceVariant,
+                size: 22,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// TMDB API Key 设置项

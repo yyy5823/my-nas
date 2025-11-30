@@ -401,10 +401,16 @@ class SourceManagerService {
     if (!_initialized) await init();
 
     final data = _libraryBox.get('config');
-    if (data == null) return const MediaLibraryConfig();
+    logger.i('SourceManagerService: 读取媒体库配置 - $data');
+    if (data == null) {
+      logger.i('SourceManagerService: 媒体库配置为空，返回默认配置');
+      return const MediaLibraryConfig();
+    }
 
     try {
-      return MediaLibraryConfig.fromJson(Map<String, dynamic>.from(data as Map));
+      final config = MediaLibraryConfig.fromJson(Map<String, dynamic>.from(data as Map));
+      logger.i('SourceManagerService: 解析媒体库配置成功 - 视频路径: ${config.videoPaths.length}, 音乐路径: ${config.musicPaths.length}');
+      return config;
     } catch (e) {
       logger.e('SourceManagerService: 解析媒体库配置失败', e);
       return const MediaLibraryConfig();
@@ -414,7 +420,11 @@ class SourceManagerService {
   /// 保存媒体库配置
   Future<void> saveMediaLibraryConfig(MediaLibraryConfig config) async {
     if (!_initialized) await init();
-    await _libraryBox.put('config', config.toJson());
-    logger.d('SourceManagerService: 保存媒体库配置');
+    final json = config.toJson();
+    logger.i('SourceManagerService: 保存媒体库配置 - $json');
+    await _libraryBox.put('config', json);
+    // 确保数据已写入磁盘
+    await _libraryBox.flush();
+    logger.i('SourceManagerService: 媒体库配置已保存');
   }
 }
