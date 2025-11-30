@@ -223,24 +223,62 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
   final VideoLibraryCacheService _cacheService = VideoLibraryCacheService.instance;
 
   Future<void> _init() async {
-    await _metadataService.init();
-    await _cacheService.init();
-    await loadVideos();
+    try {
+      await _metadataService.init();
+      await _cacheService.init();
 
-    // 监听连接状态变化
-    _ref.listen<Map<String, SourceConnection>>(activeConnectionsProvider,
-        (previous, next) {
-      final prevConnected = previous?.values
-              .where((c) => c.status == SourceStatus.connected)
-              .length ??
-          0;
-      final nextConnected =
-          next.values.where((c) => c.status == SourceStatus.connected).length;
+      // 立即尝试从缓存加载，不等待连接
+      await _loadFromCacheImmediately();
+    } catch (e) {
+      logger.e('VideoListNotifier: 初始化失败', e);
+      // 初始化失败，显示空列表
+      state = VideoListLoaded(videos: [], fromCache: false);
+    }
+  }
 
-      if (nextConnected > prevConnected && state is VideoListNotConnected) {
-        loadVideos();
+  /// 立即从缓存加载视频数据，不检查连接状态
+  Future<void> _loadFromCacheImmediately() async {
+    final cache = _cacheService.getCache();
+    if (cache != null && cache.videos.isNotEmpty) {
+      state = VideoListLoading(fromCache: true, currentFolder: '加载缓存...');
+
+      final videos = cache.videos.map((entry) {
+        return VideoFileWithSource(
+          file: FileItem(
+            name: entry.fileName,
+            path: entry.filePath,
+            size: entry.size,
+            isDirectory: false,
+            modifiedTime: entry.modifiedTime,
+            thumbnailUrl: entry.thumbnailUrl,
+          ),
+          sourceId: entry.sourceId,
+        );
+      }).toList();
+
+      // 加载缓存的元数据
+      final metadataMap = <String, VideoMetadata>{};
+      for (final video in videos) {
+        final cached = _metadataService.getCached(video.sourceId, video.path);
+        if (cached != null) {
+          metadataMap[cached.uniqueKey] = cached;
+        }
       }
-    });
+
+      state = VideoListLoaded(
+        videos: videos,
+        metadataMap: metadataMap,
+        fromCache: true,
+      );
+
+      // 后台加载缺失的元数据
+      _loadMissingMetadata(videos);
+
+      logger.i('从缓存加载了 ${videos.length} 个视频');
+    } else {
+      // 没有缓存，显示空状态并提示用户刷新
+      state = VideoListLoaded(videos: [], fromCache: true);
+    }
   }
 
   /// 加载视频（优先使用缓存）

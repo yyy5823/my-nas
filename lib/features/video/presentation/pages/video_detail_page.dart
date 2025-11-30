@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/features/video/domain/entities/video_item.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
@@ -631,10 +632,22 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       final connections = ref.read(activeConnectionsProvider);
       final connection = connections[widget.sourceId];
 
-      if (connection == null) {
+      // 检查连接状态
+      if (connection == null || connection.status != SourceStatus.connected) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('连接不可用')),
+            SnackBar(
+              content: const Row(
+                children: [
+                  Icon(Icons.cloud_off_rounded, color: Colors.white),
+                  SizedBox(width: 12),
+                  Text('未连接到 NAS，请先在设置中连接'),
+                ],
+              ),
+              backgroundColor: Colors.red[600],
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 3),
+            ),
           );
         }
         return;

@@ -84,15 +84,23 @@ class ActiveConnectionsNotifier
 
   final Ref _ref;
   bool _hasInitialized = false;
+  bool _isAutoConnecting = false;
+
+  /// 是否正在自动连接中
+  bool get isAutoConnecting => _isAutoConnecting;
 
   /// 初始化自动连接
   Future<void> _initAutoConnect() async {
     if (_hasInitialized) return;
     _hasInitialized = true;
 
-    // 延迟一点确保其他 provider 已初始化
-    await Future<void>.delayed(const Duration(milliseconds: 100));
-    await autoConnectAll();
+    // 等待 sourcesProvider 初始化完成
+    // 通过监听源列表变化来触发自动连接
+    _ref.listen<AsyncValue<List<SourceEntity>>>(sourcesProvider, (previous, next) {
+      if (next.hasValue && !_isAutoConnecting) {
+        autoConnectAll();
+      }
+    }, fireImmediately: true);
   }
 
   void refresh() {
@@ -166,9 +174,15 @@ class ActiveConnectionsNotifier
   }
 
   Future<void> autoConnectAll() async {
-    final manager = _ref.read(sourceManagerProvider);
-    await manager.autoConnectAll();
-    refresh();
+    if (_isAutoConnecting) return; // 防止重复调用
+    _isAutoConnecting = true;
+    try {
+      final manager = _ref.read(sourceManagerProvider);
+      await manager.autoConnectAll();
+      refresh();
+    } finally {
+      _isAutoConnecting = false;
+    }
   }
 
   /// 获取指定源的文件系统

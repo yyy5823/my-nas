@@ -102,8 +102,16 @@ class VideoLibraryCacheService {
   /// 初始化
   Future<void> init() async {
     if (_box != null && _box!.isOpen) return;
-    _box = await Hive.openBox(_boxName);
-    logger.i('VideoLibraryCacheService: 初始化完成');
+    try {
+      _box = await Hive.openBox(_boxName);
+      logger.i('VideoLibraryCacheService: 初始化完成');
+    } catch (e) {
+      logger.e('VideoLibraryCacheService: 打开缓存失败，尝试删除并重建', e);
+      // 删除损坏的 box 并重新创建
+      await Hive.deleteBoxFromDisk(_boxName);
+      _box = await Hive.openBox(_boxName);
+      logger.i('VideoLibraryCacheService: 重建缓存完成');
+    }
   }
 
   /// 获取缓存

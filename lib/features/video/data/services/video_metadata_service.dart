@@ -18,8 +18,16 @@ class VideoMetadataService {
   /// 初始化
   Future<void> init() async {
     if (_box != null && _box!.isOpen) return;
-    _box = await Hive.openBox(_boxName);
-    logger.i('VideoMetadataService: 初始化完成，缓存条目: ${_box!.length}');
+    try {
+      _box = await Hive.openBox(_boxName);
+      logger.i('VideoMetadataService: 初始化完成，缓存条目: ${_box!.length}');
+    } catch (e) {
+      logger.e('VideoMetadataService: 打开缓存失败，尝试删除并重建', e);
+      // 删除损坏的 box 并重新创建
+      await Hive.deleteBoxFromDisk(_boxName);
+      _box = await Hive.openBox(_boxName);
+      logger.i('VideoMetadataService: 重建缓存完成');
+    }
   }
 
   /// 获取缓存的元数据

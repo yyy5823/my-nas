@@ -2,8 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/core/network/http_client.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/utils/logger.dart';
@@ -311,7 +311,7 @@ class NotePageNotifier extends StateNotifier<NotePageState> {
         throw Exception('无法获取文件URL');
       }
 
-      final response = await http.get(Uri.parse(url));
+      final response = await InsecureHttpClient.get(Uri.parse(url));
       if (response.statusCode != 200) {
         throw Exception('加载失败: ${response.statusCode}');
       }
