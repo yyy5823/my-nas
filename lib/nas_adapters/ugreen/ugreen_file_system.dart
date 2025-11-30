@@ -1,15 +1,34 @@
+import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/nas_adapters/ugreen/api/ugreen_api.dart';
 
 /// 绿联 NAS 文件系统实现
+///
+/// UGOS 使用共享文件夹的概念，根目录 `/` 应该显示共享文件夹列表
 class UGreenFileSystem implements NasFileSystem {
   UGreenFileSystem({required this.api});
 
   final UGreenApi api;
 
+  /// 缓存的共享文件夹列表
+  List<UGreenFileInfo>? _cachedShares;
+
   @override
   Future<List<FileItem>> listDirectory(String path) async {
+    logger.d('UGreenFileSystem: listDirectory => $path');
+
+    // 根目录显示共享文件夹列表
+    if (path == '/' || path.isEmpty) {
+      return listShares();
+    }
+
+    // 非根目录，使用 API 列出目录内容
     final files = await api.listDirectory(path);
+
+    // 如果 API 返回空且路径看起来像共享文件夹，尝试用共享路径
+    if (files.isEmpty && !path.contains('/') == false) {
+      logger.d('UGreenFileSystem: API 返回空，检查是否为共享文件夹');
+    }
 
     return files.map((file) => FileItem(
       name: file.name,
@@ -23,9 +42,28 @@ class UGreenFileSystem implements NasFileSystem {
     )).toList();
   }
 
-  /// 列出共享文件夹
+  /// 列出共享文件夹 (根目录内容)
+  ///
+  /// UGOS 使用共享文件夹的概念，这里会缓存共享列表以提高性能
   Future<List<FileItem>> listShares() async {
+    logger.d('UGreenFileSystem: 获取共享文件夹列表');
+
+    // 如果有缓存，直接返回
+    if (_cachedShares != null && _cachedShares!.isNotEmpty) {
+      logger.d('UGreenFileSystem: 使用缓存的共享列表 (${_cachedShares!.length} 项)');
+      return _cachedShares!.map((share) => FileItem(
+        name: share.name,
+        path: share.path,
+        isDirectory: true,
+        size: 0,
+      )).toList();
+    }
+
+    // 获取共享列表
     final shares = await api.listShares();
+    _cachedShares = shares;
+
+    logger.i('UGreenFileSystem: 获取到 ${shares.length} 个共享文件夹');
 
     return shares.map((share) => FileItem(
       name: share.name,
@@ -33,6 +71,11 @@ class UGreenFileSystem implements NasFileSystem {
       isDirectory: true,
       size: 0,
     )).toList();
+  }
+
+  /// 清除共享文件夹缓存
+  void clearSharesCache() {
+    _cachedShares = null;
   }
 
   String? _getExtension(String fileName) {

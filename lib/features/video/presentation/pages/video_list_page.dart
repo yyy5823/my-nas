@@ -180,11 +180,31 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     final connections = _ref.read(activeConnectionsProvider);
     final configAsync = _ref.read(mediaLibraryConfigProvider);
 
-    // 等待配置加载
-    final config = configAsync.valueOrNull;
+    // 等待配置加载完成
+    MediaLibraryConfig? config = configAsync.valueOrNull;
     if (config == null) {
-      state = VideoListError('媒体库配置加载中...');
-      return;
+      // 配置正在加载中，等待加载完成
+      state = VideoListLoading(progress: 0, currentFolder: '正在加载配置...');
+
+      // 等待配置加载（最多5秒）
+      for (var i = 0; i < 10; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+        final updated = _ref.read(mediaLibraryConfigProvider);
+        config = updated.valueOrNull;
+        if (config != null) break;
+
+        // 如果有错误，直接返回
+        if (updated.hasError) {
+          state = VideoListError('加载媒体库配置失败');
+          return;
+        }
+      }
+
+      // 如果还是没有配置，显示空列表让用户去配置
+      if (config == null) {
+        state = VideoListLoaded(videos: []);
+        return;
+      }
     }
 
     // 获取已启用的视频路径

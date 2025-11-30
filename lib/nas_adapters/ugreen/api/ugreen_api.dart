@@ -316,39 +316,67 @@ class UGreenApi {
   /// 列出目录内容
   ///
   /// UGOS 文件管理器 API 端点尝试顺序:
-  /// 1. /ugreen/v1/filemgr/list
+  /// 1. /ugreen/v1/filemgr/list (带不同参数格式)
   /// 2. /ugreen/v1/file/list
   /// 3. /ugreen/v2/file/list
   Future<List<UGreenFileInfo>> listDirectory(String path) async {
     logger.i('UGreenApi: 列出目录 => $path');
 
-    // 尝试不同的 API 端点
-    final endpoints = [
-      '/ugreen/v1/filemgr/list',
-      '/ugreen/v1/file/list',
-      '/ugreen/v2/file/list',
+    // 尝试不同的 API 端点和参数组合
+    final attempts = [
+      // 尝试 1: filemgr/list 带 path 参数
+      {
+        'endpoint': '/ugreen/v1/filemgr/list',
+        'data': {'path': path, 'page': 1, 'page_size': 1000},
+      },
+      // 尝试 2: filemgr/list 带 dir 参数
+      {
+        'endpoint': '/ugreen/v1/filemgr/list',
+        'data': {'dir': path, 'page': 1, 'limit': 1000},
+      },
+      // 尝试 3: file/list
+      {
+        'endpoint': '/ugreen/v1/file/list',
+        'data': {'path': path, 'page': 1, 'page_size': 1000},
+      },
+      // 尝试 4: file/list 带 folder 参数
+      {
+        'endpoint': '/ugreen/v1/file/list',
+        'data': {'folder': path, 'offset': 0, 'limit': 1000},
+      },
+      // 尝试 5: v2 file/list
+      {
+        'endpoint': '/ugreen/v2/file/list',
+        'data': {'path': path, 'page': 1, 'page_size': 1000},
+      },
+      // 尝试 6: filemgr/dir/list
+      {
+        'endpoint': '/ugreen/v1/filemgr/dir/list',
+        'data': {'path': path},
+      },
     ];
 
-    for (final endpoint in endpoints) {
+    for (final attempt in attempts) {
       try {
-        logger.d('UGreenApi: 尝试端点 => $endpoint');
-        final response = await _request(
-          endpoint,
-          data: {'path': path, 'page': 1, 'page_size': 1000},
-        );
+        final endpoint = attempt['endpoint'] as String;
+        final data = attempt['data'] as Map<String, dynamic>;
+        logger.d('UGreenApi: 尝试端点 => $endpoint, 参数 => $data');
 
-        final data = response.data;
-        logger.d('UGreenApi: listDirectory 响应 => $data');
+        final response = await _request(endpoint, data: data);
 
-        if (data is Map) {
-          final code = data['code'];
+        final respData = response.data;
+        logger.d('UGreenApi: listDirectory 响应 => $respData');
+
+        if (respData is Map) {
+          final code = respData['code'];
           if (code == 200) {
             final items = <UGreenFileInfo>[];
             // 尝试不同的响应结构
-            final files = data['data']?['list'] ??
-                          data['data']?['files'] ??
-                          data['data']?['items'] ??
-                          data['data'] ??
+            final files = respData['data']?['list'] ??
+                          respData['data']?['files'] ??
+                          respData['data']?['items'] ??
+                          respData['data']?['children'] ??
+                          respData['data'] ??
                           [];
 
             if (files is List) {
@@ -358,18 +386,23 @@ class UGreenApi {
                 }
               }
             }
-            logger.i('UGreenApi: 找到 ${items.length} 个文件/目录');
-            return items;
+
+            if (items.isNotEmpty) {
+              logger.i('UGreenApi: 找到 ${items.length} 个文件/目录 (使用 $endpoint)');
+              return items;
+            }
+            logger.d('UGreenApi: $endpoint 返回空列表');
           } else {
-            logger.w('UGreenApi: $endpoint 返回错误 code=$code');
+            final msg = respData['message'] ?? respData['msg'] ?? 'code=$code';
+            logger.w('UGreenApi: $endpoint 返回错误: $msg');
           }
         }
       } catch (e) {
-        logger.w('UGreenApi: $endpoint 失败', e);
+        logger.w('UGreenApi: 尝试失败', e);
       }
     }
 
-    logger.e('UGreenApi: 所有端点都失败了');
+    logger.e('UGreenApi: 所有端点都失败了，路径: $path');
     return [];
   }
 
@@ -408,33 +441,49 @@ class UGreenApi {
 
   /// 获取共享文件夹列表
   ///
-  /// UGOS 共享文件夹 API 端点尝试顺序:
-  /// 1. /ugreen/v1/storage/share/list
-  /// 2. /ugreen/v1/share/list
-  /// 3. /ugreen/v1/filemgr/share/list
-  /// 4. 列出根目录
+  /// UGOS 共享文件夹 API 端点尝试顺序 (尝试多种已知的 UGOS API 格式)
   Future<List<UGreenFileInfo>> listShares() async {
     logger.i('UGreenApi: 获取共享文件夹列表');
 
-    final endpoints = [
-      '/ugreen/v1/storage/share/list',
-      '/ugreen/v1/share/list',
-      '/ugreen/v1/filemgr/share/list',
+    // 尝试不同的共享端点和参数组合
+    final attempts = [
+      // 存储管理相关端点
+      {'endpoint': '/ugreen/v1/storage/share/list', 'data': <String, dynamic>{}},
+      {'endpoint': '/ugreen/v1/storage/shares', 'data': <String, dynamic>{}},
+      {'endpoint': '/ugreen/v1/storage/volume/list', 'data': <String, dynamic>{}},
+      // 文件管理相关端点
+      {'endpoint': '/ugreen/v1/filemgr/share/list', 'data': <String, dynamic>{}},
+      {'endpoint': '/ugreen/v1/filemgr/shares', 'data': <String, dynamic>{}},
+      {'endpoint': '/ugreen/v1/filemgr/root', 'data': <String, dynamic>{}},
+      // 通用共享端点
+      {'endpoint': '/ugreen/v1/share/list', 'data': <String, dynamic>{}},
+      {'endpoint': '/ugreen/v1/shares', 'data': <String, dynamic>{}},
+      // 用户目录相关
+      {'endpoint': '/ugreen/v1/user/home', 'data': <String, dynamic>{}},
+      {'endpoint': '/ugreen/v1/user/shares', 'data': <String, dynamic>{}},
     ];
 
-    for (final endpoint in endpoints) {
+    for (final attempt in attempts) {
       try {
+        final endpoint = attempt['endpoint'] as String;
+        final data = attempt['data'] as Map<String, dynamic>;
         logger.d('UGreenApi: 尝试共享端点 => $endpoint');
-        final response = await _request(endpoint);
 
-        final data = response.data;
-        logger.d('UGreenApi: listShares 响应 => $data');
+        final response = await _request(endpoint, data: data.isEmpty ? null : data);
 
-        if (data is Map && data['code'] == 200) {
+        final respData = response.data;
+        logger.d('UGreenApi: listShares 响应 => $respData');
+
+        if (respData is Map && respData['code'] == 200) {
           final items = <UGreenFileInfo>[];
-          final shares = data['data']?['list'] ??
-                         data['data']?['shares'] ??
-                         data['data'] ??
+
+          // 尝试不同的响应结构
+          final shares = respData['data']?['list'] ??
+                         respData['data']?['shares'] ??
+                         respData['data']?['volumes'] ??
+                         respData['data']?['items'] ??
+                         respData['data']?['folders'] ??
+                         (respData['data'] is List ? respData['data'] : null) ??
                          [];
 
           if (shares is List) {
@@ -442,9 +491,14 @@ class UGreenApi {
               if (share is Map) {
                 final name = share['name']?.toString() ??
                              share['share_name']?.toString() ??
+                             share['volume_name']?.toString() ??
+                             share['folder_name']?.toString() ??
                              '';
+                if (name.isEmpty) continue;
+
                 final path = share['path']?.toString() ??
                              share['mount_point']?.toString() ??
+                             share['share_path']?.toString() ??
                              '/$name';
                 items.add(UGreenFileInfo(
                   name: name,
@@ -456,18 +510,28 @@ class UGreenApi {
           }
 
           if (items.isNotEmpty) {
-            logger.i('UGreenApi: 找到 ${items.length} 个共享文件夹');
+            logger.i('UGreenApi: 找到 ${items.length} 个共享文件夹 (使用 $endpoint)');
             return items;
           }
         }
       } catch (e) {
-        logger.w('UGreenApi: $endpoint 失败', e);
+        logger.w('UGreenApi: 尝试失败', e);
       }
     }
 
-    // 所有共享端点都失败，尝试列出根目录
-    logger.i('UGreenApi: 共享端点都失败，尝试列出根目录');
-    return listDirectory('/');
+    // 所有共享端点都失败，尝试直接列出根目录
+    logger.i('UGreenApi: 共享端点都失败，尝试直接列出根目录');
+    final rootFiles = await listDirectory('/');
+    if (rootFiles.isNotEmpty) {
+      return rootFiles;
+    }
+
+    // 如果根目录也为空，创建默认的共享文件夹列表
+    logger.w('UGreenApi: 无法获取共享列表，使用默认共享文件夹');
+    return [
+      const UGreenFileInfo(name: 'Public', path: '/Public', isDir: true),
+      const UGreenFileInfo(name: 'home', path: '/home', isDir: true),
+    ];
   }
 
   /// 发送 API 请求（自动处理 token）
