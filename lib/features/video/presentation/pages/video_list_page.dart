@@ -11,9 +11,13 @@ import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/features/video/data/services/video_history_service.dart';
+import 'package:my_nas/features/video/data/services/video_metadata_service.dart';
 import 'package:my_nas/features/video/domain/entities/video_item.dart';
+import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
+import 'package:my_nas/features/video/presentation/pages/video_detail_page.dart';
 import 'package:my_nas/features/video/presentation/pages/video_player_page.dart';
 import 'package:my_nas/features/video/presentation/providers/video_history_provider.dart';
+import 'package:my_nas/features/video/presentation/widgets/poster_wall.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/empty_widget.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
@@ -44,10 +48,10 @@ final videoListProvider =
 });
 
 /// 视频排序方式
-enum VideoSortType { name, date, size }
+enum VideoSortType { name, date, size, rating }
 
 /// 视频视图模式
-enum VideoViewMode { grid, list }
+enum VideoViewMode { poster, grid, list }
 
 sealed class VideoListState {}
 
@@ -61,14 +65,20 @@ class VideoListLoaded extends VideoListState {
   VideoListLoaded({
     required this.videos,
     this.sortType = VideoSortType.name,
-    this.viewMode = VideoViewMode.grid,
+    this.viewMode = VideoViewMode.poster,
     this.searchQuery = '',
+    this.metadataMap = const {},
+    this.isLoadingMetadata = false,
+    this.metadataProgress = 0,
   });
 
   final List<VideoFileWithSource> videos;
   final VideoSortType sortType;
   final VideoViewMode viewMode;
   final String searchQuery;
+  final Map<String, VideoMetadata> metadataMap;
+  final bool isLoadingMetadata;
+  final double metadataProgress;
 
   List<VideoFileWithSource> get filteredVideos {
     var result = List<VideoFileWithSource>.from(videos);
@@ -76,22 +86,48 @@ class VideoListLoaded extends VideoListState {
     // 搜索过滤
     if (searchQuery.isNotEmpty) {
       result = result
-          .where((v) => v.name.toLowerCase().contains(searchQuery.toLowerCase()))
+          .where((v) {
+            final metadata = metadataMap['${v.sourceId}_${v.path}'];
+            final title = metadata?.title ?? v.name;
+            return title.toLowerCase().contains(searchQuery.toLowerCase());
+          })
           .toList();
     }
 
     // 排序
     switch (sortType) {
       case VideoSortType.name:
-        result.sort((a, b) => a.name.compareTo(b.name));
+        result.sort((a, b) {
+          final metaA = metadataMap['${a.sourceId}_${a.path}'];
+          final metaB = metadataMap['${b.sourceId}_${b.path}'];
+          final titleA = metaA?.title ?? a.name;
+          final titleB = metaB?.title ?? b.name;
+          return titleA.compareTo(titleB);
+        });
       case VideoSortType.date:
         result.sort((a, b) => (b.modifiedTime ?? DateTime(1970))
             .compareTo(a.modifiedTime ?? DateTime(1970)));
       case VideoSortType.size:
         result.sort((a, b) => b.size.compareTo(a.size));
+      case VideoSortType.rating:
+        result.sort((a, b) {
+          final metaA = metadataMap['${a.sourceId}_${a.path}'];
+          final metaB = metadataMap['${b.sourceId}_${b.path}'];
+          final ratingA = metaA?.rating ?? 0;
+          final ratingB = metaB?.rating ?? 0;
+          return ratingB.compareTo(ratingA);
+        });
     }
 
     return result;
+  }
+
+  /// 获取过滤后的元数据列表
+  List<VideoMetadata> get filteredMetadata {
+    return filteredVideos
+        .map((v) => metadataMap['${v.sourceId}_${v.path}'])
+        .whereType<VideoMetadata>()
+        .toList();
   }
 
   VideoListLoaded copyWith({
@@ -99,12 +135,18 @@ class VideoListLoaded extends VideoListState {
     VideoSortType? sortType,
     VideoViewMode? viewMode,
     String? searchQuery,
+    Map<String, VideoMetadata>? metadataMap,
+    bool? isLoadingMetadata,
+    double? metadataProgress,
   }) =>
       VideoListLoaded(
         videos: videos ?? this.videos,
         sortType: sortType ?? this.sortType,
         viewMode: viewMode ?? this.viewMode,
         searchQuery: searchQuery ?? this.searchQuery,
+        metadataMap: metadataMap ?? this.metadataMap,
+        isLoadingMetadata: isLoadingMetadata ?? this.isLoadingMetadata,
+        metadataProgress: metadataProgress ?? this.metadataProgress,
       );
 }
 
@@ -115,12 +157,18 @@ class VideoListError extends VideoListState {
 
 class VideoListNotifier extends StateNotifier<VideoListState> {
   VideoListNotifier(this._ref) : super(VideoListLoading()) {
+    _initMetadataService();
     loadVideos();
   }
 
   final Ref _ref;
   int _scannedFolders = 0;
   int _totalFolders = 0;
+  final VideoMetadataService _metadataService = VideoMetadataService.instance;
+
+  Future<void> _initMetadataService() async {
+    await _metadataService.init();
+  }
 
   Future<void> loadVideos({int maxDepth = 3}) async {
     state = VideoListLoading();
@@ -189,9 +237,124 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       }
 
       logger.i('视频扫描完成，共找到 ${videos.length} 个视频');
-      state = VideoListLoaded(videos: videos);
+
+      // 加载缓存的元数据
+      final metadataMap = <String, VideoMetadata>{};
+      for (final video in videos) {
+        final cached = _metadataService.getCached(video.sourceId, video.path);
+        if (cached != null) {
+          metadataMap[cached.uniqueKey] = cached;
+        }
+      }
+
+      state = VideoListLoaded(videos: videos, metadataMap: metadataMap);
+
+      // 后台加载未缓存的元数据
+      _loadMissingMetadata(videos);
     } on Exception catch (e) {
       state = VideoListError(e.toString());
+    }
+  }
+
+  /// 后台加载缺失的元数据
+  Future<void> _loadMissingMetadata(List<VideoFileWithSource> videos) async {
+    final current = state;
+    if (current is! VideoListLoaded) return;
+
+    // 找出没有元数据的视频
+    final missingVideos = videos.where((v) {
+      final key = '${v.sourceId}_${v.path}';
+      return !current.metadataMap.containsKey(key);
+    }).toList();
+
+    if (missingVideos.isEmpty) return;
+
+    state = current.copyWith(isLoadingMetadata: true, metadataProgress: 0);
+
+    final updatedMap = Map<String, VideoMetadata>.from(current.metadataMap);
+    final total = missingVideos.length;
+
+    for (var i = 0; i < missingVideos.length; i++) {
+      final video = missingVideos[i];
+
+      try {
+        final metadata = await _metadataService.getOrFetch(
+          sourceId: video.sourceId,
+          filePath: video.path,
+          fileName: video.name,
+        );
+        updatedMap[metadata.uniqueKey] = metadata;
+
+        // 每处理5个或最后一个时更新状态
+        if ((i + 1) % 5 == 0 || i == missingVideos.length - 1) {
+          final currentState = state;
+          if (currentState is VideoListLoaded) {
+            state = currentState.copyWith(
+              metadataMap: Map.from(updatedMap),
+              metadataProgress: (i + 1) / total,
+            );
+          }
+        }
+      } on Exception catch (e) {
+        logger.w('获取元数据失败: ${video.name} - $e');
+      }
+
+      // 添加延迟避免 API 限制
+      if (i < missingVideos.length - 1) {
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+      }
+    }
+
+    final finalState = state;
+    if (finalState is VideoListLoaded) {
+      state = finalState.copyWith(isLoadingMetadata: false);
+    }
+  }
+
+  /// 刷新元数据
+  Future<void> refreshMetadata() async {
+    final current = state;
+    if (current is! VideoListLoaded) return;
+
+    state = current.copyWith(isLoadingMetadata: true, metadataProgress: 0);
+
+    final videos = current.videos;
+    final updatedMap = <String, VideoMetadata>{};
+    final total = videos.length;
+
+    for (var i = 0; i < videos.length; i++) {
+      final video = videos[i];
+
+      try {
+        final metadata = await _metadataService.getOrFetch(
+          sourceId: video.sourceId,
+          filePath: video.path,
+          fileName: video.name,
+          forceRefresh: true,
+        );
+        updatedMap[metadata.uniqueKey] = metadata;
+
+        if ((i + 1) % 5 == 0 || i == videos.length - 1) {
+          final currentState = state;
+          if (currentState is VideoListLoaded) {
+            state = currentState.copyWith(
+              metadataMap: Map.from(updatedMap),
+              metadataProgress: (i + 1) / total,
+            );
+          }
+        }
+      } on Exception catch (e) {
+        logger.w('刷新元数据失败: ${video.name} - $e');
+      }
+
+      if (i < videos.length - 1) {
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+      }
+    }
+
+    final finalState = state;
+    if (finalState is VideoListLoaded) {
+      state = finalState.copyWith(isLoadingMetadata: false);
     }
   }
 
@@ -251,11 +414,19 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
   void toggleViewMode() {
     final current = state;
     if (current is VideoListLoaded) {
-      state = current.copyWith(
-        viewMode: current.viewMode == VideoViewMode.grid
-            ? VideoViewMode.list
-            : VideoViewMode.grid,
-      );
+      final nextMode = switch (current.viewMode) {
+        VideoViewMode.poster => VideoViewMode.grid,
+        VideoViewMode.grid => VideoViewMode.list,
+        VideoViewMode.list => VideoViewMode.poster,
+      };
+      state = current.copyWith(viewMode: nextMode);
+    }
+  }
+
+  void setViewMode(VideoViewMode mode) {
+    final current = state;
+    if (current is VideoListLoaded) {
+      state = current.copyWith(viewMode: mode);
     }
   }
 }
@@ -295,14 +466,14 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
                   message: message,
                   onRetry: () => ref.read(videoListProvider.notifier).loadVideos(),
                 ),
-              VideoListLoaded(:final filteredVideos, :final viewMode) =>
-                filteredVideos.isEmpty
+              VideoListLoaded loaded =>
+                loaded.filteredVideos.isEmpty
                     ? const EmptyWidget(
                         icon: Icons.video_library_outlined,
                         title: '暂无视频',
                         message: '在 NAS 中添加视频后将显示在这里',
                       )
-                    : _buildVideoContent(context, ref, filteredVideos, viewMode, isDark),
+                    : _buildVideoContent(context, ref, loaded.filteredVideos, loaded.viewMode, isDark, loaded),
             },
           ),
         ],
@@ -406,13 +577,19 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
                   // 视图切换
                   if (state is VideoListLoaded)
                     _buildIconButton(
-                      icon: state.viewMode == VideoViewMode.grid
-                          ? Icons.view_list_rounded
-                          : Icons.grid_view_rounded,
+                      icon: switch (state.viewMode) {
+                        VideoViewMode.poster => Icons.grid_view_rounded,
+                        VideoViewMode.grid => Icons.view_list_rounded,
+                        VideoViewMode.list => Icons.photo_library_rounded,
+                      },
                       onTap: () =>
                           ref.read(videoListProvider.notifier).toggleViewMode(),
                       isDark: isDark,
-                      tooltip: state.viewMode == VideoViewMode.grid ? '列表视图' : '网格视图',
+                      tooltip: switch (state.viewMode) {
+                        VideoViewMode.poster => '切换到网格视图',
+                        VideoViewMode.grid => '切换到列表视图',
+                        VideoViewMode.list => '切换到海报墙',
+                      },
                     ),
                   // 排序
                   if (state is VideoListLoaded)
@@ -446,6 +623,14 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
                           VideoSortType.size,
                           '按大小',
                           Icons.straighten_rounded,
+                          state.sortType,
+                          isDark,
+                        ),
+                        _buildSortMenuItem(
+                          context,
+                          VideoSortType.rating,
+                          '按评分',
+                          Icons.star_rounded,
                           state.sortType,
                           isDark,
                         ),
@@ -590,6 +775,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     List<VideoFileWithSource> videos,
     VideoViewMode viewMode,
     bool isDark,
+    VideoListLoaded state,
   ) {
     return RefreshIndicator(
       onRefresh: () => ref.read(videoListProvider.notifier).loadVideos(),
@@ -598,8 +784,39 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
           // 继续观看区域
           _ContinueWatchingSection(isDark: isDark),
 
+          // 元数据加载进度
+          if (state.isLoadingMetadata)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        value: state.metadataProgress > 0 ? state.metadataProgress : null,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      '正在获取影片信息... ${(state.metadataProgress * 100).toInt()}%',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
           // 视频列表
-          if (viewMode == VideoViewMode.grid)
+          if (viewMode == VideoViewMode.poster)
+            _buildPosterWall(context, ref, videos, state, isDark)
+          else if (viewMode == VideoViewMode.grid)
             SliverPadding(
               padding: AppSpacing.paddingMd,
               sliver: SliverGrid(
@@ -634,6 +851,76 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
         ],
       ),
     );
+  }
+
+  Widget _buildPosterWall(
+    BuildContext context,
+    WidgetRef ref,
+    List<VideoFileWithSource> videos,
+    VideoListLoaded state,
+    bool isDark,
+  ) {
+    // 为每个视频创建或获取元数据
+    final metadataList = videos.map((video) {
+      final key = '${video.sourceId}_${video.path}';
+      return state.metadataMap[key] ??
+          VideoMetadata(
+            filePath: video.path,
+            sourceId: video.sourceId,
+            fileName: video.name,
+          );
+    }).toList();
+
+    return SliverPosterWall(
+      items: metadataList,
+      onItemTap: (metadata) => _openVideoDetail(context, ref, metadata),
+      onItemLongPress: (metadata) => _playVideoDirectly(context, ref, metadata),
+    );
+  }
+
+  Future<void> _openVideoDetail(
+    BuildContext context,
+    WidgetRef ref,
+    VideoMetadata metadata,
+  ) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => VideoDetailPage(
+          metadata: metadata,
+          sourceId: metadata.sourceId,
+        ),
+      ),
+    );
+    ref.invalidate(continueWatchingProvider);
+  }
+
+  Future<void> _playVideoDirectly(
+    BuildContext context,
+    WidgetRef ref,
+    VideoMetadata metadata,
+  ) async {
+    final connections = ref.read(activeConnectionsProvider);
+    final connection = connections[metadata.sourceId];
+    if (connection == null) return;
+
+    final url = await connection.adapter.fileSystem.getFileUrl(metadata.filePath);
+
+    if (!context.mounted) return;
+
+    final videoItem = VideoItem(
+      name: metadata.displayTitle,
+      path: metadata.filePath,
+      url: url,
+      size: 0,
+    );
+
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => VideoPlayerPage(video: videoItem),
+      ),
+    );
+
+    ref.invalidate(continueWatchingProvider);
   }
 }
 

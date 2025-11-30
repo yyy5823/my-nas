@@ -85,7 +85,8 @@ class ActiveConnectionsNotifier
   void refresh() {
     final manager = _ref.read(sourceManagerProvider);
     final connections = <String, SourceConnection>{};
-    for (final source in _ref.read(sourcesProvider).valueOrNull ?? []) {
+    final sources = _ref.read(sourcesProvider).valueOrNull ?? <SourceEntity>[];
+    for (final source in sources) {
       final conn = manager.getConnection(source.id);
       if (conn != null) {
         connections[source.id] = conn;

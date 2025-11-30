@@ -388,7 +388,8 @@ class SourceManagerService {
   NasAdapterType _getAdapterType(SourceType type) {
     return switch (type) {
       SourceType.synology => NasAdapterType.synology,
-      SourceType.qnap => NasAdapterType.qnap,
+      SourceType.webdav => NasAdapterType.webdav,
+      SourceType.smb => NasAdapterType.smb,
       _ => throw UnimplementedError('适配器类型 $type 尚未实现'),
     };
   }

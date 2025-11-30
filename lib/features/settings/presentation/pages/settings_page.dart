@@ -2,13 +2,15 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hive_ce/hive.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
-import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
+import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/pages/media_library_page.dart';
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
+import 'package:my_nas/features/video/data/services/tmdb_service.dart';
 import 'package:my_nas/shared/providers/theme_provider.dart';
 import 'package:my_nas/shared/services/download_service.dart';
 import 'package:my_nas/shared/widgets/download_manager_sheet.dart';
@@ -96,6 +98,19 @@ class SettingsPage extends ConsumerWidget {
                         showChevron: false,
                       ),
                     ),
+                  ],
+                ),
+
+                const SizedBox(height: AppSpacing.xl),
+
+                // 视频设置
+                _buildSectionHeader(context, '视频', Icons.movie_rounded, isDark),
+                const SizedBox(height: AppSpacing.sm),
+                _buildSettingsCard(
+                  context,
+                  isDark,
+                  children: [
+                    _TmdbApiKeyTile(isDark: isDark),
                   ],
                 ),
 
@@ -530,4 +545,238 @@ class SettingsPage extends ConsumerWidget {
     );
   }
 
+}
+
+/// TMDB API Key 设置项
+class _TmdbApiKeyTile extends StatefulWidget {
+  const _TmdbApiKeyTile({required this.isDark});
+
+  final bool isDark;
+
+  @override
+  State<_TmdbApiKeyTile> createState() => _TmdbApiKeyTileState();
+}
+
+class _TmdbApiKeyTileState extends State<_TmdbApiKeyTile> {
+  final _tmdbService = TmdbService.instance;
+  bool _hasApiKey = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadApiKeyStatus();
+  }
+
+  Future<void> _loadApiKeyStatus() async {
+    final box = await Hive.openBox<String>('settings');
+    final apiKey = box.get('tmdb_api_key', defaultValue: '');
+    if (apiKey != null && apiKey.isNotEmpty) {
+      _tmdbService.setApiKey(apiKey);
+    }
+    setState(() => _hasApiKey = _tmdbService.hasApiKey);
+  }
+
+  Future<void> _showApiKeyDialog() async {
+    final controller = TextEditingController();
+    final box = await Hive.openBox<String>('settings');
+    controller.text = box.get('tmdb_api_key', defaultValue: '') ?? '';
+
+    if (!mounted) return;
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: widget.isDark ? AppColors.darkSurface : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          'TMDB API Key',
+          style: TextStyle(
+            color: widget.isDark ? AppColors.darkOnSurface : Colors.black87,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '配置 TMDB API Key 后，可以自动获取电影和电视剧的海报、评分、简介等信息。',
+              style: TextStyle(
+                fontSize: 14,
+                color: widget.isDark ? AppColors.darkOnSurfaceVariant : Colors.black54,
+              ),
+            ),
+            const SizedBox(height: 8),
+            GestureDetector(
+              onTap: () {
+                // 打开 TMDB 网站
+              },
+              child: Text(
+                '前往 themoviedb.org 申请免费 API Key',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: AppColors.primary,
+                  decoration: TextDecoration.underline,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              decoration: InputDecoration(
+                labelText: 'API Key',
+                hintText: '请输入 TMDB API Key',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                filled: true,
+                fillColor: widget.isDark
+                    ? AppColors.darkSurfaceVariant.withOpacity(0.3)
+                    : Colors.grey[100],
+              ),
+              style: TextStyle(
+                color: widget.isDark ? AppColors.darkOnSurface : Colors.black87,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              '取消',
+              style: TextStyle(color: AppColors.primary),
+            ),
+          ),
+          if (_hasApiKey)
+            TextButton(
+              onPressed: () => Navigator.pop(context, ''),
+              child: const Text(
+                '清除',
+                style: TextStyle(color: Colors.red),
+              ),
+            ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null) {
+      await box.put('tmdb_api_key', result);
+      if (result.isNotEmpty) {
+        _tmdbService.setApiKey(result);
+      } else {
+        _tmdbService.setApiKey('');
+      }
+      setState(() => _hasApiKey = result.isNotEmpty);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result.isEmpty ? 'API Key 已清除' : 'API Key 已保存'),
+            backgroundColor: AppColors.primary,
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _showApiKeyDialog,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.md,
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppColors.fileVideo.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.api_rounded,
+                  color: AppColors.fileVideo,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'TMDB API Key',
+                      style: context.textTheme.bodyLarge?.copyWith(
+                        color: widget.isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _hasApiKey ? '已配置' : '未配置 (无法获取影片信息)',
+                      style: context.textTheme.bodySmall?.copyWith(
+                        color: _hasApiKey
+                            ? Colors.green
+                            : (widget.isDark
+                                ? AppColors.darkOnSurfaceVariant
+                                : AppColors.lightOnSurfaceVariant),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (_hasApiKey)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.check_circle_rounded, size: 14, color: Colors.green),
+                      SizedBox(width: 4),
+                      Text(
+                        '已启用',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.green,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: widget.isDark
+                      ? AppColors.darkOnSurfaceVariant
+                      : AppColors.lightOnSurfaceVariant,
+                  size: 22,
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
