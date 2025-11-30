@@ -48,6 +48,7 @@ dependencies:
   logger: ^2.5.0
   path: ^1.9.1
   collection: ^1.19.1
+  uuid: ^4.5.1
 
   # Media - Video
   media_kit: ^1.1.11
@@ -59,6 +60,8 @@ dependencies:
   audio_service: ^0.18.17
   audio_session: ^0.1.25
   http: ^1.6.0
+  file_picker: ^10.3.7
+  webdav_client: ^1.2.2
 
 dev_dependencies:
   flutter_test:

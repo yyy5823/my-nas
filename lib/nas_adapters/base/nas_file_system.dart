@@ -27,6 +27,18 @@ abstract class NasFileSystem {
   /// 移动文件或目录
   Future<void> move(String sourcePath, String destPath);
 
+  /// 上传文件
+  /// [localPath] 本地文件路径
+  /// [remotePath] 远程目标目录路径
+  /// [fileName] 文件名（可选，默认使用本地文件名）
+  /// [onProgress] 上传进度回调 (已上传字节数, 总字节数)
+  Future<void> upload(
+    String localPath,
+    String remotePath, {
+    String? fileName,
+    void Function(int sent, int total)? onProgress,
+  });
+
   /// 搜索文件
   Future<List<FileItem>> search(String query, {String? path});
 

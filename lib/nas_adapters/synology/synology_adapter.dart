@@ -1,3 +1,4 @@
+import 'package:my_nas/core/constants/app_constants.dart';
 import 'package:my_nas/core/network/dio_client.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/nas_adapters/base/nas_adapter.dart';
@@ -23,10 +24,10 @@ class SynologyAdapter implements NasAdapter {
   bool _connected = false;
 
   @override
-  NasAdapterInfo get info => const NasAdapterInfo(
+  NasAdapterInfo get info => NasAdapterInfo(
         type: NasAdapterType.synology,
         name: '群晖 Synology',
-        version: '1.0.0',
+        version: AppConstants.appVersion,
         supportsMediaService: true,
         supportsToolsService: false,
       );

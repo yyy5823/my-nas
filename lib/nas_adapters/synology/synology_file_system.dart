@@ -85,15 +85,36 @@ class SynologyFileSystem implements NasFileSystem {
   }
 
   @override
-  Future<void> copy(String sourcePath, String destPath) {
-    // TODO: 实现复制功能
-    throw UnimplementedError();
+  Future<void> copy(String sourcePath, String destPath) async {
+    final taskId = await _api.copyFiles(
+      paths: [sourcePath],
+      destFolderPath: destPath,
+    );
+    await _api.waitForCopyMove(taskId);
   }
 
   @override
-  Future<void> move(String sourcePath, String destPath) {
-    // TODO: 实现移动功能
-    throw UnimplementedError();
+  Future<void> move(String sourcePath, String destPath) async {
+    final taskId = await _api.moveFiles(
+      paths: [sourcePath],
+      destFolderPath: destPath,
+    );
+    await _api.waitForCopyMove(taskId);
+  }
+
+  @override
+  Future<void> upload(
+    String localPath,
+    String remotePath, {
+    String? fileName,
+    void Function(int sent, int total)? onProgress,
+  }) async {
+    await _api.uploadFile(
+      localPath: localPath,
+      destFolderPath: remotePath,
+      fileName: fileName,
+      onProgress: onProgress,
+    );
   }
 
   @override

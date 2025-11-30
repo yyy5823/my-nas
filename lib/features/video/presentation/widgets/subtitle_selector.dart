@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart' show SubtitleTrack;
-import 'package:my_nas/features/video/data/services/subtitle_service.dart';
 import 'package:my_nas/features/video/presentation/providers/video_player_provider.dart';
 
 /// 字幕选择器弹窗
@@ -296,7 +295,7 @@ class _EmbeddedSubtitleTile extends StatelessWidget {
 
 /// 显示字幕选择器
 void showSubtitleSelector(BuildContext context) {
-  showModalBottomSheet(
+  showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,

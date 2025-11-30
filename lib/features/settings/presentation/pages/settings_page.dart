@@ -132,7 +132,7 @@ class SettingsPage extends ConsumerWidget {
                       subtitle: '管理 NAS、WebDAV、SMB 等连接',
                       onTap: () => Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const SourcesPage()),
+                        MaterialPageRoute<void>(builder: (_) => const SourcesPage()),
                       ),
                     ),
                     _buildDivider(isDark),
@@ -145,7 +145,7 @@ class SettingsPage extends ConsumerWidget {
                       subtitle: '配置视频、音乐、漫画等目录',
                       onTap: () => Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const MediaLibraryPage()),
+                        MaterialPageRoute<void>(builder: (_) => const MediaLibraryPage()),
                       ),
                     ),
                     _buildDivider(isDark),

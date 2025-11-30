@@ -216,7 +216,7 @@ class _MediaTypeTab extends ConsumerWidget {
       return;
     }
 
-    showModalBottomSheet(
+    showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,

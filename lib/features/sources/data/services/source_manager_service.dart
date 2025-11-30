@@ -1,4 +1,3 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
@@ -6,6 +5,7 @@ import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/nas_adapters/base/nas_adapter.dart';
 import 'package:my_nas/nas_adapters/base/nas_connection.dart';
 import 'package:my_nas/nas_adapters/synology/synology_adapter.dart';
+import 'package:my_nas/nas_adapters/webdav/webdav_adapter.dart';
 
 /// 源连接信息
 class SourceConnection {
@@ -381,6 +381,7 @@ class SourceManagerService {
   NasAdapter _createAdapter(SourceType type) {
     return switch (type) {
       SourceType.synology => SynologyAdapter(),
+      SourceType.webdav => WebDavAdapter(),
       _ => throw UnimplementedError('适配器 $type 尚未实现'),
     };
   }

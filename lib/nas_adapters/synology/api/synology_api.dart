@@ -311,6 +311,124 @@ class SynologyApi {
     );
   }
 
+  /// 上传文件
+  Future<void> uploadFile({
+    required String localPath,
+    required String destFolderPath,
+    String? fileName,
+    bool createParents = true,
+    bool overwrite = true,
+    void Function(int sent, int total)? onProgress,
+  }) async {
+    final file = MultipartFile.fromFileSync(
+      localPath,
+      filename: fileName,
+    );
+
+    final formData = FormData.fromMap({
+      'api': 'SYNO.FileStation.Upload',
+      'version': 2,
+      'method': 'upload',
+      'path': destFolderPath,
+      'create_parents': createParents,
+      'overwrite': overwrite,
+      if (_sid != null) '_sid': _sid,
+      'file': file,
+    });
+
+    logger.i('SynologyApi: 开始上传文件到 $destFolderPath');
+
+    final response = await _dio.post<Map<String, dynamic>>(
+      '/webapi/entry.cgi',
+      data: formData,
+      onSendProgress: onProgress,
+    );
+
+    final data = response.data;
+    if (data == null || data['success'] != true) {
+      final errorCode = data?['error']?['code'] as int?;
+      throw ServerException(
+        message: _getErrorMessage(errorCode),
+        statusCode: errorCode,
+      );
+    }
+
+    logger.i('SynologyApi: 文件上传成功');
+  }
+
+  /// 复制文件/文件夹
+  Future<String> copyFiles({
+    required List<String> paths,
+    required String destFolderPath,
+    bool overwrite = false,
+  }) async {
+    final response = await _request(
+      'SYNO.FileStation.CopyMove',
+      'start',
+      version: 3,
+      params: {
+        'path': paths.join(','),
+        'dest_folder_path': destFolderPath,
+        'overwrite': overwrite,
+        'remove_src': false,
+      },
+    );
+
+    final data = response['data'] as Map<String, dynamic>;
+    return data['taskid'] as String;
+  }
+
+  /// 移动文件/文件夹
+  Future<String> moveFiles({
+    required List<String> paths,
+    required String destFolderPath,
+    bool overwrite = false,
+  }) async {
+    final response = await _request(
+      'SYNO.FileStation.CopyMove',
+      'start',
+      version: 3,
+      params: {
+        'path': paths.join(','),
+        'dest_folder_path': destFolderPath,
+        'overwrite': overwrite,
+        'remove_src': true,
+      },
+    );
+
+    final data = response['data'] as Map<String, dynamic>;
+    return data['taskid'] as String;
+  }
+
+  /// 获取复制/移动任务状态
+  Future<CopyMoveStatus> getCopyMoveStatus(String taskId) async {
+    final response = await _request(
+      'SYNO.FileStation.CopyMove',
+      'status',
+      version: 3,
+      params: {
+        'taskid': taskId,
+      },
+    );
+
+    final data = response['data'] as Map<String, dynamic>;
+    return CopyMoveStatus(
+      finished: data['finished'] as bool? ?? false,
+      progress: (data['progress'] as num?)?.toDouble() ?? 0.0,
+      destFolderPath: data['dest_folder_path'] as String?,
+      path: data['path'] as String?,
+    );
+  }
+
+  /// 等待复制/移动任务完成
+  Future<void> waitForCopyMove(String taskId) async {
+    CopyMoveStatus status;
+    do {
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      status = await getCopyMoveStatus(taskId);
+    } while (!status.finished);
+  }
+
   /// 原始请求方法 - 不检查 success 字段，用于登录等需要自行处理错误的场景
   Future<Map<String, dynamic>> _requestRaw(
     String api,
@@ -533,4 +651,19 @@ class SearchResult {
   final List<FileStationFile> files;
   final bool finished;
   final int total;
+}
+
+/// 复制/移动任务状态
+class CopyMoveStatus {
+  const CopyMoveStatus({
+    required this.finished,
+    required this.progress,
+    this.destFolderPath,
+    this.path,
+  });
+
+  final bool finished;
+  final double progress;
+  final String? destFolderPath;
+  final String? path;
 }

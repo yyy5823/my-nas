@@ -145,7 +145,7 @@ class ConnectionStateNotifier extends StateNotifier<NasConnectionState> {
             return ConnectionError(message: error);
           }(),
         ConnectionRequires2FA() => ConnectionRequires2FAState(
-            adapter: adapter!,
+            adapter: adapter,
             rememberDevice: rememberDevice,
           ),
       };

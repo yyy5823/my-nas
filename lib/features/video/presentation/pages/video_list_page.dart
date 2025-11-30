@@ -6,7 +6,6 @@ import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/utils/logger.dart';
-import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
@@ -19,9 +18,9 @@ import 'package:my_nas/features/video/presentation/pages/video_player_page.dart'
 import 'package:my_nas/features/video/presentation/providers/video_history_provider.dart';
 import 'package:my_nas/features/video/presentation/widgets/poster_wall.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
+import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/shared/widgets/empty_widget.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
-import 'package:my_nas/shared/widgets/loading_widget.dart';
 
 /// 视频文件及其来源
 class VideoFileWithSource {
@@ -155,6 +154,9 @@ class VideoListError extends VideoListState {
   final String message;
 }
 
+/// 未连接到 NAS 的状态
+class VideoListNotConnected extends VideoListState {}
+
 class VideoListNotifier extends StateNotifier<VideoListState> {
   VideoListNotifier(this._ref) : super(VideoListLoading()) {
     _initMetadataService();
@@ -201,7 +203,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     }).toList();
 
     if (connectedPaths.isEmpty) {
-      state = VideoListError('没有已连接的源');
+      state = VideoListNotConnected();
       return;
     }
 
@@ -462,6 +464,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
             child: switch (state) {
               VideoListLoading(:final progress, :final currentFolder) =>
                 _buildLoadingState(progress, currentFolder),
+              VideoListNotConnected() => _buildNotConnectedPrompt(context, isDark),
               VideoListError(:final message) => AppErrorWidget(
                   message: message,
                   onRetry: () => ref.read(videoListProvider.notifier).loadVideos(),
@@ -765,6 +768,90 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildNotConnectedPrompt(BuildContext context, bool isDark) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.cloud_off_rounded,
+                size: 40,
+                color: AppColors.primary,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              '未连接到 NAS',
+              style: context.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: isDark ? AppColors.darkOnSurface : null,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '请先在设置中配置并连接到 NAS 服务器',
+              style: context.textTheme.bodyMedium?.copyWith(
+                color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 32),
+            Container(
+              decoration: BoxDecoration(
+                gradient: AppColors.primaryGradient,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.primary.withOpacity(0.3),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute<void>(builder: (_) => const SourcesPage()),
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.add_rounded, color: Colors.white),
+                        SizedBox(width: 8),
+                        Text(
+                          '添加连接',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

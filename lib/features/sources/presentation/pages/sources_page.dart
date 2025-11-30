@@ -110,7 +110,7 @@ class SourcesPage extends ConsumerWidget {
   }
 
   void _showAddSourceSheet(BuildContext context) {
-    showModalBottomSheet(
+    showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -261,7 +261,7 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
   }
 
   void _showSourceOptions(BuildContext context) {
-    showModalBottomSheet(
+    showModalBottomSheet<void>(
       context: context,
       builder: (context) => SafeArea(
         child: Column(
@@ -394,7 +394,7 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
   }
 
   void _editSource() {
-    showModalBottomSheet(
+    showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
