@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 enum MediaType {
   video('视频', 'video'),
   music('音乐', 'music'),
+  photo('照片', 'photo'),
   comic('漫画', 'comic'),
   book('书籍', 'book'),
   note('笔记', 'note');
@@ -77,6 +78,7 @@ class MediaLibraryConfig {
   const MediaLibraryConfig({
     this.videoPaths = const [],
     this.musicPaths = const [],
+    this.photoPaths = const [],
     this.comicPaths = const [],
     this.bookPaths = const [],
     this.notePaths = const [],
@@ -84,6 +86,7 @@ class MediaLibraryConfig {
 
   final List<MediaLibraryPath> videoPaths;
   final List<MediaLibraryPath> musicPaths;
+  final List<MediaLibraryPath> photoPaths;
   final List<MediaLibraryPath> comicPaths;
   final List<MediaLibraryPath> bookPaths;
   final List<MediaLibraryPath> notePaths;
@@ -93,6 +96,7 @@ class MediaLibraryConfig {
     return switch (type) {
       MediaType.video => videoPaths,
       MediaType.music => musicPaths,
+      MediaType.photo => photoPaths,
       MediaType.comic => comicPaths,
       MediaType.book => bookPaths,
       MediaType.note => notePaths,
@@ -107,6 +111,7 @@ class MediaLibraryConfig {
   MediaLibraryConfig copyWith({
     List<MediaLibraryPath>? videoPaths,
     List<MediaLibraryPath>? musicPaths,
+    List<MediaLibraryPath>? photoPaths,
     List<MediaLibraryPath>? comicPaths,
     List<MediaLibraryPath>? bookPaths,
     List<MediaLibraryPath>? notePaths,
@@ -114,6 +119,7 @@ class MediaLibraryConfig {
       MediaLibraryConfig(
         videoPaths: videoPaths ?? this.videoPaths,
         musicPaths: musicPaths ?? this.musicPaths,
+        photoPaths: photoPaths ?? this.photoPaths,
         comicPaths: comicPaths ?? this.comicPaths,
         bookPaths: bookPaths ?? this.bookPaths,
         notePaths: notePaths ?? this.notePaths,
@@ -125,6 +131,7 @@ class MediaLibraryConfig {
     return switch (type) {
       MediaType.video => copyWith(videoPaths: paths),
       MediaType.music => copyWith(musicPaths: paths),
+      MediaType.photo => copyWith(photoPaths: paths),
       MediaType.comic => copyWith(comicPaths: paths),
       MediaType.book => copyWith(bookPaths: paths),
       MediaType.note => copyWith(notePaths: paths),
@@ -137,6 +144,7 @@ class MediaLibraryConfig {
     return switch (type) {
       MediaType.video => copyWith(videoPaths: paths),
       MediaType.music => copyWith(musicPaths: paths),
+      MediaType.photo => copyWith(photoPaths: paths),
       MediaType.comic => copyWith(comicPaths: paths),
       MediaType.book => copyWith(bookPaths: paths),
       MediaType.note => copyWith(notePaths: paths),
@@ -148,6 +156,7 @@ class MediaLibraryConfig {
     return MediaLibraryConfig(
       videoPaths: videoPaths.where((p) => p.sourceId != sourceId).toList(),
       musicPaths: musicPaths.where((p) => p.sourceId != sourceId).toList(),
+      photoPaths: photoPaths.where((p) => p.sourceId != sourceId).toList(),
       comicPaths: comicPaths.where((p) => p.sourceId != sourceId).toList(),
       bookPaths: bookPaths.where((p) => p.sourceId != sourceId).toList(),
       notePaths: notePaths.where((p) => p.sourceId != sourceId).toList(),
@@ -157,6 +166,7 @@ class MediaLibraryConfig {
   Map<String, dynamic> toJson() => {
         'videoPaths': videoPaths.map((p) => p.toJson()).toList(),
         'musicPaths': musicPaths.map((p) => p.toJson()).toList(),
+        'photoPaths': photoPaths.map((p) => p.toJson()).toList(),
         'comicPaths': comicPaths.map((p) => p.toJson()).toList(),
         'bookPaths': bookPaths.map((p) => p.toJson()).toList(),
         'notePaths': notePaths.map((p) => p.toJson()).toList(),
@@ -173,6 +183,7 @@ class MediaLibraryConfig {
     return MediaLibraryConfig(
       videoPaths: parsePaths(json['videoPaths']),
       musicPaths: parsePaths(json['musicPaths']),
+      photoPaths: parsePaths(json['photoPaths']),
       comicPaths: parsePaths(json['comicPaths']),
       bookPaths: parsePaths(json['bookPaths']),
       notePaths: parsePaths(json['notePaths']),

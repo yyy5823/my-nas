@@ -29,6 +29,12 @@ class MainScaffold extends StatelessWidget {
       route: Routes.music,
     ),
     const _Destination(
+      icon: Icons.photo_library_outlined,
+      selectedIcon: Icons.photo_library_rounded,
+      label: '照片',
+      route: Routes.photo,
+    ),
+    const _Destination(
       icon: Icons.menu_book_outlined,
       selectedIcon: Icons.menu_book_rounded,
       label: '图书',

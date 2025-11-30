@@ -1,0 +1,130 @@
+import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
+
+/// 照片项实体
+class PhotoItem {
+  const PhotoItem({
+    required this.name,
+    required this.path,
+    required this.url,
+    this.thumbnailUrl,
+    this.size = 0,
+    this.width,
+    this.height,
+    this.takenAt,
+    this.modifiedAt,
+    this.latitude,
+    this.longitude,
+    this.cameraMake,
+    this.cameraModel,
+  });
+
+  final String name;
+  final String path;
+  final String url;
+  final String? thumbnailUrl;
+  final int size;
+  final int? width;
+  final int? height;
+  final DateTime? takenAt;
+  final DateTime? modifiedAt;
+  final double? latitude;
+  final double? longitude;
+  final String? cameraMake;
+  final String? cameraModel;
+
+  /// 从文件项创建照片项
+  factory PhotoItem.fromFileItem(FileItem file, String url, {String? thumbnailUrl}) =>
+      PhotoItem(
+        name: file.name,
+        path: file.path,
+        url: url,
+        thumbnailUrl: thumbnailUrl ?? file.thumbnailUrl,
+        size: file.size,
+        modifiedAt: file.modifiedTime,
+      );
+
+  /// 显示的文件大小
+  String get displaySize {
+    const units = ['B', 'KB', 'MB', 'GB'];
+    var unitIndex = 0;
+    var displaySize = size.toDouble();
+    while (displaySize >= 1024 && unitIndex < units.length - 1) {
+      displaySize /= 1024;
+      unitIndex++;
+    }
+    return '${displaySize.toStringAsFixed(displaySize < 10 ? 1 : 0)} ${units[unitIndex]}';
+  }
+
+  /// 显示的分辨率
+  String? get displayResolution {
+    if (width == null || height == null) return null;
+    return '$width × $height';
+  }
+
+  /// 是否有 GPS 信息
+  bool get hasLocation => latitude != null && longitude != null;
+
+  /// 相机信息
+  String? get cameraInfo {
+    if (cameraMake == null && cameraModel == null) return null;
+    return [cameraMake, cameraModel].whereType<String>().join(' ');
+  }
+
+  PhotoItem copyWith({
+    String? name,
+    String? path,
+    String? url,
+    String? thumbnailUrl,
+    int? size,
+    int? width,
+    int? height,
+    DateTime? takenAt,
+    DateTime? modifiedAt,
+    double? latitude,
+    double? longitude,
+    String? cameraMake,
+    String? cameraModel,
+  }) =>
+      PhotoItem(
+        name: name ?? this.name,
+        path: path ?? this.path,
+        url: url ?? this.url,
+        thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
+        size: size ?? this.size,
+        width: width ?? this.width,
+        height: height ?? this.height,
+        takenAt: takenAt ?? this.takenAt,
+        modifiedAt: modifiedAt ?? this.modifiedAt,
+        latitude: latitude ?? this.latitude,
+        longitude: longitude ?? this.longitude,
+        cameraMake: cameraMake ?? this.cameraMake,
+        cameraModel: cameraModel ?? this.cameraModel,
+      );
+}
+
+/// 照片分组（按日期）
+class PhotoGroup {
+  const PhotoGroup({
+    required this.date,
+    required this.photos,
+  });
+
+  final DateTime date;
+  final List<PhotoItem> photos;
+
+  /// 格式化日期标题
+  String get dateTitle {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final groupDate = DateTime(date.year, date.month, date.day);
+    final diff = today.difference(groupDate).inDays;
+
+    if (diff == 0) return '今天';
+    if (diff == 1) return '昨天';
+    if (diff < 7) return '$diff 天前';
+    if (date.year == now.year) {
+      return '${date.month}月${date.day}日';
+    }
+    return '${date.year}年${date.month}月${date.day}日';
+  }
+}

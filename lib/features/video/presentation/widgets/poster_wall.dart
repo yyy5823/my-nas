@@ -138,7 +138,8 @@ class _PosterCardState extends State<PosterCard> with SingleTickerProviderStateM
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final hasPoster = widget.metadata.posterUrl != null && widget.metadata.posterUrl!.isNotEmpty;
+    final displayPoster = widget.metadata.displayPosterUrl;
+    final hasPoster = displayPoster != null && displayPoster.isNotEmpty;
 
     return MouseRegion(
       onEnter: (_) {
@@ -174,10 +175,10 @@ class _PosterCardState extends State<PosterCard> with SingleTickerProviderStateM
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  // 海报图片或占位符
+                  // 海报图片或占位符（优先使用 TMDB 海报，没有则使用内置缩略图）
                   if (hasPoster)
                     CachedNetworkImage(
-                      imageUrl: widget.metadata.posterUrl!,
+                      imageUrl: displayPoster,
                       fit: BoxFit.cover,
                       placeholder: (_, __) => _buildPlaceholder(isDark),
                       errorWidget: (_, __, ___) => _buildPlaceholder(isDark),
@@ -417,7 +418,8 @@ class PosterRow extends StatelessWidget {
             itemCount: items.length,
             itemBuilder: (context, index) {
               final metadata = items[index];
-              final hasPoster = metadata.posterUrl != null && metadata.posterUrl!.isNotEmpty;
+              final displayPoster = metadata.displayPosterUrl;
+              final hasPoster = displayPoster != null && displayPoster.isNotEmpty;
 
               return Padding(
                 padding: EdgeInsets.only(right: index < items.length - 1 ? 12 : 0),
@@ -445,7 +447,7 @@ class PosterRow extends StatelessWidget {
                               borderRadius: BorderRadius.circular(8),
                               child: hasPoster
                                   ? CachedNetworkImage(
-                                      imageUrl: metadata.posterUrl!,
+                                      imageUrl: displayPoster,
                                       fit: BoxFit.cover,
                                       width: itemWidth,
                                       placeholder: (_, __) => _buildMiniPlaceholder(isDark, metadata),

@@ -40,6 +40,7 @@ class MediaLibraryPage extends ConsumerWidget {
     return switch (type) {
       MediaType.video => Icons.movie_outlined,
       MediaType.music => Icons.music_note_outlined,
+      MediaType.photo => Icons.photo_library_outlined,
       MediaType.comic => Icons.collections_outlined,
       MediaType.book => Icons.book_outlined,
       MediaType.note => Icons.note_outlined,
@@ -189,6 +190,7 @@ class _MediaTypeTab extends ConsumerWidget {
     return switch (mediaType) {
       MediaType.video => Icons.video_library_outlined,
       MediaType.music => Icons.library_music_outlined,
+      MediaType.photo => Icons.photo_library_outlined,
       MediaType.comic => Icons.collections_bookmark_outlined,
       MediaType.book => Icons.library_books_outlined,
       MediaType.note => Icons.sticky_note_2_outlined,

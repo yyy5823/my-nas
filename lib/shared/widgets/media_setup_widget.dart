@@ -267,6 +267,7 @@ class MediaSetupWidget extends ConsumerWidget {
     return switch (mediaType) {
       MediaType.video => Icons.movie_outlined,
       MediaType.music => Icons.library_music_outlined,
+      MediaType.photo => Icons.photo_library_outlined,
       MediaType.comic => Icons.collections_outlined,
       MediaType.book => Icons.menu_book_outlined,
       MediaType.note => Icons.note_outlined,

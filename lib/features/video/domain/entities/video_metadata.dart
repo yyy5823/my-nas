@@ -30,6 +30,7 @@ class VideoMetadata {
     this.episodeNumber,
     this.episodeTitle,
     this.lastUpdated,
+    this.thumbnailUrl,
   });
 
   final String filePath;
@@ -52,6 +53,10 @@ class VideoMetadata {
   int? episodeNumber;
   String? episodeTitle;
   DateTime? lastUpdated;
+  String? thumbnailUrl; // 内置缩略图 URL（来自 NAS）
+
+  /// 优先使用 TMDB 海报，没有则使用内置缩略图
+  String? get displayPosterUrl => posterUrl ?? thumbnailUrl;
 
   /// 是否有元数据
   bool get hasMetadata => tmdbId != null;
@@ -157,6 +162,7 @@ class VideoMetadata {
       'episodeNumber': episodeNumber,
       'episodeTitle': episodeTitle,
       'lastUpdated': lastUpdated?.millisecondsSinceEpoch,
+      'thumbnailUrl': thumbnailUrl,
     };
   }
 
@@ -185,6 +191,7 @@ class VideoMetadata {
       lastUpdated: map['lastUpdated'] != null
           ? DateTime.fromMillisecondsSinceEpoch(map['lastUpdated'] as int)
           : null,
+      thumbnailUrl: map['thumbnailUrl'] as String?,
     );
   }
 
@@ -210,6 +217,7 @@ class VideoMetadata {
     int? episodeNumber,
     String? episodeTitle,
     DateTime? lastUpdated,
+    String? thumbnailUrl,
   }) {
     return VideoMetadata(
       filePath: filePath ?? this.filePath,
@@ -232,6 +240,7 @@ class VideoMetadata {
       episodeNumber: episodeNumber ?? this.episodeNumber,
       episodeTitle: episodeTitle ?? this.episodeTitle,
       lastUpdated: lastUpdated ?? this.lastUpdated,
+      thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
     );
   }
 }

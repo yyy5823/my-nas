@@ -6,6 +6,7 @@ import 'package:my_nas/features/connection/presentation/pages/connection_page.da
 import 'package:my_nas/features/file_browser/presentation/pages/file_browser_page.dart';
 import 'package:my_nas/features/music/presentation/pages/music_list_page.dart';
 import 'package:my_nas/features/note/presentation/pages/note_list_page.dart';
+import 'package:my_nas/features/photo/presentation/pages/photo_list_page.dart';
 import 'package:my_nas/features/settings/presentation/pages/settings_page.dart';
 import 'package:my_nas/features/startup/presentation/pages/startup_page.dart';
 import 'package:my_nas/features/video/presentation/pages/video_list_page.dart';
@@ -52,6 +53,11 @@ final appRouter = GoRouter(
           path: Routes.music,
           name: 'music',
           builder: (context, state) => const MusicListPage(),
+        ),
+        GoRoute(
+          path: Routes.photo,
+          name: 'photo',
+          builder: (context, state) => const PhotoListPage(),
         ),
         GoRoute(
           path: Routes.book,

@@ -970,12 +970,21 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     // 为每个视频创建或获取元数据
     final metadataList = videos.map((video) {
       final key = '${video.sourceId}_${video.path}';
-      return state.metadataMap[key] ??
-          VideoMetadata(
-            filePath: video.path,
-            sourceId: video.sourceId,
-            fileName: video.name,
-          );
+      final cached = state.metadataMap[key];
+      if (cached != null) {
+        // 如果有缓存但没有内置缩略图，补充进去
+        if (cached.thumbnailUrl == null && video.thumbnailUrl != null) {
+          return cached.copyWith(thumbnailUrl: video.thumbnailUrl);
+        }
+        return cached;
+      }
+      // 创建新的元数据时包含内置缩略图
+      return VideoMetadata(
+        filePath: video.path,
+        sourceId: video.sourceId,
+        fileName: video.name,
+        thumbnailUrl: video.thumbnailUrl,
+      );
     }).toList();
 
     return SliverPosterWall(

@@ -211,6 +211,7 @@ class MediaLibraryConfigNotifier
     final newConfig = switch (type) {
       MediaType.video => current.copyWith(videoPaths: updatedPaths),
       MediaType.music => current.copyWith(musicPaths: updatedPaths),
+      MediaType.photo => current.copyWith(photoPaths: updatedPaths),
       MediaType.comic => current.copyWith(comicPaths: updatedPaths),
       MediaType.book => current.copyWith(bookPaths: updatedPaths),
       MediaType.note => current.copyWith(notePaths: updatedPaths),
