@@ -6,6 +6,7 @@ import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
+import 'package:my_nas/features/sources/presentation/pages/media_library_page.dart';
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/features/video/data/services/video_history_service.dart';
@@ -206,8 +207,6 @@ class VideoListError extends VideoListState {
   final String message;
 }
 
-class VideoListNotConnected extends VideoListState {}
-
 class VideoListNotifier extends StateNotifier<VideoListState> {
   VideoListNotifier(this._ref) : super(VideoListLoading()) {
     _init();
@@ -313,7 +312,12 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     }).toList();
 
     if (connectedPaths.isEmpty) {
-      state = VideoListNotConnected();
+      // 没有已连接的源，保持当前缓存状态并提示
+      logger.w('没有已连接的源，无法扫描视频');
+      // 保持当前状态，如果是空的则显示空列表
+      if (state is! VideoListLoaded || (state as VideoListLoaded).videos.isEmpty) {
+        state = VideoListLoaded(videos: [], fromCache: true);
+      }
       return;
     }
 
@@ -555,7 +559,6 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
       body: switch (state) {
         VideoListLoading(:final progress, :final currentFolder, :final fromCache) =>
           _buildLoadingState(progress, currentFolder, fromCache, isDark),
-        VideoListNotConnected() => _buildNotConnectedPrompt(context, isDark),
         VideoListError(:final message) => AppErrorWidget(
             message: message,
             onRetry: () => ref.read(videoListProvider.notifier).loadVideos(),
@@ -649,7 +652,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
             ),
             const SizedBox(height: 12),
             Text(
-              '扫描 NAS 上的视频文件夹以填充您的媒体库',
+              '请在媒体库设置中配置视频目录并扫描',
               style: context.textTheme.bodyMedium?.copyWith(
                 color: isDark ? Colors.grey[400] : Colors.grey,
               ),
@@ -684,9 +687,12 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
             ),
             const SizedBox(height: 32),
             ElevatedButton.icon(
-              onPressed: () => ref.read(videoListProvider.notifier).loadVideos(forceRefresh: true),
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text('扫描视频'),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(builder: (_) => const MediaLibraryPage()),
+              ),
+              icon: const Icon(Icons.folder_open_rounded),
+              label: const Text('媒体库设置'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
                 foregroundColor: Colors.white,
@@ -699,66 +705,10 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
                 context,
                 MaterialPageRoute<void>(builder: (_) => const SourcesPage()),
               ),
-              icon: const Icon(Icons.settings_rounded),
-              label: const Text('配置媒体库'),
+              icon: const Icon(Icons.cloud_rounded),
+              label: const Text('连接管理'),
               style: TextButton.styleFrom(
                 foregroundColor: AppColors.primary,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNotConnectedPrompt(BuildContext context, bool isDark) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.12),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.cloud_off_rounded,
-                size: 40,
-                color: AppColors.primary,
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              '未连接到 NAS',
-              style: context.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: isDark ? Colors.white : null,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              '请先在设置中配置并连接到 NAS 服务器',
-              style: context.textTheme.bodyMedium?.copyWith(
-                color: isDark ? Colors.grey[400] : Colors.grey,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 32),
-            ElevatedButton.icon(
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute<void>(builder: (_) => const SourcesPage()),
-              ),
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('添加连接'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               ),
             ),
           ],

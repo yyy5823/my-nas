@@ -6,6 +6,8 @@ import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/features/sources/presentation/widgets/folder_picker_sheet.dart';
+import 'package:my_nas/features/video/data/services/video_library_cache_service.dart';
+import 'package:my_nas/features/video/presentation/pages/video_list_page.dart';
 
 class MediaLibraryPage extends ConsumerWidget {
   const MediaLibraryPage({super.key});
@@ -75,6 +77,13 @@ class _MediaTypeTab extends ConsumerWidget {
 
             return Column(
               children: [
+                // 视频类型显示扫描按钮和缓存信息
+                if (mediaType == MediaType.video)
+                  _VideoScanSection(
+                    paths: paths,
+                    connections: connections,
+                  ),
+
                 // 添加按钮
                 Padding(
                   padding: const EdgeInsets.all(16),
@@ -374,5 +383,241 @@ class _PathCard extends ConsumerWidget {
         ),
       ),
     );
+  }
+}
+
+/// 视频扫描区域
+class _VideoScanSection extends ConsumerStatefulWidget {
+  const _VideoScanSection({
+    required this.paths,
+    required this.connections,
+  });
+
+  final List<MediaLibraryPath> paths;
+  final Map<String, SourceConnection> connections;
+
+  @override
+  ConsumerState<_VideoScanSection> createState() => _VideoScanSectionState();
+}
+
+class _VideoScanSectionState extends ConsumerState<_VideoScanSection> {
+  bool _isScanning = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final videoState = ref.watch(videoListProvider);
+    final cacheService = VideoLibraryCacheService.instance;
+    final cacheInfo = cacheService.getCacheInfo();
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    // 检查是否有已连接的源
+    final hasConnectedSource = widget.paths.any((path) {
+      final conn = widget.connections[path.sourceId];
+      return conn?.status == SourceStatus.connected;
+    });
+
+    // 检查是否正在扫描
+    final isLoading = videoState is VideoListLoading;
+    final scanProgress = videoState is VideoListLoading ? videoState.progress : 0.0;
+    final currentFolder = videoState is VideoListLoading ? videoState.currentFolder : null;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.grey[900] : Colors.grey[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark ? Colors.grey[800]! : Colors.grey[200]!,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 标题行
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  Icons.video_library_rounded,
+                  size: 20,
+                  color: AppColors.primary,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '视频库缓存',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      cacheInfo,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          // 扫描进度
+          if (isLoading) ...[
+            Row(
+              children: [
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    value: scanProgress > 0 ? scanProgress : null,
+                    color: AppColors.primary,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    currentFolder ?? '正在扫描...',
+                    style: theme.textTheme.bodySmall,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            if (scanProgress > 0) ...[
+              const SizedBox(height: 8),
+              LinearProgressIndicator(
+                value: scanProgress,
+                backgroundColor: isDark ? Colors.grey[800] : Colors.grey[200],
+                color: AppColors.primary,
+              ),
+            ],
+            const SizedBox(height: 12),
+          ],
+
+          // 扫描按钮
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: isLoading || !hasConnectedSource
+                      ? null
+                      : () => _scanVideos(),
+                  icon: Icon(
+                    isLoading ? Icons.hourglass_empty : Icons.refresh_rounded,
+                  ),
+                  label: Text(isLoading ? '扫描中...' : '扫描视频'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: isDark ? Colors.grey[800] : Colors.grey[300],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              OutlinedButton.icon(
+                onPressed: isLoading
+                    ? null
+                    : () => _clearCache(),
+                icon: const Icon(Icons.delete_outline),
+                label: const Text('清除缓存'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.red,
+                ),
+              ),
+            ],
+          ),
+
+          // 未连接提示
+          if (!hasConnectedSource && widget.paths.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.warning_amber_rounded,
+                    size: 16,
+                    color: Colors.orange[700],
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '请先连接至少一个源才能扫描视频',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: Colors.orange[700],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _scanVideos() async {
+    setState(() => _isScanning = true);
+    try {
+      await ref.read(videoListProvider.notifier).loadVideos(forceRefresh: true);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('视频扫描完成')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isScanning = false);
+      }
+    }
+  }
+
+  Future<void> _clearCache() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('清除视频缓存'),
+        content: const Text('确定要清除视频库缓存吗？下次需要重新扫描。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red,
+            ),
+            child: const Text('清除'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await VideoLibraryCacheService.instance.clearCache();
+      ref.invalidate(videoListProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('视频缓存已清除')),
+        );
+      }
+    }
   }
 }

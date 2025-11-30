@@ -191,3 +191,4 @@ key.properties
 
 # Development docs (not for public)
 /docs/
+*.lock
