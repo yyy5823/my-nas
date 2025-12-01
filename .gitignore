@@ -84,14 +84,11 @@ app.*.map.json
 # macOS related
 **/macos/Flutter/ephemeral/
 **/macos/Flutter/GeneratedPluginRegistrant.swift
+**/macos/Flutter/Generated.xcconfig
 **/macos/**/*.xcworkspace
 **/macos/**/xcuserdata
 **/macos/Pods/
 **/macos/.symlinks/
-**/macos/Flutter/Flutter-Debug.xcconfig
-**/macos/Flutter/Flutter-Release.xcconfig
-**/macos/Flutter/Flutter-Profile.xcconfig
-**/macos/Flutter/GeneratedPluginRegistrant.swift
 
 # Windows related
 **/windows/flutter/ephemeral/
