@@ -152,6 +152,7 @@ class _ElegantSegmentControlState extends State<ElegantSegmentControl>
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
                             AnimatedSwitcher(
                               duration: const Duration(milliseconds: 200),

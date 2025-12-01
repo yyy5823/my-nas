@@ -430,6 +430,9 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
   static const double _minSidebarWidth = 200;
   static const double _maxSidebarWidth = 400;
 
+  // 侧边栏是否收起
+  bool _isSidebarCollapsed = false;
+
   @override
   void dispose() {
     _editController.dispose();
@@ -600,10 +603,15 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
       BuildContext context, NotePageLoaded state, bool isDark) {
     return Row(
       children: [
-        // 左侧目录树
-        _buildSidebar(context, state, isDark),
-        // 可拖动分隔线
-        _buildResizeHandle(isDark),
+        // 左侧目录树（可收起）
+        if (!_isSidebarCollapsed) ...[
+          _buildSidebar(context, state, isDark),
+          // 可拖动分隔线
+          _buildResizeHandle(isDark),
+        ],
+        // 展开按钮（当侧边栏收起时显示）
+        if (_isSidebarCollapsed)
+          _buildExpandButton(isDark),
         // 右侧内容区
         Expanded(
           child: _buildContentArea(context, state, isDark),
@@ -679,6 +687,16 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
               ),
             ),
             const Spacer(),
+            // 收起按钮
+            IconButton(
+              onPressed: () => setState(() => _isSidebarCollapsed = true),
+              icon: Icon(
+                Icons.chevron_left_rounded,
+                size: 20,
+                color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey,
+              ),
+              tooltip: '收起侧边栏',
+            ),
             IconButton(
               onPressed: () => ref.read(notePageProvider.notifier).loadTree(),
               icon: Icon(
@@ -691,6 +709,35 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildExpandButton(bool isDark) {
+    return Container(
+      width: 48,
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : Colors.grey[100],
+        border: Border(
+          right: BorderSide(
+            color: isDark
+                ? AppColors.darkOutline.withValues(alpha: 0.2)
+                : Colors.grey.withValues(alpha: 0.3),
+          ),
+        ),
+      ),
+      child: Column(
+        children: [
+          const SizedBox(height: 8),
+          IconButton(
+            onPressed: () => setState(() => _isSidebarCollapsed = false),
+            icon: Icon(
+              Icons.chevron_right_rounded,
+              color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[700],
+            ),
+            tooltip: '展开侧边栏',
+          ),
+        ],
       ),
     );
   }
