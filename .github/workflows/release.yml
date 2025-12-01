@@ -251,6 +251,20 @@ jobs:
             arch: arm64
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 验证 checkout 完整性
+      - name: Verify checkout
+        run: |
+          echo "=== Workspace contents ==="
+          ls -la
+          echo "=== macOS directory ==="
+          ls -la macos/ || echo "ERROR: macos directory not found!"
+          echo "=== macOS Runner.xcodeproj ==="
+          ls -la macos/Runner.xcodeproj/ || echo "ERROR: Runner.xcodeproj not found!"
+          echo "=== project.pbxproj ==="
+          ls -la macos/Runner.xcodeproj/project.pbxproj || echo "ERROR: project.pbxproj not found!"
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -264,42 +278,40 @@ jobs:
       # 确保 macOS 平台配置正确
       - name: Setup macOS platform
         run: |
-          echo "Checking macOS project..."
+          # 显示当前状态
+          echo "=== Before setup ==="
+          ls -la macos/Runner.xcodeproj/ 2>/dev/null || echo "Runner.xcodeproj not found"
 
-          # 如果 macos 目录不完整，重新创建
-          if [ ! -f "macos/Runner.xcodeproj/project.pbxproj" ]; then
-            echo "macOS project not found, creating..."
-            flutter create --platforms=macos .
-          fi
+          # 强制重新创建 macOS 平台配置以确保完整性
+          echo "Ensuring macOS platform is properly configured..."
+          flutter create --platforms=macos --org com.kkape .
 
-          # 确保 Flutter 识别 macOS 平台
+          echo "=== After setup ==="
+          ls -la macos/Runner.xcodeproj/
+
+          # 预缓存 macOS 工具链
           flutter precache --macos
-
-          # 显示 Flutter 检测到的平台
-          echo "Flutter devices:"
-          flutter devices
-
-          echo "Flutter config:"
-          flutter config
 
       - name: Get dependencies
         run: flutter pub get
 
-      # 验证 macOS 项目配置
-      - name: Verify macOS project
+      # 验证 Flutter 可以识别 macOS 项目
+      - name: Verify Flutter recognizes macOS
         run: |
-          echo "=== macOS directory structure ==="
-          ls -la macos/
-          ls -la macos/Flutter/ || true
-          ls -la macos/Flutter/ephemeral/ || true
+          echo "=== Flutter devices ==="
+          flutter devices
+
+          echo "=== Flutter config ==="
+          flutter config
+
+          echo "=== Check Flutter can build macOS ==="
+          flutter build macos --help > /dev/null 2>&1 && echo "macOS build available" || echo "macOS build NOT available"
 
           echo "=== Flutter doctor ==="
           flutter doctor -v
 
       - name: Build macOS
-        run: |
-          echo "Building macOS app..."
-          flutter build macos --release --verbose
+        run: flutter build macos --release
 
       - name: Create DMG
         run: |
@@ -522,6 +534,7 @@ jobs:
   # 生成更新日志
   generate-changelog:
     needs: extract-version
+    if: always() && needs.extract-version.result == 'success'
     runs-on: ubuntu-latest
     outputs:
       changelog: ${{ steps.changelog.outputs.changelog }}
@@ -566,40 +579,20 @@ jobs:
             DELETIONS="N/A"
           fi
 
-          # 获取贡献者（通过 GitHub API 获取正确的用户名）
-          CONTRIBUTORS=""
-          for sha in $(git log $RANGE --pretty=format:"%H" --no-merges 2>/dev/null | head -50); do
-            # 通过 GitHub API 获取 commit 关联的用户名
-            USERNAME=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-              "https://api.github.com/repos/${{ github.repository }}/commits/${sha}" \
-              | jq -r '.author.login // empty' 2>/dev/null)
-            if [ -n "$USERNAME" ] && [ "$USERNAME" != "null" ]; then
-              CONTRIBUTORS="$CONTRIBUTORS $USERNAME"
-            fi
-          done
-          # 去重并格式化
-          CONTRIBUTORS=$(echo "$CONTRIBUTORS" | tr ' ' '\n' | sort -u | grep -v '^$' | tr '\n' ', ' | sed 's/,$//' | sed 's/,/, /g')
+          # 获取贡献者（通过单次 GitHub API 调用获取）
+          echo "Fetching contributors..."
+          CONTRIBUTORS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/contributors?per_page=10" \
+            | jq -r '.[].login' 2>/dev/null | head -5 | tr '\n' ', ' | sed 's/,$//' | sed 's/,/, /g')
           if [ -z "$CONTRIBUTORS" ]; then
             CONTRIBUTORS="${{ github.repository_owner }}"
           fi
+          echo "Contributors: $CONTRIBUTORS"
 
-          # 获取详细提交列表（通过 GitHub API 获取正确的用户名）
-          COMMITS_DETAILED=""
-          while IFS= read -r line; do
-            SHA=$(echo "$line" | cut -d'|' -f1)
-            MSG=$(echo "$line" | cut -d'|' -f2)
-            SHORT_SHA=$(echo "$SHA" | cut -c1-7)
-            # 获取 GitHub 用户名
-            USERNAME=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-              "https://api.github.com/repos/${{ github.repository }}/commits/${SHA}" \
-              | jq -r '.author.login // empty' 2>/dev/null)
-            if [ -n "$USERNAME" ] && [ "$USERNAME" != "null" ]; then
-              COMMITS_DETAILED="${COMMITS_DETAILED}- ${MSG} (\`${SHORT_SHA}\` by @${USERNAME})\n"
-            else
-              COMMITS_DETAILED="${COMMITS_DETAILED}- ${MSG} (\`${SHORT_SHA}\`)\n"
-            fi
-          done < <(git log $RANGE --pretty=format:"%H|%s" --no-merges 2>/dev/null | head -50)
-          COMMITS_DETAILED=$(echo -e "$COMMITS_DETAILED")
+          # 获取详细提交列表（使用 git log，不调用 API）
+          echo "Generating commit list..."
+          COMMITS_DETAILED=$(git log $RANGE --pretty=format:"- %s (\`%h\`)" --no-merges 2>/dev/null | head -30)
+          echo "Commits found: $(echo "$COMMITS_DETAILED" | wc -l)"
           COMMITS_SIMPLE=$(git log $RANGE --pretty=format:"- %s" --no-merges 2>/dev/null || echo "")
 
           # 分类提交 - 新功能
@@ -700,12 +693,20 @@ jobs:
             CHANGELOG="${CHANGELOG}📋 **完整变更**: [\`${PREVIOUS_TAG}...v${FULL_VERSION}\`](https://github.com/${{ github.repository }}/compare/${PREVIOUS_TAG}...v${FULL_VERSION})\n"
           fi
 
+          # 调试输出
+          echo "=== Generated Changelog ==="
+          echo -e "$CHANGELOG"
+          echo "=== End Changelog ==="
+
+          # 输出到 GITHUB_OUTPUT
           echo "changelog<<EOF" >> $GITHUB_OUTPUT
           echo -e "$CHANGELOG" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
           # 输出统计信息
           echo "stats=${COMMIT_COUNT} commits, ${FILES_CHANGED} files changed" >> $GITHUB_OUTPUT
+
+          echo "Changelog generation completed"
 
   # 创建 Release
   create-release:
@@ -725,6 +726,25 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+
+      # 调试：显示接收到的 changelog
+      - name: Debug changelog
+        id: debug_changelog
+        run: |
+          echo "=== Changelog from generate-changelog job ==="
+          CHANGELOG="${{ needs.generate-changelog.outputs.changelog }}"
+          if [ -z "$CHANGELOG" ]; then
+            echo "WARNING: Changelog is empty, using default"
+            CHANGELOG="### 📝 更新内容\n\n此版本包含多项更新和改进。\n"
+          fi
+          echo "$CHANGELOG"
+          echo "=== End ==="
+          echo "Stats: ${{ needs.generate-changelog.outputs.stats }}"
+
+          # 保存到环境变量供后续使用
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -801,7 +821,7 @@ jobs:
           body: |
             ## MyNAS v${{ needs.extract-version.outputs.full_version }}
 
-            ${{ needs.generate-changelog.outputs.changelog }}
+            ${{ steps.debug_changelog.outputs.changelog }}
 
             ---
 
