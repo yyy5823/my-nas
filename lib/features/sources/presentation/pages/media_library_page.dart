@@ -1,6 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/features/book/data/services/book_library_cache_service.dart';
+import 'package:my_nas/features/book/presentation/pages/book_list_page.dart';
+import 'package:my_nas/features/comic/data/services/comic_library_cache_service.dart';
+import 'package:my_nas/features/comic/presentation/pages/comic_list_page.dart';
+import 'package:my_nas/features/music/data/services/music_library_cache_service.dart';
+import 'package:my_nas/features/music/presentation/pages/music_list_page.dart';
+import 'package:my_nas/features/photo/data/services/photo_library_cache_service.dart';
+import 'package:my_nas/features/photo/presentation/pages/photo_list_page.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
@@ -77,9 +85,10 @@ class _MediaTypeTab extends ConsumerWidget {
 
             return Column(
               children: [
-                // 视频类型显示扫描按钮和缓存信息
-                if (mediaType == MediaType.video)
-                  _VideoScanSection(
+                // 所有媒体类型都显示扫描按钮和缓存信息（笔记除外）
+                if (mediaType != MediaType.note)
+                  _MediaScanSection(
+                    mediaType: mediaType,
                     paths: paths,
                     connections: connections,
                   ),
@@ -387,27 +396,26 @@ class _PathCard extends ConsumerWidget {
 }
 
 /// 视频扫描区域
-class _VideoScanSection extends ConsumerStatefulWidget {
-  const _VideoScanSection({
+class _MediaScanSection extends ConsumerStatefulWidget {
+  const _MediaScanSection({
+    required this.mediaType,
     required this.paths,
     required this.connections,
   });
 
+  final MediaType mediaType;
   final List<MediaLibraryPath> paths;
   final Map<String, SourceConnection> connections;
 
   @override
-  ConsumerState<_VideoScanSection> createState() => _VideoScanSectionState();
+  ConsumerState<_MediaScanSection> createState() => _MediaScanSectionState();
 }
 
-class _VideoScanSectionState extends ConsumerState<_VideoScanSection> {
+class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
   bool _isScanning = false;
 
   @override
   Widget build(BuildContext context) {
-    final videoState = ref.watch(videoListProvider);
-    final cacheService = VideoLibraryCacheService.instance;
-    final cacheInfo = cacheService.getCacheInfo();
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
@@ -417,10 +425,11 @@ class _VideoScanSectionState extends ConsumerState<_VideoScanSection> {
       return conn?.status == SourceStatus.connected;
     });
 
-    // 检查是否正在扫描
-    final isLoading = videoState is VideoListLoading;
-    final scanProgress = videoState is VideoListLoading ? videoState.progress : 0.0;
-    final currentFolder = videoState is VideoListLoading ? videoState.currentFolder : null;
+    // 根据媒体类型获取状态和缓存信息
+    final (isLoading, scanProgress, currentFolder, cacheInfo) = _getMediaState();
+
+    // 获取图标和标题
+    final (icon, title, scanButtonText) = _getMediaInfo();
 
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -445,7 +454,7 @@ class _VideoScanSectionState extends ConsumerState<_VideoScanSection> {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
-                  Icons.video_library_rounded,
+                  icon,
                   size: 20,
                   color: AppColors.primary,
                 ),
@@ -456,7 +465,7 @@ class _VideoScanSectionState extends ConsumerState<_VideoScanSection> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '视频库缓存',
+                      title,
                       style: theme.textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.bold,
                       ),
@@ -518,11 +527,11 @@ class _VideoScanSectionState extends ConsumerState<_VideoScanSection> {
                 child: ElevatedButton.icon(
                   onPressed: isLoading || !hasConnectedSource
                       ? null
-                      : () => _scanVideos(),
+                      : () => _scanMedia(),
                   icon: Icon(
                     isLoading ? Icons.hourglass_empty : Icons.refresh_rounded,
                   ),
-                  label: Text(isLoading ? '扫描中...' : '扫描视频'),
+                  label: Text(isLoading ? '扫描中...' : scanButtonText),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
                     foregroundColor: Colors.white,
@@ -558,7 +567,7 @@ class _VideoScanSectionState extends ConsumerState<_VideoScanSection> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      '请先连接至少一个源才能扫描视频',
+                      '请先连接至少一个源才能扫描${widget.mediaType.displayName}',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: Colors.orange[700],
                       ),
@@ -572,13 +581,92 @@ class _VideoScanSectionState extends ConsumerState<_VideoScanSection> {
     );
   }
 
-  Future<void> _scanVideos() async {
+  /// 获取媒体状态信息
+  (bool, double, String?, String) _getMediaState() {
+    switch (widget.mediaType) {
+      case MediaType.video:
+        final state = ref.watch(videoListProvider);
+        final isLoading = state is VideoListLoading;
+        final progress = state is VideoListLoading ? state.progress : 0.0;
+        final folder = state is VideoListLoading ? state.currentFolder : null;
+        final cacheInfo = VideoLibraryCacheService.instance.getCacheInfo();
+        return (isLoading, progress, folder, cacheInfo);
+
+      case MediaType.music:
+        final state = ref.watch(musicListProvider);
+        final isLoading = state is MusicListLoading;
+        final progress = state is MusicListLoading ? state.progress : 0.0;
+        final folder = state is MusicListLoading ? state.currentFolder : null;
+        final cacheInfo = MusicLibraryCacheService.instance.getCacheInfo();
+        return (isLoading, progress, folder, cacheInfo);
+
+      case MediaType.photo:
+        final state = ref.watch(photoListProvider);
+        final isLoading = state is PhotoListLoading;
+        final progress = state is PhotoListLoading ? state.progress : 0.0;
+        final folder = state is PhotoListLoading ? state.currentFolder : null;
+        final cacheInfo = PhotoLibraryCacheService.instance.getCacheInfo();
+        return (isLoading, progress, folder, cacheInfo);
+
+      case MediaType.comic:
+        final state = ref.watch(comicListProvider);
+        final isLoading = state is ComicListLoading;
+        final progress = state is ComicListLoading ? state.progress : 0.0;
+        final folder = state is ComicListLoading ? state.currentFolder : null;
+        final cacheInfo = ComicLibraryCacheService.instance.getCacheInfo();
+        return (isLoading, progress, folder, cacheInfo);
+
+      case MediaType.book:
+        final state = ref.watch(bookListProvider);
+        final isLoading = state is BookListLoading;
+        final progress = state is BookListLoading ? state.progress : 0.0;
+        final folder = state is BookListLoading ? state.currentFolder : null;
+        final cacheInfo = BookLibraryCacheService.instance.getCacheInfo();
+        return (isLoading, progress, folder, cacheInfo);
+
+      case MediaType.note:
+        return (false, 0.0, null, '暂无缓存');
+    }
+  }
+
+  /// 获取媒体信息（图标、标题、按钮文字）
+  (IconData, String, String) _getMediaInfo() {
+    switch (widget.mediaType) {
+      case MediaType.video:
+        return (Icons.video_library_rounded, '视频库缓存', '扫描视频');
+      case MediaType.music:
+        return (Icons.library_music_rounded, '音乐库缓存', '扫描音乐');
+      case MediaType.photo:
+        return (Icons.photo_library_rounded, '照片库缓存', '扫描照片');
+      case MediaType.comic:
+        return (Icons.collections_bookmark_rounded, '漫画库缓存', '扫描漫画');
+      case MediaType.book:
+        return (Icons.library_books_rounded, '图书库缓存', '扫描图书');
+      case MediaType.note:
+        return (Icons.note_rounded, '笔记库缓存', '扫描笔记');
+    }
+  }
+
+  Future<void> _scanMedia() async {
     setState(() => _isScanning = true);
     try {
-      await ref.read(videoListProvider.notifier).loadVideos(forceRefresh: true);
+      switch (widget.mediaType) {
+        case MediaType.video:
+          await ref.read(videoListProvider.notifier).loadVideos(forceRefresh: true);
+        case MediaType.music:
+          await ref.read(musicListProvider.notifier).loadMusic(forceRefresh: true);
+        case MediaType.photo:
+          await ref.read(photoListProvider.notifier).loadPhotos(forceRefresh: true);
+        case MediaType.comic:
+          await ref.read(comicListProvider.notifier).loadComics(forceRefresh: true);
+        case MediaType.book:
+          await ref.read(bookListProvider.notifier).loadBooks(forceRefresh: true);
+        case MediaType.note:
+          break;
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('视频扫描完成')),
+          SnackBar(content: Text('${widget.mediaType.displayName}扫描完成')),
         );
       }
     } finally {
@@ -592,8 +680,8 @@ class _VideoScanSectionState extends ConsumerState<_VideoScanSection> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('清除视频缓存'),
-        content: const Text('确定要清除视频库缓存吗？下次需要重新扫描。'),
+        title: Text('清除${widget.mediaType.displayName}缓存'),
+        content: Text('确定要清除${widget.mediaType.displayName}库缓存吗？下次需要重新扫描。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -611,11 +699,28 @@ class _VideoScanSectionState extends ConsumerState<_VideoScanSection> {
     );
 
     if (confirm == true) {
-      await VideoLibraryCacheService.instance.clearCache();
-      ref.invalidate(videoListProvider);
+      switch (widget.mediaType) {
+        case MediaType.video:
+          await VideoLibraryCacheService.instance.clearCache();
+          ref.invalidate(videoListProvider);
+        case MediaType.music:
+          await MusicLibraryCacheService.instance.clearCache();
+          ref.invalidate(musicListProvider);
+        case MediaType.photo:
+          await PhotoLibraryCacheService.instance.clearCache();
+          ref.invalidate(photoListProvider);
+        case MediaType.comic:
+          await ComicLibraryCacheService.instance.clearCache();
+          ref.invalidate(comicListProvider);
+        case MediaType.book:
+          await BookLibraryCacheService.instance.clearCache();
+          ref.invalidate(bookListProvider);
+        case MediaType.note:
+          break;
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('视频缓存已清除')),
+          SnackBar(content: Text('${widget.mediaType.displayName}缓存已清除')),
         );
       }
     }

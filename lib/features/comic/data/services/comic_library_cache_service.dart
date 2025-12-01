@@ -135,4 +135,37 @@ class ComicLibraryCacheService {
       logger.e('ComicLibraryCacheService: 清除缓存失败', e);
     }
   }
+
+  /// 获取缓存大小（字节）
+  int getCacheSize() {
+    if (_cache == null) return 0;
+    try {
+      final jsonStr = jsonEncode(_cache!.toJson());
+      return jsonStr.length;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  /// 获取缓存信息文本
+  String getCacheInfo() {
+    final cache = getCache();
+    if (cache == null) return '无缓存';
+
+    final size = getCacheSize();
+    final sizeText = size < 1024
+        ? '$size B'
+        : size < 1024 * 1024
+            ? '${(size / 1024).toStringAsFixed(1)} KB'
+            : '${(size / (1024 * 1024)).toStringAsFixed(2)} MB';
+
+    final age = DateTime.now().difference(cache.lastUpdated);
+    final ageText = age.inHours < 1
+        ? '${age.inMinutes} 分钟前'
+        : age.inHours < 24
+            ? '${age.inHours} 小时前'
+            : '${age.inDays} 天前';
+
+    return '${cache.comics.length} 本漫画 · $sizeText · $ageText更新';
+  }
 }

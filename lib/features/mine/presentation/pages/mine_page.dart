@@ -43,34 +43,6 @@ class MinePage extends ConsumerWidget {
             padding: AppSpacing.paddingMd,
             sliver: SliverList(
               delegate: SliverChildListDelegate([
-                // 传输
-                _buildSectionHeader(context, '传输', Icons.swap_vert_rounded, isDark),
-                const SizedBox(height: AppSpacing.sm),
-                _TransferCard(isDark: isDark),
-
-                const SizedBox(height: AppSpacing.lg),
-
-                // 外观设置
-                _buildSectionHeader(context, '外观', Icons.palette_outlined, isDark),
-                const SizedBox(height: AppSpacing.sm),
-                _buildSettingsCard(
-                  context,
-                  isDark,
-                  children: [
-                    _buildSettingsTile(
-                      context,
-                      isDark,
-                      icon: Icons.brightness_6_rounded,
-                      iconColor: AppColors.primary,
-                      title: '主题模式',
-                      subtitle: _getThemeModeText(themeMode),
-                      onTap: () => _showThemeModeDialog(context, ref, themeMode, isDark),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: AppSpacing.lg),
-
                 // 连接设置
                 _buildSectionHeader(context, '连接', Icons.lan_rounded, isDark),
                 const SizedBox(height: AppSpacing.sm),
@@ -118,6 +90,34 @@ class MinePage extends ConsumerWidget {
                   isDark,
                   children: [
                     _TmdbApiKeyTile(isDark: isDark),
+                  ],
+                ),
+
+                const SizedBox(height: AppSpacing.lg),
+
+                // 传输
+                _buildSectionHeader(context, '传输', Icons.swap_vert_rounded, isDark),
+                const SizedBox(height: AppSpacing.sm),
+                _TransferCard(isDark: isDark),
+
+                const SizedBox(height: AppSpacing.lg),
+
+                // 外观设置
+                _buildSectionHeader(context, '外观', Icons.palette_outlined, isDark),
+                const SizedBox(height: AppSpacing.sm),
+                _buildSettingsCard(
+                  context,
+                  isDark,
+                  children: [
+                    _buildSettingsTile(
+                      context,
+                      isDark,
+                      icon: Icons.brightness_6_rounded,
+                      iconColor: AppColors.primary,
+                      title: '主题模式',
+                      subtitle: _getThemeModeText(themeMode),
+                      onTap: () => _showThemeModeDialog(context, ref, themeMode, isDark),
+                    ),
                   ],
                 ),
 
