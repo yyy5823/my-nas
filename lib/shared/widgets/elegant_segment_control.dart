@@ -157,7 +157,7 @@ class _ElegantSegmentControlState extends State<ElegantSegmentControl>
                               duration: const Duration(milliseconds: 200),
                               child: Icon(
                                 item.icon,
-                                key: ValueKey('${item.icon}_$isSelected'),
+                                key: ValueKey('${index}_$isSelected'),
                                 size: 18,
                                 color: isSelected ? selectedColor : unselectedColor,
                               ),
