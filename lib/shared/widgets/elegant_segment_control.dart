@@ -154,14 +154,10 @@ class _ElegantSegmentControlState extends State<ElegantSegmentControl>
                           mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
-                            AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 200),
-                              child: Icon(
-                                item.icon,
-                                key: ValueKey('${index}_$isSelected'),
-                                size: 18,
-                                color: isSelected ? selectedColor : unselectedColor,
-                              ),
+                            Icon(
+                              item.icon,
+                              size: 18,
+                              color: isSelected ? selectedColor : unselectedColor,
                             ),
                             const SizedBox(width: 6),
                             Text(item.label),
