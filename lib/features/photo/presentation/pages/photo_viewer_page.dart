@@ -341,69 +341,94 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
             begin: Alignment.bottomCenter,
             end: Alignment.topCenter,
             colors: [
-              Colors.black54,
+              Colors.black87,
               Colors.transparent,
             ],
           ),
         ),
         child: SafeArea(
           top: false,
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // 日期
-                if (photo.modifiedAt != null)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.calendar_today_rounded,
-                          color: Colors.white,
-                          size: 14,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 照片信息
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // 日期
+                    if (photo.modifiedAt != null) ...[
+                      Icon(
+                        Icons.calendar_today_rounded,
+                        color: Colors.white.withOpacity(0.7),
+                        size: 14,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        DateFormat('yyyy-MM-dd HH:mm').format(photo.modifiedAt!),
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.7),
+                          fontSize: 12,
                         ),
-                        const SizedBox(width: 6),
-                        Text(
-                          DateFormat('yyyy-MM-dd HH:mm').format(photo.modifiedAt!),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
+                      ),
+                      const SizedBox(width: 16),
+                    ],
+                    // 文件大小
+                    Icon(
+                      Icons.insert_drive_file_outlined,
+                      color: Colors.white.withOpacity(0.7),
+                      size: 14,
                     ),
-                  ),
-                const SizedBox(width: 12),
-                // 文件大小
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    photo.displaySize,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
+                    const SizedBox(width: 6),
+                    Text(
+                      photo.displaySize,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.7),
+                        fontSize: 12,
+                      ),
                     ),
-                  ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+              // 操作按钮
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    // 详细信息
+                    _ActionButton(
+                      icon: Icons.info_outline,
+                      label: '信息',
+                      onTap: () => _showPhotoInfo(context, photo),
+                    ),
+                    // 下载
+                    _ActionButton(
+                      icon: Icons.download_outlined,
+                      label: '下载',
+                      onTap: () {
+                        // TODO: 实现下载功能
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('下载功能开发中')),
+                        );
+                      },
+                    ),
+                    // 分享
+                    _ActionButton(
+                      icon: Icons.share_outlined,
+                      label: '分享',
+                      onTap: () {
+                        // TODO: 实现分享功能
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('分享功能开发中')),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -538,6 +563,10 @@ class _PhotoPageState extends State<_PhotoPage> {
     final hasThumbnail = widget.photo.thumbnailUrl != null && widget.photo.thumbnailUrl!.isNotEmpty;
     final hasDisplayUrl = displayUrl.isNotEmpty;
 
+    // 调试日志
+    print('PhotoViewer: displayUrl=$displayUrl, hasThumbnail=$hasThumbnail, hasDisplayUrl=$hasDisplayUrl');
+    print('PhotoViewer: photo.url=${widget.photo.url}, photo.thumbnailUrl=${widget.photo.thumbnailUrl}');
+
     return InteractiveViewer(
       transformationController: _transformController,
       minScale: 0.5,
@@ -564,26 +593,35 @@ class _PhotoPageState extends State<_PhotoPage> {
                           color: Colors.white,
                         ),
                       ),
-                errorWidget: (context, url, error) => hasThumbnail
-                    ? CachedNetworkImage(
-                        imageUrl: widget.photo.thumbnailUrl!,
-                        fit: BoxFit.contain,
-                        errorWidget: (context, url, error) => _buildErrorWidget(),
-                      )
-                    : _buildErrorWidget(),
+                errorWidget: (context, url, error) {
+                  print('PhotoViewer: Error loading image: $error');
+                  return hasThumbnail
+                      ? CachedNetworkImage(
+                          imageUrl: widget.photo.thumbnailUrl!,
+                          fit: BoxFit.contain,
+                          errorWidget: (context, url, error) {
+                            print('PhotoViewer: Error loading thumbnail: $error');
+                            return _buildErrorWidget(error.toString());
+                          },
+                        )
+                      : _buildErrorWidget(error.toString());
+                },
               )
             : hasThumbnail
                 ? CachedNetworkImage(
                     imageUrl: widget.photo.thumbnailUrl!,
                     fit: BoxFit.contain,
-                    errorWidget: (context, url, error) => _buildErrorWidget(),
+                    errorWidget: (context, url, error) {
+                      print('PhotoViewer: Error loading thumbnail (no displayUrl): $error');
+                      return _buildErrorWidget(error.toString());
+                    },
                   )
-                : _buildErrorWidget(),
+                : _buildErrorWidget('没有可用的图片 URL'),
       ),
     );
   }
 
-  Widget _buildErrorWidget() {
+  Widget _buildErrorWidget(String errorMessage) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -596,10 +634,66 @@ class _PhotoPageState extends State<_PhotoPage> {
         Text(
           '加载失败',
           style: TextStyle(
-            color: Colors.white.withOpacity(0.5),
+            color: Colors.white.withOpacity(0.7),
+            fontSize: 16,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Text(
+            errorMessage,
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.5),
+              fontSize: 12,
+            ),
+            textAlign: TextAlign.center,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ActionButton extends StatelessWidget {
+  const _ActionButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              color: Colors.white,
+              size: 28,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
