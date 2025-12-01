@@ -1,7 +1,7 @@
 name: my_nas
 description: "跨平台 NAS 客户端 - 统一管理你的 NAS 资源"
 publish_to: 'none'
-version: 0.1.4+1
+version: 0.1.5+1
 
 environment:
   sdk: ^3.10.1
@@ -93,3 +93,13 @@ flutter:
   #   - family: CustomFont
   #     fonts:
   #       - asset: assets/fonts/CustomFont-Regular.ttf
+
+# MSIX 打包配置 (Windows)
+msix_config:
+  display_name: MyNAS
+  publisher_display_name: MyNAS
+  identity_name: com.mynas.app
+  msix_version: 0.1.5.0
+  logo_path: assets/icons/app_icon.png
+  capabilities: internetClient, privateNetworkClientServer
+  languages: zh-cn, en-us

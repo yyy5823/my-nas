@@ -195,7 +195,15 @@ jobs:
   # 构建 macOS（Intel + Apple Silicon）
   build-macos:
     needs: extract-version
-    runs-on: macos-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-13        # Intel (x86_64)
+            arch: x86_64
+          - os: macos-latest    # Apple Silicon (arm64)
+            arch: arm64
     steps:
       - uses: actions/checkout@v4
 
@@ -228,17 +236,6 @@ jobs:
         if: steps.check_macos.outputs.supported == 'true'
         run: flutter build macos --release
 
-      - name: Get architecture
-        if: steps.check_macos.outputs.supported == 'true'
-        id: arch
-        run: |
-          ARCH=$(uname -m)
-          if [ "$ARCH" == "arm64" ]; then
-            echo "arch=arm64" >> $GITHUB_OUTPUT
-          else
-            echo "arch=x86_64" >> $GITHUB_OUTPUT
-          fi
-
       - name: Create DMG
         if: steps.check_macos.outputs.supported == 'true'
         run: |
@@ -251,20 +248,20 @@ jobs:
             --icon "my_nas.app" 150 185 \
             --hide-extension "my_nas.app" \
             --app-drop-link 450 185 \
-            "MyNAS-${{ needs.extract-version.outputs.version }}-macos-${{ steps.arch.outputs.arch }}.dmg" \
+            "MyNAS-${{ needs.extract-version.outputs.version }}-macos-${{ matrix.arch }}.dmg" \
             "build/macos/Build/Products/Release/my_nas.app" || true
 
           # 如果 create-dmg 失败，创建简单的 zip
-          if [ ! -f "MyNAS-${{ needs.extract-version.outputs.version }}-macos-${{ steps.arch.outputs.arch }}.dmg" ]; then
+          if [ ! -f "MyNAS-${{ needs.extract-version.outputs.version }}-macos-${{ matrix.arch }}.dmg" ]; then
             cd build/macos/Build/Products/Release
-            zip -r ../../../../../MyNAS-${{ needs.extract-version.outputs.version }}-macos-${{ steps.arch.outputs.arch }}.zip my_nas.app
+            zip -r ../../../../../MyNAS-${{ needs.extract-version.outputs.version }}-macos-${{ matrix.arch }}.zip my_nas.app
           fi
 
       - name: Upload macOS artifact
         if: steps.check_macos.outputs.supported == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: macos-app
+          name: macos-app-${{ matrix.arch }}
           path: |
             MyNAS-*.dmg
             MyNAS-*.zip
@@ -302,33 +299,100 @@ jobs:
         if: steps.check_windows.outputs.supported == 'true'
         run: flutter pub get
 
-      - name: Build Windows
+      - name: Build Windows x64
         if: steps.check_windows.outputs.supported == 'true'
         run: flutter build windows --release
 
-      - name: Create ZIP
+      - name: Create ZIP (Portable)
         if: steps.check_windows.outputs.supported == 'true'
         run: |
-          Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath MyNAS-${{ needs.extract-version.outputs.version }}-windows-x64.zip
+          Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath MyNAS-${{ needs.extract-version.outputs.version }}-windows-x64-portable.zip
+
+      # 创建 MSIX 安装包
+      - name: Create MSIX installer
+        if: steps.check_windows.outputs.supported == 'true'
+        run: |
+          dart pub global activate msix
+          dart pub global run msix:create --build-windows false --output-path . --output-name MyNAS-${{ needs.extract-version.outputs.version }}-windows-x64
+        continue-on-error: true
+
+      # 创建 EXE 安装包 (使用 Inno Setup)
+      - name: Install Inno Setup
+        if: steps.check_windows.outputs.supported == 'true'
+        run: choco install innosetup -y
+
+      - name: Create Inno Setup script
+        if: steps.check_windows.outputs.supported == 'true'
+        shell: pwsh
+        run: |
+          $version = "${{ needs.extract-version.outputs.version }}"
+          $script = @"
+          [Setup]
+          AppName=MyNAS
+          AppVersion=$version
+          AppPublisher=MyNAS
+          DefaultDirName={autopf}\MyNAS
+          DefaultGroupName=MyNAS
+          OutputDir=.
+          OutputBaseFilename=MyNAS-$version-windows-x64-setup
+          Compression=lzma2
+          SolidCompression=yes
+          ArchitecturesAllowed=x64compatible
+          ArchitecturesInstallIn64BitMode=x64compatible
+
+          [Files]
+          Source: "build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
+
+          [Icons]
+          Name: "{group}\MyNAS"; Filename: "{app}\my_nas.exe"
+          Name: "{group}\Uninstall MyNAS"; Filename: "{uninstallexe}"
+          Name: "{commondesktop}\MyNAS"; Filename: "{app}\my_nas.exe"; Tasks: desktopicon
+
+          [Tasks]
+          Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional icons:"
+
+          [Run]
+          Filename: "{app}\my_nas.exe"; Description: "Launch MyNAS"; Flags: nowait postinstall skipifsilent
+          "@
+          $script | Out-File -FilePath "installer.iss" -Encoding UTF8
+
+      - name: Build EXE installer
+        if: steps.check_windows.outputs.supported == 'true'
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+        continue-on-error: true
 
       - name: Upload Windows artifact
         if: steps.check_windows.outputs.supported == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: windows-app
-          path: MyNAS-*.zip
+          path: |
+            MyNAS-*-windows-*.zip
+            MyNAS-*-windows-*.msix
+            MyNAS-*-windows-*-setup.exe
 
-  # 构建 Linux x64
+  # 构建 Linux (x64 + arm64)
   build-linux:
     needs: extract-version
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            arch: x64
+            arch_dir: x64
+          - os: ubuntu-24.04-arm
+            arch: arm64
+            arch_dir: arm64
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Linux dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libmpv-dev
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libmpv-dev libsecret-1-dev
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -362,14 +426,14 @@ jobs:
       - name: Create tarball
         if: steps.check_linux.outputs.supported == 'true'
         run: |
-          cd build/linux/x64/release
-          tar -czvf ../../../../MyNAS-${{ needs.extract-version.outputs.version }}-linux-x64.tar.gz bundle
+          cd build/linux/${{ matrix.arch_dir }}/release
+          tar -czvf ../../../../MyNAS-${{ needs.extract-version.outputs.version }}-linux-${{ matrix.arch }}.tar.gz bundle
 
       - name: Upload Linux artifact
         if: steps.check_linux.outputs.supported == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: linux-app
+          name: linux-app-${{ matrix.arch }}
           path: MyNAS-*.tar.gz
 
   # 生成更新日志
@@ -378,6 +442,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       changelog: ${{ steps.changelog.outputs.changelog }}
+      stats: ${{ steps.changelog.outputs.stats }}
+      previous_tag: ${{ steps.changelog.outputs.previous_tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -386,42 +452,147 @@ jobs:
       - name: Generate changelog
         id: changelog
         run: |
+          VERSION="${{ needs.extract-version.outputs.version }}"
+
           # 获取上一个 tag
           PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          echo "previous_tag=$PREVIOUS_TAG" >> $GITHUB_OUTPUT
 
+          # 获取提交范围
           if [ -z "$PREVIOUS_TAG" ]; then
-            COMMITS=$(git log --pretty=format:"- %s" --no-merges -10)
+            RANGE="HEAD~20..HEAD"
+            COMPARE_INFO="首次发布"
           else
-            COMMITS=$(git log --pretty=format:"- %s" --no-merges $PREVIOUS_TAG..HEAD)
+            RANGE="$PREVIOUS_TAG..HEAD"
+            COMPARE_INFO="与 $PREVIOUS_TAG 相比"
           fi
 
-          # 分类提交
-          FEATURES=$(echo "$COMMITS" | grep -iE "^- (feat|feature|新增|添加)" || true)
-          FIXES=$(echo "$COMMITS" | grep -iE "^- (fix|修复|bugfix)" || true)
-          OTHERS=$(echo "$COMMITS" | grep -viE "^- (feat|feature|fix|修复|bugfix|新增|添加)" || true)
+          # 统计信息
+          COMMIT_COUNT=$(git rev-list --count $RANGE 2>/dev/null || echo "0")
+
+          if [ -n "$PREVIOUS_TAG" ]; then
+            # 获取文件变更统计
+            DIFF_STAT=$(git diff --shortstat $PREVIOUS_TAG HEAD 2>/dev/null || echo "")
+            FILES_CHANGED=$(echo "$DIFF_STAT" | grep -oE '[0-9]+ file' | grep -oE '[0-9]+' || echo "0")
+            INSERTIONS=$(echo "$DIFF_STAT" | grep -oE '[0-9]+ insertion' | grep -oE '[0-9]+' || echo "0")
+            DELETIONS=$(echo "$DIFF_STAT" | grep -oE '[0-9]+ deletion' | grep -oE '[0-9]+' || echo "0")
+          else
+            FILES_CHANGED="N/A"
+            INSERTIONS="N/A"
+            DELETIONS="N/A"
+          fi
+
+          # 获取贡献者
+          CONTRIBUTORS=$(git log $RANGE --format='%an' 2>/dev/null | sort -u | tr '\n' ', ' | sed 's/,$//' || echo "")
+
+          # 获取详细提交列表（带作者和简短hash）
+          COMMITS_DETAILED=$(git log $RANGE --pretty=format:"- %s (\`%h\` by @%an)" --no-merges 2>/dev/null || echo "")
+          COMMITS_SIMPLE=$(git log $RANGE --pretty=format:"- %s" --no-merges 2>/dev/null || echo "")
+
+          # 分类提交 - 新功能
+          FEATURES=$(echo "$COMMITS_SIMPLE" | grep -iE "^- (feat|feature|新增|添加)" || true)
+          FEATURES_DETAILED=$(echo "$COMMITS_DETAILED" | grep -iE "^- (feat|feature|新增|添加)" || true)
+
+          # 分类提交 - Bug修复
+          FIXES=$(echo "$COMMITS_SIMPLE" | grep -iE "^- (fix|修复|bugfix|bug)" || true)
+          FIXES_DETAILED=$(echo "$COMMITS_DETAILED" | grep -iE "^- (fix|修复|bugfix|bug)" || true)
+
+          # 分类提交 - 性能优化
+          PERF=$(echo "$COMMITS_SIMPLE" | grep -iE "^- (perf|优化|性能|improve)" || true)
+          PERF_DETAILED=$(echo "$COMMITS_DETAILED" | grep -iE "^- (perf|优化|性能|improve)" || true)
+
+          # 分类提交 - 重构
+          REFACTOR=$(echo "$COMMITS_SIMPLE" | grep -iE "^- (refactor|重构|restructure)" || true)
+          REFACTOR_DETAILED=$(echo "$COMMITS_DETAILED" | grep -iE "^- (refactor|重构|restructure)" || true)
+
+          # 分类提交 - 文档
+          DOCS=$(echo "$COMMITS_SIMPLE" | grep -iE "^- (doc|docs|文档|readme)" || true)
+          DOCS_DETAILED=$(echo "$COMMITS_DETAILED" | grep -iE "^- (doc|docs|文档|readme)" || true)
+
+          # 分类提交 - 样式/UI
+          STYLE=$(echo "$COMMITS_SIMPLE" | grep -iE "^- (style|ui|界面|样式|css)" || true)
+          STYLE_DETAILED=$(echo "$COMMITS_DETAILED" | grep -iE "^- (style|ui|界面|样式|css)" || true)
+
+          # 分类提交 - 构建/CI
+          BUILD=$(echo "$COMMITS_SIMPLE" | grep -iE "^- (build|ci|chore|构建|依赖|deploy)" || true)
+          BUILD_DETAILED=$(echo "$COMMITS_DETAILED" | grep -iE "^- (build|ci|chore|构建|依赖|deploy)" || true)
+
+          # 其他提交
+          OTHERS=$(echo "$COMMITS_SIMPLE" | grep -viE "^- (feat|feature|fix|修复|bugfix|bug|perf|优化|性能|improve|refactor|重构|doc|docs|文档|readme|style|ui|界面|样式|css|build|ci|chore|构建|依赖|deploy|新增|添加)" || true)
+          OTHERS_DETAILED=$(echo "$COMMITS_DETAILED" | grep -viE "^- (feat|feature|fix|修复|bugfix|bug|perf|优化|性能|improve|refactor|重构|doc|docs|文档|readme|style|ui|界面|样式|css|build|ci|chore|构建|依赖|deploy|新增|添加)" || true)
 
           # 构建 changelog
           CHANGELOG=""
 
-          if [ -n "$FEATURES" ]; then
-            CHANGELOG="${CHANGELOG}### ✨ 新功能\n${FEATURES}\n\n"
+          # 统计概览
+          CHANGELOG="${CHANGELOG}### 📊 版本概览\n\n"
+          CHANGELOG="${CHANGELOG}| 指标 | 数值 |\n"
+          CHANGELOG="${CHANGELOG}|------|------|\n"
+          CHANGELOG="${CHANGELOG}| 提交数量 | ${COMMIT_COUNT} |\n"
+          if [ -n "$PREVIOUS_TAG" ]; then
+            CHANGELOG="${CHANGELOG}| 文件变更 | ${FILES_CHANGED} |\n"
+            CHANGELOG="${CHANGELOG}| 新增行数 | +${INSERTIONS} |\n"
+            CHANGELOG="${CHANGELOG}| 删除行数 | -${DELETIONS} |\n"
+          fi
+          CHANGELOG="${CHANGELOG}| 贡献者 | ${CONTRIBUTORS} |\n\n"
+
+          if [ -n "$FEATURES_DETAILED" ]; then
+            FEATURE_COUNT=$(echo "$FEATURES" | grep -c "^-" || echo "0")
+            CHANGELOG="${CHANGELOG}### ✨ 新功能 (${FEATURE_COUNT})\n${FEATURES_DETAILED}\n\n"
           fi
 
-          if [ -n "$FIXES" ]; then
-            CHANGELOG="${CHANGELOG}### 🐛 修复\n${FIXES}\n\n"
+          if [ -n "$FIXES_DETAILED" ]; then
+            FIX_COUNT=$(echo "$FIXES" | grep -c "^-" || echo "0")
+            CHANGELOG="${CHANGELOG}### 🐛 Bug 修复 (${FIX_COUNT})\n${FIXES_DETAILED}\n\n"
           fi
 
-          if [ -n "$OTHERS" ]; then
-            CHANGELOG="${CHANGELOG}### 📝 其他\n${OTHERS}\n\n"
+          if [ -n "$PERF_DETAILED" ]; then
+            PERF_COUNT=$(echo "$PERF" | grep -c "^-" || echo "0")
+            CHANGELOG="${CHANGELOG}### ⚡ 性能优化 (${PERF_COUNT})\n${PERF_DETAILED}\n\n"
           fi
 
-          if [ -z "$CHANGELOG" ]; then
-            CHANGELOG="### 更新内容\n${COMMITS}\n"
+          if [ -n "$REFACTOR_DETAILED" ]; then
+            REFACTOR_COUNT=$(echo "$REFACTOR" | grep -c "^-" || echo "0")
+            CHANGELOG="${CHANGELOG}### ♻️ 代码重构 (${REFACTOR_COUNT})\n${REFACTOR_DETAILED}\n\n"
+          fi
+
+          if [ -n "$STYLE_DETAILED" ]; then
+            STYLE_COUNT=$(echo "$STYLE" | grep -c "^-" || echo "0")
+            CHANGELOG="${CHANGELOG}### 🎨 界面优化 (${STYLE_COUNT})\n${STYLE_DETAILED}\n\n"
+          fi
+
+          if [ -n "$BUILD_DETAILED" ]; then
+            BUILD_COUNT=$(echo "$BUILD" | grep -c "^-" || echo "0")
+            CHANGELOG="${CHANGELOG}### 🔧 构建/CI (${BUILD_COUNT})\n${BUILD_DETAILED}\n\n"
+          fi
+
+          if [ -n "$DOCS_DETAILED" ]; then
+            DOCS_COUNT=$(echo "$DOCS" | grep -c "^-" || echo "0")
+            CHANGELOG="${CHANGELOG}### 📚 文档更新 (${DOCS_COUNT})\n${DOCS_DETAILED}\n\n"
+          fi
+
+          if [ -n "$OTHERS_DETAILED" ]; then
+            OTHERS_COUNT=$(echo "$OTHERS" | grep -c "^-" || echo "0")
+            CHANGELOG="${CHANGELOG}### 📝 其他更新 (${OTHERS_COUNT})\n${OTHERS_DETAILED}\n\n"
+          fi
+
+          # 如果没有任何分类，显示所有提交
+          if [ -z "$FEATURES_DETAILED" ] && [ -z "$FIXES_DETAILED" ] && [ -z "$PERF_DETAILED" ] && [ -z "$REFACTOR_DETAILED" ] && [ -z "$STYLE_DETAILED" ] && [ -z "$BUILD_DETAILED" ] && [ -z "$DOCS_DETAILED" ] && [ -z "$OTHERS_DETAILED" ]; then
+            CHANGELOG="${CHANGELOG}### 📝 更新内容\n${COMMITS_DETAILED}\n\n"
+          fi
+
+          # 添加版本对比链接
+          if [ -n "$PREVIOUS_TAG" ]; then
+            CHANGELOG="${CHANGELOG}---\n\n"
+            CHANGELOG="${CHANGELOG}📋 **完整变更**: [\`${PREVIOUS_TAG}...v${VERSION}\`](https://github.com/${{ github.repository }}/compare/${PREVIOUS_TAG}...v${VERSION})\n"
           fi
 
           echo "changelog<<EOF" >> $GITHUB_OUTPUT
           echo -e "$CHANGELOG" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
+
+          # 输出统计信息
+          echo "stats=${COMMIT_COUNT} commits, ${FILES_CHANGED} files changed" >> $GITHUB_OUTPUT
 
   # 创建 Release
   create-release:
@@ -516,40 +687,79 @@ jobs:
 
             ${{ steps.build_status.outputs.status }}
 
-            ### 📦 下载
+            ### 🚀 快速下载（推荐版本）
 
-            #### Android
-            | 架构 | 说明 | 文件 |
+            | 平台 | 推荐版本 | 下载链接 |
+            |------|----------|----------|
+            | **Android** | arm64-v8a | [⬇️ MyNAS-${{ needs.extract-version.outputs.version }}-android-arm64-v8a.apk](https://github.com/${{ github.repository }}/releases/download/${{ needs.extract-version.outputs.tag_name }}/MyNAS-${{ needs.extract-version.outputs.version }}-android-arm64-v8a.apk) |
+            | **iOS** | arm64 | [⬇️ MyNAS-${{ needs.extract-version.outputs.version }}-ios-arm64.ipa](https://github.com/${{ github.repository }}/releases/download/${{ needs.extract-version.outputs.tag_name }}/MyNAS-${{ needs.extract-version.outputs.version }}-ios-arm64.ipa) |
+            | **macOS (Apple Silicon)** | arm64 | [⬇️ MyNAS-${{ needs.extract-version.outputs.version }}-macos-arm64.dmg](https://github.com/${{ github.repository }}/releases/download/${{ needs.extract-version.outputs.tag_name }}/MyNAS-${{ needs.extract-version.outputs.version }}-macos-arm64.dmg) |
+            | **macOS (Intel)** | x86_64 | [⬇️ MyNAS-${{ needs.extract-version.outputs.version }}-macos-x86_64.dmg](https://github.com/${{ github.repository }}/releases/download/${{ needs.extract-version.outputs.tag_name }}/MyNAS-${{ needs.extract-version.outputs.version }}-macos-x86_64.dmg) |
+            | **Windows** | x64 安装包 | [⬇️ MyNAS-${{ needs.extract-version.outputs.version }}-windows-x64-setup.exe](https://github.com/${{ github.repository }}/releases/download/${{ needs.extract-version.outputs.tag_name }}/MyNAS-${{ needs.extract-version.outputs.version }}-windows-x64-setup.exe) |
+            | **Linux** | x64 | [⬇️ MyNAS-${{ needs.extract-version.outputs.version }}-linux-x64.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ needs.extract-version.outputs.tag_name }}/MyNAS-${{ needs.extract-version.outputs.version }}-linux-x64.tar.gz) |
+            | **Linux (ARM)** | arm64 | [⬇️ MyNAS-${{ needs.extract-version.outputs.version }}-linux-arm64.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ needs.extract-version.outputs.tag_name }}/MyNAS-${{ needs.extract-version.outputs.version }}-linux-arm64.tar.gz) |
+
+            ---
+
+            ### 📦 全部下载
+
+            <details>
+            <summary>Android (点击展开)</summary>
+
+            | 架构 | 说明 | 下载 |
             |------|------|------|
-            | arm64-v8a | 64位 ARM (推荐，大多数现代手机) | `MyNAS-*-android-arm64-v8a.apk` |
-            | armeabi-v7a | 32位 ARM (旧设备) | `MyNAS-*-android-armeabi-v7a.apk` |
-            | x86_64 | 64位 x86 (模拟器/Chromebook) | `MyNAS-*-android-x86_64.apk` |
-            | universal | 通用包 (包含所有架构，体积较大) | `MyNAS-*-android-universal.apk` |
+            | arm64-v8a | 64位 ARM (推荐，大多数现代手机) | [下载](https://github.com/${{ github.repository }}/releases/download/${{ needs.extract-version.outputs.tag_name }}/MyNAS-${{ needs.extract-version.outputs.version }}-android-arm64-v8a.apk) |
+            | armeabi-v7a | 32位 ARM (旧设备) | [下载](https://github.com/${{ github.repository }}/releases/download/${{ needs.extract-version.outputs.tag_name }}/MyNAS-${{ needs.extract-version.outputs.version }}-android-armeabi-v7a.apk) |
+            | x86_64 | 64位 x86 (模拟器/Chromebook) | [下载](https://github.com/${{ github.repository }}/releases/download/${{ needs.extract-version.outputs.tag_name }}/MyNAS-${{ needs.extract-version.outputs.version }}-android-x86_64.apk) |
+            | universal | 通用包 (包含所有架构) | [下载](https://github.com/${{ github.repository }}/releases/download/${{ needs.extract-version.outputs.tag_name }}/MyNAS-${{ needs.extract-version.outputs.version }}-android-universal.apk) |
 
-            #### iOS
-            | 架构 | 文件 |
-            |------|------|
-            | arm64 | `MyNAS-*-ios-arm64.ipa` (未签名) |
+            </details>
 
-            #### macOS
-            | 架构 | 文件 |
-            |------|------|
-            | arm64 | `MyNAS-*-macos-arm64.dmg` (Apple Silicon) |
+            <details>
+            <summary>iOS (点击展开)</summary>
 
-            #### Windows
-            | 架构 | 文件 |
-            |------|------|
-            | x64 | `MyNAS-*-windows-x64.zip` |
+            | 架构 | 说明 | 下载 |
+            |------|------|------|
+            | arm64 | iPhone/iPad (未签名) | [下载](https://github.com/${{ github.repository }}/releases/download/${{ needs.extract-version.outputs.tag_name }}/MyNAS-${{ needs.extract-version.outputs.version }}-ios-arm64.ipa) |
 
-            #### Linux
-            | 架构 | 文件 |
-            |------|------|
-            | x64 | `MyNAS-*-linux-x64.tar.gz` |
+            </details>
+
+            <details>
+            <summary>macOS (点击展开)</summary>
+
+            | 架构 | 说明 | 下载 |
+            |------|------|------|
+            | arm64 | Apple Silicon (M1/M2/M3/M4) | [下载](https://github.com/${{ github.repository }}/releases/download/${{ needs.extract-version.outputs.tag_name }}/MyNAS-${{ needs.extract-version.outputs.version }}-macos-arm64.dmg) |
+            | x86_64 | Intel 芯片 | [下载](https://github.com/${{ github.repository }}/releases/download/${{ needs.extract-version.outputs.tag_name }}/MyNAS-${{ needs.extract-version.outputs.version }}-macos-x86_64.dmg) |
+
+            </details>
+
+            <details>
+            <summary>Windows (点击展开)</summary>
+
+            | 类型 | 说明 | 下载 |
+            |------|------|------|
+            | 安装包 | EXE 安装程序 (推荐) | [下载](https://github.com/${{ github.repository }}/releases/download/${{ needs.extract-version.outputs.tag_name }}/MyNAS-${{ needs.extract-version.outputs.version }}-windows-x64-setup.exe) |
+            | 便携版 | 解压即用，无需安装 | [下载](https://github.com/${{ github.repository }}/releases/download/${{ needs.extract-version.outputs.tag_name }}/MyNAS-${{ needs.extract-version.outputs.version }}-windows-x64-portable.zip) |
+            | MSIX | Windows 应用商店格式 | [下载](https://github.com/${{ github.repository }}/releases/download/${{ needs.extract-version.outputs.tag_name }}/MyNAS-${{ needs.extract-version.outputs.version }}-windows-x64.msix) |
+
+            </details>
+
+            <details>
+            <summary>Linux (点击展开)</summary>
+
+            | 架构 | 说明 | 下载 |
+            |------|------|------|
+            | x64 | 64位 x86 (大多数桌面/服务器) | [下载](https://github.com/${{ github.repository }}/releases/download/${{ needs.extract-version.outputs.tag_name }}/MyNAS-${{ needs.extract-version.outputs.version }}-linux-x64.tar.gz) |
+            | arm64 | 64位 ARM (树莓派4/5/Arm服务器) | [下载](https://github.com/${{ github.repository }}/releases/download/${{ needs.extract-version.outputs.tag_name }}/MyNAS-${{ needs.extract-version.outputs.version }}-linux-arm64.tar.gz) |
+
+            </details>
 
             ### ⚠️ 注意事项
             - **iOS**: IPA 未签名，需要自行签名后安装（AltStore/Sideloadly）
             - **macOS**: 应用未签名，首次打开需要在「系统设置 → 隐私与安全性」中允许
-            - **Linux**: 需要安装 `libmpv` 依赖：`sudo apt install libmpv1`
+            - **Windows**: MSIX 安装包需要信任开发者证书或开启开发者模式
+            - **Linux**: 需要安装依赖：`sudo apt install libmpv1 libsecret-1-0`
 
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
