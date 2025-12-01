@@ -11,7 +11,10 @@ import 'package:my_nas/features/sources/presentation/pages/media_library_page.da
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/features/video/data/services/tmdb_service.dart';
+import 'package:my_nas/shared/providers/download_provider.dart';
 import 'package:my_nas/shared/providers/theme_provider.dart';
+import 'package:my_nas/shared/services/download_service.dart';
+import 'package:my_nas/shared/widgets/download_manager_sheet.dart';
 import 'package:my_nas/shared/widgets/update_dialog.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
@@ -40,6 +43,13 @@ class MinePage extends ConsumerWidget {
             padding: AppSpacing.paddingMd,
             sliver: SliverList(
               delegate: SliverChildListDelegate([
+                // 传输
+                _buildSectionHeader(context, '传输', Icons.swap_vert_rounded, isDark),
+                const SizedBox(height: AppSpacing.sm),
+                _TransferCard(isDark: isDark),
+
+                const SizedBox(height: AppSpacing.lg),
+
                 // 外观设置
                 _buildSectionHeader(context, '外观', Icons.palette_outlined, isDark),
                 const SizedBox(height: AppSpacing.sm),
@@ -920,6 +930,215 @@ class _TmdbApiKeyTileState extends State<_TmdbApiKeyTile> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// 传输卡片组件
+class _TransferCard extends ConsumerWidget {
+  const _TransferCard({required this.isDark});
+
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tasksAsync = ref.watch(downloadTasksProvider);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark
+            ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
+            : AppColors.lightSurface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isDark
+              ? AppColors.darkOutline.withValues(alpha: 0.2)
+              : AppColors.lightOutline.withValues(alpha: 0.3),
+        ),
+        boxShadow: isDark
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.03),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () => showDownloadManager(context),
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.lg),
+              child: tasksAsync.when(
+                data: (tasks) => _buildContent(context, tasks),
+                loading: () => _buildContent(context, []),
+                error: (_, __) => _buildContent(context, []),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContent(BuildContext context, List<DownloadTask> tasks) {
+    final downloading = tasks
+        .where((t) =>
+            t.status == DownloadStatus.downloading ||
+            t.status == DownloadStatus.pending ||
+            t.status == DownloadStatus.paused)
+        .toList();
+    final completed = tasks.where((t) => t.status == DownloadStatus.completed).toList();
+    final hasActiveTasks = downloading.isNotEmpty;
+
+    return Row(
+      children: [
+        // 下载图标
+        _buildTransferButton(
+          context,
+          icon: Icons.download_rounded,
+          label: '下载',
+          count: downloading.length,
+          color: AppColors.primary,
+          isActive: hasActiveTasks,
+        ),
+        const SizedBox(width: AppSpacing.lg),
+        // 同步图标（预留）
+        _buildTransferButton(
+          context,
+          icon: Icons.sync_rounded,
+          label: '同步',
+          count: 0,
+          color: AppColors.accent,
+          isActive: false,
+        ),
+        const Spacer(),
+        // 状态摘要
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            if (hasActiveTasks) ...[
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    '${downloading.length} 个任务进行中',
+                    style: context.textTheme.bodySmall?.copyWith(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ] else ...[
+              Text(
+                tasks.isEmpty ? '暂无任务' : '${completed.length} 个已完成',
+                style: context.textTheme.bodySmall?.copyWith(
+                  color: isDark
+                      ? AppColors.darkOnSurfaceVariant
+                      : AppColors.lightOnSurfaceVariant,
+                ),
+              ),
+            ],
+            const SizedBox(height: 2),
+            Text(
+              '点击查看详情',
+              style: context.textTheme.labelSmall?.copyWith(
+                color: isDark
+                    ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.6)
+                    : AppColors.lightOnSurfaceVariant.withValues(alpha: 0.6),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(width: AppSpacing.sm),
+        Icon(
+          Icons.chevron_right_rounded,
+          color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+          size: 22,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTransferButton(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required int count,
+    required Color color,
+    required bool isActive,
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: isActive ? 0.15 : 0.08),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(
+                icon,
+                color: isActive ? color : color.withValues(alpha: 0.5),
+                size: 24,
+              ),
+            ),
+            if (count > 0)
+              Positioned(
+                top: -4,
+                right: -4,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: color,
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: [
+                      BoxShadow(
+                        color: color.withValues(alpha: 0.3),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Text(
+                    count > 99 ? '99+' : count.toString(),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          label,
+          style: context.textTheme.labelSmall?.copyWith(
+            color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
     );
   }
 }

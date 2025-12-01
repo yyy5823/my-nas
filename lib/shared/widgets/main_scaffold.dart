@@ -78,12 +78,6 @@ class _MainScaffoldState extends State<MainScaffold> {
       route: Routes.reading,
     ),
     _Destination(
-      icon: Icons.download_outlined,
-      selectedIcon: Icons.download_rounded,
-      label: '下载',
-      route: Routes.download,
-    ),
-    _Destination(
       icon: Icons.person_outline_rounded,
       selectedIcon: Icons.person_rounded,
       label: '我的',
