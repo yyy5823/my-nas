@@ -7,6 +7,7 @@ import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/book/data/services/book_library_cache_service.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
 import 'package:my_nas/features/book/presentation/pages/book_reader_page.dart';
+import 'package:my_nas/features/reading/presentation/pages/reading_page.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
@@ -954,6 +955,9 @@ class _BookListContentState extends ConsumerState<BookListContent> {
       ),
       child: Row(
         children: [
+          // 类型切换按钮
+          _buildTypeSwitcher(context, ref, isDark),
+          const SizedBox(width: 8),
           if (state is BookListLoaded && state.fromCache)
             Container(
               margin: const EdgeInsets.only(right: 8),
@@ -1058,6 +1062,108 @@ class _BookListContentState extends ConsumerState<BookListContent> {
         ],
       ),
     );
+  }
+
+  Widget _buildTypeSwitcher(BuildContext context, WidgetRef ref, bool isDark) {
+    final currentIndex = ref.watch(readingTabProvider);
+    final currentType = ReadingContentType.values[currentIndex];
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _showTypeMenu(context, ref, isDark, currentIndex),
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                currentType.icon,
+                size: 18,
+                color: AppColors.primary,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                currentType.label,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? AppColors.darkOnSurface : Colors.black87,
+                ),
+              ),
+              const SizedBox(width: 2),
+              Icon(
+                Icons.arrow_drop_down_rounded,
+                size: 20,
+                color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[600],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showTypeMenu(BuildContext context, WidgetRef ref, bool isDark, int currentIndex) {
+    final RenderBox button = context.findRenderObject() as RenderBox;
+    final RenderBox overlay = Navigator.of(context).overlay!.context.findRenderObject() as RenderBox;
+    final RelativeRect position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        button.localToGlobal(Offset.zero, ancestor: overlay),
+        button.localToGlobal(button.size.bottomRight(Offset.zero), ancestor: overlay),
+      ),
+      Offset.zero & overlay.size,
+    );
+
+    showMenu<int>(
+      context: context,
+      position: position,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      color: isDark ? AppColors.darkSurface : Colors.white,
+      items: ReadingContentType.values.asMap().entries.map((entry) {
+        final index = entry.key;
+        final type = entry.value;
+        final isSelected = index == currentIndex;
+
+        return PopupMenuItem<int>(
+          value: index,
+          child: Row(
+            children: [
+              Icon(
+                type.icon,
+                size: 20,
+                color: isSelected
+                    ? AppColors.primary
+                    : (isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[600]),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                type.label,
+                style: TextStyle(
+                  color: isSelected
+                      ? AppColors.primary
+                      : (isDark ? AppColors.darkOnSurface : Colors.black87),
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                ),
+              ),
+              if (isSelected) ...[
+                const Spacer(),
+                Icon(
+                  Icons.check_rounded,
+                  size: 20,
+                  color: AppColors.primary,
+                ),
+              ],
+            ],
+          ),
+        );
+      }).toList(),
+    ).then((selectedIndex) {
+      if (selectedIndex != null && selectedIndex != currentIndex) {
+        ref.read(readingTabProvider.notifier).state = selectedIndex;
+      }
+    });
   }
 
   Widget _buildSmallIconButton({

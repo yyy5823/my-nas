@@ -724,37 +724,31 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     VideoListLoaded state,
     bool isDark,
   ) {
-    return RefreshIndicator(
-      onRefresh: () => ref.read(videoListProvider.notifier).forceRefresh(),
-      child: CustomScrollView(
-        slivers: [
-          // 顶部导航栏
-          _buildAppBar(context, ref, state, isDark),
+    return CustomScrollView(
+      slivers: [
+        // 顶部导航栏
+        _buildAppBar(context, ref, state, isDark),
 
-          // 缓存信息条
-          _CacheInfoBar(state: state, isDark: isDark),
+        // 继续观看
+        _ContinueWatchingSection(isDark: isDark),
 
-          // 继续观看
-          _ContinueWatchingSection(isDark: isDark),
+        // 分类标签
+        SliverToBoxAdapter(
+          child: _buildTabBar(context, ref, state, isDark),
+        ),
 
-          // 分类标签
+        // 元数据加载进度
+        if (state.isLoadingMetadata)
           SliverToBoxAdapter(
-            child: _buildTabBar(context, ref, state, isDark),
+            child: _buildMetadataProgress(state, isDark),
           ),
 
-          // 元数据加载进度
-          if (state.isLoadingMetadata)
-            SliverToBoxAdapter(
-              child: _buildMetadataProgress(state, isDark),
-            ),
+        // 内容区域
+        ..._buildContentSections(context, ref, state, isDark),
 
-          // 内容区域
-          ..._buildContentSections(context, ref, state, isDark),
-
-          // 底部留白
-          const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
-        ],
-      ),
+        // 底部留白
+        const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
+      ],
     );
   }
 
