@@ -351,34 +351,25 @@ class _ComicListContentState extends ConsumerState<ComicListContent> {
     final state = ref.watch(comicListProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Column(
-      children: [
-        // 工具栏
-        _buildToolbar(context, isDark, state),
-        // 内容
-        Expanded(
-          child: switch (state) {
-            ComicListLoading(:final progress, :final currentFolder, :final fromCache) =>
-              _buildLoadingState(progress, currentFolder, fromCache, isDark),
-            ComicListNotConnected() => const MediaSetupWidget(
-                mediaType: MediaType.comic,
-                icon: Icons.collections_bookmark_outlined,
-              ),
-            ComicListError(:final message) => AppErrorWidget(
-                message: message,
-                onRetry: () => ref.read(comicListProvider.notifier).loadComics(),
-              ),
-            ComicListLoaded(:final filteredComics) when filteredComics.isEmpty =>
-              const EmptyWidget(
-                icon: Icons.collections_bookmark_outlined,
-                title: '暂无漫画',
-                message: '在配置的目录中添加漫画后将显示在这里',
-              ),
-            ComicListLoaded loaded => _buildComicGrid(context, loaded, isDark),
-          },
+    return switch (state) {
+      ComicListLoading(:final progress, :final currentFolder, :final fromCache) =>
+        _buildLoadingState(progress, currentFolder, fromCache, isDark),
+      ComicListNotConnected() => const MediaSetupWidget(
+          mediaType: MediaType.comic,
+          icon: Icons.collections_bookmark_outlined,
         ),
-      ],
-    );
+      ComicListError(:final message) => AppErrorWidget(
+          message: message,
+          onRetry: () => ref.read(comicListProvider.notifier).loadComics(),
+        ),
+      ComicListLoaded(:final filteredComics) when filteredComics.isEmpty =>
+        const EmptyWidget(
+          icon: Icons.collections_bookmark_outlined,
+          title: '暂无漫画',
+          message: '在配置的目录中添加漫画后将显示在这里',
+        ),
+      ComicListLoaded loaded => _buildComicGrid(context, loaded, isDark),
+    };
   }
 
   Widget _buildToolbar(BuildContext context, bool isDark, ComicListState state) {

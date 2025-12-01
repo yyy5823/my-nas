@@ -552,8 +552,6 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
       onRefresh: () => ref.read(musicListProvider.notifier).forceRefresh(),
       child: CustomScrollView(
         slivers: [
-          // 缓存信息条
-          _MusicCacheInfoBar(state: state, isDark: isDark),
           // 音乐列表
           SliverPadding(
             padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),

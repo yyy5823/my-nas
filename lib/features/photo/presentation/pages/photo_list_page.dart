@@ -880,8 +880,6 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
       onRefresh: () => ref.read(photoListProvider.notifier).forceRefresh(),
       child: CustomScrollView(
         slivers: [
-          // 缓存信息条
-          _PhotoCacheInfoBar(state: state, isDark: isDark),
           // 照片内容
           if (state.viewMode == PhotoViewMode.grid)
             _buildGridView(context, ref, state, isDark)

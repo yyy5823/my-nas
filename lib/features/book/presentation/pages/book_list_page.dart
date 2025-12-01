@@ -905,34 +905,25 @@ class _BookListContentState extends ConsumerState<BookListContent> {
     final state = ref.watch(bookListProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Column(
-      children: [
-        // 搜索和工具栏
-        _buildToolBar(context, ref, isDark, state),
-        // 内容区
-        Expanded(
-          child: switch (state) {
-            BookListLoading(:final progress, :final currentFolder, :final fromCache) =>
-              _buildLoadingState(progress, currentFolder, fromCache, isDark),
-            BookListNotConnected() => const MediaSetupWidget(
-                mediaType: MediaType.book,
-                icon: Icons.menu_book_outlined,
-              ),
-            BookListError(:final message) => AppErrorWidget(
-                message: message,
-                onRetry: () => ref.read(bookListProvider.notifier).loadBooks(),
-              ),
-            BookListLoaded(:final filteredBooks) when filteredBooks.isEmpty =>
-              const EmptyWidget(
-                icon: Icons.menu_book_outlined,
-                title: '暂无图书',
-                message: '在配置的目录中添加电子书后将显示在这里\n支持 EPUB、PDF、TXT 格式',
-              ),
-            BookListLoaded loaded => _buildBookGrid(context, ref, loaded, isDark),
-          },
+    return switch (state) {
+      BookListLoading(:final progress, :final currentFolder, :final fromCache) =>
+        _buildLoadingState(progress, currentFolder, fromCache, isDark),
+      BookListNotConnected() => const MediaSetupWidget(
+          mediaType: MediaType.book,
+          icon: Icons.menu_book_outlined,
         ),
-      ],
-    );
+      BookListError(:final message) => AppErrorWidget(
+          message: message,
+          onRetry: () => ref.read(bookListProvider.notifier).loadBooks(),
+        ),
+      BookListLoaded(:final filteredBooks) when filteredBooks.isEmpty =>
+        const EmptyWidget(
+          icon: Icons.menu_book_outlined,
+          title: '暂无图书',
+          message: '在配置的目录中添加电子书后将显示在这里\n支持 EPUB、PDF、TXT 格式',
+        ),
+      BookListLoaded loaded => _buildBookGrid(context, ref, loaded, isDark),
+    };
   }
 
   Widget _buildToolBar(
