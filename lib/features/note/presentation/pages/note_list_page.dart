@@ -1382,6 +1382,9 @@ class _NoteListContentState extends ConsumerState<NoteListContent> {
   static const double _minSidebarWidth = 200;
   static const double _maxSidebarWidth = 400;
 
+  // 侧边栏是否收起
+  bool _isSidebarCollapsed = false;
+
   @override
   void dispose() {
     _editController.dispose();
@@ -1437,6 +1440,204 @@ class _NoteListContentState extends ConsumerState<NoteListContent> {
         ),
       NotePageLoaded() => _buildMainLayout(context, state, isDark),
     };
+  }
+
+  Widget _buildMainLayout(
+      BuildContext context, NotePageLoaded state, bool isDark) {
+    return Row(
+      children: [
+        // 左侧目录树（可收起）
+        if (!_isSidebarCollapsed) ...[
+          _buildSidebar(context, state, isDark),
+          // 可拖动分隔线
+          _buildResizeHandle(isDark),
+        ],
+        // 展开按钮（当侧边栏收起时显示）
+        if (_isSidebarCollapsed)
+          _buildExpandButton(isDark),
+        // 右侧内容区
+        Expanded(
+          child: _buildContentArea(context, state, isDark),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSidebar(
+      BuildContext context, NotePageLoaded state, bool isDark) {
+    return Container(
+      width: _sidebarWidth,
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
+        border: Border(
+          right: BorderSide(
+            color: isDark
+                ? AppColors.darkOutline.withValues(alpha: 0.2)
+                : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
+          ),
+        ),
+      ),
+      child: Column(
+        children: [
+          // 标题栏
+          _buildSidebarHeader(context, isDark),
+          // 目录树
+          Expanded(
+            child: NoteTreeWidget(
+              nodes: state.treeNodes,
+              selectedPath: state.selectedNode?.path,
+              onNodeSelected: (node) =>
+                  ref.read(notePageProvider.notifier).selectFile(node),
+              onFolderToggle: (node) =>
+                  ref.read(notePageProvider.notifier).toggleFolder(node),
+              onFolderLoad: (node) =>
+                  ref.read(notePageProvider.notifier).toggleFolder(node),
+              isDark: isDark,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSidebarHeader(BuildContext context, bool isDark) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: isDark
+                ? AppColors.darkOutline.withValues(alpha: 0.2)
+                : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.folder_outlined,
+            size: 20,
+            color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[600],
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '笔记目录',
+            style: context.textTheme.titleSmall?.copyWith(
+              color: isDark ? AppColors.darkOnSurface : null,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const Spacer(),
+          // 收起按钮
+          IconButton(
+            onPressed: () => setState(() => _isSidebarCollapsed = true),
+            icon: Icon(
+              Icons.chevron_left_rounded,
+              color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[600],
+            ),
+            iconSize: 20,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            tooltip: '收起侧边栏',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildExpandButton(bool isDark) {
+    return Container(
+      width: 40,
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
+        border: Border(
+          right: BorderSide(
+            color: isDark
+                ? AppColors.darkOutline.withValues(alpha: 0.2)
+                : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
+          ),
+        ),
+      ),
+      child: Column(
+        children: [
+          const SizedBox(height: 8),
+          IconButton(
+            onPressed: () => setState(() => _isSidebarCollapsed = false),
+            icon: Icon(
+              Icons.chevron_right_rounded,
+              color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[600],
+            ),
+            iconSize: 20,
+            tooltip: '展开侧边栏',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildResizeHandle(bool isDark) {
+    return GestureDetector(
+      onHorizontalDragUpdate: (details) {
+        setState(() {
+          _sidebarWidth += details.delta.dx;
+          _sidebarWidth = _sidebarWidth.clamp(_minSidebarWidth, _maxSidebarWidth);
+        });
+      },
+      child: MouseRegion(
+        cursor: SystemMouseCursors.resizeColumn,
+        child: Container(
+          width: 4,
+          color: isDark
+              ? AppColors.darkOutline.withValues(alpha: 0.1)
+              : Colors.grey.withValues(alpha: 0.1),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContentArea(
+      BuildContext context, NotePageLoaded state, bool isDark) {
+    if (state.selectedNode == null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.article_outlined,
+              size: 64,
+              color: isDark
+                  ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.3)
+                  : Colors.grey.withValues(alpha: 0.3),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '选择一个笔记开始阅读',
+              style: context.textTheme.bodyLarge?.copyWith(
+                color: isDark
+                    ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.5)
+                    : Colors.grey,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (state.isLoadingContent) {
+      return Center(
+        child: CircularProgressIndicator(color: AppColors.primary),
+      );
+    }
+
+    // 显示内容
+    return SingleChildScrollView(
+      controller: _previewScrollController,
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      child: _SimpleMarkdownPreview(
+        content: state.content ?? '',
+        isDark: isDark,
+      ),
+    );
   }
 }
 
