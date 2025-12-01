@@ -1408,102 +1408,37 @@ class _NoteListContentState extends ConsumerState<NoteListContent> {
     final state = ref.watch(notePageProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Column(
-      children: [
-        // 工具栏
-        _buildToolBar(context, ref, isDark, state),
-        // 主内容区
-        Expanded(
-          child: switch (state) {
-            NotePageLoading(:final message) => Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CircularProgressIndicator(color: AppColors.primary),
-                    if (message != null) ...[
-                      const SizedBox(height: 16),
-                      Text(message),
-                    ],
-                  ],
-                ),
-              ),
-            NotePageNotConnected() => const MediaSetupWidget(
-                mediaType: MediaType.note,
-                icon: Icons.note_outlined,
-              ),
-            NotePageError(:final message) => AppErrorWidget(
-                message: message,
-                onRetry: () => ref.read(notePageProvider.notifier).loadTree(),
-              ),
-            NotePageLoaded(:final treeNodes) when treeNodes.isEmpty =>
-              const EmptyWidget(
-                icon: Icons.note_outlined,
-                title: '暂无笔记',
-                message: '在配置的目录中添加 Markdown 文件后将显示在这里',
-              ),
-            NotePageLoaded() => _buildMainLayout(context, state, isDark),
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildToolBar(
-    BuildContext context,
-    WidgetRef ref,
-    bool isDark,
-    NotePageState state,
-  ) {
-    int noteCount = 0;
-    if (state is NotePageLoaded) {
-      noteCount = _countNotes(state.treeNodes);
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
-        border: Border(
-          bottom: BorderSide(
-            color: isDark
-                ? AppColors.darkOutline.withValues(alpha: 0.1)
-                : context.colorScheme.outlineVariant.withValues(alpha: 0.3),
+    return switch (state) {
+      NotePageLoading(:final message) => Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(color: AppColors.primary),
+              if (message != null) ...[
+                const SizedBox(height: 16),
+                Text(message),
+              ],
+            ],
           ),
         ),
-      ),
-      child: Row(
-        children: [
-          // 类型切换按钮
-          _buildTypeSwitcher(context, ref, isDark),
-          const SizedBox(width: 8),
-          if (noteCount > 0)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(
-                '$noteCount 篇',
-                style: TextStyle(
-                  color: AppColors.primary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          const Spacer(),
-          _buildSmallIconButton(
-            icon: Icons.refresh_rounded,
-            onTap: () => ref.read(notePageProvider.notifier).loadTree(),
-            isDark: isDark,
-          ),
-        ],
-      ),
-    );
+      NotePageNotConnected() => const MediaSetupWidget(
+          mediaType: MediaType.note,
+          icon: Icons.note_outlined,
+        ),
+      NotePageError(:final message) => AppErrorWidget(
+          message: message,
+          onRetry: () => ref.read(notePageProvider.notifier).loadTree(),
+        ),
+      NotePageLoaded(:final treeNodes) when treeNodes.isEmpty =>
+        const EmptyWidget(
+          icon: Icons.note_outlined,
+          title: '暂无笔记',
+          message: '在配置的目录中添加 Markdown 文件后将显示在这里',
+        ),
+      NotePageLoaded() => _buildMainLayout(context, state, isDark),
+    };
   }
-
-  Widget _buildTypeSwitcher(BuildContext context, WidgetRef ref, bool isDark) {
+}
     final currentIndex = ref.watch(readingTabProvider);
     final currentType = ReadingContentType.values[currentIndex];
 
