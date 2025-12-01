@@ -114,6 +114,11 @@ class PhotoGroup {
 
   /// 格式化日期标题
   String get dateTitle {
+    // 1970 年表示未知日期
+    if (date.year <= 1970) {
+      return '未知日期';
+    }
+
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final groupDate = DateTime(date.year, date.month, date.day);

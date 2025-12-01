@@ -5,16 +5,26 @@ import 'package:intl/intl.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/photo/domain/entities/photo_item.dart';
 
+/// 照片 URL 获取回调
+typedef PhotoUrlGetter = Future<String?> Function(String path, String sourceId);
+
+/// 获取照片 sourceId 回调
+typedef SourceIdGetter = String Function(String photoPath);
+
 /// 照片查看器页面
 class PhotoViewerPage extends StatefulWidget {
   const PhotoViewerPage({
     super.key,
     required this.photos,
     required this.initialIndex,
+    this.getPhotoUrl,
+    this.getSourceId,
   });
 
   final List<PhotoItem> photos;
   final int initialIndex;
+  final PhotoUrlGetter? getPhotoUrl;
+  final SourceIdGetter? getSourceId;
 
   @override
   State<PhotoViewerPage> createState() => _PhotoViewerPageState();
@@ -27,6 +37,9 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
   bool _showOverlay = true;
   late AnimationController _overlayController;
   late Animation<double> _overlayAnimation;
+
+  /// 缓存已加载的原图 URL
+  final Map<String, String> _loadedUrls = {};
 
   @override
   void initState() {
@@ -46,6 +59,12 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
 
     // 设置沉浸模式
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+
+    // 初始化当前照片的 URL（如果已有）
+    final currentPhoto = widget.photos[_currentIndex];
+    if (currentPhoto.url.isNotEmpty) {
+      _loadedUrls[currentPhoto.path] = currentPhoto.url;
+    }
   }
 
   @override
@@ -86,6 +105,44 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
     }
   }
 
+  /// 加载照片原图 URL
+  Future<String?> _loadPhotoUrl(int index) async {
+    final photo = widget.photos[index];
+
+    // 如果已缓存，直接返回
+    if (_loadedUrls.containsKey(photo.path)) {
+      return _loadedUrls[photo.path];
+    }
+
+    // 如果照片已有 URL 且不为空，缓存并返回
+    if (photo.url.isNotEmpty) {
+      _loadedUrls[photo.path] = photo.url;
+      return photo.url;
+    }
+
+    // 尝试获取原图 URL
+    if (widget.getPhotoUrl != null && widget.getSourceId != null) {
+      final sourceId = widget.getSourceId!(photo.path);
+      final url = await widget.getPhotoUrl!(photo.path, sourceId);
+      if (url != null && url.isNotEmpty) {
+        _loadedUrls[photo.path] = url;
+        if (mounted) setState(() {});
+        return url;
+      }
+    }
+
+    // 如果都失败，使用缩略图
+    return photo.thumbnailUrl;
+  }
+
+  /// 预加载照片 URL
+  void _preloadPhotoUrl(int index) {
+    _loadPhotoUrl(index);
+    // 预加载前后各一张
+    if (index > 0) _loadPhotoUrl(index - 1);
+    if (index < widget.photos.length - 1) _loadPhotoUrl(index + 1);
+  }
+
   @override
   Widget build(BuildContext context) {
     final photo = widget.photos[_currentIndex];
@@ -106,10 +163,17 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
                 setState(() {
                   _currentIndex = index;
                 });
+                // 预加载当前页的原图 URL
+                _preloadPhotoUrl(index);
               },
               itemBuilder: (context, index) {
                 final item = widget.photos[index];
-                return _PhotoPage(photo: item);
+                final cachedUrl = _loadedUrls[item.path];
+                return _PhotoPage(
+                  photo: item,
+                  cachedUrl: cachedUrl,
+                  onLoadUrl: () => _loadPhotoUrl(index),
+                );
               },
             ),
 
@@ -411,9 +475,15 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
 }
 
 class _PhotoPage extends StatefulWidget {
-  const _PhotoPage({required this.photo});
+  const _PhotoPage({
+    required this.photo,
+    this.cachedUrl,
+    this.onLoadUrl,
+  });
 
   final PhotoItem photo;
+  final String? cachedUrl;
+  final Future<String?> Function()? onLoadUrl;
 
   @override
   State<_PhotoPage> createState() => _PhotoPageState();
@@ -421,6 +491,39 @@ class _PhotoPage extends StatefulWidget {
 
 class _PhotoPageState extends State<_PhotoPage> {
   final _transformController = TransformationController();
+  String? _loadedUrl;
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadedUrl = widget.cachedUrl;
+    if (_loadedUrl == null || _loadedUrl!.isEmpty) {
+      _loadUrl();
+    }
+  }
+
+  @override
+  void didUpdateWidget(_PhotoPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.cachedUrl != oldWidget.cachedUrl && widget.cachedUrl != null) {
+      setState(() {
+        _loadedUrl = widget.cachedUrl;
+      });
+    }
+  }
+
+  Future<void> _loadUrl() async {
+    if (_isLoading || widget.onLoadUrl == null) return;
+    _isLoading = true;
+    final url = await widget.onLoadUrl!();
+    if (mounted && url != null && url.isNotEmpty) {
+      setState(() {
+        _loadedUrl = url;
+      });
+    }
+    _isLoading = false;
+  }
 
   @override
   void dispose() {
@@ -430,6 +533,11 @@ class _PhotoPageState extends State<_PhotoPage> {
 
   @override
   Widget build(BuildContext context) {
+    // 优先使用已加载的 URL，其次使用原有 URL，最后使用缩略图
+    final displayUrl = _loadedUrl ?? widget.photo.url;
+    final hasThumbnail = widget.photo.thumbnailUrl != null && widget.photo.thumbnailUrl!.isNotEmpty;
+    final hasDisplayUrl = displayUrl.isNotEmpty;
+
     return InteractiveViewer(
       transformationController: _transformController,
       minScale: 0.5,
@@ -442,11 +550,11 @@ class _PhotoPageState extends State<_PhotoPage> {
         }
       },
       child: Center(
-        child: widget.photo.url.isNotEmpty
+        child: hasDisplayUrl
             ? CachedNetworkImage(
-                imageUrl: widget.photo.url,
+                imageUrl: displayUrl,
                 fit: BoxFit.contain,
-                placeholder: (context, url) => widget.photo.thumbnailUrl != null
+                placeholder: (context, url) => hasThumbnail
                     ? CachedNetworkImage(
                         imageUrl: widget.photo.thumbnailUrl!,
                         fit: BoxFit.contain,
@@ -456,35 +564,42 @@ class _PhotoPageState extends State<_PhotoPage> {
                           color: Colors.white,
                         ),
                       ),
-                errorWidget: (context, url, error) => Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.broken_image_outlined,
-                      size: 64,
-                      color: Colors.white.withOpacity(0.5),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      '加载失败',
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.5),
-                      ),
-                    ),
-                  ],
-                ),
+                errorWidget: (context, url, error) => hasThumbnail
+                    ? CachedNetworkImage(
+                        imageUrl: widget.photo.thumbnailUrl!,
+                        fit: BoxFit.contain,
+                        errorWidget: (context, url, error) => _buildErrorWidget(),
+                      )
+                    : _buildErrorWidget(),
               )
-            : widget.photo.thumbnailUrl != null
+            : hasThumbnail
                 ? CachedNetworkImage(
                     imageUrl: widget.photo.thumbnailUrl!,
                     fit: BoxFit.contain,
+                    errorWidget: (context, url, error) => _buildErrorWidget(),
                   )
-                : Icon(
-                    Icons.image_outlined,
-                    size: 64,
-                    color: Colors.white.withOpacity(0.5),
-                  ),
+                : _buildErrorWidget(),
       ),
+    );
+  }
+
+  Widget _buildErrorWidget() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          Icons.broken_image_outlined,
+          size: 64,
+          color: Colors.white.withOpacity(0.5),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          '加载失败',
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.5),
+          ),
+        ),
+      ],
     );
   }
 }

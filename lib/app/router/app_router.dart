@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:my_nas/app/router/routes.dart';
-import 'package:my_nas/features/book/presentation/pages/book_list_page.dart';
 import 'package:my_nas/features/connection/presentation/pages/connection_page.dart';
-import 'package:my_nas/features/file_browser/presentation/pages/file_browser_page.dart';
+import 'package:my_nas/features/mine/presentation/pages/mine_page.dart';
 import 'package:my_nas/features/music/presentation/pages/music_list_page.dart';
-import 'package:my_nas/features/note/presentation/pages/note_list_page.dart';
 import 'package:my_nas/features/photo/presentation/pages/photo_list_page.dart';
-import 'package:my_nas/features/settings/presentation/pages/settings_page.dart';
+import 'package:my_nas/features/reading/presentation/pages/reading_page.dart';
 import 'package:my_nas/features/startup/presentation/pages/startup_page.dart';
 import 'package:my_nas/features/video/presentation/pages/video_list_page.dart';
 import 'package:my_nas/shared/widgets/main_scaffold.dart';
@@ -34,16 +32,11 @@ final appRouter = GoRouter(
       builder: (context, state) => const ConnectionPage(),
     ),
 
-    // Main shell with bottom navigation
+    // Main shell with bottom navigation (5 tabs)
     ShellRoute(
       navigatorKey: shellNavigatorKey,
       builder: (context, state, child) => MainScaffold(child: child),
       routes: [
-        GoRoute(
-          path: Routes.files,
-          name: 'files',
-          builder: (context, state) => const FileBrowserPage(),
-        ),
         GoRoute(
           path: Routes.video,
           name: 'video',
@@ -60,19 +53,14 @@ final appRouter = GoRouter(
           builder: (context, state) => const PhotoListPage(),
         ),
         GoRoute(
-          path: Routes.book,
-          name: 'book',
-          builder: (context, state) => const BookListPage(),
+          path: Routes.reading,
+          name: 'reading',
+          builder: (context, state) => const ReadingPage(),
         ),
         GoRoute(
-          path: Routes.note,
-          name: 'note',
-          builder: (context, state) => const NoteListPage(),
-        ),
-        GoRoute(
-          path: Routes.settings,
-          name: 'settings',
-          builder: (context, state) => const SettingsPage(),
+          path: Routes.mine,
+          name: 'mine',
+          builder: (context, state) => const MinePage(),
         ),
       ],
     ),

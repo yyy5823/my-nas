@@ -236,8 +236,6 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
     _ref.read(currentVideoProvider.notifier).state = video;
     state = state.copyWith(errorMessage: null);
 
-    await _player.open(Media(video.url));
-
     // 确定起始位置
     Duration? resumePosition = startPosition;
 
@@ -250,8 +248,37 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
       }
     }
 
+    // 打开视频并设置起始位置
+    await _player.open(Media(video.url));
+
+    // 等待播放器准备好后再 seek
     if (resumePosition != null && resumePosition > Duration.zero) {
-      await _player.seek(resumePosition);
+      // 监听 duration 变化，等视频加载完成后再 seek
+      StreamSubscription<Duration>? subscription;
+      final completer = Completer<void>();
+
+      subscription = _player.stream.duration.listen((duration) {
+        if (duration > Duration.zero && !completer.isCompleted) {
+          // 视频已准备好，执行 seek
+          _player.seek(resumePosition!).then((_) {
+            logger.i('VideoPlayerNotifier: 跳转到 ${resumePosition.inSeconds}s');
+          });
+          subscription?.cancel();
+          completer.complete();
+        }
+      });
+
+      // 设置超时，避免无限等待
+      Future.delayed(const Duration(seconds: 5), () {
+        if (!completer.isCompleted) {
+          subscription?.cancel();
+          completer.complete();
+          // 超时后尝试直接 seek
+          _player.seek(resumePosition!);
+        }
+      });
+
+      await completer.future;
     }
 
     // 添加到播放历史
@@ -277,6 +304,11 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
     await _player.pause();
   }
 
+  /// 同步暂停（用于 dispose）
+  void pauseSync() {
+    _player.pause();
+  }
+
   /// 继续播放
   Future<void> resume() async {
     await _player.play();
@@ -289,6 +321,19 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
     await _player.stop();
     _currentVideo = null;
     _ref.read(currentVideoProvider.notifier).state = null;
+  }
+
+  /// 同步停止（用于 dispose，不等待异步操作）
+  void stopSync() {
+    // 先同步保存进度
+    _saveCurrentProgress();
+    _stopProgressSaveTimer();
+    // 直接停止播放器
+    _player.pause();
+    _player.stop();
+    _currentVideo = null;
+    _ref.read(currentVideoProvider.notifier).state = null;
+    logger.i('VideoPlayerNotifier: 同步停止播放');
   }
 
   /// 跳转到指定位置

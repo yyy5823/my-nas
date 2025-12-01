@@ -11,12 +11,6 @@ class MainScaffold extends StatelessWidget {
 
   static final _destinations = [
     const _Destination(
-      icon: Icons.folder_outlined,
-      selectedIcon: Icons.folder_rounded,
-      label: '文件',
-      route: Routes.files,
-    ),
-    const _Destination(
       icon: Icons.play_circle_outline_rounded,
       selectedIcon: Icons.play_circle_rounded,
       label: '视频',
@@ -35,22 +29,16 @@ class MainScaffold extends StatelessWidget {
       route: Routes.photo,
     ),
     const _Destination(
-      icon: Icons.menu_book_outlined,
-      selectedIcon: Icons.menu_book_rounded,
-      label: '图书',
-      route: Routes.book,
+      icon: Icons.auto_stories_outlined,
+      selectedIcon: Icons.auto_stories_rounded,
+      label: '阅读',
+      route: Routes.reading,
     ),
     const _Destination(
-      icon: Icons.note_outlined,
-      selectedIcon: Icons.note_rounded,
-      label: '笔记',
-      route: Routes.note,
-    ),
-    const _Destination(
-      icon: Icons.settings_outlined,
-      selectedIcon: Icons.settings_rounded,
-      label: '设置',
-      route: Routes.settings,
+      icon: Icons.person_outline_rounded,
+      selectedIcon: Icons.person_rounded,
+      label: '我的',
+      route: Routes.mine,
     ),
   ];
 

@@ -444,35 +444,155 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
 
     return Scaffold(
       backgroundColor: isDark ? AppColors.darkBackground : null,
-      body: switch (state) {
-        NotePageLoading(:final message) => Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircularProgressIndicator(color: AppColors.primary),
-                if (message != null) ...[
-                  const SizedBox(height: 16),
-                  Text(message),
-                ],
-              ],
+      body: Column(
+        children: [
+          // 统一的顶部头部
+          _buildAppBar(context, ref, isDark, state),
+          // 主内容区
+          Expanded(
+            child: switch (state) {
+              NotePageLoading(:final message) => Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(color: AppColors.primary),
+                      if (message != null) ...[
+                        const SizedBox(height: 16),
+                        Text(message),
+                      ],
+                    ],
+                  ),
+                ),
+              NotePageNotConnected() => const MediaSetupWidget(
+                  mediaType: MediaType.note,
+                  icon: Icons.note_outlined,
+                ),
+              NotePageError(:final message) => AppErrorWidget(
+                  message: message,
+                  onRetry: () => ref.read(notePageProvider.notifier).loadTree(),
+                ),
+              NotePageLoaded(:final treeNodes) when treeNodes.isEmpty =>
+                const EmptyWidget(
+                  icon: Icons.note_outlined,
+                  title: '暂无笔记',
+                  message: '在配置的目录中添加 Markdown 文件后将显示在这里',
+                ),
+              NotePageLoaded() => _buildMainLayout(context, state, isDark),
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAppBar(
+    BuildContext context,
+    WidgetRef ref,
+    bool isDark,
+    NotePageState state,
+  ) {
+    // 统计笔记数量
+    int noteCount = 0;
+    if (state is NotePageLoaded) {
+      noteCount = _countNotes(state.treeNodes);
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
+        border: Border(
+          bottom: BorderSide(
+            color: isDark
+                ? AppColors.darkOutline.withValues(alpha: 0.2)
+                : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
+          ),
+        ),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            children: [
+              Text(
+                '笔记',
+                style: context.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? AppColors.darkOnSurface : null,
+                ),
+              ),
+              if (noteCount > 0)
+                Container(
+                  margin: const EdgeInsets.only(left: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '$noteCount',
+                    style: TextStyle(
+                      color: AppColors.primary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              const Spacer(),
+              _buildIconButton(
+                icon: Icons.refresh_rounded,
+                onTap: () => ref.read(notePageProvider.notifier).loadTree(),
+                isDark: isDark,
+                tooltip: '刷新',
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 递归统计笔记文件数量
+  int _countNotes(List<NoteTreeNode> nodes) {
+    int count = 0;
+    for (final node in nodes) {
+      if (node.type == NoteTreeNodeType.file) {
+        count++;
+      }
+      if (node.children.isNotEmpty) {
+        count += _countNotes(node.children);
+      }
+    }
+    return count;
+  }
+
+  Widget _buildIconButton({
+    required IconData icon,
+    required VoidCallback onTap,
+    required bool isDark,
+    String? tooltip,
+  }) {
+    return Tooltip(
+      message: tooltip ?? '',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              icon,
+              color: isDark ? AppColors.darkOnSurfaceVariant : null,
+              size: 22,
             ),
           ),
-        NotePageNotConnected() => const MediaSetupWidget(
-            mediaType: MediaType.note,
-            icon: Icons.note_outlined,
-          ),
-        NotePageError(:final message) => AppErrorWidget(
-            message: message,
-            onRetry: () => ref.read(notePageProvider.notifier).loadTree(),
-          ),
-        NotePageLoaded(:final treeNodes) when treeNodes.isEmpty =>
-          const EmptyWidget(
-            icon: Icons.note_outlined,
-            title: '暂无笔记',
-            message: '在配置的目录中添加 Markdown 文件后将显示在这里',
-          ),
-        NotePageLoaded() => _buildMainLayout(context, state, isDark),
-      },
+        ),
+      ),
     );
   }
 
@@ -1195,5 +1315,353 @@ class _MarkdownPreview extends StatelessWidget {
         .replaceAllMapped(RegExp(r'~~(.+?)~~'), (m) => m.group(1)!)
         .replaceAllMapped(RegExp(r'`(.+?)`'), (m) => m.group(1)!)
         .replaceAllMapped(RegExp(r'\[(.+?)\]\(.+?\)'), (m) => m.group(1)!);
+  }
+}
+
+/// 笔记列表内容组件（供阅读页面复用）
+class NoteListContent extends ConsumerStatefulWidget {
+  const NoteListContent({super.key});
+
+  @override
+  ConsumerState<NoteListContent> createState() => _NoteListContentState();
+}
+
+class _NoteListContentState extends ConsumerState<NoteListContent> {
+  final TextEditingController _editController = TextEditingController();
+  final ScrollController _previewScrollController = ScrollController();
+
+  double _sidebarWidth = 280;
+  static const double _minSidebarWidth = 200;
+  static const double _maxSidebarWidth = 400;
+
+  @override
+  void dispose() {
+    _editController.dispose();
+    _previewScrollController.dispose();
+    super.dispose();
+  }
+
+  /// 递归统计笔记文件数量
+  int _countNotes(List<NoteTreeNode> nodes) {
+    int count = 0;
+    for (final node in nodes) {
+      if (node.type == NoteTreeNodeType.file) {
+        count++;
+      }
+      if (node.children.isNotEmpty) {
+        count += _countNotes(node.children);
+      }
+    }
+    return count;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(notePageProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Column(
+      children: [
+        // 工具栏
+        _buildToolBar(context, ref, isDark, state),
+        // 主内容区
+        Expanded(
+          child: switch (state) {
+            NotePageLoading(:final message) => Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(color: AppColors.primary),
+                    if (message != null) ...[
+                      const SizedBox(height: 16),
+                      Text(message),
+                    ],
+                  ],
+                ),
+              ),
+            NotePageNotConnected() => const MediaSetupWidget(
+                mediaType: MediaType.note,
+                icon: Icons.note_outlined,
+              ),
+            NotePageError(:final message) => AppErrorWidget(
+                message: message,
+                onRetry: () => ref.read(notePageProvider.notifier).loadTree(),
+              ),
+            NotePageLoaded(:final treeNodes) when treeNodes.isEmpty =>
+              const EmptyWidget(
+                icon: Icons.note_outlined,
+                title: '暂无笔记',
+                message: '在配置的目录中添加 Markdown 文件后将显示在这里',
+              ),
+            NotePageLoaded() => _buildMainLayout(context, state, isDark),
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildToolBar(
+    BuildContext context,
+    WidgetRef ref,
+    bool isDark,
+    NotePageState state,
+  ) {
+    int noteCount = 0;
+    if (state is NotePageLoaded) {
+      noteCount = _countNotes(state.treeNodes);
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
+        border: Border(
+          bottom: BorderSide(
+            color: isDark
+                ? AppColors.darkOutline.withValues(alpha: 0.1)
+                : context.colorScheme.outlineVariant.withValues(alpha: 0.3),
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          if (noteCount > 0)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                '$noteCount 篇',
+                style: TextStyle(
+                  color: AppColors.primary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          const Spacer(),
+          _buildSmallIconButton(
+            icon: Icons.refresh_rounded,
+            onTap: () => ref.read(notePageProvider.notifier).loadTree(),
+            isDark: isDark,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSmallIconButton({
+    required IconData icon,
+    required VoidCallback onTap,
+    required bool isDark,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(6),
+        child: Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Icon(
+            icon,
+            color: isDark ? AppColors.darkOnSurfaceVariant : null,
+            size: 20,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMainLayout(
+      BuildContext context, NotePageLoaded state, bool isDark) {
+    return Row(
+      children: [
+        // 左侧目录树
+        _buildSidebar(context, state, isDark),
+        // 可拖动分隔线
+        _buildResizeHandle(isDark),
+        // 右侧内容区
+        Expanded(
+          child: _buildContentArea(context, state, isDark),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSidebar(
+      BuildContext context, NotePageLoaded state, bool isDark) {
+    return Container(
+      width: _sidebarWidth,
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
+        border: Border(
+          right: BorderSide(
+            color: isDark
+                ? AppColors.darkOutline.withValues(alpha: 0.2)
+                : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
+          ),
+        ),
+      ),
+      child: NoteTreeWidget(
+        nodes: state.treeNodes,
+        selectedPath: state.selectedNode?.path,
+        onNodeSelected: (node) =>
+            ref.read(notePageProvider.notifier).selectFile(node),
+        onFolderToggle: (node) =>
+            ref.read(notePageProvider.notifier).toggleFolder(node),
+        onFolderLoad: (node) =>
+            ref.read(notePageProvider.notifier).toggleFolder(node),
+        isDark: isDark,
+      ),
+    );
+  }
+
+  Widget _buildResizeHandle(bool isDark) {
+    return GestureDetector(
+      onHorizontalDragUpdate: (details) {
+        setState(() {
+          _sidebarWidth += details.delta.dx;
+          _sidebarWidth = _sidebarWidth.clamp(_minSidebarWidth, _maxSidebarWidth);
+        });
+      },
+      child: MouseRegion(
+        cursor: SystemMouseCursors.resizeColumn,
+        child: Container(
+          width: 4,
+          color: isDark
+              ? AppColors.darkOutline.withValues(alpha: 0.1)
+              : Colors.grey.withValues(alpha: 0.1),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContentArea(
+      BuildContext context, NotePageLoaded state, bool isDark) {
+    if (state.selectedNode == null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.article_outlined,
+              size: 64,
+              color: isDark
+                  ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.3)
+                  : Colors.grey.withValues(alpha: 0.3),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '选择一个笔记开始阅读',
+              style: context.textTheme.bodyLarge?.copyWith(
+                color: isDark
+                    ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.5)
+                    : Colors.grey,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (state.isLoadingContent) {
+      return Center(
+        child: CircularProgressIndicator(color: AppColors.primary),
+      );
+    }
+
+    // 显示内容
+    return SingleChildScrollView(
+      controller: _previewScrollController,
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      child: _SimpleMarkdownPreview(
+        content: state.content ?? '',
+        isDark: isDark,
+      ),
+    );
+  }
+}
+
+/// 简易 Markdown 预览（供 NoteListContent 使用）
+class _SimpleMarkdownPreview extends StatelessWidget {
+  const _SimpleMarkdownPreview({
+    required this.content,
+    required this.isDark,
+  });
+
+  final String content;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    final lines = content.split('\n');
+    final widgets = <Widget>[];
+
+    for (final line in lines) {
+      final trimmed = line.trim();
+      if (trimmed.isEmpty) {
+        widgets.add(const SizedBox(height: 8));
+        continue;
+      }
+
+      // 标题
+      if (trimmed.startsWith('# ')) {
+        widgets.add(Padding(
+          padding: const EdgeInsets.only(bottom: 12, top: 16),
+          child: Text(
+            trimmed.substring(2),
+            style: context.textTheme.headlineMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: isDark ? AppColors.darkOnSurface : null,
+            ),
+          ),
+        ));
+      } else if (trimmed.startsWith('## ')) {
+        widgets.add(Padding(
+          padding: const EdgeInsets.only(bottom: 10, top: 14),
+          child: Text(
+            trimmed.substring(3),
+            style: context.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: isDark ? AppColors.darkOnSurface : null,
+            ),
+          ),
+        ));
+      } else if (trimmed.startsWith('### ')) {
+        widgets.add(Padding(
+          padding: const EdgeInsets.only(bottom: 8, top: 12),
+          child: Text(
+            trimmed.substring(4),
+            style: context.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: isDark ? AppColors.darkOnSurface : null,
+            ),
+          ),
+        ));
+      } else {
+        // 普通段落
+        widgets.add(Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Text(
+            line,
+            style: context.textTheme.bodyMedium?.copyWith(
+              color: isDark ? AppColors.darkOnSurface : null,
+              height: 1.6,
+            ),
+          ),
+        ));
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: widgets,
+    );
   }
 }

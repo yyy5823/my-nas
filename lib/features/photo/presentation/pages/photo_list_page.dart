@@ -106,10 +106,16 @@ class PhotoListLoaded extends PhotoListState {
   List<PhotoGroup> get groupedPhotos {
     final filtered = filteredPhotos;
     final groups = <DateTime, List<PhotoItem>>{};
+    final unknownDateKey = DateTime(1970); // 用于没有时间信息的照片
 
     for (final photo in filtered) {
-      final date = photo.modifiedTime ?? DateTime(1970);
-      final dateKey = DateTime(date.year, date.month, date.day);
+      // 如果照片有有效的修改时间（不是空或1970年之前的日期）
+      final hasValidTime = photo.modifiedTime != null &&
+          photo.modifiedTime!.year > 1970;
+
+      final dateKey = hasValidTime
+          ? DateTime(photo.modifiedTime!.year, photo.modifiedTime!.month, photo.modifiedTime!.day)
+          : unknownDateKey;
 
       groups.putIfAbsent(dateKey, () => []);
       groups[dateKey]!.add(PhotoItem(
@@ -118,11 +124,17 @@ class PhotoListLoaded extends PhotoListState {
         url: '',
         thumbnailUrl: photo.thumbnailUrl,
         size: photo.size,
-        modifiedAt: photo.modifiedTime,
+        modifiedAt: hasValidTime ? photo.modifiedTime : null,
       ));
     }
 
-    final sortedKeys = groups.keys.toList()..sort((a, b) => b.compareTo(a));
+    // 排序时将未知日期放到最后
+    final sortedKeys = groups.keys.toList()
+      ..sort((a, b) {
+        if (a == unknownDateKey) return 1;
+        if (b == unknownDateKey) return -1;
+        return b.compareTo(a);
+      });
 
     return sortedKeys
         .map((date) => PhotoGroup(date: date, photos: groups[date]!))
@@ -340,16 +352,20 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
 
       for (final file in files) {
         if (file.type == FileType.image) {
-          // 尝试获取缩略图 URL
+          // 尝试获取缩略图 URL（使用 medium 尺寸以提高清晰度）
           String? thumbnailUrl = file.thumbnailUrl;
           if (thumbnailUrl == null || thumbnailUrl.isEmpty) {
             try {
-              thumbnailUrl = await fileSystem.getThumbnailUrl(file.path);
+              thumbnailUrl = await fileSystem.getThumbnailUrl(
+                file.path,
+                size: ThumbnailSize.medium,
+              );
             } catch (e) {
               // 忽略缩略图获取失败
             }
           }
 
+          // 如果没有缩略图，尝试获取原图 URL
           if (thumbnailUrl == null || thumbnailUrl.isEmpty) {
             try {
               thumbnailUrl = await fileSystem.getFileUrl(file.path);
@@ -1146,24 +1162,28 @@ class _PhotoGridItem extends ConsumerWidget {
     final connection = connections[photo.sourceId];
     if (connection == null) return;
 
-    final photoItems = <PhotoItem>[];
-    for (final p in allPhotos) {
-      final conn = connections[p.sourceId];
-      if (conn == null) continue;
-
-      String url;
-      try {
-        url = await conn.adapter.fileSystem.getFileUrl(p.path);
-      } catch (e) {
-        url = '';
-      }
-
-      photoItems.add(PhotoItem.fromFileItem(
-        p.file,
-        url,
-        thumbnailUrl: p.thumbnailUrl,
-      ));
+    // 只获取当前点击照片的 URL，其他照片使用缩略图，懒加载时再获取原图
+    String currentUrl;
+    try {
+      currentUrl = await connection.adapter.fileSystem.getFileUrl(photo.path);
+    } catch (e) {
+      // 如果获取失败，使用缩略图
+      currentUrl = photo.thumbnailUrl ?? '';
     }
+
+    // 构建照片列表，暂时不获取其他照片的原图 URL
+    final photoItems = allPhotos.map((p) {
+      final isCurrentPhoto = p.path == photo.path;
+      return PhotoItem(
+        name: p.name,
+        path: p.path,
+        // 当前照片使用原图 URL，其他照片使用缩略图
+        url: isCurrentPhoto ? currentUrl : (p.thumbnailUrl ?? ''),
+        thumbnailUrl: p.thumbnailUrl,
+        size: p.size,
+        modifiedAt: p.modifiedTime,
+      );
+    }).toList();
 
     if (!context.mounted) return;
 
@@ -1172,6 +1192,22 @@ class _PhotoGridItem extends ConsumerWidget {
         builder: (context) => PhotoViewerPage(
           photos: photoItems,
           initialIndex: index,
+          getPhotoUrl: (path, sourceId) async {
+            final conn = connections[sourceId];
+            if (conn == null) return null;
+            try {
+              return await conn.adapter.fileSystem.getFileUrl(path);
+            } catch (e) {
+              return null;
+            }
+          },
+          getSourceId: (photoPath) {
+            final p = allPhotos.firstWhere(
+              (photo) => photo.path == photoPath,
+              orElse: () => allPhotos.first,
+            );
+            return p.sourceId;
+          },
         ),
       ),
     );

@@ -881,6 +881,308 @@ class _BookCacheInfoBar extends ConsumerWidget {
   }
 }
 
+/// 图书列表内容组件（供阅读页面复用）
+class BookListContent extends ConsumerStatefulWidget {
+  const BookListContent({super.key});
+
+  @override
+  ConsumerState<BookListContent> createState() => _BookListContentState();
+}
+
+class _BookListContentState extends ConsumerState<BookListContent> {
+  final _searchController = TextEditingController();
+  bool _showSearch = false;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(bookListProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Column(
+      children: [
+        // 搜索和工具栏
+        _buildToolBar(context, ref, isDark, state),
+        // 内容区
+        Expanded(
+          child: switch (state) {
+            BookListLoading(:final progress, :final currentFolder, :final fromCache) =>
+              _buildLoadingState(progress, currentFolder, fromCache, isDark),
+            BookListNotConnected() => const MediaSetupWidget(
+                mediaType: MediaType.book,
+                icon: Icons.menu_book_outlined,
+              ),
+            BookListError(:final message) => AppErrorWidget(
+                message: message,
+                onRetry: () => ref.read(bookListProvider.notifier).loadBooks(),
+              ),
+            BookListLoaded(:final filteredBooks) when filteredBooks.isEmpty =>
+              const EmptyWidget(
+                icon: Icons.menu_book_outlined,
+                title: '暂无图书',
+                message: '在配置的目录中添加电子书后将显示在这里\n支持 EPUB、PDF、TXT 格式',
+              ),
+            BookListLoaded loaded => _buildBookGrid(context, ref, loaded, isDark),
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildToolBar(
+    BuildContext context,
+    WidgetRef ref,
+    bool isDark,
+    BookListState state,
+  ) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
+        border: Border(
+          bottom: BorderSide(
+            color: isDark
+                ? AppColors.darkOutline.withValues(alpha: 0.1)
+                : context.colorScheme.outlineVariant.withValues(alpha: 0.3),
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          if (state is BookListLoaded && state.fromCache)
+            Container(
+              margin: const EdgeInsets.only(right: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.green.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: const Text(
+                '缓存',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.green,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          if (state is BookListLoaded)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                '${state.filteredBooks.length} 本',
+                style: TextStyle(
+                  color: AppColors.primary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          if (_showSearch)
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: TextField(
+                  controller: _searchController,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    hintText: '搜索图书...',
+                    hintStyle: TextStyle(
+                      color: isDark
+                          ? AppColors.darkOnSurfaceVariant
+                          : context.colorScheme.onSurfaceVariant,
+                      fontSize: 14,
+                    ),
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  style: TextStyle(
+                    color: isDark ? AppColors.darkOnSurface : null,
+                    fontSize: 14,
+                  ),
+                  onChanged: (v) =>
+                      ref.read(bookListProvider.notifier).setSearchQuery(v),
+                ),
+              ),
+            ),
+          const Spacer(),
+          _buildSmallIconButton(
+            icon: _showSearch ? Icons.close : Icons.search_rounded,
+            onTap: () {
+              setState(() {
+                _showSearch = !_showSearch;
+                if (!_showSearch) {
+                  _searchController.clear();
+                  ref.read(bookListProvider.notifier).setSearchQuery('');
+                }
+              });
+            },
+            isDark: isDark,
+          ),
+          if (state is BookListLoaded)
+            PopupMenuButton<BookSortType>(
+              icon: Icon(
+                Icons.sort_rounded,
+                color: isDark ? AppColors.darkOnSurfaceVariant : null,
+                size: 20,
+              ),
+              padding: EdgeInsets.zero,
+              onSelected: (type) =>
+                  ref.read(bookListProvider.notifier).setSortType(type),
+              itemBuilder: (context) => [
+                _buildSortMenuItem(context, BookSortType.name, '按名称',
+                    Icons.sort_by_alpha_rounded, state.sortType, isDark),
+                _buildSortMenuItem(context, BookSortType.date, '按日期',
+                    Icons.calendar_today_rounded, state.sortType, isDark),
+                _buildSortMenuItem(context, BookSortType.size, '按大小',
+                    Icons.straighten_rounded, state.sortType, isDark),
+                _buildSortMenuItem(context, BookSortType.format, '按格式',
+                    Icons.description_rounded, state.sortType, isDark),
+              ],
+            ),
+          _buildSmallIconButton(
+            icon: Icons.refresh_rounded,
+            onTap: () => ref.read(bookListProvider.notifier).forceRefresh(),
+            isDark: isDark,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSmallIconButton({
+    required IconData icon,
+    required VoidCallback onTap,
+    required bool isDark,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(6),
+        child: Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Icon(
+            icon,
+            color: isDark ? AppColors.darkOnSurfaceVariant : null,
+            size: 20,
+          ),
+        ),
+      ),
+    );
+  }
+
+  PopupMenuItem<BookSortType> _buildSortMenuItem(
+    BuildContext context,
+    BookSortType type,
+    String label,
+    IconData icon,
+    BookSortType current,
+    bool isDark,
+  ) {
+    final isSelected = type == current;
+    return PopupMenuItem(
+      value: type,
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: isSelected ? AppColors.primary : null),
+          const SizedBox(width: 10),
+          Text(label, style: TextStyle(
+            color: isSelected ? AppColors.primary : null,
+            fontWeight: isSelected ? FontWeight.w600 : null,
+          )),
+          if (isSelected) ...[
+            const Spacer(),
+            Icon(Icons.check, size: 16, color: AppColors.primary),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLoadingState(
+    double progress,
+    String? currentFolder,
+    bool fromCache,
+    bool isDark,
+  ) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 48,
+            height: 48,
+            child: CircularProgressIndicator(
+              value: progress > 0 ? progress : null,
+              strokeWidth: 3,
+              color: AppColors.primary,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            fromCache ? '加载缓存...' : '扫描图书中...',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: isDark ? Colors.white : null,
+            ),
+          ),
+          if (currentFolder != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              currentFolder,
+              style: TextStyle(
+                fontSize: 12,
+                color: isDark ? Colors.grey[400] : Colors.grey,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBookGrid(
+    BuildContext context,
+    WidgetRef ref,
+    BookListLoaded state,
+    bool isDark,
+  ) {
+    return RefreshIndicator(
+      onRefresh: () => ref.read(bookListProvider.notifier).forceRefresh(),
+      child: GridView.builder(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: 180,
+          childAspectRatio: 0.65,
+          crossAxisSpacing: AppSpacing.md,
+          mainAxisSpacing: AppSpacing.md,
+        ),
+        itemCount: state.filteredBooks.length,
+        itemBuilder: (context, index) => _BookGridItem(
+          book: state.filteredBooks[index],
+          isDark: isDark,
+        ),
+      ),
+    );
+  }
+}
+
 class _BookGridItem extends ConsumerWidget {
   const _BookGridItem({
     required this.book,
