@@ -4,6 +4,7 @@ import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/book/data/services/book_library_cache_service.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
 import 'package:my_nas/features/book/presentation/pages/book_reader_page.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
@@ -24,6 +25,20 @@ class BookFileWithSource {
 
   final FileItem file;
   final String sourceId;
+
+  String get name => file.name;
+  String get path => file.path;
+  int get size => file.size;
+  DateTime? get modifiedTime => file.modifiedTime;
+  String get displaySize => file.displaySize;
+
+  BookLibraryCacheEntry toCacheEntry() => BookLibraryCacheEntry(
+        sourceId: sourceId,
+        filePath: path,
+        fileName: name,
+        size: size,
+        modifiedTime: modifiedTime,
+      );
 }
 
 /// 图书列表状态
@@ -31,19 +46,84 @@ final bookListProvider =
     StateNotifierProvider<BookListNotifier, BookListState>(
         (ref) => BookListNotifier(ref));
 
+/// 图书排序方式
+enum BookSortType { name, date, size, format }
+
 sealed class BookListState {}
 
 class BookListLoading extends BookListState {
-  BookListLoading({this.progress = 0, this.currentFolder});
+  BookListLoading({this.progress = 0, this.currentFolder, this.fromCache = false});
   final double progress;
   final String? currentFolder;
+  final bool fromCache;
 }
 
 class BookListNotConnected extends BookListState {}
 
 class BookListLoaded extends BookListState {
-  BookListLoaded(this.books);
+  BookListLoaded({
+    required this.books,
+    this.sortType = BookSortType.name,
+    this.searchQuery = '',
+    this.fromCache = false,
+  });
   final List<BookFileWithSource> books;
+  final BookSortType sortType;
+  final String searchQuery;
+  final bool fromCache;
+
+  List<BookFileWithSource> get filteredBooks {
+    var result = List<BookFileWithSource>.from(books);
+
+    // 搜索过滤
+    if (searchQuery.isNotEmpty) {
+      result = result
+          .where((b) => b.name.toLowerCase().contains(searchQuery.toLowerCase()))
+          .toList();
+    }
+
+    // 排序
+    switch (sortType) {
+      case BookSortType.name:
+        result.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      case BookSortType.date:
+        result.sort((a, b) => (b.modifiedTime ?? DateTime(1970))
+            .compareTo(a.modifiedTime ?? DateTime(1970)));
+      case BookSortType.size:
+        result.sort((a, b) => b.size.compareTo(a.size));
+      case BookSortType.format:
+        result.sort((a, b) {
+          final formatA = BookItem.formatFromExtension(a.name).name;
+          final formatB = BookItem.formatFromExtension(b.name).name;
+          return formatA.compareTo(formatB);
+        });
+    }
+
+    return result;
+  }
+
+  /// 按格式分组统计
+  Map<BookFormat, int> get formatStats {
+    final stats = <BookFormat, int>{};
+    for (final book in books) {
+      final format = BookItem.formatFromExtension(book.name);
+      stats[format] = (stats[format] ?? 0) + 1;
+    }
+    return stats;
+  }
+
+  BookListLoaded copyWith({
+    List<BookFileWithSource>? books,
+    BookSortType? sortType,
+    String? searchQuery,
+    bool? fromCache,
+  }) =>
+      BookListLoaded(
+        books: books ?? this.books,
+        sortType: sortType ?? this.sortType,
+        searchQuery: searchQuery ?? this.searchQuery,
+        fromCache: fromCache ?? this.fromCache,
+      );
 }
 
 class BookListError extends BookListState {
@@ -53,22 +133,11 @@ class BookListError extends BookListState {
 
 class BookListNotifier extends StateNotifier<BookListState> {
   BookListNotifier(this._ref) : super(BookListLoading()) {
-    loadBooks();
-
-    // 监听连接状态变化，自动刷新
-    _ref.listen<Map<String, SourceConnection>>(activeConnectionsProvider, (previous, next) {
-      // 检查是否有新的连接建立
-      final prevConnected = previous?.values.where((c) => c.status == SourceStatus.connected).length ?? 0;
-      final nextConnected = next.values.where((c) => c.status == SourceStatus.connected).length;
-
-      // 如果连接数增加，且当前状态是未连接，则重新加载
-      if (nextConnected > prevConnected && state is BookListNotConnected) {
-        loadBooks();
-      }
-    });
+    _init();
   }
 
   final Ref _ref;
+  final BookLibraryCacheService _cacheService = BookLibraryCacheService.instance;
 
   /// 支持的电子书扩展名
   static const _supportedExtensions = [
@@ -79,13 +148,56 @@ class BookListNotifier extends StateNotifier<BookListState> {
     '.azw3',
   ];
 
-  Future<void> loadBooks({int maxDepth = 3}) async {
-    state = BookListLoading();
+  Future<void> _init() async {
+    try {
+      await _cacheService.init();
+      await _loadFromCacheImmediately();
 
+      // 监听连接状态变化
+      _ref.listen<Map<String, SourceConnection>>(activeConnectionsProvider, (previous, next) {
+        final prevConnected = previous?.values.where((c) => c.status == SourceStatus.connected).length ?? 0;
+        final nextConnected = next.values.where((c) => c.status == SourceStatus.connected).length;
+
+        if (nextConnected > prevConnected && state is BookListNotConnected) {
+          loadBooks();
+        }
+      });
+    } catch (e) {
+      logger.e('BookListNotifier: 初始化失败', e);
+      state = BookListLoaded(books: [], fromCache: false);
+    }
+  }
+
+  /// 立即从缓存加载
+  Future<void> _loadFromCacheImmediately() async {
+    final cache = _cacheService.getCache();
+    if (cache != null && cache.books.isNotEmpty) {
+      state = BookListLoading(fromCache: true, currentFolder: '加载缓存...');
+
+      final books = cache.books.map((entry) {
+        return BookFileWithSource(
+          file: FileItem(
+            name: entry.fileName,
+            path: entry.filePath,
+            size: entry.size,
+            isDirectory: false,
+            modifiedTime: entry.modifiedTime,
+          ),
+          sourceId: entry.sourceId,
+        );
+      }).toList();
+
+      state = BookListLoaded(books: books, fromCache: true);
+      logger.i('从缓存加载了 ${books.length} 本图书');
+    } else {
+      state = BookListLoaded(books: [], fromCache: true);
+    }
+  }
+
+  Future<void> loadBooks({bool forceRefresh = false, int maxDepth = 3}) async {
     final connections = _ref.read(activeConnectionsProvider);
     final configAsync = _ref.read(mediaLibraryConfigProvider);
 
-    // 等待配置加载完成
     MediaLibraryConfig? config = configAsync.valueOrNull;
     if (config == null) {
       state = BookListLoading(progress: 0, currentFolder: '正在加载配置...');
@@ -103,62 +215,99 @@ class BookListNotifier extends StateNotifier<BookListState> {
       }
 
       if (config == null) {
-        state = BookListLoaded([]);
+        state = BookListLoaded(books: []);
         return;
       }
     }
 
-    // 获取已启用的书籍路径
     final bookPaths = config.getEnabledPathsForType(MediaType.book);
 
     if (bookPaths.isEmpty) {
-      state = BookListLoaded([]);
+      state = BookListLoaded(books: []);
       return;
     }
 
-    // 过滤出已连接的路径
     final connectedPaths = bookPaths.where((path) {
       final conn = connections[path.sourceId];
       return conn?.status == SourceStatus.connected;
     }).toList();
 
     if (connectedPaths.isEmpty) {
-      state = BookListNotConnected();
+      if (state is! BookListLoaded || (state as BookListLoaded).books.isEmpty) {
+        state = BookListNotConnected();
+      }
       return;
     }
 
-    try {
-      final books = <BookFileWithSource>[];
+    final sourceIds = connectedPaths.map((p) => p.sourceId).toList();
 
-      for (var i = 0; i < connectedPaths.length; i++) {
-        final mediaPath = connectedPaths[i];
-        final connection = connections[mediaPath.sourceId];
-        if (connection == null) continue;
+    // 尝试使用缓存
+    if (!forceRefresh && _cacheService.isCacheValid(sourceIds)) {
+      final cache = _cacheService.getCache();
+      if (cache != null) {
+        state = BookListLoading(fromCache: true, currentFolder: '加载缓存...');
 
-        state = BookListLoading(
-          progress: i / connectedPaths.length,
-          currentFolder: mediaPath.displayName,
-        );
-
-        try {
-          await _scanForBooks(
-            connection.adapter.fileSystem,
-            mediaPath.path,
-            books,
-            sourceId: mediaPath.sourceId,
-            depth: 0,
-            maxDepth: maxDepth,
+        final books = cache.books.map((entry) {
+          return BookFileWithSource(
+            file: FileItem(
+              name: entry.fileName,
+              path: entry.filePath,
+              size: entry.size,
+              isDirectory: false,
+              modifiedTime: entry.modifiedTime,
+            ),
+            sourceId: entry.sourceId,
           );
-        } on Exception catch (e) {
-          logger.w('扫描书籍文件夹失败: ${mediaPath.path} - $e');
-        }
+        }).toList();
+
+        state = BookListLoaded(books: books, fromCache: true);
+        logger.i('从缓存加载了 ${books.length} 本图书');
+        return;
+      }
+    }
+
+    // 扫描文件系统
+    state = BookListLoading();
+    final books = <BookFileWithSource>[];
+    var scannedFolders = 0;
+    final totalFolders = connectedPaths.length;
+
+    for (final mediaPath in connectedPaths) {
+      final connection = connections[mediaPath.sourceId];
+      if (connection == null) continue;
+
+      state = BookListLoading(
+        progress: scannedFolders / totalFolders,
+        currentFolder: mediaPath.displayName,
+      );
+
+      try {
+        await _scanForBooks(
+          connection.adapter.fileSystem,
+          mediaPath.path,
+          books,
+          sourceId: mediaPath.sourceId,
+          depth: 0,
+          maxDepth: maxDepth,
+        );
+      } on Exception catch (e) {
+        logger.w('扫描书籍文件夹失败: ${mediaPath.path} - $e');
       }
 
-      logger.i('书籍扫描完成，共找到 ${books.length} 本书');
-      state = BookListLoaded(books);
-    } on Exception catch (e) {
-      state = BookListError(e.toString());
+      scannedFolders++;
     }
+
+    logger.i('书籍扫描完成，共找到 ${books.length} 本书');
+
+    // 保存到缓存
+    final cacheEntries = books.map((b) => b.toCacheEntry()).toList();
+    await _cacheService.saveCache(BookLibraryCache(
+      books: cacheEntries,
+      lastUpdated: DateTime.now(),
+      sourceIds: sourceIds,
+    ));
+
+    state = BookListLoaded(books: books);
   }
 
   Future<void> _scanForBooks(
@@ -174,7 +323,6 @@ class BookListNotifier extends StateNotifier<BookListState> {
     try {
       final items = await fs.listDirectory(path);
       for (final item in items) {
-        // 跳过隐藏文件夹和系统文件夹
         if (item.name.startsWith('.') ||
             item.name.startsWith('@') ||
             item.name == '#recycle') {
@@ -203,13 +351,47 @@ class BookListNotifier extends StateNotifier<BookListState> {
     final lower = filename.toLowerCase();
     return _supportedExtensions.any((ext) => lower.endsWith(ext));
   }
+
+  void setSearchQuery(String query) {
+    final current = state;
+    if (current is BookListLoaded) {
+      state = current.copyWith(searchQuery: query);
+    }
+  }
+
+  void setSortType(BookSortType sortType) {
+    final current = state;
+    if (current is BookListLoaded) {
+      state = current.copyWith(sortType: sortType);
+    }
+  }
+
+  /// 强制刷新
+  Future<void> forceRefresh() async {
+    await _cacheService.clearCache();
+    await loadBooks(forceRefresh: true);
+  }
 }
 
-class BookListPage extends ConsumerWidget {
+class BookListPage extends ConsumerStatefulWidget {
   const BookListPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<BookListPage> createState() => _BookListPageState();
+}
+
+class _BookListPageState extends ConsumerState<BookListPage> {
+  final _searchController = TextEditingController();
+  bool _showSearch = false;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(bookListProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -217,11 +399,11 @@ class BookListPage extends ConsumerWidget {
       backgroundColor: isDark ? AppColors.darkBackground : null,
       body: Column(
         children: [
-          _buildAppBar(context, ref, isDark),
+          _buildAppBar(context, ref, isDark, state),
           Expanded(
             child: switch (state) {
-              BookListLoading(:final progress, :final currentFolder) =>
-                _buildLoadingState(progress, currentFolder),
+              BookListLoading(:final progress, :final currentFolder, :final fromCache) =>
+                _buildLoadingState(progress, currentFolder, fromCache, isDark),
               BookListNotConnected() => const MediaSetupWidget(
                   mediaType: MediaType.book,
                   icon: Icons.menu_book_outlined,
@@ -230,12 +412,13 @@ class BookListPage extends ConsumerWidget {
                   message: message,
                   onRetry: () => ref.read(bookListProvider.notifier).loadBooks(),
                 ),
-              BookListLoaded(:final books) when books.isEmpty => const EmptyWidget(
+              BookListLoaded(:final filteredBooks) when filteredBooks.isEmpty =>
+                const EmptyWidget(
                   icon: Icons.menu_book_outlined,
                   title: '暂无图书',
                   message: '在配置的目录中添加电子书后将显示在这里\n支持 EPUB、PDF、TXT 格式',
                 ),
-              BookListLoaded(:final books) => _buildBookGrid(context, ref, books, isDark),
+              BookListLoaded loaded => _buildBookContent(context, ref, loaded, isDark),
             },
           ),
         ],
@@ -243,7 +426,240 @@ class BookListPage extends ConsumerWidget {
     );
   }
 
-  Widget _buildLoadingState(double progress, String? currentFolder) {
+  Widget _buildAppBar(
+    BuildContext context,
+    WidgetRef ref,
+    bool isDark,
+    BookListState state,
+  ) {
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
+        border: Border(
+          bottom: BorderSide(
+            color: isDark
+                ? AppColors.darkOutline.withValues(alpha: 0.2)
+                : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
+          ),
+        ),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            children: [
+              if (!_showSearch) ...[
+                Text(
+                  '图书',
+                  style: context.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? AppColors.darkOnSurface : null,
+                  ),
+                ),
+                if (state is BookListLoaded && state.fromCache)
+                  Container(
+                    margin: const EdgeInsets.only(left: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text(
+                      '缓存',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.green,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                if (state is BookListLoaded)
+                  Container(
+                    margin: const EdgeInsets.only(left: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '${state.filteredBooks.length}',
+                      style: TextStyle(
+                        color: AppColors.primary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+              ],
+              if (_showSearch)
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      hintText: '搜索图书...',
+                      hintStyle: TextStyle(
+                        color: isDark
+                            ? AppColors.darkOnSurfaceVariant
+                            : context.colorScheme.onSurfaceVariant,
+                      ),
+                      border: InputBorder.none,
+                    ),
+                    style: TextStyle(
+                      color: isDark ? AppColors.darkOnSurface : null,
+                    ),
+                    onChanged: (v) =>
+                        ref.read(bookListProvider.notifier).setSearchQuery(v),
+                  ),
+                ),
+              const Spacer(),
+              _buildIconButton(
+                icon: _showSearch ? Icons.close : Icons.search_rounded,
+                onTap: () {
+                  setState(() {
+                    _showSearch = !_showSearch;
+                    if (!_showSearch) {
+                      _searchController.clear();
+                      ref.read(bookListProvider.notifier).setSearchQuery('');
+                    }
+                  });
+                },
+                isDark: isDark,
+                tooltip: _showSearch ? '关闭' : '搜索',
+              ),
+              if (state is BookListLoaded)
+                PopupMenuButton<BookSortType>(
+                  icon: Icon(
+                    Icons.sort_rounded,
+                    color: isDark ? AppColors.darkOnSurfaceVariant : null,
+                  ),
+                  tooltip: '排序',
+                  onSelected: (type) =>
+                      ref.read(bookListProvider.notifier).setSortType(type),
+                  itemBuilder: (context) => [
+                    _buildSortMenuItem(
+                      context,
+                      BookSortType.name,
+                      '按名称',
+                      Icons.sort_by_alpha_rounded,
+                      state.sortType,
+                      isDark,
+                    ),
+                    _buildSortMenuItem(
+                      context,
+                      BookSortType.date,
+                      '按日期',
+                      Icons.calendar_today_rounded,
+                      state.sortType,
+                      isDark,
+                    ),
+                    _buildSortMenuItem(
+                      context,
+                      BookSortType.size,
+                      '按大小',
+                      Icons.straighten_rounded,
+                      state.sortType,
+                      isDark,
+                    ),
+                    _buildSortMenuItem(
+                      context,
+                      BookSortType.format,
+                      '按格式',
+                      Icons.description_rounded,
+                      state.sortType,
+                      isDark,
+                    ),
+                  ],
+                ),
+              _buildIconButton(
+                icon: Icons.refresh_rounded,
+                onTap: () => ref.read(bookListProvider.notifier).forceRefresh(),
+                isDark: isDark,
+                tooltip: '刷新',
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  PopupMenuItem<BookSortType> _buildSortMenuItem(
+    BuildContext context,
+    BookSortType type,
+    String label,
+    IconData icon,
+    BookSortType current,
+    bool isDark,
+  ) {
+    final isSelected = type == current;
+    return PopupMenuItem(
+      value: type,
+      child: Row(
+        children: [
+          Icon(
+            icon,
+            size: 20,
+            color: isSelected
+                ? AppColors.primary
+                : (isDark ? AppColors.darkOnSurface : null),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            label,
+            style: TextStyle(
+              color: isSelected
+                  ? AppColors.primary
+                  : (isDark ? AppColors.darkOnSurface : null),
+              fontWeight: isSelected ? FontWeight.w600 : null,
+            ),
+          ),
+          if (isSelected) ...[
+            const Spacer(),
+            Icon(Icons.check, size: 18, color: AppColors.primary),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildIconButton({
+    required IconData icon,
+    required VoidCallback onTap,
+    required bool isDark,
+    String? tooltip,
+  }) {
+    return Tooltip(
+      message: tooltip ?? '',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              icon,
+              color: isDark ? AppColors.darkOnSurfaceVariant : null,
+              size: 22,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoadingState(
+    double progress,
+    String? currentFolder,
+    bool fromCache,
+    bool isDark,
+  ) {
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -258,20 +674,21 @@ class BookListPage extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 24),
-          const Text(
-            '扫描图书中...',
+          Text(
+            fromCache ? '加载缓存...' : '扫描图书中...',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w500,
+              color: isDark ? Colors.white : null,
             ),
           ),
           if (currentFolder != null) ...[
             const SizedBox(height: 8),
             Text(
               currentFolder,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
-                color: Colors.grey,
+                color: isDark ? Colors.grey[400] : Colors.grey,
               ),
             ),
           ],
@@ -291,95 +708,176 @@ class BookListPage extends ConsumerWidget {
     );
   }
 
-  Widget _buildAppBar(BuildContext context, WidgetRef ref, bool isDark) {
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
-        border: Border(
-          bottom: BorderSide(
-            color: isDark
-                ? AppColors.darkOutline.withValues(alpha: 0.2)
-                : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
-          ),
-        ),
-      ),
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Row(
-            children: [
-              Text(
-                '图书',
-                style: context.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: isDark ? AppColors.darkOnSurface : null,
-                ),
-              ),
-              const Spacer(),
-              _buildIconButton(
-                icon: Icons.refresh_rounded,
-                onTap: () => ref.read(bookListProvider.notifier).loadBooks(),
-                isDark: isDark,
-                tooltip: '刷新',
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildIconButton({
-    required IconData icon,
-    required VoidCallback onTap,
-    required bool isDark,
-    String? tooltip,
-  }) {
-    return Tooltip(
-      message: tooltip ?? '',
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              icon,
-              color: isDark ? AppColors.darkOnSurfaceVariant : null,
-              size: 22,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBookGrid(
+  Widget _buildBookContent(
     BuildContext context,
     WidgetRef ref,
-    List<BookFileWithSource> books,
+    BookListLoaded state,
     bool isDark,
   ) {
-    return GridView.builder(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 180,
-        childAspectRatio: 0.65,
-        crossAxisSpacing: AppSpacing.md,
-        mainAxisSpacing: AppSpacing.md,
-      ),
-      itemCount: books.length,
-      itemBuilder: (context, index) => _BookGridItem(
-        book: books[index],
-        isDark: isDark,
+    return RefreshIndicator(
+      onRefresh: () => ref.read(bookListProvider.notifier).forceRefresh(),
+      child: CustomScrollView(
+        slivers: [
+          // 缓存信息条
+          _BookCacheInfoBar(state: state, isDark: isDark),
+          // 图书网格
+          SliverPadding(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            sliver: SliverGrid(
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 180,
+                childAspectRatio: 0.65,
+                crossAxisSpacing: AppSpacing.md,
+                mainAxisSpacing: AppSpacing.md,
+              ),
+              delegate: SliverChildBuilderDelegate(
+                (context, index) => _BookGridItem(
+                  book: state.filteredBooks[index],
+                  isDark: isDark,
+                ),
+                childCount: state.filteredBooks.length,
+              ),
+            ),
+          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 16)),
+        ],
       ),
     );
+  }
+}
+
+/// 缓存信息条
+class _BookCacheInfoBar extends ConsumerWidget {
+  const _BookCacheInfoBar({
+    required this.state,
+    required this.isDark,
+  });
+
+  final BookListLoaded state;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cacheService = BookLibraryCacheService.instance;
+    final cache = cacheService.getCache();
+
+    if (cache == null) {
+      return const SliverToBoxAdapter(child: SizedBox.shrink());
+    }
+
+    final bookCount = state.books.length;
+    final formatStats = state.formatStats;
+    final cacheAge = DateTime.now().difference(cache.lastUpdated);
+    final ageText = cacheAge.inHours < 1
+        ? '${cacheAge.inMinutes} 分钟前'
+        : cacheAge.inHours < 24
+            ? '${cacheAge.inHours} 小时前'
+            : '${cacheAge.inDays} 天前';
+
+    return SliverToBoxAdapter(
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: isDark ? Colors.grey[900] : Colors.grey[100],
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isDark ? Colors.grey[800]! : Colors.grey[300]!,
+            width: 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.menu_book_rounded,
+              size: 14,
+              color: AppColors.fileDocument,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              '$bookCount',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
+            ),
+            const SizedBox(width: 2),
+            Text(
+              '本图书',
+              style: TextStyle(
+                fontSize: 11,
+                color: isDark ? Colors.grey[500] : Colors.grey[600],
+              ),
+            ),
+            const SizedBox(width: 12),
+            // 格式统计
+            ...formatStats.entries.take(3).map((entry) => Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: _getFormatColor(entry.key).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      '${entry.key.name.toUpperCase()} ${entry.value}',
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                        color: _getFormatColor(entry.key),
+                      ),
+                    ),
+                  ),
+                )),
+            const Spacer(),
+            Icon(
+              Icons.update_rounded,
+              size: 14,
+              color: isDark ? Colors.grey[500] : Colors.grey[600],
+            ),
+            const SizedBox(width: 4),
+            Text(
+              ageText,
+              style: TextStyle(
+                fontSize: 11,
+                color: isDark ? Colors.grey[500] : Colors.grey[600],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => ref.read(bookListProvider.notifier).forceRefresh(),
+                borderRadius: BorderRadius.circular(6),
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: AppColors.fileDocument.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Icon(
+                    Icons.refresh_rounded,
+                    size: 16,
+                    color: AppColors.fileDocument,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Color _getFormatColor(BookFormat format) {
+    return switch (format) {
+      BookFormat.epub => const Color(0xFF6366F1),
+      BookFormat.pdf => const Color(0xFFEF4444),
+      BookFormat.txt => const Color(0xFF6B7280),
+      BookFormat.mobi || BookFormat.azw3 => const Color(0xFFF59E0B),
+      BookFormat.unknown => const Color(0xFF6B7280),
+    };
   }
 }
 
@@ -420,7 +918,6 @@ class _BookGridItem extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // 封面区域
             Expanded(
               flex: 3,
               child: Container(
@@ -437,7 +934,6 @@ class _BookGridItem extends ConsumerWidget {
                         color: Colors.white.withValues(alpha: 0.9),
                       ),
                     ),
-                    // 格式标签
                     Positioned(
                       top: 8,
                       right: 8,
@@ -461,7 +957,6 @@ class _BookGridItem extends ConsumerWidget {
                 ),
               ),
             ),
-            // 信息区域
             Expanded(
               flex: 2,
               child: Padding(

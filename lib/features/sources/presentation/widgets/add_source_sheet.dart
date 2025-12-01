@@ -319,11 +319,17 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
           selected: isSelected,
           onSelected: isSupported
               ? (selected) {
-                  if (selected) {
+                  if (selected && _sourceType != type) {
                     setState(() {
                       _sourceType = type;
-                      // 使用源类型的默认端口
+                      // 重置表单内容
+                      _nameController.clear();
+                      _hostController.clear();
+                      _usernameController.clear();
+                      _passwordController.clear();
                       _portController.text = type.defaultPort.toString();
+                      _useSsl = type.defaultPort == 5001 || type.defaultPort == 443;
+                      _errorMessage = null;
                     });
                   }
                 }

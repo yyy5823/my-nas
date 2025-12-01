@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/photo/data/services/photo_library_cache_service.dart';
 import 'package:my_nas/features/photo/domain/entities/photo_item.dart';
 import 'package:my_nas/features/photo/presentation/pages/photo_viewer_page.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
@@ -30,6 +31,15 @@ class PhotoFileWithSource {
   int get size => file.size;
   DateTime? get modifiedTime => file.modifiedTime;
   String? get thumbnailUrl => file.thumbnailUrl;
+
+  PhotoLibraryCacheEntry toCacheEntry() => PhotoLibraryCacheEntry(
+        sourceId: sourceId,
+        filePath: path,
+        fileName: name,
+        thumbnailUrl: thumbnailUrl,
+        size: size,
+        modifiedTime: modifiedTime,
+      );
 }
 
 /// 照片列表状态
@@ -47,9 +57,10 @@ enum PhotoViewMode { grid, timeline }
 sealed class PhotoListState {}
 
 class PhotoListLoading extends PhotoListState {
-  PhotoListLoading({this.progress = 0, this.currentFolder});
+  PhotoListLoading({this.progress = 0, this.currentFolder, this.fromCache = false});
   final double progress;
   final String? currentFolder;
+  final bool fromCache;
 }
 
 class PhotoListLoaded extends PhotoListState {
@@ -58,12 +69,14 @@ class PhotoListLoaded extends PhotoListState {
     this.sortType = PhotoSortType.date,
     this.viewMode = PhotoViewMode.grid,
     this.searchQuery = '',
+    this.fromCache = false,
   });
 
   final List<PhotoFileWithSource> photos;
   final PhotoSortType sortType;
   final PhotoViewMode viewMode;
   final String searchQuery;
+  final bool fromCache;
 
   List<PhotoFileWithSource> get filteredPhotos {
     var result = List<PhotoFileWithSource>.from(photos);
@@ -102,7 +115,7 @@ class PhotoListLoaded extends PhotoListState {
       groups[dateKey]!.add(PhotoItem(
         name: photo.name,
         path: photo.path,
-        url: '', // URL 将在查看时获取
+        url: '',
         thumbnailUrl: photo.thumbnailUrl,
         size: photo.size,
         modifiedAt: photo.modifiedTime,
@@ -121,12 +134,14 @@ class PhotoListLoaded extends PhotoListState {
     PhotoSortType? sortType,
     PhotoViewMode? viewMode,
     String? searchQuery,
+    bool? fromCache,
   }) =>
       PhotoListLoaded(
         photos: photos ?? this.photos,
         sortType: sortType ?? this.sortType,
         viewMode: viewMode ?? this.viewMode,
         searchQuery: searchQuery ?? this.searchQuery,
+        fromCache: fromCache ?? this.fromCache,
       );
 }
 
@@ -139,34 +154,63 @@ class PhotoListNotConnected extends PhotoListState {}
 
 class PhotoListNotifier extends StateNotifier<PhotoListState> {
   PhotoListNotifier(this._ref) : super(PhotoListLoading()) {
-    loadPhotos();
-
-    // 监听连接状态变化，自动刷新
-    _ref.listen<Map<String, SourceConnection>>(activeConnectionsProvider, (previous, next) {
-      // 检查是否有新的连接建立
-      final prevConnected = previous?.values.where((c) => c.status == SourceStatus.connected).length ?? 0;
-      final nextConnected = next.values.where((c) => c.status == SourceStatus.connected).length;
-
-      // 如果连接数增加，且当前状态是未连接，则重新加载
-      if (nextConnected > prevConnected && state is PhotoListNotConnected) {
-        loadPhotos();
-      }
-    });
+    _init();
   }
 
   final Ref _ref;
-  int _scannedFolders = 0;
-  int _totalFolders = 0;
+  final PhotoLibraryCacheService _cacheService = PhotoLibraryCacheService.instance;
 
-  Future<void> loadPhotos({int maxDepth = 3}) async {
-    state = PhotoListLoading();
-    _scannedFolders = 0;
-    _totalFolders = 0;
+  Future<void> _init() async {
+    try {
+      await _cacheService.init();
+      await _loadFromCacheImmediately();
 
+      // 监听连接状态变化
+      _ref.listen<Map<String, SourceConnection>>(activeConnectionsProvider, (previous, next) {
+        final prevConnected = previous?.values.where((c) => c.status == SourceStatus.connected).length ?? 0;
+        final nextConnected = next.values.where((c) => c.status == SourceStatus.connected).length;
+
+        if (nextConnected > prevConnected && state is PhotoListNotConnected) {
+          loadPhotos();
+        }
+      });
+    } catch (e) {
+      logger.e('PhotoListNotifier: 初始化失败', e);
+      state = PhotoListLoaded(photos: [], fromCache: false);
+    }
+  }
+
+  /// 立即从缓存加载
+  Future<void> _loadFromCacheImmediately() async {
+    final cache = _cacheService.getCache();
+    if (cache != null && cache.photos.isNotEmpty) {
+      state = PhotoListLoading(fromCache: true, currentFolder: '加载缓存...');
+
+      final photos = cache.photos.map((entry) {
+        return PhotoFileWithSource(
+          file: FileItem(
+            name: entry.fileName,
+            path: entry.filePath,
+            size: entry.size,
+            isDirectory: false,
+            modifiedTime: entry.modifiedTime,
+            thumbnailUrl: entry.thumbnailUrl,
+          ),
+          sourceId: entry.sourceId,
+        );
+      }).toList();
+
+      state = PhotoListLoaded(photos: photos, fromCache: true);
+      logger.i('从缓存加载了 ${photos.length} 张照片');
+    } else {
+      state = PhotoListLoaded(photos: [], fromCache: true);
+    }
+  }
+
+  Future<void> loadPhotos({bool forceRefresh = false, int maxDepth = 3}) async {
     final connections = _ref.read(activeConnectionsProvider);
     final configAsync = _ref.read(mediaLibraryConfigProvider);
 
-    // 等待配置加载完成
     MediaLibraryConfig? config = configAsync.valueOrNull;
     if (config == null) {
       state = PhotoListLoading(progress: 0, currentFolder: '正在加载配置...');
@@ -189,7 +233,6 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
       }
     }
 
-    // 获取已启用的照片路径
     final photoPaths = config.getEnabledPathsForType(MediaType.photo);
 
     if (photoPaths.isEmpty) {
@@ -197,53 +240,89 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
       return;
     }
 
-    // 过滤出已连接的路径
     final connectedPaths = photoPaths.where((path) {
       final conn = connections[path.sourceId];
       return conn?.status == SourceStatus.connected;
     }).toList();
 
     if (connectedPaths.isEmpty) {
-      state = PhotoListNotConnected();
+      if (state is! PhotoListLoaded || (state as PhotoListLoaded).photos.isEmpty) {
+        state = PhotoListNotConnected();
+      }
       return;
     }
 
-    _totalFolders = connectedPaths.length;
+    final sourceIds = connectedPaths.map((p) => p.sourceId).toList();
 
-    try {
-      final photos = <PhotoFileWithSource>[];
+    // 尝试使用缓存
+    if (!forceRefresh && _cacheService.isCacheValid(sourceIds)) {
+      final cache = _cacheService.getCache();
+      if (cache != null) {
+        state = PhotoListLoading(fromCache: true, currentFolder: '加载缓存...');
 
-      for (final mediaPath in connectedPaths) {
-        final connection = connections[mediaPath.sourceId];
-        if (connection == null) continue;
-
-        final fileSystem = connection.adapter.fileSystem;
-        state = PhotoListLoading(
-          progress: _scannedFolders / _totalFolders,
-          currentFolder: mediaPath.displayName,
-        );
-
-        try {
-          await _scanFolderRecursively(
-            fileSystem,
-            mediaPath.path,
-            photos,
-            sourceId: mediaPath.sourceId,
-            currentDepth: 0,
-            maxDepth: maxDepth,
+        final photos = cache.photos.map((entry) {
+          return PhotoFileWithSource(
+            file: FileItem(
+              name: entry.fileName,
+              path: entry.filePath,
+              size: entry.size,
+              isDirectory: false,
+              modifiedTime: entry.modifiedTime,
+              thumbnailUrl: entry.thumbnailUrl,
+            ),
+            sourceId: entry.sourceId,
           );
-        } on Exception catch (e) {
-          logger.w('扫描文件夹失败: ${mediaPath.path} - $e');
-        }
+        }).toList();
 
-        _scannedFolders++;
+        state = PhotoListLoaded(photos: photos, fromCache: true);
+        logger.i('从缓存加载了 ${photos.length} 张照片');
+        return;
+      }
+    }
+
+    // 扫描文件系统
+    state = PhotoListLoading();
+    final photos = <PhotoFileWithSource>[];
+    var scannedFolders = 0;
+    final totalFolders = connectedPaths.length;
+
+    for (final mediaPath in connectedPaths) {
+      final connection = connections[mediaPath.sourceId];
+      if (connection == null) continue;
+
+      final fileSystem = connection.adapter.fileSystem;
+      state = PhotoListLoading(
+        progress: scannedFolders / totalFolders,
+        currentFolder: mediaPath.displayName,
+      );
+
+      try {
+        await _scanFolderRecursively(
+          fileSystem,
+          mediaPath.path,
+          photos,
+          sourceId: mediaPath.sourceId,
+          currentDepth: 0,
+          maxDepth: maxDepth,
+        );
+      } on Exception catch (e) {
+        logger.w('扫描文件夹失败: ${mediaPath.path} - $e');
       }
 
-      logger.i('照片扫描完成，共找到 ${photos.length} 张照片');
-      state = PhotoListLoaded(photos: photos);
-    } on Exception catch (e) {
-      state = PhotoListError(e.toString());
+      scannedFolders++;
     }
+
+    logger.i('照片扫描完成，共找到 ${photos.length} 张照片');
+
+    // 保存到缓存
+    final cacheEntries = photos.map((p) => p.toCacheEntry()).toList();
+    await _cacheService.saveCache(PhotoLibraryCache(
+      photos: cacheEntries,
+      lastUpdated: DateTime.now(),
+      sourceIds: sourceIds,
+    ));
+
+    state = PhotoListLoaded(photos: photos);
   }
 
   Future<void> _scanFolderRecursively(
@@ -271,7 +350,6 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
             }
           }
 
-          // 如果还是没有缩略图，使用文件下载 URL 作为备用
           if (thumbnailUrl == null || thumbnailUrl.isEmpty) {
             try {
               thumbnailUrl = await fileSystem.getFileUrl(file.path);
@@ -280,7 +358,6 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
             }
           }
 
-          // 创建一个新的 FileItem，包含缩略图 URL
           final fileWithThumbnail = FileItem(
             name: file.name,
             path: file.path,
@@ -297,7 +374,6 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
 
           photos.add(PhotoFileWithSource(file: fileWithThumbnail, sourceId: sourceId));
         } else if (file.isDirectory && currentDepth < maxDepth) {
-          // 跳过隐藏文件夹和系统文件夹
           if (file.name.startsWith('.') ||
               file.name.startsWith('@') ||
               file.name == '#recycle') {
@@ -342,6 +418,12 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
       state = current.copyWith(viewMode: nextMode);
     }
   }
+
+  /// 强制刷新
+  Future<void> forceRefresh() async {
+    await _cacheService.clearCache();
+    await loadPhotos(forceRefresh: true);
+  }
 }
 
 class PhotoListPage extends ConsumerStatefulWidget {
@@ -373,8 +455,8 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
           _buildAppBar(context, ref, isDark, state),
           Expanded(
             child: switch (state) {
-              PhotoListLoading(:final progress, :final currentFolder) =>
-                _buildLoadingState(progress, currentFolder),
+              PhotoListLoading(:final progress, :final currentFolder, :final fromCache) =>
+                _buildLoadingState(progress, currentFolder, fromCache, isDark),
               PhotoListNotConnected() => _buildNotConnectedPrompt(context, isDark),
               PhotoListError(:final message) => AppErrorWidget(
                   message: message,
@@ -414,7 +496,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           child: Row(
             children: [
               if (!_showSearch) ...[
@@ -425,6 +507,23 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
                     color: isDark ? AppColors.darkOnSurface : null,
                   ),
                 ),
+                if (state is PhotoListLoaded && state.fromCache)
+                  Container(
+                    margin: const EdgeInsets.only(left: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text(
+                      '缓存',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.green,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
                 if (state is PhotoListLoaded)
                   Container(
                     margin: const EdgeInsets.only(left: 8),
@@ -470,7 +569,6 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
                   ),
                 ),
               const Spacer(),
-              // 搜索按钮
               _buildIconButton(
                 icon: _showSearch ? Icons.close : Icons.search_rounded,
                 onTap: () {
@@ -485,7 +583,6 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
                 isDark: isDark,
                 tooltip: _showSearch ? '关闭' : '搜索',
               ),
-              // 视图切换
               if (state is PhotoListLoaded)
                 _buildIconButton(
                   icon: state.viewMode == PhotoViewMode.grid
@@ -498,7 +595,6 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
                       ? '切换到时间线'
                       : '切换到网格',
                 ),
-              // 排序
               if (state is PhotoListLoaded)
                 PopupMenuButton<PhotoSortType>(
                   icon: Icon(
@@ -535,10 +631,9 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
                     ),
                   ],
                 ),
-              // 刷新
               _buildIconButton(
                 icon: Icons.refresh_rounded,
-                onTap: () => ref.read(photoListProvider.notifier).loadPhotos(),
+                onTap: () => ref.read(photoListProvider.notifier).forceRefresh(),
                 isDark: isDark,
                 tooltip: '刷新',
               ),
@@ -600,12 +695,12 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(8),
           child: Container(
-            width: 44,
-            height: 44,
+            width: 40,
+            height: 40,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
               icon,
@@ -618,7 +713,12 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
     );
   }
 
-  Widget _buildLoadingState(double progress, String? currentFolder) {
+  Widget _buildLoadingState(
+    double progress,
+    String? currentFolder,
+    bool fromCache,
+    bool isDark,
+  ) {
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -633,20 +733,21 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
             ),
           ),
           const SizedBox(height: 24),
-          const Text(
-            '扫描照片中...',
+          Text(
+            fromCache ? '加载缓存...' : '扫描照片中...',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w500,
+              color: isDark ? Colors.white : null,
             ),
           ),
           if (currentFolder != null) ...[
             const SizedBox(height: 8),
             Text(
               currentFolder,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
-                color: Colors.grey,
+                color: isDark ? Colors.grey[400] : Colors.grey,
               ),
             ),
           ],
@@ -759,10 +860,18 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
     bool isDark,
   ) {
     return RefreshIndicator(
-      onRefresh: () => ref.read(photoListProvider.notifier).loadPhotos(),
-      child: state.viewMode == PhotoViewMode.grid
-          ? _buildGridView(context, ref, state, isDark)
-          : _buildTimelineView(context, ref, state, isDark),
+      onRefresh: () => ref.read(photoListProvider.notifier).forceRefresh(),
+      child: CustomScrollView(
+        slivers: [
+          // 缓存信息条
+          _PhotoCacheInfoBar(state: state, isDark: isDark),
+          // 照片内容
+          if (state.viewMode == PhotoViewMode.grid)
+            _buildGridView(context, ref, state, isDark)
+          else
+            ..._buildTimelineView(context, ref, state, isDark),
+        ],
+      ),
     );
   }
 
@@ -775,24 +884,28 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
     final photos = state.filteredPhotos;
     final crossAxisCount = context.isDesktop ? 6 : 3;
 
-    return GridView.builder(
+    return SliverPadding(
       padding: const EdgeInsets.all(4),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: crossAxisCount,
-        mainAxisSpacing: 4,
-        crossAxisSpacing: 4,
-      ),
-      itemCount: photos.length,
-      itemBuilder: (context, index) => _PhotoGridItem(
-        photo: photos[index],
-        index: index,
-        allPhotos: photos,
-        isDark: isDark,
+      sliver: SliverGrid(
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: crossAxisCount,
+          mainAxisSpacing: 4,
+          crossAxisSpacing: 4,
+        ),
+        delegate: SliverChildBuilderDelegate(
+          (context, index) => _PhotoGridItem(
+            photo: photos[index],
+            index: index,
+            allPhotos: photos,
+            isDark: isDark,
+          ),
+          childCount: photos.length,
+        ),
       ),
     );
   }
 
-  Widget _buildTimelineView(
+  List<Widget> _buildTimelineView(
     BuildContext context,
     WidgetRef ref,
     PhotoListLoaded state,
@@ -800,81 +913,185 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
   ) {
     final groups = state.groupedPhotos;
     final crossAxisCount = context.isDesktop ? 6 : 3;
+    final slivers = <Widget>[];
 
-    return CustomScrollView(
-      slivers: [
-        for (final group in groups) ...[
-          // 日期标题
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(
-                      Icons.calendar_today_rounded,
-                      color: AppColors.primary,
-                      size: 16,
-                    ),
+    for (final group in groups) {
+      slivers.add(
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(10),
                   ),
-                  const SizedBox(width: 12),
-                  Text(
-                    group.dateTitle,
-                    style: context.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: isDark ? AppColors.darkOnSurface : null,
-                    ),
+                  child: Icon(
+                    Icons.calendar_today_rounded,
+                    color: AppColors.primary,
+                    size: 16,
                   ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '${group.photos.length} 张',
-                    style: context.textTheme.bodySmall?.copyWith(
-                      color: isDark
-                          ? AppColors.darkOnSurfaceVariant
-                          : context.colorScheme.onSurfaceVariant,
-                    ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  group.dateTitle,
+                  style: context.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? AppColors.darkOnSurface : null,
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '${group.photos.length} 张',
+                  style: context.textTheme.bodySmall?.copyWith(
+                    color: isDark
+                        ? AppColors.darkOnSurfaceVariant
+                        : context.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
             ),
           ),
-          // 照片网格
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            sliver: SliverGrid(
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: crossAxisCount,
-                mainAxisSpacing: 4,
-                crossAxisSpacing: 4,
-              ),
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final photo = group.photos[index];
-                  // 找到在完整列表中的索引
-                  final allPhotos = state.filteredPhotos;
-                  final globalIndex = allPhotos.indexWhere(
-                    (p) => p.path == photo.path,
-                  );
+        ),
+      );
+      slivers.add(
+        SliverPadding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          sliver: SliverGrid(
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: crossAxisCount,
+              mainAxisSpacing: 4,
+              crossAxisSpacing: 4,
+            ),
+            delegate: SliverChildBuilderDelegate(
+              (context, index) {
+                final photo = group.photos[index];
+                final allPhotos = state.filteredPhotos;
+                final globalIndex = allPhotos.indexWhere(
+                  (p) => p.path == photo.path,
+                );
 
-                  return _PhotoGridItem(
-                    photo: allPhotos[globalIndex],
-                    index: globalIndex,
-                    allPhotos: allPhotos,
-                    isDark: isDark,
-                  );
-                },
-                childCount: group.photos.length,
-              ),
+                return _PhotoGridItem(
+                  photo: allPhotos[globalIndex],
+                  index: globalIndex,
+                  allPhotos: allPhotos,
+                  isDark: isDark,
+                );
+              },
+              childCount: group.photos.length,
             ),
           ),
-        ],
-        const SliverToBoxAdapter(child: SizedBox(height: 16)),
-      ],
+        ),
+      );
+    }
+
+    slivers.add(const SliverToBoxAdapter(child: SizedBox(height: 16)));
+    return slivers;
+  }
+}
+
+/// 缓存信息条
+class _PhotoCacheInfoBar extends ConsumerWidget {
+  const _PhotoCacheInfoBar({
+    required this.state,
+    required this.isDark,
+  });
+
+  final PhotoListLoaded state;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cacheService = PhotoLibraryCacheService.instance;
+    final cache = cacheService.getCache();
+
+    if (cache == null) {
+      return const SliverToBoxAdapter(child: SizedBox.shrink());
+    }
+
+    final photoCount = state.photos.length;
+    final cacheAge = DateTime.now().difference(cache.lastUpdated);
+    final ageText = cacheAge.inHours < 1
+        ? '${cacheAge.inMinutes} 分钟前'
+        : cacheAge.inHours < 24
+            ? '${cacheAge.inHours} 小时前'
+            : '${cacheAge.inDays} 天前';
+
+    return SliverToBoxAdapter(
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: isDark ? Colors.grey[900] : Colors.grey[100],
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isDark ? Colors.grey[800]! : Colors.grey[300]!,
+            width: 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.photo_library_rounded,
+              size: 14,
+              color: AppColors.fileImage,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              '$photoCount',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
+            ),
+            const SizedBox(width: 2),
+            Text(
+              '张照片',
+              style: TextStyle(
+                fontSize: 11,
+                color: isDark ? Colors.grey[500] : Colors.grey[600],
+              ),
+            ),
+            const Spacer(),
+            Icon(
+              Icons.update_rounded,
+              size: 14,
+              color: isDark ? Colors.grey[500] : Colors.grey[600],
+            ),
+            const SizedBox(width: 4),
+            Text(
+              ageText,
+              style: TextStyle(
+                fontSize: 11,
+                color: isDark ? Colors.grey[500] : Colors.grey[600],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => ref.read(photoListProvider.notifier).forceRefresh(),
+                borderRadius: BorderRadius.circular(6),
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: AppColors.fileImage.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Icon(
+                    Icons.refresh_rounded,
+                    size: 16,
+                    color: AppColors.fileImage,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -929,7 +1146,6 @@ class _PhotoGridItem extends ConsumerWidget {
     final connection = connections[photo.sourceId];
     if (connection == null) return;
 
-    // 准备所有照片的 PhotoItem 列表
     final photoItems = <PhotoItem>[];
     for (final p in allPhotos) {
       final conn = connections[p.sourceId];

@@ -30,7 +30,7 @@ class SettingsPage extends ConsumerWidget {
         slivers: [
           // 自定义 AppBar
           SliverAppBar(
-            expandedHeight: 120,
+            expandedHeight: 80,
             floating: false,
             pinned: true,
             backgroundColor: isDark ? AppColors.darkSurface : null,
@@ -42,7 +42,7 @@ class SettingsPage extends ConsumerWidget {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              titlePadding: const EdgeInsets.only(left: 20, bottom: 16),
+              titlePadding: const EdgeInsets.only(left: 16, bottom: 12),
             ),
           ),
           SliverPadding(

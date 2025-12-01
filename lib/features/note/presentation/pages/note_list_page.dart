@@ -531,7 +531,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
 
   Widget _buildSidebarHeader(BuildContext context, bool isDark) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         border: Border(
           bottom: BorderSide(

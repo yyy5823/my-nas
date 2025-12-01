@@ -84,7 +84,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           child: Row(
             children: [
               // 返回按钮
@@ -96,7 +96,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
                   tooltip: '返回上级',
                 )
               else
-                const SizedBox(width: 48),
+                const SizedBox(width: 40),
               const SizedBox(width: 8),
               // 标题
               Expanded(
@@ -155,12 +155,12 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(8),
           child: Container(
-            width: 44,
-            height: 44,
+            width: 40,
+            height: 40,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
               icon,
@@ -329,7 +329,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
     final parts = currentPath.split('/').where((p) => p.isNotEmpty).toList();
 
     return Container(
-      height: 52,
+      height: 40,
       decoration: BoxDecoration(
         color: isDark
             ? AppColors.darkSurfaceVariant.withOpacity(0.2)
