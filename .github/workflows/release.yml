@@ -736,9 +736,7 @@ jobs:
           echo "=== Changelog from generate-changelog job ==="
           if [ -z "$CHANGELOG_INPUT" ]; then
             echo "WARNING: Changelog is empty, using default"
-            CHANGELOG_INPUT="### 📝 更新内容
-
-此版本包含多项更新和改进。"
+            CHANGELOG_INPUT="### 📝 更新内容\n\n此版本包含多项更新和改进。"
           fi
           echo "$CHANGELOG_INPUT"
           echo "=== End ==="
