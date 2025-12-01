@@ -14,9 +14,10 @@ import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/providers/download_provider.dart';
 import 'package:my_nas/shared/widgets/download_manager_sheet.dart';
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
+import 'package:my_nas/shared/widgets/animated_list_item.dart';
 import 'package:my_nas/shared/widgets/empty_widget.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
-import 'package:my_nas/shared/widgets/loading_widget.dart';
+import 'package:my_nas/shared/widgets/skeleton_loader.dart';
 
 class FileBrowserPage extends ConsumerStatefulWidget {
   const FileBrowserPage({super.key});
@@ -413,21 +414,39 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
     );
   }
 
-  Widget _buildContent(FileListState state, bool isGridView, bool isDark) => switch (state) {
-        FileListLoading() => const LoadingWidget(message: '加载中...'),
-        FileListNotConnected() => _buildNotConnectedPrompt(isDark),
-        FileListError(:final message) => AppErrorWidget(
+  Widget _buildContent(FileListState state, bool isGridView, bool isDark) {
+    final content = switch (state) {
+      FileListLoading() => KeyedSubtree(
+          key: const ValueKey('loading'),
+          child: FileListSkeleton(isGridView: isGridView),
+        ),
+      FileListNotConnected() => KeyedSubtree(
+          key: const ValueKey('not_connected'),
+          child: _buildNotConnectedPrompt(isDark),
+        ),
+      FileListError(:final message) => KeyedSubtree(
+          key: const ValueKey('error'),
+          child: AppErrorWidget(
             message: message,
             onRetry: () => ref.read(fileListProvider.notifier).refresh(),
           ),
-        FileListLoaded(:final files) when files.isEmpty => const EmptyWidget(
+        ),
+      FileListLoaded(:final files) when files.isEmpty => const KeyedSubtree(
+          key: ValueKey('empty'),
+          child: EmptyWidget(
             icon: Icons.folder_open_outlined,
             title: '文件夹为空',
             message: '此文件夹中没有文件或子文件夹',
           ),
-        FileListLoaded(:final files) =>
-          isGridView ? _buildGrid(files, isDark) : _buildList(files, isDark),
-      };
+        ),
+      FileListLoaded(:final files) => KeyedSubtree(
+          key: ValueKey('loaded_${files.length}'),
+          child: isGridView ? _buildGrid(files, isDark) : _buildList(files, isDark),
+        ),
+    };
+
+    return AnimatedContentSwitcher(child: content);
+  }
 
   Widget _buildNotConnectedPrompt(bool isDark) {
     return Center(
@@ -516,10 +535,13 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
   Widget _buildList(List<FileItem> files, bool isDark) => ListView.builder(
         padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
         itemCount: files.length,
-        itemBuilder: (context, index) => FileItemWidget(
-          file: files[index],
-          onTap: () => _handleFileTap(files[index]),
-          onLongPress: () => _showFileOptions(context, files[index], isDark),
+        itemBuilder: (context, index) => AnimatedListItem(
+          index: index,
+          child: FileItemWidget(
+            file: files[index],
+            onTap: () => _handleFileTap(files[index]),
+            onLongPress: () => _showFileOptions(context, files[index], isDark),
+          ),
         ),
       );
 
@@ -532,11 +554,14 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
           childAspectRatio: 0.85,
         ),
         itemCount: files.length,
-        itemBuilder: (context, index) => FileItemWidget(
-          file: files[index],
-          isGridView: true,
-          onTap: () => _handleFileTap(files[index]),
-          onLongPress: () => _showFileOptions(context, files[index], isDark),
+        itemBuilder: (context, index) => AnimatedGridItem(
+          index: index,
+          child: FileItemWidget(
+            file: files[index],
+            isGridView: true,
+            onTap: () => _handleFileTap(files[index]),
+            onLongPress: () => _showFileOptions(context, files[index], isDark),
+          ),
         ),
       );
 

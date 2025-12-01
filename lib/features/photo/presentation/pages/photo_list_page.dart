@@ -13,6 +13,7 @@ import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
+import 'package:my_nas/shared/widgets/animated_list_item.dart';
 import 'package:my_nas/shared/widgets/empty_widget.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
 
@@ -909,11 +910,15 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
           crossAxisSpacing: 4,
         ),
         delegate: SliverChildBuilderDelegate(
-          (context, index) => _PhotoGridItem(
-            photo: photos[index],
+          (context, index) => AnimatedGridItem(
             index: index,
-            allPhotos: photos,
-            isDark: isDark,
+            delay: const Duration(milliseconds: 20),
+            child: _PhotoGridItem(
+              photo: photos[index],
+              index: index,
+              allPhotos: photos,
+              isDark: isDark,
+            ),
           ),
           childCount: photos.length,
         ),
@@ -989,11 +994,15 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
                   (p) => p.path == photo.path,
                 );
 
-                return _PhotoGridItem(
-                  photo: allPhotos[globalIndex],
-                  index: globalIndex,
-                  allPhotos: allPhotos,
-                  isDark: isDark,
+                return AnimatedGridItem(
+                  index: index,
+                  delay: const Duration(milliseconds: 20),
+                  child: _PhotoGridItem(
+                    photo: allPhotos[globalIndex],
+                    index: globalIndex,
+                    allPhotos: allPhotos,
+                    isDark: isDark,
+                  ),
                 );
               },
               childCount: group.photos.length,

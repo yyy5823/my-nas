@@ -18,6 +18,7 @@ import 'package:my_nas/features/video/presentation/pages/video_detail_page.dart'
 import 'package:my_nas/features/video/presentation/pages/video_player_page.dart';
 import 'package:my_nas/features/video/presentation/providers/video_history_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
+import 'package:my_nas/shared/widgets/animated_list_item.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
 
 /// 视频文件及其来源
@@ -1090,11 +1091,16 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               itemCount: items.length,
               itemBuilder: (context, index) {
                 final metadata = items[index];
-                return _PosterCard(
-                  metadata: metadata,
-                  onTap: () => _openVideoDetail(context, ref, metadata),
-                  isDark: isDark,
-                  width: 120,
+                return AnimatedListItem(
+                  index: index,
+                  slideOffset: 0,
+                  delay: const Duration(milliseconds: 40),
+                  child: _PosterCard(
+                    metadata: metadata,
+                    onTap: () => _openVideoDetail(context, ref, metadata),
+                    isDark: isDark,
+                    width: 120,
+                  ),
                 );
               },
             ),
@@ -1126,10 +1132,14 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
         delegate: SliverChildBuilderDelegate(
           (context, index) {
             final metadata = items[index];
-            return _PosterCard(
-              metadata: metadata,
-              onTap: () => _openVideoDetail(context, ref, metadata),
-              isDark: isDark,
+            return AnimatedGridItem(
+              index: index,
+              delay: const Duration(milliseconds: 30),
+              child: _PosterCard(
+                metadata: metadata,
+                onTap: () => _openVideoDetail(context, ref, metadata),
+                isDark: isDark,
+              ),
             );
           },
           childCount: items.length,

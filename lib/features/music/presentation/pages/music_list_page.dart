@@ -16,6 +16,7 @@ import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
+import 'package:my_nas/shared/widgets/animated_list_item.dart';
 import 'package:my_nas/shared/widgets/empty_widget.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
 import 'package:my_nas/shared/widgets/media_setup_widget.dart';
@@ -558,10 +559,13 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
             padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
             sliver: SliverList(
               delegate: SliverChildBuilderDelegate(
-                (context, index) => _MusicListTile(
-                  track: state.filteredTracks[index],
+                (context, index) => AnimatedListItem(
                   index: index,
-                  isDark: isDark,
+                  child: _MusicListTile(
+                    track: state.filteredTracks[index],
+                    index: index,
+                    isDark: isDark,
+                  ),
                 ),
                 childCount: state.filteredTracks.length,
               ),
