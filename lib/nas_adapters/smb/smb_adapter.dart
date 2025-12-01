@@ -43,21 +43,57 @@ class SmbAdapter implements NasAdapter {
 
     _config = config;
 
+    // 清理主机地址 - 移除可能存在的协议前缀
+    var host = config.host.trim();
+    if (host.startsWith('http://')) {
+      host = host.substring(7);
+      logger.w('SmbAdapter: 移除 http:// 前缀');
+    }
+    if (host.startsWith('https://')) {
+      host = host.substring(8);
+      logger.w('SmbAdapter: 移除 https:// 前缀');
+    }
+    if (host.startsWith('smb://')) {
+      host = host.substring(6);
+      logger.w('SmbAdapter: 移除 smb:// 前缀');
+    }
+    // 移除尾部的斜杠和端口
+    if (host.contains('/')) {
+      host = host.split('/').first;
+    }
+    if (host.contains(':')) {
+      host = host.split(':').first;
+    }
+
+    logger.i('SmbAdapter: 清理后的主机地址 => $host');
+
     try {
       // SMB 连接使用 IP 地址（端口由系统处理，默认 445）
       logger.d('SmbAdapter: 正在建立 SMB 连接...');
+
+      // 添加连接超时
       _client = await SmbConnect.connectAuth(
-        host: config.host,
+        host: host,
         domain: '', // 工作组/域，通常留空
         username: config.username,
         password: config.password,
         debugPrint: true, // 启用调试输出
+      ).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw Exception('SMB 连接超时 (30秒)');
+        },
       );
 
       logger.d('SmbAdapter: SMB 连接已建立，正在获取共享列表...');
 
-      // 测试连接 - 获取共享列表
-      final shares = await _client!.listShares();
+      // 测试连接 - 获取共享列表 (带超时)
+      final shares = await _client!.listShares().timeout(
+        const Duration(seconds: 15),
+        onTimeout: () {
+          throw Exception('获取共享列表超时');
+        },
+      );
       logger.i('SmbAdapter: 连接成功，发现 ${shares.length} 个共享');
 
       for (final share in shares) {
@@ -70,7 +106,7 @@ class SmbAdapter implements NasAdapter {
       return ConnectionSuccess(
         sessionId: 'smb-${DateTime.now().millisecondsSinceEpoch}',
         serverInfo: ServerInfo(
-          hostname: config.host,
+          hostname: host, // 使用清理后的主机地址
           model: 'SMB/CIFS Server',
         ),
       );

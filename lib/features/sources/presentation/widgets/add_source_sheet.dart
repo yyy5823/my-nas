@@ -141,10 +141,15 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
                       // 主机地址
                       TextFormField(
                         controller: _hostController,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           labelText: '主机地址',
-                          hintText: '192.168.1.100 或 nas.example.com',
-                          prefixIcon: Icon(Icons.dns_outlined),
+                          hintText: _sourceType == SourceType.smb
+                              ? '192.168.1.100（仅 IP 地址，无需端口）'
+                              : '192.168.1.100 或 nas.example.com',
+                          helperText: _sourceType == SourceType.smb
+                              ? 'SMB 使用端口 445，无需指定协议前缀'
+                              : null,
+                          prefixIcon: const Icon(Icons.dns_outlined),
                         ),
                         keyboardType: TextInputType.url,
                         validator: (value) {
@@ -156,42 +161,44 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
                       ),
                       const SizedBox(height: 16),
 
-                      // 端口和 SSL
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextFormField(
-                              controller: _portController,
-                              decoration: const InputDecoration(
-                                labelText: '端口',
-                                prefixIcon: Icon(Icons.numbers),
+                      // 端口和 SSL (不适用于 SMB)
+                      if (_sourceType != SourceType.smb)
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextFormField(
+                                controller: _portController,
+                                decoration: const InputDecoration(
+                                  labelText: '端口',
+                                  prefixIcon: Icon(Icons.numbers),
+                                ),
+                                keyboardType: TextInputType.number,
+                                validator: (value) {
+                                  if (value == null || value.isEmpty) {
+                                    return '请输入端口';
+                                  }
+                                  final port = int.tryParse(value);
+                                  if (port == null || port < 1 || port > 65535) {
+                                    return '无效端口';
+                                  }
+                                  return null;
+                                },
                               ),
-                              keyboardType: TextInputType.number,
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return '请输入端口';
-                                }
-                                final port = int.tryParse(value);
-                                if (port == null || port < 1 || port > 65535) {
-                                  return '无效端口';
-                                }
-                                return null;
-                              },
                             ),
-                          ),
-                          const SizedBox(width: 16),
-                          Column(
-                            children: [
-                              const Text('SSL'),
-                              Switch(
-                                value: _useSsl,
-                                onChanged: (v) => setState(() => _useSsl = v),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
+                            const SizedBox(width: 16),
+                            Column(
+                              children: [
+                                const Text('SSL'),
+                                Switch(
+                                  value: _useSsl,
+                                  onChanged: (v) => setState(() => _useSsl = v),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      if (_sourceType != SourceType.smb)
+                        const SizedBox(height: 16),
 
                       // 用户名
                       TextFormField(

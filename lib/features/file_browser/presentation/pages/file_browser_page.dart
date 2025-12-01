@@ -20,19 +20,36 @@ import 'package:my_nas/shared/widgets/error_widget.dart';
 import 'package:my_nas/shared/widgets/skeleton_loader.dart';
 
 class FileBrowserPage extends ConsumerStatefulWidget {
-  const FileBrowserPage({super.key});
+  const FileBrowserPage({
+    this.sourceId,
+    this.sourceName,
+    super.key,
+  });
+
+  /// 指定要浏览的源 ID（如果为空则使用当前选中的源）
+  final String? sourceId;
+
+  /// 源名称（用于标题显示）
+  final String? sourceName;
 
   @override
   ConsumerState<FileBrowserPage> createState() => _FileBrowserPageState();
 }
 
 class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
+  /// 是否从外部导航进入（需要显示返回按钮）
+  bool get _isNavigatedFrom => widget.sourceId != null;
+
   @override
   void initState() {
     super.initState();
-    Future.microtask(
-      () => ref.read(fileListProvider.notifier).loadDirectory('/'),
-    );
+    Future.microtask(() {
+      // 如果指定了源 ID，先切换到该源
+      if (widget.sourceId != null) {
+        ref.read(selectedSourceIdProvider.notifier).state = widget.sourceId;
+      }
+      ref.read(fileListProvider.notifier).loadDirectory('/');
+    });
   }
 
   @override
@@ -71,6 +88,9 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
   }
 
   Widget _buildAppBar(BuildContext context, String currentPath, bool isGridView, bool isDark) {
+    // 确定标题文本
+    final title = widget.sourceName ?? '文件';
+
     return Container(
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
@@ -88,8 +108,17 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           child: Row(
             children: [
-              // 返回按钮
-              if (currentPath != '/')
+              // 返回按钮 - 根据情况显示不同类型
+              if (_isNavigatedFrom && currentPath == '/')
+                // 从外部导航进入且在根目录：返回上一页面
+                _buildIconButton(
+                  icon: Icons.arrow_back_rounded,
+                  onTap: () => Navigator.of(context).pop(),
+                  isDark: isDark,
+                  tooltip: '返回',
+                )
+              else if (currentPath != '/')
+                // 在子目录中：返回上级目录
                 _buildIconButton(
                   icon: Icons.arrow_back_rounded,
                   onTap: () => ref.read(fileListProvider.notifier).navigateUp(),
@@ -102,7 +131,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
               // 标题
               Expanded(
                 child: Text(
-                  '文件',
+                  title,
                   style: context.textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.bold,
                     color: isDark ? AppColors.darkOnSurface : null,

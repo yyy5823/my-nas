@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/features/file_browser/presentation/pages/file_browser_page.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
@@ -146,7 +147,24 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: InkWell(
-        onTap: () => _showSourceOptions(context),
+        onTap: () {
+          if (_status == SourceStatus.connected) {
+            // 已连接时，直接打开文件浏览器
+            Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) => FileBrowserPage(
+                  sourceId: widget.source.id,
+                  sourceName: widget.source.displayName,
+                ),
+              ),
+            );
+          } else {
+            // 未连接时，显示操作选项
+            _showSourceOptions(context);
+          }
+        },
+        onLongPress: () => _showSourceOptions(context),
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(16),

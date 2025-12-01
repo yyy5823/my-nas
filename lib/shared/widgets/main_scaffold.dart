@@ -1,40 +1,89 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:my_nas/app/router/routes.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/shared/services/update_service.dart';
+import 'package:my_nas/shared/widgets/update_dialog.dart';
 
-class MainScaffold extends StatelessWidget {
+class MainScaffold extends StatefulWidget {
   const MainScaffold({required this.child, super.key});
 
   final Widget child;
 
-  static final _destinations = [
-    const _Destination(
+  @override
+  State<MainScaffold> createState() => _MainScaffoldState();
+}
+
+class _MainScaffoldState extends State<MainScaffold> {
+  static bool _hasCheckedForUpdates = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // 仅在首次显示 MainScaffold 时检查更新
+    if (!_hasCheckedForUpdates) {
+      _hasCheckedForUpdates = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _checkForUpdatesOnStartup();
+      });
+    }
+  }
+
+  Future<void> _checkForUpdatesOnStartup() async {
+    // 仅在非 Web 平台检查更新
+    if (kIsWeb) return;
+
+    // 延迟一点时间，确保应用完全启动
+    await Future<void>.delayed(const Duration(seconds: 2));
+
+    final updateService = UpdateService.instance;
+    await updateService.checkForUpdates(silent: true);
+
+    // 如果有更新，显示更新对话框
+    if (updateService.hasUpdate && updateService.updateInfo != null && mounted) {
+      // 检查是否是桌面平台或移动平台（iOS 除外，因为需要通过 App Store 更新）
+      if (!Platform.isIOS) {
+        showUpdateDialog(context, updateService.updateInfo!);
+      }
+    }
+  }
+
+  static const _destinations = [
+    _Destination(
       icon: Icons.play_circle_outline_rounded,
       selectedIcon: Icons.play_circle_rounded,
       label: '视频',
       route: Routes.video,
     ),
-    const _Destination(
+    _Destination(
       icon: Icons.music_note_outlined,
       selectedIcon: Icons.music_note_rounded,
       label: '音乐',
       route: Routes.music,
     ),
-    const _Destination(
+    _Destination(
       icon: Icons.photo_library_outlined,
       selectedIcon: Icons.photo_library_rounded,
       label: '照片',
       route: Routes.photo,
     ),
-    const _Destination(
+    _Destination(
       icon: Icons.auto_stories_outlined,
       selectedIcon: Icons.auto_stories_rounded,
       label: '阅读',
       route: Routes.reading,
     ),
-    const _Destination(
+    _Destination(
+      icon: Icons.download_outlined,
+      selectedIcon: Icons.download_rounded,
+      label: '下载',
+      route: Routes.download,
+    ),
+    _Destination(
       icon: Icons.person_outline_rounded,
       selectedIcon: Icons.person_rounded,
       label: '我的',
@@ -68,7 +117,7 @@ class MainScaffold extends StatelessWidget {
         body: Row(
           children: [
             _buildDesktopNav(context, currentIndex, isDark),
-            Expanded(child: child),
+            Expanded(child: widget.child),
           ],
         ),
       );
@@ -76,7 +125,7 @@ class MainScaffold extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: isDark ? AppColors.darkBackground : null,
-      body: child,
+      body: widget.child,
       bottomNavigationBar: _buildMobileNav(context, currentIndex, isDark),
     );
   }

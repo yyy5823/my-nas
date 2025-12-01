@@ -5,11 +5,12 @@ abstract final class Routes {
   // Auth & Connection
   static const String connection = '/connection';
 
-  // Main tabs (5 items: video, music, photo, reading, mine)
+  // Main tabs (6 items: video, music, photo, reading, download, mine)
   static const String video = '/video';
   static const String music = '/music';
   static const String photo = '/photo';
   static const String reading = '/reading';
+  static const String download = '/download';
   static const String mine = '/mine';
 
   // Legacy routes (kept for compatibility)

@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.mynas" "\0"
-            VALUE "FileDescription", "my_nas" "\0"
+            VALUE "CompanyName", "kkape.com" "\0"
+            VALUE "FileDescription", "MyNAS" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "my_nas" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2025 com.mynas. All rights reserved." "\0"
+            VALUE "InternalName", "MyNAS" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2025 kkape.com. All rights reserved." "\0"
             VALUE "OriginalFilename", "my_nas.exe" "\0"
-            VALUE "ProductName", "my_nas" "\0"
+            VALUE "ProductName", "MyNAS" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

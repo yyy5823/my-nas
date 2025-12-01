@@ -9,6 +9,17 @@ class SynologyApi {
   final Dio _dio;
   String? _sid;
 
+  /// 当前会话ID（用于调试）
+  String? get sessionId => _sid;
+
+  /// 会话是否有效
+  bool get hasSession => _sid != null;
+
+  /// 清除会话
+  void clearSession() {
+    _sid = null;
+  }
+
   /// API 信息查询
   Future<Map<String, dynamic>> queryApiInfo() async {
     final response = await _request(
@@ -532,13 +543,27 @@ class SynologyApi {
       };
 
   String _getErrorMessage(int? errorCode) => switch (errorCode) {
+        100 => '未知错误',
         101 => '无效参数',
         102 => 'API 不存在',
         103 => '方法不存在',
         104 => '版本不支持',
         105 => '权限不足',
-        106 => '会话超时',
+        106 => '会话超时，请重新连接',
         107 => '重复登录',
+        119 => '会话已失效，请重新连接',
+        // FileStation 特定错误
+        400 => '无效路径',
+        401 => '路径不存在',
+        402 => '权限不足',
+        403 => '目标路径已存在',
+        404 => '目标文件已锁定',
+        405 => '目标路径拒绝',
+        406 => '上传失败',
+        407 => '磁盘空间不足',
+        408 => '文件过大',
+        409 => '操作中断',
+        414 => '任务不存在',
         _ => '未知错误 ($errorCode)',
       };
 }

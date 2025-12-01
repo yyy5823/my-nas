@@ -1,0 +1,611 @@
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/app/theme/app_spacing.dart';
+import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/shared/services/update_service.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+/// 显示更新对话框
+Future<void> showUpdateDialog(BuildContext context, UpdateInfo updateInfo) {
+  return showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => UpdateDialog(updateInfo: updateInfo),
+  );
+}
+
+class UpdateDialog extends ConsumerStatefulWidget {
+  const UpdateDialog({required this.updateInfo, super.key});
+
+  final UpdateInfo updateInfo;
+
+  @override
+  ConsumerState<UpdateDialog> createState() => _UpdateDialogState();
+}
+
+class _UpdateDialogState extends ConsumerState<UpdateDialog> {
+  final _service = UpdateService.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    _service.addListener(_onServiceChanged);
+  }
+
+  @override
+  void dispose() {
+    _service.removeListener(_onServiceChanged);
+    super.dispose();
+  }
+
+  void _onServiceChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final status = _service.status;
+
+    return AlertDialog(
+      backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      contentPadding: EdgeInsets.zero,
+      content: SizedBox(
+        width: 340,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 头部
+            _buildHeader(isDark),
+            // 内容
+            Padding(
+              padding: const EdgeInsets.all(AppSpacing.lg),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 版本信息
+                  _buildVersionInfo(isDark),
+                  const SizedBox(height: AppSpacing.md),
+                  // 更新说明
+                  _buildReleaseNotes(isDark),
+                  const SizedBox(height: AppSpacing.lg),
+                  // 下载进度
+                  if (status == UpdateStatus.downloading) _buildProgress(isDark),
+                  // 错误信息
+                  if (status == UpdateStatus.error) _buildError(isDark),
+                  // 按钮
+                  _buildActions(isDark, status),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader(bool isDark) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      decoration: BoxDecoration(
+        gradient: AppColors.primaryGradient,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.system_update_rounded,
+              color: Colors.white,
+              size: 32,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          const Text(
+            '发现新版本',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVersionInfo(bool isDark) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: isDark
+            ? AppColors.darkSurfaceVariant.withOpacity(0.5)
+            : AppColors.lightSurfaceVariant,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          _buildVersionBadge('新版本', widget.updateInfo.version, AppColors.success),
+          const SizedBox(width: AppSpacing.md),
+          Icon(
+            Icons.arrow_forward_rounded,
+            size: 20,
+            color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '文件大小',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+                  ),
+                ),
+                Text(
+                  widget.updateInfo.fileSizeText,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVersionBadge(String label, String version, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: color,
+          ),
+        ),
+        Text(
+          'v$version',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildReleaseNotes(bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(
+              Icons.notes_rounded,
+              size: 18,
+              color: AppColors.primary,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '更新内容',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        Container(
+          constraints: const BoxConstraints(maxHeight: 150),
+          decoration: BoxDecoration(
+            color: isDark
+                ? AppColors.darkSurfaceVariant.withOpacity(0.3)
+                : AppColors.lightSurfaceVariant.withOpacity(0.5),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            child: Text(
+              widget.updateInfo.releaseNotes,
+              style: TextStyle(
+                fontSize: 13,
+                height: 1.5,
+                color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProgress(bool isDark) {
+    return Column(
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              '下载中...',
+              style: TextStyle(
+                fontSize: 13,
+                color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+              ),
+            ),
+            Text(
+              '${(_service.downloadProgress * 100).toStringAsFixed(1)}%',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppColors.primary,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(
+            value: _service.downloadProgress,
+            backgroundColor: isDark ? AppColors.darkSurfaceElevated : AppColors.lightSurfaceVariant,
+            valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primary),
+            minHeight: 8,
+          ),
+        ),
+        const SizedBox(height: AppSpacing.lg),
+      ],
+    );
+  }
+
+  Widget _buildError(bool isDark) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppSpacing.md),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.error.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.error_outline_rounded, color: AppColors.error, size: 20),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Text(
+              _service.errorMessage ?? '未知错误',
+              style: const TextStyle(
+                fontSize: 13,
+                color: AppColors.error,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActions(bool isDark, UpdateStatus status) {
+    if (status == UpdateStatus.downloading) {
+      return SizedBox(
+        width: double.infinity,
+        child: OutlinedButton(
+          onPressed: () {
+            _service.reset();
+            Navigator.pop(context);
+          },
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          child: const Text('取消'),
+        ),
+      );
+    }
+
+    if (status == UpdateStatus.readyToInstall) {
+      return Column(
+        children: [
+          SizedBox(
+            width: double.infinity,
+            child: _buildGradientButton(
+              onPressed: () async {
+                final success = await _service.installUpdate();
+                if (!success && mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('请手动安装下载的更新包')),
+                  );
+                }
+              },
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.install_desktop_rounded, color: Colors.white, size: 20),
+                  SizedBox(width: 8),
+                  Text(
+                    '立即安装',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              '稍后安装',
+              style: TextStyle(
+                color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    // 默认状态 - 显示下载和稍后按钮
+    return Column(
+      children: [
+        SizedBox(
+          width: double.infinity,
+          child: _buildGradientButton(
+            onPressed: () {
+              if (Platform.isIOS) {
+                // iOS 打开 App Store
+                _openAppStore();
+              } else {
+                _service.downloadUpdate();
+              }
+            },
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Platform.isIOS ? Icons.open_in_new_rounded : Icons.download_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  Platform.isIOS ? '前往 App Store' : '立即下载',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(
+            '稍后提醒',
+            style: TextStyle(
+              color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildGradientButton({
+    required VoidCallback onPressed,
+    required Widget child,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: AppColors.primaryGradient,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withOpacity(0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            child: child,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openAppStore() async {
+    // 替换为你的 App Store ID
+    const appStoreUrl = 'https://apps.apple.com/app/idXXXXXXXXX';
+    final uri = Uri.parse(appStoreUrl);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+    if (mounted) Navigator.pop(context);
+  }
+}
+
+/// 检查更新按钮组件（用于设置页面）
+class CheckUpdateTile extends ConsumerStatefulWidget {
+  const CheckUpdateTile({required this.isDark, super.key});
+
+  final bool isDark;
+
+  @override
+  ConsumerState<CheckUpdateTile> createState() => _CheckUpdateTileState();
+}
+
+class _CheckUpdateTileState extends ConsumerState<CheckUpdateTile> {
+  final _service = UpdateService.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    _service.addListener(_onServiceChanged);
+  }
+
+  @override
+  void dispose() {
+    _service.removeListener(_onServiceChanged);
+    super.dispose();
+  }
+
+  void _onServiceChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final status = _service.status;
+    final hasUpdate = _service.hasUpdate;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: status == UpdateStatus.checking
+            ? null
+            : () async {
+                await _service.checkForUpdates();
+                if (_service.hasUpdate && _service.updateInfo != null && mounted) {
+                  showUpdateDialog(context, _service.updateInfo!);
+                } else if (_service.status == UpdateStatus.notAvailable && mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('当前已是最新版本')),
+                  );
+                } else if (_service.status == UpdateStatus.error && mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('检查更新失败: ${_service.errorMessage}')),
+                  );
+                }
+              },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.md,
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  hasUpdate ? Icons.system_update_rounded : Icons.update_rounded,
+                  color: AppColors.primary,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '检查更新',
+                      style: context.textTheme.bodyLarge?.copyWith(
+                        color: widget.isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _getStatusText(status),
+                      style: context.textTheme.bodySmall?.copyWith(
+                        color: hasUpdate
+                            ? AppColors.success
+                            : (widget.isDark
+                                ? AppColors.darkOnSurfaceVariant
+                                : AppColors.lightOnSurfaceVariant),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (status == UpdateStatus.checking)
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else if (hasUpdate)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.success.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    'v${_service.updateInfo?.version}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.success,
+                    ),
+                  ),
+                )
+              else
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: widget.isDark
+                      ? AppColors.darkOnSurfaceVariant
+                      : AppColors.lightOnSurfaceVariant,
+                  size: 22,
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _getStatusText(UpdateStatus status) {
+    switch (status) {
+      case UpdateStatus.idle:
+        return '点击检查新版本';
+      case UpdateStatus.checking:
+        return '正在检查...';
+      case UpdateStatus.available:
+        return '发现新版本，点击更新';
+      case UpdateStatus.notAvailable:
+        return '当前已是最新版本';
+      case UpdateStatus.downloading:
+        return '正在下载...';
+      case UpdateStatus.readyToInstall:
+        return '下载完成，点击安装';
+      case UpdateStatus.error:
+        return '检查失败，点击重试';
+    }
+  }
+}

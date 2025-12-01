@@ -6,14 +6,13 @@ import 'package:hive_ce/hive.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
-import 'package:my_nas/features/file_browser/presentation/pages/file_browser_page.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/pages/media_library_page.dart';
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/features/video/data/services/tmdb_service.dart';
 import 'package:my_nas/shared/providers/theme_provider.dart';
-import 'package:my_nas/shared/widgets/download_manager_sheet.dart';
+import 'package:my_nas/shared/widgets/update_dialog.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 class MinePage extends ConsumerWidget {
@@ -35,10 +34,6 @@ class MinePage extends ConsumerWidget {
           // 顶部头像区域
           SliverToBoxAdapter(
             child: _buildHeader(context, isDark, connectedCount, connections.length),
-          ),
-          // 快捷功能
-          SliverToBoxAdapter(
-            child: _buildQuickActions(context, isDark),
           ),
           // 设置列表
           SliverPadding(
@@ -127,6 +122,8 @@ class MinePage extends ConsumerWidget {
                   children: [
                     _VersionTile(isDark: isDark),
                     _buildDivider(isDark),
+                    CheckUpdateTile(isDark: isDark),
+                    _buildDivider(isDark),
                     _LicenseTile(isDark: isDark),
                   ],
                 ),
@@ -211,51 +208,6 @@ class MinePage extends ConsumerWidget {
                   ],
                 ),
               ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildQuickActions(BuildContext context, bool isDark) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(
-        children: [
-          Expanded(
-            child: _QuickActionCard(
-              icon: Icons.folder_rounded,
-              label: '文件管理',
-              color: AppColors.fileFolder,
-              isDark: isDark,
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute<void>(builder: (_) => const FileBrowserPage()),
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _QuickActionCard(
-              icon: Icons.download_rounded,
-              label: '下载管理',
-              color: AppColors.primary,
-              isDark: isDark,
-              onTap: () => showDownloadManager(context),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _QuickActionCard(
-              icon: Icons.storage_rounded,
-              label: '连接源',
-              color: AppColors.info,
-              isDark: isDark,
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute<void>(builder: (_) => const SourcesPage()),
-              ),
             ),
           ),
         ],
@@ -577,83 +529,6 @@ class MinePage extends ConsumerWidget {
                     size: 16,
                   ),
                 ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 快捷功能卡片
-class _QuickActionCard extends StatelessWidget {
-  const _QuickActionCard({
-    required this.icon,
-    required this.label,
-    required this.color,
-    required this.isDark,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final Color color;
-  final bool isDark;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          decoration: BoxDecoration(
-            color: isDark
-                ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
-                : Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: isDark
-                  ? AppColors.darkOutline.withValues(alpha: 0.2)
-                  : AppColors.lightOutline.withValues(alpha: 0.3),
-            ),
-            boxShadow: isDark
-                ? null
-                : [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.04),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-          ),
-          child: Column(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  icon,
-                  color: color,
-                  size: 22,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
-                ),
-              ),
             ],
           ),
         ),

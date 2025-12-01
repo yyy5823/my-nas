@@ -67,6 +67,8 @@ dependencies:
   webdav_client: ^1.2.2
   package_info_plus: ^9.0.0
   smb_connect: ^0.0.9
+  url_launcher: ^6.3.1
+  open_filex: ^4.5.0
 
 dev_dependencies:
   flutter_test:
@@ -97,8 +99,8 @@ flutter:
 # MSIX 打包配置 (Windows)
 msix_config:
   display_name: MyNAS
-  publisher_display_name: MyNAS
-  identity_name: com.mynas.app
+  publisher_display_name: kkape
+  identity_name: com.kkape.nas
   msix_version: 0.1.5.0
   capabilities: internetClient, privateNetworkClientServer
   languages: zh-cn, en-us
