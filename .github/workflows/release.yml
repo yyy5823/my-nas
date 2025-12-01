@@ -566,11 +566,11 @@ jobs:
             DELETIONS="N/A"
           fi
 
-          # 获取贡献者
-          CONTRIBUTORS=$(git log $RANGE --format='%an' 2>/dev/null | sort -u | tr '\n' ', ' | sed 's/,$//' || echo "")
+          # 获取贡献者（使用 GitHub actor，即仓库所有者）
+          CONTRIBUTORS="${{ github.repository_owner }}"
 
-          # 获取详细提交列表（带作者和简短hash）
-          COMMITS_DETAILED=$(git log $RANGE --pretty=format:"- %s (\`%h\` by @%an)" --no-merges 2>/dev/null || echo "")
+          # 获取详细提交列表（带简短hash）
+          COMMITS_DETAILED=$(git log $RANGE --pretty=format:"- %s (\`%h\`)" --no-merges 2>/dev/null || echo "")
           COMMITS_SIMPLE=$(git log $RANGE --pretty=format:"- %s" --no-merges 2>/dev/null || echo "")
 
           # 分类提交 - 新功能
