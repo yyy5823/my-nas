@@ -261,7 +261,7 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
         if (duration > Duration.zero && !completer.isCompleted) {
           // 视频已准备好，执行 seek
           _player.seek(resumePosition!).then((_) {
-            logger.i('VideoPlayerNotifier: 跳转到 ${resumePosition.inSeconds}s');
+            logger.i('VideoPlayerNotifier: 跳转到 ${resumePosition!.inSeconds}s');
           });
           subscription?.cancel();
           completer.complete();
