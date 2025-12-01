@@ -93,16 +93,25 @@ class UpdateService extends ChangeNotifier {
       }
 
       final data = jsonDecode(response.body) as Map<String, dynamic>;
-      final latestVersion = (data['tag_name'] as String).replaceFirst('v', '');
-      final currentVersion = (await PackageInfo.fromPlatform()).version;
+      final tagName = (data['tag_name'] as String).replaceFirst('v', '');
+      // 解析远程版本（支持格式：0.1.5 或 0.1.5-build.2）
+      final (latestVersion, latestBuild) = _parseVersion(tagName);
 
-      logger.i('UpdateService: 当前版本 $currentVersion, 最新版本 $latestVersion');
+      final packageInfo = await PackageInfo.fromPlatform();
+      final currentVersion = packageInfo.version;
+      final currentBuild = int.tryParse(packageInfo.buildNumber) ?? 1;
 
-      if (_isNewerVersion(latestVersion, currentVersion)) {
+      logger.i('UpdateService: 当前版本 $currentVersion+$currentBuild, 最新版本 $latestVersion+$latestBuild');
+
+      if (_isNewerVersion(latestVersion, latestBuild, currentVersion, currentBuild)) {
         final asset = _findPlatformAsset(data['assets'] as List<dynamic>);
         if (asset != null) {
+          // 显示版本：如果 build > 1 则显示 0.1.5 (build 2)
+          final displayVersion = latestBuild > 1
+              ? '$latestVersion (build $latestBuild)'
+              : latestVersion;
           _updateInfo = UpdateInfo(
-            version: latestVersion,
+            version: displayVersion,
             releaseNotes: data['body'] as String? ?? '暂无更新说明',
             releaseDate: DateTime.parse(data['published_at'] as String),
             downloadUrl: asset['browser_download_url'] as String,
@@ -110,7 +119,7 @@ class UpdateService extends ChangeNotifier {
             fileSize: asset['size'] as int,
           );
           _status = UpdateStatus.available;
-          logger.i('UpdateService: 发现新版本 $latestVersion');
+          logger.i('UpdateService: 发现新版本 $displayVersion');
         } else {
           _status = UpdateStatus.notAvailable;
           _errorMessage = '未找到当前平台的安装包';
@@ -275,17 +284,42 @@ class UpdateService extends ChangeNotifier {
     return false;
   }
 
-  /// 比较版本号
-  bool _isNewerVersion(String latest, String current) {
-    final latestParts = latest.split('.').map(int.parse).toList();
-    final currentParts = current.split('.').map(int.parse).toList();
+  /// 解析版本号（支持格式：0.1.5 或 0.1.5-build.2）
+  (String version, int build) _parseVersion(String tagVersion) {
+    // 检查是否包含 -build. 后缀
+    if (tagVersion.contains('-build.')) {
+      final parts = tagVersion.split('-build.');
+      final version = parts[0];
+      final build = int.tryParse(parts[1]) ?? 1;
+      return (version, build);
+    }
+    // 没有 build 后缀，默认 build 为 1
+    return (tagVersion, 1);
+  }
 
+  /// 比较版本号（包含 build number）
+  bool _isNewerVersion(
+    String latestVersion,
+    int latestBuild,
+    String currentVersion,
+    int currentBuild,
+  ) {
+    final latestParts = latestVersion.split('.').map(int.parse).toList();
+    final currentParts = currentVersion.split('.').map(int.parse).toList();
+
+    // 首先比较主版本号
     for (var i = 0; i < latestParts.length && i < currentParts.length; i++) {
       if (latestParts[i] > currentParts[i]) return true;
       if (latestParts[i] < currentParts[i]) return false;
     }
 
-    return latestParts.length > currentParts.length;
+    // 如果主版本号长度不同
+    if (latestParts.length != currentParts.length) {
+      return latestParts.length > currentParts.length;
+    }
+
+    // 主版本号相同，比较 build number
+    return latestBuild > currentBuild;
   }
 
   /// 查找当前平台的安装包

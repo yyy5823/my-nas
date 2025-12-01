@@ -19,6 +19,7 @@ jobs:
       should_release: ${{ steps.check.outputs.should_release }}
       version: ${{ steps.check.outputs.version }}
       version_code: ${{ steps.check.outputs.version_code }}
+      full_version: ${{ steps.check.outputs.full_version }}
       is_tag: ${{ steps.check.outputs.is_tag }}
     steps:
       - uses: actions/checkout@v4
@@ -28,12 +29,29 @@ jobs:
       - name: Check version change
         id: check
         run: |
-          # 获取当前版本
-          CURRENT_VERSION=$(grep "^version:" pubspec.yaml | sed 's/version: //' | cut -d'+' -f1)
-          VERSION_CODE=$(grep "^version:" pubspec.yaml | sed 's/version: //' | cut -d'+' -f2)
+          # 获取当前版本（完整版本号，如 0.1.5+2）
+          FULL_VERSION_RAW=$(grep "^version:" pubspec.yaml | sed 's/version: //' | tr -d ' ')
+          # 主版本号（如 0.1.5）
+          CURRENT_VERSION=$(echo "$FULL_VERSION_RAW" | cut -d'+' -f1)
+          # Build number（如 2）
+          VERSION_CODE=$(echo "$FULL_VERSION_RAW" | cut -d'+' -f2)
+
+          # 如果没有 build number，默认为 1
+          if [ "$VERSION_CODE" == "$CURRENT_VERSION" ]; then
+            VERSION_CODE="1"
+          fi
+
+          # 完整版本用于 tag（格式：0.1.5 或 0.1.5-build.2）
+          if [ "$VERSION_CODE" == "1" ]; then
+            FULL_VERSION="$CURRENT_VERSION"
+          else
+            FULL_VERSION="${CURRENT_VERSION}-build.${VERSION_CODE}"
+          fi
+
           echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
           echo "version_code=$VERSION_CODE" >> $GITHUB_OUTPUT
-          echo "Current version: $CURRENT_VERSION"
+          echo "full_version=$FULL_VERSION" >> $GITHUB_OUTPUT
+          echo "Current version: $CURRENT_VERSION, Build: $VERSION_CODE, Full: $FULL_VERSION"
 
           # 检查是否是 tag 触发
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
@@ -52,15 +70,15 @@ jobs:
             exit 0
           fi
 
-          # 检查版本是否改变
+          # 检查版本是否改变（包括 build number）
           if git diff HEAD~1 HEAD -- pubspec.yaml | grep -q "^+version:"; then
             # 检查该版本的 tag 是否已存在
-            if git ls-remote --tags origin | grep -q "refs/tags/v$CURRENT_VERSION$"; then
+            if git ls-remote --tags origin | grep -q "refs/tags/v${FULL_VERSION}$"; then
               echo "should_release=false" >> $GITHUB_OUTPUT
-              echo "Tag v$CURRENT_VERSION already exists, skipping release"
+              echo "Tag v$FULL_VERSION already exists, skipping release"
             else
               echo "should_release=true" >> $GITHUB_OUTPUT
-              echo "Version changed to $CURRENT_VERSION, will create release"
+              echo "Version changed to $FULL_VERSION, will create release"
             fi
           else
             echo "should_release=false" >> $GITHUB_OUTPUT
@@ -82,7 +100,7 @@ jobs:
       - name: Create and push tag
         id: create_tag
         run: |
-          TAG_NAME="v${{ needs.check-release.outputs.version }}"
+          TAG_NAME="v${{ needs.check-release.outputs.full_version }}"
           echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
 
           git config user.name "github-actions[bot]"
@@ -101,6 +119,7 @@ jobs:
     outputs:
       version: ${{ needs.check-release.outputs.version }}
       version_code: ${{ needs.check-release.outputs.version_code }}
+      full_version: ${{ needs.check-release.outputs.full_version }}
       tag_name: ${{ steps.get_tag.outputs.tag_name }}
     steps:
       - name: Get tag name
@@ -109,7 +128,7 @@ jobs:
           if [ "${{ needs.check-release.outputs.is_tag }}" == "true" ]; then
             echo "tag_name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
           else
-            echo "tag_name=v${{ needs.check-release.outputs.version }}" >> $GITHUB_OUTPUT
+            echo "tag_name=v${{ needs.check-release.outputs.full_version }}" >> $GITHUB_OUTPUT
           fi
 
   # 构建 Android APK（多架构）
@@ -473,6 +492,7 @@ jobs:
         id: changelog
         run: |
           VERSION="${{ needs.extract-version.outputs.version }}"
+          FULL_VERSION="${{ needs.extract-version.outputs.full_version }}"
 
           # 获取上一个 tag
           PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
@@ -604,7 +624,7 @@ jobs:
           # 添加版本对比链接
           if [ -n "$PREVIOUS_TAG" ]; then
             CHANGELOG="${CHANGELOG}---\n\n"
-            CHANGELOG="${CHANGELOG}📋 **完整变更**: [\`${PREVIOUS_TAG}...v${VERSION}\`](https://github.com/${{ github.repository }}/compare/${PREVIOUS_TAG}...v${VERSION})\n"
+            CHANGELOG="${CHANGELOG}📋 **完整变更**: [\`${PREVIOUS_TAG}...v${FULL_VERSION}\`](https://github.com/${{ github.repository }}/compare/${PREVIOUS_TAG}...v${FULL_VERSION})\n"
           fi
 
           echo "changelog<<EOF" >> $GITHUB_OUTPUT
@@ -699,14 +719,14 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          name: MyNAS v${{ needs.extract-version.outputs.version }}
+          name: MyNAS v${{ needs.extract-version.outputs.full_version }}
           tag_name: ${{ needs.extract-version.outputs.tag_name }}
           draft: false
-          prerelease: ${{ contains(needs.extract-version.outputs.version, 'beta') || contains(needs.extract-version.outputs.version, 'alpha') }}
+          prerelease: ${{ contains(needs.extract-version.outputs.full_version, 'beta') || contains(needs.extract-version.outputs.full_version, 'alpha') || contains(needs.extract-version.outputs.full_version, 'build') }}
           files: |
             artifacts/**/*
           body: |
-            ## MyNAS v${{ needs.extract-version.outputs.version }}
+            ## MyNAS v${{ needs.extract-version.outputs.full_version }}
 
             ${{ needs.generate-changelog.outputs.changelog }}
 
