@@ -10,6 +10,14 @@ on:
   create:
     tags:
       - 'v*'
+  # 支持手动触发
+  workflow_dispatch:
+    inputs:
+      force_release:
+        description: '强制发布（忽略版本检查）'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   # 检查是否需要发布
@@ -62,6 +70,24 @@ jobs:
           fi
 
           echo "is_tag=false" >> $GITHUB_OUTPUT
+
+          # 检查是否是手动触发且强制发布
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            if [ "${{ inputs.force_release }}" == "true" ]; then
+              echo "should_release=true" >> $GITHUB_OUTPUT
+              echo "Force release triggered manually"
+              exit 0
+            fi
+            # 手动触发但不强制，检查 tag 是否存在
+            if git ls-remote --tags origin | grep -q "refs/tags/v${FULL_VERSION}$"; then
+              echo "should_release=false" >> $GITHUB_OUTPUT
+              echo "Tag v$FULL_VERSION already exists, skipping release"
+            else
+              echo "should_release=true" >> $GITHUB_OUTPUT
+              echo "Manual trigger: will create release for $FULL_VERSION"
+            fi
+            exit 0
+          fi
 
           # 检查 pubspec.yaml 是否在本次提交中被修改
           if ! git diff HEAD~1 HEAD --name-only | grep -q "^pubspec.yaml$"; then
@@ -235,27 +261,45 @@ jobs:
       - name: Enable macOS desktop
         run: flutter config --enable-macos-desktop
 
-      # 确保 macOS 平台支持已添加
-      - name: Ensure macOS platform
+      # 确保 macOS 平台配置正确
+      - name: Setup macOS platform
         run: |
+          echo "Checking macOS project..."
+
+          # 如果 macos 目录不完整，重新创建
           if [ ! -f "macos/Runner.xcodeproj/project.pbxproj" ]; then
-            echo "Creating macOS platform support..."
+            echo "macOS project not found, creating..."
             flutter create --platforms=macos .
           fi
+
+          # 确保 Flutter 识别 macOS 平台
+          flutter precache --macos
+
+          # 显示 Flutter 检测到的平台
+          echo "Flutter devices:"
+          flutter devices
+
+          echo "Flutter config:"
+          flutter config
 
       - name: Get dependencies
         run: flutter pub get
 
-      # 验证 macOS 项目
+      # 验证 macOS 项目配置
       - name: Verify macOS project
         run: |
-          echo "Checking macOS project structure..."
+          echo "=== macOS directory structure ==="
           ls -la macos/
           ls -la macos/Flutter/ || true
+          ls -la macos/Flutter/ephemeral/ || true
+
+          echo "=== Flutter doctor ==="
           flutter doctor -v
 
       - name: Build macOS
-        run: flutter build macos --release
+        run: |
+          echo "Building macOS app..."
+          flutter build macos --release --verbose
 
       - name: Create DMG
         run: |
