@@ -213,31 +213,32 @@ jobs:
           channel: 'stable'
           cache: true
 
-      # 检查是否有 macOS 支持
-      - name: Check macOS support
-        id: check_macos
-        run: |
-          if [ -d "macos" ]; then
-            echo "supported=true" >> $GITHUB_OUTPUT
-          else
-            echo "supported=false" >> $GITHUB_OUTPUT
-            echo "::warning::macOS platform not configured in this project"
-          fi
-
       - name: Enable macOS desktop
-        if: steps.check_macos.outputs.supported == 'true'
         run: flutter config --enable-macos-desktop
 
+      # 确保 macOS 平台支持已添加
+      - name: Ensure macOS platform
+        run: |
+          if [ ! -f "macos/Runner.xcodeproj/project.pbxproj" ]; then
+            echo "Creating macOS platform support..."
+            flutter create --platforms=macos .
+          fi
+
       - name: Get dependencies
-        if: steps.check_macos.outputs.supported == 'true'
         run: flutter pub get
 
+      # 验证 macOS 项目
+      - name: Verify macOS project
+        run: |
+          echo "Checking macOS project structure..."
+          ls -la macos/
+          ls -la macos/Flutter/ || true
+          flutter doctor -v
+
       - name: Build macOS
-        if: steps.check_macos.outputs.supported == 'true'
         run: flutter build macos --release
 
       - name: Create DMG
-        if: steps.check_macos.outputs.supported == 'true'
         run: |
           brew install create-dmg
           create-dmg \
@@ -258,7 +259,6 @@ jobs:
           fi
 
       - name: Upload macOS artifact
-        if: steps.check_macos.outputs.supported == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: macos-app-${{ matrix.arch }}
@@ -372,20 +372,10 @@ jobs:
             MyNAS-*-windows-*.msix
             MyNAS-*-windows-*-setup.exe
 
-  # 构建 Linux (x64 + arm64)
+  # 构建 Linux x64
   build-linux:
     needs: extract-version
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-24.04
-            arch: x64
-            arch_dir: x64
-          - os: ubuntu-24.04-arm
-            arch: arm64
-            arch_dir: arm64
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -400,40 +390,70 @@ jobs:
           channel: 'stable'
           cache: true
 
-      # 检查是否有 Linux 支持
-      - name: Check Linux support
-        id: check_linux
-        run: |
-          if [ -d "linux" ]; then
-            echo "supported=true" >> $GITHUB_OUTPUT
-          else
-            echo "supported=false" >> $GITHUB_OUTPUT
-            echo "::warning::Linux platform not configured in this project"
-          fi
-
       - name: Enable Linux desktop
-        if: steps.check_linux.outputs.supported == 'true'
         run: flutter config --enable-linux-desktop
 
       - name: Get dependencies
-        if: steps.check_linux.outputs.supported == 'true'
         run: flutter pub get
 
       - name: Build Linux
-        if: steps.check_linux.outputs.supported == 'true'
         run: flutter build linux --release
 
       - name: Create tarball
-        if: steps.check_linux.outputs.supported == 'true'
         run: |
-          cd build/linux/${{ matrix.arch_dir }}/release
-          tar -czvf ../../../../MyNAS-${{ needs.extract-version.outputs.version }}-linux-${{ matrix.arch }}.tar.gz bundle
+          cd build/linux/x64/release
+          tar -czvf ../../../../MyNAS-${{ needs.extract-version.outputs.version }}-linux-x64.tar.gz bundle
 
       - name: Upload Linux artifact
-        if: steps.check_linux.outputs.supported == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: linux-app-${{ matrix.arch }}
+          name: linux-app-x64
+          path: MyNAS-*.tar.gz
+
+  # 构建 Linux arm64
+  build-linux-arm64:
+    needs: extract-version
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libmpv-dev libsecret-1-dev curl git unzip xz-utils
+
+      # 手动安装 Flutter (flutter-action 不支持 ARM64 Linux)
+      - name: Install Flutter manually
+        run: |
+          git clone https://github.com/flutter/flutter.git -b stable --depth 1 ~/flutter
+          echo "$HOME/flutter/bin" >> $GITHUB_PATH
+
+      - name: Setup Flutter
+        run: |
+          export PATH="$HOME/flutter/bin:$PATH"
+          flutter --version
+          flutter config --enable-linux-desktop
+          flutter precache --linux
+
+      - name: Get dependencies
+        run: |
+          export PATH="$HOME/flutter/bin:$PATH"
+          flutter pub get
+
+      - name: Build Linux ARM64
+        run: |
+          export PATH="$HOME/flutter/bin:$PATH"
+          flutter build linux --release
+
+      - name: Create tarball
+        run: |
+          cd build/linux/arm64/release
+          tar -czvf ../../../../MyNAS-${{ needs.extract-version.outputs.version }}-linux-arm64.tar.gz bundle
+
+      - name: Upload Linux ARM64 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-app-arm64
           path: MyNAS-*.tar.gz
 
   # 生成更新日志
@@ -596,7 +616,7 @@ jobs:
 
   # 创建 Release
   create-release:
-    needs: [extract-version, build-android, build-ios, build-macos, build-windows, build-linux, generate-changelog]
+    needs: [extract-version, build-android, build-ios, build-macos, build-windows, build-linux, build-linux-arm64, generate-changelog]
     # 只要有一个构建成功就创建 release
     if: |
       always() &&
@@ -605,7 +625,8 @@ jobs:
        needs.build-ios.result == 'success' ||
        needs.build-macos.result == 'success' ||
        needs.build-windows.result == 'success' ||
-       needs.build-linux.result == 'success')
+       needs.build-linux.result == 'success' ||
+       needs.build-linux-arm64.result == 'success')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -656,11 +677,19 @@ jobs:
           fi
 
           if [ "${{ needs.build-linux.result }}" == "success" ]; then
-            STATUS="${STATUS}✅ Linux\n"
+            STATUS="${STATUS}✅ Linux x64\n"
           elif [ "${{ needs.build-linux.result }}" == "skipped" ]; then
-            STATUS="${STATUS}⏭️ Linux (跳过 - 平台未配置)\n"
+            STATUS="${STATUS}⏭️ Linux x64 (跳过)\n"
           else
-            STATUS="${STATUS}❌ Linux (构建失败)\n"
+            STATUS="${STATUS}❌ Linux x64 (构建失败)\n"
+          fi
+
+          if [ "${{ needs.build-linux-arm64.result }}" == "success" ]; then
+            STATUS="${STATUS}✅ Linux ARM64\n"
+          elif [ "${{ needs.build-linux-arm64.result }}" == "skipped" ]; then
+            STATUS="${STATUS}⏭️ Linux ARM64 (跳过)\n"
+          else
+            STATUS="${STATUS}❌ Linux ARM64 (构建失败)\n"
           fi
 
           echo "status<<EOF" >> $GITHUB_OUTPUT

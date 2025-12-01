@@ -100,6 +100,5 @@ msix_config:
   publisher_display_name: MyNAS
   identity_name: com.mynas.app
   msix_version: 0.1.5.0
-  logo_path: assets/icons/app_icon.png
   capabilities: internetClient, privateNetworkClientServer
   languages: zh-cn, en-us
