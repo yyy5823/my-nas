@@ -112,6 +112,22 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
     _startHideControlsTimer();
   }
 
+  /// 处理返回事件
+  Future<void> _handleBack() async {
+    final playerNotifier = ref.read(videoPlayerControllerProvider.notifier);
+
+    // 在返回之前先暂停播放器
+    logger.i('VideoPlayerPage: 准备返回，先暂停播放器');
+    playerNotifier.pauseSync();
+
+    // 等待一小段时间确保暂停生效
+    await Future.delayed(const Duration(milliseconds: 100));
+
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
+  }
+
   void _handleDoubleTap(TapDownDetails details) {
     if (_isLocked) return;
 
@@ -169,9 +185,15 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     }
 
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: VideoGestureController(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        await _handleBack();
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: VideoGestureController(
         playerState: playerState,
         onTap: _toggleControls,
         onDoubleTap: _handleDoubleTap,
@@ -281,7 +303,7 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
                       _startHideControlsTimer();
                     },
                     onToggleFullscreen: playerNotifier.toggleFullscreen,
-                    onBack: () => Navigator.of(context).pop(),
+                    onBack: _handleBack,
                     onPlayPrevious: () {
                       playerNotifier.playPrevious();
                       _startHideControlsTimer();
@@ -403,6 +425,7 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
           ],
         ),
       ),
+    ),
     );
   }
 }
