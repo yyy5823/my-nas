@@ -566,11 +566,40 @@ jobs:
             DELETIONS="N/A"
           fi
 
-          # 获取贡献者（使用 GitHub actor，即仓库所有者）
-          CONTRIBUTORS="${{ github.repository_owner }}"
+          # 获取贡献者（通过 GitHub API 获取正确的用户名）
+          CONTRIBUTORS=""
+          for sha in $(git log $RANGE --pretty=format:"%H" --no-merges 2>/dev/null | head -50); do
+            # 通过 GitHub API 获取 commit 关联的用户名
+            USERNAME=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}/commits/${sha}" \
+              | jq -r '.author.login // empty' 2>/dev/null)
+            if [ -n "$USERNAME" ] && [ "$USERNAME" != "null" ]; then
+              CONTRIBUTORS="$CONTRIBUTORS $USERNAME"
+            fi
+          done
+          # 去重并格式化
+          CONTRIBUTORS=$(echo "$CONTRIBUTORS" | tr ' ' '\n' | sort -u | grep -v '^$' | tr '\n' ', ' | sed 's/,$//' | sed 's/,/, /g')
+          if [ -z "$CONTRIBUTORS" ]; then
+            CONTRIBUTORS="${{ github.repository_owner }}"
+          fi
 
-          # 获取详细提交列表（带简短hash）
-          COMMITS_DETAILED=$(git log $RANGE --pretty=format:"- %s (\`%h\`)" --no-merges 2>/dev/null || echo "")
+          # 获取详细提交列表（通过 GitHub API 获取正确的用户名）
+          COMMITS_DETAILED=""
+          while IFS= read -r line; do
+            SHA=$(echo "$line" | cut -d'|' -f1)
+            MSG=$(echo "$line" | cut -d'|' -f2)
+            SHORT_SHA=$(echo "$SHA" | cut -c1-7)
+            # 获取 GitHub 用户名
+            USERNAME=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}/commits/${SHA}" \
+              | jq -r '.author.login // empty' 2>/dev/null)
+            if [ -n "$USERNAME" ] && [ "$USERNAME" != "null" ]; then
+              COMMITS_DETAILED="${COMMITS_DETAILED}- ${MSG} (\`${SHORT_SHA}\` by @${USERNAME})\n"
+            else
+              COMMITS_DETAILED="${COMMITS_DETAILED}- ${MSG} (\`${SHORT_SHA}\`)\n"
+            fi
+          done < <(git log $RANGE --pretty=format:"%H|%s" --no-merges 2>/dev/null | head -50)
+          COMMITS_DETAILED=$(echo -e "$COMMITS_DETAILED")
           COMMITS_SIMPLE=$(git log $RANGE --pretty=format:"- %s" --no-merges 2>/dev/null || echo "")
 
           # 分类提交 - 新功能
