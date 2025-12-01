@@ -730,21 +730,26 @@ jobs:
       # 调试：显示接收到的 changelog
       - name: Debug changelog
         id: debug_changelog
+        env:
+          CHANGELOG_INPUT: ${{ needs.generate-changelog.outputs.changelog }}
         run: |
           echo "=== Changelog from generate-changelog job ==="
-          CHANGELOG="${{ needs.generate-changelog.outputs.changelog }}"
-          if [ -z "$CHANGELOG" ]; then
+          if [ -z "$CHANGELOG_INPUT" ]; then
             echo "WARNING: Changelog is empty, using default"
-            CHANGELOG="### 📝 更新内容\n\n此版本包含多项更新和改进。\n"
+            CHANGELOG_INPUT="### 📝 更新内容
+
+此版本包含多项更新和改进。"
           fi
-          echo "$CHANGELOG"
+          echo "$CHANGELOG_INPUT"
           echo "=== End ==="
           echo "Stats: ${{ needs.generate-changelog.outputs.stats }}"
 
-          # 保存到环境变量供后续使用
-          echo "changelog<<EOF" >> $GITHUB_OUTPUT
-          echo -e "$CHANGELOG" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          # 保存到 GITHUB_OUTPUT（使用 heredoc 避免特殊字符问题）
+          {
+            echo 'changelog<<CHANGELOG_EOF'
+            echo "$CHANGELOG_INPUT"
+            echo 'CHANGELOG_EOF'
+          } >> $GITHUB_OUTPUT
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
