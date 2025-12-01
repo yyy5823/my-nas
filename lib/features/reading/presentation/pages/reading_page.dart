@@ -103,20 +103,23 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
         bottom: false,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: Row(
-            children: [
-              // 当前类型标题
-              Text(
-                ReadingContentType.values[currentTab].label,
-                style: context.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: isDark ? AppColors.darkOnSurface : null,
+          child: SizedBox(
+            height: 40, // 确保和其他导航页面的顶栏高度一致
+            child: Row(
+              children: [
+                // 当前类型标题
+                Text(
+                  ReadingContentType.values[currentTab].label,
+                  style: context.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? AppColors.darkOnSurface : null,
+                  ),
                 ),
-              ),
-              const Spacer(),
-              // 类型切换按钮
-              _buildTypeSwitcher(context, isDark, currentTab),
-            ],
+                const Spacer(),
+                // 类型切换按钮
+                _buildTypeSwitcher(context, isDark, currentTab),
+              ],
+            ),
           ),
         ),
       ),
@@ -127,6 +130,7 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
     return PopupMenuButton<int>(
       offset: const Offset(0, 40),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      padding: EdgeInsets.zero,
       itemBuilder: (context) => ReadingContentType.values.asMap().entries.map((entry) {
         final index = entry.key;
         final type = entry.value;
@@ -166,29 +170,33 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
         );
       }).toList(),
       onSelected: _onTabChanged,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: isDark
-              ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
-              : Colors.grey[200],
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              ReadingContentType.values[currentTab].icon,
-              size: 18,
-              color: isDark ? AppColors.darkOnSurface : Colors.black87,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            height: 40,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
             ),
-            const SizedBox(width: 6),
-            Icon(
-              Icons.arrow_drop_down_rounded,
-              size: 20,
-              color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[600],
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  ReadingContentType.values[currentTab].icon,
+                  size: 22,
+                  color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[700],
+                ),
+                const SizedBox(width: 4),
+                Icon(
+                  Icons.arrow_drop_down_rounded,
+                  size: 20,
+                  color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[600],
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
