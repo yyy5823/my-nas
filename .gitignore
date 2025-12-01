@@ -191,4 +191,7 @@ key.properties
 
 # Development docs (not for public)
 /docs/
-*.lock
+
+# Keep Podfile.lock for iOS/macOS builds
+!**/ios/Podfile.lock
+!**/macos/Podfile.lock
