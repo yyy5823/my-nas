@@ -944,44 +944,10 @@ class _TransferCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tasksAsync = ref.watch(downloadTasksProvider);
 
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark
-            ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
-            : AppColors.lightSurface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isDark
-              ? AppColors.darkOutline.withValues(alpha: 0.2)
-              : AppColors.lightOutline.withValues(alpha: 0.3),
-        ),
-        boxShadow: isDark
-            ? null
-            : [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.03),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: () => showDownloadManager(context),
-            child: Padding(
-              padding: const EdgeInsets.all(AppSpacing.lg),
-              child: tasksAsync.when(
-                data: (tasks) => _buildContent(context, tasks),
-                loading: () => _buildContent(context, []),
-                error: (_, __) => _buildContent(context, []),
-              ),
-            ),
-          ),
-        ),
-      ),
+    return tasksAsync.when(
+      data: (tasks) => _buildContent(context, tasks),
+      loading: () => _buildContent(context, []),
+      error: (_, __) => _buildContent(context, []),
     );
   }
 
@@ -995,80 +961,32 @@ class _TransferCard extends ConsumerWidget {
     final completed = tasks.where((t) => t.status == DownloadStatus.completed).toList();
     final hasActiveTasks = downloading.isNotEmpty;
 
-    return Row(
+    return Column(
       children: [
-        // 下载图标
+        // 下载按钮
         _buildTransferButton(
           context,
           icon: Icons.download_rounded,
           label: '下载',
           count: downloading.length,
+          subtitle: hasActiveTasks
+              ? '${downloading.length} 个任务进行中'
+              : completed.isEmpty
+                  ? '暂无下载任务'
+                  : '${completed.length} 个已完成',
           color: AppColors.primary,
           isActive: hasActiveTasks,
         ),
-        const SizedBox(width: AppSpacing.lg),
-        // 同步图标（预留）
+        const SizedBox(height: AppSpacing.sm),
+        // 同步按钮（预留）
         _buildTransferButton(
           context,
           icon: Icons.sync_rounded,
           label: '同步',
           count: 0,
+          subtitle: '暂无同步任务',
           color: AppColors.accent,
           isActive: false,
-        ),
-        const Spacer(),
-        // 状态摘要
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            if (hasActiveTasks) ...[
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SizedBox(
-                    width: 12,
-                    height: 12,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: AppColors.primary,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    '${downloading.length} 个任务进行中',
-                    style: context.textTheme.bodySmall?.copyWith(
-                      color: AppColors.primary,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ] else ...[
-              Text(
-                tasks.isEmpty ? '暂无任务' : '${completed.length} 个已完成',
-                style: context.textTheme.bodySmall?.copyWith(
-                  color: isDark
-                      ? AppColors.darkOnSurfaceVariant
-                      : AppColors.lightOnSurfaceVariant,
-                ),
-              ),
-            ],
-            const SizedBox(height: 2),
-            Text(
-              '点击查看详情',
-              style: context.textTheme.labelSmall?.copyWith(
-                color: isDark
-                    ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.6)
-                    : AppColors.lightOnSurfaceVariant.withValues(alpha: 0.6),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(width: AppSpacing.sm),
-        Icon(
-          Icons.chevron_right_rounded,
-          color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
-          size: 22,
         ),
       ],
     );
@@ -1079,66 +997,140 @@ class _TransferCard extends ConsumerWidget {
     required IconData icon,
     required String label,
     required int count,
+    required String subtitle,
     required Color color,
     required bool isActive,
   }) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: isActive ? 0.15 : 0.08),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Icon(
-                icon,
-                color: isActive ? color : color.withValues(alpha: 0.5),
-                size: 24,
-              ),
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark
+            ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
+            : AppColors.lightSurface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDark
+              ? AppColors.darkOutline.withValues(alpha: 0.2)
+              : AppColors.lightOutline.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => showDownloadManager(context),
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.lg,
+              vertical: AppSpacing.md,
             ),
-            if (count > 0)
-              Positioned(
-                top: -4,
-                right: -4,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: color,
-                    borderRadius: BorderRadius.circular(10),
-                    boxShadow: [
-                      BoxShadow(
-                        color: color.withValues(alpha: 0.3),
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
+            child: Row(
+              children: [
+                // 图标
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: isActive ? 0.15 : 0.08),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        icon,
+                        color: isActive ? color : color.withValues(alpha: 0.5),
+                        size: 20,
+                      ),
+                    ),
+                    if (count > 0)
+                      Positioned(
+                        top: -4,
+                        right: -4,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: color,
+                            borderRadius: BorderRadius.circular(10),
+                            boxShadow: [
+                              BoxShadow(
+                                color: color.withValues(alpha: 0.3),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Text(
+                            count > 99 ? '99+' : count.toString(),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(width: AppSpacing.md),
+                // 标题和副标题
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        style: context.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w500,
+                          color: isDark ? AppColors.darkOnSurface : null,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          if (isActive) ...[
+                            SizedBox(
+                              width: 10,
+                              height: 10,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 1.5,
+                                color: color,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                          ],
+                          Expanded(
+                            child: Text(
+                              subtitle,
+                              style: context.textTheme.bodySmall?.copyWith(
+                                color: isActive
+                                    ? color
+                                    : (isDark
+                                        ? AppColors.darkOnSurfaceVariant
+                                        : AppColors.lightOnSurfaceVariant),
+                                fontWeight: isActive ? FontWeight.w500 : null,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                  child: Text(
-                    count > 99 ? '99+' : count.toString(),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
                 ),
-              ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        Text(
-          label,
-          style: context.textTheme.labelSmall?.copyWith(
-            color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
-            fontWeight: FontWeight.w500,
+                // 右侧箭头
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: isDark
+                      ? AppColors.darkOnSurfaceVariant
+                      : AppColors.lightOnSurfaceVariant,
+                  size: 22,
+                ),
+              ],
+            ),
           ),
         ),
-      ],
+      ),
     );
   }
 }
