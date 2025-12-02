@@ -148,17 +148,13 @@ class _MainScaffoldState extends State<MainScaffold> {
               mainAxisAlignment:
                   isExtended ? MainAxisAlignment.start : MainAxisAlignment.center,
               children: [
-                Container(
-                  width: isExtended ? 40 : 36,
-                  height: isExtended ? 40 : 36,
-                  decoration: BoxDecoration(
-                    gradient: AppColors.primaryGradient,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(
-                    Icons.cloud_outlined,
-                    color: Colors.white,
-                    size: 22,
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.asset(
+                    'assets/logo.png',
+                    width: isExtended ? 40 : 36,
+                    height: isExtended ? 40 : 36,
+                    fit: BoxFit.cover,
                   ),
                 ),
                 if (isExtended) ...[
@@ -265,34 +261,34 @@ class _MainScaffoldState extends State<MainScaffold> {
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: List.generate(_destinations.length, (index) {
-              final dest = _destinations[index];
-              final isSelected = currentIndex == index;
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: SizedBox(
+            height: 56,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: List.generate(_destinations.length, (index) {
+                final dest = _destinations[index];
+                final isSelected = currentIndex == index;
 
-              return Expanded(
-                child: GestureDetector(
-                  onTap: () => _onDestinationSelected(context, index),
-                  behavior: HitTestBehavior.opaque,
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    padding: const EdgeInsets.symmetric(vertical: 4),
+                return Expanded(
+                  child: GestureDetector(
+                    onTap: () => _onDestinationSelected(context, index),
+                    behavior: HitTestBehavior.opaque,
                     child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         AnimatedContainer(
                           duration: const Duration(milliseconds: 200),
                           padding: const EdgeInsets.symmetric(
                             horizontal: 12,
-                            vertical: 4,
+                            vertical: 3,
                           ),
                           decoration: BoxDecoration(
                             color: isSelected
                                 ? AppColors.primary.withOpacity(isDark ? 0.2 : 0.1)
                                 : Colors.transparent,
-                            borderRadius: BorderRadius.circular(20),
+                            borderRadius: BorderRadius.circular(16),
                           ),
                           child: Icon(
                             isSelected ? dest.selectedIcon : dest.icon,
@@ -301,14 +297,14 @@ class _MainScaffoldState extends State<MainScaffold> {
                                 : isDark
                                     ? AppColors.darkOnSurfaceVariant
                                     : context.colorScheme.onSurfaceVariant,
-                            size: 24,
+                            size: 22,
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 2),
                         Text(
                           dest.label,
                           style: TextStyle(
-                            fontSize: 11,
+                            fontSize: 10,
                             color: isSelected
                                 ? AppColors.primary
                                 : isDark
@@ -321,9 +317,9 @@ class _MainScaffoldState extends State<MainScaffold> {
                       ],
                     ),
                   ),
-                ),
-              );
-            }),
+                );
+              }),
+            ),
           ),
         ),
       ),

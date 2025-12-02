@@ -84,12 +84,17 @@ dev_dependencies:
   injectable_generator: ^2.6.3
   hive_ce_generator: ^1.7.0
 
+  # Icon & Splash Generation
+  flutter_launcher_icons: ^0.14.2
+  flutter_native_splash: ^2.4.3
+
 flutter:
   uses-material-design: true
 
   assets:
     - assets/images/
     - assets/icons/
+    - assets/logo.png
 
   # fonts:
   #   - family: CustomFont
@@ -104,3 +109,33 @@ msix_config:
   msix_version: 0.1.5.0
   capabilities: internetClient, privateNetworkClientServer
   languages: zh-cn, en-us
+
+# Flutter Launcher Icons 配置
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/logo.png"
+  min_sdk_android: 21
+  web:
+    generate: true
+    image_path: "assets/logo.png"
+  windows:
+    generate: true
+    image_path: "assets/logo.png"
+  macos:
+    generate: true
+    image_path: "assets/logo.png"
+  linux:
+    generate: true
+    image_path: "assets/logo.png"
+
+# Flutter Native Splash 配置
+flutter_native_splash:
+  color: "#0F0F1A"
+  image: assets/logo.png
+  android: true
+  ios: true
+  web: true
+  android_12:
+    color: "#0F0F1A"
+    image: assets/logo.png

@@ -100,7 +100,6 @@ class _StartupPageState extends ConsumerState<StartupPage> {
                   height: 100,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(28),
-                    gradient: AppColors.primaryGradient,
                     boxShadow: [
                       BoxShadow(
                         color: AppColors.primary.withOpacity(0.4),
@@ -109,10 +108,14 @@ class _StartupPageState extends ConsumerState<StartupPage> {
                       ),
                     ],
                   ),
-                  child: const Icon(
-                    Icons.cloud_outlined,
-                    size: 50,
-                    color: Colors.white,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(28),
+                    child: Image.asset(
+                      'assets/logo.png',
+                      width: 100,
+                      height: 100,
+                      fit: BoxFit.cover,
+                    ),
                   ),
                 )
                     .animate(onPlay: (c) => c.repeat())

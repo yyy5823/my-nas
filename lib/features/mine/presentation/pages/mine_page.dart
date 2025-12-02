@@ -165,7 +165,6 @@ class MinePage extends ConsumerWidget {
             width: 64,
             height: 64,
             decoration: BoxDecoration(
-              gradient: AppColors.primaryGradient,
               borderRadius: BorderRadius.circular(20),
               boxShadow: [
                 BoxShadow(
@@ -175,10 +174,14 @@ class MinePage extends ConsumerWidget {
                 ),
               ],
             ),
-            child: const Icon(
-              Icons.cloud_rounded,
-              color: Colors.white,
-              size: 32,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: Image.asset(
+                'assets/logo.png',
+                width: 64,
+                height: 64,
+                fit: BoxFit.cover,
+              ),
             ),
           ),
           const SizedBox(width: 16),
