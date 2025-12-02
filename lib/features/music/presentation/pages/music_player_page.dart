@@ -1,26 +1,59 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
-import 'package:my_nas/app/theme/app_spacing.dart';
-import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/presentation/providers/music_favorites_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
-import 'package:my_nas/features/music/presentation/widgets/music_player_controls.dart';
 import 'package:my_nas/features/music/presentation/widgets/music_queue_sheet.dart';
 import 'package:my_nas/features/music/presentation/widgets/music_settings_sheet.dart';
 
-class MusicPlayerPage extends ConsumerWidget {
+class MusicPlayerPage extends ConsumerStatefulWidget {
   const MusicPlayerPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MusicPlayerPage> createState() => _MusicPlayerPageState();
+}
+
+class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _rotationController;
+
+  @override
+  void initState() {
+    super.initState();
+    _rotationController = AnimationController(
+      duration: const Duration(seconds: 20),
+      vsync: this,
+    );
+  }
+
+  @override
+  void dispose() {
+    _rotationController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final currentMusic = ref.watch(currentMusicProvider);
     final playerState = ref.watch(musicPlayerControllerProvider);
-    final playerNotifier = ref.read(musicPlayerControllerProvider.notifier);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // 控制封面旋转动画
+    if (playerState.isPlaying) {
+      _rotationController.repeat();
+    } else {
+      _rotationController.stop();
+    }
 
     if (currentMusic == null) {
       return Scaffold(
+        backgroundColor: isDark ? AppColors.darkBackground : null,
         appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
           title: const Text('正在播放'),
         ),
         body: const Center(
@@ -29,79 +62,47 @@ class MusicPlayerPage extends ConsumerWidget {
       );
     }
 
-    // 检查是否已收藏
-    final isFavoriteAsync = ref.watch(isMusicFavoriteProvider(currentMusic.path));
-
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('正在播放'),
-        centerTitle: true,
-        actions: [
-          // 收藏按钮
-          isFavoriteAsync.when(
-            data: (isFavorite) => IconButton(
-              onPressed: () async {
-                final result = await ref
-                    .read(musicFavoritesProvider.notifier)
-                    .toggleFavorite(currentMusic);
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(result ? '已添加到收藏' : '已取消收藏')),
-                  );
-                }
-              },
-              icon: Icon(
-                isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                color: isFavorite ? AppColors.fileAudio : null,
-              ),
-              tooltip: isFavorite ? '取消收藏' : '收藏',
-            ),
-            loading: () => const SizedBox(
-              width: 48,
-              child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
-            ),
-            error: (_, __) => IconButton(
-              onPressed: null,
-              icon: const Icon(Icons.favorite_border_rounded),
-            ),
+      extendBodyBehindAppBar: true,
+      backgroundColor: isDark ? AppColors.darkBackground : Colors.grey[100],
+      appBar: _buildAppBar(context, ref, currentMusic, isDark),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: isDark
+                ? [
+                    AppColors.primary.withValues(alpha: 0.15),
+                    AppColors.darkBackground,
+                    AppColors.darkBackground,
+                  ]
+                : [
+                    AppColors.primary.withValues(alpha: 0.1),
+                    Colors.white,
+                    Colors.grey[100]!,
+                  ],
           ),
-          // 队列按钮
-          IconButton(
-            onPressed: () => showMusicQueueSheet(context),
-            icon: const Icon(Icons.queue_music_rounded),
-            tooltip: '播放队列',
-          ),
-          // 设置按钮
-          IconButton(
-            onPressed: () => showMusicSettingsSheet(context),
-            icon: const Icon(Icons.settings_rounded),
-            tooltip: '播放设置',
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: Padding(
-          padding: AppSpacing.paddingLg,
+        ),
+        child: SafeArea(
           child: Column(
             children: [
-              const Spacer(),
+              const Spacer(flex: 2),
               // 封面
-              _buildCover(context),
-              const SizedBox(height: 32),
-              // 歌曲信息
-              _buildTrackInfo(context, currentMusic.name, currentMusic.displayArtist),
-              const SizedBox(height: 32),
-              // 播放控制
-              MusicPlayerControls(
-                state: playerState,
-                onPlayPause: playerNotifier.playOrPause,
-                onNext: playerNotifier.playNext,
-                onPrevious: playerNotifier.playPrevious,
-                onSeek: playerNotifier.seek,
-                onVolumeChange: playerNotifier.setVolume,
-                onTogglePlayMode: playerNotifier.togglePlayMode,
-              ),
+              _buildCover(context, currentMusic, playerState, isDark),
               const Spacer(),
+              // 歌曲信息
+              _buildTrackInfo(context, currentMusic, isDark),
+              const SizedBox(height: 32),
+              // 进度条
+              _buildProgressBar(context, ref, playerState, isDark),
+              const SizedBox(height: 24),
+              // 控制按钮
+              _buildControlButtons(context, ref, playerState, isDark),
+              const SizedBox(height: 24),
+              // 额外控制
+              _buildExtraControls(context, playerState, isDark),
+              const Spacer(flex: 2),
             ],
           ),
         ),
@@ -109,51 +110,224 @@ class MusicPlayerPage extends ConsumerWidget {
     );
   }
 
-  Widget _buildCover(BuildContext context) {
-    final currentMusic = ProviderScope.containerOf(context).read(currentMusicProvider);
+  PreferredSizeWidget _buildAppBar(
+    BuildContext context,
+    WidgetRef ref,
+    MusicItem currentMusic,
+    bool isDark,
+  ) {
+    final isFavoriteAsync = ref.watch(isMusicFavoriteProvider(currentMusic.path));
 
-    return AspectRatio(
-      aspectRatio: 1,
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 320),
-        decoration: BoxDecoration(
-          borderRadius: AppRadius.borderRadiusLg,
-          color: context.colorScheme.surfaceContainerHighest,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.2),
-              blurRadius: 20,
-              offset: const Offset(0, 10),
-            ),
-          ],
+    return AppBar(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      leading: IconButton(
+        onPressed: () => Navigator.of(context).pop(),
+        icon: Icon(
+          Icons.keyboard_arrow_down_rounded,
+          size: 32,
+          color: isDark ? Colors.white : Colors.black87,
         ),
-        clipBehavior: Clip.antiAlias,
-        child: currentMusic?.coverUrl != null
-            ? Image.network(
-                currentMusic!.coverUrl!,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _buildCoverPlaceholder(context),
-              )
-            : _buildCoverPlaceholder(context),
+      ),
+      title: Column(
+        children: [
+          Text(
+            '正在播放',
+            style: TextStyle(
+              fontSize: 12,
+              color: isDark ? Colors.grey[400] : Colors.grey[600],
+            ),
+          ),
+          Text(
+            currentMusic.folderName,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
+          ),
+        ],
+      ),
+      centerTitle: true,
+      actions: [
+        // 收藏按钮
+        isFavoriteAsync.when(
+          data: (isFavorite) => IconButton(
+            onPressed: () async {
+              final result = await ref
+                  .read(musicFavoritesProvider.notifier)
+                  .toggleFavorite(currentMusic);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(result ? '已添加到收藏' : '已取消收藏'),
+                    behavior: SnackBarBehavior.floating,
+                    duration: const Duration(seconds: 1),
+                  ),
+                );
+              }
+            },
+            icon: Icon(
+              isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+              color: isFavorite ? Colors.red[400] : (isDark ? Colors.white : Colors.black87),
+            ),
+            tooltip: isFavorite ? '取消收藏' : '收藏',
+          ),
+          loading: () => const SizedBox(
+            width: 48,
+            child: Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          ),
+          error: (_, __) => IconButton(
+            onPressed: null,
+            icon: Icon(
+              Icons.favorite_border_rounded,
+              color: isDark ? Colors.grey[600] : Colors.grey[400],
+            ),
+          ),
+        ),
+        // 更多选项
+        IconButton(
+          onPressed: () => showMusicSettingsSheet(context),
+          icon: Icon(
+            Icons.more_vert_rounded,
+            color: isDark ? Colors.white : Colors.black87,
+          ),
+          tooltip: '更多选项',
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCover(
+    BuildContext context,
+    MusicItem currentMusic,
+    MusicPlayerState playerState,
+    bool isDark,
+  ) {
+    final size = MediaQuery.of(context).size.width * 0.7;
+
+    return Center(
+      child: AnimatedBuilder(
+        animation: _rotationController,
+        builder: (context, child) {
+          return Transform.rotate(
+            angle: playerState.isPlaying ? _rotationController.value * 2 * math.pi : 0,
+            child: child,
+          );
+        },
+        child: Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: isDark ? Colors.grey[850] : Colors.grey[300],
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.primary.withValues(alpha: 0.3),
+                blurRadius: 40,
+                spreadRadius: 5,
+              ),
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.2),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              // 外圈
+              Container(
+                width: size,
+                height: size,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      AppColors.primary.withValues(alpha: 0.8),
+                      AppColors.secondary.withValues(alpha: 0.8),
+                    ],
+                  ),
+                ),
+              ),
+              // 内圈
+              Container(
+                width: size * 0.9,
+                height: size * 0.9,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isDark ? AppColors.darkSurface : Colors.white,
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: currentMusic.coverUrl != null
+                    ? Image.network(
+                        currentMusic.coverUrl!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => _buildCoverPlaceholder(size * 0.9, isDark),
+                      )
+                    : _buildCoverPlaceholder(size * 0.9, isDark),
+              ),
+              // 中心圆点
+              Container(
+                width: size * 0.15,
+                height: size * 0.15,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isDark ? AppColors.darkBackground : Colors.grey[100],
+                  border: Border.all(
+                    color: isDark ? Colors.grey[700]! : Colors.grey[300]!,
+                    width: 2,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  Widget _buildCoverPlaceholder(BuildContext context) => Center(
-        child: Icon(
-          Icons.album,
-          size: 120,
-          color: context.colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+  Widget _buildCoverPlaceholder(double size, bool isDark) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: isDark
+              ? [Colors.grey[800]!, Colors.grey[900]!]
+              : [Colors.grey[200]!, Colors.grey[300]!],
         ),
-      );
+      ),
+      child: Icon(
+        Icons.music_note_rounded,
+        size: size * 0.4,
+        color: isDark ? Colors.grey[600] : Colors.grey[400],
+      ),
+    );
+  }
 
-  Widget _buildTrackInfo(BuildContext context, String title, String artist) =>
-      Column(
+  Widget _buildTrackInfo(BuildContext context, MusicItem currentMusic, bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 32),
+      child: Column(
         children: [
           Text(
-            title,
-            style: context.textTheme.titleLarge?.copyWith(
+            currentMusic.displayTitle,
+            style: TextStyle(
+              fontSize: 22,
               fontWeight: FontWeight.bold,
+              color: isDark ? Colors.white : Colors.black87,
             ),
             textAlign: TextAlign.center,
             maxLines: 2,
@@ -161,14 +335,387 @@ class MusicPlayerPage extends ConsumerWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            artist,
-            style: context.textTheme.bodyLarge?.copyWith(
-              color: context.colorScheme.onSurfaceVariant,
+            currentMusic.displayArtist,
+            style: TextStyle(
+              fontSize: 16,
+              color: isDark ? Colors.grey[400] : Colors.grey[600],
             ),
             textAlign: TextAlign.center,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
         ],
-      );
+      ),
+    );
+  }
+
+  Widget _buildProgressBar(
+    BuildContext context,
+    WidgetRef ref,
+    MusicPlayerState state,
+    bool isDark,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        children: [
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 4,
+              activeTrackColor: AppColors.primary,
+              inactiveTrackColor: isDark ? Colors.grey[800] : Colors.grey[300],
+              thumbColor: AppColors.primary,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+              overlayColor: AppColors.primary.withValues(alpha: 0.2),
+            ),
+            child: Slider(
+              value: state.progress.clamp(0.0, 1.0),
+              onChanged: (value) {
+                final position = Duration(
+                  milliseconds: (value * state.duration.inMilliseconds).toInt(),
+                );
+                ref.read(musicPlayerControllerProvider.notifier).seek(position);
+              },
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  state.positionText,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? Colors.grey[500] : Colors.grey[600],
+                  ),
+                ),
+                Text(
+                  state.durationText,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? Colors.grey[500] : Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildControlButtons(
+    BuildContext context,
+    WidgetRef ref,
+    MusicPlayerState state,
+    bool isDark,
+  ) {
+    final notifier = ref.read(musicPlayerControllerProvider.notifier);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          // 随机/循环模式
+          IconButton(
+            onPressed: notifier.togglePlayMode,
+            iconSize: 28,
+            icon: Icon(
+              _getPlayModeIcon(state.playMode),
+              color: state.playMode != PlayMode.loop
+                  ? AppColors.primary
+                  : (isDark ? Colors.grey[400] : Colors.grey[600]),
+            ),
+            tooltip: _getPlayModeTooltip(state.playMode),
+          ),
+          // 上一曲
+          IconButton(
+            onPressed: notifier.playPrevious,
+            iconSize: 44,
+            icon: Icon(
+              Icons.skip_previous_rounded,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
+          ),
+          // 播放/暂停
+          GestureDetector(
+            onTap: notifier.playOrPause,
+            child: Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [AppColors.primary, AppColors.secondary],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.primary.withValues(alpha: 0.4),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: Icon(
+                state.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                size: 40,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          // 下一曲
+          IconButton(
+            onPressed: notifier.playNext,
+            iconSize: 44,
+            icon: Icon(
+              Icons.skip_next_rounded,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
+          ),
+          // 播放列表
+          IconButton(
+            onPressed: () => showMusicQueueSheet(context),
+            iconSize: 28,
+            icon: Icon(
+              Icons.queue_music_rounded,
+              color: isDark ? Colors.grey[400] : Colors.grey[600],
+            ),
+            tooltip: '播放队列',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildExtraControls(
+    BuildContext context,
+    MusicPlayerState state,
+    bool isDark,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 48),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // 音量控制
+          _VolumeButton(
+            volume: state.volume,
+            isDark: isDark,
+          ),
+          // 倍速
+          TextButton(
+            onPressed: () => _showSpeedPicker(context),
+            child: Text(
+              '1.0x',
+              style: TextStyle(
+                fontSize: 14,
+                color: isDark ? Colors.grey[400] : Colors.grey[600],
+              ),
+            ),
+          ),
+          // 定时关闭
+          IconButton(
+            onPressed: () => _showSleepTimer(context),
+            icon: Icon(
+              Icons.timer_outlined,
+              color: isDark ? Colors.grey[400] : Colors.grey[600],
+            ),
+            tooltip: '定时关闭',
+          ),
+        ],
+      ),
+    );
+  }
+
+  IconData _getPlayModeIcon(PlayMode mode) => switch (mode) {
+        PlayMode.loop => Icons.repeat_rounded,
+        PlayMode.repeatOne => Icons.repeat_one_rounded,
+        PlayMode.shuffle => Icons.shuffle_rounded,
+      };
+
+  String _getPlayModeTooltip(PlayMode mode) => switch (mode) {
+        PlayMode.loop => '列表循环',
+        PlayMode.repeatOne => '单曲循环',
+        PlayMode.shuffle => '随机播放',
+      };
+
+  void _showSpeedPicker(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 16),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '播放速度',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 12,
+              children: [0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((speed) {
+                return ChoiceChip(
+                  label: Text('${speed}x'),
+                  selected: speed == 1.0,
+                  onSelected: (_) {
+                    Navigator.pop(context);
+                    // TODO: Implement speed change
+                  },
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 24),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showSleepTimer(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 16),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '定时关闭',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 16),
+            ...[15, 30, 45, 60, 90].map((minutes) {
+              return ListTile(
+                title: Text(
+                  '$minutes 分钟后',
+                  style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('将在 $minutes 分钟后停止播放'),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                  // TODO: Implement sleep timer
+                },
+              );
+            }),
+            ListTile(
+              title: Text(
+                '播放完当前歌曲后',
+                style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                // TODO: Implement sleep timer
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _VolumeButton extends ConsumerStatefulWidget {
+  const _VolumeButton({
+    required this.volume,
+    required this.isDark,
+  });
+
+  final double volume;
+  final bool isDark;
+
+  @override
+  ConsumerState<_VolumeButton> createState() => _VolumeButtonState();
+}
+
+class _VolumeButtonState extends ConsumerState<_VolumeButton> {
+  bool _showSlider = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          onPressed: () => setState(() => _showSlider = !_showSlider),
+          icon: Icon(
+            widget.volume == 0
+                ? Icons.volume_off_rounded
+                : widget.volume < 0.5
+                    ? Icons.volume_down_rounded
+                    : Icons.volume_up_rounded,
+            color: widget.isDark ? Colors.grey[400] : Colors.grey[600],
+          ),
+          tooltip: '音量',
+        ),
+        if (_showSlider)
+          SizedBox(
+            width: 100,
+            child: SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                trackHeight: 3,
+                activeTrackColor: AppColors.primary,
+                inactiveTrackColor: widget.isDark ? Colors.grey[800] : Colors.grey[300],
+                thumbColor: AppColors.primary,
+                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+                overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+              ),
+              child: Slider(
+                value: widget.volume,
+                onChanged: (value) {
+                  ref.read(musicPlayerControllerProvider.notifier).setVolume(value);
+                },
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 }

@@ -22,16 +22,37 @@ class MediaLibraryPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final screenWidth = MediaQuery.of(context).size.width;
+    // 宽屏使用固定 Tab，窄屏使用可滚动 Tab
+    final useScrollableTab = screenWidth < 500;
+
     return DefaultTabController(
       length: MediaType.values.length,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('媒体库'),
           bottom: TabBar(
-            isScrollable: true,
+            isScrollable: useScrollableTab,
+            tabAlignment: useScrollableTab ? TabAlignment.start : TabAlignment.fill,
+            padding: useScrollableTab ? const EdgeInsets.symmetric(horizontal: 8) : EdgeInsets.zero,
+            labelPadding: useScrollableTab
+                ? const EdgeInsets.symmetric(horizontal: 12)
+                : const EdgeInsets.symmetric(horizontal: 4),
+            indicatorSize: TabBarIndicatorSize.label,
+            dividerColor: isDark ? AppColors.darkOutline.withValues(alpha: 0.3) : null,
+            labelStyle: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+            unselectedLabelStyle: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.normal,
+            ),
             tabs: MediaType.values.map((type) {
               return Tab(
-                icon: Icon(_getMediaTypeIcon(type)),
+                iconMargin: const EdgeInsets.only(bottom: 4),
+                icon: Icon(_getMediaTypeIcon(type), size: 20),
                 text: type.displayName,
               );
             }).toList(),

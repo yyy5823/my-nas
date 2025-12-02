@@ -159,3 +159,12 @@ final recentMusicProvider =
   ref.watch(musicHistoryProvider);
   return MusicFavoritesService.instance.getRecentHistory(limit: 20);
 });
+
+/// 最近播放 - 返回 MusicItem 列表
+final recentTracksProvider = Provider<List<MusicItem>>((ref) {
+  final historyState = ref.watch(musicHistoryProvider);
+  return historyState.history
+      .take(50)
+      .map((h) => h.toMusicItem())
+      .toList();
+});

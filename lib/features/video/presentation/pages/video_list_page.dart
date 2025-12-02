@@ -61,10 +61,18 @@ enum VideoTab { all, movies, tvShows, recent }
 sealed class VideoListState {}
 
 class VideoListLoading extends VideoListState {
-  VideoListLoading({this.progress = 0, this.currentFolder, this.fromCache = false});
+  VideoListLoading({
+    this.progress = 0,
+    this.currentFolder,
+    this.fromCache = false,
+    this.partialVideos = const [],
+    this.scannedCount = 0,
+  });
   final double progress;
   final String? currentFolder;
   final bool fromCache;
+  final List<VideoFileWithSource> partialVideos;
+  final int scannedCount;
 }
 
 class VideoListLoaded extends VideoListState {
@@ -390,6 +398,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     final videos = <VideoFileWithSource>[];
     var scannedFolders = 0;
     final totalFolders = connectedPaths.length;
+    var lastUpdateCount = 0;
 
     for (final mediaPath in connectedPaths) {
       final connection = connections[mediaPath.sourceId];
@@ -398,6 +407,8 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       state = VideoListLoading(
         progress: scannedFolders / totalFolders,
         currentFolder: mediaPath.displayName,
+        partialVideos: List.from(videos),
+        scannedCount: videos.length,
       );
 
       try {
@@ -408,12 +419,32 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
           sourceId: mediaPath.sourceId,
           currentDepth: 0,
           maxDepth: maxDepth,
+          onBatchFound: () {
+            // 每找到 10 个新视频更新一次 UI
+            if (videos.length - lastUpdateCount >= 10) {
+              lastUpdateCount = videos.length;
+              state = VideoListLoading(
+                progress: scannedFolders / totalFolders,
+                currentFolder: mediaPath.displayName,
+                partialVideos: List.from(videos),
+                scannedCount: videos.length,
+              );
+            }
+          },
         );
       } on Exception catch (e) {
         logger.w('扫描文件夹失败: ${mediaPath.path} - $e');
       }
 
       scannedFolders++;
+
+      // 每完成一个目录更新一次
+      state = VideoListLoading(
+        progress: scannedFolders / totalFolders,
+        currentFolder: scannedFolders < totalFolders ? '继续扫描...' : '扫描完成',
+        partialVideos: List.from(videos),
+        scannedCount: videos.length,
+      );
     }
 
     logger.i('视频扫描完成，共找到 ${videos.length} 个视频');
@@ -448,6 +479,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     required String sourceId,
     required int currentDepth,
     required int maxDepth,
+    VoidCallback? onBatchFound,
   }) async {
     if (currentDepth > maxDepth) return;
 
@@ -457,6 +489,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       for (final file in files) {
         if (file.type == FileType.video) {
           videos.add(VideoFileWithSource(file: file, sourceId: sourceId));
+          onBatchFound?.call();
         } else if (file.isDirectory && currentDepth < maxDepth) {
           if (file.name.startsWith('.') ||
               file.name.startsWith('@') ||
@@ -471,6 +504,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
             sourceId: sourceId,
             currentDepth: currentDepth + 1,
             maxDepth: maxDepth,
+            onBatchFound: onBatchFound,
           );
         }
       }
@@ -580,8 +614,23 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
           _buildSimpleAppBar(context, ref, isDark, state),
           Expanded(
             child: switch (state) {
-              VideoListLoading(:final progress, :final currentFolder, :final fromCache) =>
-                _buildLoadingState(progress, currentFolder, fromCache, isDark),
+              VideoListLoading(
+                :final progress,
+                :final currentFolder,
+                :final fromCache,
+                :final partialVideos,
+                :final scannedCount,
+              ) =>
+                _buildLoadingState(
+                  context,
+                  ref,
+                  progress,
+                  currentFolder,
+                  fromCache,
+                  partialVideos,
+                  scannedCount,
+                  isDark,
+                ),
               VideoListError(:final message) => AppErrorWidget(
                   message: message,
                   onRetry: () => ref.read(videoListProvider.notifier).loadVideos(),
@@ -602,8 +651,10 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     bool isDark,
     VideoListState state,
   ) {
-    final isLoaded = state is VideoListLoaded;
-    final fromCache = isLoaded && (state).fromCache;
+    // 获取同步时间信息
+    final cacheService = VideoLibraryCacheService.instance;
+    final cache = cacheService.getCache();
+    final syncTimeText = _getSyncTimeText(cache?.lastUpdated);
 
     return Container(
       decoration: BoxDecoration(
@@ -630,23 +681,22 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
                     color: isDark ? Colors.white : null,
                   ),
                 ),
-                if (fromCache)
-                  Container(
-                    margin: const EdgeInsets.only(left: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.green.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: const Text(
-                      '缓存',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Colors.green,
-                        fontWeight: FontWeight.bold,
-                      ),
+                if (syncTimeText != null) ...[
+                  const SizedBox(width: 8),
+                  Icon(
+                    Icons.cloud_done_rounded,
+                    size: 14,
+                    color: isDark ? Colors.grey[500] : Colors.grey[600],
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    syncTimeText,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isDark ? Colors.grey[500] : Colors.grey[600],
                     ),
                   ),
+                ],
               ],
               if (_showSearch)
                 Expanded(
@@ -680,17 +730,21 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
                 isDark: isDark,
                 tooltip: _showSearch ? '关闭' : '搜索',
               ),
-              _buildIconButton(
-                icon: Icons.refresh_rounded,
-                onTap: () => ref.read(videoListProvider.notifier).forceRefresh(),
-                isDark: isDark,
-                tooltip: '刷新',
-              ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  String? _getSyncTimeText(DateTime? lastUpdated) {
+    if (lastUpdated == null) return null;
+    final age = DateTime.now().difference(lastUpdated);
+    if (age.inMinutes < 1) return '刚刚同步';
+    if (age.inMinutes < 60) return '${age.inMinutes}分钟前';
+    if (age.inHours < 24) return '${age.inHours}小时前';
+    if (age.inDays < 7) return '${age.inDays}天前';
+    return '${lastUpdated.month}/${lastUpdated.day}';
   }
 
   Widget _buildIconButton({
@@ -724,11 +778,88 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
   }
 
   Widget _buildLoadingState(
+    BuildContext context,
+    WidgetRef ref,
     double progress,
     String? currentFolder,
     bool fromCache,
+    List<VideoFileWithSource> partialVideos,
+    int scannedCount,
     bool isDark,
   ) {
+    // 如果有部分结果，显示带进度条的网格视图
+    if (partialVideos.isNotEmpty && !fromCache) {
+      return Column(
+        children: [
+          // 扫描进度条
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.grey[900] : Colors.grey[100],
+              border: Border(
+                bottom: BorderSide(
+                  color: isDark ? Colors.grey[800]! : Colors.grey[300]!,
+                ),
+              ),
+            ),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    value: progress > 0 ? progress : null,
+                    color: AppColors.primary,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '正在扫描... 已找到 $scannedCount 个视频',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
+                      ),
+                      if (currentFolder != null)
+                        Text(
+                          currentFolder,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isDark ? Colors.grey[500] : Colors.grey[600],
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                    ],
+                  ),
+                ),
+                if (progress > 0)
+                  Text(
+                    '${(progress * 100).toInt()}%',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.primary,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          // 部分结果网格
+          Expanded(
+            child: _buildPartialResultsGrid(context, ref, partialVideos, isDark),
+          ),
+        ],
+      );
+    }
+
+    // 没有部分结果时显示加载中心动画
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -763,6 +894,34 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
           ],
         ],
       ),
+    );
+  }
+
+  Widget _buildPartialResultsGrid(
+    BuildContext context,
+    WidgetRef ref,
+    List<VideoFileWithSource> videos,
+    bool isDark,
+  ) {
+    final width = MediaQuery.of(context).size.width;
+    final crossAxisCount = width > 1200 ? 7 : width > 900 ? 6 : width > 600 ? 5 : 3;
+
+    return GridView.builder(
+      padding: const EdgeInsets.all(16),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: crossAxisCount,
+        childAspectRatio: 0.65,
+        mainAxisSpacing: 16,
+        crossAxisSpacing: 12,
+      ),
+      itemCount: videos.length,
+      itemBuilder: (context, index) {
+        final video = videos[index];
+        return _PartialVideoCard(
+          video: video,
+          isDark: isDark,
+        );
+      },
     );
   }
 
@@ -1427,6 +1586,109 @@ class _ContinueWatchingCard extends ConsumerWidget {
     );
 
     ref.invalidate(continueWatchingProvider);
+  }
+}
+
+/// 扫描中的简化视频卡片
+class _PartialVideoCard extends StatelessWidget {
+  const _PartialVideoCard({
+    required this.video,
+    required this.isDark,
+  });
+
+  final VideoFileWithSource video;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Container(
+            decoration: BoxDecoration(
+              color: isDark ? Colors.grey[850] : Colors.grey[200],
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // 缩略图或占位符
+                if (video.thumbnailUrl != null)
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: CachedNetworkImage(
+                      imageUrl: video.thumbnailUrl!,
+                      fit: BoxFit.cover,
+                      placeholder: (_, __) => _buildPlaceholder(),
+                      errorWidget: (_, __, ___) => _buildPlaceholder(),
+                    ),
+                  )
+                else
+                  _buildPlaceholder(),
+                // 扫描中标记
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: 8,
+                          height: 8,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 1.5,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Text(
+                          '扫描中',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          video.name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+            color: isDark ? Colors.white : null,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPlaceholder() {
+    return Center(
+      child: Icon(
+        Icons.movie_rounded,
+        size: 40,
+        color: isDark ? Colors.grey[600] : Colors.grey[400],
+      ),
+    );
   }
 }
 

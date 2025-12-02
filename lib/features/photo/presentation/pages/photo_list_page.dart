@@ -58,10 +58,18 @@ enum PhotoViewMode { grid, timeline }
 sealed class PhotoListState {}
 
 class PhotoListLoading extends PhotoListState {
-  PhotoListLoading({this.progress = 0, this.currentFolder, this.fromCache = false});
+  PhotoListLoading({
+    this.progress = 0,
+    this.currentFolder,
+    this.fromCache = false,
+    this.partialPhotos = const [],
+    this.scannedCount = 0,
+  });
   final double progress;
   final String? currentFolder;
   final bool fromCache;
+  final List<PhotoFileWithSource> partialPhotos;
+  final int scannedCount;
 }
 
 class PhotoListLoaded extends PhotoListState {
@@ -298,6 +306,7 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
     final photos = <PhotoFileWithSource>[];
     var scannedFolders = 0;
     final totalFolders = connectedPaths.length;
+    var lastUpdateCount = 0;
 
     for (final mediaPath in connectedPaths) {
       final connection = connections[mediaPath.sourceId];
@@ -307,6 +316,8 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
       state = PhotoListLoading(
         progress: scannedFolders / totalFolders,
         currentFolder: mediaPath.displayName,
+        partialPhotos: List.from(photos),
+        scannedCount: photos.length,
       );
 
       try {
@@ -317,12 +328,30 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
           sourceId: mediaPath.sourceId,
           currentDepth: 0,
           maxDepth: maxDepth,
+          onBatchFound: () {
+            if (photos.length - lastUpdateCount >= 20) {
+              lastUpdateCount = photos.length;
+              state = PhotoListLoading(
+                progress: scannedFolders / totalFolders,
+                currentFolder: mediaPath.displayName,
+                partialPhotos: List.from(photos),
+                scannedCount: photos.length,
+              );
+            }
+          },
         );
       } on Exception catch (e) {
         logger.w('扫描文件夹失败: ${mediaPath.path} - $e');
       }
 
       scannedFolders++;
+
+      state = PhotoListLoading(
+        progress: scannedFolders / totalFolders,
+        currentFolder: scannedFolders < totalFolders ? '继续扫描...' : '扫描完成',
+        partialPhotos: List.from(photos),
+        scannedCount: photos.length,
+      );
     }
 
     logger.i('照片扫描完成，共找到 ${photos.length} 张照片');
@@ -345,6 +374,7 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
     required String sourceId,
     required int currentDepth,
     required int maxDepth,
+    VoidCallback? onBatchFound,
   }) async {
     if (currentDepth > maxDepth) return;
 
@@ -390,6 +420,7 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
           );
 
           photos.add(PhotoFileWithSource(file: fileWithThumbnail, sourceId: sourceId));
+          onBatchFound?.call();
         } else if (file.isDirectory && currentDepth < maxDepth) {
           if (file.name.startsWith('.') ||
               file.name.startsWith('@') ||
@@ -404,6 +435,7 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
             sourceId: sourceId,
             currentDepth: currentDepth + 1,
             maxDepth: maxDepth,
+            onBatchFound: onBatchFound,
           );
         }
       }
@@ -472,8 +504,22 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
           _buildAppBar(context, ref, isDark, state),
           Expanded(
             child: switch (state) {
-              PhotoListLoading(:final progress, :final currentFolder, :final fromCache) =>
-                _buildLoadingState(progress, currentFolder, fromCache, isDark),
+              PhotoListLoading(
+                :final progress,
+                :final currentFolder,
+                :final fromCache,
+                :final partialPhotos,
+                :final scannedCount,
+              ) =>
+                _buildLoadingState(
+                  context,
+                  progress,
+                  currentFolder,
+                  fromCache,
+                  partialPhotos,
+                  scannedCount,
+                  isDark,
+                ),
               PhotoListNotConnected() => _buildNotConnectedPrompt(context, isDark),
               PhotoListError(:final message) => AppErrorWidget(
                   message: message,
@@ -495,6 +541,11 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
     bool isDark,
     PhotoListState state,
   ) {
+    // 获取同步时间信息
+    final cacheService = PhotoLibraryCacheService.instance;
+    final cache = cacheService.getCache();
+    final syncTimeText = _getSyncTimeText(cache?.lastUpdated);
+
     return Container(
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
@@ -520,23 +571,22 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
                     color: isDark ? AppColors.darkOnSurface : null,
                   ),
                 ),
-                if (state is PhotoListLoaded && state.fromCache)
-                  Container(
-                    margin: const EdgeInsets.only(left: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: const Text(
-                      '缓存',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Colors.green,
-                        fontWeight: FontWeight.bold,
-                      ),
+                if (syncTimeText != null) ...[
+                  const SizedBox(width: 8),
+                  Icon(
+                    Icons.cloud_done_rounded,
+                    size: 14,
+                    color: isDark ? Colors.grey[500] : Colors.grey[600],
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    syncTimeText,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isDark ? Colors.grey[500] : Colors.grey[600],
                     ),
                   ),
+                ],
                 if (state is PhotoListLoaded)
                   Container(
                     margin: const EdgeInsets.only(left: 8),
@@ -644,17 +694,21 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
                     ),
                   ],
                 ),
-              _buildIconButton(
-                icon: Icons.refresh_rounded,
-                onTap: () => ref.read(photoListProvider.notifier).forceRefresh(),
-                isDark: isDark,
-                tooltip: '刷新',
-              ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  String? _getSyncTimeText(DateTime? lastUpdated) {
+    if (lastUpdated == null) return null;
+    final age = DateTime.now().difference(lastUpdated);
+    if (age.inMinutes < 1) return '刚刚同步';
+    if (age.inMinutes < 60) return '${age.inMinutes}分钟前';
+    if (age.inHours < 24) return '${age.inHours}小时前';
+    if (age.inDays < 7) return '${age.inDays}天前';
+    return '${lastUpdated.month}/${lastUpdated.day}';
   }
 
   PopupMenuItem<PhotoSortType> _buildSortMenuItem(
@@ -727,11 +781,149 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
   }
 
   Widget _buildLoadingState(
+    BuildContext context,
     double progress,
     String? currentFolder,
     bool fromCache,
+    List<PhotoFileWithSource> partialPhotos,
+    int scannedCount,
     bool isDark,
   ) {
+    // 如果有部分结果，显示带进度条的网格视图
+    if (partialPhotos.isNotEmpty && !fromCache) {
+      final width = MediaQuery.of(context).size.width;
+      final crossAxisCount = width > 600 ? 5 : 3;
+
+      return Column(
+        children: [
+          // 扫描进度条
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.grey[900] : Colors.grey[100],
+              border: Border(
+                bottom: BorderSide(
+                  color: isDark ? Colors.grey[800]! : Colors.grey[300]!,
+                ),
+              ),
+            ),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    value: progress > 0 ? progress : null,
+                    color: AppColors.primary,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '正在扫描... 已找到 $scannedCount 张照片',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
+                      ),
+                      if (currentFolder != null)
+                        Text(
+                          currentFolder,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isDark ? Colors.grey[500] : Colors.grey[600],
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                    ],
+                  ),
+                ),
+                if (progress > 0)
+                  Text(
+                    '${(progress * 100).toInt()}%',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.primary,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          // 部分结果网格
+          Expanded(
+            child: GridView.builder(
+              padding: const EdgeInsets.all(4),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: crossAxisCount,
+                mainAxisSpacing: 4,
+                crossAxisSpacing: 4,
+              ),
+              itemCount: partialPhotos.length,
+              itemBuilder: (context, index) {
+                final photo = partialPhotos[index];
+                return Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    if (photo.thumbnailUrl != null)
+                      CachedNetworkImage(
+                        imageUrl: photo.thumbnailUrl!,
+                        fit: BoxFit.cover,
+                        placeholder: (_, __) => Container(
+                          color: isDark ? Colors.grey[800] : Colors.grey[200],
+                          child: Icon(
+                            Icons.photo_rounded,
+                            color: isDark ? Colors.grey[600] : Colors.grey[400],
+                          ),
+                        ),
+                        errorWidget: (_, __, ___) => Container(
+                          color: isDark ? Colors.grey[800] : Colors.grey[200],
+                          child: Icon(
+                            Icons.photo_rounded,
+                            color: isDark ? Colors.grey[600] : Colors.grey[400],
+                          ),
+                        ),
+                      )
+                    else
+                      Container(
+                        color: isDark ? Colors.grey[800] : Colors.grey[200],
+                        child: Icon(
+                          Icons.photo_rounded,
+                          color: isDark ? Colors.grey[600] : Colors.grey[400],
+                        ),
+                      ),
+                    Positioned(
+                      bottom: 4,
+                      right: 4,
+                      child: Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const CircularProgressIndicator(
+                          strokeWidth: 1.5,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
+      );
+    }
+
+    // 没有部分结果时显示加载中心动画
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
