@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:my_nas/app/router/app_router.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/utils/logger.dart';
@@ -1425,14 +1426,12 @@ class _PhotoGridItem extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return GestureDetector(
-      onTap: () => _openPhotoViewer(context, ref),
-      child: Container(
-        decoration: BoxDecoration(
-          color: isDark
-              ? AppColors.darkSurfaceElevated
-              : context.colorScheme.surfaceContainerHighest,
-        ),
+    return Material(
+      color: isDark
+          ? AppColors.darkSurfaceElevated
+          : context.colorScheme.surfaceContainerHighest,
+      child: InkWell(
+        onTap: () => _openPhotoViewer(context, ref),
         child: photo.thumbnailUrl != null
             ? CachedNetworkImage(
                 imageUrl: photo.thumbnailUrl!,
@@ -1487,8 +1486,14 @@ class _PhotoGridItem extends ConsumerWidget {
 
     if (!context.mounted) return;
 
-    // 使用 rootNavigator: true 确保全屏显示，不受 ShellRoute 影响
-    await Navigator.of(context, rootNavigator: true).push(
+    // 使用 rootNavigatorKey 确保全屏显示，不受 ShellRoute 影响
+    final navigator = rootNavigatorKey.currentState;
+    if (navigator == null) {
+      debugPrint('PhotoViewer: rootNavigatorKey.currentState is null');
+      return;
+    }
+
+    await navigator.push(
       MaterialPageRoute<void>(
         builder: (context) => PhotoViewerPage(
           photos: photoItems,
