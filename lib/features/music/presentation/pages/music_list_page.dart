@@ -998,11 +998,18 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
   }
 
   Future<void> _playTrack(BuildContext context, WidgetRef ref, MusicFileWithSource track, List<MusicFileWithSource> allTracks) async {
+    logger.i('_playTrack: 开始播放 ${track.name}');
+
     final adapter = ref.read(activeAdapterProvider);
-    if (adapter == null) return;
+    if (adapter == null) {
+      logger.e('_playTrack: adapter 为 null，无法播放');
+      return;
+    }
 
     try {
+      logger.d('_playTrack: 获取文件URL, path=${track.path}');
       final url = await adapter.fileSystem.getFileUrl(track.path);
+      logger.d('_playTrack: 文件URL => $url');
       final musicItem = MusicItem.fromFileItem(track.file, url, sourceId: track.sourceId);
 
       // 找到当前曲目在列表中的索引

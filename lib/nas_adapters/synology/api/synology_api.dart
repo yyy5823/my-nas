@@ -137,8 +137,13 @@ class SynologyApi {
     int limit = 100,
     String sortBy = 'name',
     String sortDirection = 'asc',
-    List<String> additional = const ['size', 'time', 'type'],
+    List<String> additional = const ['real_path', 'size', 'owner', 'time', 'perm', 'type'],
   }) async {
+    // Synology API v2 additional 参数需要 JSON 数组格式: ["real_path","size","owner","time"]
+    // 参考: https://stackoverflow.com/questions/61786866/synology-filestation-api
+    final additionalParam = '["${additional.join('","')}"]';
+    logger.d('SynologyApi listFiles: folder=$folderPath, additional=$additionalParam');
+
     final response = await _request(
       'SYNO.FileStation.List',
       'list',
@@ -149,7 +154,7 @@ class SynologyApi {
         'limit': limit,
         'sort_by': sortBy,
         'sort_direction': sortDirection,
-        'additional': additional.join(','),
+        'additional': additionalParam,
       },
     );
 
@@ -158,8 +163,7 @@ class SynologyApi {
     final debugFiles = debugData?['files'] as List<dynamic>? ?? [];
     if (debugFiles.isNotEmpty) {
       final sample = debugFiles.first as Map<String, dynamic>;
-      final sampleAdd = sample['additional'] as Map<String, dynamic>?;
-      logger.d('SynologyApi listFiles 原始数据样本: additional.size=${sampleAdd?['size']}');
+      logger.d('SynologyApi listFiles 原始样本: $sample');
     }
 
     final data = response['data'] as Map<String, dynamic>;
@@ -177,7 +181,7 @@ class SynologyApi {
       'list_share',
       version: 2,
       params: {
-        'additional': 'volume_status',
+        'additional': '["volume_status"]',
       },
     );
 
@@ -197,7 +201,7 @@ class SynologyApi {
       version: 2,
       params: {
         'path': path,
-        'additional': 'size,time,type',
+        'additional': '["size","time","type"]',
       },
     );
 
@@ -315,7 +319,7 @@ class SynologyApi {
       version: 2,
       params: {
         'taskid': taskId,
-        'additional': 'size,time,type',
+        'additional': '["size","time","type"]',
       },
     );
 
@@ -505,6 +509,7 @@ class SynologyApi {
     };
 
     logger.d('SynologyApi: 请求 => $api.$method (v$version)');
+    logger.d('SynologyApi: 请求参数 => $queryParams');
 
     try {
       final response = await _dio.get<Map<String, dynamic>>(
@@ -512,8 +517,15 @@ class SynologyApi {
         queryParameters: queryParams,
       );
 
+      // 记录完整请求 URL
+      logger.d('SynologyApi: 完整请求 URL => ${response.requestOptions.uri}');
+
       final data = response.data;
       logger.d('SynologyApi: 响应状态码 => ${response.statusCode}');
+      // 只在非 listFiles 调用时打印响应数据（避免大量数据）
+      if (method != 'list' || api != 'SYNO.FileStation.List') {
+        logger.d('SynologyApi: 响应数据 => $data');
+      }
 
       if (data == null) {
         logger.e('SynologyApi: 服务器返回空数据');
