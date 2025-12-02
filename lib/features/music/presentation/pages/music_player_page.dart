@@ -30,12 +30,6 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
       duration: const Duration(seconds: 20),
       vsync: this,
     );
-
-    // 加载歌词
-    final currentMusic = ref.read(currentMusicProvider);
-    if (currentMusic != null) {
-      ref.read(currentLyricProvider.notifier).loadLyrics(currentMusic);
-    }
   }
 
   @override
@@ -117,32 +111,44 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
     MusicPlayerState playerState,
     bool isDark,
   ) {
-    return Column(
+    return SingleChildScrollView(
       key: const ValueKey('cover_mode'),
-      children: [
-        const Spacer(flex: 2),
-        // 封面（点击切换到歌词）
-        GestureDetector(
-          onTap: _toggleLyricView,
-          child: _buildCover(context, currentMusic, playerState, isDark),
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          minHeight: MediaQuery.of(context).size.height -
+              MediaQuery.of(context).padding.top -
+              MediaQuery.of(context).padding.bottom -
+              kToolbarHeight,
         ),
-        const Spacer(),
-        // 歌曲信息
-        _buildTrackInfo(context, currentMusic, isDark),
-        const SizedBox(height: 8),
-        // 紧凑歌词显示
-        CompactLyricView(onTap: _toggleLyricView),
-        const SizedBox(height: 16),
-        // 进度条
-        _buildProgressBar(context, ref, playerState, isDark),
-        const SizedBox(height: 24),
-        // 控制按钮
-        _buildControlButtons(context, ref, playerState, isDark),
-        const SizedBox(height: 24),
-        // 额外控制
-        _buildExtraControls(context, playerState, isDark),
-        const Spacer(flex: 2),
-      ],
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            const SizedBox(height: 8),
+            // 封面（点击切换到歌词）
+            GestureDetector(
+              onTap: _toggleLyricView,
+              child: _buildCover(context, currentMusic, playerState, isDark),
+            ),
+            const SizedBox(height: 24),
+            // 歌曲信息
+            _buildTrackInfo(context, currentMusic, isDark),
+            const SizedBox(height: 8),
+            // 紧凑歌词显示
+            CompactLyricView(onTap: _toggleLyricView),
+            const SizedBox(height: 16),
+            // 进度条
+            _buildProgressBar(context, ref, playerState, isDark),
+            const SizedBox(height: 24),
+            // 控制按钮
+            _buildControlButtons(context, ref, playerState, isDark),
+            const SizedBox(height: 16),
+            // 额外控制
+            _buildExtraControls(context, playerState, isDark),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
     );
   }
 
@@ -249,10 +255,54 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
               const SizedBox(height: 16),
               // 控制按钮
               _buildControlButtons(context, ref, playerState, isDark),
+              const SizedBox(height: 8),
+              // 音量控制（歌词模式下）
+              _buildLyricModeVolumeControl(playerState, isDark),
             ],
           ),
         ),
       ],
+    );
+  }
+
+  /// 歌词模式下的音量控制条
+  Widget _buildLyricModeVolumeControl(MusicPlayerState state, bool isDark) {
+    return Consumer(
+      builder: (context, ref, _) {
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.volume_down_rounded,
+              size: 20,
+              color: isDark ? Colors.grey[500] : Colors.grey[600],
+            ),
+            Expanded(
+              child: SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  trackHeight: 3,
+                  activeTrackColor: AppColors.primary.withValues(alpha: 0.8),
+                  inactiveTrackColor: isDark ? Colors.grey[800] : Colors.grey[300],
+                  thumbColor: AppColors.primary,
+                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+                ),
+                child: Slider(
+                  value: state.volume,
+                  onChanged: (value) {
+                    ref.read(musicPlayerControllerProvider.notifier).setVolume(value);
+                  },
+                ),
+              ),
+            ),
+            Icon(
+              Icons.volume_up_rounded,
+              size: 20,
+              color: isDark ? Colors.grey[500] : Colors.grey[600],
+            ),
+          ],
+        );
+      },
     );
   }
 

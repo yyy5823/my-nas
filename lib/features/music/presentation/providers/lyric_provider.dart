@@ -46,6 +46,12 @@ class LyricNotifier extends StateNotifier<LyricState> {
         state = const LyricState();
       }
     });
+
+    // 初始化时检查是否已有音乐在播放
+    final currentMusic = _ref.read(currentMusicProvider);
+    if (currentMusic != null) {
+      loadLyrics(currentMusic);
+    }
   }
 
   final Ref _ref;

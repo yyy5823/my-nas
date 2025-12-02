@@ -853,10 +853,11 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
         else
           SizedBox(
             height: 100,
-            child: ListView.builder(
+            child: ListView.separated(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
               itemCount: playlists.length,
+              separatorBuilder: (context, index) => const SizedBox(width: 12),
               itemBuilder: (context, index) {
                 final playlist = playlists[index];
                 return _PlaylistCard(
@@ -1672,7 +1673,6 @@ class _PlaylistCard extends ConsumerWidget {
         borderRadius: BorderRadius.circular(isDesktop ? 16 : 12),
         child: Container(
           width: isDesktop ? null : 160,
-          margin: isDesktop ? null : const EdgeInsets.only(right: 12),
           padding: EdgeInsets.all(isDesktop ? 16 : 12),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(isDesktop ? 16 : 12),
