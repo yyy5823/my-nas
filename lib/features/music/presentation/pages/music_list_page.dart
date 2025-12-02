@@ -6,7 +6,6 @@ import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/utils/logger.dart';
-import 'package:my_nas/features/connection/presentation/providers/connection_provider.dart';
 import 'package:my_nas/features/music/data/services/music_library_cache_service.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/presentation/pages/music_player_page.dart';
@@ -962,21 +961,32 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
   Future<void> _shufflePlay(BuildContext context, WidgetRef ref, MusicListLoaded state) async {
     if (state.tracks.isEmpty) return;
 
-    final adapter = ref.read(activeAdapterProvider);
-    if (adapter == null) return;
+    final connections = ref.read(activeConnectionsProvider);
 
     // 打乱顺序
     final shuffled = List<MusicFileWithSource>.from(state.tracks)..shuffle();
     final first = shuffled.first;
 
     try {
-      final url = await adapter.fileSystem.getFileUrl(first.path);
+      final firstConn = connections[first.sourceId];
+      if (firstConn == null || firstConn.status != SourceStatus.connected) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('源未连接，请先连接到 NAS')),
+          );
+        }
+        return;
+      }
+
+      final url = await firstConn.adapter.fileSystem.getFileUrl(first.path);
       final musicItem = MusicItem.fromFileItem(first.file, url, sourceId: first.sourceId);
 
       // 设置播放队列
       final queue = <MusicItem>[];
       for (final track in shuffled.take(50)) {
-        final trackUrl = await adapter.fileSystem.getFileUrl(track.path);
+        final conn = connections[track.sourceId];
+        if (conn == null || conn.status != SourceStatus.connected) continue;
+        final trackUrl = await conn.adapter.fileSystem.getFileUrl(track.path);
         queue.add(MusicItem.fromFileItem(track.file, trackUrl, sourceId: track.sourceId));
       }
 
@@ -1000,15 +1010,21 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
   Future<void> _playTrack(BuildContext context, WidgetRef ref, MusicFileWithSource track, List<MusicFileWithSource> allTracks) async {
     logger.i('_playTrack: 开始播放 ${track.name}');
 
-    final adapter = ref.read(activeAdapterProvider);
-    if (adapter == null) {
-      logger.e('_playTrack: adapter 为 null，无法播放');
+    final connections = ref.read(activeConnectionsProvider);
+    final connection = connections[track.sourceId];
+    if (connection == null || connection.status != SourceStatus.connected) {
+      logger.e('_playTrack: 源未连接 sourceId=${track.sourceId}');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('源未连接，请先连接到 NAS')),
+        );
+      }
       return;
     }
 
     try {
       logger.d('_playTrack: 获取文件URL, path=${track.path}');
-      final url = await adapter.fileSystem.getFileUrl(track.path);
+      final url = await connection.adapter.fileSystem.getFileUrl(track.path);
       logger.d('_playTrack: 文件URL => $url');
       final musicItem = MusicItem.fromFileItem(track.file, url, sourceId: track.sourceId);
 
@@ -1031,7 +1047,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
       }
 
       // 在后台构建完整播放队列
-      _buildPlayQueue(ref, adapter.fileSystem, track, allTracks, trackIndex);
+      _buildPlayQueue(ref, connections, track, allTracks, trackIndex);
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1044,7 +1060,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
   /// 在后台构建播放队列
   Future<void> _buildPlayQueue(
     WidgetRef ref,
-    NasFileSystem fileSystem,
+    Map<String, SourceConnection> connections,
     MusicFileWithSource currentTrack,
     List<MusicFileWithSource> allTracks,
     int trackIndex,
@@ -1071,11 +1087,13 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
 
       for (var i = 0; i < queueTracks.length; i++) {
         final t = queueTracks[i];
-        final trackUrl = await fileSystem.getFileUrl(t.path);
+        final conn = connections[t.sourceId];
+        if (conn == null || conn.status != SourceStatus.connected) continue;
+        final trackUrl = await conn.adapter.fileSystem.getFileUrl(t.path);
         final item = MusicItem.fromFileItem(t.file, trackUrl, sourceId: t.sourceId);
         queue.add(item);
         if (t.path == currentTrack.path) {
-          newCurrentIndex = i;
+          newCurrentIndex = queue.length - 1;
         }
       }
 
@@ -2009,30 +2027,52 @@ class _AllSongsView extends ConsumerWidget {
   }
 
   Future<void> _playAll(BuildContext context, WidgetRef ref) async {
-    if (tracks.isEmpty) return;
-    final adapter = ref.read(activeAdapterProvider);
-    if (adapter == null) return;
+    logger.i('_AllSongsView._playAll: 开始播放全部 (${tracks.length} 首)');
+
+    if (tracks.isEmpty) {
+      logger.w('_AllSongsView._playAll: 没有歌曲可播放');
+      return;
+    }
+
+    final connections = ref.read(activeConnectionsProvider);
 
     try {
       final first = tracks.first;
-      final url = await adapter.fileSystem.getFileUrl(first.path);
+      final firstConnection = connections[first.sourceId];
+      if (firstConnection == null || firstConnection.status != SourceStatus.connected) {
+        logger.e('_AllSongsView._playAll: 第一首歌曲的源未连接');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('源未连接，请先连接到 NAS')),
+          );
+        }
+        return;
+      }
+
+      logger.d('_AllSongsView._playAll: 获取第一首歌曲 URL: ${first.path}');
+      final url = await firstConnection.adapter.fileSystem.getFileUrl(first.path);
       final musicItem = MusicItem.fromFileItem(first.file, url, sourceId: first.sourceId);
 
       final queue = <MusicItem>[];
       for (final track in tracks.take(100)) {
-        final trackUrl = await adapter.fileSystem.getFileUrl(track.path);
+        final conn = connections[track.sourceId];
+        if (conn == null || conn.status != SourceStatus.connected) continue;
+        final trackUrl = await conn.adapter.fileSystem.getFileUrl(track.path);
         queue.add(MusicItem.fromFileItem(track.file, trackUrl, sourceId: track.sourceId));
       }
+      logger.d('_AllSongsView._playAll: 创建队列完成 (${queue.length} 首)');
 
       ref.read(playQueueProvider.notifier).setQueue(queue);
       await ref.read(musicPlayerControllerProvider.notifier).play(musicItem);
+      logger.i('_AllSongsView._playAll: 播放成功');
 
       if (context.mounted) {
         await Navigator.of(context).push(
           MaterialPageRoute<void>(builder: (context) => const MusicPlayerPage()),
         );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      logger.e('_AllSongsView._playAll: 播放失败', e, stackTrace);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('播放失败: $e')));
       }
@@ -2040,32 +2080,53 @@ class _AllSongsView extends ConsumerWidget {
   }
 
   Future<void> _shufflePlay(BuildContext context, WidgetRef ref) async {
-    if (tracks.isEmpty) return;
-    final adapter = ref.read(activeAdapterProvider);
-    if (adapter == null) return;
+    logger.i('_AllSongsView._shufflePlay: 开始随机播放 (${tracks.length} 首)');
 
+    if (tracks.isEmpty) {
+      logger.w('_AllSongsView._shufflePlay: 没有歌曲可播放');
+      return;
+    }
+
+    final connections = ref.read(activeConnectionsProvider);
     final shuffled = List<MusicFileWithSource>.from(tracks)..shuffle();
     final first = shuffled.first;
 
     try {
-      final url = await adapter.fileSystem.getFileUrl(first.path);
+      final firstConnection = connections[first.sourceId];
+      if (firstConnection == null || firstConnection.status != SourceStatus.connected) {
+        logger.e('_AllSongsView._shufflePlay: 第一首歌曲的源未连接');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('源未连接，请先连接到 NAS')),
+          );
+        }
+        return;
+      }
+
+      logger.d('_AllSongsView._shufflePlay: 获取第一首歌曲 URL: ${first.path}');
+      final url = await firstConnection.adapter.fileSystem.getFileUrl(first.path);
       final musicItem = MusicItem.fromFileItem(first.file, url, sourceId: first.sourceId);
 
       final queue = <MusicItem>[];
       for (final track in shuffled.take(100)) {
-        final trackUrl = await adapter.fileSystem.getFileUrl(track.path);
+        final conn = connections[track.sourceId];
+        if (conn == null || conn.status != SourceStatus.connected) continue;
+        final trackUrl = await conn.adapter.fileSystem.getFileUrl(track.path);
         queue.add(MusicItem.fromFileItem(track.file, trackUrl, sourceId: track.sourceId));
       }
+      logger.d('_AllSongsView._shufflePlay: 创建队列完成 (${queue.length} 首)');
 
       ref.read(playQueueProvider.notifier).setQueue(queue);
       await ref.read(musicPlayerControllerProvider.notifier).play(musicItem);
+      logger.i('_AllSongsView._shufflePlay: 播放成功');
 
       if (context.mounted) {
         await Navigator.of(context).push(
           MaterialPageRoute<void>(builder: (context) => const MusicPlayerPage()),
         );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      logger.e('_AllSongsView._shufflePlay: 播放失败', e, stackTrace);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('播放失败: $e')));
       }
@@ -2389,11 +2450,19 @@ class _MusicListTile extends ConsumerWidget {
   }
 
   Future<void> _playTrack(BuildContext context, WidgetRef ref) async {
-    final adapter = ref.read(activeAdapterProvider);
-    if (adapter == null) return;
+    final connections = ref.read(activeConnectionsProvider);
+    final connection = connections[track.sourceId];
+    if (connection == null || connection.status != SourceStatus.connected) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('源未连接，请先连接到 NAS')),
+        );
+      }
+      return;
+    }
 
-    final url = await adapter.fileSystem.getFileUrl(track.path);
-    final musicItem = MusicItem.fromFileItem(track.file, url);
+    final url = await connection.adapter.fileSystem.getFileUrl(track.path);
+    final musicItem = MusicItem.fromFileItem(track.file, url, sourceId: track.sourceId);
 
     if (!context.mounted) return;
 
@@ -2407,11 +2476,19 @@ class _MusicListTile extends ConsumerWidget {
   }
 
   Future<void> _handleMenuAction(BuildContext context, WidgetRef ref, String action) async {
-    final adapter = ref.read(activeAdapterProvider);
-    if (adapter == null) return;
+    final connections = ref.read(activeConnectionsProvider);
+    final connection = connections[track.sourceId];
+    if (connection == null || connection.status != SourceStatus.connected) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('源未连接，请先连接到 NAS')),
+        );
+      }
+      return;
+    }
 
-    final url = await adapter.fileSystem.getFileUrl(track.path);
-    final musicItem = MusicItem.fromFileItem(track.file, url);
+    final url = await connection.adapter.fileSystem.getFileUrl(track.path);
+    final musicItem = MusicItem.fromFileItem(track.file, url, sourceId: track.sourceId);
 
     switch (action) {
       case 'play_next':
@@ -3543,15 +3620,18 @@ class _PlaylistTile extends ConsumerWidget {
       return;
     }
 
-    final adapter = ref.read(activeAdapterProvider);
-    if (adapter == null) return;
+    final connections = ref.read(activeConnectionsProvider);
 
     // 根据路径找到对应的歌曲
     final musicItems = <MusicItem>[];
     for (final path in playlist.trackPaths) {
       final track = allTracks.where((t) => t.path == path).firstOrNull;
       if (track != null) {
-        final url = await adapter.fileSystem.getFileUrl(track.path);
+        final connection = connections[track.sourceId];
+        if (connection == null || connection.status != SourceStatus.connected) {
+          continue; // 跳过未连接源的歌曲
+        }
+        final url = await connection.adapter.fileSystem.getFileUrl(track.path);
         musicItems.add(MusicItem.fromFileItem(track.file, url, sourceId: track.sourceId));
       }
     }
@@ -3801,14 +3881,19 @@ class _PlaylistDetailSheet extends ConsumerWidget {
   ) async {
     if (tracksInPlaylist.isEmpty) return;
 
-    final adapter = ref.read(activeAdapterProvider);
-    if (adapter == null) return;
+    final connections = ref.read(activeConnectionsProvider);
 
     final musicItems = <MusicItem>[];
     for (final track in tracksInPlaylist) {
-      final url = await adapter.fileSystem.getFileUrl(track.path);
+      final connection = connections[track.sourceId];
+      if (connection == null || connection.status != SourceStatus.connected) {
+        continue; // 跳过未连接源的歌曲
+      }
+      final url = await connection.adapter.fileSystem.getFileUrl(track.path);
       musicItems.add(MusicItem.fromFileItem(track.file, url, sourceId: track.sourceId));
     }
+
+    if (musicItems.isEmpty) return;
 
     ref.read(playQueueProvider.notifier).setQueue(musicItems);
     await ref.read(musicPlayerControllerProvider.notifier).play(musicItems.first);
@@ -3894,10 +3979,18 @@ class _PlaylistTrackTile extends ConsumerWidget {
   }
 
   Future<void> _playTrack(BuildContext context, WidgetRef ref) async {
-    final adapter = ref.read(activeAdapterProvider);
-    if (adapter == null) return;
+    final connections = ref.read(activeConnectionsProvider);
+    final connection = connections[track.sourceId];
+    if (connection == null || connection.status != SourceStatus.connected) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('源未连接，请先连接到 NAS')),
+        );
+      }
+      return;
+    }
 
-    final url = await adapter.fileSystem.getFileUrl(track.path);
+    final url = await connection.adapter.fileSystem.getFileUrl(track.path);
     final musicItem = MusicItem.fromFileItem(track.file, url, sourceId: track.sourceId);
 
     if (!context.mounted) return;
@@ -3978,31 +4071,76 @@ class _CompactMusicTile extends ConsumerWidget {
   }
 
   Future<void> _playTrack(BuildContext context, WidgetRef ref) async {
-    final adapter = ref.read(activeAdapterProvider);
-    if (adapter == null) return;
+    logger.i('_CompactMusicTile._playTrack: 开始播放 ${track.name}');
 
-    final url = await adapter.fileSystem.getFileUrl(track.path);
-    final musicItem = MusicItem.fromFileItem(track.file, url, sourceId: track.sourceId);
+    // 通过 sourceId 从已连接的源中获取适配器
+    final connections = ref.read(activeConnectionsProvider);
+    final connection = connections[track.sourceId];
+    if (connection == null || connection.status != SourceStatus.connected) {
+      logger.e('_CompactMusicTile._playTrack: 源未连接 sourceId=${track.sourceId}');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('源未连接，请先连接到 NAS')),
+        );
+      }
+      return;
+    }
+    final adapter = connection.adapter;
 
-    if (!context.mounted) return;
+    try {
+      logger.d('_CompactMusicTile._playTrack: 获取文件 URL: ${track.path}');
+      final url = await adapter.fileSystem.getFileUrl(track.path);
+      logger.d('_CompactMusicTile._playTrack: 获取到 URL: $url');
 
-    await ref.read(musicPlayerControllerProvider.notifier).play(musicItem);
+      final musicItem = MusicItem.fromFileItem(track.file, url, sourceId: track.sourceId);
+      logger.d('_CompactMusicTile._playTrack: 创建 MusicItem 成功');
 
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (context) => const MusicPlayerPage(),
-      ),
-    );
+      if (!context.mounted) {
+        logger.w('_CompactMusicTile._playTrack: context 已卸载');
+        return;
+      }
+
+      logger.d('_CompactMusicTile._playTrack: 调用播放器播放');
+      await ref.read(musicPlayerControllerProvider.notifier).play(musicItem);
+      logger.i('_CompactMusicTile._playTrack: 播放成功，跳转到播放页');
+
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (context) => const MusicPlayerPage(),
+        ),
+      );
+    } catch (e, stackTrace) {
+      logger.e('_CompactMusicTile._playTrack: 播放失败', e, stackTrace);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('播放失败: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _handleAction(BuildContext context, WidgetRef ref, String action) async {
-    final adapter = ref.read(activeAdapterProvider);
-    if (adapter == null) return;
+    logger.i('_CompactMusicTile._handleAction: action=$action, track=${track.name}');
 
-    final url = await adapter.fileSystem.getFileUrl(track.path);
-    final musicItem = MusicItem.fromFileItem(track.file, url, sourceId: track.sourceId);
+    // 通过 sourceId 从已连接的源中获取适配器
+    final connections = ref.read(activeConnectionsProvider);
+    final connection = connections[track.sourceId];
+    if (connection == null || connection.status != SourceStatus.connected) {
+      logger.e('_CompactMusicTile._handleAction: 源未连接 sourceId=${track.sourceId}');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('源未连接，请先连接到 NAS')),
+        );
+      }
+      return;
+    }
+    final adapter = connection.adapter;
 
-    switch (action) {
+    try {
+      final url = await adapter.fileSystem.getFileUrl(track.path);
+      final musicItem = MusicItem.fromFileItem(track.file, url, sourceId: track.sourceId);
+
+      switch (action) {
       case 'play_next':
         final queue = ref.read(playQueueProvider);
         final playerState = ref.read(musicPlayerControllerProvider);
@@ -4037,6 +4175,14 @@ class _CompactMusicTile extends ConsumerWidget {
         if (context.mounted) {
           _showAddToPlaylistSheet(context, ref, track.path);
         }
+      }
+    } catch (e, stackTrace) {
+      logger.e('_CompactMusicTile._handleAction: 操作失败', e, stackTrace);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('操作失败: $e')),
+        );
+      }
     }
   }
 
@@ -4224,15 +4370,20 @@ class _PlayAllButton extends ConsumerWidget {
   Future<void> _playAll(BuildContext context, WidgetRef ref) async {
     if (tracks.isEmpty) return;
 
-    final adapter = ref.read(activeAdapterProvider);
-    if (adapter == null) return;
+    final connections = ref.read(activeConnectionsProvider);
 
     // 转换所有曲目
     final musicItems = <MusicItem>[];
     for (final track in tracks) {
-      final url = await adapter.fileSystem.getFileUrl(track.path);
+      final connection = connections[track.sourceId];
+      if (connection == null || connection.status != SourceStatus.connected) {
+        continue; // 跳过未连接源的歌曲
+      }
+      final url = await connection.adapter.fileSystem.getFileUrl(track.path);
       musicItems.add(MusicItem.fromFileItem(track.file, url, sourceId: track.sourceId));
     }
+
+    if (musicItems.isEmpty) return;
 
     // 设置播放队列并播放第一首
     ref.read(playQueueProvider.notifier).setQueue(musicItems);
