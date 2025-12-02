@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
+import 'package:my_nas/features/music/presentation/providers/lyric_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_favorites_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
+import 'package:my_nas/features/music/presentation/widgets/lyric_view.dart';
 import 'package:my_nas/features/music/presentation/widgets/music_queue_sheet.dart';
 import 'package:my_nas/features/music/presentation/widgets/music_settings_sheet.dart';
 
@@ -19,6 +21,7 @@ class MusicPlayerPage extends ConsumerStatefulWidget {
 class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
     with SingleTickerProviderStateMixin {
   late AnimationController _rotationController;
+  bool _showLyrics = false;
 
   @override
   void initState() {
@@ -27,12 +30,22 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
       duration: const Duration(seconds: 20),
       vsync: this,
     );
+
+    // 加载歌词
+    final currentMusic = ref.read(currentMusicProvider);
+    if (currentMusic != null) {
+      ref.read(currentLyricProvider.notifier).loadLyrics(currentMusic);
+    }
   }
 
   @override
   void dispose() {
     _rotationController.dispose();
     super.dispose();
+  }
+
+  void _toggleLyricView() {
+    setState(() => _showLyrics = !_showLyrics);
   }
 
   @override
@@ -85,27 +98,171 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
           ),
         ),
         child: SafeArea(
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 400),
+            child: _showLyrics
+                ? _buildLyricMode(context, ref, currentMusic, playerState, isDark)
+                : _buildCoverMode(context, ref, currentMusic, playerState, isDark),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 封面模式
+  Widget _buildCoverMode(
+    BuildContext context,
+    WidgetRef ref,
+    MusicItem currentMusic,
+    MusicPlayerState playerState,
+    bool isDark,
+  ) {
+    return Column(
+      key: const ValueKey('cover_mode'),
+      children: [
+        const Spacer(flex: 2),
+        // 封面（点击切换到歌词）
+        GestureDetector(
+          onTap: _toggleLyricView,
+          child: _buildCover(context, currentMusic, playerState, isDark),
+        ),
+        const Spacer(),
+        // 歌曲信息
+        _buildTrackInfo(context, currentMusic, isDark),
+        const SizedBox(height: 8),
+        // 紧凑歌词显示
+        CompactLyricView(onTap: _toggleLyricView),
+        const SizedBox(height: 16),
+        // 进度条
+        _buildProgressBar(context, ref, playerState, isDark),
+        const SizedBox(height: 24),
+        // 控制按钮
+        _buildControlButtons(context, ref, playerState, isDark),
+        const SizedBox(height: 24),
+        // 额外控制
+        _buildExtraControls(context, playerState, isDark),
+        const Spacer(flex: 2),
+      ],
+    );
+  }
+
+  /// 歌词模式
+  Widget _buildLyricMode(
+    BuildContext context,
+    WidgetRef ref,
+    MusicItem currentMusic,
+    MusicPlayerState playerState,
+    bool isDark,
+  ) {
+    return Column(
+      key: const ValueKey('lyric_mode'),
+      children: [
+        // 歌词视图
+        Expanded(
+          child: LyricView(
+            onTap: _toggleLyricView,
+            showFullScreen: true,
+          ),
+        ),
+        // 底部控制区域
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.transparent,
+                (isDark ? AppColors.darkBackground : Colors.grey[100]!)
+                    .withValues(alpha: 0.9),
+                isDark ? AppColors.darkBackground : Colors.grey[100]!,
+              ],
+            ),
+          ),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              const Spacer(flex: 2),
-              // 封面
-              _buildCover(context, currentMusic, playerState, isDark),
-              const Spacer(),
-              // 歌曲信息
-              _buildTrackInfo(context, currentMusic, isDark),
-              const SizedBox(height: 32),
+              // 迷你封面和歌曲信息
+              Row(
+                children: [
+                  // 迷你封面
+                  GestureDetector(
+                    onTap: _toggleLyricView,
+                    child: Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        color: isDark ? Colors.grey[800] : Colors.grey[300],
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.2),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: currentMusic.coverUrl != null
+                          ? Image.network(
+                              currentMusic.coverUrl!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => _buildMiniCoverPlaceholder(isDark),
+                            )
+                          : _buildMiniCoverPlaceholder(isDark),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  // 歌曲信息
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          currentMusic.displayTitle,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          currentMusic.displayArtist,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: isDark ? Colors.grey[400] : Colors.grey[600],
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
               // 进度条
               _buildProgressBar(context, ref, playerState, isDark),
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
               // 控制按钮
               _buildControlButtons(context, ref, playerState, isDark),
-              const SizedBox(height: 24),
-              // 额外控制
-              _buildExtraControls(context, playerState, isDark),
-              const Spacer(flex: 2),
             ],
           ),
         ),
+      ],
+    );
+  }
+
+  Widget _buildMiniCoverPlaceholder(bool isDark) {
+    return Container(
+      color: isDark ? Colors.grey[800] : Colors.grey[300],
+      child: Icon(
+        Icons.music_note_rounded,
+        size: 28,
+        color: isDark ? Colors.grey[600] : Colors.grey[400],
       ),
     );
   }
@@ -259,7 +416,7 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
                   ),
                 ),
               ),
-              // 内圈
+              // 内圈（封面）
               Container(
                 width: size * 0.9,
                 height: size * 0.9,
@@ -461,11 +618,19 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
                   ),
                 ],
               ),
-              child: Icon(
-                state.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                size: 40,
-                color: Colors.white,
-              ),
+              child: state.isBuffering
+                  ? const Padding(
+                      padding: EdgeInsets.all(20),
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 3,
+                      ),
+                    )
+                  : Icon(
+                      state.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                      size: 40,
+                      color: Colors.white,
+                    ),
             ),
           ),
           // 下一曲
@@ -507,16 +672,14 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
             volume: state.volume,
             isDark: isDark,
           ),
-          // 倍速
-          TextButton(
-            onPressed: () => _showSpeedPicker(context),
-            child: Text(
-              '1.0x',
-              style: TextStyle(
-                fontSize: 14,
-                color: isDark ? Colors.grey[400] : Colors.grey[600],
-              ),
+          // 歌词按钮
+          IconButton(
+            onPressed: _toggleLyricView,
+            icon: Icon(
+              Icons.lyrics_rounded,
+              color: isDark ? Colors.grey[400] : Colors.grey[600],
             ),
+            tooltip: '歌词',
           ),
           // 定时关闭
           IconButton(
@@ -543,57 +706,6 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
         PlayMode.repeatOne => '单曲循环',
         PlayMode.shuffle => '随机播放',
       };
-
-  void _showSpeedPicker(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 16),
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '播放速度',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: isDark ? Colors.white : Colors.black87,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 12,
-              children: [0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((speed) {
-                return ChoiceChip(
-                  label: Text('${speed}x'),
-                  selected: speed == 1.0,
-                  onSelected: (_) {
-                    Navigator.pop(context);
-                    // TODO: Implement speed change
-                  },
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 24),
-          ],
-        ),
-      ),
-    );
-  }
 
   void _showSleepTimer(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -640,7 +752,6 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
                       behavior: SnackBarBehavior.floating,
                     ),
                   );
-                  // TODO: Implement sleep timer
                 },
               );
             }),
@@ -649,10 +760,7 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
                 '播放完当前歌曲后',
                 style: TextStyle(color: isDark ? Colors.white : Colors.black87),
               ),
-              onTap: () {
-                Navigator.pop(context);
-                // TODO: Implement sleep timer
-              },
+              onTap: () => Navigator.pop(context),
             ),
             const SizedBox(height: 8),
           ],

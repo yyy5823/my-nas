@@ -1,9 +1,13 @@
+import 'dart:io';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/presentation/providers/music_favorites_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_settings_provider.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 /// 当前播放的音乐
 final currentMusicProvider = StateProvider<MusicItem?>((ref) => null);
@@ -202,8 +206,23 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
     try {
       logger.d('MusicPlayer: 正在设置音频源...');
-      await _player.setUrl(music.url);
-      logger.d('MusicPlayer: 音频源设置成功');
+
+      // macOS/iOS 需要正确的文件扩展名来识别音频格式
+      // 使用 LockCachingAudioSource 缓存音频并提供正确的文件扩展名
+      final ext = p.extension(music.name).toLowerCase();
+      final cacheDir = await getTemporaryDirectory();
+      final cacheFile = File('${cacheDir.path}/music_cache/${music.name.hashCode}$ext');
+
+      // 确保缓存目录存在
+      await cacheFile.parent.create(recursive: true);
+
+      final audioSource = LockCachingAudioSource(
+        Uri.parse(music.url),
+        cacheFile: cacheFile,
+      );
+
+      await _player.setAudioSource(audioSource);
+      logger.d('MusicPlayer: 音频源设置成功 (使用缓存: ${cacheFile.path})');
 
       if (startPosition != null && startPosition > Duration.zero) {
         await _player.seek(startPosition);
