@@ -604,93 +604,111 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
       return _buildSearchResults(context, ref, state, isDark);
     }
 
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isDesktop = screenWidth > 800;
+    final isWideDesktop = screenWidth > 1200;
+
     return SingleChildScrollView(
-      padding: const EdgeInsets.only(bottom: 16),
+      padding: EdgeInsets.only(
+        bottom: 16,
+        left: isWideDesktop ? 32 : 0,
+        right: isWideDesktop ? 32 : 0,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // 快捷入口网格
-          _buildQuickAccessGrid(context, ref, state, isDark),
+          _buildQuickAccessGrid(context, ref, state, isDark, isDesktop),
 
           const SizedBox(height: 24),
 
           // 最近播放
-          _buildRecentSection(context, ref, state, isDark),
+          _buildRecentSection(context, ref, state, isDark, isDesktop),
 
           const SizedBox(height: 24),
 
           // 我的歌单
-          _buildPlaylistSection(context, ref, state, isDark),
+          _buildPlaylistSection(context, ref, state, isDark, isDesktop),
 
           const SizedBox(height: 24),
 
           // 浏览音乐库
-          _buildBrowseSection(context, ref, state, isDark),
+          _buildBrowseSection(context, ref, state, isDark, isDesktop),
         ],
       ),
     );
   }
 
   /// 快捷入口网格（仿 Spotify 首页）
-  Widget _buildQuickAccessGrid(BuildContext context, WidgetRef ref, MusicListLoaded state, bool isDark) {
+  Widget _buildQuickAccessGrid(BuildContext context, WidgetRef ref, MusicListLoaded state, bool isDark, bool isDesktop) {
     final favoritesState = ref.watch(musicFavoritesProvider);
     final historyState = ref.watch(musicHistoryProvider);
+
+    final cards = [
+      _QuickAccessCard(
+        icon: Icons.favorite_rounded,
+        iconColor: Colors.pink,
+        title: '我喜欢',
+        subtitle: '${favoritesState.favorites.length} 首',
+        isDark: isDark,
+        isDesktop: isDesktop,
+        onTap: () => _navigateToCategory(context, MusicCategory.favorites, state),
+      ),
+      _QuickAccessCard(
+        icon: Icons.history_rounded,
+        iconColor: Colors.blue,
+        title: '最近播放',
+        subtitle: '${historyState.history.length} 首',
+        isDark: isDark,
+        isDesktop: isDesktop,
+        onTap: () => _navigateToCategory(context, MusicCategory.recent, state),
+      ),
+      _QuickAccessCard(
+        icon: Icons.queue_music_rounded,
+        iconColor: AppColors.primary,
+        title: '全部歌曲',
+        subtitle: '${state.tracks.length} 首',
+        isDark: isDark,
+        isDesktop: isDesktop,
+        onTap: () => _navigateToCategory(context, MusicCategory.all, state),
+      ),
+      _QuickAccessCard(
+        icon: Icons.shuffle_rounded,
+        iconColor: Colors.green,
+        title: '随机播放',
+        subtitle: '发现新歌',
+        isDark: isDark,
+        isDesktop: isDesktop,
+        onTap: () => _shufflePlay(context, ref, state),
+      ),
+    ];
+
+    // 桌面模式：4列，移动端：2列
+    final crossAxisCount = isDesktop ? 4 : 2;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: GridView.count(
-        crossAxisCount: 2,
+        crossAxisCount: crossAxisCount,
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
-        mainAxisSpacing: 8,
-        crossAxisSpacing: 8,
-        childAspectRatio: 3.2,
-        children: [
-          _QuickAccessCard(
-            icon: Icons.favorite_rounded,
-            iconColor: Colors.pink,
-            title: '我喜欢',
-            subtitle: '${favoritesState.favorites.length} 首',
-            isDark: isDark,
-            onTap: () => _navigateToCategory(context, MusicCategory.favorites, state),
-          ),
-          _QuickAccessCard(
-            icon: Icons.history_rounded,
-            iconColor: Colors.blue,
-            title: '最近播放',
-            subtitle: '${historyState.history.length} 首',
-            isDark: isDark,
-            onTap: () => _navigateToCategory(context, MusicCategory.recent, state),
-          ),
-          _QuickAccessCard(
-            icon: Icons.queue_music_rounded,
-            iconColor: AppColors.primary,
-            title: '全部歌曲',
-            subtitle: '${state.tracks.length} 首',
-            isDark: isDark,
-            onTap: () => _navigateToCategory(context, MusicCategory.all, state),
-          ),
-          _QuickAccessCard(
-            icon: Icons.shuffle_rounded,
-            iconColor: Colors.green,
-            title: '随机播放',
-            subtitle: '发现新歌',
-            isDark: isDark,
-            onTap: () => _shufflePlay(context, ref, state),
-          ),
-        ],
+        mainAxisSpacing: isDesktop ? 12 : 8,
+        crossAxisSpacing: isDesktop ? 12 : 8,
+        childAspectRatio: isDesktop ? 3.5 : 3.2,
+        children: cards,
       ),
     );
   }
 
   /// 最近播放区域
-  Widget _buildRecentSection(BuildContext context, WidgetRef ref, MusicListLoaded state, bool isDark) {
+  Widget _buildRecentSection(BuildContext context, WidgetRef ref, MusicListLoaded state, bool isDark, bool isDesktop) {
     final historyState = ref.watch(musicHistoryProvider);
     if (historyState.history.isEmpty) return const SizedBox.shrink();
 
     // 从所有歌曲中找到最近播放的
     final recentSongs = <MusicFileWithSource>[];
-    for (final historyItem in historyState.history.take(10)) {
+    final maxItems = isDesktop ? 20 : 10;
+    for (final historyItem in historyState.history.take(maxItems)) {
       final track = state.tracks.where((t) => t.path == historyItem.musicPath).firstOrNull;
       if (track != null) recentSongs.add(track);
     }
@@ -707,7 +725,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
               Text(
                 '最近播放',
                 style: TextStyle(
-                  fontSize: 18,
+                  fontSize: isDesktop ? 20 : 18,
                   fontWeight: FontWeight.bold,
                   color: isDark ? Colors.white : Colors.black87,
                 ),
@@ -719,29 +737,55 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
             ],
           ),
         ),
-        const SizedBox(height: 8),
-        SizedBox(
-          height: 160,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
+        const SizedBox(height: 12),
+        // 桌面模式使用网格，移动端使用横向滚动
+        if (isDesktop)
+          Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: recentSongs.length,
-            itemBuilder: (context, index) {
-              final track = recentSongs[index];
-              return _RecentTrackCard(
-                track: track,
-                isDark: isDark,
-                onTap: () => _playTrack(context, ref, track, state.tracks),
-              );
-            },
+            child: GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 180,
+                mainAxisSpacing: 16,
+                crossAxisSpacing: 16,
+                childAspectRatio: 0.8,
+              ),
+              itemCount: recentSongs.length > 8 ? 8 : recentSongs.length,
+              itemBuilder: (context, index) {
+                final track = recentSongs[index];
+                return _RecentTrackCard(
+                  track: track,
+                  isDark: isDark,
+                  isDesktop: true,
+                  onTap: () => _playTrack(context, ref, track, state.tracks),
+                );
+              },
+            ),
+          )
+        else
+          SizedBox(
+            height: 160,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: recentSongs.length,
+              itemBuilder: (context, index) {
+                final track = recentSongs[index];
+                return _RecentTrackCard(
+                  track: track,
+                  isDark: isDark,
+                  onTap: () => _playTrack(context, ref, track, state.tracks),
+                );
+              },
+            ),
           ),
-        ),
       ],
     );
   }
 
   /// 歌单区域
-  Widget _buildPlaylistSection(BuildContext context, WidgetRef ref, MusicListLoaded state, bool isDark) {
+  Widget _buildPlaylistSection(BuildContext context, WidgetRef ref, MusicListLoaded state, bool isDark, bool isDesktop) {
     final playlistState = ref.watch(playlistProvider);
     final playlists = playlistState.playlists;
 
@@ -756,7 +800,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
               Text(
                 '我的歌单',
                 style: TextStyle(
-                  fontSize: 18,
+                  fontSize: isDesktop ? 20 : 18,
                   fontWeight: FontWeight.bold,
                   color: isDark ? Colors.white : Colors.black87,
                 ),
@@ -769,13 +813,39 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
             ],
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),
         if (playlists.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: _EmptyPlaylistHint(
               isDark: isDark,
+              isDesktop: isDesktop,
               onCreateTap: () => _showCreatePlaylistDialog(context, ref),
+            ),
+          )
+        else if (isDesktop)
+          // 桌面模式使用网格布局
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 280,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                childAspectRatio: 2.5,
+              ),
+              itemCount: playlists.length,
+              itemBuilder: (context, index) {
+                final playlist = playlists[index];
+                return _PlaylistCard(
+                  playlist: playlist,
+                  isDark: isDark,
+                  allTracks: state.tracks,
+                  isDesktop: true,
+                );
+              },
             ),
           )
         else
@@ -800,7 +870,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
   }
 
   /// 浏览音乐库区域
-  Widget _buildBrowseSection(BuildContext context, WidgetRef ref, MusicListLoaded state, bool isDark) {
+  Widget _buildBrowseSection(BuildContext context, WidgetRef ref, MusicListLoaded state, bool isDark, bool isDesktop) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -809,7 +879,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
           child: Text(
             '浏览音乐库',
             style: TextStyle(
-              fontSize: 18,
+              fontSize: isDesktop ? 20 : 18,
               fontWeight: FontWeight.bold,
               color: isDark ? Colors.white : Colors.black87,
             ),
@@ -819,14 +889,15 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: isDesktop ? 16 : 8,
+            runSpacing: isDesktop ? 12 : 8,
             children: [
               _BrowseChip(
                 icon: Icons.person_rounded,
                 label: '艺术家',
                 color: Colors.purple,
                 isDark: isDark,
+                isDesktop: isDesktop,
                 onTap: () => _navigateToCategory(context, MusicCategory.artists, state),
               ),
               _BrowseChip(
@@ -834,6 +905,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
                 label: '专辑',
                 color: Colors.orange,
                 isDark: isDark,
+                isDesktop: isDesktop,
                 onTap: () => _navigateToCategory(context, MusicCategory.albums, state),
               ),
               _BrowseChip(
@@ -841,6 +913,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
                 label: '文件夹',
                 color: Colors.teal,
                 isDark: isDark,
+                isDesktop: isDesktop,
                 onTap: () => _navigateToCategory(context, MusicCategory.folders, state),
               ),
             ],
@@ -1304,6 +1377,7 @@ class _QuickAccessCard extends StatelessWidget {
     required this.subtitle,
     required this.isDark,
     required this.onTap,
+    this.isDesktop = false,
   });
 
   final IconData icon;
@@ -1312,19 +1386,28 @@ class _QuickAccessCard extends StatelessWidget {
   final String subtitle;
   final bool isDark;
   final VoidCallback onTap;
+  final bool isDesktop;
 
   @override
   Widget build(BuildContext context) {
+    final iconSize = isDesktop ? 48.0 : 40.0;
+    final iconInnerSize = isDesktop ? 24.0 : 20.0;
+
     return Material(
       color: isDark ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5) : Colors.white,
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(isDesktop ? 12 : 8),
+      elevation: isDesktop ? 2 : 0,
+      shadowColor: Colors.black26,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(isDesktop ? 12 : 8),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: EdgeInsets.symmetric(
+            horizontal: isDesktop ? 16 : 12,
+            vertical: isDesktop ? 12 : 8,
+          ),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(isDesktop ? 12 : 8),
             border: isDark
                 ? null
                 : Border.all(color: Colors.grey.withValues(alpha: 0.2)),
@@ -1332,15 +1415,15 @@ class _QuickAccessCard extends StatelessWidget {
           child: Row(
             children: [
               Container(
-                width: 40,
-                height: 40,
+                width: iconSize,
+                height: iconSize,
                 decoration: BoxDecoration(
                   color: iconColor.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(isDesktop ? 12 : 8),
                 ),
-                child: Icon(icon, color: iconColor, size: 20),
+                child: Icon(icon, color: iconColor, size: iconInnerSize),
               ),
-              const SizedBox(width: 12),
+              SizedBox(width: isDesktop ? 16 : 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1349,23 +1432,29 @@ class _QuickAccessCard extends StatelessWidget {
                     Text(
                       title,
                       style: TextStyle(
-                        fontSize: 13,
+                        fontSize: isDesktop ? 15 : 13,
                         fontWeight: FontWeight.w600,
                         color: isDark ? Colors.white : Colors.black87,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
+                    const SizedBox(height: 2),
                     Text(
                       subtitle,
                       style: TextStyle(
-                        fontSize: 11,
+                        fontSize: isDesktop ? 13 : 11,
                         color: isDark ? Colors.grey[400] : Colors.grey[600],
                       ),
                     ),
                   ],
                 ),
               ),
+              if (isDesktop)
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: isDark ? Colors.grey[600] : Colors.grey[400],
+                ),
             ],
           ),
         ),
@@ -1374,130 +1463,195 @@ class _QuickAccessCard extends StatelessWidget {
   }
 }
 
-/// 最近播放卡片（横向滚动）
+/// 最近播放卡片
 class _RecentTrackCard extends StatelessWidget {
   const _RecentTrackCard({
     required this.track,
     required this.isDark,
     required this.onTap,
+    this.isDesktop = false,
   });
 
   final MusicFileWithSource track;
   final bool isDark;
   final VoidCallback onTap;
+  final bool isDesktop;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 120,
-        margin: const EdgeInsets.only(right: 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    AppColors.primary.withValues(alpha: 0.6),
-                    AppColors.secondary.withValues(alpha: 0.6),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+    final coverSize = isDesktop ? 140.0 : 120.0;
+    final parsed = MusicItem.parseFileName(track.name);
+    final title = parsed.$2;
+    final artist = parsed.$1;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(isDesktop ? 12 : 8),
+        child: Container(
+          width: isDesktop ? null : 120,
+          margin: isDesktop ? null : const EdgeInsets.only(right: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: coverSize,
+                height: coverSize,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      AppColors.primary.withValues(alpha: 0.7),
+                      AppColors.secondary.withValues(alpha: 0.7),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(isDesktop ? 12 : 8),
+                  boxShadow: isDesktop
+                      ? [
+                          BoxShadow(
+                            color: AppColors.primary.withValues(alpha: 0.3),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ]
+                      : null,
                 ),
-                borderRadius: BorderRadius.circular(8),
+                child: Icon(
+                  Icons.music_note_rounded,
+                  size: isDesktop ? 56 : 48,
+                  color: Colors.white,
+                ),
               ),
-              child: const Icon(Icons.music_note_rounded, size: 48, color: Colors.white),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              track.name.replaceAll(RegExp(r'\.[^.]+$'), ''),
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: isDark ? Colors.white : Colors.black87,
+              SizedBox(height: isDesktop ? 12 : 8),
+              SizedBox(
+                width: coverSize,
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: isDesktop ? 14 : 12,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
+                  maxLines: isDesktop ? 1 : 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
+              if (isDesktop && artist != null)
+                SizedBox(
+                  width: coverSize,
+                  child: Text(
+                    artist,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-/// 歌单卡片（横向滚动）
+/// 歌单卡片
 class _PlaylistCard extends ConsumerWidget {
   const _PlaylistCard({
     required this.playlist,
     required this.isDark,
     required this.allTracks,
+    this.isDesktop = false,
   });
 
   final PlaylistEntry playlist;
   final bool isDark;
   final List<MusicFileWithSource> allTracks;
+  final bool isDesktop;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return GestureDetector(
-      onTap: () => _showPlaylistDetail(context, ref),
-      child: Container(
-        width: 160,
-        margin: const EdgeInsets.only(right: 12),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: isDark ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5) : Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: isDark ? null : Border.all(color: Colors.grey.withValues(alpha: 0.2)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [AppColors.primary, AppColors.secondary],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+    final iconSize = isDesktop ? 64.0 : 56.0;
+    final iconInnerSize = isDesktop ? 32.0 : 28.0;
+
+    return Material(
+      color: isDark ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5) : Colors.white,
+      borderRadius: BorderRadius.circular(isDesktop ? 16 : 12),
+      elevation: isDesktop ? 2 : 0,
+      shadowColor: Colors.black26,
+      child: InkWell(
+        onTap: () => _showPlaylistDetail(context, ref),
+        borderRadius: BorderRadius.circular(isDesktop ? 16 : 12),
+        child: Container(
+          width: isDesktop ? null : 160,
+          margin: isDesktop ? null : const EdgeInsets.only(right: 12),
+          padding: EdgeInsets.all(isDesktop ? 16 : 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(isDesktop ? 16 : 12),
+            border: isDark ? null : Border.all(color: Colors.grey.withValues(alpha: 0.2)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: iconSize,
+                height: iconSize,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [AppColors.primary, AppColors.secondary],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(isDesktop ? 12 : 8),
+                  boxShadow: isDesktop
+                      ? [
+                          BoxShadow(
+                            color: AppColors.primary.withValues(alpha: 0.3),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ]
+                      : null,
                 ),
-                borderRadius: BorderRadius.circular(8),
+                child: Icon(Icons.queue_music_rounded, color: Colors.white, size: iconInnerSize),
               ),
-              child: const Icon(Icons.queue_music_rounded, color: Colors.white, size: 28),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    playlist.name,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: isDark ? Colors.white : Colors.black87,
+              SizedBox(width: isDesktop ? 16 : 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      playlist.name,
+                      style: TextStyle(
+                        fontSize: isDesktop ? 15 : 13,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? Colors.white : Colors.black87,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '${playlist.trackCount} 首',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    const SizedBox(height: 4),
+                    Text(
+                      '${playlist.trackCount} 首',
+                      style: TextStyle(
+                        fontSize: isDesktop ? 13 : 11,
+                        color: isDark ? Colors.grey[400] : Colors.grey[600],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+              if (isDesktop)
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: isDark ? Colors.grey[600] : Colors.grey[400],
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -1532,49 +1686,94 @@ class _EmptyPlaylistHint extends StatelessWidget {
   const _EmptyPlaylistHint({
     required this.isDark,
     required this.onCreateTap,
+    this.isDesktop = false,
   });
 
   final bool isDark;
   final VoidCallback onCreateTap;
+  final bool isDesktop;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.all(isDesktop ? 32 : 20),
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3) : Colors.grey[100],
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(isDesktop ? 16 : 12),
         border: Border.all(
           color: isDark ? Colors.grey[800]! : Colors.grey[300]!,
           style: BorderStyle.solid,
         ),
       ),
-      child: Column(
-        children: [
-          Icon(
-            Icons.playlist_add_rounded,
-            size: 40,
-            color: isDark ? Colors.grey[500] : Colors.grey[400],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '还没有歌单',
-            style: TextStyle(
-              fontSize: 14,
-              color: isDark ? Colors.grey[400] : Colors.grey[600],
+      child: isDesktop
+          ? Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.playlist_add_rounded,
+                  size: 48,
+                  color: isDark ? Colors.grey[500] : Colors.grey[400],
+                ),
+                const SizedBox(width: 24),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '还没有歌单',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        color: isDark ? Colors.grey[300] : Colors.grey[700],
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '创建歌单来整理你喜欢的音乐',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: isDark ? Colors.grey[500] : Colors.grey[500],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(width: 32),
+                FilledButton.icon(
+                  onPressed: onCreateTap,
+                  icon: const Icon(Icons.add, size: 20),
+                  label: const Text('创建歌单'),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  ),
+                ),
+              ],
+            )
+          : Column(
+              children: [
+                Icon(
+                  Icons.playlist_add_rounded,
+                  size: 40,
+                  color: isDark ? Colors.grey[500] : Colors.grey[400],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '还没有歌单',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: onCreateTap,
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('创建歌单'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  ),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: onCreateTap,
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('创建歌单'),
-            style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -1587,6 +1786,7 @@ class _BrowseChip extends StatelessWidget {
     required this.color,
     required this.isDark,
     required this.onTap,
+    this.isDesktop = false,
   });
 
   final IconData icon;
@@ -1594,30 +1794,46 @@ class _BrowseChip extends StatelessWidget {
   final Color color;
   final bool isDark;
   final VoidCallback onTap;
+  final bool isDesktop;
 
   @override
   Widget build(BuildContext context) {
+    final borderRadius = isDesktop ? 24.0 : 20.0;
+
     return Material(
       color: color.withValues(alpha: isDark ? 0.2 : 0.1),
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(borderRadius),
+      elevation: isDesktop ? 1 : 0,
+      shadowColor: color.withValues(alpha: 0.3),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(borderRadius),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          padding: EdgeInsets.symmetric(
+            horizontal: isDesktop ? 24 : 16,
+            vertical: isDesktop ? 14 : 10,
+          ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 18, color: color),
-              const SizedBox(width: 8),
+              Icon(icon, size: isDesktop ? 22 : 18, color: color),
+              SizedBox(width: isDesktop ? 12 : 8),
               Text(
                 label,
                 style: TextStyle(
-                  fontSize: 13,
+                  fontSize: isDesktop ? 15 : 13,
                   fontWeight: FontWeight.w500,
                   color: isDark ? Colors.white : Colors.black87,
                 ),
               ),
+              if (isDesktop) ...[
+                const SizedBox(width: 8),
+                Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  size: 14,
+                  color: color.withValues(alpha: 0.7),
+                ),
+              ],
             ],
           ),
         ),
