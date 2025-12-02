@@ -280,20 +280,22 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
                       const SizedBox(height: 24),
 
                       // 选项
-                      SwitchListTile(
-                        title: const Text('自动连接'),
-                        subtitle: const Text('启动时自动连接此源'),
-                        value: _autoConnect,
-                        onChanged: (v) => setState(() => _autoConnect = v),
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                      SwitchListTile(
-                        title: const Text('记住设备'),
-                        subtitle: const Text('跳过二次验证（如果支持）'),
-                        value: _rememberDevice,
-                        onChanged: (v) => setState(() => _rememberDevice = v),
-                        contentPadding: EdgeInsets.zero,
-                      ),
+                      if (_sourceType != SourceType.local)
+                        SwitchListTile(
+                          title: const Text('自动连接'),
+                          subtitle: const Text('启动时自动连接此源'),
+                          value: _autoConnect,
+                          onChanged: (v) => setState(() => _autoConnect = v),
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      if (_sourceType != SourceType.local)
+                        SwitchListTile(
+                          title: const Text('记住设备'),
+                          subtitle: const Text('跳过二次验证（如果支持）'),
+                          value: _rememberDevice,
+                          onChanged: (v) => setState(() => _rememberDevice = v),
+                          contentPadding: EdgeInsets.zero,
+                        ),
 
                       // 错误信息
                       if (_errorMessage != null) ...[
