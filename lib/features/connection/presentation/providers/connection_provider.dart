@@ -194,6 +194,10 @@ class ConnectionStateNotifier extends StateNotifier<NasConnectionState> {
     if (message.contains('SocketException')) {
       return '网络连接失败';
     }
+    // Keychain 权限错误
+    if (message.contains('-34018') || message.contains('entitlement')) {
+      return '安全存储不可用，无法保存登录信息';
+    }
     return message;
   }
 

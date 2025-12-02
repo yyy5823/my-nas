@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
@@ -518,7 +519,7 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
       }
     } catch (e) {
       setState(() {
-        _errorMessage = e.toString();
+        _errorMessage = _getErrorMessage(e);
       });
     } finally {
       if (mounted) {
@@ -592,6 +593,39 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
         ),
       ),
     );
+  }
+
+  /// 将错误转换为友好的错误消息
+  String _getErrorMessage(Object e) {
+    final message = e.toString();
+
+    // Keychain/安全存储错误
+    if (e is PlatformException) {
+      if (e.code == 'Unexpected security result code' ||
+          e.message?.contains('-34018') == true ||
+          e.message?.contains('entitlement') == true) {
+        return '安全存储不可用，无法保存登录信息。连接仍然成功，但下次需要重新输入密码。';
+      }
+    }
+
+    // 网络相关错误
+    if (message.contains('Operation not permitted')) {
+      return '网络权限被拒绝，请检查系统设置';
+    }
+    if (message.contains('Connection refused')) {
+      return '连接被拒绝，请检查地址和端口';
+    }
+    if (message.contains('Connection timed out')) {
+      return '连接超时，请检查网络';
+    }
+    if (message.contains('SocketException')) {
+      return '网络连接失败，请检查网络设置';
+    }
+    if (message.contains('HandshakeException')) {
+      return 'SSL 握手失败，请检查 SSL 设置';
+    }
+
+    return message;
   }
 }
 

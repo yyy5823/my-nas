@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:media_kit/media_kit.dart';
@@ -8,10 +9,15 @@ import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/video/data/services/tmdb_service.dart';
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  final widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
+  // 保持 native splash 直到手动移除
+  FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
 
   // Initialize dependencies
   await _initApp();
+
+  // 移除 native splash，立即显示 StartupPage
+  FlutterNativeSplash.remove();
 
   runApp(
     const ProviderScope(

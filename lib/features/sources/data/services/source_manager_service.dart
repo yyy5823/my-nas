@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:my_nas/core/utils/logger.dart';
@@ -89,6 +90,28 @@ class SourceManagerService {
 
   /// 活跃的连接
   final Map<String, SourceConnection> _connections = {};
+
+  /// 安全存储是否可用
+  bool _secureStorageAvailable = true;
+
+  /// 检查并处理安全存储错误
+  ///
+  /// 返回 true 表示是可恢复的存储错误（应静默处理）
+  bool _handleSecureStorageError(Object error, String operation) {
+    if (error is PlatformException) {
+      // Keychain entitlement 错误 (-34018)
+      if (error.code == 'Unexpected security result code' ||
+          error.message?.contains('-34018') == true) {
+        logger.w(
+          'SourceManagerService: 安全存储不可用 ($operation) - '
+          '可能缺少 Keychain entitlement 权限，凭证保存功能已禁用',
+        );
+        _secureStorageAvailable = false;
+        return true;
+      }
+    }
+    return false;
+  }
 
   /// 初始化
   Future<void> init() async {
@@ -198,38 +221,70 @@ class SourceManagerService {
   // ============ 凭证管理（使用安全存储）============
 
   /// 保存凭证到安全存储
-  Future<void> saveCredential(String sourceId, SourceCredential credential) async {
-    final key = '$_credentialPrefix$sourceId';
-    final value = jsonEncode(credential.toJson());
-    await _secureStorage.write(key: key, value: value);
-    logger.i('SourceManagerService: 保存凭证到安全存储 $sourceId (deviceId: ${credential.deviceId != null ? "有" : "无"})');
+  ///
+  /// 返回 true 表示保存成功，false 表示存储不可用
+  Future<bool> saveCredential(String sourceId, SourceCredential credential) async {
+    if (!_secureStorageAvailable) {
+      logger.d('SourceManagerService: 安全存储不可用，跳过保存凭证 $sourceId');
+      return false;
+    }
+
+    try {
+      final key = '$_credentialPrefix$sourceId';
+      final value = jsonEncode(credential.toJson());
+      await _secureStorage.write(key: key, value: value);
+      logger.i('SourceManagerService: 保存凭证到安全存储 $sourceId (deviceId: ${credential.deviceId != null ? "有" : "无"})');
+      return true;
+    } catch (e) {
+      if (_handleSecureStorageError(e, 'saveCredential')) {
+        return false;
+      }
+      rethrow;
+    }
   }
 
   /// 从安全存储获取凭证
   Future<SourceCredential?> getCredential(String sourceId) async {
-    final key = '$_credentialPrefix$sourceId';
-    final value = await _secureStorage.read(key: key);
-    if (value == null) {
-      logger.d('SourceManagerService: 未找到凭证 $sourceId');
+    if (!_secureStorageAvailable) {
       return null;
     }
 
     try {
+      final key = '$_credentialPrefix$sourceId';
+      final value = await _secureStorage.read(key: key);
+      if (value == null) {
+        logger.d('SourceManagerService: 未找到凭证 $sourceId');
+        return null;
+      }
+
       final json = jsonDecode(value) as Map<String, dynamic>;
       final credential = SourceCredential.fromJson(json);
       logger.d('SourceManagerService: 读取凭证成功 $sourceId (deviceId: ${credential.deviceId != null ? "有" : "无"})');
       return credential;
     } catch (e) {
-      logger.e('SourceManagerService: 解析凭证失败', e);
+      if (_handleSecureStorageError(e, 'getCredential')) {
+        return null;
+      }
+      logger.e('SourceManagerService: 读取/解析凭证失败', e);
       return null;
     }
   }
 
   /// 从安全存储删除凭证
   Future<void> removeCredential(String sourceId) async {
-    final key = '$_credentialPrefix$sourceId';
-    await _secureStorage.delete(key: key);
-    logger.i('SourceManagerService: 删除凭证 $sourceId');
+    if (!_secureStorageAvailable) {
+      return;
+    }
+
+    try {
+      final key = '$_credentialPrefix$sourceId';
+      await _secureStorage.delete(key: key);
+      logger.i('SourceManagerService: 删除凭证 $sourceId');
+    } catch (e) {
+      if (!_handleSecureStorageError(e, 'removeCredential')) {
+        logger.e('SourceManagerService: 删除凭证失败', e);
+      }
+    }
   }
 
   /// 更新设备ID（保留密码）
@@ -248,6 +303,9 @@ class SourceManagerService {
       logger.w('SourceManagerService: 无法更新设备ID，未找到凭证 $sourceId');
     }
   }
+
+  /// 检查安全存储是否可用
+  bool get isSecureStorageAvailable => _secureStorageAvailable;
 
   // ============ 连接管理 ============
 
