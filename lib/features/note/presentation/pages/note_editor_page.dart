@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -65,16 +66,33 @@ class NoteEditorNotifier extends StateNotifier<NoteEditorState> {
     state = NoteEditorLoading();
 
     try {
-      final response = await InsecureHttpClient.get(Uri.parse(note.url));
-      if (response.statusCode != 200) {
-        throw Exception('加载失败: ${response.statusCode}');
-      }
-
       String content;
-      try {
-        content = utf8.decode(response.bodyBytes);
-      } on FormatException {
-        content = String.fromCharCodes(response.bodyBytes);
+      final uri = Uri.parse(note.url);
+
+      // 检查是否为本地文件 (file:// 协议)
+      if (uri.scheme == 'file') {
+        // 本地文件直接读取
+        final file = File(uri.toFilePath());
+        if (!await file.exists()) {
+          throw Exception('文件不存在');
+        }
+        final bytes = await file.readAsBytes();
+        try {
+          content = utf8.decode(bytes);
+        } on FormatException {
+          content = String.fromCharCodes(bytes);
+        }
+      } else {
+        // 远程文件通过 HTTP 获取
+        final response = await InsecureHttpClient.get(uri);
+        if (response.statusCode != 200) {
+          throw Exception('加载失败: ${response.statusCode}');
+        }
+        try {
+          content = utf8.decode(response.bodyBytes);
+        } on FormatException {
+          content = String.fromCharCodes(response.bodyBytes);
+        }
       }
 
       final tasks = MarkdownParser.parseTasks(content);
