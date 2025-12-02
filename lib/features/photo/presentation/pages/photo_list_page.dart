@@ -1431,7 +1431,10 @@ class _PhotoGridItem extends ConsumerWidget {
           ? AppColors.darkSurfaceElevated
           : context.colorScheme.surfaceContainerHighest,
       child: InkWell(
-        onTap: () => _openPhotoViewer(context, ref),
+        onTap: () {
+          debugPrint('PhotoGridItem: onTap called for ${photo.name}');
+          _openPhotoViewer(context, ref);
+        },
         child: photo.thumbnailUrl != null
             ? CachedNetworkImage(
                 imageUrl: photo.thumbnailUrl!,
@@ -1455,15 +1458,27 @@ class _PhotoGridItem extends ConsumerWidget {
   }
 
   Future<void> _openPhotoViewer(BuildContext context, WidgetRef ref) async {
+    debugPrint('PhotoViewer: _openPhotoViewer called');
+    debugPrint('PhotoViewer: photo.sourceId = ${photo.sourceId}');
+
     final connections = ref.read(activeConnectionsProvider);
+    debugPrint('PhotoViewer: connections count = ${connections.length}');
+    debugPrint('PhotoViewer: connections keys = ${connections.keys.toList()}');
+
     final connection = connections[photo.sourceId];
-    if (connection == null) return;
+    if (connection == null) {
+      debugPrint('PhotoViewer: connection is null for sourceId=${photo.sourceId}');
+      return;
+    }
+    debugPrint('PhotoViewer: connection found');
 
     // 获取当前点击照片的原图 URL
     String currentUrl;
     try {
       currentUrl = await connection.adapter.fileSystem.getFileUrl(photo.path);
+      debugPrint('PhotoViewer: got currentUrl = $currentUrl');
     } catch (e) {
+      debugPrint('PhotoViewer: failed to get url: $e');
       // 如果获取失败，留空，让查看器去获取
       currentUrl = '';
     }
@@ -1483,19 +1498,46 @@ class _PhotoGridItem extends ConsumerWidget {
         modifiedAt: p.modifiedTime,
       );
     }).toList();
+    debugPrint('PhotoViewer: photoItems count = ${photoItems.length}');
 
-    if (!context.mounted) return;
-
-    // 使用 rootNavigatorKey 确保全屏显示，不受 ShellRoute 影响
-    final navigator = rootNavigatorKey.currentState;
-    if (navigator == null) {
-      debugPrint('PhotoViewer: rootNavigatorKey.currentState is null');
+    if (!context.mounted) {
+      debugPrint('PhotoViewer: context not mounted');
       return;
     }
 
+    // 使用 rootNavigatorKey 确保全屏显示，不受 ShellRoute 影响
+    final navigator = rootNavigatorKey.currentState;
+    debugPrint('PhotoViewer: rootNavigatorKey.currentState = $navigator');
+    if (navigator == null) {
+      debugPrint('PhotoViewer: rootNavigatorKey.currentState is null, trying Navigator.of');
+      // 尝试使用 Navigator.of 作为后备方案
+      if (context.mounted) {
+        await Navigator.of(context, rootNavigator: true).push(
+          MaterialPageRoute<void>(
+            builder: (ctx) => PhotoViewerPage(
+              photos: photoItems,
+              initialIndex: index,
+              getPhotoUrl: (path, sourceId) async {
+                final conn = connections[sourceId];
+                if (conn == null) return null;
+                try {
+                  return await conn.adapter.fileSystem.getFileUrl(path);
+                } catch (e) {
+                  debugPrint('PhotoViewer: 获取URL失败 path=$path, error=$e');
+                  return null;
+                }
+              },
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    debugPrint('PhotoViewer: pushing route');
     await navigator.push(
       MaterialPageRoute<void>(
-        builder: (context) => PhotoViewerPage(
+        builder: (ctx) => PhotoViewerPage(
           photos: photoItems,
           initialIndex: index,
           getPhotoUrl: (path, sourceId) async {
@@ -1513,5 +1555,6 @@ class _PhotoGridItem extends ConsumerWidget {
         ),
       ),
     );
+    debugPrint('PhotoViewer: route pushed successfully');
   }
 }

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/network/http_client.dart';
@@ -9,10 +10,10 @@ import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/note/data/services/markdown_parser.dart';
+import 'package:my_nas/features/note/data/services/note_layout_service.dart';
 import 'package:my_nas/features/note/domain/entities/note_item.dart';
 import 'package:my_nas/features/note/presentation/widgets/note_tree_widget.dart';
 import 'package:my_nas/features/note/presentation/widgets/task_list_widget.dart';
-import 'package:my_nas/features/reading/presentation/pages/reading_page.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
@@ -23,6 +24,7 @@ import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/empty_widget.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
 import 'package:my_nas/shared/widgets/media_setup_widget.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// 笔记页面状态
 final notePageProvider =
@@ -472,6 +474,35 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
   // 侧边栏是否收起
   bool _isSidebarCollapsed = false;
 
+  // 布局服务
+  final _layoutService = NoteLayoutService.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLayoutPrefs();
+  }
+
+  Future<void> _loadLayoutPrefs() async {
+    await _layoutService.init();
+    setState(() {
+      _isSidebarCollapsed = _layoutService.isSidebarCollapsed;
+      _sidebarWidth = _layoutService.sidebarWidth.clamp(_minSidebarWidth, _maxSidebarWidth);
+    });
+  }
+
+  void _setSidebarCollapsed(bool collapsed) {
+    setState(() => _isSidebarCollapsed = collapsed);
+    _layoutService.setSidebarCollapsed(collapsed);
+  }
+
+  void _setSidebarWidth(double width) {
+    setState(() {
+      _sidebarWidth = width.clamp(_minSidebarWidth, _maxSidebarWidth);
+    });
+    _layoutService.setSidebarWidth(_sidebarWidth);
+  }
+
   @override
   void dispose() {
     _editController.dispose();
@@ -792,7 +823,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
             const Spacer(),
             // 收起按钮
             IconButton(
-              onPressed: () => setState(() => _isSidebarCollapsed = true),
+              onPressed: () => _setSidebarCollapsed(true),
               icon: Icon(
                 Icons.chevron_left_rounded,
                 size: 20,
@@ -833,7 +864,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
         children: [
           const SizedBox(height: 8),
           IconButton(
-            onPressed: () => setState(() => _isSidebarCollapsed = false),
+            onPressed: () => _setSidebarCollapsed(false),
             icon: Icon(
               Icons.chevron_right_rounded,
               color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[700],
@@ -848,10 +879,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
   Widget _buildResizeHandle(bool isDark) {
     return GestureDetector(
       onHorizontalDragUpdate: (details) {
-        setState(() {
-          _sidebarWidth += details.delta.dx;
-          _sidebarWidth = _sidebarWidth.clamp(_minSidebarWidth, _maxSidebarWidth);
-        });
+        _setSidebarWidth(_sidebarWidth + details.delta.dx);
       },
       child: MouseRegion(
         cursor: SystemMouseCursors.resizeColumn,
@@ -1449,7 +1477,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
   }
 }
 
-/// 简单的 Markdown 预览组件
+/// Markdown 预览组件（使用 flutter_markdown）
 class _MarkdownPreview extends StatelessWidget {
   const _MarkdownPreview({
     required this.content,
@@ -1461,152 +1489,65 @@ class _MarkdownPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final lines = content.split('\n');
-    final widgets = <Widget>[];
-
-    for (final line in lines) {
-      widgets.add(_buildLine(context, line));
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: widgets,
-    );
-  }
-
-  Widget _buildLine(BuildContext context, String line) {
-    final trimmed = line.trim();
-
-    // 空行
-    if (trimmed.isEmpty) {
-      return const SizedBox(height: 8);
-    }
-
-    // 标题
-    if (trimmed.startsWith('# ')) {
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 12, top: 16),
-        child: Text(
-          trimmed.substring(2),
-          style: context.textTheme.headlineMedium?.copyWith(
-            fontWeight: FontWeight.bold,
-            color: isDark ? AppColors.darkOnSurface : null,
-          ),
+    return MarkdownBody(
+      data: content,
+      selectable: true,
+      onTapLink: (text, href, title) {
+        if (href != null) {
+          launchUrl(Uri.parse(href), mode: LaunchMode.externalApplication);
+        }
+      },
+      styleSheet: MarkdownStyleSheet(
+        // 文本样式
+        p: context.textTheme.bodyMedium?.copyWith(
+          color: isDark ? AppColors.darkOnSurface : null,
+          height: 1.6,
         ),
-      );
-    }
-    if (trimmed.startsWith('## ')) {
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 10, top: 14),
-        child: Text(
-          trimmed.substring(3),
-          style: context.textTheme.headlineSmall?.copyWith(
-            fontWeight: FontWeight.bold,
-            color: isDark ? AppColors.darkOnSurface : null,
-          ),
+        // 标题样式
+        h1: context.textTheme.headlineMedium?.copyWith(
+          fontWeight: FontWeight.bold,
+          color: isDark ? AppColors.darkOnSurface : null,
         ),
-      );
-    }
-    if (trimmed.startsWith('### ')) {
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 8, top: 12),
-        child: Text(
-          trimmed.substring(4),
-          style: context.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.bold,
-            color: isDark ? AppColors.darkOnSurface : null,
-          ),
+        h2: context.textTheme.headlineSmall?.copyWith(
+          fontWeight: FontWeight.bold,
+          color: isDark ? AppColors.darkOnSurface : null,
         ),
-      );
-    }
-
-    // 任务项
-    final taskMatch =
-        RegExp(r'^[-*+]\s*\[([ xX/\-])\]\s*(.+)$').firstMatch(trimmed);
-    if (taskMatch != null) {
-      final isCompleted = taskMatch.group(1)!.toLowerCase() == 'x';
-      final taskContent = taskMatch.group(2)!;
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              isCompleted
-                  ? Icons.check_box_rounded
-                  : Icons.check_box_outline_blank_rounded,
-              size: 20,
-              color: isCompleted
-                  ? Colors.green
-                  : (isDark ? AppColors.darkOnSurfaceVariant : null),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                taskContent,
-                style: context.textTheme.bodyMedium?.copyWith(
-                  decoration: isCompleted ? TextDecoration.lineThrough : null,
-                  color: isCompleted
-                      ? (isDark ? AppColors.darkOnSurfaceVariant : Colors.grey)
-                      : (isDark ? AppColors.darkOnSurface : null),
-                ),
-              ),
-            ),
-          ],
+        h3: context.textTheme.titleLarge?.copyWith(
+          fontWeight: FontWeight.bold,
+          color: isDark ? AppColors.darkOnSurface : null,
         ),
-      );
-    }
-
-    // 列表项
-    if (trimmed.startsWith('- ') ||
-        trimmed.startsWith('* ') ||
-        trimmed.startsWith('+ ')) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '•  ',
-              style: TextStyle(
-                color: isDark ? AppColors.darkOnSurface : null,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            Expanded(
-              child: _buildRichText(context, trimmed.substring(2)),
-            ),
-          ],
+        h4: context.textTheme.titleMedium?.copyWith(
+          fontWeight: FontWeight.bold,
+          color: isDark ? AppColors.darkOnSurface : null,
         ),
-      );
-    }
-
-    // 代码块
-    if (trimmed.startsWith('```')) {
-      return Container(
-        margin: const EdgeInsets.symmetric(vertical: 8),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
+        h5: context.textTheme.titleSmall?.copyWith(
+          fontWeight: FontWeight.bold,
+          color: isDark ? AppColors.darkOnSurface : null,
+        ),
+        h6: context.textTheme.bodyLarge?.copyWith(
+          fontWeight: FontWeight.bold,
+          color: isDark ? AppColors.darkOnSurface : null,
+        ),
+        // 代码样式
+        code: TextStyle(
+          fontFamily: 'monospace',
+          fontSize: 13,
+          color: isDark ? AppColors.darkOnSurface : Colors.black87,
+          backgroundColor: isDark
+              ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
+              : Colors.grey.shade100,
+        ),
+        codeblockDecoration: BoxDecoration(
           color: isDark ? AppColors.darkSurfaceVariant : Colors.grey.shade100,
           borderRadius: BorderRadius.circular(8),
         ),
-        child: Text(
-          trimmed.substring(3),
-          style: TextStyle(
-            fontFamily: 'monospace',
-            fontSize: 13,
-            color: isDark ? AppColors.darkOnSurface : null,
-          ),
+        codeblockPadding: const EdgeInsets.all(12),
+        // 引用样式
+        blockquote: context.textTheme.bodyMedium?.copyWith(
+          fontStyle: FontStyle.italic,
+          color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[700],
         ),
-      );
-    }
-
-    // 引用
-    if (trimmed.startsWith('> ')) {
-      return Container(
-        margin: const EdgeInsets.symmetric(vertical: 8),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
+        blockquoteDecoration: BoxDecoration(
           border: Border(
             left: BorderSide(
               color: AppColors.primary,
@@ -1617,40 +1558,42 @@ class _MarkdownPreview extends StatelessWidget {
               ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
               : Colors.grey.shade50,
         ),
-        child: Text(
-          trimmed.substring(2),
-          style: context.textTheme.bodyMedium?.copyWith(
-            fontStyle: FontStyle.italic,
-            color: isDark ? AppColors.darkOnSurfaceVariant : null,
+        blockquotePadding: const EdgeInsets.all(12),
+        // 链接样式
+        a: TextStyle(
+          color: AppColors.primary,
+          decoration: TextDecoration.underline,
+        ),
+        // 列表样式
+        listBullet: context.textTheme.bodyMedium?.copyWith(
+          color: isDark ? AppColors.darkOnSurface : null,
+        ),
+        // 表格样式
+        tableHead: context.textTheme.bodyMedium?.copyWith(
+          fontWeight: FontWeight.bold,
+          color: isDark ? AppColors.darkOnSurface : null,
+        ),
+        tableBody: context.textTheme.bodyMedium?.copyWith(
+          color: isDark ? AppColors.darkOnSurface : null,
+        ),
+        tableBorder: TableBorder.all(
+          color: isDark
+              ? AppColors.darkOutline.withValues(alpha: 0.3)
+              : Colors.grey.shade300,
+        ),
+        // 水平线
+        horizontalRuleDecoration: BoxDecoration(
+          border: Border(
+            top: BorderSide(
+              color: isDark
+                  ? AppColors.darkOutline.withValues(alpha: 0.3)
+                  : Colors.grey.shade300,
+              width: 1,
+            ),
           ),
         ),
-      );
-    }
-
-    // 普通段落
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: _buildRichText(context, line),
-    );
-  }
-
-  Widget _buildRichText(BuildContext context, String text) {
-    return Text(
-      _stripMarkdown(text),
-      style: context.textTheme.bodyMedium?.copyWith(
-        color: isDark ? AppColors.darkOnSurface : null,
-        height: 1.6,
       ),
     );
-  }
-
-  String _stripMarkdown(String text) {
-    return text
-        .replaceAllMapped(RegExp(r'\*\*(.+?)\*\*'), (m) => m.group(1)!)
-        .replaceAllMapped(RegExp(r'\*(.+?)\*'), (m) => m.group(1)!)
-        .replaceAllMapped(RegExp(r'~~(.+?)~~'), (m) => m.group(1)!)
-        .replaceAllMapped(RegExp(r'`(.+?)`'), (m) => m.group(1)!)
-        .replaceAllMapped(RegExp(r'\[(.+?)\]\(.+?\)'), (m) => m.group(1)!);
   }
 }
 
@@ -1672,6 +1615,35 @@ class _NoteListContentState extends ConsumerState<NoteListContent> {
 
   // 侧边栏是否收起
   bool _isSidebarCollapsed = false;
+
+  // 布局服务
+  final _layoutService = NoteLayoutService.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLayoutPrefs();
+  }
+
+  Future<void> _loadLayoutPrefs() async {
+    await _layoutService.init();
+    setState(() {
+      _isSidebarCollapsed = _layoutService.isSidebarCollapsed;
+      _sidebarWidth = _layoutService.sidebarWidth.clamp(_minSidebarWidth, _maxSidebarWidth);
+    });
+  }
+
+  void _setSidebarCollapsed(bool collapsed) {
+    setState(() => _isSidebarCollapsed = collapsed);
+    _layoutService.setSidebarCollapsed(collapsed);
+  }
+
+  void _setSidebarWidth(double width) {
+    setState(() {
+      _sidebarWidth = width.clamp(_minSidebarWidth, _maxSidebarWidth);
+    });
+    _layoutService.setSidebarWidth(_sidebarWidth);
+  }
 
   @override
   void dispose() {
@@ -1818,7 +1790,7 @@ class _NoteListContentState extends ConsumerState<NoteListContent> {
           const Spacer(),
           // 收起按钮
           IconButton(
-            onPressed: () => setState(() => _isSidebarCollapsed = true),
+            onPressed: () => _setSidebarCollapsed(true),
             icon: Icon(
               Icons.chevron_left_rounded,
               color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[600],
@@ -1850,7 +1822,7 @@ class _NoteListContentState extends ConsumerState<NoteListContent> {
         children: [
           const SizedBox(height: 8),
           IconButton(
-            onPressed: () => setState(() => _isSidebarCollapsed = false),
+            onPressed: () => _setSidebarCollapsed(false),
             icon: Icon(
               Icons.chevron_right_rounded,
               color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[600],
@@ -1866,10 +1838,7 @@ class _NoteListContentState extends ConsumerState<NoteListContent> {
   Widget _buildResizeHandle(bool isDark) {
     return GestureDetector(
       onHorizontalDragUpdate: (details) {
-        setState(() {
-          _sidebarWidth += details.delta.dx;
-          _sidebarWidth = _sidebarWidth.clamp(_minSidebarWidth, _maxSidebarWidth);
-        });
+        _setSidebarWidth(_sidebarWidth + details.delta.dx);
       },
       child: MouseRegion(
         cursor: SystemMouseCursors.resizeColumn,
@@ -1921,88 +1890,10 @@ class _NoteListContentState extends ConsumerState<NoteListContent> {
     return SingleChildScrollView(
       controller: _previewScrollController,
       padding: const EdgeInsets.all(AppSpacing.lg),
-      child: _SimpleMarkdownPreview(
+      child: _MarkdownPreview(
         content: state.content ?? '',
         isDark: isDark,
       ),
-    );
-  }
-}
-
-/// 简易 Markdown 预览（供 NoteListContent 使用）
-class _SimpleMarkdownPreview extends StatelessWidget {
-  const _SimpleMarkdownPreview({
-    required this.content,
-    required this.isDark,
-  });
-
-  final String content;
-  final bool isDark;
-
-  @override
-  Widget build(BuildContext context) {
-    final lines = content.split('\n');
-    final widgets = <Widget>[];
-
-    for (final line in lines) {
-      final trimmed = line.trim();
-      if (trimmed.isEmpty) {
-        widgets.add(const SizedBox(height: 8));
-        continue;
-      }
-
-      // 标题
-      if (trimmed.startsWith('# ')) {
-        widgets.add(Padding(
-          padding: const EdgeInsets.only(bottom: 12, top: 16),
-          child: Text(
-            trimmed.substring(2),
-            style: context.textTheme.headlineMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: isDark ? AppColors.darkOnSurface : null,
-            ),
-          ),
-        ));
-      } else if (trimmed.startsWith('## ')) {
-        widgets.add(Padding(
-          padding: const EdgeInsets.only(bottom: 10, top: 14),
-          child: Text(
-            trimmed.substring(3),
-            style: context.textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: isDark ? AppColors.darkOnSurface : null,
-            ),
-          ),
-        ));
-      } else if (trimmed.startsWith('### ')) {
-        widgets.add(Padding(
-          padding: const EdgeInsets.only(bottom: 8, top: 12),
-          child: Text(
-            trimmed.substring(4),
-            style: context.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: isDark ? AppColors.darkOnSurface : null,
-            ),
-          ),
-        ));
-      } else {
-        // 普通段落
-        widgets.add(Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Text(
-            line,
-            style: context.textTheme.bodyMedium?.copyWith(
-              color: isDark ? AppColors.darkOnSurface : null,
-              height: 1.6,
-            ),
-          ),
-        ));
-      }
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: widgets,
     );
   }
 }
