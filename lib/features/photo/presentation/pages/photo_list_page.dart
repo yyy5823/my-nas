@@ -1460,24 +1460,25 @@ class _PhotoGridItem extends ConsumerWidget {
     final connection = connections[photo.sourceId];
     if (connection == null) return;
 
-    // 只获取当前点击照片的 URL，其他照片使用缩略图，懒加载时再获取原图
+    // 获取当前点击照片的原图 URL
     String currentUrl;
     try {
       currentUrl = await connection.adapter.fileSystem.getFileUrl(photo.path);
     } catch (e) {
-      // 如果获取失败，使用缩略图
-      currentUrl = photo.thumbnailUrl ?? '';
+      // 如果获取失败，留空，让查看器去获取
+      currentUrl = '';
     }
 
-    // 构建照片列表，暂时不获取其他照片的原图 URL
+    // 构建照片列表
+    // 当前照片使用原图 URL，其他照片 url 留空，懒加载时再获取
     final photoItems = allPhotos.map((p) {
       final isCurrentPhoto = p.path == photo.path;
       return PhotoItem(
         name: p.name,
         path: p.path,
-        // 当前照片使用原图 URL，其他照片使用缩略图
-        url: isCurrentPhoto ? currentUrl : (p.thumbnailUrl ?? ''),
-        sourceId: p.sourceId, // 添加 sourceId 以便查看器获取原图
+        // 当前照片使用原图 URL，其他照片 url 为空
+        url: isCurrentPhoto ? currentUrl : '',
+        sourceId: p.sourceId,
         thumbnailUrl: p.thumbnailUrl,
         size: p.size,
         modifiedAt: p.modifiedTime,
@@ -1495,13 +1496,10 @@ class _PhotoGridItem extends ConsumerWidget {
           getPhotoUrl: (path, sourceId) async {
             final conn = connections[sourceId];
             if (conn == null) {
-              debugPrint('PhotoViewer: 连接未找到 sourceId=$sourceId');
               return null;
             }
             try {
-              final url = await conn.adapter.fileSystem.getFileUrl(path);
-              debugPrint('PhotoViewer: 获取URL成功 path=$path');
-              return url;
+              return await conn.adapter.fileSystem.getFileUrl(path);
             } catch (e) {
               debugPrint('PhotoViewer: 获取URL失败 path=$path, error=$e');
               return null;

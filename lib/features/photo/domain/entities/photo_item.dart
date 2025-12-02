@@ -53,6 +53,7 @@ class PhotoItem {
 
   /// 显示的文件大小
   String get displaySize {
+    if (size <= 0) return '未知大小';
     const units = ['B', 'KB', 'MB', 'GB'];
     var unitIndex = 0;
     var displaySize = size.toDouble();

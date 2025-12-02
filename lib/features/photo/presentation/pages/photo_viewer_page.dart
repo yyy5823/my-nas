@@ -345,45 +345,48 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
           mainAxisSize: MainAxisSize.min,
           children: [
             // 照片信息
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // 日期
-                  if (photo.modifiedAt != null) ...[
-                    Icon(
-                      Icons.calendar_today_rounded,
-                      color: Colors.white.withOpacity(0.7),
-                      size: 14,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      DateFormat('yyyy-MM-dd HH:mm').format(photo.modifiedAt!),
-                      style: TextStyle(
+            if (photo.modifiedAt != null || photo.size > 0)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // 日期
+                    if (photo.modifiedAt != null) ...[
+                      Icon(
+                        Icons.calendar_today_rounded,
                         color: Colors.white.withOpacity(0.7),
-                        fontSize: 12,
+                        size: 14,
                       ),
-                    ),
-                    const SizedBox(width: 16),
+                      const SizedBox(width: 6),
+                      Text(
+                        DateFormat('yyyy-MM-dd HH:mm').format(photo.modifiedAt!),
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.7),
+                          fontSize: 12,
+                        ),
+                      ),
+                      if (photo.size > 0) const SizedBox(width: 16),
+                    ],
+                    // 文件大小（仅当 size > 0 时显示）
+                    if (photo.size > 0) ...[
+                      Icon(
+                        Icons.insert_drive_file_outlined,
+                        color: Colors.white.withOpacity(0.7),
+                        size: 14,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        photo.displaySize,
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.7),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
                   ],
-                  // 文件大小
-                  Icon(
-                    Icons.insert_drive_file_outlined,
-                    color: Colors.white.withOpacity(0.7),
-                    size: 14,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    photo.displaySize,
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.7),
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
             // 操作按钮
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -485,7 +488,8 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
               const SizedBox(height: 16),
               _InfoRow(label: '文件名', value: photo.name),
               _InfoRow(label: '路径', value: photo.path),
-              _InfoRow(label: '大小', value: photo.displaySize),
+              if (photo.size > 0)
+                _InfoRow(label: '大小', value: photo.displaySize),
               if (photo.displayResolution != null)
                 _InfoRow(label: '分辨率', value: photo.displayResolution!),
               if (photo.modifiedAt != null)
@@ -629,8 +633,14 @@ class _PhotoPageState extends State<_PhotoPage> {
   void initState() {
     super.initState();
     _loadedUrl = widget.cachedUrl;
+    // 如果没有原图 URL，则加载
     if (_loadedUrl == null || _loadedUrl!.isEmpty) {
-      _loadUrl();
+      // 检查 photo.url 是否有效（不是缩略图）
+      if (widget.photo.url.isNotEmpty && widget.photo.url != widget.photo.thumbnailUrl) {
+        _loadedUrl = widget.photo.url;
+      } else {
+        _loadUrl();
+      }
     }
   }
 
@@ -680,26 +690,29 @@ class _PhotoPageState extends State<_PhotoPage> {
 
   @override
   Widget build(BuildContext context) {
-    // 优先使用已加载的 URL，其次使用原有 URL，最后使用缩略图
+    // 优先使用已加载的 URL，其次使用 photo.url
     final displayUrl = _loadedUrl ?? widget.photo.url;
     final hasThumbnail = widget.photo.thumbnailUrl != null && widget.photo.thumbnailUrl!.isNotEmpty;
     final hasDisplayUrl = displayUrl.isNotEmpty;
+    // 检查是否有原图（不是缩略图）
+    final hasOriginalImage = hasDisplayUrl && displayUrl != widget.photo.thumbnailUrl;
 
     return InteractiveViewer(
       transformationController: _transformController,
       minScale: 0.5,
       maxScale: 4.0,
       child: Center(
-        child: _buildImageContent(displayUrl, hasDisplayUrl, hasThumbnail),
+        child: _buildImageContent(displayUrl, hasDisplayUrl, hasThumbnail, hasOriginalImage),
       ),
     );
   }
 
-  Widget _buildImageContent(String displayUrl, bool hasDisplayUrl, bool hasThumbnail) {
-    if (_hasError && !hasThumbnail) {
+  Widget _buildImageContent(String displayUrl, bool hasDisplayUrl, bool hasThumbnail, bool hasOriginalImage) {
+    if (_hasError && !hasThumbnail && !hasOriginalImage) {
       return _buildErrorWidget(_errorMessage ?? '加载失败');
     }
 
+    // 没有任何可用 URL
     if (!hasDisplayUrl && !hasThumbnail) {
       return _isLoading
           ? const Center(
@@ -708,8 +721,8 @@ class _PhotoPageState extends State<_PhotoPage> {
           : _buildErrorWidget('没有可用的图片');
     }
 
-    // 使用 Image.network 替代 CachedNetworkImage，避免手机端灰色问题
-    if (hasDisplayUrl) {
+    // 有原图 URL，直接加载原图
+    if (hasOriginalImage) {
       return Image.network(
         displayUrl,
         fit: BoxFit.contain,
@@ -717,41 +730,29 @@ class _PhotoPageState extends State<_PhotoPage> {
           if (loadingProgress == null) {
             return child;
           }
-          // 加载中显示缩略图或进度指示器
-          if (hasThumbnail) {
-            return Stack(
-              alignment: Alignment.center,
-              children: [
-                Image.network(
-                  widget.photo.thumbnailUrl!,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                ),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.black54,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: CircularProgressIndicator(
-                    value: loadingProgress.expectedTotalBytes != null
-                        ? loadingProgress.cumulativeBytesLoaded /
-                            loadingProgress.expectedTotalBytes!
-                        : null,
-                    color: Colors.white,
-                    strokeWidth: 2,
-                  ),
-                ),
-              ],
-            );
-          }
+          // 加载中显示进度指示器
+          final progress = loadingProgress.expectedTotalBytes != null
+              ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+              : null;
           return Center(
-            child: CircularProgressIndicator(
-              value: loadingProgress.expectedTotalBytes != null
-                  ? loadingProgress.cumulativeBytesLoaded /
-                      loadingProgress.expectedTotalBytes!
-                  : null,
-              color: Colors.white,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(
+                  value: progress,
+                  color: Colors.white,
+                ),
+                if (progress != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    '${(progress * 100).toInt()}%',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.7),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ],
             ),
           );
         },
@@ -770,18 +771,47 @@ class _PhotoPageState extends State<_PhotoPage> {
       );
     }
 
+    // 没有原图，正在加载中，显示缩略图 + 加载指示器
+    if (_isLoading && hasThumbnail) {
+      return Stack(
+        alignment: Alignment.center,
+        children: [
+          Image.network(
+            widget.photo.thumbnailUrl!,
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+          ),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.black54,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const CircularProgressIndicator(
+              color: Colors.white,
+              strokeWidth: 2,
+            ),
+          ),
+        ],
+      );
+    }
+
     // 只有缩略图
-    return Image.network(
-      widget.photo.thumbnailUrl!,
-      fit: BoxFit.contain,
-      loadingBuilder: (context, child, loadingProgress) {
-        if (loadingProgress == null) return child;
-        return const Center(
-          child: CircularProgressIndicator(color: Colors.white),
-        );
-      },
-      errorBuilder: (_, error, __) => _buildErrorWidget(error.toString()),
-    );
+    if (hasThumbnail) {
+      return Image.network(
+        widget.photo.thumbnailUrl!,
+        fit: BoxFit.contain,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return const Center(
+            child: CircularProgressIndicator(color: Colors.white),
+          );
+        },
+        errorBuilder: (_, error, __) => _buildErrorWidget(error.toString()),
+      );
+    }
+
+    return _buildErrorWidget('没有可用的图片');
   }
 
   Widget _buildErrorWidget(String errorMessage) {
