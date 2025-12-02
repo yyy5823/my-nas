@@ -575,17 +575,151 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
 
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF0D0D0D) : null,
-      body: switch (state) {
-        VideoListLoading(:final progress, :final currentFolder, :final fromCache) =>
-          _buildLoadingState(progress, currentFolder, fromCache, isDark),
-        VideoListError(:final message) => AppErrorWidget(
-            message: message,
-            onRetry: () => ref.read(videoListProvider.notifier).loadVideos(),
+      body: Column(
+        children: [
+          _buildSimpleAppBar(context, ref, isDark, state),
+          Expanded(
+            child: switch (state) {
+              VideoListLoading(:final progress, :final currentFolder, :final fromCache) =>
+                _buildLoadingState(progress, currentFolder, fromCache, isDark),
+              VideoListError(:final message) => AppErrorWidget(
+                  message: message,
+                  onRetry: () => ref.read(videoListProvider.notifier).loadVideos(),
+                ),
+              VideoListLoaded loaded => loaded.videos.isEmpty
+                  ? _buildEmptyState(context, ref, loaded, isDark)
+                  : _buildVideoContent(context, ref, loaded, isDark),
+            },
           ),
-        VideoListLoaded loaded => loaded.videos.isEmpty
-            ? _buildEmptyState(context, ref, loaded, isDark)
-            : _buildNetflixStyleContent(context, ref, loaded, isDark),
-      },
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSimpleAppBar(
+    BuildContext context,
+    WidgetRef ref,
+    bool isDark,
+    VideoListState state,
+  ) {
+    final isLoaded = state is VideoListLoaded;
+    final fromCache = isLoaded && (state).fromCache;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF0D0D0D) : Colors.white,
+        border: Border(
+          bottom: BorderSide(
+            color: isDark
+                ? AppColors.darkOutline.withValues(alpha: 0.2)
+                : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
+          ),
+        ),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            children: [
+              if (!_showSearch) ...[
+                Text(
+                  '视频',
+                  style: context.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : null,
+                  ),
+                ),
+                if (fromCache)
+                  Container(
+                    margin: const EdgeInsets.only(left: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text(
+                      '缓存',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.green,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+              ],
+              if (_showSearch)
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      hintText: '搜索视频...',
+                      hintStyle: TextStyle(
+                        color: isDark ? Colors.grey[500] : null,
+                      ),
+                      border: InputBorder.none,
+                    ),
+                    style: TextStyle(color: isDark ? Colors.white : null),
+                    onChanged: (v) =>
+                        ref.read(videoListProvider.notifier).setSearchQuery(v),
+                  ),
+                ),
+              const Spacer(),
+              _buildIconButton(
+                icon: _showSearch ? Icons.close : Icons.search_rounded,
+                onTap: () {
+                  setState(() {
+                    _showSearch = !_showSearch;
+                    if (!_showSearch) {
+                      _searchController.clear();
+                      ref.read(videoListProvider.notifier).setSearchQuery('');
+                    }
+                  });
+                },
+                isDark: isDark,
+                tooltip: _showSearch ? '关闭' : '搜索',
+              ),
+              _buildIconButton(
+                icon: Icons.refresh_rounded,
+                onTap: () => ref.read(videoListProvider.notifier).forceRefresh(),
+                isDark: isDark,
+                tooltip: '刷新',
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildIconButton({
+    required IconData icon,
+    required VoidCallback onTap,
+    required bool isDark,
+    String? tooltip,
+  }) {
+    return Tooltip(
+      message: tooltip ?? '',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              icon,
+              color: isDark ? Colors.white : null,
+              size: 22,
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -736,7 +870,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     );
   }
 
-  Widget _buildNetflixStyleContent(
+  Widget _buildVideoContent(
     BuildContext context,
     WidgetRef ref,
     VideoListLoaded state,
@@ -744,9 +878,6 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
   ) {
     return CustomScrollView(
       slivers: [
-        // 顶部导航栏
-        _buildAppBar(context, ref, state, isDark),
-
         // 继续观看
         _ContinueWatchingSection(isDark: isDark),
 
@@ -766,85 +897,6 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
 
         // 底部留白
         const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
-      ],
-    );
-  }
-
-  Widget _buildAppBar(
-    BuildContext context,
-    WidgetRef ref,
-    VideoListLoaded state,
-    bool isDark,
-  ) {
-    return SliverAppBar(
-      floating: true,
-      backgroundColor: isDark ? const Color(0xFF0D0D0D) : Colors.white,
-      elevation: 0,
-      title: _showSearch
-          ? TextField(
-              controller: _searchController,
-              autofocus: true,
-              decoration: InputDecoration(
-                hintText: '搜索视频...',
-                hintStyle: TextStyle(color: isDark ? Colors.grey[500] : null),
-                border: InputBorder.none,
-              ),
-              style: TextStyle(color: isDark ? Colors.white : null),
-              onChanged: (v) =>
-                  ref.read(videoListProvider.notifier).setSearchQuery(v),
-            )
-          : Row(
-              children: [
-                Text(
-                  '视频库',
-                  style: context.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: isDark ? Colors.white : null,
-                  ),
-                ),
-                if (state.fromCache)
-                  Container(
-                    margin: const EdgeInsets.only(left: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.green.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: const Text(
-                      '缓存',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Colors.green,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-      actions: [
-        IconButton(
-          onPressed: () {
-            setState(() {
-              _showSearch = !_showSearch;
-              if (!_showSearch) {
-                _searchController.clear();
-                ref.read(videoListProvider.notifier).setSearchQuery('');
-              }
-            });
-          },
-          icon: Icon(
-            _showSearch ? Icons.close : Icons.search_rounded,
-            color: isDark ? Colors.white : null,
-          ),
-        ),
-        IconButton(
-          onPressed: () => ref.read(videoListProvider.notifier).forceRefresh(),
-          icon: Icon(
-            Icons.refresh_rounded,
-            color: isDark ? Colors.white : null,
-          ),
-          tooltip: '刷新',
-        ),
       ],
     );
   }
