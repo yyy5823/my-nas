@@ -666,7 +666,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         size: 0,
       );
 
-      await Navigator.of(context).push(
+      await Navigator.of(context, rootNavigator: true).push(
         MaterialPageRoute<void>(
           builder: (context) => VideoPlayerPage(video: videoItem),
         ),

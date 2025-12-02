@@ -8,9 +8,6 @@ import 'package:my_nas/features/photo/domain/entities/photo_item.dart';
 /// 照片 URL 获取回调
 typedef PhotoUrlGetter = Future<String?> Function(String path, String sourceId);
 
-/// 获取照片 sourceId 回调
-typedef SourceIdGetter = String Function(String photoPath);
-
 /// 照片查看器页面
 class PhotoViewerPage extends StatefulWidget {
   const PhotoViewerPage({
@@ -18,13 +15,11 @@ class PhotoViewerPage extends StatefulWidget {
     required this.photos,
     required this.initialIndex,
     this.getPhotoUrl,
-    this.getSourceId,
   });
 
   final List<PhotoItem> photos;
   final int initialIndex;
   final PhotoUrlGetter? getPhotoUrl;
-  final SourceIdGetter? getSourceId;
 
   @override
   State<PhotoViewerPage> createState() => _PhotoViewerPageState();
@@ -120,10 +115,9 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
       return photo.url;
     }
 
-    // 尝试获取原图 URL
-    if (widget.getPhotoUrl != null && widget.getSourceId != null) {
-      final sourceId = widget.getSourceId!(photo.path);
-      final url = await widget.getPhotoUrl!(photo.path, sourceId);
+    // 尝试通过回调获取原图 URL（使用 PhotoItem 中的 sourceId）
+    if (widget.getPhotoUrl != null && photo.sourceId.isNotEmpty) {
+      final url = await widget.getPhotoUrl!(photo.path, photo.sourceId);
       if (url != null && url.isNotEmpty) {
         _loadedUrls[photo.path] = url;
         if (mounted) setState(() {});
@@ -403,27 +397,36 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
                       label: '信息',
                       onTap: () => _showPhotoInfo(context, photo),
                     ),
+                    // 收藏
+                    _ActionButton(
+                      icon: Icons.favorite_border,
+                      label: '收藏',
+                      onTap: () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('收藏功能开发中'),
+                            duration: Duration(seconds: 1),
+                          ),
+                        );
+                      },
+                    ),
                     // 下载
                     _ActionButton(
                       icon: Icons.download_outlined,
                       label: '下载',
-                      onTap: () {
-                        // TODO: 实现下载功能
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('下载功能开发中')),
-                        );
-                      },
+                      onTap: () => _downloadPhoto(context, photo),
                     ),
                     // 分享
                     _ActionButton(
                       icon: Icons.share_outlined,
                       label: '分享',
-                      onTap: () {
-                        // TODO: 实现分享功能
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('分享功能开发中')),
-                        );
-                      },
+                      onTap: () => _sharePhoto(context, photo),
+                    ),
+                    // 删除
+                    _ActionButton(
+                      icon: Icons.delete_outline,
+                      label: '删除',
+                      onTap: () => _confirmDelete(context, photo),
                     ),
                   ],
                 ),
@@ -496,6 +499,96 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
         ),
       ),
     );
+  }
+
+  /// 下载照片
+  void _downloadPhoto(BuildContext context, PhotoItem photo) {
+    // 获取当前照片的 URL
+    final url = _loadedUrls[photo.path] ?? photo.url;
+    if (url.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('无法获取照片地址'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // TODO: 实现实际下载功能
+    // 可以使用 dio 或 http 包下载文件到本地存储
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('正在下载: ${photo.name}'),
+        duration: const Duration(seconds: 2),
+        action: SnackBarAction(
+          label: '取消',
+          onPressed: () {},
+        ),
+      ),
+    );
+  }
+
+  /// 分享照片
+  void _sharePhoto(BuildContext context, PhotoItem photo) {
+    final url = _loadedUrls[photo.path] ?? photo.url;
+
+    // 复制链接到剪贴板
+    if (url.isNotEmpty) {
+      Clipboard.setData(ClipboardData(text: url));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('照片链接已复制到剪贴板'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('无法获取照片链接'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// 确认删除
+  void _confirmDelete(BuildContext context, PhotoItem photo) {
+    showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: const Text(
+          '删除照片',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: Text(
+          '确定要删除 "${photo.name}" 吗？\n此操作不可恢复。',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    ).then((confirmed) {
+      if (confirmed == true) {
+        // TODO: 实现实际删除功能
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('删除功能开发中'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+      }
+    });
   }
 }
 

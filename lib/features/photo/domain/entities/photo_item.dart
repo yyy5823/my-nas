@@ -6,6 +6,7 @@ class PhotoItem {
     required this.name,
     required this.path,
     required this.url,
+    this.sourceId = '',
     this.thumbnailUrl,
     this.size = 0,
     this.width,
@@ -21,6 +22,7 @@ class PhotoItem {
   final String name;
   final String path;
   final String url;
+  final String sourceId; // 数据源ID
   final String? thumbnailUrl;
   final int size;
   final int? width;
@@ -33,11 +35,17 @@ class PhotoItem {
   final String? cameraModel;
 
   /// 从文件项创建照片项
-  factory PhotoItem.fromFileItem(FileItem file, String url, {String? thumbnailUrl}) =>
+  factory PhotoItem.fromFileItem(
+    FileItem file,
+    String url, {
+    String? thumbnailUrl,
+    String sourceId = '',
+  }) =>
       PhotoItem(
         name: file.name,
         path: file.path,
         url: url,
+        sourceId: sourceId,
         thumbnailUrl: thumbnailUrl ?? file.thumbnailUrl,
         size: file.size,
         modifiedAt: file.modifiedTime,
@@ -74,6 +82,7 @@ class PhotoItem {
     String? name,
     String? path,
     String? url,
+    String? sourceId,
     String? thumbnailUrl,
     int? size,
     int? width,
@@ -89,6 +98,7 @@ class PhotoItem {
         name: name ?? this.name,
         path: path ?? this.path,
         url: url ?? this.url,
+        sourceId: sourceId ?? this.sourceId,
         thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
         size: size ?? this.size,
         width: width ?? this.width,

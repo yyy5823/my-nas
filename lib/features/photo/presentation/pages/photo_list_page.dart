@@ -1285,6 +1285,7 @@ class _PhotoGridItem extends ConsumerWidget {
         path: p.path,
         // 当前照片使用原图 URL，其他照片使用缩略图
         url: isCurrentPhoto ? currentUrl : (p.thumbnailUrl ?? ''),
+        sourceId: p.sourceId, // 添加 sourceId 以便查看器获取原图
         thumbnailUrl: p.thumbnailUrl,
         size: p.size,
         modifiedAt: p.modifiedTime,
@@ -1293,26 +1294,26 @@ class _PhotoGridItem extends ConsumerWidget {
 
     if (!context.mounted) return;
 
-    await Navigator.of(context).push(
+    // 使用 rootNavigator: true 确保全屏显示，不受 ShellRoute 影响
+    await Navigator.of(context, rootNavigator: true).push(
       MaterialPageRoute<void>(
         builder: (context) => PhotoViewerPage(
           photos: photoItems,
           initialIndex: index,
           getPhotoUrl: (path, sourceId) async {
             final conn = connections[sourceId];
-            if (conn == null) return null;
-            try {
-              return await conn.adapter.fileSystem.getFileUrl(path);
-            } catch (e) {
+            if (conn == null) {
+              debugPrint('PhotoViewer: 连接未找到 sourceId=$sourceId');
               return null;
             }
-          },
-          getSourceId: (photoPath) {
-            final p = allPhotos.firstWhere(
-              (photo) => photo.path == photoPath,
-              orElse: () => allPhotos.first,
-            );
-            return p.sourceId;
+            try {
+              final url = await conn.adapter.fileSystem.getFileUrl(path);
+              debugPrint('PhotoViewer: 获取URL成功 path=$path');
+              return url;
+            } catch (e) {
+              debugPrint('PhotoViewer: 获取URL失败 path=$path, error=$e');
+              return null;
+            }
           },
         ),
       ),

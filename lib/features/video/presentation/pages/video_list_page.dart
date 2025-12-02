@@ -1368,7 +1368,7 @@ class _ContinueWatchingCard extends ConsumerWidget {
 
     if (!context.mounted) return;
 
-    await Navigator.of(context).push(
+    await Navigator.of(context, rootNavigator: true).push(
       MaterialPageRoute<void>(
         builder: (context) => VideoPlayerPage(video: videoItem),
       ),
