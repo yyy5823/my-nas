@@ -1,8 +1,8 @@
-import 'package:cached_network_image/cached_network_image.dart';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/photo/domain/entities/photo_item.dart';
 
 /// 照片 URL 获取回调
@@ -32,6 +32,10 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
   bool _showOverlay = true;
   late AnimationController _overlayController;
   late Animation<double> _overlayAnimation;
+  Timer? _autoHideTimer;
+
+  /// 自动隐藏延迟（秒）
+  static const _autoHideDelay = Duration(seconds: 3);
 
   /// 缓存已加载的原图 URL
   final Map<String, String> _loadedUrls = {};
@@ -60,26 +64,54 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
     if (currentPhoto.url.isNotEmpty) {
       _loadedUrls[currentPhoto.path] = currentPhoto.url;
     }
+
+    // 启动自动隐藏定时器
+    _startAutoHideTimer();
   }
 
   @override
   void dispose() {
     _pageController.dispose();
     _overlayController.dispose();
+    _autoHideTimer?.cancel();
     // 恢复系统 UI
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
 
-  void _toggleOverlay() {
+  void _startAutoHideTimer() {
+    _autoHideTimer?.cancel();
+    if (_showOverlay) {
+      _autoHideTimer = Timer(_autoHideDelay, () {
+        if (mounted && _showOverlay) {
+          _hideOverlay();
+        }
+      });
+    }
+  }
+
+  void _showOverlayWithTimer() {
     setState(() {
-      _showOverlay = !_showOverlay;
-      if (_showOverlay) {
-        _overlayController.forward();
-      } else {
-        _overlayController.reverse();
-      }
+      _showOverlay = true;
+      _overlayController.forward();
     });
+    _startAutoHideTimer();
+  }
+
+  void _hideOverlay() {
+    setState(() {
+      _showOverlay = false;
+      _overlayController.reverse();
+    });
+    _autoHideTimer?.cancel();
+  }
+
+  void _toggleOverlay() {
+    if (_showOverlay) {
+      _hideOverlay();
+    } else {
+      _showOverlayWithTimer();
+    }
   }
 
   void _goToNext() {
@@ -140,7 +172,7 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
   @override
   Widget build(BuildContext context) {
     final photo = widget.photos[_currentIndex];
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDesktop = MediaQuery.of(context).size.width > 600;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -159,6 +191,10 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
                 });
                 // 预加载当前页的原图 URL
                 _preloadPhotoUrl(index);
+                // 翻页时重置自动隐藏定时器
+                if (_showOverlay) {
+                  _startAutoHideTimer();
+                }
               },
               itemBuilder: (context, index) {
                 final item = widget.photos[index];
@@ -171,48 +207,64 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
               },
             ),
 
-          // 顶部工具栏
-          FadeTransition(
-            opacity: _overlayAnimation,
-            child: _buildTopBar(context, photo),
-          ),
-
-          // 底部信息栏
-          FadeTransition(
-            opacity: _overlayAnimation,
-            child: _buildBottomBar(context, photo, isDark),
-          ),
-
-          // 左右导航按钮（桌面端）
-          if (MediaQuery.of(context).size.width > 600 && _showOverlay) ...[
-            // 上一张
-            if (_currentIndex > 0)
-              Positioned(
-                left: 16,
-                top: 0,
-                bottom: 0,
-                child: Center(
-                  child: _NavButton(
-                    icon: Icons.arrow_back_ios_rounded,
-                    onTap: _goToPrevious,
-                  ),
+            // 顶部返回按钮（浮动）
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: IgnorePointer(
+                ignoring: !_showOverlay,
+                child: FadeTransition(
+                  opacity: _overlayAnimation,
+                  child: _buildTopBar(context, photo),
                 ),
               ),
-            // 下一张
-            if (_currentIndex < widget.photos.length - 1)
-              Positioned(
-                right: 16,
-                top: 0,
-                bottom: 0,
-                child: Center(
-                  child: _NavButton(
-                    icon: Icons.arrow_forward_ios_rounded,
-                    onTap: _goToNext,
-                  ),
+            ),
+
+            // 底部操作栏（浮动）
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: IgnorePointer(
+                ignoring: !_showOverlay,
+                child: FadeTransition(
+                  opacity: _overlayAnimation,
+                  child: _buildBottomBar(context, photo),
                 ),
               ),
+            ),
+
+            // 左右导航按钮（桌面端）
+            if (isDesktop && _showOverlay) ...[
+              // 上一张
+              if (_currentIndex > 0)
+                Positioned(
+                  left: 16,
+                  top: 0,
+                  bottom: 0,
+                  child: Center(
+                    child: _NavButton(
+                      icon: Icons.arrow_back_ios_rounded,
+                      onTap: _goToPrevious,
+                    ),
+                  ),
+                ),
+              // 下一张
+              if (_currentIndex < widget.photos.length - 1)
+                Positioned(
+                  right: 16,
+                  top: 0,
+                  bottom: 0,
+                  child: Center(
+                    child: _NavButton(
+                      icon: Icons.arrow_forward_ios_rounded,
+                      onTap: _goToNext,
+                    ),
+                  ),
+                ),
+            ],
           ],
-        ],
         ),
       ),
     );
@@ -233,7 +285,7 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
           child: Row(
             children: [
               // 返回按钮
@@ -242,7 +294,7 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
                 onPressed: () => Navigator.of(context).pop(),
               ),
               const SizedBox(width: 8),
-              // 文件名
+              // 页码指示器
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -252,7 +304,7 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
                       photo.name,
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 16,
+                        fontSize: 14,
                         fontWeight: FontWeight.w500,
                       ),
                       maxLines: 1,
@@ -268,55 +320,6 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
                   ],
                 ),
               ),
-              // 更多操作
-              PopupMenuButton<String>(
-                icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
-                color: Colors.grey[900],
-                onSelected: (value) {
-                  switch (value) {
-                    case 'info':
-                      _showPhotoInfo(context, photo);
-                    case 'share':
-                      // TODO: 分享
-                      break;
-                    case 'download':
-                      // TODO: 下载
-                      break;
-                  }
-                },
-                itemBuilder: (context) => [
-                  const PopupMenuItem(
-                    value: 'info',
-                    child: Row(
-                      children: [
-                        Icon(Icons.info_outline, color: Colors.white, size: 20),
-                        SizedBox(width: 12),
-                        Text('详细信息', style: TextStyle(color: Colors.white)),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'share',
-                    child: Row(
-                      children: [
-                        Icon(Icons.share_outlined, color: Colors.white, size: 20),
-                        SizedBox(width: 12),
-                        Text('分享', style: TextStyle(color: Colors.white)),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'download',
-                    child: Row(
-                      children: [
-                        Icon(Icons.download_outlined, color: Colors.white, size: 20),
-                        SizedBox(width: 12),
-                        Text('下载', style: TextStyle(color: Colors.white)),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
             ],
           ),
         ),
@@ -324,115 +327,123 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
     );
   }
 
-  Widget _buildBottomBar(BuildContext context, PhotoItem photo, bool isDark) {
-    return Positioned(
-      left: 0,
-      right: 0,
-      bottom: 0,
-      child: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.bottomCenter,
-            end: Alignment.topCenter,
-            colors: [
-              Colors.black87,
-              Colors.transparent,
-            ],
-          ),
+  Widget _buildBottomBar(BuildContext context, PhotoItem photo) {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.bottomCenter,
+          end: Alignment.topCenter,
+          colors: [
+            Colors.black87,
+            Colors.transparent,
+          ],
         ),
-        child: SafeArea(
-          top: false,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // 照片信息
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    // 日期
-                    if (photo.modifiedAt != null) ...[
-                      Icon(
-                        Icons.calendar_today_rounded,
-                        color: Colors.white.withOpacity(0.7),
-                        size: 14,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        DateFormat('yyyy-MM-dd HH:mm').format(photo.modifiedAt!),
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.7),
-                          fontSize: 12,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                    ],
-                    // 文件大小
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 照片信息
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // 日期
+                  if (photo.modifiedAt != null) ...[
                     Icon(
-                      Icons.insert_drive_file_outlined,
+                      Icons.calendar_today_rounded,
                       color: Colors.white.withOpacity(0.7),
                       size: 14,
                     ),
                     const SizedBox(width: 6),
                     Text(
-                      photo.displaySize,
+                      DateFormat('yyyy-MM-dd HH:mm').format(photo.modifiedAt!),
                       style: TextStyle(
                         color: Colors.white.withOpacity(0.7),
                         fontSize: 12,
                       ),
                     ),
+                    const SizedBox(width: 16),
                   ],
-                ),
+                  // 文件大小
+                  Icon(
+                    Icons.insert_drive_file_outlined,
+                    color: Colors.white.withOpacity(0.7),
+                    size: 14,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    photo.displaySize,
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.7),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
               ),
-              // 操作按钮
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    // 详细信息
-                    _ActionButton(
-                      icon: Icons.info_outline,
-                      label: '信息',
-                      onTap: () => _showPhotoInfo(context, photo),
-                    ),
-                    // 收藏
-                    _ActionButton(
-                      icon: Icons.favorite_border,
-                      label: '收藏',
-                      onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('收藏功能开发中'),
-                            duration: Duration(seconds: 1),
-                          ),
-                        );
-                      },
-                    ),
-                    // 下载
-                    _ActionButton(
-                      icon: Icons.download_outlined,
-                      label: '下载',
-                      onTap: () => _downloadPhoto(context, photo),
-                    ),
-                    // 分享
-                    _ActionButton(
-                      icon: Icons.share_outlined,
-                      label: '分享',
-                      onTap: () => _sharePhoto(context, photo),
-                    ),
-                    // 删除
-                    _ActionButton(
-                      icon: Icons.delete_outline,
-                      label: '删除',
-                      onTap: () => _confirmDelete(context, photo),
-                    ),
-                  ],
-                ),
+            ),
+            // 操作按钮
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  // 详细信息
+                  _ActionButton(
+                    icon: Icons.info_outline,
+                    label: '信息',
+                    onTap: () {
+                      _startAutoHideTimer();
+                      _showPhotoInfo(context, photo);
+                    },
+                  ),
+                  // 收藏
+                  _ActionButton(
+                    icon: Icons.favorite_border,
+                    label: '收藏',
+                    onTap: () {
+                      _startAutoHideTimer();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('收藏功能开发中'),
+                          duration: Duration(seconds: 1),
+                        ),
+                      );
+                    },
+                  ),
+                  // 下载
+                  _ActionButton(
+                    icon: Icons.download_outlined,
+                    label: '下载',
+                    onTap: () {
+                      _startAutoHideTimer();
+                      _downloadPhoto(context, photo);
+                    },
+                  ),
+                  // 分享
+                  _ActionButton(
+                    icon: Icons.share_outlined,
+                    label: '分享',
+                    onTap: () {
+                      _startAutoHideTimer();
+                      _sharePhoto(context, photo);
+                    },
+                  ),
+                  // 删除
+                  _ActionButton(
+                    icon: Icons.delete_outline,
+                    label: '删除',
+                    onTap: () {
+                      _startAutoHideTimer();
+                      _confirmDelete(context, photo);
+                    },
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -611,6 +622,8 @@ class _PhotoPageState extends State<_PhotoPage> {
   final _transformController = TransformationController();
   String? _loadedUrl;
   bool _isLoading = false;
+  bool _hasError = false;
+  String? _errorMessage;
 
   @override
   void initState() {
@@ -627,6 +640,8 @@ class _PhotoPageState extends State<_PhotoPage> {
     if (widget.cachedUrl != oldWidget.cachedUrl && widget.cachedUrl != null) {
       setState(() {
         _loadedUrl = widget.cachedUrl;
+        _hasError = false;
+        _errorMessage = null;
       });
     }
   }
@@ -634,11 +649,25 @@ class _PhotoPageState extends State<_PhotoPage> {
   Future<void> _loadUrl() async {
     if (_isLoading || widget.onLoadUrl == null) return;
     _isLoading = true;
-    final url = await widget.onLoadUrl!();
-    if (mounted && url != null && url.isNotEmpty) {
-      setState(() {
-        _loadedUrl = url;
-      });
+    setState(() {
+      _hasError = false;
+      _errorMessage = null;
+    });
+
+    try {
+      final url = await widget.onLoadUrl!();
+      if (mounted && url != null && url.isNotEmpty) {
+        setState(() {
+          _loadedUrl = url;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _hasError = true;
+          _errorMessage = e.toString();
+        });
+      }
     }
     _isLoading = false;
   }
@@ -656,61 +685,102 @@ class _PhotoPageState extends State<_PhotoPage> {
     final hasThumbnail = widget.photo.thumbnailUrl != null && widget.photo.thumbnailUrl!.isNotEmpty;
     final hasDisplayUrl = displayUrl.isNotEmpty;
 
-    // 调试日志
-    print('PhotoViewer: displayUrl=$displayUrl, hasThumbnail=$hasThumbnail, hasDisplayUrl=$hasDisplayUrl');
-    print('PhotoViewer: photo.url=${widget.photo.url}, photo.thumbnailUrl=${widget.photo.thumbnailUrl}');
-
     return InteractiveViewer(
       transformationController: _transformController,
       minScale: 0.5,
       maxScale: 4.0,
-      onInteractionEnd: (details) {
-        // 双击后缩放恢复
-        if (_transformController.value.getMaxScaleOnAxis() < 1.1 &&
-            _transformController.value.getMaxScaleOnAxis() > 0.9) {
-          _transformController.value = Matrix4.identity();
-        }
-      },
       child: Center(
-        child: hasDisplayUrl
-            ? CachedNetworkImage(
-                imageUrl: displayUrl,
-                fit: BoxFit.contain,
-                placeholder: (context, url) => hasThumbnail
-                    ? CachedNetworkImage(
-                        imageUrl: widget.photo.thumbnailUrl!,
-                        fit: BoxFit.contain,
-                      )
-                    : const Center(
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                        ),
-                      ),
-                errorWidget: (context, url, error) {
-                  print('PhotoViewer: Error loading image: $error');
-                  return hasThumbnail
-                      ? CachedNetworkImage(
-                          imageUrl: widget.photo.thumbnailUrl!,
-                          fit: BoxFit.contain,
-                          errorWidget: (context, url, error) {
-                            print('PhotoViewer: Error loading thumbnail: $error');
-                            return _buildErrorWidget(error.toString());
-                          },
-                        )
-                      : _buildErrorWidget(error.toString());
-                },
-              )
-            : hasThumbnail
-                ? CachedNetworkImage(
-                    imageUrl: widget.photo.thumbnailUrl!,
-                    fit: BoxFit.contain,
-                    errorWidget: (context, url, error) {
-                      print('PhotoViewer: Error loading thumbnail (no displayUrl): $error');
-                      return _buildErrorWidget(error.toString());
-                    },
-                  )
-                : _buildErrorWidget('没有可用的图片 URL'),
+        child: _buildImageContent(displayUrl, hasDisplayUrl, hasThumbnail),
       ),
+    );
+  }
+
+  Widget _buildImageContent(String displayUrl, bool hasDisplayUrl, bool hasThumbnail) {
+    if (_hasError && !hasThumbnail) {
+      return _buildErrorWidget(_errorMessage ?? '加载失败');
+    }
+
+    if (!hasDisplayUrl && !hasThumbnail) {
+      return _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(color: Colors.white),
+            )
+          : _buildErrorWidget('没有可用的图片');
+    }
+
+    // 使用 Image.network 替代 CachedNetworkImage，避免手机端灰色问题
+    if (hasDisplayUrl) {
+      return Image.network(
+        displayUrl,
+        fit: BoxFit.contain,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) {
+            return child;
+          }
+          // 加载中显示缩略图或进度指示器
+          if (hasThumbnail) {
+            return Stack(
+              alignment: Alignment.center,
+              children: [
+                Image.network(
+                  widget.photo.thumbnailUrl!,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                ),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: CircularProgressIndicator(
+                    value: loadingProgress.expectedTotalBytes != null
+                        ? loadingProgress.cumulativeBytesLoaded /
+                            loadingProgress.expectedTotalBytes!
+                        : null,
+                    color: Colors.white,
+                    strokeWidth: 2,
+                  ),
+                ),
+              ],
+            );
+          }
+          return Center(
+            child: CircularProgressIndicator(
+              value: loadingProgress.expectedTotalBytes != null
+                  ? loadingProgress.cumulativeBytesLoaded /
+                      loadingProgress.expectedTotalBytes!
+                  : null,
+              color: Colors.white,
+            ),
+          );
+        },
+        errorBuilder: (context, error, stackTrace) {
+          debugPrint('PhotoViewer: Error loading image: $error');
+          // 加载原图失败时尝试使用缩略图
+          if (hasThumbnail) {
+            return Image.network(
+              widget.photo.thumbnailUrl!,
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) => _buildErrorWidget('图片加载失败'),
+            );
+          }
+          return _buildErrorWidget(error.toString());
+        },
+      );
+    }
+
+    // 只有缩略图
+    return Image.network(
+      widget.photo.thumbnailUrl!,
+      fit: BoxFit.contain,
+      loadingBuilder: (context, child, loadingProgress) {
+        if (loadingProgress == null) return child;
+        return const Center(
+          child: CircularProgressIndicator(color: Colors.white),
+        );
+      },
+      errorBuilder: (_, error, __) => _buildErrorWidget(error.toString()),
     );
   }
 
@@ -745,6 +815,12 @@ class _PhotoPageState extends State<_PhotoPage> {
             overflow: TextOverflow.ellipsis,
           ),
         ),
+        const SizedBox(height: 16),
+        TextButton.icon(
+          onPressed: _loadUrl,
+          icon: const Icon(Icons.refresh, color: Colors.white70),
+          label: const Text('重试', style: TextStyle(color: Colors.white70)),
+        ),
       ],
     );
   }
@@ -774,14 +850,14 @@ class _ActionButton extends StatelessWidget {
             Icon(
               icon,
               color: Colors.white,
-              size: 28,
+              size: 26,
             ),
             const SizedBox(height: 4),
             Text(
               label,
               style: const TextStyle(
                 color: Colors.white,
-                fontSize: 12,
+                fontSize: 11,
               ),
             ),
           ],
