@@ -228,14 +228,13 @@ class NotePageNotifier extends StateNotifier<NotePageState> {
         // 跳过隐藏文件
         if (item.name.startsWith('.')) continue;
 
-        final url = await fs.getFileUrl(item.path);
+        // 不在此处获取URL，等用户点击时再获取
         nodes.add(NoteTreeNode(
           name: item.name,
           path: item.path,
           type: NoteTreeNodeType.file,
           sourceId: sourceId,
           fileItem: item,
-          url: url,
         ));
       }
 
@@ -314,9 +313,16 @@ class NotePageNotifier extends StateNotifier<NotePageState> {
 
     // 加载文件内容
     try {
-      final url = node.url;
+      // 获取文件URL（懒加载）
+      String? url = node.url;
       if (url == null) {
-        throw Exception('无法获取文件URL');
+        // URL未缓存，需要获取
+        final connections = _ref.read(activeConnectionsProvider);
+        final connection = connections[node.sourceId];
+        if (connection == null || connection.status != SourceStatus.connected) {
+          throw Exception('连接已断开');
+        }
+        url = await connection.adapter.fileSystem.getFileUrl(node.path);
       }
 
       String content;
