@@ -16,6 +16,8 @@ import 'package:my_nas/features/reading/presentation/pages/reading_page.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
+import 'package:my_nas/features/sources/presentation/pages/media_library_page.dart';
+import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/empty_widget.dart';
@@ -506,15 +508,79 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
                   onRetry: () => ref.read(notePageProvider.notifier).loadTree(),
                 ),
               NotePageLoaded(:final treeNodes) when treeNodes.isEmpty =>
-                const EmptyWidget(
-                  icon: Icons.note_outlined,
-                  title: '暂无笔记',
-                  message: '在配置的目录中添加 Markdown 文件后将显示在这里',
-                ),
+                _buildEmptyState(context, ref, isDark),
               NotePageLoaded() => _buildMainLayout(context, state, isDark),
             },
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(BuildContext context, WidgetRef ref, bool isDark) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 100,
+              height: 100,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.note_alt_rounded,
+                size: 50,
+                color: AppColors.primary,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              '笔记库为空',
+              style: context.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white : null,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '请在媒体库设置中配置笔记目录并扫描',
+              style: context.textTheme.bodyMedium?.copyWith(
+                color: isDark ? Colors.grey[400] : Colors.grey,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 32),
+            ElevatedButton.icon(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(builder: (_) => const MediaLibraryPage()),
+              ),
+              icon: const Icon(Icons.folder_open_rounded),
+              label: const Text('媒体库设置'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextButton.icon(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(builder: (_) => const SourcesPage()),
+              ),
+              icon: const Icon(Icons.cloud_rounded),
+              label: const Text('连接管理'),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.primary,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
