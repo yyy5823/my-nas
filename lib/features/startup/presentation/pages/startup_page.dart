@@ -25,7 +25,8 @@ class _StartupPageState extends ConsumerState<StartupPage> {
   }
 
   Future<void> _initializeApp() async {
-    await Future<void>.delayed(const Duration(milliseconds: 500));
+    // 短暂延迟让 UI 先渲染
+    await Future<void>.delayed(const Duration(milliseconds: 300));
 
     if (!mounted) return;
 
@@ -34,23 +35,20 @@ class _StartupPageState extends ConsumerState<StartupPage> {
     });
 
     try {
-      // 初始化源管理服务
+      // 初始化源管理服务（快速的本地初始化）
       final manager = ref.read(sourceManagerProvider);
       await manager.init();
 
-      setState(() {
-        _statusMessage = '正在连接...';
-      });
-
-      // 尝试自动连接所有启用自动连接的源
-      await ref.read(activeConnectionsProvider.notifier).autoConnectAll();
-
       logger.i('StartupPage: 初始化完成，进入主界面');
 
+      // 先进入主界面，不等待连接完成
       if (mounted) {
-        // 直接进入视频页面（作为主页面）
         context.go(Routes.video);
       }
+
+      // 后台异步进行自动连接（不阻塞主界面）
+      // 使用 unawaited 明确表示不等待完成
+      _autoConnectInBackground();
     } catch (e) {
       logger.e('StartupPage: 初始化异常', e);
       if (mounted) {
@@ -58,6 +56,20 @@ class _StartupPageState extends ConsumerState<StartupPage> {
         context.go(Routes.video);
       }
     }
+  }
+
+  /// 后台自动连接所有源
+  void _autoConnectInBackground() {
+    // 使用 Future.microtask 确保在当前帧之后执行，避免阻塞导航
+    Future.microtask(() async {
+      try {
+        logger.i('StartupPage: 开始后台自动连接...');
+        await ref.read(activeConnectionsProvider.notifier).autoConnectAll();
+        logger.i('StartupPage: 后台自动连接完成');
+      } catch (e) {
+        logger.e('StartupPage: 后台自动连接异常', e);
+      }
+    });
   }
 
   @override

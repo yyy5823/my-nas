@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/pages/media_library_page.dart';
@@ -224,6 +225,23 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
 
       // 立即尝试从缓存加载，不等待连接
       await _loadFromCacheImmediately();
+
+      // 监听连接状态变化，当有新连接时自动刷新
+      _ref.listen<Map<String, SourceConnection>>(activeConnectionsProvider, (previous, next) {
+        final prevConnected = previous?.values.where((c) => c.status == SourceStatus.connected).length ?? 0;
+        final nextConnected = next.values.where((c) => c.status == SourceStatus.connected).length;
+
+        // 当连接数增加时，自动刷新视频列表
+        if (nextConnected > prevConnected) {
+          final currentState = state;
+          // 如果当前是空列表或者是从缓存加载的，尝试重新扫描
+          if (currentState is VideoListLoaded &&
+              (currentState.videos.isEmpty || currentState.fromCache)) {
+            logger.i('VideoListNotifier: 检测到新连接，自动刷新视频列表');
+            loadVideos();
+          }
+        }
+      });
     } catch (e) {
       logger.e('VideoListNotifier: 初始化失败', e);
       // 初始化失败，显示空列表
