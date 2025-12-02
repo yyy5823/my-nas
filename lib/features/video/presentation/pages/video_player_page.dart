@@ -36,12 +36,17 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
   bool _showDoubleTapLeft = false;
   bool _showDoubleTapRight = false;
 
+  // 缓存 notifier 引用，避免在 dispose 后使用 ref
+  VideoPlayerNotifier? _playerNotifier;
+
   @override
   void initState() {
     super.initState();
+    // 缓存 notifier 引用
+    _playerNotifier = ref.read(videoPlayerControllerProvider.notifier);
     // 开始播放
     Future.microtask(() {
-      ref.read(videoPlayerControllerProvider.notifier).play(
+      _playerNotifier?.play(
             widget.video,
             startPosition: widget.video.lastPosition,
           );
@@ -82,9 +87,8 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
   @override
   void dispose() {
     _hideControlsTimer?.cancel();
-    // 同步停止播放 - 在 dispose 之前立即停止播放器
-    final notifier = ref.read(videoPlayerControllerProvider.notifier);
-    notifier.stopSync(); // 使用同步方法停止，确保在 dispose 前完成
+    // 同步停止播放 - 使用缓存的 notifier 引用，避免在 dispose 后使用 ref
+    _playerNotifier?.stopSync();
     // 恢复系统 UI
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setPreferredOrientations([]);
@@ -114,14 +118,12 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
 
   /// 处理返回事件
   Future<void> _handleBack() async {
-    final playerNotifier = ref.read(videoPlayerControllerProvider.notifier);
-
     // 在返回之前先暂停播放器
     logger.i('VideoPlayerPage: 准备返回，先暂停播放器');
-    playerNotifier.pauseSync();
+    _playerNotifier?.pauseSync();
 
     // 等待一小段时间确保暂停生效
-    await Future.delayed(const Duration(milliseconds: 100));
+    await Future<void>.delayed(const Duration(milliseconds: 100));
 
     if (mounted) {
       Navigator.of(context).pop();
@@ -132,19 +134,18 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
     if (_isLocked) return;
 
     final screenWidth = context.screenWidth;
-    final playerNotifier = ref.read(videoPlayerControllerProvider.notifier);
 
     if (details.localPosition.dx < screenWidth / 3) {
       // 左侧双击 - 快退
-      playerNotifier.seekBackward();
+      _playerNotifier?.seekBackward();
       setState(() => _showDoubleTapLeft = true);
     } else if (details.localPosition.dx > screenWidth * 2 / 3) {
       // 右侧双击 - 快进
-      playerNotifier.seekForward();
+      _playerNotifier?.seekForward();
       setState(() => _showDoubleTapRight = true);
     } else {
       // 中间双击 - 播放/暂停
-      playerNotifier.playOrPause();
+      _playerNotifier?.playOrPause();
     }
   }
 

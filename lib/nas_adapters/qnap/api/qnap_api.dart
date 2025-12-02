@@ -163,6 +163,12 @@ class QnapApi {
     final data = response as Map<String, dynamic>? ?? {};
     final datas = data['datas'] as List<dynamic>? ?? [];
 
+    // 调试：打印原始数据中的文件大小字段
+    if (datas.isNotEmpty) {
+      final sample = datas.first as Map<String, dynamic>;
+      logger.d('QnapApi listFiles 原始数据样本: filesize=${sample['filesize']}, size=${sample['size']}');
+    }
+
     return datas.map((item) => QnapFile.fromJson(item as Map<String, dynamic>)).toList();
   }
 

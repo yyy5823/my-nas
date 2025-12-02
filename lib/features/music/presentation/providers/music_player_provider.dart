@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/presentation/providers/music_favorites_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_settings_provider.dart';
@@ -195,18 +196,27 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     _ref.read(currentMusicProvider.notifier).state = music;
     state = state.copyWith(errorMessage: null);
 
+    logger.i('MusicPlayer: 开始播放 ${music.name}');
+    logger.d('MusicPlayer: URL => ${music.url}');
+    logger.d('MusicPlayer: size=${music.size}, path=${music.path}');
+
     try {
+      logger.d('MusicPlayer: 正在设置音频源...');
       await _player.setUrl(music.url);
+      logger.d('MusicPlayer: 音频源设置成功');
 
       if (startPosition != null && startPosition > Duration.zero) {
         await _player.seek(startPosition);
       }
 
+      logger.d('MusicPlayer: 开始播放...');
       await _player.play();
+      logger.i('MusicPlayer: 播放已开始');
 
       // 添加到播放历史
       _ref.read(musicHistoryProvider.notifier).addToHistory(music);
-    } catch (e) {
+    } catch (e, stackTrace) {
+      logger.e('MusicPlayer: 播放失败', e, stackTrace);
       state = state.copyWith(errorMessage: e.toString());
     }
   }

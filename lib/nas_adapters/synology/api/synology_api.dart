@@ -153,6 +153,15 @@ class SynologyApi {
       },
     );
 
+    // 调试：打印原始数据中的文件大小字段
+    final debugData = response['data'] as Map<String, dynamic>?;
+    final debugFiles = debugData?['files'] as List<dynamic>? ?? [];
+    if (debugFiles.isNotEmpty) {
+      final sample = debugFiles.first as Map<String, dynamic>;
+      final sampleAdd = sample['additional'] as Map<String, dynamic>?;
+      logger.d('SynologyApi listFiles 原始数据样本: additional.size=${sampleAdd?['size']}');
+    }
+
     final data = response['data'] as Map<String, dynamic>;
     final files = data['files'] as List<dynamic>? ?? [];
 

@@ -236,6 +236,10 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
     _ref.read(currentVideoProvider.notifier).state = video;
     state = state.copyWith(errorMessage: null);
 
+    logger.i('VideoPlayer: 开始播放 ${video.name}');
+    logger.d('VideoPlayer: URL => ${video.url}');
+    logger.d('VideoPlayer: size=${video.size}, path=${video.path}');
+
     // 确定起始位置
     Duration? resumePosition = startPosition;
 
@@ -249,7 +253,15 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
     }
 
     // 打开视频并设置起始位置
-    await _player.open(Media(video.url));
+    logger.d('VideoPlayer: 正在打开视频源...');
+    try {
+      await _player.open(Media(video.url));
+      logger.d('VideoPlayer: 视频源打开成功');
+    } catch (e, stackTrace) {
+      logger.e('VideoPlayer: 打开视频失败', e, stackTrace);
+      state = state.copyWith(errorMessage: e.toString());
+      return;
+    }
 
     // 等待播放器准备好后再 seek
     if (resumePosition != null && resumePosition > Duration.zero) {

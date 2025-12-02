@@ -27,6 +27,9 @@ Future<void> main() async {
 }
 
 Future<void> _initApp() async {
+  // 初始化文件日志（会清空之前的日志）
+  await logger.initFileLogging();
+
   logger.i('Initializing MyNAS...');
 
   // Initialize MediaKit for video playback
