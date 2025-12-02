@@ -74,6 +74,10 @@ dependencies:
   url_launcher: ^6.3.1
   open_filex: ^4.5.0
 
+  # Share & Save
+  share_plus: ^10.1.4
+  gal: ^2.3.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

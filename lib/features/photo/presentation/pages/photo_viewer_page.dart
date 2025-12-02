@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:my_nas/features/photo/data/services/photo_save_service.dart';
 import 'package:my_nas/features/photo/domain/entities/photo_item.dart';
 
 /// 照片 URL 获取回调
@@ -517,54 +519,328 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
   }
 
   /// 下载照片
-  void _downloadPhoto(BuildContext context, PhotoItem photo) {
+  Future<void> _downloadPhoto(BuildContext context, PhotoItem photo) async {
     // 获取当前照片的 URL
     final url = _loadedUrls[photo.path] ?? photo.url;
     if (url.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('无法获取照片地址'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      _showErrorSnackBar(context, '无法获取照片地址');
       return;
     }
 
-    // TODO: 实现实际下载功能
-    // 可以使用 dio 或 http 包下载文件到本地存储
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('正在下载: ${photo.name}'),
-        duration: const Duration(seconds: 2),
-        action: SnackBarAction(
-          label: '取消',
-          onPressed: () {},
+    // 移动端需要先请求权限
+    final saveService = PhotoSaveService.instance;
+    if (saveService.isMobile) {
+      final hasPermission = await saveService.requestGalleryPermission();
+      if (!hasPermission) {
+        _showErrorSnackBar(context, '需要相册访问权限才能保存照片');
+        return;
+      }
+    }
+
+    // 显示下载进度对话框
+    if (!context.mounted) return;
+
+    final progressNotifier = ValueNotifier<double>(0);
+    bool isCancelled = false;
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          backgroundColor: Colors.grey[900],
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ValueListenableBuilder<double>(
+                valueListenable: progressNotifier,
+                builder: (_, progress, __) => Column(
+                  children: [
+                    CircularProgressIndicator(
+                      value: progress > 0 ? progress : null,
+                      color: Colors.white,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      progress > 0
+                          ? '下载中 ${(progress * 100).toInt()}%'
+                          : '正在连接...',
+                      style: const TextStyle(color: Colors.white70),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextButton(
+                onPressed: () {
+                  isCancelled = true;
+                  Navigator.of(dialogContext).pop();
+                },
+                child: const Text('取消'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    // 执行下载
+    final result = await saveService.downloadPhoto(
+      url: url,
+      fileName: photo.name,
+      onProgress: (progress) {
+        if (!isCancelled) {
+          progressNotifier.value = progress;
+        }
+      },
+    );
+
+    // 关闭进度对话框
+    if (context.mounted && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+
+    // 显示结果
+    if (!context.mounted || isCancelled) return;
+
+    if (result.isSuccess) {
+      _showSuccessSnackBar(context, result.message);
+    } else if (result.isFailure) {
+      _showErrorSnackBar(context, result.message);
+    }
+  }
+
+  /// 分享照片
+  Future<void> _sharePhoto(BuildContext context, PhotoItem photo) async {
+    final url = _loadedUrls[photo.path] ?? photo.url;
+
+    if (url.isEmpty) {
+      _showErrorSnackBar(context, '无法获取照片地址');
+      return;
+    }
+
+    // 在桌面端，提供选择：分享文件或复制链接
+    final saveService = PhotoSaveService.instance;
+    if (saveService.isDesktop) {
+      _showShareOptionsDialog(context, photo, url);
+      return;
+    }
+
+    // 移动端直接使用系统分享
+    final progressNotifier = ValueNotifier<double>(0);
+    bool isCancelled = false;
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          backgroundColor: Colors.grey[900],
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ValueListenableBuilder<double>(
+                valueListenable: progressNotifier,
+                builder: (_, progress, __) => Column(
+                  children: [
+                    CircularProgressIndicator(
+                      value: progress > 0 ? progress : null,
+                      color: Colors.white,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      progress > 0
+                          ? '准备分享 ${(progress * 100).toInt()}%'
+                          : '正在准备...',
+                      style: const TextStyle(color: Colors.white70),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextButton(
+                onPressed: () {
+                  isCancelled = true;
+                  Navigator.of(dialogContext).pop();
+                },
+                child: const Text('取消'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    // 执行分享
+    final result = await saveService.sharePhoto(
+      url: url,
+      fileName: photo.name,
+      onProgress: (progress) {
+        if (!isCancelled) {
+          progressNotifier.value = progress;
+        }
+      },
+    );
+
+    // 关闭进度对话框
+    if (context.mounted && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+
+    if (!context.mounted || isCancelled) return;
+
+    if (result.isFailure) {
+      _showErrorSnackBar(context, result.error ?? '分享失败');
+    }
+  }
+
+  /// 显示桌面端分享选项对话框
+  void _showShareOptionsDialog(BuildContext context, PhotoItem photo, String url) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.grey[900],
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.share_outlined, color: Colors.white),
+                  const SizedBox(width: 12),
+                  const Text(
+                    '分享照片',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white70),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              // 复制链接
+              _ShareOptionTile(
+                icon: Icons.link,
+                title: '复制链接',
+                subtitle: '将照片链接复制到剪贴板',
+                onTap: () {
+                  Navigator.pop(context);
+                  Clipboard.setData(ClipboardData(text: url));
+                  _showSuccessSnackBar(context, '链接已复制');
+                },
+              ),
+              const Divider(color: Colors.white24),
+              // 分享文件
+              _ShareOptionTile(
+                icon: Icons.file_present_outlined,
+                title: '分享文件',
+                subtitle: '下载后使用系统分享功能',
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _sharePhotoFile(context, photo, url);
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  /// 分享照片
-  void _sharePhoto(BuildContext context, PhotoItem photo) {
-    final url = _loadedUrls[photo.path] ?? photo.url;
+  /// 分享照片文件（桌面端）
+  Future<void> _sharePhotoFile(BuildContext context, PhotoItem photo, String url) async {
+    final saveService = PhotoSaveService.instance;
+    final progressNotifier = ValueNotifier<double>(0);
 
-    // 复制链接到剪贴板
-    if (url.isNotEmpty) {
-      Clipboard.setData(ClipboardData(text: url));
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('照片链接已复制到剪贴板'),
-          duration: Duration(seconds: 2),
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ValueListenableBuilder<double>(
+              valueListenable: progressNotifier,
+              builder: (_, progress, __) => Column(
+                children: [
+                  CircularProgressIndicator(
+                    value: progress > 0 ? progress : null,
+                    color: Colors.white,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    progress > 0
+                        ? '准备分享 ${(progress * 100).toInt()}%'
+                        : '正在准备...',
+                    style: const TextStyle(color: Colors.white70),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('无法获取照片链接'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      ),
+    );
+
+    final result = await saveService.sharePhoto(
+      url: url,
+      fileName: photo.name,
+      onProgress: (progress) => progressNotifier.value = progress,
+    );
+
+    if (context.mounted && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
     }
+
+    if (result.isFailure && context.mounted) {
+      _showErrorSnackBar(context, result.error ?? '分享失败');
+    }
+  }
+
+  void _showSuccessSnackBar(BuildContext context, String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.check_circle, color: Colors.white, size: 20),
+            const SizedBox(width: 8),
+            Text(message),
+          ],
+        ),
+        backgroundColor: Colors.green[700],
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _showErrorSnackBar(BuildContext context, String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.error_outline, color: Colors.white, size: 20),
+            const SizedBox(width: 8),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: Colors.red[700],
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   /// 确认删除
@@ -965,6 +1241,73 @@ class _InfoRow extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 分享选项瓦片（桌面端分享对话框使用）
+class _ShareOptionTile extends StatelessWidget {
+  const _ShareOptionTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: Colors.white, size: 24),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.6),
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right,
+              color: Colors.white.withOpacity(0.5),
+            ),
+          ],
+        ),
       ),
     );
   }
