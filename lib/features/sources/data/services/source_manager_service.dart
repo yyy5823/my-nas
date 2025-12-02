@@ -450,12 +450,33 @@ class SourceManagerService {
   /// 自动连接所有启用自动连接的源
   ///
   /// 会尝试使用保存的凭证和设备ID自动连接，如果有设备ID则可以跳过2FA
+  /// 本地存储不需要凭证，会直接连接
   Future<void> autoConnectAll() async {
     final sources = await getSources();
     logger.i('SourceManagerService: 开始自动连接 ${sources.length} 个源');
 
     for (final source in sources) {
       if (source.autoConnect) {
+        // 本地存储不需要凭证，直接连接
+        if (source.type == SourceType.local) {
+          logger.i('SourceManagerService: 自动连接本地存储 ${source.name}');
+          try {
+            final connection = await connect(
+              source,
+              password: '',
+              saveCredential: false,
+            );
+            if (connection.status == SourceStatus.connected) {
+              logger.i('SourceManagerService: ${source.name} 自动连接成功');
+            } else {
+              logger.e('SourceManagerService: ${source.name} 连接失败: ${connection.errorMessage}');
+            }
+          } catch (e) {
+            logger.e('SourceManagerService: 自动连接异常 ${source.name}', e);
+          }
+          continue;
+        }
+
         final credential = await getCredential(source.id);
         if (credential != null) {
           logger.i('SourceManagerService: 自动连接 ${source.name} (deviceId: ${credential.deviceId != null ? "有" : "无"})');

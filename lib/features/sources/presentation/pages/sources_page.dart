@@ -336,31 +336,40 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
     });
 
     try {
-      // 获取保存的凭证
-      final manager = ref.read(sourceManagerProvider);
-      final credential = await manager.getCredential(widget.source.id);
+      // 本地存储不需要密码，直接连接
+      if (widget.source.type == SourceType.local) {
+        await ref.read(activeConnectionsProvider.notifier).connect(
+              widget.source,
+              password: '',
+              saveCredential: false,
+            );
+      } else {
+        // 获取保存的凭证
+        final manager = ref.read(sourceManagerProvider);
+        final credential = await manager.getCredential(widget.source.id);
 
-      if (credential == null) {
-        // 如果没有保存的凭证，显示密码输入对话框
-        if (mounted) {
-          final password = await _showPasswordDialog();
-          if (password == null || password.isEmpty) {
-            setState(() => _isConnecting = false);
-            return;
+        if (credential == null) {
+          // 如果没有保存的凭证，显示密码输入对话框
+          if (mounted) {
+            final password = await _showPasswordDialog();
+            if (password == null || password.isEmpty) {
+              setState(() => _isConnecting = false);
+              return;
+            }
+            await ref.read(activeConnectionsProvider.notifier).connect(
+                  widget.source,
+                  password: password,
+                  saveCredential: true,
+                );
           }
+        } else {
+          // 总是保存凭证，以便更新 deviceId
           await ref.read(activeConnectionsProvider.notifier).connect(
                 widget.source,
-                password: password,
+                password: credential.password,
                 saveCredential: true,
               );
         }
-      } else {
-        // 总是保存凭证，以便更新 deviceId
-        await ref.read(activeConnectionsProvider.notifier).connect(
-              widget.source,
-              password: credential.password,
-              saveCredential: true,
-            );
       }
 
       final connection =
