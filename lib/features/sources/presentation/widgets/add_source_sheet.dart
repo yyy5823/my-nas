@@ -130,117 +130,153 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
                       // 名称
                       TextFormField(
                         controller: _nameController,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           labelText: '名称（可选）',
-                          hintText: '给这个源起个名字',
-                          prefixIcon: Icon(Icons.label_outline),
+                          hintText: _sourceType == SourceType.local
+                              ? '例如：本地文件'
+                              : '给这个源起个名字',
+                          prefixIcon: const Icon(Icons.label_outline),
                         ),
                       ),
-                      const SizedBox(height: 16),
 
-                      // 主机地址
-                      TextFormField(
-                        controller: _hostController,
-                        decoration: InputDecoration(
-                          labelText: '主机地址',
-                          hintText: _sourceType == SourceType.smb
-                              ? '192.168.1.100（仅 IP 地址，无需端口）'
-                              : '192.168.1.100 或 nas.example.com',
-                          helperText: _sourceType == SourceType.smb
-                              ? 'SMB 使用端口 445，无需指定协议前缀'
-                              : null,
-                          prefixIcon: const Icon(Icons.dns_outlined),
-                        ),
-                        keyboardType: TextInputType.url,
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return '请输入主机地址';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-
-                      // 端口和 SSL (不适用于 SMB)
-                      if (_sourceType != SourceType.smb)
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextFormField(
-                                controller: _portController,
-                                decoration: const InputDecoration(
-                                  labelText: '端口',
-                                  prefixIcon: Icon(Icons.numbers),
-                                ),
-                                keyboardType: TextInputType.number,
-                                validator: (value) {
-                                  if (value == null || value.isEmpty) {
-                                    return '请输入端口';
-                                  }
-                                  final port = int.tryParse(value);
-                                  if (port == null || port < 1 || port > 65535) {
-                                    return '无效端口';
-                                  }
-                                  return null;
-                                },
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            Column(
-                              children: [
-                                const Text('SSL'),
-                                Switch(
-                                  value: _useSsl,
-                                  onChanged: (v) => setState(() => _useSsl = v),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      if (_sourceType != SourceType.smb)
+                      // 本地存储提示
+                      if (_sourceType == SourceType.local) ...[
                         const SizedBox(height: 16),
-
-                      // 用户名
-                      TextFormField(
-                        controller: _usernameController,
-                        decoration: const InputDecoration(
-                          labelText: '用户名',
-                          prefixIcon: Icon(Icons.person_outline),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return '请输入用户名';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-
-                      // 密码
-                      TextFormField(
-                        controller: _passwordController,
-                        obscureText: _obscurePassword,
-                        decoration: InputDecoration(
-                          labelText: _isEditing ? '密码（留空保持不变）' : '密码',
-                          prefixIcon: const Icon(Icons.lock_outline),
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                              _obscurePassword
-                                  ? Icons.visibility_outlined
-                                  : Icons.visibility_off_outlined,
-                            ),
-                            onPressed: () {
-                              setState(() => _obscurePassword = !_obscurePassword);
-                            },
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.info_outline, color: Colors.blue),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  '本地存储无需配置连接信息，将直接访问设备上的文件',
+                                  style: TextStyle(color: Colors.blue),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        validator: (value) {
-                          if (!_isEditing && (value == null || value.isEmpty)) {
-                            return '请输入密码';
-                          }
-                          return null;
-                        },
-                      ),
+                      ],
+
+                      // 远程源需要的字段
+                      if (_sourceType != SourceType.local) ...[
+                        const SizedBox(height: 16),
+
+                        // 主机地址
+                        TextFormField(
+                          controller: _hostController,
+                          decoration: InputDecoration(
+                            labelText: '主机地址',
+                            hintText: _sourceType == SourceType.smb
+                                ? '192.168.1.100（仅 IP 地址，无需端口）'
+                                : '192.168.1.100 或 nas.example.com',
+                            helperText: _sourceType == SourceType.smb
+                                ? 'SMB 使用端口 445，无需指定协议前缀'
+                                : null,
+                            prefixIcon: const Icon(Icons.dns_outlined),
+                          ),
+                          keyboardType: TextInputType.url,
+                          validator: (value) {
+                            if (_sourceType != SourceType.local &&
+                                (value == null || value.isEmpty)) {
+                              return '请输入主机地址';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 16),
+
+                        // 端口和 SSL (不适用于 SMB)
+                        if (_sourceType != SourceType.smb)
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextFormField(
+                                  controller: _portController,
+                                  decoration: const InputDecoration(
+                                    labelText: '端口',
+                                    prefixIcon: Icon(Icons.numbers),
+                                  ),
+                                  keyboardType: TextInputType.number,
+                                  validator: (value) {
+                                    if (_sourceType != SourceType.local) {
+                                      if (value == null || value.isEmpty) {
+                                        return '请输入端口';
+                                      }
+                                      final port = int.tryParse(value);
+                                      if (port == null || port < 1 || port > 65535) {
+                                        return '无效端口';
+                                      }
+                                    }
+                                    return null;
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Column(
+                                children: [
+                                  const Text('SSL'),
+                                  Switch(
+                                    value: _useSsl,
+                                    onChanged: (v) => setState(() => _useSsl = v),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        if (_sourceType != SourceType.smb)
+                          const SizedBox(height: 16),
+
+                        // 用户名
+                        TextFormField(
+                          controller: _usernameController,
+                          decoration: const InputDecoration(
+                            labelText: '用户名',
+                            prefixIcon: Icon(Icons.person_outline),
+                          ),
+                          validator: (value) {
+                            if (_sourceType != SourceType.local &&
+                                (value == null || value.isEmpty)) {
+                              return '请输入用户名';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 16),
+
+                        // 密码
+                        TextFormField(
+                          controller: _passwordController,
+                          obscureText: _obscurePassword,
+                          decoration: InputDecoration(
+                            labelText: _isEditing ? '密码（留空保持不变）' : '密码',
+                            prefixIcon: const Icon(Icons.lock_outline),
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                _obscurePassword
+                                    ? Icons.visibility_outlined
+                                    : Icons.visibility_off_outlined,
+                              ),
+                              onPressed: () {
+                                setState(() => _obscurePassword = !_obscurePassword);
+                              },
+                            ),
+                          ),
+                          validator: (value) {
+                            if (_sourceType != SourceType.local &&
+                                !_isEditing &&
+                                (value == null || value.isEmpty)) {
+                              return '请输入密码';
+                            }
+                            return null;
+                          },
+                        ),
+                      ],
                       const SizedBox(height: 24),
 
                       // 选项
@@ -314,49 +350,51 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
   }
 
   Widget _buildSourceTypeSelector() {
+    // 只显示已支持的源类型
+    final supportedTypes = SourceType.values.where((t) => t.isSupported).toList();
+
     return Wrap(
       spacing: 8,
       runSpacing: 8,
-      children: SourceType.values.map((type) {
+      children: supportedTypes.map((type) {
         final isSelected = _sourceType == type;
-        final isSupported = type.isSupported;
 
         return FilterChip(
           label: Text(type.displayName),
           selected: isSelected,
-          onSelected: isSupported
-              ? (selected) {
-                  if (selected && _sourceType != type) {
-                    setState(() {
-                      _sourceType = type;
-                      // 重置表单内容
-                      _nameController.clear();
-                      _hostController.clear();
-                      _usernameController.clear();
-                      _passwordController.clear();
-                      _portController.text = type.defaultPort.toString();
-                      _useSsl = type.defaultPort == 5001 || type.defaultPort == 443;
-                      _errorMessage = null;
-                    });
-                  }
-                }
-              : null,
+          onSelected: (selected) {
+            if (selected && _sourceType != type) {
+              setState(() {
+                _sourceType = type;
+                // 重置表单内容
+                _nameController.clear();
+                _hostController.clear();
+                _usernameController.clear();
+                _passwordController.clear();
+                _portController.text = type.defaultPort.toString();
+                _useSsl = type.defaultPort == 5001 || type.defaultPort == 443;
+                _errorMessage = null;
+              });
+            }
+          },
           avatar: Icon(
-            switch (type) {
-              SourceType.synology => Icons.storage,
-              SourceType.ugreen => Icons.storage,
-              SourceType.fnos => Icons.storage,
-              SourceType.qnap => Icons.storage,
-              SourceType.webdav => Icons.cloud,
-              SourceType.smb => Icons.folder_shared,
-              SourceType.local => Icons.phone_android,
-            },
+            _getSourceTypeIcon(type),
             size: 18,
           ),
         );
       }).toList(),
     );
   }
+
+  IconData _getSourceTypeIcon(SourceType type) => switch (type) {
+        SourceType.synology => Icons.storage,
+        SourceType.ugreen => Icons.storage,
+        SourceType.fnos => Icons.storage,
+        SourceType.qnap => Icons.storage,
+        SourceType.webdav => Icons.cloud,
+        SourceType.smb => Icons.folder_shared,
+        SourceType.local => Icons.folder_open,
+      };
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
@@ -367,26 +405,30 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
     });
 
     try {
+      // 本地存储使用特殊的默认值
+      final isLocal = _sourceType == SourceType.local;
       final source = SourceEntity(
         id: widget.source?.id,
-        name: _nameController.text.trim(),
+        name: _nameController.text.trim().isEmpty && isLocal
+            ? '本地存储'
+            : _nameController.text.trim(),
         type: _sourceType,
-        host: _hostController.text.trim(),
-        port: int.parse(_portController.text.trim()),
-        username: _usernameController.text.trim(),
-        useSsl: _useSsl,
+        host: isLocal ? 'localhost' : _hostController.text.trim(),
+        port: isLocal ? 0 : int.parse(_portController.text.trim()),
+        username: isLocal ? 'local' : _usernameController.text.trim(),
+        useSsl: isLocal ? false : _useSsl,
         autoConnect: _autoConnect,
         rememberDevice: _rememberDevice,
       );
 
-      final password = _passwordController.text;
+      final password = isLocal ? '' : _passwordController.text;
 
       if (_isEditing) {
         // 更新源
         await ref.read(sourcesProvider.notifier).updateSource(source);
 
-        // 如果输入了新密码，保存凭证
-        if (password.isNotEmpty) {
+        // 如果输入了新密码，保存凭证（本地存储除外）
+        if (!isLocal && password.isNotEmpty) {
           final manager = ref.read(sourceManagerProvider);
           await manager.saveCredential(
             source.id,
@@ -409,11 +451,14 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
         if (connection.status == SourceStatus.connected) {
           // 连接成功，保存源和凭证
           await ref.read(sourcesProvider.notifier).addSource(source);
-          final manager = ref.read(sourceManagerProvider);
-          await manager.saveCredential(
-            source.id,
-            SourceCredential(password: password),
-          );
+          // 本地存储不需要保存凭证
+          if (!isLocal) {
+            final manager = ref.read(sourceManagerProvider);
+            await manager.saveCredential(
+              source.id,
+              SourceCredential(password: password),
+            );
+          }
           if (mounted) {
             Navigator.pop(context);
             ScaffoldMessenger.of(context).showSnackBar(
@@ -421,7 +466,7 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
             );
           }
         } else if (connection.status == SourceStatus.requires2FA) {
-          // 需要二次验证
+          // 需要二次验证（本地存储不会触发此分支）
           if (mounted) {
             final result = await _show2FADialog();
             if (result != null && result.otpCode.isNotEmpty) {
@@ -436,11 +481,13 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
               if (verified.status == SourceStatus.connected) {
                 // 2FA验证成功，保存源和凭证
                 await ref.read(sourcesProvider.notifier).addSource(source);
-                final manager = ref.read(sourceManagerProvider);
-                await manager.saveCredential(
-                  source.id,
-                  SourceCredential(password: password),
-                );
+                if (!isLocal) {
+                  final manager = ref.read(sourceManagerProvider);
+                  await manager.saveCredential(
+                    source.id,
+                    SourceCredential(password: password),
+                  );
+                }
                 if (mounted) {
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(

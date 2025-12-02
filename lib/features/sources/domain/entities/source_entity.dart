@@ -29,11 +29,11 @@ enum SourceType {
   bool get isSupported => switch (this) {
     SourceType.synology => true,
     SourceType.ugreen => true,
-    SourceType.fnos => true,
+    SourceType.fnos => false, // 飞牛OS暂未提供API
     SourceType.webdav => true,
     SourceType.smb => true,
-    SourceType.qnap => false,
-    SourceType.local => false,
+    SourceType.qnap => true,
+    SourceType.local => true,
   };
 }
 

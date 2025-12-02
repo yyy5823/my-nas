@@ -6,9 +6,11 @@ enum NasAdapterType {
   synology,
   ugreen,
   fnos,
+  qnap,
   webdav,
   smb,
   sftp,
+  local,
 }
 
 /// NAS 适配器信息

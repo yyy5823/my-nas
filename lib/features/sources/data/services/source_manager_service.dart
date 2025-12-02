@@ -8,6 +8,8 @@ import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/nas_adapters/base/nas_adapter.dart';
 import 'package:my_nas/nas_adapters/base/nas_connection.dart';
 import 'package:my_nas/nas_adapters/fnos/fnos_adapter.dart';
+import 'package:my_nas/nas_adapters/local/local_adapter.dart';
+import 'package:my_nas/nas_adapters/qnap/qnap_adapter.dart';
 import 'package:my_nas/nas_adapters/smb/smb_adapter.dart';
 import 'package:my_nas/nas_adapters/synology/synology_adapter.dart';
 import 'package:my_nas/nas_adapters/ugreen/ugreen_adapter.dart';
@@ -370,6 +372,11 @@ class SourceManagerService {
         otpCode,
         rememberDevice: rememberDevice,
       );
+    } else if (adapter is QnapAdapter) {
+      result = await adapter.verify2FA(
+        otpCode,
+        rememberDevice: rememberDevice,
+      );
     }
 
     if (result != null) {
@@ -488,9 +495,10 @@ class SourceManagerService {
       SourceType.synology => SynologyAdapter(),
       SourceType.ugreen => UGreenAdapter(),
       SourceType.fnos => FnOSAdapter(),
+      SourceType.qnap => QnapAdapter(),
       SourceType.webdav => WebDavAdapter(),
       SourceType.smb => SmbAdapter(),
-      _ => throw UnimplementedError('适配器 $type 尚未实现'),
+      SourceType.local => LocalAdapter(),
     };
   }
 
@@ -499,9 +507,10 @@ class SourceManagerService {
       SourceType.synology => NasAdapterType.synology,
       SourceType.ugreen => NasAdapterType.ugreen,
       SourceType.fnos => NasAdapterType.fnos,
+      SourceType.qnap => NasAdapterType.qnap,
       SourceType.webdav => NasAdapterType.webdav,
       SourceType.smb => NasAdapterType.smb,
-      _ => throw UnimplementedError('适配器类型 $type 尚未实现'),
+      SourceType.local => NasAdapterType.local,
     };
   }
 

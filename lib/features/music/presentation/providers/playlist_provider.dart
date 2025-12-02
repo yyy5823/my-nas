@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/features/music/data/services/playlist_service.dart';
 
+export 'package:my_nas/features/music/data/services/playlist_service.dart' show PlaylistEntry;
+
 /// 播放列表状态
 class PlaylistState {
   const PlaylistState({
