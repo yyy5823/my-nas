@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
@@ -1002,22 +1004,78 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
       final url = await adapter.fileSystem.getFileUrl(track.path);
       final musicItem = MusicItem.fromFileItem(track.file, url, sourceId: track.sourceId);
 
+      // 找到当前曲目在列表中的索引
+      final trackIndex = allTracks.indexWhere((t) => t.path == track.path);
+
+      // 先播放当前曲目
+      ref.read(playQueueProvider.notifier).setQueue([musicItem]);
+      ref.read(musicPlayerControllerProvider.notifier).updateCurrentIndex(0);
       await ref.read(musicPlayerControllerProvider.notifier).play(musicItem);
 
       // 记录最近播放
       ref.read(musicHistoryProvider.notifier).addToHistory(musicItem);
 
+      // 导航到播放器页面
       if (context.mounted) {
-        await Navigator.of(context).push(
+        unawaited(Navigator.of(context).push(
           MaterialPageRoute<void>(builder: (context) => const MusicPlayerPage()),
-        );
+        ));
       }
+
+      // 在后台构建完整播放队列
+      _buildPlayQueue(ref, adapter.fileSystem, track, allTracks, trackIndex);
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('播放失败: $e')),
         );
       }
+    }
+  }
+
+  /// 在后台构建播放队列
+  Future<void> _buildPlayQueue(
+    WidgetRef ref,
+    NasFileSystem fileSystem,
+    MusicFileWithSource currentTrack,
+    List<MusicFileWithSource> allTracks,
+    int trackIndex,
+  ) async {
+    try {
+      // 构建播放队列（最多50首，以当前曲目为中心）
+      const queueSize = 50;
+      int startIndex;
+      int endIndex;
+
+      if (allTracks.length <= queueSize) {
+        startIndex = 0;
+        endIndex = allTracks.length;
+      } else {
+        // 以当前曲目为中心
+        final halfSize = queueSize ~/ 2;
+        startIndex = (trackIndex - halfSize).clamp(0, allTracks.length - queueSize);
+        endIndex = (startIndex + queueSize).clamp(0, allTracks.length);
+      }
+
+      final queueTracks = allTracks.sublist(startIndex, endIndex);
+      final queue = <MusicItem>[];
+      var newCurrentIndex = 0;
+
+      for (var i = 0; i < queueTracks.length; i++) {
+        final t = queueTracks[i];
+        final trackUrl = await fileSystem.getFileUrl(t.path);
+        final item = MusicItem.fromFileItem(t.file, trackUrl, sourceId: t.sourceId);
+        queue.add(item);
+        if (t.path == currentTrack.path) {
+          newCurrentIndex = i;
+        }
+      }
+
+      // 更新播放队列
+      ref.read(playQueueProvider.notifier).setQueue(queue);
+      ref.read(musicPlayerControllerProvider.notifier).updateCurrentIndex(newCurrentIndex);
+    } catch (e) {
+      logger.w('构建播放队列失败: $e');
     }
   }
 
