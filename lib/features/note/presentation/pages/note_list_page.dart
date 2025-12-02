@@ -44,6 +44,7 @@ class NotePageLoaded extends NotePageState {
     this.isEditing = false,
     this.hasChanges = false,
     this.isLoadingContent = false,
+    this.livePreview = true,
   });
 
   final List<NoteTreeNode> treeNodes;
@@ -53,6 +54,7 @@ class NotePageLoaded extends NotePageState {
   final bool isEditing;
   final bool hasChanges;
   final bool isLoadingContent;
+  final bool livePreview; // 实时预览模式
 
   /// 当前选中的文件是否是任务文件
   bool get isTaskFile => selectedNode?.isTaskFile ?? false;
@@ -65,6 +67,7 @@ class NotePageLoaded extends NotePageState {
     bool? isEditing,
     bool? hasChanges,
     bool? isLoadingContent,
+    bool? livePreview,
     bool clearSelection = false,
   }) {
     return NotePageLoaded(
@@ -75,6 +78,7 @@ class NotePageLoaded extends NotePageState {
       isEditing: isEditing ?? this.isEditing,
       hasChanges: hasChanges ?? this.hasChanges,
       isLoadingContent: isLoadingContent ?? this.isLoadingContent,
+      livePreview: livePreview ?? this.livePreview,
     );
   }
 }
@@ -345,6 +349,14 @@ class NotePageNotifier extends StateNotifier<NotePageState> {
     final current = state;
     if (current is NotePageLoaded) {
       state = current.copyWith(isEditing: editing);
+    }
+  }
+
+  /// 切换实时预览模式
+  void toggleLivePreview() {
+    final current = state;
+    if (current is NotePageLoaded) {
+      state = current.copyWith(livePreview: !current.livePreview);
     }
   }
 
@@ -782,7 +794,9 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
         // 内容区
         Expanded(
           child: state.isEditing
-              ? _buildEditor(context, state, isDark)
+              ? (state.livePreview
+                  ? _buildSplitView(context, state, isDark)
+                  : _buildEditorOnly(context, state, isDark))
               : _buildPreview(context, state, isDark),
         ),
       ],
@@ -908,31 +922,90 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
   }
 
   Widget _buildModeToggle(NotePageLoaded state, bool isDark) {
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark
-            ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
-            : Colors.grey.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _buildModeButton(
-            icon: Icons.visibility_rounded,
-            label: '预览',
-            isSelected: !state.isEditing,
-            onTap: () => ref.read(notePageProvider.notifier).setEditing(false),
-            isDark: isDark,
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // 模式切换按钮组
+        Container(
+          decoration: BoxDecoration(
+            color: isDark
+                ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
+                : Colors.grey.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(8),
           ),
-          _buildModeButton(
-            icon: Icons.edit_rounded,
-            label: '编辑',
-            isSelected: state.isEditing,
-            onTap: () => ref.read(notePageProvider.notifier).setEditing(true),
-            isDark: isDark,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildModeButton(
+                icon: Icons.visibility_rounded,
+                label: '预览',
+                isSelected: !state.isEditing,
+                onTap: () =>
+                    ref.read(notePageProvider.notifier).setEditing(false),
+                isDark: isDark,
+              ),
+              _buildModeButton(
+                icon: Icons.edit_rounded,
+                label: '编辑',
+                isSelected: state.isEditing,
+                onTap: () =>
+                    ref.read(notePageProvider.notifier).setEditing(true),
+                isDark: isDark,
+              ),
+            ],
           ),
+        ),
+        // 实时预览切换（仅在编辑模式显示）
+        if (state.isEditing) ...[
+          const SizedBox(width: 8),
+          _buildLivePreviewToggle(state, isDark),
         ],
+      ],
+    );
+  }
+
+  /// 实时预览切换按钮
+  Widget _buildLivePreviewToggle(NotePageLoaded state, bool isDark) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => ref.read(notePageProvider.notifier).toggleLivePreview(),
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: state.livePreview
+                ? AppColors.primary.withValues(alpha: 0.15)
+                : (isDark
+                    ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
+                    : Colors.grey.withValues(alpha: 0.1)),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.vertical_split_rounded,
+                size: 16,
+                color: state.livePreview
+                    ? AppColors.primary
+                    : (isDark ? AppColors.darkOnSurfaceVariant : Colors.grey),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '分屏',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight:
+                      state.livePreview ? FontWeight.w600 : FontWeight.normal,
+                  color: state.livePreview
+                      ? AppColors.primary
+                      : (isDark ? AppColors.darkOnSurfaceVariant : Colors.grey),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1017,7 +1090,132 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
     );
   }
 
-  Widget _buildEditor(BuildContext context, NotePageLoaded state, bool isDark) {
+  /// 分屏视图：左边编辑器，右边实时预览
+  Widget _buildSplitView(
+      BuildContext context, NotePageLoaded state, bool isDark) {
+    // 初始化编辑器内容
+    if (_editController.text != state.content && !state.hasChanges) {
+      _editController.text = state.content ?? '';
+    }
+
+    return Column(
+      children: [
+        // 工具栏
+        _buildEditorToolbar(context, isDark),
+        // 分屏内容区
+        Expanded(
+          child: Row(
+            children: [
+              // 左侧：编辑区域
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    border: Border(
+                      right: BorderSide(
+                        color: isDark
+                            ? AppColors.darkOutline.withValues(alpha: 0.3)
+                            : Colors.grey.withValues(alpha: 0.2),
+                      ),
+                    ),
+                  ),
+                  child: TextField(
+                    controller: _editController,
+                    maxLines: null,
+                    expands: true,
+                    textAlignVertical: TextAlignVertical.top,
+                    style: TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 14,
+                      color: isDark ? AppColors.darkOnSurface : null,
+                      height: 1.6,
+                    ),
+                    decoration: InputDecoration(
+                      contentPadding: const EdgeInsets.all(AppSpacing.md),
+                      border: InputBorder.none,
+                      hintText: '开始编写 Markdown...',
+                      hintStyle: TextStyle(
+                        color: isDark
+                            ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.5)
+                            : null,
+                      ),
+                    ),
+                    onChanged: (value) =>
+                        ref.read(notePageProvider.notifier).updateContent(value),
+                  ),
+                ),
+              ),
+              // 右侧：实时预览
+              Expanded(
+                child: Container(
+                  color: isDark
+                      ? AppColors.darkBackground
+                      : Colors.grey.withValues(alpha: 0.05),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 预览标题栏
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: isDark
+                              ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
+                              : Colors.grey.withValues(alpha: 0.1),
+                          border: Border(
+                            bottom: BorderSide(
+                              color: isDark
+                                  ? AppColors.darkOutline.withValues(alpha: 0.2)
+                                  : Colors.grey.withValues(alpha: 0.2),
+                            ),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.preview_rounded,
+                              size: 16,
+                              color: isDark
+                                  ? AppColors.darkOnSurfaceVariant
+                                  : Colors.grey,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              '实时预览',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: isDark
+                                    ? AppColors.darkOnSurfaceVariant
+                                    : Colors.grey,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      // 预览内容
+                      Expanded(
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.all(AppSpacing.lg),
+                          child: _MarkdownPreview(
+                            content: _editController.text,
+                            isDark: isDark,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 纯编辑视图（无预览）
+  Widget _buildEditorOnly(
+      BuildContext context, NotePageLoaded state, bool isDark) {
     // 初始化编辑器内容
     if (_editController.text != state.content && !state.hasChanges) {
       _editController.text = state.content ?? '';
