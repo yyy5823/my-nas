@@ -2,6 +2,7 @@ import 'package:hive_ce/hive.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/video/data/services/nfo_scraper_service.dart';
 import 'package:my_nas/features/video/data/services/tmdb_service.dart';
+import 'package:my_nas/features/video/data/services/video_thumbnail_service.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 
@@ -17,12 +18,14 @@ class VideoMetadataService {
   Box<dynamic>? _box;
   final TmdbService _tmdbService = TmdbService.instance;
   final NfoScraperService _nfoService = NfoScraperService.instance;
+  final VideoThumbnailService _thumbnailService = VideoThumbnailService.instance;
 
   /// 初始化
   Future<void> init() async {
     if (_box != null && _box!.isOpen) return;
     try {
       _box = await Hive.openBox(_boxName);
+      await _thumbnailService.init();
       logger.i('VideoMetadataService: 初始化完成，缓存条目: ${_box!.length}');
     } catch (e) {
       logger.e('VideoMetadataService: 打开缓存失败，尝试删除并重建', e);
@@ -355,5 +358,74 @@ class VideoMetadataService {
     }
 
     return results;
+  }
+
+  /// 为没有封面的视频生成缩略图
+  ///
+  /// 类似于 Emby/Jellyfin 的 Screen Grabber 功能
+  /// 在视频的 15% 位置提取帧作为缩略图
+  Future<String?> generateThumbnailForVideo({
+    required String videoUrl,
+    required String videoPath,
+  }) async {
+    try {
+      final thumbnailPath = await _thumbnailService.generateThumbnail(
+        videoUrl: videoUrl,
+        videoPath: videoPath,
+        timeMs: 5000, // 5秒位置，通常能避开片头黑屏
+      );
+
+      if (thumbnailPath != null) {
+        // 返回 file:// URL
+        return _thumbnailService.getCachedThumbnailUrl(videoPath);
+      }
+    } catch (e) {
+      logger.w('VideoMetadataService: 生成视频缩略图失败', e);
+    }
+    return null;
+  }
+
+  /// 获取视频的显示封面 URL
+  ///
+  /// 优先级：TMDB 海报 > NFO 本地海报 > NAS 内置缩略图 > 生成的缩略图
+  Future<String?> getDisplayPosterUrl({
+    required VideoMetadata metadata,
+    String? videoUrl,
+  }) async {
+    // 1. 优先使用 TMDB 海报或 NFO 本地海报
+    if (metadata.posterUrl != null && metadata.posterUrl!.isNotEmpty) {
+      return metadata.posterUrl;
+    }
+
+    // 2. 使用 NAS 内置缩略图
+    if (metadata.thumbnailUrl != null && metadata.thumbnailUrl!.isNotEmpty) {
+      return metadata.thumbnailUrl;
+    }
+
+    // 3. 检查是否有缓存的生成缩略图
+    final cachedUrl = _thumbnailService.getCachedThumbnailUrl(metadata.filePath);
+    if (cachedUrl != null) {
+      return cachedUrl;
+    }
+
+    // 4. 如果提供了视频 URL，尝试生成缩略图
+    if (videoUrl != null && videoUrl.isNotEmpty) {
+      return generateThumbnailForVideo(
+        videoUrl: videoUrl,
+        videoPath: metadata.filePath,
+      );
+    }
+
+    return null;
+  }
+
+  /// 清除缩略图缓存
+  Future<void> clearThumbnailCache() async {
+    await _thumbnailService.clearAllCache();
+  }
+
+  /// 获取缩略图缓存大小
+  Future<int> getThumbnailCacheSize() async {
+    return _thumbnailService.getCacheSize();
   }
 }
