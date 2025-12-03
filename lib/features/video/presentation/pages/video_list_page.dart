@@ -753,19 +753,30 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
             ],
           ),
         ),
-        // 操作按钮
-        _buildHeaderButton(
-          icon: Icons.search_rounded,
-          onTap: () => setState(() => _showSearch = true),
-          isDark: isDark,
+        // 操作按钮（与音乐页面风格一致）
+        IconButton(
+          onPressed: () => setState(() => _showSearch = true),
+          icon: Icon(
+            Icons.search_rounded,
+            color: isDark ? Colors.white : Colors.black87,
+          ),
           tooltip: '搜索',
         ),
-        const SizedBox(width: 8),
-        _buildHeaderButton(
-          icon: Icons.refresh_rounded,
-          onTap: () => ref.read(videoListProvider.notifier).forceRefresh(),
-          isDark: isDark,
+        IconButton(
+          onPressed: () => ref.read(videoListProvider.notifier).forceRefresh(),
+          icon: Icon(
+            Icons.refresh_rounded,
+            color: isDark ? Colors.white : Colors.black87,
+          ),
           tooltip: '刷新',
+        ),
+        IconButton(
+          onPressed: () => _showSettingsMenu(context),
+          icon: Icon(
+            Icons.more_vert_rounded,
+            color: isDark ? Colors.white : Colors.black87,
+          ),
+          tooltip: '更多',
         ),
       ],
     );
@@ -852,38 +863,39 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     );
   }
 
-  /// 头部按钮
-  Widget _buildHeaderButton({
-    required IconData icon,
-    required VoidCallback onTap,
-    required bool isDark,
-    String? tooltip,
-  }) {
-    return Tooltip(
-      message: tooltip ?? '',
-      child: Material(
-        color: isDark ? Colors.grey[850] : Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: isDark
-                    ? Colors.grey[700]!.withValues(alpha: 0.5)
-                    : Colors.grey[200]!,
-              ),
+  /// 设置菜单
+  void _showSettingsMenu(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.settings_rounded),
+              title: const Text('媒体库设置'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (context) => const MediaLibraryPage(),
+                  ),
+                );
+              },
             ),
-            child: Icon(
-              icon,
-              color: isDark ? Colors.white : Colors.grey[700],
-              size: 22,
+            ListTile(
+              leading: const Icon(Icons.cloud_rounded),
+              title: const Text('连接源管理'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (context) => const SourcesPage(),
+                  ),
+                );
+              },
             ),
-          ),
+          ],
         ),
       ),
     );
