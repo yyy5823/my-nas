@@ -759,80 +759,56 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
   Widget _buildSearchBar(BuildContext context, WidgetRef ref, bool isDark) {
     return Row(
       children: [
-        Expanded(
-          child: Container(
-            height: 44,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            decoration: BoxDecoration(
-              color: isDark ? Colors.grey[850] : Colors.white,
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(
-                color: isDark
-                    ? Colors.grey[700]!
-                    : Colors.grey[300]!,
-              ),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.search_rounded,
-                  color: isDark ? Colors.grey[400] : Colors.grey[600],
-                  size: 20,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextField(
-                    controller: _searchController,
-                    autofocus: true,
-                    decoration: InputDecoration(
-                      hintText: '搜索电影、剧集...',
-                      hintStyle: TextStyle(
-                        color: isDark ? Colors.grey[500] : Colors.grey[400],
-                        fontSize: 15,
-                      ),
-                      border: InputBorder.none,
-                      isDense: true,
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                    style: TextStyle(
-                      color: isDark ? Colors.white : Colors.black87,
-                      fontSize: 15,
-                    ),
-                    onChanged: (v) =>
-                        ref.read(videoListProvider.notifier).setSearchQuery(v),
-                  ),
-                ),
-                if (_searchController.text.isNotEmpty)
-                  GestureDetector(
-                    onTap: () {
-                      _searchController.clear();
-                      ref.read(videoListProvider.notifier).setSearchQuery('');
-                    },
-                    child: Icon(
-                      Icons.close_rounded,
-                      color: isDark ? Colors.grey[400] : Colors.grey[600],
-                      size: 20,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
-        TextButton(
+        // 返回按钮
+        IconButton(
           onPressed: () {
             setState(() => _showSearch = false);
             _searchController.clear();
             ref.read(videoListProvider.notifier).setSearchQuery('');
           },
-          child: Text(
-            '取消',
+          icon: Icon(
+            Icons.arrow_back_rounded,
+            color: isDark ? Colors.white : Colors.black87,
+          ),
+          tooltip: '返回',
+        ),
+        // 搜索输入框
+        Expanded(
+          child: TextField(
+            controller: _searchController,
+            autofocus: true,
             style: TextStyle(
-              color: AppColors.primary,
-              fontWeight: FontWeight.w500,
+              color: isDark ? Colors.white : Colors.black87,
+              fontSize: 16,
             ),
+            decoration: InputDecoration(
+              hintText: '搜索电影、剧集...',
+              hintStyle: TextStyle(
+                color: isDark ? Colors.grey[500] : Colors.grey[400],
+                fontSize: 16,
+              ),
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+            ),
+            onChanged: (v) =>
+                ref.read(videoListProvider.notifier).setSearchQuery(v),
           ),
         ),
+        // 清除按钮
+        if (_searchController.text.isNotEmpty)
+          IconButton(
+            onPressed: () {
+              _searchController.clear();
+              ref.read(videoListProvider.notifier).setSearchQuery('');
+            },
+            icon: Icon(
+              Icons.close_rounded,
+              color: isDark ? Colors.grey[400] : Colors.grey[600],
+            ),
+            tooltip: '清除',
+          ),
       ],
     );
   }
@@ -889,46 +865,6 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
             child: Icon(
               icon,
               color: isDark ? Colors.white : Colors.grey[700],
-              size: 22,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  String? _getSyncTimeText(DateTime? lastUpdated) {
-    if (lastUpdated == null) return null;
-    final age = DateTime.now().difference(lastUpdated);
-    if (age.inMinutes < 1) return '刚刚同步';
-    if (age.inMinutes < 60) return '${age.inMinutes}分钟前';
-    if (age.inHours < 24) return '${age.inHours}小时前';
-    if (age.inDays < 7) return '${age.inDays}天前';
-    return '${lastUpdated.month}/${lastUpdated.day}';
-  }
-
-  Widget _buildIconButton({
-    required IconData icon,
-    required VoidCallback onTap,
-    required bool isDark,
-    String? tooltip,
-  }) {
-    return Tooltip(
-      message: tooltip ?? '',
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(8),
-          child: Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(
-              icon,
-              color: isDark ? Colors.white : null,
               size: 22,
             ),
           ),
@@ -2208,148 +2144,5 @@ class _PosterCardState extends ConsumerState<_PosterCard> {
     if (rating >= 8) return Colors.green;
     if (rating >= 6) return Colors.orange;
     return Colors.red;
-  }
-}
-
-/// 缓存信息条
-class _CacheInfoBar extends ConsumerWidget {
-  const _CacheInfoBar({
-    required this.state,
-    required this.isDark,
-  });
-
-  final VideoListLoaded state;
-  final bool isDark;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final cacheService = VideoLibraryCacheService.instance;
-    final cache = cacheService.getCache();
-
-    if (cache == null) {
-      return const SliverToBoxAdapter(child: SizedBox.shrink());
-    }
-
-    final videoCount = state.videos.length;
-    final movieCount = state.movies.length;
-    final tvShowCount = state.tvShowGroups.length;
-
-    // 计算缓存时间
-    final cacheAge = DateTime.now().difference(cache.lastUpdated);
-    final ageText = cacheAge.inHours < 1
-        ? '${cacheAge.inMinutes} 分钟前'
-        : cacheAge.inHours < 24
-            ? '${cacheAge.inHours} 小时前'
-            : '${cacheAge.inDays} 天前';
-
-    return SliverToBoxAdapter(
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: isDark ? Colors.grey[900] : Colors.grey[100],
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: isDark ? Colors.grey[800]! : Colors.grey[300]!,
-            width: 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            // 视频统计
-            _buildStatItem(
-              icon: Icons.video_library_rounded,
-              label: '视频',
-              count: videoCount,
-              color: AppColors.primary,
-            ),
-            const SizedBox(width: 16),
-            _buildStatItem(
-              icon: Icons.movie_rounded,
-              label: '电影',
-              count: movieCount,
-              color: Colors.orange,
-            ),
-            const SizedBox(width: 16),
-            _buildStatItem(
-              icon: Icons.live_tv_rounded,
-              label: '剧集',
-              count: tvShowCount,
-              color: AppColors.accent,
-            ),
-            const Spacer(),
-            // 更新时间
-            Row(
-              children: [
-                Icon(
-                  Icons.update_rounded,
-                  size: 14,
-                  color: isDark ? Colors.grey[500] : Colors.grey[600],
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  ageText,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: isDark ? Colors.grey[500] : Colors.grey[600],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(width: 8),
-            // 刷新按钮
-            Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () => ref.read(videoListProvider.notifier).forceRefresh(),
-                borderRadius: BorderRadius.circular(6),
-                child: Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Icon(
-                    Icons.refresh_rounded,
-                    size: 16,
-                    color: AppColors.primary,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatItem({
-    required IconData icon,
-    required String label,
-    required int count,
-    required Color color,
-  }) {
-    return Row(
-      children: [
-        Icon(icon, size: 14, color: color),
-        const SizedBox(width: 4),
-        Text(
-          '$count',
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.bold,
-            color: isDark ? Colors.white : Colors.black87,
-          ),
-        ),
-        const SizedBox(width: 2),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 11,
-            color: isDark ? Colors.grey[500] : Colors.grey[600],
-          ),
-        ),
-      ],
-    );
   }
 }

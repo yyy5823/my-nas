@@ -494,16 +494,26 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
     super.dispose();
   }
 
+  /// 获取问候语
+  String _getGreeting() {
+    final hour = DateTime.now().hour;
+    if (hour < 6) return '夜深了';
+    if (hour < 12) return '早上好';
+    if (hour < 14) return '中午好';
+    if (hour < 18) return '下午好';
+    return '晚上好';
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(photoListProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: isDark ? AppColors.darkBackground : null,
+      backgroundColor: isDark ? AppColors.darkBackground : Colors.grey[50],
       body: Column(
         children: [
-          _buildAppBar(context, ref, isDark, state),
+          _buildHeader(context, ref, isDark, state),
           Expanded(
             child: switch (state) {
               PhotoListLoading(
@@ -537,222 +547,171 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
     );
   }
 
-  Widget _buildAppBar(
+  /// 构建顶部区域
+  Widget _buildHeader(
     BuildContext context,
     WidgetRef ref,
     bool isDark,
     PhotoListState state,
   ) {
-    // 获取同步时间信息
-    final cacheService = PhotoLibraryCacheService.instance;
-    final cache = cacheService.getCache();
-    final syncTimeText = _getSyncTimeText(cache?.lastUpdated);
-
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
-        border: Border(
-          bottom: BorderSide(
-            color: isDark
-                ? AppColors.darkOutline.withOpacity(0.2)
-                : context.colorScheme.outlineVariant.withOpacity(0.5),
-          ),
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: isDark
+              ? [const Color(0xFF1A2E1A), AppColors.darkBackground]
+              : [Colors.green.withValues(alpha: 0.08), Colors.grey[50]!],
         ),
       ),
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: AppSpacing.appBarContentPadding,
-          child: Row(
+          padding: EdgeInsets.fromLTRB(
+            AppSpacing.appBarHorizontalPadding,
+            AppSpacing.appBarVerticalPadding,
+            AppSpacing.appBarHorizontalPadding,
+            AppSpacing.lg,
+          ),
+          child: _showSearch
+              ? _buildSearchBar(context, ref, isDark)
+              : _buildGreetingHeader(context, ref, isDark, state),
+        ),
+      ),
+    );
+  }
+
+  /// 问候语头部
+  Widget _buildGreetingHeader(
+    BuildContext context,
+    WidgetRef ref,
+    bool isDark,
+    PhotoListState state,
+  ) {
+    final photoCount = state is PhotoListLoaded ? state.photos.length : 0;
+
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (!_showSearch) ...[
-                Text(
-                  '照片',
-                  style: context.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: isDark ? AppColors.darkOnSurface : null,
-                  ),
+              Text(
+                _getGreeting(),
+                style: context.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black87,
                 ),
-                if (syncTimeText != null) ...[
-                  const SizedBox(width: 8),
-                  Icon(
-                    Icons.cloud_done_rounded,
-                    size: 14,
-                    color: isDark ? Colors.grey[500] : Colors.grey[600],
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    syncTimeText,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: isDark ? Colors.grey[500] : Colors.grey[600],
-                    ),
-                  ),
-                ],
-                if (state is PhotoListLoaded)
-                  Container(
-                    margin: const EdgeInsets.only(left: 8),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      '${state.filteredPhotos.length}',
-                      style: TextStyle(
-                        color: AppColors.primary,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-              ],
-              if (_showSearch)
-                Expanded(
-                  child: TextField(
-                    controller: _searchController,
-                    autofocus: true,
-                    decoration: InputDecoration(
-                      hintText: '搜索照片...',
-                      hintStyle: TextStyle(
-                        color: isDark
-                            ? AppColors.darkOnSurfaceVariant
-                            : context.colorScheme.onSurfaceVariant,
-                      ),
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                    style: TextStyle(
-                      color: isDark ? AppColors.darkOnSurface : null,
-                    ),
-                    onChanged: (value) {
-                      ref.read(photoListProvider.notifier).setSearchQuery(value);
-                    },
-                  ),
-                ),
-              const Spacer(),
-              _buildIconButton(
-                icon: _showSearch ? Icons.close : Icons.search_rounded,
-                onTap: () {
-                  setState(() {
-                    _showSearch = !_showSearch;
-                    if (!_showSearch) {
-                      _searchController.clear();
-                      ref.read(photoListProvider.notifier).setSearchQuery('');
-                    }
-                  });
-                },
-                isDark: isDark,
-                tooltip: _showSearch ? '关闭' : '搜索',
               ),
-              if (state is PhotoListLoaded)
-                _buildIconButton(
-                  icon: state.viewMode == PhotoViewMode.grid
-                      ? Icons.view_timeline_rounded
-                      : Icons.grid_view_rounded,
-                  onTap: () =>
-                      ref.read(photoListProvider.notifier).toggleViewMode(),
-                  isDark: isDark,
-                  tooltip: state.viewMode == PhotoViewMode.grid
-                      ? '切换到时间线'
-                      : '切换到网格',
-                ),
-              if (state is PhotoListLoaded)
-                PopupMenuButton<PhotoSortType>(
-                  icon: Icon(
-                    Icons.sort_rounded,
-                    color: isDark ? AppColors.darkOnSurfaceVariant : null,
-                  ),
-                  tooltip: '排序',
-                  onSelected: (type) =>
-                      ref.read(photoListProvider.notifier).setSortType(type),
-                  itemBuilder: (context) => [
-                    _buildSortMenuItem(
-                      context,
-                      PhotoSortType.date,
-                      '按日期',
-                      Icons.calendar_today_rounded,
-                      state.sortType,
-                      isDark,
+              const SizedBox(height: 4),
+              if (photoCount > 0)
+                Row(
+                  children: [
+                    Icon(
+                      Icons.photo_library_rounded,
+                      size: 14,
+                      color: Colors.green,
                     ),
-                    _buildSortMenuItem(
-                      context,
-                      PhotoSortType.name,
-                      '按名称',
-                      Icons.sort_by_alpha_rounded,
-                      state.sortType,
-                      isDark,
-                    ),
-                    _buildSortMenuItem(
-                      context,
-                      PhotoSortType.size,
-                      '按大小',
-                      Icons.straighten_rounded,
-                      state.sortType,
-                      isDark,
+                    const SizedBox(width: 4),
+                    Text(
+                      '$photoCount 张照片',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: isDark ? Colors.grey[400] : Colors.grey[600],
+                      ),
                     ),
                   ],
                 ),
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  String? _getSyncTimeText(DateTime? lastUpdated) {
-    if (lastUpdated == null) return null;
-    final age = DateTime.now().difference(lastUpdated);
-    if (age.inMinutes < 1) return '刚刚同步';
-    if (age.inMinutes < 60) return '${age.inMinutes}分钟前';
-    if (age.inHours < 24) return '${age.inHours}小时前';
-    if (age.inDays < 7) return '${age.inDays}天前';
-    return '${lastUpdated.month}/${lastUpdated.day}';
-  }
-
-  PopupMenuItem<PhotoSortType> _buildSortMenuItem(
-    BuildContext context,
-    PhotoSortType type,
-    String label,
-    IconData icon,
-    PhotoSortType current,
-    bool isDark,
-  ) {
-    final isSelected = type == current;
-    return PopupMenuItem(
-      value: type,
-      child: Row(
-        children: [
-          Icon(
-            icon,
-            size: 20,
-            color: isSelected
-                ? AppColors.primary
-                : (isDark ? AppColors.darkOnSurface : null),
+        // 操作按钮
+        _buildHeaderButton(
+          icon: Icons.search_rounded,
+          onTap: () => setState(() => _showSearch = true),
+          isDark: isDark,
+          tooltip: '搜索',
+        ),
+        const SizedBox(width: 8),
+        if (state is PhotoListLoaded) ...[
+          _buildHeaderButton(
+            icon: state.viewMode == PhotoViewMode.grid
+                ? Icons.view_timeline_rounded
+                : Icons.grid_view_rounded,
+            onTap: () => ref.read(photoListProvider.notifier).toggleViewMode(),
+            isDark: isDark,
+            tooltip: state.viewMode == PhotoViewMode.grid ? '时间线' : '网格',
           ),
-          const SizedBox(width: 12),
-          Text(
-            label,
-            style: TextStyle(
-              color: isSelected
-                  ? AppColors.primary
-                  : (isDark ? AppColors.darkOnSurface : null),
-              fontWeight: isSelected ? FontWeight.w600 : null,
-            ),
-          ),
-          if (isSelected) ...[
-            const Spacer(),
-            Icon(Icons.check, size: 18, color: AppColors.primary),
-          ],
+          const SizedBox(width: 8),
         ],
-      ),
+        _buildHeaderButton(
+          icon: Icons.refresh_rounded,
+          onTap: () => ref.read(photoListProvider.notifier).forceRefresh(),
+          isDark: isDark,
+          tooltip: '刷新',
+        ),
+      ],
     );
   }
 
-  Widget _buildIconButton({
+  /// 搜索栏
+  Widget _buildSearchBar(BuildContext context, WidgetRef ref, bool isDark) {
+    return Row(
+      children: [
+        IconButton(
+          onPressed: () {
+            setState(() => _showSearch = false);
+            _searchController.clear();
+            ref.read(photoListProvider.notifier).setSearchQuery('');
+          },
+          icon: Icon(
+            Icons.arrow_back_rounded,
+            color: isDark ? Colors.white : Colors.black87,
+          ),
+          tooltip: '返回',
+        ),
+        Expanded(
+          child: TextField(
+            controller: _searchController,
+            autofocus: true,
+            style: TextStyle(
+              color: isDark ? Colors.white : Colors.black87,
+              fontSize: 16,
+            ),
+            decoration: InputDecoration(
+              hintText: '搜索照片...',
+              hintStyle: TextStyle(
+                color: isDark ? Colors.grey[500] : Colors.grey[400],
+                fontSize: 16,
+              ),
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+            ),
+            onChanged: (value) {
+              ref.read(photoListProvider.notifier).setSearchQuery(value);
+            },
+          ),
+        ),
+        if (_searchController.text.isNotEmpty)
+          IconButton(
+            onPressed: () {
+              _searchController.clear();
+              ref.read(photoListProvider.notifier).setSearchQuery('');
+            },
+            icon: Icon(
+              Icons.close_rounded,
+              color: isDark ? Colors.grey[400] : Colors.grey[600],
+            ),
+            tooltip: '清除',
+          ),
+      ],
+    );
+  }
+
+  /// 头部按钮
+  Widget _buildHeaderButton({
     required IconData icon,
     required VoidCallback onTap,
     required bool isDark,
@@ -761,19 +720,25 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
     return Tooltip(
       message: tooltip ?? '',
       child: Material(
-        color: Colors.transparent,
+        color: isDark ? Colors.grey[850] : Colors.white,
+        borderRadius: BorderRadius.circular(12),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(12),
           child: Container(
-            width: 40,
-            height: 40,
+            width: 44,
+            height: 44,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isDark
+                    ? Colors.grey[700]!.withValues(alpha: 0.5)
+                    : Colors.grey[200]!,
+              ),
             ),
             child: Icon(
               icon,
-              color: isDark ? AppColors.darkOnSurfaceVariant : null,
+              color: isDark ? Colors.white : Colors.grey[700],
               size: 22,
             ),
           ),
@@ -1305,110 +1270,6 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
 
     slivers.add(const SliverToBoxAdapter(child: SizedBox(height: 16)));
     return slivers;
-  }
-}
-
-/// 缓存信息条
-class _PhotoCacheInfoBar extends ConsumerWidget {
-  const _PhotoCacheInfoBar({
-    required this.state,
-    required this.isDark,
-  });
-
-  final PhotoListLoaded state;
-  final bool isDark;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final cacheService = PhotoLibraryCacheService.instance;
-    final cache = cacheService.getCache();
-
-    if (cache == null) {
-      return const SliverToBoxAdapter(child: SizedBox.shrink());
-    }
-
-    final photoCount = state.photos.length;
-    final cacheAge = DateTime.now().difference(cache.lastUpdated);
-    final ageText = cacheAge.inHours < 1
-        ? '${cacheAge.inMinutes} 分钟前'
-        : cacheAge.inHours < 24
-            ? '${cacheAge.inHours} 小时前'
-            : '${cacheAge.inDays} 天前';
-
-    return SliverToBoxAdapter(
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: isDark ? Colors.grey[900] : Colors.grey[100],
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: isDark ? Colors.grey[800]! : Colors.grey[300]!,
-            width: 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              Icons.photo_library_rounded,
-              size: 14,
-              color: AppColors.fileImage,
-            ),
-            const SizedBox(width: 4),
-            Text(
-              '$photoCount',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-                color: isDark ? Colors.white : Colors.black87,
-              ),
-            ),
-            const SizedBox(width: 2),
-            Text(
-              '张照片',
-              style: TextStyle(
-                fontSize: 11,
-                color: isDark ? Colors.grey[500] : Colors.grey[600],
-              ),
-            ),
-            const Spacer(),
-            Icon(
-              Icons.update_rounded,
-              size: 14,
-              color: isDark ? Colors.grey[500] : Colors.grey[600],
-            ),
-            const SizedBox(width: 4),
-            Text(
-              ageText,
-              style: TextStyle(
-                fontSize: 11,
-                color: isDark ? Colors.grey[500] : Colors.grey[600],
-              ),
-            ),
-            const SizedBox(width: 8),
-            Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () => ref.read(photoListProvider.notifier).forceRefresh(),
-                borderRadius: BorderRadius.circular(6),
-                child: Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: AppColors.fileImage.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Icon(
-                    Icons.refresh_rounded,
-                    size: 16,
-                    color: AppColors.fileImage,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }
 
