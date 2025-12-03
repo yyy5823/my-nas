@@ -15,6 +15,11 @@ class MusicItem {
     this.size,
     this.lastPosition = Duration.zero,
     this.folder,
+    this.trackNumber,
+    this.year,
+    this.genre,
+    this.lyrics,
+    this.coverData,
   });
 
   final String id;
@@ -29,6 +34,11 @@ class MusicItem {
   final int? size;
   final Duration lastPosition;
   final String? folder;
+  final int? trackNumber;
+  final int? year;
+  final String? genre;
+  final String? lyrics;
+  final List<int>? coverData; // 嵌入的封面图片数据
 
   /// 从文件项创建音乐项
   factory MusicItem.fromFileItem(FileItem file, String url, {String? sourceId}) {
@@ -122,6 +132,11 @@ class MusicItem {
     int? size,
     Duration? lastPosition,
     String? folder,
+    int? trackNumber,
+    int? year,
+    String? genre,
+    String? lyrics,
+    List<int>? coverData,
   }) =>
       MusicItem(
         id: id ?? this.id,
@@ -136,6 +151,11 @@ class MusicItem {
         size: size ?? this.size,
         lastPosition: lastPosition ?? this.lastPosition,
         folder: folder ?? this.folder,
+        trackNumber: trackNumber ?? this.trackNumber,
+        year: year ?? this.year,
+        genre: genre ?? this.genre,
+        lyrics: lyrics ?? this.lyrics,
+        coverData: coverData ?? this.coverData,
       );
 
   @override

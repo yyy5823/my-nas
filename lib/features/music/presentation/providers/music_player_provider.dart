@@ -2,9 +2,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/data/audio_sources/stream_audio_source.dart';
+import 'package:my_nas/features/music/data/services/music_metadata_service.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/presentation/providers/music_favorites_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_settings_provider.dart';
+import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:path/path.dart' as p;
 
@@ -245,19 +247,20 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
       logger.d('MusicPlayer: 正在设置音频源 (MIME: $mimeType)...');
 
-      // 根据 URL scheme 选择合适的音频源
+      // 根据是否有 sourceId 选择合适的音频源
+      // 有 sourceId 表示是 NAS 源（SMB/Synology/WebDAV 等），需要使用流式加载
       final AudioSource audioSource;
 
-      if (uri.scheme == 'smb' || uri.scheme == 'file' && music.sourceId != null) {
-        // SMB 或其他需要流式加载的协议
-        logger.d('MusicPlayer: 检测到 ${uri.scheme}:// 协议，使用流式音频源');
+      if (music.sourceId != null) {
+        // NAS 源：使用流式音频源
+        logger.d('MusicPlayer: 检测到 NAS 源 (sourceId=${music.sourceId})，使用流式音频源');
 
         // 获取文件系统
         final connections = _ref.read(activeConnectionsProvider);
         final connection = connections[music.sourceId];
 
         if (connection == null) {
-          throw Exception('无法找到源连接: ${music.sourceId}');
+          throw Exception('源未连接，请先连接到 NAS: ${music.sourceId}');
         }
 
         logger.d('MusicPlayer: 使用 NasStreamAudioSource, path=${music.path}');
@@ -266,15 +269,21 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
           path: music.path,
           tag: music.id,
         );
-      } else {
-        // HTTP/HTTPS 或本地 file:// URL
-        logger.d('MusicPlayer: 使用 AudioSource.uri');
+      } else if (uri.scheme == 'http' || uri.scheme == 'https') {
+        // HTTP/HTTPS URL
+        logger.d('MusicPlayer: 使用 AudioSource.uri (HTTP)');
         audioSource = AudioSource.uri(
           uri,
           headers: {
             'Accept': mimeType,
           },
         );
+      } else if (uri.scheme == 'file') {
+        // 本地文件
+        logger.d('MusicPlayer: 使用 AudioSource.uri (本地文件)');
+        audioSource = AudioSource.uri(uri);
+      } else {
+        throw Exception('不支持的音频协议: ${uri.scheme}');
       }
 
       logger.d('MusicPlayer: 调用 setAudioSource...');
@@ -308,9 +317,51 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
       // 添加到播放历史
       _ref.read(musicHistoryProvider.notifier).addToHistory(music);
+
+      // 在后台提取元数据
+      _extractMetadataInBackground(music);
     } catch (e, stackTrace) {
       logger.e('MusicPlayer: 播放失败', e, stackTrace);
       state = state.copyWith(errorMessage: '播放失败: $e', isBuffering: false);
+    }
+  }
+
+  /// 在后台提取音乐元数据
+  Future<void> _extractMetadataInBackground(MusicItem music) async {
+    // 如果已经有元数据，跳过
+    if (music.coverData != null || music.lyrics != null) {
+      return;
+    }
+
+    try {
+      final metadataService = MusicMetadataService.instance;
+      await metadataService.init();
+
+      MusicMetadata? metadata;
+
+      if (music.sourceId != null) {
+        // NAS 文件：从连接中获取文件系统
+        final connections = _ref.read(activeConnectionsProvider);
+        final connection = connections[music.sourceId];
+        if (connection != null && connection.status == SourceStatus.connected) {
+          metadata = await metadataService.extractFromNasFile(
+            connection.adapter.fileSystem,
+            music.path,
+          );
+        }
+      }
+
+      if (metadata != null) {
+        // 更新当前播放的音乐信息
+        final updatedMusic = metadataService.applyMetadataToItem(music, metadata);
+        final currentMusic = _ref.read(currentMusicProvider);
+        if (currentMusic?.id == music.id) {
+          _ref.read(currentMusicProvider.notifier).state = updatedMusic;
+          logger.i('MusicPlayer: 元数据已更新 - artist=${metadata.artist}, album=${metadata.album}');
+        }
+      }
+    } catch (e) {
+      logger.w('MusicPlayer: 提取元数据失败: $e');
     }
   }
 

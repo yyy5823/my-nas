@@ -2024,6 +2024,8 @@ class _AllSongsView extends ConsumerWidget {
             itemBuilder: (context, index) => _CompactMusicTile(
               track: tracks[index],
               isDark: isDark,
+              allTracks: tracks,
+              trackIndex: index,
             ),
           ),
         ),
@@ -2858,8 +2860,13 @@ class _ArtistTile extends ConsumerWidget {
         collapsedShape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
         ),
-        children: tracks.map((track) {
-          return _CompactMusicTile(track: track, isDark: isDark);
+        children: tracks.asMap().entries.map((entry) {
+          return _CompactMusicTile(
+            track: entry.value,
+            isDark: isDark,
+            allTracks: tracks,
+            trackIndex: entry.key,
+          );
         }).toList(),
       ),
     );
@@ -3077,7 +3084,12 @@ class _AlbumCard extends ConsumerWidget {
                 controller: scrollController,
                 itemCount: tracks.length,
                 itemBuilder: (context, index) {
-                  return _CompactMusicTile(track: tracks[index], isDark: isDark);
+                  return _CompactMusicTile(
+                    track: tracks[index],
+                    isDark: isDark,
+                    allTracks: tracks,
+                    trackIndex: index,
+                  );
                 },
               ),
             ),
@@ -3186,8 +3198,13 @@ class _FolderTile extends ConsumerWidget {
         collapsedShape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
         ),
-        children: tracks.map((track) {
-          return _CompactMusicTile(track: track, isDark: isDark);
+        children: tracks.asMap().entries.map((entry) {
+          return _CompactMusicTile(
+            track: entry.value,
+            isDark: isDark,
+            allTracks: tracks,
+            trackIndex: entry.key,
+          );
         }).toList(),
       ),
     );
@@ -4060,31 +4077,68 @@ class _CompactMusicTile extends ConsumerWidget {
   const _CompactMusicTile({
     required this.track,
     required this.isDark,
+    this.allTracks,
+    this.trackIndex,
   });
 
   final MusicFileWithSource track;
   final bool isDark;
+  final List<MusicFileWithSource>? allTracks;
+  final int? trackIndex;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final parsed = MusicItem.parseFileName(track.name);
     final title = parsed.$2;
 
+    // 检查源是否已连接
+    final connections = ref.watch(activeConnectionsProvider);
+    final connection = connections[track.sourceId];
+    final isConnected = connection != null && connection.status == SourceStatus.connected;
+
     return ListTile(
       onTap: () => _playTrack(context, ref),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-      leading: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: isDark ? Colors.grey[800] : Colors.grey[200],
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Icon(
-          Icons.music_note_rounded,
-          size: 20,
-          color: isDark ? Colors.grey[600] : Colors.grey[400],
-        ),
+      leading: Stack(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: isDark ? Colors.grey[800] : Colors.grey[200],
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              Icons.music_note_rounded,
+              size: 20,
+              color: isConnected
+                  ? (isDark ? Colors.grey[600] : Colors.grey[400])
+                  : (isDark ? Colors.grey[700] : Colors.grey[350]),
+            ),
+          ),
+          if (!isConnected)
+            Positioned(
+              right: 0,
+              bottom: 0,
+              child: Container(
+                width: 14,
+                height: 14,
+                decoration: BoxDecoration(
+                  color: Colors.orange,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: isDark ? Colors.grey[800]! : Colors.grey[200]!,
+                    width: 2,
+                  ),
+                ),
+                child: const Icon(
+                  Icons.link_off,
+                  size: 8,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+        ],
       ),
       title: Text(
         title,
@@ -4092,14 +4146,18 @@ class _CompactMusicTile extends ConsumerWidget {
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
           fontSize: 14,
-          color: isDark ? Colors.white : Colors.black87,
+          color: isConnected
+              ? (isDark ? Colors.white : Colors.black87)
+              : (isDark ? Colors.grey[500] : Colors.grey[600]),
         ),
       ),
       subtitle: Text(
-        track.displaySize,
+        isConnected ? track.displaySize : '${track.displaySize} • 源未连接',
         style: TextStyle(
           fontSize: 11,
-          color: isDark ? Colors.grey[500] : Colors.grey[600],
+          color: isConnected
+              ? (isDark ? Colors.grey[500] : Colors.grey[600])
+              : Colors.orange,
         ),
       ),
       trailing: PopupMenuButton<String>(
@@ -4149,15 +4207,24 @@ class _CompactMusicTile extends ConsumerWidget {
         return;
       }
 
+      // 先播放当前曲目
+      ref.read(playQueueProvider.notifier).setQueue([musicItem]);
+      ref.read(musicPlayerControllerProvider.notifier).updateCurrentIndex(0);
       logger.d('_CompactMusicTile._playTrack: 调用播放器播放');
       await ref.read(musicPlayerControllerProvider.notifier).play(musicItem);
       logger.i('_CompactMusicTile._playTrack: 播放成功，跳转到播放页');
 
-      await Navigator.of(context).push(
+      // 导航到播放器页面
+      unawaited(Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (context) => const MusicPlayerPage(),
         ),
-      );
+      ));
+
+      // 在后台构建完整播放队列
+      if (allTracks != null && allTracks!.isNotEmpty) {
+        _buildPlayQueue(ref, connections, trackIndex ?? 0);
+      }
     } catch (e, stackTrace) {
       logger.e('_CompactMusicTile._playTrack: 播放失败', e, stackTrace);
       if (context.mounted) {
@@ -4165,6 +4232,55 @@ class _CompactMusicTile extends ConsumerWidget {
           SnackBar(content: Text('播放失败: $e')),
         );
       }
+    }
+  }
+
+  /// 在后台构建播放队列
+  Future<void> _buildPlayQueue(
+    WidgetRef ref,
+    Map<String, SourceConnection> connections,
+    int currentIndex,
+  ) async {
+    if (allTracks == null) return;
+
+    try {
+      // 构建播放队列（最多50首，以当前曲目为中心）
+      const queueSize = 50;
+      int startIndex;
+      int endIndex;
+
+      if (allTracks!.length <= queueSize) {
+        startIndex = 0;
+        endIndex = allTracks!.length;
+      } else {
+        // 以当前曲目为中心
+        final halfSize = queueSize ~/ 2;
+        startIndex = (currentIndex - halfSize).clamp(0, allTracks!.length - queueSize);
+        endIndex = (startIndex + queueSize).clamp(0, allTracks!.length);
+      }
+
+      final queueTracks = allTracks!.sublist(startIndex, endIndex);
+      final queue = <MusicItem>[];
+      var newCurrentIndex = 0;
+
+      for (var i = 0; i < queueTracks.length; i++) {
+        final t = queueTracks[i];
+        final conn = connections[t.sourceId];
+        if (conn == null || conn.status != SourceStatus.connected) continue;
+        final trackUrl = await conn.adapter.fileSystem.getFileUrl(t.path);
+        final item = MusicItem.fromFileItem(t.file, trackUrl, sourceId: t.sourceId);
+        queue.add(item);
+        if (t.path == track.path) {
+          newCurrentIndex = queue.length - 1;
+        }
+      }
+
+      // 更新播放队列
+      ref.read(playQueueProvider.notifier).setQueue(queue);
+      ref.read(musicPlayerControllerProvider.notifier).updateCurrentIndex(newCurrentIndex);
+      logger.d('_CompactMusicTile._buildPlayQueue: 队列构建完成，共 ${queue.length} 首');
+    } catch (e) {
+      logger.w('_CompactMusicTile._buildPlayQueue: 构建播放队列失败: $e');
     }
   }
 

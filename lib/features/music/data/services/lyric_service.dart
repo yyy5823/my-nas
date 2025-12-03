@@ -157,6 +157,31 @@ class LyricService {
     }
   }
 
+  /// 解析歌词（自动检测格式：LRC 或纯文本）
+  LyricData parseLyrics(String content) {
+    // 检测是否为 LRC 格式（包含时间标签）
+    final timeRegex = RegExp(r'\[\d{1,2}:\d{2}');
+    if (timeRegex.hasMatch(content)) {
+      return parseLrc(content);
+    }
+
+    // 纯文本歌词（没有时间标签）
+    final lines = <LyricLine>[];
+    final textLines = content.split('\n').where((l) => l.trim().isNotEmpty).toList();
+
+    // 为纯文本歌词生成等间距时间点（假设每行 4 秒）
+    const secondsPerLine = 4;
+    for (int i = 0; i < textLines.length; i++) {
+      lines.add(LyricLine(
+        time: Duration(seconds: i * secondsPerLine),
+        text: textLines[i].trim(),
+      ));
+    }
+
+    logger.d('LyricService: 解析纯文本歌词，共 ${lines.length} 行');
+    return LyricData(lines: lines);
+  }
+
   /// 解析 LRC 格式歌词
   LyricData parseLrc(String content) {
     final lines = <LyricLine>[];

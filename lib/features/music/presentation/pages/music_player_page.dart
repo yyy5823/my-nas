@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -499,13 +500,7 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
                   color: isDark ? AppColors.darkSurface : Colors.white,
                 ),
                 clipBehavior: Clip.antiAlias,
-                child: currentMusic.coverUrl != null
-                    ? Image.network(
-                        currentMusic.coverUrl!,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => _buildCoverPlaceholder(size * 0.9, isDark),
-                      )
-                    : _buildCoverPlaceholder(size * 0.9, isDark),
+                child: _buildCoverImage(currentMusic, size * 0.9, isDark),
               ),
               // 中心圆点
               Container(
@@ -546,6 +541,34 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
         color: isDark ? Colors.grey[600] : Colors.grey[400],
       ),
     );
+  }
+
+  /// 构建封面图片，优先使用嵌入的封面数据，其次是封面 URL
+  Widget _buildCoverImage(MusicItem music, double size, bool isDark) {
+    // 优先使用嵌入的封面数据
+    if (music.coverData != null && music.coverData!.isNotEmpty) {
+      return Image.memory(
+        Uint8List.fromList(music.coverData!),
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _buildCoverPlaceholder(size, isDark),
+      );
+    }
+
+    // 其次使用封面 URL
+    if (music.coverUrl != null) {
+      return Image.network(
+        music.coverUrl!,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _buildCoverPlaceholder(size, isDark),
+      );
+    }
+
+    // 没有封面时显示占位符
+    return _buildCoverPlaceholder(size, isDark);
   }
 
   Widget _buildTrackInfo(BuildContext context, MusicItem currentMusic, bool isDark) {

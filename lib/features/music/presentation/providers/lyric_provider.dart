@@ -61,6 +61,17 @@ class LyricNotifier extends StateNotifier<LyricState> {
     state = state.copyWith(isLoading: true, error: null);
 
     try {
+      // 首先检查是否有嵌入的歌词（从 ID3 标签提取）
+      if (music.lyrics != null && music.lyrics!.isNotEmpty) {
+        final lyricData = LyricService.instance.parseLyrics(music.lyrics!);
+        state = state.copyWith(
+          lyricData: lyricData,
+          isLoading: false,
+        );
+        return;
+      }
+
+      // 尝试从同目录的 .lrc 文件加载
       final connections = _ref.read(activeConnectionsProvider);
       final connection = connections[music.sourceId];
 
