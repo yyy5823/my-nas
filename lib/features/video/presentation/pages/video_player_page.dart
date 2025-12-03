@@ -332,25 +332,19 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
             // 锁定按钮
             if (_showControls)
               Positioned(
-                right: 16,
-                top: context.padding.top + 60,
+                right: 8,
+                top: context.padding.top + 56,
                 child: IconButton(
                   onPressed: () {
                     setState(() => _isLocked = !_isLocked);
                     _startHideControlsTimer();
                   },
-                  icon: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.5),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      _isLocked ? Icons.lock : Icons.lock_open,
-                      color: Colors.white,
-                      size: 20,
-                    ),
+                  icon: Icon(
+                    _isLocked ? Icons.lock_rounded : Icons.lock_open_rounded,
+                    color: Colors.white,
+                    size: 24,
                   ),
+                  tooltip: _isLocked ? '解锁屏幕' : '锁定屏幕',
                 ),
               ),
 

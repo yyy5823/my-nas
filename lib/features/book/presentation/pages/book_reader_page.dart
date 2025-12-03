@@ -316,29 +316,49 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
           child: Row(
             children: [
               IconButton(
                 onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                icon: const Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  color: Colors.white,
+                  size: 32,
+                ),
+                tooltip: '返回',
               ),
-              const SizedBox(width: 8),
               Expanded(
-                child: Text(
-                  widget.book.displayName,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '阅读中',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.7),
+                        fontSize: 12,
+                      ),
+                    ),
+                    Text(
+                      widget.book.displayName,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
                 ),
               ),
               IconButton(
                 onPressed: () {},
-                icon: const Icon(Icons.bookmark_border_rounded, color: Colors.white),
+                icon: const Icon(
+                  Icons.bookmark_border_rounded,
+                  color: Colors.white,
+                ),
                 tooltip: '书签',
               ),
             ],
@@ -363,53 +383,41 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              _buildBottomButton(
-                icon: Icons.text_decrease_rounded,
-                label: '缩小',
-                onTap: () => ref
+              IconButton(
+                onPressed: () => ref
                     .read(bookReaderProvider(widget.book).notifier)
                     .setFontSize(state.fontSize - 2),
+                icon: const Icon(
+                  Icons.text_decrease_rounded,
+                  color: Colors.white,
+                ),
+                tooltip: '缩小字体',
               ),
-              _buildBottomButton(
-                icon: Icons.text_increase_rounded,
-                label: '放大',
-                onTap: () => ref
+              IconButton(
+                onPressed: () => ref
                     .read(bookReaderProvider(widget.book).notifier)
                     .setFontSize(state.fontSize + 2),
+                icon: const Icon(
+                  Icons.text_increase_rounded,
+                  color: Colors.white,
+                ),
+                tooltip: '放大字体',
               ),
-              _buildBottomButton(
-                icon: Icons.settings_rounded,
-                label: '设置',
-                onTap: () => setState(() => _showSettings = !_showSettings),
+              IconButton(
+                onPressed: () => setState(() => _showSettings = !_showSettings),
+                icon: Icon(
+                  _showSettings ? Icons.settings : Icons.settings_outlined,
+                  color: _showSettings ? Colors.white : Colors.white70,
+                ),
+                tooltip: '设置',
               ),
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildBottomButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: Colors.white, size: 24),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: const TextStyle(color: Colors.white, fontSize: 12),
-          ),
-        ],
       ),
     );
   }

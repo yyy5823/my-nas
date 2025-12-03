@@ -303,16 +303,26 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
             children: [
               // 返回按钮
               IconButton(
-                icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                icon: const Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  color: Colors.white,
+                  size: 32,
+                ),
                 onPressed: () => Navigator.of(context).pop(),
+                tooltip: '返回',
               ),
-              const SizedBox(width: 8),
-              // 页码指示器
+              // 页码指示器（居中显示）
               Expanded(
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    Text(
+                      '${_currentIndex + 1} / ${widget.photos.length}',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.7),
+                        fontSize: 12,
+                      ),
+                    ),
                     Text(
                       photo.name,
                       style: const TextStyle(
@@ -322,17 +332,13 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                    ),
-                    Text(
-                      '${_currentIndex + 1} / ${widget.photos.length}',
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.7),
-                        fontSize: 12,
-                      ),
+                      textAlign: TextAlign.center,
                     ),
                   ],
                 ),
               ),
+              // 占位，保持标题居中
+              const SizedBox(width: 48),
             ],
           ),
         ),
