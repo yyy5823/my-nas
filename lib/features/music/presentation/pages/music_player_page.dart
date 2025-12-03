@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
-import 'package:my_nas/features/music/presentation/providers/lyric_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_favorites_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
 import 'package:my_nas/features/music/presentation/widgets/lyric_view.dart';
@@ -111,44 +110,64 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
     MusicPlayerState playerState,
     bool isDark,
   ) {
-    return SingleChildScrollView(
+    final screenHeight = MediaQuery.of(context).size.height;
+    final isCompact = screenHeight < 700; // 紧凑模式（小屏幕或桌面端窗口较小）
+
+    return Column(
       key: const ValueKey('cover_mode'),
-      padding: const EdgeInsets.symmetric(vertical: 16),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          minHeight: MediaQuery.of(context).size.height -
-              MediaQuery.of(context).padding.top -
-              MediaQuery.of(context).padding.bottom -
-              kToolbarHeight,
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            const SizedBox(height: 8),
-            // 封面（点击切换到歌词）
-            GestureDetector(
-              onTap: _toggleLyricView,
-              child: _buildCover(context, currentMusic, playerState, isDark),
+      children: [
+        // 可滚动的封面区域
+        Expanded(
+          flex: isCompact ? 5 : 6,
+          child: SingleChildScrollView(
+            padding: EdgeInsets.symmetric(vertical: isCompact ? 8 : 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // 封面（点击切换到歌词）
+                GestureDetector(
+                  onTap: _toggleLyricView,
+                  child: _buildCover(context, currentMusic, playerState, isDark),
+                ),
+                SizedBox(height: isCompact ? 12 : 20),
+                // 歌曲信息
+                _buildTrackInfo(context, currentMusic, isDark),
+                const SizedBox(height: 4),
+                // 紧凑歌词显示
+                CompactLyricView(onTap: _toggleLyricView),
+              ],
             ),
-            const SizedBox(height: 24),
-            // 歌曲信息
-            _buildTrackInfo(context, currentMusic, isDark),
-            const SizedBox(height: 8),
-            // 紧凑歌词显示
-            CompactLyricView(onTap: _toggleLyricView),
-            const SizedBox(height: 16),
-            // 进度条
-            _buildProgressBar(context, ref, playerState, isDark),
-            const SizedBox(height: 24),
-            // 控制按钮
-            _buildControlButtons(context, ref, playerState, isDark),
-            const SizedBox(height: 16),
-            // 额外控制
-            _buildExtraControls(context, playerState, isDark),
-            const SizedBox(height: 8),
-          ],
+          ),
         ),
-      ),
+        // 固定的控制区域
+        Container(
+          padding: EdgeInsets.fromLTRB(16, isCompact ? 8 : 12, 16, isCompact ? 8 : 16),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.transparent,
+                (isDark ? AppColors.darkBackground : Colors.grey[100]!)
+                    .withValues(alpha: 0.8),
+              ],
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 进度条
+              _buildProgressBar(context, ref, playerState, isDark),
+              SizedBox(height: isCompact ? 12 : 20),
+              // 控制按钮
+              _buildControlButtons(context, ref, playerState, isDark),
+              SizedBox(height: isCompact ? 8 : 12),
+              // 额外控制
+              _buildExtraControls(context, playerState, isDark),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -417,7 +436,11 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
     MusicPlayerState playerState,
     bool isDark,
   ) {
-    final size = MediaQuery.of(context).size.width * 0.7;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+    // 桌面端限制封面最大尺寸，移动端使用屏幕宽度的70%
+    final maxSize = screenHeight * 0.35; // 最大为屏幕高度的35%
+    final size = (screenWidth * 0.7).clamp(150.0, maxSize);
 
     return Center(
       child: AnimatedBuilder(

@@ -135,17 +135,20 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
   void _initPlayer() {
     _player = AudioPlayer();
+    logger.i('MusicPlayer: AudioPlayer 实例已创建');
 
     // 应用保存的设置
     _applySettings();
 
     // 监听播放状态
     _player.playingStream.listen((playing) {
+      logger.d('MusicPlayer: playingStream => $playing');
       state = state.copyWith(isPlaying: playing);
     });
 
     // 监听缓冲状态
     _player.processingStateStream.listen((processingState) {
+      logger.d('MusicPlayer: processingState => $processingState');
       state = state.copyWith(
         isBuffering: processingState == ProcessingState.buffering ||
             processingState == ProcessingState.loading,
@@ -164,10 +167,22 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
     // 监听总时长
     _player.durationStream.listen((duration) {
+      logger.d('MusicPlayer: durationStream => $duration');
       if (duration != null) {
         state = state.copyWith(duration: duration);
       }
     });
+
+    // 监听播放错误
+    _player.playbackEventStream.listen(
+      (event) {
+        logger.d('MusicPlayer: playbackEvent => ${event.processingState}');
+      },
+      onError: (Object e, StackTrace stackTrace) {
+        logger.e('MusicPlayer: playbackEventStream 错误', e, stackTrace);
+        state = state.copyWith(errorMessage: e.toString());
+      },
+    );
   }
 
   /// 应用保存的设置
@@ -195,14 +210,16 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   /// 播放指定音乐
   Future<void> play(MusicItem music, {Duration? startPosition}) async {
     _ref.read(currentMusicProvider.notifier).state = music;
-    state = state.copyWith(errorMessage: null);
+    state = state.copyWith(errorMessage: null, isBuffering: true);
 
     logger.i('MusicPlayer: 开始播放 ${music.name}');
     logger.d('MusicPlayer: URL => ${music.url}');
     logger.d('MusicPlayer: size=${music.size}, path=${music.path}');
 
     try {
-      logger.d('MusicPlayer: 正在设置音频源...');
+      // 先停止当前播放
+      await _player.stop();
+      logger.d('MusicPlayer: 已停止当前播放');
 
       // 获取文件扩展名来确定 MIME 类型
       final ext = p.extension(music.name).toLowerCase();
@@ -217,30 +234,57 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
         mimeType = 'audio/ogg';
       }
 
-      // 使用 AudioSource.uri 并设置 headers 来指定正确的 Content-Type
+      logger.d('MusicPlayer: 正在设置音频源 (MIME: $mimeType)...');
+
+      // 验证 URL 格式
+      final uri = Uri.tryParse(music.url);
+      if (uri == null || !uri.hasScheme) {
+        throw Exception('无效的音频 URL: ${music.url}');
+      }
+      logger.d('MusicPlayer: URI 解析成功 - scheme: ${uri.scheme}, host: ${uri.host}');
+
+      // 使用 AudioSource.uri 并设置 headers
       final audioSource = AudioSource.uri(
-        Uri.parse(music.url),
+        uri,
         headers: {
           'Accept': mimeType,
         },
       );
 
+      logger.d('MusicPlayer: 调用 setAudioSource...');
       await _player.setAudioSource(audioSource);
-      logger.d('MusicPlayer: 音频源设置成功 (MIME: $mimeType)');
+      logger.d('MusicPlayer: 音频源设置成功');
+
+      // 检查音频时长是否获取成功
+      final duration = _player.duration;
+      logger.d('MusicPlayer: 音频时长 => $duration');
 
       if (startPosition != null && startPosition > Duration.zero) {
+        logger.d('MusicPlayer: 跳转到位置 $startPosition');
         await _player.seek(startPosition);
       }
 
-      logger.d('MusicPlayer: 开始播放...');
+      // 确保音量正确
+      final currentVolume = _player.volume;
+      logger.d('MusicPlayer: 当前音量 => $currentVolume');
+      if (currentVolume == 0) {
+        await _player.setVolume(1.0);
+        state = state.copyWith(volume: 1.0);
+        logger.d('MusicPlayer: 音量已重置为 1.0');
+      }
+
+      logger.d('MusicPlayer: 调用 play()...');
       await _player.play();
-      logger.i('MusicPlayer: 播放已开始');
+      logger.i('MusicPlayer: play() 调用完成');
+
+      // 验证播放状态
+      logger.d('MusicPlayer: 播放状态 - playing: ${_player.playing}, processingState: ${_player.processingState}');
 
       // 添加到播放历史
       _ref.read(musicHistoryProvider.notifier).addToHistory(music);
     } catch (e, stackTrace) {
       logger.e('MusicPlayer: 播放失败', e, stackTrace);
-      state = state.copyWith(errorMessage: e.toString());
+      state = state.copyWith(errorMessage: '播放失败: $e', isBuffering: false);
     }
   }
 
