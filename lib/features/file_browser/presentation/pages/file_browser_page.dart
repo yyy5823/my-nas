@@ -680,6 +680,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
+      isScrollControlled: true,
       builder: (context) => _buildBottomSheet(
         context,
         isDark,
@@ -739,6 +740,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
+      isScrollControlled: true,
       builder: (context) => _buildBottomSheet(
         context,
         isDark,
@@ -775,6 +777,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
+      isScrollControlled: true,
       builder: (context) => _buildBottomSheet(
         context,
         isDark,
@@ -892,6 +895,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
+      isScrollControlled: true,
       builder: (context) => _buildBottomSheet(
         context,
         isDark,
@@ -1395,11 +1399,17 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
     required String title,
     required List<Widget> children,
   }) {
+    final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
+
     return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
         child: Container(
+          // 限制最大高度为屏幕高度的 80%
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.8,
+          ),
           decoration: BoxDecoration(
             color: isDark
                 ? AppColors.darkSurface.withOpacity(0.95)
@@ -1411,36 +1421,45 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
               ),
             ),
           ),
-          child: SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  margin: const EdgeInsets.only(top: 12),
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: isDark
-                        ? AppColors.darkOnSurfaceVariant.withOpacity(0.3)
-                        : AppColors.lightOnSurfaceVariant.withOpacity(0.3),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 拖动指示器（固定在顶部）
+              Container(
+                margin: const EdgeInsets.only(top: 12),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? AppColors.darkOnSurfaceVariant.withOpacity(0.3)
+                      : AppColors.lightOnSurfaceVariant.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(2),
                 ),
-                if (title.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.all(AppSpacing.lg),
-                    child: Text(
-                      title,
-                      style: context.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
-                      ),
+              ),
+              // 标题（固定在顶部）
+              if (title.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.all(AppSpacing.lg),
+                  child: Text(
+                    title,
+                    style: context.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
                     ),
                   ),
-                ...children,
-                const SizedBox(height: AppSpacing.lg),
-              ],
-            ),
+                ),
+              // 内容区域（可滚动）
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: children,
+                  ),
+                ),
+              ),
+              // 底部安全区域
+              SizedBox(height: bottomPadding > 0 ? bottomPadding : AppSpacing.lg),
+            ],
           ),
         ),
       ),

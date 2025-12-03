@@ -81,132 +81,143 @@ class _FolderPickerSheetState extends State<FolderPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.8,
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: Column(
-        children: [
-          // 拖动条
-          Container(
-            margin: const EdgeInsets.only(top: 12),
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: Colors.grey[400],
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
 
-          // 标题栏
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Text(
-                  '选择目录',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const Spacer(),
-                IconButton(
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close),
-                ),
-              ],
-            ),
-          ),
-
-          // 源选择器
-          if (widget.sources.length > 1)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: DropdownButtonFormField<SourceEntity>(
-                value: _selectedSource,
-                decoration: const InputDecoration(
-                  labelText: '选择源',
-                  prefixIcon: Icon(Icons.storage),
-                ),
-                items: widget.sources.map((source) {
-                  return DropdownMenuItem(
-                    value: source,
-                    child: Text(source.displayName),
-                  );
-                }).toList(),
-                onChanged: (source) {
-                  setState(() {
-                    _selectedSource = source;
-                    _currentPath = '/';
-                    _pathHistory
-                      ..clear()
-                      ..add('/');
-                  });
-                  _loadDirectory();
-                },
+    return DraggableScrollableSheet(
+      initialChildSize: 0.7,
+      minChildSize: 0.4,
+      maxChildSize: 0.95,
+      expand: false,
+      builder: (context, scrollController) => Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          children: [
+            // 拖动条
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: isDark ? Colors.grey[600] : Colors.grey[400],
+                borderRadius: BorderRadius.circular(2),
               ),
             ),
 
-          const SizedBox(height: 8),
+            // 标题栏
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Text(
+                    '选择目录',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+            ),
 
-          // 路径导航
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              children: [
-                IconButton(
-                  onPressed: _pathHistory.length > 1 ? _navigateBack : null,
-                  icon: const Icon(Icons.arrow_back),
-                  tooltip: '返回上级',
+            // 源选择器
+            if (widget.sources.length > 1)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: DropdownButtonFormField<SourceEntity>(
+                  value: _selectedSource,
+                  decoration: const InputDecoration(
+                    labelText: '选择源',
+                    prefixIcon: Icon(Icons.storage),
+                  ),
+                  items: widget.sources.map((source) {
+                    return DropdownMenuItem(
+                      value: source,
+                      child: Text(source.displayName),
+                    );
+                  }).toList(),
+                  onChanged: (source) {
+                    setState(() {
+                      _selectedSource = source;
+                      _currentPath = '/';
+                      _pathHistory
+                        ..clear()
+                        ..add('/');
+                    });
+                    _loadDirectory();
+                  },
                 ),
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      _currentPath,
-                      style: Theme.of(context).textTheme.bodyMedium,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+              ),
+
+            const SizedBox(height: 8),
+
+            // 路径导航
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  IconButton(
+                    onPressed: _pathHistory.length > 1 ? _navigateBack : null,
+                    icon: const Icon(Icons.arrow_back),
+                    tooltip: '返回上级',
+                  ),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        _currentPath,
+                        style: Theme.of(context).textTheme.bodyMedium,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                FilledButton.icon(
-                  onPressed: () {
-                    widget.onSelect(
-                      _selectedSource!.id,
-                      _currentPath,
-                      _currentPath.split('/').last,
-                    );
-                  },
-                  icon: const Icon(Icons.check),
-                  label: const Text('选择'),
-                ),
-              ],
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
+                    onPressed: () {
+                      widget.onSelect(
+                        _selectedSource!.id,
+                        _currentPath,
+                        _currentPath.split('/').last,
+                      );
+                    },
+                    icon: const Icon(Icons.check),
+                    label: const Text('选择'),
+                  ),
+                ],
+              ),
             ),
-          ),
 
-          const Divider(height: 1),
+            const Divider(height: 1),
 
-          // 目录列表
-          Expanded(
-            child: _buildContent(),
-          ),
-        ],
+            // 目录列表
+            Expanded(
+              child: _buildContent(scrollController),
+            ),
+
+            // 底部安全区域
+            SizedBox(height: bottomPadding > 0 ? bottomPadding : 16),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildContent() {
+  Widget _buildContent(ScrollController scrollController) {
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -250,6 +261,7 @@ class _FolderPickerSheetState extends State<FolderPickerSheet> {
     }
 
     return ListView.builder(
+      controller: scrollController,
       itemCount: _items.length,
       itemBuilder: (context, index) {
         final item = _items[index];

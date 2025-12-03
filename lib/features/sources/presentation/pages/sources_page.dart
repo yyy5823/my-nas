@@ -283,48 +283,63 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
   }
 
   void _showSourceOptions(BuildContext context) {
+    final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
+
     showModalBottomSheet<void>(
       context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: Icon(
-                _status == SourceStatus.connected
-                    ? Icons.link_off
-                    : Icons.link,
-              ),
-              title: Text(
-                _status == SourceStatus.connected ? '断开连接' : '连接',
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                if (_status == SourceStatus.connected) {
-                  _disconnect();
-                } else {
-                  _connect();
-                }
-              },
+      isScrollControlled: true,
+      builder: (context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 拖动指示器
+          Container(
+            margin: const EdgeInsets.only(top: 12, bottom: 8),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.grey[600]
+                  : Colors.grey[400],
+              borderRadius: BorderRadius.circular(2),
             ),
-            ListTile(
-              leading: const Icon(Icons.edit),
-              title: const Text('编辑'),
-              onTap: () {
-                Navigator.pop(context);
-                _editSource();
-              },
+          ),
+          ListTile(
+            leading: Icon(
+              _status == SourceStatus.connected
+                  ? Icons.link_off
+                  : Icons.link,
             ),
-            ListTile(
-              leading: const Icon(Icons.delete, color: Colors.red),
-              title: const Text('删除', style: TextStyle(color: Colors.red)),
-              onTap: () {
-                Navigator.pop(context);
-                _deleteSource();
-              },
+            title: Text(
+              _status == SourceStatus.connected ? '断开连接' : '连接',
             ),
-          ],
-        ),
+            onTap: () {
+              Navigator.pop(context);
+              if (_status == SourceStatus.connected) {
+                _disconnect();
+              } else {
+                _connect();
+              }
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.edit),
+            title: const Text('编辑'),
+            onTap: () {
+              Navigator.pop(context);
+              _editSource();
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.delete, color: Colors.red),
+            title: const Text('删除', style: TextStyle(color: Colors.red)),
+            onTap: () {
+              Navigator.pop(context);
+              _deleteSource();
+            },
+          ),
+          // 底部安全区域
+          SizedBox(height: bottomPadding > 0 ? bottomPadding : 16),
+        ],
       ),
     );
   }
