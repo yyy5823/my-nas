@@ -31,6 +31,7 @@ class VideoMetadata {
     this.episodeTitle,
     this.lastUpdated,
     this.thumbnailUrl,
+    this.generatedThumbnailUrl,
   });
 
   final String filePath;
@@ -54,9 +55,10 @@ class VideoMetadata {
   String? episodeTitle;
   DateTime? lastUpdated;
   String? thumbnailUrl; // 内置缩略图 URL（来自 NAS）
+  String? generatedThumbnailUrl; // 生成的缩略图 URL（本地 file://）
 
-  /// 优先使用 TMDB 海报，没有则使用内置缩略图
-  String? get displayPosterUrl => posterUrl ?? thumbnailUrl;
+  /// 优先使用 TMDB 海报，其次使用内置缩略图，最后使用生成的缩略图
+  String? get displayPosterUrl => posterUrl ?? thumbnailUrl ?? generatedThumbnailUrl;
 
   /// 是否有元数据
   bool get hasMetadata => tmdbId != null;
@@ -163,6 +165,7 @@ class VideoMetadata {
       'episodeTitle': episodeTitle,
       'lastUpdated': lastUpdated?.millisecondsSinceEpoch,
       'thumbnailUrl': thumbnailUrl,
+      'generatedThumbnailUrl': generatedThumbnailUrl,
     };
   }
 
@@ -192,6 +195,7 @@ class VideoMetadata {
           ? DateTime.fromMillisecondsSinceEpoch(map['lastUpdated'] as int)
           : null,
       thumbnailUrl: map['thumbnailUrl'] as String?,
+      generatedThumbnailUrl: map['generatedThumbnailUrl'] as String?,
     );
   }
 
@@ -218,6 +222,7 @@ class VideoMetadata {
     String? episodeTitle,
     DateTime? lastUpdated,
     String? thumbnailUrl,
+    String? generatedThumbnailUrl,
   }) {
     return VideoMetadata(
       filePath: filePath ?? this.filePath,
@@ -241,6 +246,7 @@ class VideoMetadata {
       episodeTitle: episodeTitle ?? this.episodeTitle,
       lastUpdated: lastUpdated ?? this.lastUpdated,
       thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
+      generatedThumbnailUrl: generatedThumbnailUrl ?? this.generatedThumbnailUrl,
     );
   }
 }

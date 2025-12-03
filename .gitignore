@@ -193,3 +193,4 @@ key.properties
 # Keep Podfile.lock for iOS/macOS builds
 !**/ios/Podfile.lock
 !**/macos/Podfile.lock
+CLAUDE.md

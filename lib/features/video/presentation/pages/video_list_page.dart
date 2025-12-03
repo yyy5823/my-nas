@@ -518,10 +518,13 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
   Future<void> _loadMissingMetadata(List<VideoFileWithSource> videos) async {
     final current = state;
     if (current is! VideoListLoaded) return;
+    final connections = _ref.read(activeConnectionsProvider);
 
     final missingVideos = videos.where((v) {
       final key = '${v.sourceId}_${v.path}';
-      return !current.metadataMap.containsKey(key);
+      final existing = current.metadataMap[key];
+      // 如果没有元数据，或者元数据没有封面，都需要加载
+      return existing == null || existing.displayPosterUrl == null;
     }).toList();
 
     if (missingVideos.isEmpty) return;
@@ -535,10 +538,23 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       final video = missingVideos[i];
 
       try {
+        // 获取视频 URL 用于生成缩略图
+        String? videoUrl;
+        final connection = connections[video.sourceId];
+        if (connection?.status == SourceStatus.connected) {
+          try {
+            videoUrl = await connection!.adapter.fileSystem.getFileUrl(video.path);
+          } catch (e) {
+            logger.w('获取视频 URL 失败: ${video.name}');
+          }
+        }
+
         final metadata = await _metadataService.getOrFetch(
           sourceId: video.sourceId,
           filePath: video.path,
           fileName: video.name,
+          fileSystem: connection?.adapter.fileSystem,
+          videoUrl: videoUrl,
         );
         updatedMap[metadata.uniqueKey] = metadata;
 

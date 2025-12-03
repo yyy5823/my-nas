@@ -1,9 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/music/data/audio_sources/stream_audio_source.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/presentation/providers/music_favorites_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_settings_provider.dart';
+import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:path/path.dart' as p;
 
 /// 当前播放的音乐
@@ -214,12 +216,19 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
     logger.i('MusicPlayer: 开始播放 ${music.name}');
     logger.d('MusicPlayer: URL => ${music.url}');
-    logger.d('MusicPlayer: size=${music.size}, path=${music.path}');
+    logger.d('MusicPlayer: size=${music.size}, path=${music.path}, sourceId=${music.sourceId}');
 
     try {
       // 先停止当前播放
       await _player.stop();
       logger.d('MusicPlayer: 已停止当前播放');
+
+      // 验证 URL 格式
+      final uri = Uri.tryParse(music.url);
+      if (uri == null || !uri.hasScheme) {
+        throw Exception('无效的音频 URL: ${music.url}');
+      }
+      logger.d('MusicPlayer: URI 解析成功 - scheme: ${uri.scheme}, host: ${uri.host}');
 
       // 获取文件扩展名来确定 MIME 类型
       final ext = p.extension(music.name).toLowerCase();
@@ -236,20 +245,37 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
       logger.d('MusicPlayer: 正在设置音频源 (MIME: $mimeType)...');
 
-      // 验证 URL 格式
-      final uri = Uri.tryParse(music.url);
-      if (uri == null || !uri.hasScheme) {
-        throw Exception('无效的音频 URL: ${music.url}');
-      }
-      logger.d('MusicPlayer: URI 解析成功 - scheme: ${uri.scheme}, host: ${uri.host}');
+      // 根据 URL scheme 选择合适的音频源
+      final AudioSource audioSource;
 
-      // 使用 AudioSource.uri 并设置 headers
-      final audioSource = AudioSource.uri(
-        uri,
-        headers: {
-          'Accept': mimeType,
-        },
-      );
+      if (uri.scheme == 'smb' || uri.scheme == 'file' && music.sourceId != null) {
+        // SMB 或其他需要流式加载的协议
+        logger.d('MusicPlayer: 检测到 ${uri.scheme}:// 协议，使用流式音频源');
+
+        // 获取文件系统
+        final connections = _ref.read(activeConnectionsProvider);
+        final connection = connections[music.sourceId];
+
+        if (connection == null) {
+          throw Exception('无法找到源连接: ${music.sourceId}');
+        }
+
+        logger.d('MusicPlayer: 使用 NasStreamAudioSource, path=${music.path}');
+        audioSource = NasStreamAudioSource(
+          fileSystem: connection.adapter.fileSystem,
+          path: music.path,
+          tag: music.id,
+        );
+      } else {
+        // HTTP/HTTPS 或本地 file:// URL
+        logger.d('MusicPlayer: 使用 AudioSource.uri');
+        audioSource = AudioSource.uri(
+          uri,
+          headers: {
+            'Accept': mimeType,
+          },
+        );
+      }
 
       logger.d('MusicPlayer: 调用 setAudioSource...');
       await _player.setAudioSource(audioSource);

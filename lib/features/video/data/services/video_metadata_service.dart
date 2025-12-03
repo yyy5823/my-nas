@@ -84,11 +84,13 @@ class VideoMetadataService {
 
   /// 获取或刷新元数据
   /// [fileSystem] 可选的文件系统接口，用于读取 NFO 文件
+  /// [videoUrl] 视频 URL，用于在没有封面时生成缩略图
   Future<VideoMetadata> getOrFetch({
     required String sourceId,
     required String filePath,
     required String fileName,
     NasFileSystem? fileSystem,
+    String? videoUrl,
     bool forceRefresh = false,
   }) async {
     // 检查缓存
@@ -122,10 +124,42 @@ class VideoMetadataService {
       await _fetchFromTmdb(metadata);
     }
 
+    // 如果没有封面图，尝试生成缩略图
+    if (metadata.displayPosterUrl == null && videoUrl != null) {
+      await _tryGenerateThumbnail(metadata, videoUrl);
+    }
+
     // 保存到缓存
     await save(metadata);
 
     return metadata;
+  }
+
+  /// 尝试为视频生成缩略图
+  Future<void> _tryGenerateThumbnail(VideoMetadata metadata, String videoUrl) async {
+    try {
+      // 检查是否已有缓存的生成缩略图
+      final cachedUrl = _thumbnailService.getCachedThumbnailUrl(metadata.filePath);
+      if (cachedUrl != null) {
+        metadata.generatedThumbnailUrl = cachedUrl;
+        return;
+      }
+
+      logger.d('VideoMetadataService: 尝试为 "${metadata.fileName}" 生成缩略图');
+
+      final thumbnailPath = await _thumbnailService.generateThumbnail(
+        videoUrl: videoUrl,
+        videoPath: metadata.filePath,
+        timeMs: 5000, // 5秒位置
+      );
+
+      if (thumbnailPath != null) {
+        metadata.generatedThumbnailUrl = _thumbnailService.getCachedThumbnailUrl(metadata.filePath);
+        logger.i('VideoMetadataService: 缩略图生成成功 "${metadata.fileName}"');
+      }
+    } catch (e) {
+      logger.w('VideoMetadataService: 生成缩略图失败 "${metadata.fileName}"', e);
+    }
   }
 
   /// 从 NFO 文件获取元数据
