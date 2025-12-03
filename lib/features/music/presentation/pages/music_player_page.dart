@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
+import 'package:my_nas/features/music/presentation/providers/lyric_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_favorites_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
 import 'package:my_nas/features/music/presentation/widgets/lyric_view.dart';

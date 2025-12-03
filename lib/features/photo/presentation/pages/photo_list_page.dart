@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/router/app_router.dart';
@@ -18,6 +17,7 @@ import 'package:my_nas/features/sources/presentation/providers/source_provider.d
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/animated_list_item.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
+import 'package:my_nas/shared/widgets/stream_image.dart';
 
 /// 照片文件及其来源
 class PhotoFileWithSource {
@@ -835,36 +835,34 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
               itemCount: partialPhotos.length,
               itemBuilder: (context, index) {
                 final photo = partialPhotos[index];
+                final connections = ref.read(activeConnectionsProvider);
+                final connection = connections[photo.sourceId];
+                final fileSystem = connection?.adapter.fileSystem;
+
                 return Stack(
                   fit: StackFit.expand,
                   children: [
-                    if (photo.thumbnailUrl != null)
-                      CachedNetworkImage(
-                        imageUrl: photo.thumbnailUrl!,
-                        fit: BoxFit.cover,
-                        placeholder: (_, __) => Container(
-                          color: isDark ? Colors.grey[800] : Colors.grey[200],
-                          child: Icon(
-                            Icons.photo_rounded,
-                            color: isDark ? Colors.grey[600] : Colors.grey[400],
-                          ),
-                        ),
-                        errorWidget: (_, __, ___) => Container(
-                          color: isDark ? Colors.grey[800] : Colors.grey[200],
-                          child: Icon(
-                            Icons.photo_rounded,
-                            color: isDark ? Colors.grey[600] : Colors.grey[400],
-                          ),
-                        ),
-                      )
-                    else
-                      Container(
+                    StreamImage(
+                      url: photo.thumbnailUrl,
+                      path: photo.path,
+                      fileSystem: fileSystem,
+                      fit: BoxFit.cover,
+                      placeholder: Container(
                         color: isDark ? Colors.grey[800] : Colors.grey[200],
                         child: Icon(
                           Icons.photo_rounded,
                           color: isDark ? Colors.grey[600] : Colors.grey[400],
                         ),
                       ),
+                      errorWidget: Container(
+                        color: isDark ? Colors.grey[800] : Colors.grey[200],
+                        child: Icon(
+                          Icons.photo_rounded,
+                          color: isDark ? Colors.grey[600] : Colors.grey[400],
+                        ),
+                      ),
+                      cacheKey: photo.path,
+                    ),
                     Positioned(
                       bottom: 4,
                       right: 4,
@@ -1288,6 +1286,11 @@ class _PhotoGridItem extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // 获取文件系统用于流式加载
+    final connections = ref.watch(activeConnectionsProvider);
+    final connection = connections[photo.sourceId];
+    final fileSystem = connection?.adapter.fileSystem;
+
     return Material(
       color: isDark
           ? AppColors.darkSurfaceElevated
@@ -1297,14 +1300,15 @@ class _PhotoGridItem extends ConsumerWidget {
           debugPrint('PhotoGridItem: onTap called for ${photo.name}');
           _openPhotoViewer(context, ref);
         },
-        child: photo.thumbnailUrl != null
-            ? CachedNetworkImage(
-                imageUrl: photo.thumbnailUrl!,
-                fit: BoxFit.cover,
-                placeholder: (context, url) => _buildPlaceholder(),
-                errorWidget: (context, url, error) => _buildPlaceholder(),
-              )
-            : _buildPlaceholder(),
+        child: StreamImage(
+          url: photo.thumbnailUrl,
+          path: photo.path,
+          fileSystem: fileSystem,
+          fit: BoxFit.cover,
+          placeholder: _buildPlaceholder(),
+          errorWidget: _buildPlaceholder(),
+          cacheKey: photo.path,
+        ),
       ),
     );
   }
@@ -1314,7 +1318,7 @@ class _PhotoGridItem extends ConsumerWidget {
       child: Icon(
         Icons.image_outlined,
         size: 32,
-        color: AppColors.fileImage.withOpacity(0.5),
+        color: AppColors.fileImage.withValues(alpha: 0.5),
       ),
     );
   }

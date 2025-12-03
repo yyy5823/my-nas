@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -963,6 +964,64 @@ class _PhotoPageState extends State<_PhotoPage> {
   bool _hasError = false;
   String? _errorMessage;
 
+  /// 检查是否是 HTTP/HTTPS URL
+  bool _isHttpUrl(String? url) {
+    if (url == null || url.isEmpty) return false;
+    return url.startsWith('http://') || url.startsWith('https://');
+  }
+
+  /// 检查是否是 file:// URL
+  bool _isFileUrl(String? url) {
+    if (url == null || url.isEmpty) return false;
+    return url.startsWith('file://');
+  }
+
+  /// 从 file:// URL 获取本地文件路径
+  String? _getLocalFilePath(String url) {
+    if (!url.startsWith('file://')) return null;
+    try {
+      final uri = Uri.parse(url);
+      return uri.toFilePath();
+    } catch (e) {
+      debugPrint('PhotoViewer: 无法解析 file:// URL: $url - $e');
+      return null;
+    }
+  }
+
+  /// 构建适合 URL 类型的图片组件
+  Widget _buildImageFromUrl({
+    required String url,
+    required BoxFit fit,
+    Widget Function(BuildContext, Widget, ImageChunkEvent?)? loadingBuilder,
+    Widget Function(BuildContext, Object, StackTrace?)? errorBuilder,
+  }) {
+    // HTTP/HTTPS URL - 使用 Image.network
+    if (_isHttpUrl(url)) {
+      return Image.network(
+        url,
+        fit: fit,
+        loadingBuilder: loadingBuilder,
+        errorBuilder: errorBuilder,
+      );
+    }
+
+    // file:// URL - 使用 Image.file
+    if (_isFileUrl(url)) {
+      final filePath = _getLocalFilePath(url);
+      if (filePath != null) {
+        return Image.file(
+          File(filePath),
+          fit: fit,
+          errorBuilder: errorBuilder,
+        );
+      }
+    }
+
+    // 无法处理的 URL 类型
+    return errorBuilder?.call(context, Exception('不支持的 URL 类型: $url'), StackTrace.current) ??
+        const SizedBox.shrink();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1057,8 +1116,8 @@ class _PhotoPageState extends State<_PhotoPage> {
 
     // 有原图 URL，直接加载原图
     if (hasOriginalImage) {
-      return Image.network(
-        displayUrl,
+      return _buildImageFromUrl(
+        url: displayUrl,
         fit: BoxFit.contain,
         loadingBuilder: (context, child, loadingProgress) {
           if (loadingProgress == null) {
@@ -1094,8 +1153,8 @@ class _PhotoPageState extends State<_PhotoPage> {
           debugPrint('PhotoViewer: Error loading image: $error');
           // 加载原图失败时尝试使用缩略图
           if (hasThumbnail) {
-            return Image.network(
-              widget.photo.thumbnailUrl!,
+            return _buildImageFromUrl(
+              url: widget.photo.thumbnailUrl!,
               fit: BoxFit.contain,
               errorBuilder: (_, __, ___) => _buildErrorWidget('图片加载失败'),
             );
@@ -1110,8 +1169,8 @@ class _PhotoPageState extends State<_PhotoPage> {
       return Stack(
         alignment: Alignment.center,
         children: [
-          Image.network(
-            widget.photo.thumbnailUrl!,
+          _buildImageFromUrl(
+            url: widget.photo.thumbnailUrl!,
             fit: BoxFit.contain,
             errorBuilder: (_, __, ___) => const SizedBox.shrink(),
           ),
@@ -1132,8 +1191,8 @@ class _PhotoPageState extends State<_PhotoPage> {
 
     // 只有缩略图
     if (hasThumbnail) {
-      return Image.network(
-        widget.photo.thumbnailUrl!,
+      return _buildImageFromUrl(
+        url: widget.photo.thumbnailUrl!,
         fit: BoxFit.contain,
         loadingBuilder: (context, child, loadingProgress) {
           if (loadingProgress == null) return child;

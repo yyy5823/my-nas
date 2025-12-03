@@ -2259,6 +2259,14 @@ class _MusicListTile extends ConsumerWidget {
     final currentMusic = ref.watch(currentMusicProvider);
     final isPlaying = currentMusic?.path == track.path;
 
+    // 解析艺术家和标题
+    final parsed = MusicItem.parseFileName(track.name);
+    final artist = parsed.$1;
+    final title = parsed.$2;
+
+    // 根据索引生成渐变色
+    final gradientColors = _getGradientColorsForIndex(index);
+
     return Container(
       margin: const EdgeInsets.symmetric(
         horizontal: AppSpacing.md,
@@ -2266,101 +2274,137 @@ class _MusicListTile extends ConsumerWidget {
       ),
       decoration: BoxDecoration(
         color: isPlaying
-            ? AppColors.fileAudio.withOpacity(isDark ? 0.15 : 0.1)
+            ? AppColors.fileAudio.withValues(alpha: isDark ? 0.15 : 0.1)
             : (isDark
-                ? AppColors.darkSurfaceVariant.withOpacity(0.3)
+                ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
                 : context.colorScheme.surface),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: isPlaying
-              ? AppColors.fileAudio.withOpacity(0.3)
+              ? AppColors.fileAudio.withValues(alpha: 0.3)
               : (isDark
-                  ? AppColors.darkOutline.withOpacity(0.2)
-                  : context.colorScheme.outlineVariant.withOpacity(0.5)),
+                  ? AppColors.darkOutline.withValues(alpha: 0.15)
+                  : context.colorScheme.outlineVariant.withValues(alpha: 0.3)),
         ),
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: () => _playTrack(context, ref),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(12),
           child: Padding(
-            padding: const EdgeInsets.all(AppSpacing.md),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Row(
               children: [
+                // 序号
+                SizedBox(
+                  width: 28,
+                  child: isPlaying
+                      ? Icon(
+                          Icons.equalizer_rounded,
+                          color: AppColors.fileAudio,
+                          size: 18,
+                        )
+                      : Text(
+                          '${index + 1}',
+                          textAlign: TextAlign.center,
+                          style: context.textTheme.bodyMedium?.copyWith(
+                            color: isDark
+                                ? AppColors.darkOnSurfaceVariant
+                                : context.colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                ),
+                const SizedBox(width: 12),
+                // 封面
                 Container(
-                  width: 52,
-                  height: 52,
+                  width: 48,
+                  height: 48,
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    gradient: isPlaying
-                        ? const LinearGradient(
-                            colors: [AppColors.fileAudio, AppColors.secondary],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          )
+                    borderRadius: BorderRadius.circular(8),
+                    gradient: LinearGradient(
+                      colors: isPlaying
+                          ? [AppColors.fileAudio, AppColors.secondary]
+                          : gradientColors,
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    boxShadow: isPlaying
+                        ? [
+                            BoxShadow(
+                              color: AppColors.fileAudio.withValues(alpha: 0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ]
                         : null,
-                    color: isPlaying
-                        ? null
-                        : (isDark
-                            ? AppColors.darkSurfaceElevated
-                            : context.colorScheme.surfaceContainerHighest),
                   ),
-                  child: Icon(
-                    isPlaying ? Icons.equalizer_rounded : Icons.music_note_rounded,
-                    color: isPlaying
-                        ? Colors.white
-                        : (isDark
-                            ? AppColors.darkOnSurfaceVariant
-                            : context.colorScheme.onSurfaceVariant),
-                    size: 24,
+                  child: Center(
+                    child: Text(
+                      title.isNotEmpty ? title[0].toUpperCase() : '♪',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                 ),
-                const SizedBox(width: AppSpacing.md),
+                const SizedBox(width: 12),
+                // 标题和艺术家
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        track.name,
+                        title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: context.textTheme.bodyLarge?.copyWith(
+                        style: context.textTheme.bodyMedium?.copyWith(
                           color: isPlaying
                               ? AppColors.fileAudio
                               : (isDark ? AppColors.darkOnSurface : null),
                           fontWeight: isPlaying ? FontWeight.w600 : FontWeight.w500,
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: (isDark
-                                      ? AppColors.darkSurfaceElevated
-                                      : context.colorScheme.surfaceContainerHighest)
-                                  .withOpacity(isDark ? 1 : 0.8),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              track.displaySize,
-                              style: context.textTheme.labelSmall?.copyWith(
-                                color: isDark
-                                    ? AppColors.darkOnSurfaceVariant
-                                    : context.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ),
-                        ],
+                      const SizedBox(height: 2),
+                      Text(
+                        artist ?? track.displaySize,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: context.textTheme.bodySmall?.copyWith(
+                          color: isDark
+                              ? AppColors.darkOnSurfaceVariant
+                              : context.colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ],
                   ),
                 ),
+                // 文件大小标签
+                if (artist != null)
+                  Container(
+                    margin: const EdgeInsets.only(left: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: (isDark
+                              ? AppColors.darkSurfaceElevated
+                              : context.colorScheme.surfaceContainerHighest)
+                          .withValues(alpha: 0.7),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      track.displaySize,
+                      style: context.textTheme.labelSmall?.copyWith(
+                        color: isDark
+                            ? AppColors.darkOnSurfaceVariant
+                            : context.colorScheme.onSurfaceVariant,
+                        fontSize: 10,
+                      ),
+                    ),
+                  ),
                 PopupMenuButton<String>(
                   onSelected: (value) => _handleMenuAction(context, ref, value),
                   icon: Icon(
@@ -4431,4 +4475,19 @@ Widget _buildEmptyView(String message, IconData icon, bool isDark) {
       ],
     ),
   );
+}
+
+/// 根据索引获取渐变色
+List<Color> _getGradientColorsForIndex(int index) {
+  const colorPairs = [
+    [Color(0xFF667eea), Color(0xFF764ba2)], // 紫色渐变
+    [Color(0xFFf093fb), Color(0xFFf5576c)], // 粉红渐变
+    [Color(0xFF4facfe), Color(0xFF00f2fe)], // 蓝色渐变
+    [Color(0xFF43e97b), Color(0xFF38f9d7)], // 绿色渐变
+    [Color(0xFFfa709a), Color(0xFFfee140)], // 橙粉渐变
+    [Color(0xFF30cfd0), Color(0xFF330867)], // 青紫渐变
+    [Color(0xFFa8edea), Color(0xFFfed6e3)], // 浅色渐变
+    [Color(0xFFff9a9e), Color(0xFFfecfef)], // 粉红浅色
+  ];
+  return colorPairs[index % colorPairs.length];
 }
