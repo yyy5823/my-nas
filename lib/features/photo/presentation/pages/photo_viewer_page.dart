@@ -1,9 +1,10 @@
 import 'dart:async';
-import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:my_nas/core/utils/platform_capabilities.dart';
 import 'package:my_nas/features/photo/data/services/photo_save_service.dart';
 import 'package:my_nas/features/photo/domain/entities/photo_item.dart';
 
@@ -418,24 +419,25 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
                       );
                     },
                   ),
-                  // 下载
+                  // 下载（所有平台都支持，桌面端用文件选择器，移动端保存到相册）
                   _ActionButton(
                     icon: Icons.download_outlined,
-                    label: '下载',
+                    label: PlatformCapabilities.isMobile ? '保存' : '下载',
                     onTap: () {
                       _startAutoHideTimer();
                       _downloadPhoto(context, photo);
                     },
                   ),
-                  // 分享
-                  _ActionButton(
-                    icon: Icons.share_outlined,
-                    label: '分享',
-                    onTap: () {
-                      _startAutoHideTimer();
-                      _sharePhoto(context, photo);
-                    },
-                  ),
+                  // 分享（仅在支持分享的平台显示）
+                  if (PlatformCapabilities.canShare)
+                    _ActionButton(
+                      icon: Icons.share_outlined,
+                      label: '分享',
+                      onTap: () {
+                        _startAutoHideTimer();
+                        _sharePhoto(context, photo);
+                      },
+                    ),
                   // 删除
                   _ActionButton(
                     icon: Icons.delete_outline,
@@ -529,19 +531,23 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
 
     // 移动端需要先请求权限
     final saveService = PhotoSaveService.instance;
-    if (saveService.isMobile) {
+    if (saveService.canSaveToGallery) {
       final hasPermission = await saveService.requestGalleryPermission();
       if (!hasPermission) {
+        if (!context.mounted) return;
         _showErrorSnackBar(context, '需要相册访问权限才能保存照片');
         return;
       }
     }
 
-    // 显示下载进度对话框
     if (!context.mounted) return;
 
+    // 创建取消令牌
+    final cancelToken = CancelToken();
     final progressNotifier = ValueNotifier<double>(0);
-    bool isCancelled = false;
+
+    // 显示下载进度对话框
+    final dialogCompleter = Completer<void>();
 
     showDialog<void>(
       context: context,
@@ -564,7 +570,7 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
                     const SizedBox(height: 16),
                     Text(
                       progress > 0
-                          ? '下载中 ${(progress * 100).toInt()}%'
+                          ? '${saveService.isMobile ? "保存中" : "下载中"} ${(progress * 100).toInt()}%'
                           : '正在连接...',
                       style: const TextStyle(color: Colors.white70),
                     ),
@@ -574,7 +580,11 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
               const SizedBox(height: 16),
               TextButton(
                 onPressed: () {
-                  isCancelled = true;
+                  // 取消下载
+                  cancelToken.cancel('用户取消');
+                  if (!dialogCompleter.isCompleted) {
+                    dialogCompleter.complete();
+                  }
                   Navigator.of(dialogContext).pop();
                 },
                 child: const Text('取消'),
@@ -589,20 +599,24 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
     final result = await saveService.downloadPhoto(
       url: url,
       fileName: photo.name,
+      cancelToken: cancelToken,
       onProgress: (progress) {
-        if (!isCancelled) {
+        if (!cancelToken.isCancelled) {
           progressNotifier.value = progress;
         }
       },
     );
 
-    // 关闭进度对话框
-    if (context.mounted && Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
+    // 关闭进度对话框（如果还没关闭）
+    if (context.mounted && !dialogCompleter.isCompleted) {
+      dialogCompleter.complete();
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
     }
 
-    // 显示结果
-    if (!context.mounted || isCancelled) return;
+    // 显示结果（取消时不显示）
+    if (!context.mounted || result.isCancelled) return;
 
     if (result.isSuccess) {
       _showSuccessSnackBar(context, result.message);
@@ -620,16 +634,23 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
       return;
     }
 
-    // 在桌面端，提供选择：分享文件或复制链接
+    // 检查分享功能是否可用
     final saveService = PhotoSaveService.instance;
+    if (!saveService.canShare) {
+      _showErrorSnackBar(context, '当前平台不支持分享功能');
+      return;
+    }
+
+    // 在桌面端，提供选择：分享文件或复制链接
     if (saveService.isDesktop) {
       _showShareOptionsDialog(context, photo, url);
       return;
     }
 
     // 移动端直接使用系统分享
+    final cancelToken = CancelToken();
     final progressNotifier = ValueNotifier<double>(0);
-    bool isCancelled = false;
+    final dialogCompleter = Completer<void>();
 
     showDialog<void>(
       context: context,
@@ -662,7 +683,11 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
               const SizedBox(height: 16),
               TextButton(
                 onPressed: () {
-                  isCancelled = true;
+                  // 取消下载
+                  cancelToken.cancel('用户取消');
+                  if (!dialogCompleter.isCompleted) {
+                    dialogCompleter.complete();
+                  }
                   Navigator.of(dialogContext).pop();
                 },
                 child: const Text('取消'),
@@ -677,19 +702,24 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
     final result = await saveService.sharePhoto(
       url: url,
       fileName: photo.name,
+      cancelToken: cancelToken,
       onProgress: (progress) {
-        if (!isCancelled) {
+        if (!cancelToken.isCancelled) {
           progressNotifier.value = progress;
         }
       },
     );
 
-    // 关闭进度对话框
-    if (context.mounted && Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
+    // 关闭进度对话框（如果还没关闭）
+    if (context.mounted && !dialogCompleter.isCompleted) {
+      dialogCompleter.complete();
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
     }
 
-    if (!context.mounted || isCancelled) return;
+    // 显示结果（取消时不显示）
+    if (!context.mounted || result.isCancelled) return;
 
     if (result.isFailure) {
       _showErrorSnackBar(context, result.error ?? '分享失败');
@@ -763,35 +793,51 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
   /// 分享照片文件（桌面端）
   Future<void> _sharePhotoFile(BuildContext context, PhotoItem photo, String url) async {
     final saveService = PhotoSaveService.instance;
+    final cancelToken = CancelToken();
     final progressNotifier = ValueNotifier<double>(0);
+    final dialogCompleter = Completer<void>();
 
     showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: Colors.grey[900],
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ValueListenableBuilder<double>(
-              valueListenable: progressNotifier,
-              builder: (_, progress, __) => Column(
-                children: [
-                  CircularProgressIndicator(
-                    value: progress > 0 ? progress : null,
-                    color: Colors.white,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    progress > 0
-                        ? '准备分享 ${(progress * 100).toInt()}%'
-                        : '正在准备...',
-                    style: const TextStyle(color: Colors.white70),
-                  ),
-                ],
+      builder: (dialogContext) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          backgroundColor: Colors.grey[900],
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ValueListenableBuilder<double>(
+                valueListenable: progressNotifier,
+                builder: (_, progress, __) => Column(
+                  children: [
+                    CircularProgressIndicator(
+                      value: progress > 0 ? progress : null,
+                      color: Colors.white,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      progress > 0
+                          ? '准备分享 ${(progress * 100).toInt()}%'
+                          : '正在准备...',
+                      style: const TextStyle(color: Colors.white70),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 16),
+              TextButton(
+                onPressed: () {
+                  cancelToken.cancel('用户取消');
+                  if (!dialogCompleter.isCompleted) {
+                    dialogCompleter.complete();
+                  }
+                  Navigator.of(dialogContext).pop();
+                },
+                child: const Text('取消'),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -799,14 +845,26 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
     final result = await saveService.sharePhoto(
       url: url,
       fileName: photo.name,
-      onProgress: (progress) => progressNotifier.value = progress,
+      cancelToken: cancelToken,
+      onProgress: (progress) {
+        if (!cancelToken.isCancelled) {
+          progressNotifier.value = progress;
+        }
+      },
     );
 
-    if (context.mounted && Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
+    // 关闭进度对话框（如果还没关闭）
+    if (context.mounted && !dialogCompleter.isCompleted) {
+      dialogCompleter.complete();
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
     }
 
-    if (result.isFailure && context.mounted) {
+    // 显示结果（取消时不显示）
+    if (!context.mounted || result.isCancelled) return;
+
+    if (result.isFailure) {
       _showErrorSnackBar(context, result.error ?? '分享失败');
     }
   }

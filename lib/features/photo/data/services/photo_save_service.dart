@@ -3,9 +3,9 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart';
 import 'package:gal/gal.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/core/utils/platform_capabilities.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -22,30 +22,44 @@ class PhotoSaveService {
   ));
 
   /// 判断是否为桌面平台
-  bool get isDesktop =>
-      Platform.isMacOS || Platform.isWindows || Platform.isLinux;
+  bool get isDesktop => PlatformCapabilities.isDesktop;
 
   /// 判断是否为移动平台
-  bool get isMobile => Platform.isIOS || Platform.isAndroid;
+  bool get isMobile => PlatformCapabilities.isMobile;
+
+  /// 是否支持保存到相册
+  bool get canSaveToGallery => PlatformCapabilities.canSaveToGallery;
+
+  /// 是否支持系统分享
+  bool get canShare => PlatformCapabilities.canShare;
+
+  /// 是否支持完整的系统分享
+  bool get canShareNatively => PlatformCapabilities.canShareNatively;
 
   /// 下载照片
   /// - 桌面端：弹出文件选择对话框，用户选择保存位置
   /// - 移动端：保存到相册
+  /// - [cancelToken] 用于取消下载
   Future<SaveResult> downloadPhoto({
     required String url,
     required String fileName,
     void Function(double progress)? onProgress,
+    CancelToken? cancelToken,
   }) async {
+    File? tempFile;
+
     try {
       logger.i('PhotoSaveService: 开始下载照片: $fileName');
 
       // 1. 下载文件到临时目录
       final tempDir = await getTemporaryDirectory();
       final tempPath = p.join(tempDir.path, 'photo_download_$fileName');
+      tempFile = File(tempPath);
 
       final response = await _dio.download(
         url,
         tempPath,
+        cancelToken: cancelToken,
         onReceiveProgress: (received, total) {
           if (total > 0) {
             onProgress?.call(received / total);
@@ -57,7 +71,6 @@ class PhotoSaveService {
         return SaveResult.failure('下载失败: HTTP ${response.statusCode}');
       }
 
-      final tempFile = File(tempPath);
       if (!await tempFile.exists()) {
         return SaveResult.failure('下载的文件不存在');
       }
@@ -69,9 +82,20 @@ class PhotoSaveService {
         return _saveToGallery(tempFile, fileName);
       }
     } on DioException catch (e) {
+      // 清理临时文件
+      await _cleanupTempFile(tempFile);
+
+      if (e.type == DioExceptionType.cancel) {
+        logger.i('PhotoSaveService: 下载已取消');
+        return SaveResult.cancelled();
+      }
+
       logger.e('PhotoSaveService: 下载失败', e);
-      return SaveResult.failure('下载失败: ${e.message}');
+      return SaveResult.failure('下载失败: ${_getDioErrorMessage(e)}');
     } on Exception catch (e) {
+      // 清理临时文件
+      await _cleanupTempFile(tempFile);
+
       logger.e('PhotoSaveService: 保存失败', e);
       return SaveResult.failure('保存失败: $e');
     }
@@ -90,22 +114,19 @@ class PhotoSaveService {
 
       if (result == null) {
         // 用户取消
-        await tempFile.delete();
+        await _cleanupTempFile(tempFile);
         return SaveResult.cancelled();
       }
 
       // 复制文件到选定位置
       await tempFile.copy(result);
-      await tempFile.delete();
+      await _cleanupTempFile(tempFile);
 
       logger.i('PhotoSaveService: 照片已保存到: $result');
       return SaveResult.success(result);
     } on Exception catch (e) {
       logger.e('PhotoSaveService: 桌面端保存失败', e);
-      // 清理临时文件
-      try {
-        await tempFile.delete();
-      } catch (_) {}
+      await _cleanupTempFile(tempFile);
       return SaveResult.failure('保存失败: $e');
     }
   }
@@ -117,16 +138,13 @@ class PhotoSaveService {
       await Gal.putImage(tempFile.path, album: 'MyNAS');
 
       // 删除临时文件
-      await tempFile.delete();
+      await _cleanupTempFile(tempFile);
 
       logger.i('PhotoSaveService: 照片已保存到相册');
       return SaveResult.success(null, isGallery: true);
     } on GalException catch (e) {
       logger.e('PhotoSaveService: 保存到相册失败', e);
-      // 清理临时文件
-      try {
-        await tempFile.delete();
-      } catch (_) {}
+      await _cleanupTempFile(tempFile);
 
       // 处理权限问题
       if (e.type == GalExceptionType.accessDenied) {
@@ -135,31 +153,39 @@ class PhotoSaveService {
       return SaveResult.failure('保存到相册失败: ${e.type.name}');
     } on Exception catch (e) {
       logger.e('PhotoSaveService: 保存到相册失败', e);
-      try {
-        await tempFile.delete();
-      } catch (_) {}
+      await _cleanupTempFile(tempFile);
       return SaveResult.failure('保存到相册失败: $e');
     }
   }
 
   /// 分享照片
   /// 使用系统分享功能，支持 AirDrop、短信、邮件、社交应用等
+  /// - [cancelToken] 用于取消下载
   Future<ShareResult> sharePhoto({
     required String url,
     required String fileName,
     String? text,
     void Function(double progress)? onProgress,
+    CancelToken? cancelToken,
   }) async {
+    if (!canShare) {
+      return ShareResult.failure('当前平台不支持分享功能');
+    }
+
+    File? tempFile;
+
     try {
       logger.i('PhotoSaveService: 开始分享照片: $fileName');
 
       // 1. 下载文件到临时目录
       final tempDir = await getTemporaryDirectory();
       final tempPath = p.join(tempDir.path, 'share_$fileName');
+      tempFile = File(tempPath);
 
       final response = await _dio.download(
         url,
         tempPath,
+        cancelToken: cancelToken,
         onReceiveProgress: (received, total) {
           if (total > 0) {
             onProgress?.call(received / total);
@@ -171,7 +197,6 @@ class PhotoSaveService {
         return ShareResult.failure('下载失败: HTTP ${response.statusCode}');
       }
 
-      final tempFile = File(tempPath);
       if (!await tempFile.exists()) {
         return ShareResult.failure('文件不存在');
       }
@@ -186,13 +211,7 @@ class PhotoSaveService {
 
       // 分享完成后删除临时文件
       // 延迟一点删除，确保分享系统已经读取完文件
-      Future.delayed(const Duration(seconds: 5), () async {
-        try {
-          if (await tempFile.exists()) {
-            await tempFile.delete();
-          }
-        } catch (_) {}
-      });
+      _scheduleCleanup(tempFile);
 
       logger.i('PhotoSaveService: 分享结果: ${result.status}');
 
@@ -203,9 +222,18 @@ class PhotoSaveService {
           ShareResult.failure('分享功能不可用'),
       };
     } on DioException catch (e) {
+      _scheduleCleanup(tempFile);
+
+      if (e.type == DioExceptionType.cancel) {
+        logger.i('PhotoSaveService: 分享下载已取消');
+        return ShareResult.cancelled();
+      }
+
       logger.e('PhotoSaveService: 分享失败 - 下载错误', e);
-      return ShareResult.failure('下载失败: ${e.message}');
+      return ShareResult.failure('下载失败: ${_getDioErrorMessage(e)}');
     } on Exception catch (e) {
+      _scheduleCleanup(tempFile);
+
       logger.e('PhotoSaveService: 分享失败', e);
       return ShareResult.failure('分享失败: $e');
     }
@@ -217,11 +245,17 @@ class PhotoSaveService {
     required String fileName,
     String? text,
   }) async {
+    if (!canShare) {
+      return ShareResult.failure('当前平台不支持分享功能');
+    }
+
+    File? tempFile;
+
     try {
       // 保存到临时文件
       final tempDir = await getTemporaryDirectory();
       final tempPath = p.join(tempDir.path, 'share_$fileName');
-      final tempFile = File(tempPath);
+      tempFile = File(tempPath);
       await tempFile.writeAsBytes(bytes);
 
       // 分享
@@ -233,13 +267,7 @@ class PhotoSaveService {
       );
 
       // 延迟删除临时文件
-      Future.delayed(const Duration(seconds: 5), () async {
-        try {
-          if (await tempFile.exists()) {
-            await tempFile.delete();
-          }
-        } catch (_) {}
-      });
+      _scheduleCleanup(tempFile);
 
       return switch (result.status) {
         ShareResultStatus.success => ShareResult.success(),
@@ -248,6 +276,8 @@ class PhotoSaveService {
           ShareResult.failure('分享功能不可用'),
       };
     } on Exception catch (e) {
+      _scheduleCleanup(tempFile);
+
       logger.e('PhotoSaveService: 分享失败', e);
       return ShareResult.failure('分享失败: $e');
     }
@@ -255,7 +285,7 @@ class PhotoSaveService {
 
   /// 请求相册权限（iOS/Android）
   Future<bool> requestGalleryPermission() async {
-    if (!isMobile) return true;
+    if (!canSaveToGallery) return false;
 
     final hasAccess = await Gal.hasAccess(toAlbum: true);
     if (hasAccess) return true;
@@ -271,6 +301,38 @@ class PhotoSaveService {
     // 移除前导点
     final extWithoutDot = ext.substring(1);
     return [extWithoutDot];
+  }
+
+  /// 清理临时文件
+  Future<void> _cleanupTempFile(File? file) async {
+    if (file == null) return;
+    try {
+      if (await file.exists()) {
+        await file.delete();
+      }
+    } catch (_) {}
+  }
+
+  /// 延迟清理临时文件
+  void _scheduleCleanup(File? file) {
+    if (file == null) return;
+    Future.delayed(const Duration(seconds: 5), () async {
+      await _cleanupTempFile(file);
+    });
+  }
+
+  /// 获取 Dio 错误消息
+  String _getDioErrorMessage(DioException e) {
+    return switch (e.type) {
+      DioExceptionType.connectionTimeout => '连接超时',
+      DioExceptionType.sendTimeout => '发送超时',
+      DioExceptionType.receiveTimeout => '接收超时',
+      DioExceptionType.badResponse => 'HTTP ${e.response?.statusCode}',
+      DioExceptionType.cancel => '已取消',
+      DioExceptionType.connectionError => '网络连接失败',
+      DioExceptionType.unknown => e.message ?? '未知错误',
+      _ => e.message ?? '网络错误',
+    };
   }
 }
 
