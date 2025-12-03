@@ -457,7 +457,12 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          padding: EdgeInsets.fromLTRB(
+            AppSpacing.appBarHorizontalPadding,
+            AppSpacing.appBarVerticalPadding,
+            AppSpacing.appBarHorizontalPadding,
+            AppSpacing.lg, // 底部保持较大间距用于 header 效果
+          ),
           child: _showSearch
               ? _buildSearchBar(context, ref, isDark)
               : _buildGreetingHeader(context, ref, isDark, state),

@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 abstract final class AppSpacing {
@@ -10,6 +13,42 @@ abstract final class AppSpacing {
   static const double xxl = 24;
   static const double xxxl = 32;
   static const double xxxxl = 48;
+
+  // App bar content padding (inside SafeArea)
+  // iOS: Minimal vertical padding since iOS navigation bars are compact
+  // Android: Slightly more padding for Material feel
+  // Desktop: Most padding for mouse interaction areas
+  static EdgeInsets get appBarContentPadding {
+    if (kIsWeb) {
+      return const EdgeInsets.symmetric(horizontal: 16, vertical: 8);
+    }
+    if (Platform.isIOS) {
+      // iOS: 更紧凑的顶部间距，符合 iOS HIG
+      return const EdgeInsets.symmetric(horizontal: 16, vertical: 4);
+    }
+    if (Platform.isAndroid) {
+      // Android: Material Design 适中间距
+      return const EdgeInsets.symmetric(horizontal: 12, vertical: 6);
+    }
+    // Desktop: 更多呼吸空间
+    return const EdgeInsets.symmetric(horizontal: 16, vertical: 8);
+  }
+
+  // App bar vertical padding only (for simpler cases)
+  static double get appBarVerticalPadding {
+    if (kIsWeb) return sm;
+    if (Platform.isIOS) return xs;
+    if (Platform.isAndroid) return 6;
+    return sm;
+  }
+
+  // App bar horizontal padding
+  static double get appBarHorizontalPadding {
+    if (kIsWeb) return lg;
+    if (Platform.isIOS) return lg;
+    if (Platform.isAndroid) return md;
+    return lg;
+  }
 
   // Common paddings
   static const EdgeInsets paddingXs = EdgeInsets.all(xs);

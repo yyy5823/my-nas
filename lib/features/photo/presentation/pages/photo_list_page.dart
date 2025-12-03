@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/router/app_router.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/photo/data/services/photo_library_cache_service.dart';
@@ -561,7 +562,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: AppSpacing.appBarContentPadding,
           child: Row(
             children: [
               if (!_showSearch) ...[

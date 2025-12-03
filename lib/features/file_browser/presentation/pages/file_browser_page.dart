@@ -105,7 +105,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          padding: AppSpacing.appBarContentPadding,
           child: Row(
             children: [
               // 返回按钮 - 根据情况显示不同类型

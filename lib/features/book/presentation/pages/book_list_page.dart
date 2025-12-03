@@ -444,7 +444,7 @@ class _BookListPageState extends ConsumerState<BookListPage> {
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: AppSpacing.appBarContentPadding,
           child: Row(
             children: [
               if (!_showSearch) ...[
