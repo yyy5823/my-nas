@@ -117,8 +117,11 @@ class _StreamImageState extends State<StreamImage> {
   }
 
   Future<void> _loadImage() async {
+    logger.d('StreamImage: _loadImage called, url=${widget.url}, path=${widget.path}, hasFileSystem=${widget.fileSystem != null}');
+
     // 如果有有效的 HTTP URL，使用 CachedNetworkImage
     if (_hasValidHttpUrl) {
+      logger.d('StreamImage: Using HTTP URL: ${widget.url}');
       setState(() {
         _imageBytes = null;
         _hasError = false;
@@ -129,6 +132,7 @@ class _StreamImageState extends State<StreamImage> {
     // 如果有有效的 file:// URL，在非iOS/macOS平台使用 Image.file
     // 在iOS/macOS平台，由于沙盒限制，优先使用流式加载
     if (_hasValidFileUrl && !_shouldUseStreamForFileUrl) {
+      logger.d('StreamImage: Using file:// URL: ${widget.url}');
       setState(() {
         _imageBytes = null;
         _hasError = false;
@@ -138,6 +142,7 @@ class _StreamImageState extends State<StreamImage> {
 
     // 检查内存缓存
     if (_cacheKey.isNotEmpty && _memoryCache.containsKey(_cacheKey)) {
+      logger.d('StreamImage: Using cached image for $_cacheKey');
       setState(() {
         _imageBytes = _memoryCache[_cacheKey];
         _isLoading = false;
@@ -148,12 +153,14 @@ class _StreamImageState extends State<StreamImage> {
 
     // 需要通过流加载
     if (widget.path == null || widget.fileSystem == null) {
+      logger.w('StreamImage: Cannot stream - path=${widget.path}, fileSystem=${widget.fileSystem != null ? "exists" : "null"}, url=${widget.url}');
       setState(() {
         _hasError = true;
       });
       return;
     }
 
+    logger.d('StreamImage: Starting stream load for ${widget.path}');
     setState(() {
       _isLoading = true;
       _hasError = false;
@@ -171,6 +178,7 @@ class _StreamImageState extends State<StreamImage> {
         }
       }
 
+      logger.d('StreamImage: Stream loaded ${bytes.length} bytes for ${widget.path}');
       final imageData = Uint8List.fromList(bytes);
 
       // 添加到缓存
@@ -191,8 +199,8 @@ class _StreamImageState extends State<StreamImage> {
           _isLoading = false;
         });
       }
-    } catch (e) {
-      logger.w('StreamImage: 加载图片失败 ${widget.path}', e);
+    } catch (e, stackTrace) {
+      logger.e('StreamImage: 加载图片失败 ${widget.path}', e, stackTrace);
       if (mounted) {
         setState(() {
           _hasError = true;

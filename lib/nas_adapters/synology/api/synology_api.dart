@@ -292,6 +292,39 @@ class SynologyApi {
     return '${_dio.options.baseUrl}/webapi/entry.cgi?$queryString';
   }
 
+  /// 获取文件流（用于流式下载）
+  ///
+  /// [start] 和 [end] 用于范围请求，可选
+  Future<Stream<List<int>>> getFileStream(
+    String path, {
+    int? start,
+    int? end,
+  }) async {
+    final url = getDownloadUrl(path);
+    logger.d('SynologyApi: getFileStream => $path');
+
+    final headers = <String, dynamic>{};
+    if (start != null || end != null) {
+      final rangeStart = start ?? 0;
+      final rangeEnd = end != null ? end.toString() : '';
+      headers['Range'] = 'bytes=$rangeStart-$rangeEnd';
+    }
+
+    final response = await _dio.get<ResponseBody>(
+      url,
+      options: Options(
+        headers: headers,
+        responseType: ResponseType.stream,
+      ),
+    );
+
+    if (response.data == null) {
+      throw Exception('获取文件流失败：响应为空');
+    }
+
+    return response.data!.stream;
+  }
+
   /// 搜索文件
   Future<String> startSearch({
     required String folderPath,

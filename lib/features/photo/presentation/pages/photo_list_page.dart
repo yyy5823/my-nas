@@ -393,17 +393,24 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
                 file.path,
                 size: ThumbnailSize.medium,
               );
+              if (thumbnailUrl != null) {
+                logger.d('PhotoScan: Got thumbnail URL for ${file.name}: $thumbnailUrl');
+              }
             } catch (e) {
-              // 忽略缩略图获取失败
+              logger.d('PhotoScan: Failed to get thumbnail for ${file.name}: $e');
             }
           }
 
-          // 如果没有缩略图，尝试获取原图 URL
+          // 如果没有缩略图，尝试获取原图 URL（作为备用）
+          // 注意：对于 SMB/WebDAV 等不支持 HTTP URL 的源，这可能返回 null 或非 HTTP URL
           if (thumbnailUrl == null || thumbnailUrl.isEmpty) {
             try {
               thumbnailUrl = await fileSystem.getFileUrl(file.path);
+              logger.d('PhotoScan: Got file URL for ${file.name}: $thumbnailUrl');
             } catch (e) {
-              // 忽略
+              // getFileUrl 可能抛出 UnimplementedError（如 WebDAV）
+              // 这种情况下 thumbnailUrl 保持为 null，让 StreamImage 使用流式加载
+              logger.d('PhotoScan: No URL available for ${file.name}, will use stream: $e');
             }
           }
 

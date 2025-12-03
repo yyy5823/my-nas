@@ -57,9 +57,11 @@ class SynologyFileSystem implements NasFileSystem {
 
   @override
   Future<Stream<List<int>>> getFileStream(String path, {FileRange? range}) {
-    // Synology 使用 URL 下载，这里返回空流
-    // 实际使用时应该用 getFileUrl 获取下载链接
-    throw UnimplementedError('请使用 getFileUrl 获取下载链接');
+    return _api.getFileStream(
+      path,
+      start: range?.start,
+      end: range?.end,
+    );
   }
 
   @override
