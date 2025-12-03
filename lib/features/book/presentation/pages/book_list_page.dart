@@ -52,6 +52,17 @@ final bookListProvider =
 /// 图书排序方式
 enum BookSortType { name, date, size, format }
 
+/// 阅读内容类别
+enum ReadingCategory {
+  book('图书', Icons.menu_book_rounded),
+  comic('漫画', Icons.collections_rounded),
+  note('笔记', Icons.note_alt_rounded);
+
+  const ReadingCategory(this.label, this.icon);
+  final String label;
+  final IconData icon;
+}
+
 sealed class BookListState {}
 
 class BookListLoading extends BookListState {
@@ -386,10 +397,10 @@ class BookListPage extends ConsumerStatefulWidget {
 class _BookListPageState extends ConsumerState<BookListPage> {
   final _searchController = TextEditingController();
   bool _showSearch = false;
+  ReadingCategory _selectedCategory = ReadingCategory.book;
 
   // 图书主题色（琥珀色）
   static const _themeColor = Color(0xFFD97706);
-  static const _themeColorLight = Color(0xFFF59E0B);
 
   @override
   void dispose() {
@@ -448,97 +459,26 @@ class _BookListPageState extends ConsumerState<BookListPage> {
     bool isDark,
     BookListState state,
   ) {
-    final isDesktop = MediaQuery.of(context).size.width > 600;
-
-    if (isDesktop) {
-      return _buildGreetingHeader(context, ref, isDark, state);
-    }
-
-    // 移动端使用简化的顶栏
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
           colors: isDark
-              ? [
-                  const Color(0xFF1A1814),
-                  const Color(0xFF2D2518),
-                ]
-              : [
-                  _themeColor.withValues(alpha: 0.08),
-                  _themeColorLight.withValues(alpha: 0.05),
-                ],
+              ? [const Color(0xFF1A1814), AppColors.darkBackground]
+              : [_themeColor.withValues(alpha: 0.08), Colors.grey[50]!],
         ),
       ),
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: AppSpacing.appBarContentPadding,
-          child: Row(
-            children: [
-              Icon(
-                Icons.menu_book_rounded,
-                color: _themeColor,
-                size: 28,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      '我的书架',
-                      style: context.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: isDark ? Colors.white : Colors.black87,
-                      ),
-                    ),
-                    if (state is BookListLoaded)
-                      Text(
-                        '${state.books.length} 本图书',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isDark ? Colors.grey[400] : Colors.grey[600],
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              _buildHeaderButton(
-                icon: Icons.search_rounded,
-                onTap: () => setState(() => _showSearch = true),
-                isDark: isDark,
-              ),
-              if (state is BookListLoaded)
-                PopupMenuButton<BookSortType>(
-                  icon: Icon(
-                    Icons.sort_rounded,
-                    color: isDark ? Colors.grey[400] : Colors.grey[600],
-                    size: 22,
-                  ),
-                  tooltip: '排序',
-                  onSelected: (type) =>
-                      ref.read(bookListProvider.notifier).setSortType(type),
-                  itemBuilder: (context) => [
-                    _buildSortMenuItem(context, BookSortType.name, '按名称',
-                        Icons.sort_by_alpha_rounded, state.sortType, isDark),
-                    _buildSortMenuItem(context, BookSortType.date, '按日期',
-                        Icons.calendar_today_rounded, state.sortType, isDark),
-                    _buildSortMenuItem(context, BookSortType.size, '按大小',
-                        Icons.straighten_rounded, state.sortType, isDark),
-                    _buildSortMenuItem(context, BookSortType.format, '按格式',
-                        Icons.description_rounded, state.sortType, isDark),
-                  ],
-                ),
-              _buildHeaderButton(
-                icon: Icons.refresh_rounded,
-                onTap: () => ref.read(bookListProvider.notifier).forceRefresh(),
-                isDark: isDark,
-              ),
-            ],
+          padding: EdgeInsets.fromLTRB(
+            AppSpacing.appBarHorizontalPadding,
+            AppSpacing.appBarVerticalPadding,
+            AppSpacing.appBarHorizontalPadding,
+            AppSpacing.lg,
           ),
+          child: _buildGreetingHeader(context, ref, isDark, state),
         ),
       ),
     );
@@ -551,170 +491,188 @@ class _BookListPageState extends ConsumerState<BookListPage> {
     BookListState state,
   ) {
     final greeting = _getGreeting();
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isWideScreen = screenWidth > 600;
 
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: isDark
-              ? [
-                  const Color(0xFF1A1814),
-                  const Color(0xFF2D2518),
-                  AppColors.darkBackground,
-                ]
-              : [
-                  _themeColor.withValues(alpha: 0.12),
-                  _themeColorLight.withValues(alpha: 0.08),
-                  Colors.white,
-                ],
-        ),
-      ),
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
-          child: Row(
-            children: [
-              Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [_themeColor, _themeColorLight],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: _themeColor.withValues(alpha: 0.3),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.menu_book_rounded,
-                  color: Colors.white,
-                  size: 28,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      '$greeting，开始阅读吧',
-                      style: context.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: isDark ? Colors.white : Colors.black87,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    if (state is BookListLoaded)
-                      Row(
-                        children: [
-                          _buildStatChip(
-                            '${state.books.length}',
-                            '本图书',
-                            Icons.menu_book_rounded,
-                            isDark,
-                          ),
-                          const SizedBox(width: 12),
-                          ...state.formatStats.entries.take(2).map((entry) =>
-                              Padding(
-                                padding: const EdgeInsets.only(right: 8),
-                                child: _buildFormatChip(entry.key, entry.value, isDark),
-                              )),
-                        ],
-                      )
-                    else
-                      Text(
-                        '正在加载书架...',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: isDark ? Colors.grey[400] : Colors.grey[600],
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              Row(
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 第一行：问候语 + 操作按钮
+        Row(
+          children: [
+            // 左侧问候语和统计
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _buildHeaderButton(
-                    icon: Icons.search_rounded,
-                    onTap: () => setState(() => _showSearch = true),
-                    isDark: isDark,
-                  ),
-                  const SizedBox(width: 8),
-                  if (state is BookListLoaded)
-                    PopupMenuButton<BookSortType>(
-                      icon: Icon(
-                        Icons.sort_rounded,
-                        color: isDark ? Colors.grey[400] : Colors.grey[600],
-                        size: 22,
-                      ),
-                      tooltip: '排序',
-                      onSelected: (type) =>
-                          ref.read(bookListProvider.notifier).setSortType(type),
-                      itemBuilder: (context) => [
-                        _buildSortMenuItem(context, BookSortType.name, '按名称',
-                            Icons.sort_by_alpha_rounded, state.sortType, isDark),
-                        _buildSortMenuItem(context, BookSortType.date, '按日期',
-                            Icons.calendar_today_rounded, state.sortType, isDark),
-                        _buildSortMenuItem(context, BookSortType.size, '按大小',
-                            Icons.straighten_rounded, state.sortType, isDark),
-                        _buildSortMenuItem(context, BookSortType.format, '按格式',
-                            Icons.description_rounded, state.sortType, isDark),
-                      ],
+                  Text(
+                    greeting,
+                    style: context.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : Colors.black87,
                     ),
-                  const SizedBox(width: 8),
-                  _buildHeaderButton(
-                    icon: Icons.refresh_rounded,
-                    onTap: () => ref.read(bookListProvider.notifier).forceRefresh(),
-                    isDark: isDark,
                   ),
+                  const SizedBox(height: 6),
+                  if (state is BookListLoaded)
+                    Row(
+                      children: [
+                        _buildStatChip(
+                          icon: Icons.menu_book_rounded,
+                          label: '${state.books.length} 本图书',
+                          color: _themeColor,
+                          isDark: isDark,
+                        ),
+                        if (isWideScreen && state.formatStats.isNotEmpty) ...[
+                          const SizedBox(width: 8),
+                          ...state.formatStats.entries.take(2).map(
+                                (entry) => Padding(
+                                  padding: const EdgeInsets.only(right: 6),
+                                  child: _buildFormatChip(
+                                      entry.key, entry.value, isDark),
+                                ),
+                              ),
+                        ],
+                      ],
+                    )
+                  else
+                    Text(
+                      '正在加载...',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: isDark ? Colors.grey[400] : Colors.grey[600],
+                      ),
+                    ),
                 ],
               ),
-            ],
-          ),
+            ),
+            // 右侧操作按钮
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildHeaderButton(
+                  icon: Icons.search_rounded,
+                  onTap: () => setState(() => _showSearch = true),
+                  isDark: isDark,
+                ),
+                const SizedBox(width: 8),
+                _buildHeaderButton(
+                  icon: Icons.refresh_rounded,
+                  onTap: () =>
+                      ref.read(bookListProvider.notifier).forceRefresh(),
+                  isDark: isDark,
+                ),
+              ],
+            ),
+          ],
         ),
+        const SizedBox(height: 16),
+        // 第二行：类别Tab切换
+        _buildCategoryTabs(isDark),
+      ],
+    );
+  }
+
+  /// 构建类别Tab切换
+  Widget _buildCategoryTabs(bool isDark) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isCompact = screenWidth < 400;
+
+    return Container(
+      height: 40,
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.06)
+            : Colors.black.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      padding: const EdgeInsets.all(4),
+      child: Row(
+        children: ReadingCategory.values.map((category) {
+          final isSelected = _selectedCategory == category;
+          return Expanded(
+            child: GestureDetector(
+              onTap: () {
+                setState(() => _selectedCategory = category);
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? (isDark ? _themeColor : Colors.white)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                  boxShadow: isSelected
+                      ? [
+                          BoxShadow(
+                            color: (isDark ? _themeColor : Colors.black)
+                                .withValues(alpha: 0.15),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      category.icon,
+                      size: isCompact ? 16 : 18,
+                      color: isSelected
+                          ? (isDark ? Colors.white : _themeColor)
+                          : (isDark ? Colors.grey[400] : Colors.grey[600]),
+                    ),
+                    if (!isCompact) ...[
+                      const SizedBox(width: 6),
+                      Text(
+                        category.label,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight:
+                              isSelected ? FontWeight.w600 : FontWeight.normal,
+                          color: isSelected
+                              ? (isDark ? Colors.white : _themeColor)
+                              : (isDark ? Colors.grey[400] : Colors.grey[600]),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          );
+        }).toList(),
       ),
     );
   }
 
-  Widget _buildStatChip(String value, String label, IconData icon, bool isDark) {
+  Widget _buildStatChip({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required bool isDark,
+  }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: isDark
             ? Colors.white.withValues(alpha: 0.08)
-            : _themeColor.withValues(alpha: 0.1),
+            : color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: _themeColor),
+          Icon(icon, size: 14, color: color),
           const SizedBox(width: 4),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.bold,
-              color: isDark ? Colors.white : _themeColor,
-            ),
-          ),
-          const SizedBox(width: 2),
           Text(
             label,
             style: TextStyle(
-              fontSize: 11,
-              color: isDark ? Colors.grey[400] : Colors.grey[600],
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: isDark ? Colors.grey[300] : Colors.grey[700],
             ),
           ),
         ],
@@ -849,46 +807,6 @@ class _BookListPageState extends ConsumerState<BookListPage> {
       ),
     );
   }
-
-  PopupMenuItem<BookSortType> _buildSortMenuItem(
-    BuildContext context,
-    BookSortType type,
-    String label,
-    IconData icon,
-    BookSortType current,
-    bool isDark,
-  ) {
-    final isSelected = type == current;
-    return PopupMenuItem(
-      value: type,
-      child: Row(
-        children: [
-          Icon(
-            icon,
-            size: 20,
-            color: isSelected
-                ? AppColors.primary
-                : (isDark ? AppColors.darkOnSurface : null),
-          ),
-          const SizedBox(width: 12),
-          Text(
-            label,
-            style: TextStyle(
-              color: isSelected
-                  ? AppColors.primary
-                  : (isDark ? AppColors.darkOnSurface : null),
-              fontWeight: isSelected ? FontWeight.w600 : null,
-            ),
-          ),
-          if (isSelected) ...[
-            const Spacer(),
-            Icon(Icons.check, size: 18, color: AppColors.primary),
-          ],
-        ],
-      ),
-    );
-  }
-
 
   Widget _buildLoadingState(
     double progress,

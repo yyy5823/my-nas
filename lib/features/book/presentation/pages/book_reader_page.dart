@@ -4,9 +4,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/core/network/http_client.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
 import 'package:my_nas/shared/widgets/loading_widget.dart';
@@ -99,18 +99,32 @@ class BookReaderNotifier extends StateNotifier<BookReaderState> {
   }
 
   Future<String> _loadTxtBook() async {
-    final response = await http.get(Uri.parse(book.url));
-    if (response.statusCode != 200) {
-      throw Exception('加载失败: ${response.statusCode}');
+    final uri = Uri.parse(book.url);
+    List<int> bytes;
+
+    // 检查是否为本地文件 (file:// 协议)
+    if (uri.scheme == 'file') {
+      final localFile = File(uri.toFilePath());
+      if (!await localFile.exists()) {
+        throw Exception('文件不存在');
+      }
+      bytes = await localFile.readAsBytes();
+    } else {
+      // 远程文件，使用 HTTP 下载
+      final response = await InsecureHttpClient.get(uri);
+      if (response.statusCode != 200) {
+        throw Exception('加载失败: ${response.statusCode}');
+      }
+      bytes = response.bodyBytes;
     }
 
     // 尝试检测编码
     String content;
     try {
-      content = utf8.decode(response.bodyBytes);
+      content = utf8.decode(bytes);
     } on FormatException {
       // 尝试 GBK/GB2312
-      content = _decodeGbk(response.bodyBytes);
+      content = _decodeGbk(bytes);
     }
 
     return content;
@@ -122,16 +136,26 @@ class BookReaderNotifier extends StateNotifier<BookReaderState> {
   }
 
   Future<String> _loadEpubBook() async {
-    // 下载 EPUB 文件
-    final response = await http.get(Uri.parse(book.url));
-    if (response.statusCode != 200) {
-      throw Exception('下载失败: ${response.statusCode}');
-    }
-
-    // 保存到临时目录
+    final uri = Uri.parse(book.url);
     final tempDir = await getTemporaryDirectory();
     final epubFile = File('${tempDir.path}/${book.name}');
-    await epubFile.writeAsBytes(response.bodyBytes);
+
+    // 检查是否为本地文件 (file:// 协议)
+    if (uri.scheme == 'file') {
+      final localFile = File(uri.toFilePath());
+      if (!await localFile.exists()) {
+        throw Exception('文件不存在');
+      }
+      // 复制到临时目录
+      await localFile.copy(epubFile.path);
+    } else {
+      // 远程文件，使用 HTTP 下载
+      final response = await InsecureHttpClient.get(uri);
+      if (response.statusCode != 200) {
+        throw Exception('下载失败: ${response.statusCode}');
+      }
+      await epubFile.writeAsBytes(response.bodyBytes);
+    }
 
     // TODO: 使用 epubx 或 epub_view 解析 EPUB
     // 暂时返回提示信息

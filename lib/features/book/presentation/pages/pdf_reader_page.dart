@@ -3,8 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/core/network/http_client.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
 import 'package:my_nas/features/reading/data/services/reading_progress_service.dart';
@@ -71,21 +71,34 @@ class PdfReaderNotifier extends StateNotifier<PdfReaderState> {
 
   Future<void> _loadPdf() async {
     try {
-      state = PdfReaderLoading(message: '下载中...');
+      state = PdfReaderLoading(message: '加载中...');
 
-      // 下载 PDF 文件
-      final response = await http.get(Uri.parse(book.url));
-      if (response.statusCode != 200) {
-        state = PdfReaderError('下载失败: ${response.statusCode}');
-        return;
+      final uri = Uri.parse(book.url);
+      final tempDir = await getTemporaryDirectory();
+      final pdfFile = File('${tempDir.path}/${book.name}');
+
+      // 检查是否为本地文件 (file:// 协议)
+      if (uri.scheme == 'file') {
+        state = PdfReaderLoading(message: '读取本地文件...');
+        final localFile = File(uri.toFilePath());
+        if (!await localFile.exists()) {
+          state = PdfReaderError('文件不存在');
+          return;
+        }
+        // 复制到临时目录
+        await localFile.copy(pdfFile.path);
+      } else {
+        // 远程文件，使用 HTTP 下载
+        state = PdfReaderLoading(message: '下载中...');
+        final response = await InsecureHttpClient.get(uri);
+        if (response.statusCode != 200) {
+          state = PdfReaderError('下载失败: ${response.statusCode}');
+          return;
+        }
+        await pdfFile.writeAsBytes(response.bodyBytes);
       }
 
       state = PdfReaderLoading(message: '解析中...');
-
-      // 保存到临时目录
-      final tempDir = await getTemporaryDirectory();
-      final pdfFile = File('${tempDir.path}/${book.name}');
-      await pdfFile.writeAsBytes(response.bodyBytes);
 
       // 打开 PDF
       final document = await PdfDocument.openFile(pdfFile.path);

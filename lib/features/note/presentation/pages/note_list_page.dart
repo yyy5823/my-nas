@@ -471,11 +471,19 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
   static const double _minSidebarWidth = 200;
   static const double _maxSidebarWidth = 400;
 
+  // 响应式布局断点
+  static const double _mobileBreakpoint = 600;
+
   // 侧边栏是否收起
   bool _isSidebarCollapsed = false;
 
   // 布局服务
   final _layoutService = NoteLayoutService.instance;
+
+  /// 判断是否为移动端布局
+  bool _isMobileLayout(BuildContext context) {
+    return MediaQuery.of(context).size.width < _mobileBreakpoint;
+  }
 
   @override
   void initState() {
@@ -735,6 +743,12 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
 
   Widget _buildMainLayout(
       BuildContext context, NotePageLoaded state, bool isDark) {
+    // 移动端布局：使用堆叠式导航
+    if (_isMobileLayout(context)) {
+      return _buildMobileLayout(context, state, isDark);
+    }
+
+    // 平板/桌面布局：使用分栏布局
     return Row(
       children: [
         // 左侧目录树（可收起）
@@ -749,6 +763,298 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
         // 右侧内容区
         Expanded(
           child: _buildContentArea(context, state, isDark),
+        ),
+      ],
+    );
+  }
+
+  /// 移动端布局：堆叠式导航
+  Widget _buildMobileLayout(
+      BuildContext context, NotePageLoaded state, bool isDark) {
+    // 如果已选中笔记，显示内容页面
+    if (state.selectedNode != null) {
+      return _buildMobileContentView(context, state, isDark);
+    }
+
+    // 否则显示目录树
+    return _buildMobileTreeView(context, state, isDark);
+  }
+
+  /// 移动端目录树视图
+  Widget _buildMobileTreeView(
+      BuildContext context, NotePageLoaded state, bool isDark) {
+    return NoteTreeWidget(
+      nodes: state.treeNodes,
+      selectedPath: state.selectedNode?.path,
+      onNodeSelected: (node) =>
+          ref.read(notePageProvider.notifier).selectFile(node),
+      onFolderToggle: (node) =>
+          ref.read(notePageProvider.notifier).toggleFolder(node),
+      onFolderLoad: (node) =>
+          ref.read(notePageProvider.notifier).toggleFolder(node),
+      isDark: isDark,
+    );
+  }
+
+  /// 移动端内容视图（带返回按钮）
+  Widget _buildMobileContentView(
+      BuildContext context, NotePageLoaded state, bool isDark) {
+    return Column(
+      children: [
+        // 移动端顶部工具栏（带返回按钮）
+        _buildMobileContentHeader(context, state, isDark),
+        // 内容区
+        Expanded(
+          child: state.isLoadingContent
+              ? Center(
+                  child: CircularProgressIndicator(color: AppColors.primary),
+                )
+              : state.isEditing
+                  ? (state.livePreview
+                      ? _buildMobileEditorWithPreview(context, state, isDark)
+                      : _buildEditorOnly(context, state, isDark))
+                  : _buildPreview(context, state, isDark),
+        ),
+      ],
+    );
+  }
+
+  /// 移动端内容头部（带返回按钮）
+  Widget _buildMobileContentHeader(
+      BuildContext context, NotePageLoaded state, bool isDark) {
+    final node = state.selectedNode!;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
+        border: Border(
+          bottom: BorderSide(
+            color: isDark
+                ? AppColors.darkOutline.withValues(alpha: 0.2)
+                : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
+          ),
+        ),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Row(
+          children: [
+            // 返回按钮
+            IconButton(
+              onPressed: () {
+                // 清除选中状态，返回目录
+                ref.read(notePageProvider.notifier).setEditing(false);
+                // 重新加载树来清除选中
+                ref.read(notePageProvider.notifier).loadTree();
+              },
+              icon: Icon(
+                Icons.arrow_back_rounded,
+                color: isDark ? AppColors.darkOnSurface : null,
+              ),
+              tooltip: '返回目录',
+            ),
+            const SizedBox(width: 4),
+            // 文件图标
+            Icon(
+              node.isTaskFile ? Icons.checklist_rounded : Icons.article_outlined,
+              size: 20,
+              color: node.isTaskFile ? Colors.orange : AppColors.primary,
+            ),
+            const SizedBox(width: 8),
+            // 文件名
+            Expanded(
+              child: Text(
+                node.displayName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: context.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? AppColors.darkOnSurface : null,
+                ),
+              ),
+            ),
+            // 任务进度
+            if (node.isTaskFile && state.tasks.isNotEmpty) ...[
+              _buildTaskProgress(state, isDark),
+              const SizedBox(width: 8),
+            ],
+            // 编辑/预览切换
+            _buildMobileModeTabs(state, isDark),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 移动端模式切换（简化版）
+  Widget _buildMobileModeTabs(NotePageLoaded state, bool isDark) {
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark
+            ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
+            : Colors.grey.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildMobileModeButton(
+            icon: Icons.visibility_rounded,
+            isSelected: !state.isEditing,
+            onTap: () => ref.read(notePageProvider.notifier).setEditing(false),
+            isDark: isDark,
+          ),
+          _buildMobileModeButton(
+            icon: Icons.edit_rounded,
+            isSelected: state.isEditing,
+            onTap: () => ref.read(notePageProvider.notifier).setEditing(true),
+            isDark: isDark,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMobileModeButton({
+    required IconData icon,
+    required bool isSelected,
+    required VoidCallback onTap,
+    required bool isDark,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: isSelected ? AppColors.primary.withValues(alpha: 0.15) : null,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            icon,
+            size: 18,
+            color: isSelected
+                ? AppColors.primary
+                : (isDark ? AppColors.darkOnSurfaceVariant : Colors.grey),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 移动端编辑器带预览（上下布局）
+  Widget _buildMobileEditorWithPreview(
+      BuildContext context, NotePageLoaded state, bool isDark) {
+    // 初始化编辑器内容
+    if (_editController.text != state.content && !state.hasChanges) {
+      _editController.text = state.content ?? '';
+    }
+
+    return Column(
+      children: [
+        // 工具栏
+        _buildEditorToolbar(context, isDark),
+        // 上半部分：编辑区域
+        Expanded(
+          child: Container(
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(
+                  color: isDark
+                      ? AppColors.darkOutline.withValues(alpha: 0.3)
+                      : Colors.grey.withValues(alpha: 0.2),
+                ),
+              ),
+            ),
+            child: TextField(
+              controller: _editController,
+              maxLines: null,
+              expands: true,
+              textAlignVertical: TextAlignVertical.top,
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 14,
+                color: isDark ? AppColors.darkOnSurface : null,
+                height: 1.6,
+              ),
+              decoration: InputDecoration(
+                contentPadding: const EdgeInsets.all(AppSpacing.md),
+                border: InputBorder.none,
+                hintText: '开始编写 Markdown...',
+                hintStyle: TextStyle(
+                  color: isDark
+                      ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.5)
+                      : null,
+                ),
+              ),
+              onChanged: (value) =>
+                  ref.read(notePageProvider.notifier).updateContent(value),
+            ),
+          ),
+        ),
+        // 下半部分：预览
+        Expanded(
+          child: Container(
+            color: isDark
+                ? AppColors.darkBackground
+                : Colors.grey.withValues(alpha: 0.05),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 预览标题栏
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
+                        : Colors.grey.withValues(alpha: 0.1),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.preview_rounded,
+                        size: 14,
+                        color: isDark
+                            ? AppColors.darkOnSurfaceVariant
+                            : Colors.grey,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '预览',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          color: isDark
+                              ? AppColors.darkOnSurfaceVariant
+                              : Colors.grey,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // 预览内容
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.topLeft,
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(AppSpacing.md),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: _MarkdownPreview(
+                          content: _editController.text,
+                          isDark: isDark,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ],
     );
@@ -1180,13 +1486,19 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
       return _buildTaskFilePreview(context, state, isDark);
     }
 
-    // 普通 Markdown 预览
-    return SingleChildScrollView(
-      controller: _previewScrollController,
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      child: _MarkdownPreview(
-        content: state.content ?? '',
-        isDark: isDark,
+    // 普通 Markdown 预览 - 确保内容从顶部开始
+    return Align(
+      alignment: Alignment.topLeft,
+      child: SingleChildScrollView(
+        controller: _previewScrollController,
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: SizedBox(
+          width: double.infinity,
+          child: _MarkdownPreview(
+            content: state.content ?? '',
+            isDark: isDark,
+          ),
+        ),
       ),
     );
   }
@@ -1310,13 +1622,19 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
                           ],
                         ),
                       ),
-                      // 预览内容
+                      // 预览内容 - 确保内容从顶部开始
                       Expanded(
-                        child: SingleChildScrollView(
-                          padding: const EdgeInsets.all(AppSpacing.lg),
-                          child: _MarkdownPreview(
-                            content: _editController.text,
-                            isDark: isDark,
+                        child: Align(
+                          alignment: Alignment.topLeft,
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.all(AppSpacing.lg),
+                            child: SizedBox(
+                              width: double.infinity,
+                              child: _MarkdownPreview(
+                                content: _editController.text,
+                                isDark: isDark,
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -1652,20 +1970,6 @@ class _NoteListContentState extends ConsumerState<NoteListContent> {
     super.dispose();
   }
 
-  /// 递归统计笔记文件数量
-  int _countNotes(List<NoteTreeNode> nodes) {
-    int count = 0;
-    for (final node in nodes) {
-      if (node.type == NoteTreeNodeType.file) {
-        count++;
-      }
-      if (node.children.isNotEmpty) {
-        count += _countNotes(node.children);
-      }
-    }
-    return count;
-  }
-
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(notePageProvider);
@@ -1886,13 +2190,19 @@ class _NoteListContentState extends ConsumerState<NoteListContent> {
       );
     }
 
-    // 显示内容
-    return SingleChildScrollView(
-      controller: _previewScrollController,
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      child: _MarkdownPreview(
-        content: state.content ?? '',
-        isDark: isDark,
+    // 显示内容 - 确保内容从顶部开始
+    return Align(
+      alignment: Alignment.topLeft,
+      child: SingleChildScrollView(
+        controller: _previewScrollController,
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: SizedBox(
+          width: double.infinity,
+          child: _MarkdownPreview(
+            content: state.content ?? '',
+            isDark: isDark,
+          ),
+        ),
       ),
     );
   }
