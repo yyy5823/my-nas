@@ -1,7 +1,9 @@
 import 'package:hive_ce/hive.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/video/data/services/nfo_scraper_service.dart';
 import 'package:my_nas/features/video/data/services/tmdb_service.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
+import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 
 /// 视频元数据服务
 class VideoMetadataService {
@@ -14,6 +16,7 @@ class VideoMetadataService {
 
   Box<dynamic>? _box;
   final TmdbService _tmdbService = TmdbService.instance;
+  final NfoScraperService _nfoService = NfoScraperService.instance;
 
   /// 初始化
   Future<void> init() async {
@@ -77,10 +80,12 @@ class VideoMetadataService {
   }
 
   /// 获取或刷新元数据
+  /// [fileSystem] 可选的文件系统接口，用于读取 NFO 文件
   Future<VideoMetadata> getOrFetch({
     required String sourceId,
     required String filePath,
     required String fileName,
+    NasFileSystem? fileSystem,
     bool forceRefresh = false,
   }) async {
     // 检查缓存
@@ -103,8 +108,16 @@ class VideoMetadataService {
       fileName: fileName,
     );
 
-    // 尝试从 TMDB 获取信息
-    await _fetchMetadata(metadata);
+    // 优先尝试从 NFO 文件获取信息
+    bool hasNfoData = false;
+    if (fileSystem != null) {
+      hasNfoData = await _fetchFromNfo(metadata, fileSystem);
+    }
+
+    // 如果 NFO 没有数据或缺少关键信息，尝试从 TMDB 获取
+    if (!hasNfoData || !metadata.hasMetadata) {
+      await _fetchFromTmdb(metadata);
+    }
 
     // 保存到缓存
     await save(metadata);
@@ -112,8 +125,64 @@ class VideoMetadataService {
     return metadata;
   }
 
+  /// 从 NFO 文件获取元数据
+  Future<bool> _fetchFromNfo(VideoMetadata metadata, NasFileSystem fileSystem) async {
+    try {
+      final nfoData = await _nfoService.scrapeFromDirectory(
+        fileSystem: fileSystem,
+        videoPath: metadata.filePath,
+        videoFileName: metadata.fileName,
+      );
+
+      if (nfoData != null && nfoData.hasData) {
+        // 更新元数据
+        metadata.category = nfoData.seasonNumber != null || nfoData.episodeNumber != null
+            ? MediaCategory.tvShow
+            : MediaCategory.movie;
+        metadata.tmdbId = nfoData.tmdbId;
+        metadata.title = nfoData.title;
+        metadata.originalTitle = nfoData.originalTitle;
+        metadata.year = nfoData.year;
+        metadata.overview = nfoData.plot;
+        metadata.rating = nfoData.rating;
+        metadata.runtime = nfoData.runtime;
+        metadata.genres = nfoData.genres?.join(', ');
+        metadata.director = nfoData.director;
+        metadata.cast = nfoData.actors?.take(5).join(', ');
+        metadata.seasonNumber = nfoData.seasonNumber;
+        metadata.episodeNumber = nfoData.episodeNumber;
+        metadata.episodeTitle = nfoData.episodeTitle;
+        metadata.lastUpdated = DateTime.now();
+
+        // 如果有本地海报，获取 URL
+        if (nfoData.posterPath != null) {
+          try {
+            metadata.posterUrl = await fileSystem.getFileUrl(nfoData.posterPath!);
+          } catch (e) {
+            logger.w('VideoMetadataService: 获取本地海报 URL 失败', e);
+          }
+        }
+
+        // 如果有本地背景图，获取 URL
+        if (nfoData.fanartPath != null) {
+          try {
+            metadata.backdropUrl = await fileSystem.getFileUrl(nfoData.fanartPath!);
+          } catch (e) {
+            logger.w('VideoMetadataService: 获取本地背景图 URL 失败', e);
+          }
+        }
+
+        logger.i('VideoMetadataService: 从 NFO 获取到元数据 "${nfoData.title}"');
+        return true;
+      }
+    } catch (e) {
+      logger.w('VideoMetadataService: 从 NFO 获取元数据失败', e);
+    }
+    return false;
+  }
+
   /// 从 TMDB 获取元数据
-  Future<void> _fetchMetadata(VideoMetadata metadata) async {
+  Future<void> _fetchFromTmdb(VideoMetadata metadata) async {
     if (!_tmdbService.hasApiKey) {
       logger.w('VideoMetadataService: 未配置 TMDB API Key');
       return;
@@ -258,8 +327,10 @@ class VideoMetadataService {
   }
 
   /// 批量获取元数据
+  /// [fileSystem] 可选的文件系统接口，用于读取 NFO 文件
   Future<List<VideoMetadata>> batchFetch(
     List<({String sourceId, String filePath, String fileName})> videos, {
+    NasFileSystem? fileSystem,
     void Function(int current, int total)? onProgress,
   }) async {
     final results = <VideoMetadata>[];
@@ -273,6 +344,7 @@ class VideoMetadataService {
         sourceId: video.sourceId,
         filePath: video.filePath,
         fileName: video.fileName,
+        fileSystem: fileSystem,
       );
       results.add(metadata);
 

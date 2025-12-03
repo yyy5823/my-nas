@@ -101,12 +101,15 @@ class PosterCard extends StatefulWidget {
     required this.metadata,
     required this.onTap,
     this.onLongPress,
+    this.watchProgress,
     super.key,
   });
 
   final VideoMetadata metadata;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
+  /// 观看进度 (0.0 - 1.0)，null 表示未观看
+  final double? watchProgress;
 
   @override
   State<PosterCard> createState() => _PosterCardState();
@@ -261,6 +264,30 @@ class _PosterCardState extends State<PosterCard> with SingleTickerProviderStateM
                             color: Colors.white,
                             fontSize: 9,
                             fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                  // 观看进度条
+                  if (widget.watchProgress != null && widget.watchProgress! > 0)
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: ClipRRect(
+                        borderRadius: const BorderRadius.only(
+                          bottomLeft: Radius.circular(12),
+                          bottomRight: Radius.circular(12),
+                        ),
+                        child: LinearProgressIndicator(
+                          value: widget.watchProgress!.clamp(0.0, 1.0),
+                          minHeight: 3,
+                          backgroundColor: Colors.black.withValues(alpha: 0.5),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            widget.watchProgress! >= 0.9
+                                ? Colors.green
+                                : AppColors.primary,
                           ),
                         ),
                       ),

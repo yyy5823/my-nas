@@ -19,6 +19,7 @@ import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
 import 'package:my_nas/features/video/presentation/pages/video_detail_page.dart';
 import 'package:my_nas/features/video/presentation/pages/video_player_page.dart';
 import 'package:my_nas/features/video/presentation/providers/video_history_provider.dart';
+import 'package:my_nas/features/video/presentation/widgets/hero_banner.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/animated_list_item.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
@@ -603,16 +604,26 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     super.dispose();
   }
 
+  /// 获取问候语
+  String _getGreeting() {
+    final hour = DateTime.now().hour;
+    if (hour < 6) return '夜深了';
+    if (hour < 12) return '早上好';
+    if (hour < 14) return '中午好';
+    if (hour < 18) return '下午好';
+    return '晚上好';
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(videoListProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0D0D0D) : null,
+      backgroundColor: isDark ? const Color(0xFF0D0D0D) : Colors.grey[50],
       body: Column(
         children: [
-          _buildSimpleAppBar(context, ref, isDark, state),
+          _buildHeader(context, ref, isDark, state),
           Expanded(
             child: switch (state) {
               VideoListLoading(
@@ -646,92 +657,240 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     );
   }
 
-  Widget _buildSimpleAppBar(
+  /// 构建顶部区域（类似音乐模块的设计）
+  Widget _buildHeader(
     BuildContext context,
     WidgetRef ref,
     bool isDark,
     VideoListState state,
   ) {
-    // 获取同步时间信息
-    final cacheService = VideoLibraryCacheService.instance;
-    final cache = cacheService.getCache();
-    final syncTimeText = _getSyncTimeText(cache?.lastUpdated);
-
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF0D0D0D) : Colors.white,
-        border: Border(
-          bottom: BorderSide(
-            color: isDark
-                ? AppColors.darkOutline.withValues(alpha: 0.2)
-                : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
-          ),
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: isDark
+              ? [const Color(0xFF1A1A2E), const Color(0xFF0D0D0D)]
+              : [AppColors.primary.withValues(alpha: 0.08), Colors.grey[50]!],
         ),
       ),
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: AppSpacing.appBarContentPadding,
-          child: Row(
+          padding: EdgeInsets.fromLTRB(
+            AppSpacing.appBarHorizontalPadding,
+            AppSpacing.appBarVerticalPadding,
+            AppSpacing.appBarHorizontalPadding,
+            AppSpacing.lg,
+          ),
+          child: _showSearch
+              ? _buildSearchBar(context, ref, isDark)
+              : _buildGreetingHeader(context, ref, isDark, state),
+        ),
+      ),
+    );
+  }
+
+  /// 问候语头部
+  Widget _buildGreetingHeader(
+    BuildContext context,
+    WidgetRef ref,
+    bool isDark,
+    VideoListState state,
+  ) {
+    final videoCount = state is VideoListLoaded ? state.videos.length : 0;
+    final movieCount = state is VideoListLoaded ? state.movies.length : 0;
+    final tvShowCount = state is VideoListLoaded ? state.tvShowGroups.length : 0;
+
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (!_showSearch) ...[
-                Text(
-                  '视频',
-                  style: context.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: isDark ? Colors.white : null,
-                  ),
+              Text(
+                _getGreeting(),
+                style: context.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black87,
                 ),
-                if (syncTimeText != null) ...[
-                  const SizedBox(width: 8),
-                  Icon(
-                    Icons.cloud_done_rounded,
-                    size: 14,
-                    color: isDark ? Colors.grey[500] : Colors.grey[600],
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    syncTimeText,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: isDark ? Colors.grey[500] : Colors.grey[600],
+              ),
+              const SizedBox(height: 4),
+              if (videoCount > 0)
+                Row(
+                  children: [
+                    _buildStatChip(
+                      icon: Icons.movie_rounded,
+                      label: '$movieCount 电影',
+                      color: AppColors.primary,
+                      isDark: isDark,
                     ),
-                  ),
-                ],
-              ],
-              if (_showSearch)
+                    const SizedBox(width: 12),
+                    _buildStatChip(
+                      icon: Icons.live_tv_rounded,
+                      label: '$tvShowCount 剧集',
+                      color: AppColors.accent,
+                      isDark: isDark,
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        ),
+        // 操作按钮
+        _buildHeaderButton(
+          icon: Icons.search_rounded,
+          onTap: () => setState(() => _showSearch = true),
+          isDark: isDark,
+          tooltip: '搜索',
+        ),
+        const SizedBox(width: 8),
+        _buildHeaderButton(
+          icon: Icons.refresh_rounded,
+          onTap: () => ref.read(videoListProvider.notifier).forceRefresh(),
+          isDark: isDark,
+          tooltip: '刷新',
+        ),
+      ],
+    );
+  }
+
+  /// 搜索栏
+  Widget _buildSearchBar(BuildContext context, WidgetRef ref, bool isDark) {
+    return Row(
+      children: [
+        Expanded(
+          child: Container(
+            height: 44,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.grey[850] : Colors.white,
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(
+                color: isDark
+                    ? Colors.grey[700]!
+                    : Colors.grey[300]!,
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.search_rounded,
+                  color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  size: 20,
+                ),
+                const SizedBox(width: 12),
                 Expanded(
                   child: TextField(
                     controller: _searchController,
                     autofocus: true,
                     decoration: InputDecoration(
-                      hintText: '搜索视频...',
+                      hintText: '搜索电影、剧集...',
                       hintStyle: TextStyle(
-                        color: isDark ? Colors.grey[500] : null,
+                        color: isDark ? Colors.grey[500] : Colors.grey[400],
+                        fontSize: 15,
                       ),
                       border: InputBorder.none,
+                      isDense: true,
+                      contentPadding: EdgeInsets.zero,
                     ),
-                    style: TextStyle(color: isDark ? Colors.white : null),
+                    style: TextStyle(
+                      color: isDark ? Colors.white : Colors.black87,
+                      fontSize: 15,
+                    ),
                     onChanged: (v) =>
                         ref.read(videoListProvider.notifier).setSearchQuery(v),
                   ),
                 ),
-              const Spacer(),
-              _buildIconButton(
-                icon: _showSearch ? Icons.close : Icons.search_rounded,
-                onTap: () {
-                  setState(() {
-                    _showSearch = !_showSearch;
-                    if (!_showSearch) {
+                if (_searchController.text.isNotEmpty)
+                  GestureDetector(
+                    onTap: () {
                       _searchController.clear();
                       ref.read(videoListProvider.notifier).setSearchQuery('');
-                    }
-                  });
-                },
-                isDark: isDark,
-                tooltip: _showSearch ? '关闭' : '搜索',
+                    },
+                    child: Icon(
+                      Icons.close_rounded,
+                      color: isDark ? Colors.grey[400] : Colors.grey[600],
+                      size: 20,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        TextButton(
+          onPressed: () {
+            setState(() => _showSearch = false);
+            _searchController.clear();
+            ref.read(videoListProvider.notifier).setSearchQuery('');
+          },
+          child: Text(
+            '取消',
+            style: TextStyle(
+              color: AppColors.primary,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 统计标签
+  Widget _buildStatChip({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required bool isDark,
+  }) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: color),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: isDark ? Colors.grey[400] : Colors.grey[600],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 头部按钮
+  Widget _buildHeaderButton({
+    required IconData icon,
+    required VoidCallback onTap,
+    required bool isDark,
+    String? tooltip,
+  }) {
+    return Tooltip(
+      message: tooltip ?? '',
+      child: Material(
+        color: isDark ? Colors.grey[850] : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isDark
+                    ? Colors.grey[700]!.withValues(alpha: 0.5)
+                    : Colors.grey[200]!,
               ),
-            ],
+            ),
+            child: Icon(
+              icon,
+              color: isDark ? Colors.white : Colors.grey[700],
+              size: 22,
+            ),
           ),
         ),
       ),
@@ -1036,8 +1195,34 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     VideoListLoaded state,
     bool isDark,
   ) {
+    // 判断是否显示英雄横幅（全部或电影标签，且有高分电影）
+    final showHeroBanner = state.currentTab == VideoTab.all &&
+        state.searchQuery.isEmpty &&
+        state.topRatedMovies.isNotEmpty;
+
+    // 判断设备类型
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isDesktop = screenWidth > 800;
+
     return CustomScrollView(
       slivers: [
+        // 英雄横幅（仅在首页显示）
+        if (showHeroBanner)
+          SliverToBoxAdapter(
+            child: isDesktop
+                ? HeroBanner(
+                    items: state.topRatedMovies.take(5).toList(),
+                    height: 450,
+                    onItemTap: (item) => _openVideoDetail(context, ref, item),
+                    onPlayTap: (item) => _playVideo(context, ref, item),
+                  )
+                : CompactHeroBanner(
+                    items: state.topRatedMovies.take(5).toList(),
+                    height: 220,
+                    onItemTap: (item) => _openVideoDetail(context, ref, item),
+                  ),
+          ),
+
         // 继续观看
         _ContinueWatchingSection(isDark: isDark),
 
@@ -1059,6 +1244,43 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
         const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
       ],
     );
+  }
+
+  /// 直接播放视频
+  Future<void> _playVideo(
+    BuildContext context,
+    WidgetRef ref,
+    VideoMetadata metadata,
+  ) async {
+    // 获取连接
+    final connections = ref.read(activeConnectionsProvider);
+    final connection = connections[metadata.sourceId];
+    if (connection == null) return;
+
+    try {
+      // 获取视频URL
+      final url = await connection.adapter.fileSystem.getFileUrl(metadata.filePath);
+
+      if (!context.mounted) return;
+
+      final videoItem = VideoItem(
+        name: metadata.displayTitle,
+        path: metadata.filePath,
+        url: url,
+        size: 0,
+        thumbnailUrl: metadata.displayPosterUrl,
+      );
+
+      await Navigator.of(context, rootNavigator: true).push(
+        MaterialPageRoute<void>(
+          builder: (context) => VideoPlayerPage(video: videoItem),
+        ),
+      );
+
+      ref.invalidate(continueWatchingProvider);
+    } catch (e) {
+      logger.e('播放视频失败', e);
+    }
   }
 
   Widget _buildTabBar(
