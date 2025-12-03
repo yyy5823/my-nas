@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:my_nas/app/theme/app_colors.dart';
-import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
 import 'package:my_nas/features/reading/data/services/reading_progress_service.dart';
@@ -93,7 +92,7 @@ class PdfReaderNotifier extends StateNotifier<PdfReaderState> {
 
       // 恢复阅读进度
       await _progressService.init();
-      final itemId = _progressService.generateItemId(book.sourceId, book.path);
+      final itemId = _progressService.generateItemId(book.id, book.path);
       final progress = _progressService.getProgress(itemId);
       final startPage = progress?.position.toInt() ?? 1;
 
@@ -128,7 +127,7 @@ class PdfReaderNotifier extends StateNotifier<PdfReaderState> {
   }
 
   Future<void> _saveProgress(int page, int total) async {
-    final itemId = _progressService.generateItemId(book.sourceId, book.path);
+    final itemId = _progressService.generateItemId(book.id, book.path);
     await _progressService.saveProgress(ReadingProgress(
       itemId: itemId,
       itemType: 'pdf',
@@ -171,7 +170,6 @@ class _PdfReaderPageState extends ConsumerState<PdfReaderPage> {
   @override
   void dispose() {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    _controller.dispose();
     super.dispose();
   }
 
@@ -474,7 +472,7 @@ class _PdfReaderPageState extends ConsumerState<PdfReaderPage> {
       bottom: 0,
       right: 0,
       child: Container(
-        width: MediaQuery.of(context).size.width * 0.3,
+        width: MediaQuery.of(context).size.width * 0.25,
         decoration: BoxDecoration(
           color: Colors.grey.shade900,
           boxShadow: [
@@ -509,55 +507,42 @@ class _PdfReaderPageState extends ConsumerState<PdfReaderPage> {
                 ),
               ),
               Expanded(
-                child: PdfPageThumbnailsBuilder(
-                  documentRef: state.document.reference,
-                  builder: (context, thumbs) => ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    itemCount: thumbs.length,
-                    itemBuilder: (context, index) {
-                      final pageNumber = index + 1;
-                      final isActive = pageNumber == state.currentPage;
-                      return GestureDetector(
-                        onTap: () {
-                          _controller.goToPage(pageNumber: pageNumber);
-                          ref.read(pdfReaderProvider(widget.book).notifier).setPage(pageNumber);
-                          setState(() => _showThumbnails = false);
-                        },
-                        child: Container(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          decoration: BoxDecoration(
-                            border: Border.all(
-                              color: isActive ? AppColors.primary : Colors.grey.shade700,
-                              width: isActive ? 3 : 1,
-                            ),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Column(
-                            children: [
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(3),
-                                child: thumbs[index],
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(vertical: 4),
-                                color: isActive ? AppColors.primary : Colors.transparent,
-                                child: Center(
-                                  child: Text(
-                                    '$pageNumber',
-                                    style: TextStyle(
-                                      color: isActive ? Colors.white : Colors.grey,
-                                      fontSize: 12,
-                                      fontWeight: isActive ? FontWeight.bold : null,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
+                child: ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  itemCount: state.totalPages,
+                  itemBuilder: (context, index) {
+                    final pageNumber = index + 1;
+                    final isActive = pageNumber == state.currentPage;
+                    return GestureDetector(
+                      onTap: () {
+                        _controller.goToPage(pageNumber: pageNumber);
+                        ref.read(pdfReaderProvider(widget.book).notifier).setPage(pageNumber);
+                        setState(() => _showThumbnails = false);
+                      },
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                        decoration: BoxDecoration(
+                          color: isActive ? AppColors.primary : Colors.grey.shade800,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: isActive ? AppColors.primary : Colors.grey.shade700,
+                            width: isActive ? 2 : 1,
                           ),
                         ),
-                      );
-                    },
-                  ),
+                        child: Center(
+                          child: Text(
+                            '第 $pageNumber 页',
+                            style: TextStyle(
+                              color: isActive ? Colors.white : Colors.grey.shade400,
+                              fontSize: 14,
+                              fontWeight: isActive ? FontWeight.bold : null,
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
             ],

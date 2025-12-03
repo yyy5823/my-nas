@@ -1,5 +1,5 @@
+import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:epub_decoder/epub_decoder.dart';
 import 'package:flutter/material.dart';
@@ -13,7 +13,6 @@ import 'package:my_nas/features/book/domain/entities/book_item.dart';
 import 'package:my_nas/features/reading/data/services/reading_progress_service.dart';
 import 'package:my_nas/shared/widgets/loading_widget.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 /// EPUB 阅读器状态
 final epubReaderProvider =
@@ -46,8 +45,8 @@ class EpubReaderLoaded extends EpubReaderState {
   final double lineHeight;
   final ReaderTheme theme;
 
-  String get title => epub.title ?? '未知书名';
-  String get author => epub.authors?.join(', ') ?? '未知作者';
+  String get title => epub.title.isNotEmpty ? epub.title : '未知书名';
+  String get author => epub.authors.isNotEmpty ? epub.authors.join(', ') : '未知作者';
   int get totalChapters => chapters.length;
 
   EpubReaderLoaded copyWith({
@@ -137,12 +136,13 @@ class EpubReaderNotifier extends StateNotifier<EpubReaderState> {
 
       // 从 spine 获取阅读顺序
       for (final section in epub.sections) {
-        final title = _extractTitle(section) ?? '章节 ${chapters.length + 1}';
-        final content = _extractTextContent(section);
+        final htmlContent = utf8.decode(section.content.fileContent);
+        final title = _extractTitle(htmlContent) ?? '章节 ${chapters.length + 1}';
+        final content = _extractTextContent(htmlContent);
 
         chapters.add(EpubChapter(
           title: title,
-          href: '',
+          href: section.content.href,
           content: content,
         ));
         chapterContents.add(content);
@@ -156,7 +156,7 @@ class EpubReaderNotifier extends StateNotifier<EpubReaderState> {
 
       // 恢复阅读进度
       await _progressService.init();
-      final itemId = _progressService.generateItemId(book.sourceId, book.path);
+      final itemId = _progressService.generateItemId(book.id, book.path);
       final progress = _progressService.getProgress(itemId);
       final startChapter = progress?.chapter ?? 0;
 
@@ -174,30 +174,24 @@ class EpubReaderNotifier extends StateNotifier<EpubReaderState> {
     }
   }
 
-  String? _extractTitle(EpubSection section) {
+  String? _extractTitle(String htmlContent) {
     // 尝试从 HTML 中提取标题
-    final content = section.content;
-    if (content == null) return null;
-
     // 简单的标题提取
-    final h1Match = RegExp(r'<h1[^>]*>([^<]+)</h1>', caseSensitive: false).firstMatch(content);
+    final h1Match = RegExp(r'<h1[^>]*>([^<]+)</h1>', caseSensitive: false).firstMatch(htmlContent);
     if (h1Match != null) return h1Match.group(1)?.trim();
 
-    final h2Match = RegExp(r'<h2[^>]*>([^<]+)</h2>', caseSensitive: false).firstMatch(content);
+    final h2Match = RegExp(r'<h2[^>]*>([^<]+)</h2>', caseSensitive: false).firstMatch(htmlContent);
     if (h2Match != null) return h2Match.group(1)?.trim();
 
-    final titleMatch = RegExp(r'<title[^>]*>([^<]+)</title>', caseSensitive: false).firstMatch(content);
+    final titleMatch = RegExp(r'<title[^>]*>([^<]+)</title>', caseSensitive: false).firstMatch(htmlContent);
     if (titleMatch != null) return titleMatch.group(1)?.trim();
 
     return null;
   }
 
-  String _extractTextContent(EpubSection section) {
-    final content = section.content;
-    if (content == null) return '';
-
+  String _extractTextContent(String htmlContent) {
     // 移除 HTML 标签，保留文本
-    var text = content
+    var text = htmlContent
         // 保留段落换行
         .replaceAll(RegExp(r'</p>', caseSensitive: false), '\n\n')
         .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n')
@@ -270,7 +264,7 @@ class EpubReaderNotifier extends StateNotifier<EpubReaderState> {
   Future<void> _saveProgress(int chapter) async {
     final current = state;
     if (current is EpubReaderLoaded) {
-      final itemId = _progressService.generateItemId(book.sourceId, book.path);
+      final itemId = _progressService.generateItemId(book.id, book.path);
       await _progressService.saveProgress(ReadingProgress(
         itemId: itemId,
         itemType: 'epub',
@@ -297,8 +291,6 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
   bool _showControls = true;
   bool _showSettings = false;
   bool _showToc = false;
-  final ItemScrollController _scrollController = ItemScrollController();
-  final ItemPositionsListener _positionsListener = ItemPositionsListener.create();
 
   @override
   void initState() {
