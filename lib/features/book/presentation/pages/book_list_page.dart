@@ -428,9 +428,7 @@ class _BookListPageState extends ConsumerState<BookListPage> {
       backgroundColor: isDark ? AppColors.darkBackground : null,
       body: Column(
         children: [
-          _showSearch
-              ? _buildSearchBar(context, ref, isDark)
-              : _buildHeader(context, ref, isDark, state),
+          _buildHeader(context, ref, isDark, state),
           Expanded(
             child: switch (state) {
               BookListLoading(:final progress, :final currentFolder, :final fromCache) =>
@@ -465,8 +463,8 @@ class _BookListPageState extends ConsumerState<BookListPage> {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: isDark
-              ? [const Color(0xFF1A1814), AppColors.darkBackground]
-              : [_themeColor.withValues(alpha: 0.08), Colors.grey[50]!],
+              ? [AppColors.darkSurface, AppColors.darkBackground]
+              : [_themeColor.withValues(alpha: 0.1), Colors.grey[50]!],
         ),
       ),
       child: SafeArea(
@@ -478,9 +476,59 @@ class _BookListPageState extends ConsumerState<BookListPage> {
             AppSpacing.appBarHorizontalPadding,
             AppSpacing.lg,
           ),
-          child: _buildGreetingHeader(context, ref, isDark, state),
+          child: _showSearch
+              ? _buildSearchBarContent(context, ref, isDark)
+              : _buildGreetingHeader(context, ref, isDark, state),
         ),
       ),
+    );
+  }
+
+  /// 搜索栏内容（用于在 header 容器内显示）
+  Widget _buildSearchBarContent(BuildContext context, WidgetRef ref, bool isDark) {
+    return Row(
+      children: [
+        IconButton(
+          onPressed: () {
+            setState(() => _showSearch = false);
+            _searchController.clear();
+            ref.read(bookListProvider.notifier).setSearchQuery('');
+          },
+          icon: Icon(
+            Icons.arrow_back,
+            color: isDark ? Colors.white : Colors.black87,
+          ),
+        ),
+        Expanded(
+          child: TextField(
+            controller: _searchController,
+            autofocus: true,
+            style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+            decoration: InputDecoration(
+              hintText: '搜索图书、漫画、笔记...',
+              hintStyle: TextStyle(
+                color: isDark ? Colors.grey[500] : Colors.grey[400],
+              ),
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+            ),
+            onChanged: (value) {
+              ref.read(bookListProvider.notifier).setSearchQuery(value);
+            },
+          ),
+        ),
+        if (_searchController.text.isNotEmpty)
+          IconButton(
+            onPressed: () {
+              _searchController.clear();
+              ref.read(bookListProvider.notifier).setSearchQuery('');
+            },
+            icon: Icon(
+              Icons.close,
+              color: isDark ? Colors.grey[400] : Colors.grey[600],
+            ),
+          ),
+      ],
     );
   }
 
@@ -586,72 +634,56 @@ class _BookListPageState extends ConsumerState<BookListPage> {
     final screenWidth = MediaQuery.of(context).size.width;
     final isCompact = screenWidth < 400;
 
-    return Container(
-      height: 40,
-      decoration: BoxDecoration(
-        color: isDark
-            ? Colors.white.withValues(alpha: 0.06)
-            : Colors.black.withValues(alpha: 0.04),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      padding: const EdgeInsets.all(4),
-      child: Row(
-        children: ReadingCategory.values.map((category) {
-          final isSelected = _selectedCategory == category;
-          return Expanded(
-            child: GestureDetector(
-              onTap: () {
-                setState(() => _selectedCategory = category);
-              },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? (isDark ? _themeColor : Colors.white)
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
-                  boxShadow: isSelected
-                      ? [
-                          BoxShadow(
-                            color: (isDark ? _themeColor : Colors.black)
-                                .withValues(alpha: 0.15),
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
-                          ),
-                        ]
-                      : null,
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      category.icon,
-                      size: isCompact ? 16 : 18,
-                      color: isSelected
-                          ? (isDark ? Colors.white : _themeColor)
-                          : (isDark ? Colors.grey[400] : Colors.grey[600]),
-                    ),
-                    if (!isCompact) ...[
-                      const SizedBox(width: 6),
-                      Text(
-                        category.label,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight:
-                              isSelected ? FontWeight.w600 : FontWeight.normal,
-                          color: isSelected
-                              ? (isDark ? Colors.white : _themeColor)
-                              : (isDark ? Colors.grey[400] : Colors.grey[600]),
-                        ),
+    return Row(
+      children: ReadingCategory.values.map((category) {
+        final isSelected = _selectedCategory == category;
+        return Expanded(
+          child: GestureDetector(
+            onTap: () {
+              setState(() => _selectedCategory = category);
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              height: 36,
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? (isDark
+                        ? Colors.white.withValues(alpha: 0.12)
+                        : _themeColor.withValues(alpha: 0.15))
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    category.icon,
+                    size: isCompact ? 16 : 18,
+                    color: isSelected
+                        ? (isDark ? Colors.white : _themeColor)
+                        : (isDark ? Colors.grey[500] : Colors.grey[600]),
+                  ),
+                  if (!isCompact) ...[
+                    const SizedBox(width: 6),
+                    Text(
+                      category.label,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight:
+                            isSelected ? FontWeight.w600 : FontWeight.normal,
+                        color: isSelected
+                            ? (isDark ? Colors.white : _themeColor)
+                            : (isDark ? Colors.grey[500] : Colors.grey[600]),
                       ),
-                    ],
+                    ),
                   ],
-                ),
+                ],
               ),
             ),
-          );
-        }).toList(),
-      ),
+          ),
+        );
+      }).toList(),
     );
   }
 
@@ -704,75 +736,6 @@ class _BookListPageState extends ConsumerState<BookListPage> {
       BookFormat.mobi || BookFormat.azw3 => const Color(0xFFF59E0B),
       BookFormat.unknown => const Color(0xFF6B7280),
     };
-  }
-
-  Widget _buildSearchBar(BuildContext context, WidgetRef ref, bool isDark) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: isDark
-              ? [const Color(0xFF1A1814), AppColors.darkBackground]
-              : [_themeColor.withValues(alpha: 0.08), Colors.grey[50]!],
-        ),
-      ),
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(
-            AppSpacing.appBarHorizontalPadding,
-            AppSpacing.appBarVerticalPadding,
-            AppSpacing.appBarHorizontalPadding,
-            AppSpacing.lg,
-          ),
-          child: Row(
-            children: [
-              IconButton(
-                onPressed: () {
-                  setState(() => _showSearch = false);
-                  _searchController.clear();
-                  ref.read(bookListProvider.notifier).setSearchQuery('');
-                },
-                icon: Icon(
-                  Icons.arrow_back,
-                  color: isDark ? Colors.white : Colors.black87,
-                ),
-              ),
-              Expanded(
-                child: TextField(
-                  controller: _searchController,
-                  autofocus: true,
-                  style: TextStyle(color: isDark ? Colors.white : Colors.black87),
-                  decoration: InputDecoration(
-                    hintText: '搜索图书、漫画、笔记...',
-                    hintStyle: TextStyle(
-                      color: isDark ? Colors.grey[500] : Colors.grey[400],
-                    ),
-                    border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-                  ),
-                  onChanged: (value) {
-                    ref.read(bookListProvider.notifier).setSearchQuery(value);
-                  },
-                ),
-              ),
-              if (_searchController.text.isNotEmpty)
-                IconButton(
-                  onPressed: () {
-                    _searchController.clear();
-                    ref.read(bookListProvider.notifier).setSearchQuery('');
-                  },
-                  icon: Icon(
-                    Icons.close,
-                    color: isDark ? Colors.grey[400] : Colors.grey[600],
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   /// 设置菜单
