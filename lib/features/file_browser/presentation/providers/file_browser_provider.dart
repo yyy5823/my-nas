@@ -145,12 +145,46 @@ class FileListNotifier extends StateNotifier<FileListState> {
     final currentPath = _ref.read(currentPathProvider);
     if (currentPath == '/' || currentPath.isEmpty) return;
 
-    final parts = currentPath.split('/').where((p) => p.isNotEmpty).toList();
-    if (parts.isEmpty) return;
+    final parentPath = _getParentPath(currentPath);
+    if (parentPath == null) return;
 
-    parts.removeLast();
-    final parentPath = parts.isEmpty ? '/' : '/${parts.join('/')}';
     await loadDirectory(parentPath);
+  }
+
+  /// 获取父目录路径，正确处理跨平台路径分隔符
+  String? _getParentPath(String currentPath) {
+    // 检测是否是 Windows 路径（包含驱动器字母如 C: 或 D:）
+    final isWindowsPath = currentPath.length >= 2 &&
+        currentPath[1] == ':' &&
+        RegExp(r'^[A-Za-z]').hasMatch(currentPath);
+
+    if (isWindowsPath) {
+      // Windows 路径处理
+      final normalized = currentPath.replaceAll('/', '\\');
+      // 移除末尾的 \
+      final trimmed = normalized.endsWith('\\')
+          ? normalized.substring(0, normalized.length - 1)
+          : normalized;
+
+      // 如果已经是驱动器根目录（如 C:），返回根目录列表
+      if (trimmed.length == 2 && trimmed[1] == ':') {
+        return '/';
+      }
+
+      final lastSep = trimmed.lastIndexOf('\\');
+      if (lastSep <= 2) {
+        // 返回驱动器根目录
+        return '${trimmed.substring(0, 2)}\\';
+      }
+      return trimmed.substring(0, lastSep);
+    } else {
+      // Unix 路径处理
+      final parts = currentPath.split('/').where((p) => p.isNotEmpty).toList();
+      if (parts.isEmpty) return null;
+
+      parts.removeLast();
+      return parts.isEmpty ? '/' : '/${parts.join('/')}';
+    }
   }
 
   Future<void> createFolder(String name) async {
@@ -176,9 +210,22 @@ class FileListNotifier extends StateNotifier<FileListState> {
     final connection = _getSelectedConnection();
     if (connection == null) return;
 
-    final parts = oldPath.split('/');
-    parts.removeLast();
-    final newPath = '${parts.join('/')}/$newName';
+    // 检测是否是 Windows 路径
+    final isWindowsPath = oldPath.length >= 2 &&
+        oldPath[1] == ':' &&
+        RegExp(r'^[A-Za-z]').hasMatch(oldPath);
+
+    String newPath;
+    if (isWindowsPath) {
+      final normalized = oldPath.replaceAll('/', '\\');
+      final lastSep = normalized.lastIndexOf('\\');
+      final parentPath = lastSep > 0 ? normalized.substring(0, lastSep) : normalized;
+      newPath = '$parentPath\\$newName';
+    } else {
+      final lastSep = oldPath.lastIndexOf('/');
+      final parentPath = lastSep > 0 ? oldPath.substring(0, lastSep) : '';
+      newPath = '$parentPath/$newName';
+    }
 
     await connection.adapter.fileSystem.rename(oldPath, newPath);
     await refresh();

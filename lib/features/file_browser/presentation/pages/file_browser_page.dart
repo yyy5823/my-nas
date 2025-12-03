@@ -356,7 +356,8 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
       };
 
   Widget _buildBreadcrumb(String currentPath, bool isDark) {
-    final parts = currentPath.split('/').where((p) => p.isNotEmpty).toList();
+    // 构建面包屑路径列表：[(显示名称, 完整路径), ...]
+    final breadcrumbs = _buildBreadcrumbPaths(currentPath);
 
     return Container(
       height: 40,
@@ -377,19 +378,56 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
             isDark: isDark,
             onTap: () => ref.read(fileListProvider.notifier).loadDirectory('/'),
           ),
-          for (var i = 0; i < parts.length; i++)
+          for (final (label, path) in breadcrumbs)
             _buildBreadcrumbItem(
               context: context,
-              label: parts[i],
+              label: label,
               isDark: isDark,
-              onTap: () {
-                final newPath = '/${parts.sublist(0, i + 1).join('/')}';
-                ref.read(fileListProvider.notifier).loadDirectory(newPath);
-              },
+              onTap: () => ref.read(fileListProvider.notifier).loadDirectory(path),
             ),
         ],
       ),
     );
+  }
+
+  /// 构建面包屑路径列表，正确处理跨平台路径分隔符
+  List<(String, String)> _buildBreadcrumbPaths(String currentPath) {
+    if (currentPath == '/' || currentPath.isEmpty) return [];
+
+    final result = <(String, String)>[];
+
+    // 检测是否是 Windows 路径（包含驱动器字母如 C: 或 D:）
+    final isWindowsPath = currentPath.length >= 2 &&
+        currentPath[1] == ':' &&
+        RegExp(r'^[A-Za-z]').hasMatch(currentPath);
+
+    if (isWindowsPath) {
+      // Windows 路径处理：C:\Users\Documents -> [(C:, C:\), (Users, C:\Users), ...]
+      // 标准化分隔符为 \
+      final normalized = currentPath.replaceAll('/', '\\');
+      final parts = normalized.split('\\').where((s) => s.isNotEmpty).toList();
+
+      for (var i = 0; i < parts.length; i++) {
+        String path;
+        if (i == 0) {
+          // 驱动器根目录
+          path = '${parts[0]}\\';
+        } else {
+          path = '${parts[0]}\\${parts.sublist(1, i + 1).join('\\')}';
+        }
+        result.add((parts[i], path));
+      }
+    } else {
+      // Unix 路径处理：/Users/john/Documents -> [(Users, /Users), (john, /Users/john), ...]
+      final parts = currentPath.split('/').where((s) => s.isNotEmpty).toList();
+
+      for (var i = 0; i < parts.length; i++) {
+        final path = '/${parts.sublist(0, i + 1).join('/')}';
+        result.add((parts[i], path));
+      }
+    }
+
+    return result;
   }
 
   Widget _buildBreadcrumbItem({

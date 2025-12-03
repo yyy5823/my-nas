@@ -509,64 +509,85 @@ class SourceManagerService {
   ///
   /// 会尝试使用保存的凭证和设备ID自动连接，如果有设备ID则可以跳过2FA
   /// 本地存储不需要凭证，会直接连接
+  /// 使用并行连接以避免单个源阻塞其他源
   Future<void> autoConnectAll() async {
     final sources = await getSources();
-    logger.i('SourceManagerService: 开始自动连接 ${sources.length} 个源');
+    final autoConnectSources = sources.where((s) => s.autoConnect).toList();
+    logger.i('SourceManagerService: 开始自动连接 ${autoConnectSources.length} 个源');
 
-    for (final source in sources) {
-      if (source.autoConnect) {
-        // 本地存储不需要凭证，直接连接
-        if (source.type == SourceType.local) {
-          logger.i('SourceManagerService: 自动连接本地存储 ${source.name}');
-          try {
-            final connection = await connect(
-              source,
-              password: '',
-              saveCredential: false,
-            );
-            if (connection.status == SourceStatus.connected) {
-              logger.i('SourceManagerService: ${source.name} 自动连接成功');
-            } else {
-              logger.e('SourceManagerService: ${source.name} 连接失败: ${connection.errorMessage}');
-            }
-          } catch (e) {
-            logger.e('SourceManagerService: 自动连接异常 ${source.name}', e);
-          }
-          continue;
-        }
-
-        final credential = await getCredential(source.id);
-        if (credential != null) {
-          logger.i('SourceManagerService: 自动连接 ${source.name} (deviceId: ${credential.deviceId != null ? "有" : "无"})');
-          try {
-            // saveCredential=true 确保如果连接返回新的 deviceId，会被保存
-            final connection = await connect(
-              source,
-              password: credential.password,
-              saveCredential: true,
-            );
-
-            // 记录连接结果
-            switch (connection.status) {
-              case SourceStatus.connected:
-                logger.i('SourceManagerService: ${source.name} 自动连接成功');
-              case SourceStatus.requires2FA:
-                logger.w('SourceManagerService: ${source.name} 需要2FA (deviceId 可能已失效)');
-              case SourceStatus.error:
-                logger.e('SourceManagerService: ${source.name} 连接失败: ${connection.errorMessage}');
-              default:
-                break;
-            }
-          } catch (e) {
-            logger.e('SourceManagerService: 自动连接异常 ${source.name}', e);
-          }
-        } else {
-          logger.d('SourceManagerService: ${source.name} 没有保存的凭证，跳过自动连接');
-        }
-      }
-    }
+    // 并行连接所有源，每个连接有独立的超时
+    final futures = autoConnectSources.map((source) => _autoConnectSource(source));
+    await Future.wait(futures);
 
     logger.i('SourceManagerService: 自动连接完成');
+  }
+
+  /// 自动连接单个源（带超时处理）
+  Future<void> _autoConnectSource(SourceEntity source) async {
+    const timeout = Duration(seconds: 15);
+
+    try {
+      // 本地存储不需要凭证，直接连接
+      if (source.type == SourceType.local) {
+        logger.i('SourceManagerService: 自动连接本地存储 ${source.name}');
+        final connection = await connect(
+          source,
+          password: '',
+          saveCredential: false,
+        ).timeout(timeout, onTimeout: () {
+          logger.w('SourceManagerService: ${source.name} 连接超时');
+          return SourceConnection(
+            source: source,
+            adapter: _createAdapter(source.type),
+            status: SourceStatus.error,
+            errorMessage: '连接超时',
+          );
+        });
+
+        if (connection.status == SourceStatus.connected) {
+          logger.i('SourceManagerService: ${source.name} 自动连接成功');
+        } else {
+          logger.e('SourceManagerService: ${source.name} 连接失败: ${connection.errorMessage}');
+        }
+        return;
+      }
+
+      final credential = await getCredential(source.id);
+      if (credential != null) {
+        logger.i('SourceManagerService: 自动连接 ${source.name} (deviceId: ${credential.deviceId != null ? "有" : "无"})');
+
+        // saveCredential=true 确保如果连接返回新的 deviceId，会被保存
+        final connection = await connect(
+          source,
+          password: credential.password,
+          saveCredential: true,
+        ).timeout(timeout, onTimeout: () {
+          logger.w('SourceManagerService: ${source.name} 连接超时');
+          return SourceConnection(
+            source: source,
+            adapter: _createAdapter(source.type),
+            status: SourceStatus.error,
+            errorMessage: '连接超时',
+          );
+        });
+
+        // 记录连接结果
+        switch (connection.status) {
+          case SourceStatus.connected:
+            logger.i('SourceManagerService: ${source.name} 自动连接成功');
+          case SourceStatus.requires2FA:
+            logger.w('SourceManagerService: ${source.name} 需要2FA (deviceId 可能已失效)');
+          case SourceStatus.error:
+            logger.e('SourceManagerService: ${source.name} 连接失败: ${connection.errorMessage}');
+          default:
+            break;
+        }
+      } else {
+        logger.d('SourceManagerService: ${source.name} 没有保存的凭证，跳过自动连接');
+      }
+    } catch (e) {
+      logger.e('SourceManagerService: 自动连接异常 ${source.name}', e);
+    }
   }
 
   NasAdapter _createAdapter(SourceType type) {
