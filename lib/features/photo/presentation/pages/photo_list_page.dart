@@ -675,36 +675,32 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
             _searchController.clear();
             ref.read(photoListProvider.notifier).setSearchQuery('');
           },
-          icon: Icon(
-            Icons.arrow_back_rounded,
-            color: isDark ? Colors.white : Colors.black87,
-          ),
-          tooltip: '返回',
+          icon: Icon(Icons.arrow_back, color: isDark ? Colors.white : Colors.black87),
         ),
         Expanded(
           child: TextField(
             controller: _searchController,
             autofocus: true,
-            style: TextStyle(
-              color: isDark ? Colors.white : Colors.black87,
-              fontSize: 16,
-            ),
+            style: TextStyle(color: isDark ? Colors.white : Colors.black87),
             decoration: InputDecoration(
               hintText: '搜索照片...',
-              hintStyle: TextStyle(
-                color: isDark ? Colors.grey[500] : Colors.grey[400],
-                fontSize: 16,
-              ),
+              hintStyle: TextStyle(color: isDark ? Colors.grey[500] : Colors.grey[400]),
               border: InputBorder.none,
-              enabledBorder: InputBorder.none,
-              focusedBorder: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 8),
             ),
             onChanged: (value) {
               ref.read(photoListProvider.notifier).setSearchQuery(value);
             },
           ),
         ),
+        if (_searchController.text.isNotEmpty)
+          IconButton(
+            onPressed: () {
+              _searchController.clear();
+              ref.read(photoListProvider.notifier).setSearchQuery('');
+            },
+            icon: Icon(Icons.close, color: isDark ? Colors.grey[400] : Colors.grey[600]),
+          ),
         if (_searchController.text.isNotEmpty)
           IconButton(
             onPressed: () {

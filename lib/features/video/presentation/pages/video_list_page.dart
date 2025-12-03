@@ -786,55 +786,36 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
   Widget _buildSearchBar(BuildContext context, WidgetRef ref, bool isDark) {
     return Row(
       children: [
-        // 返回按钮
         IconButton(
           onPressed: () {
             setState(() => _showSearch = false);
             _searchController.clear();
             ref.read(videoListProvider.notifier).setSearchQuery('');
           },
-          icon: Icon(
-            Icons.arrow_back_rounded,
-            color: isDark ? Colors.white : Colors.black87,
-          ),
-          tooltip: '返回',
+          icon: Icon(Icons.arrow_back, color: isDark ? Colors.white : Colors.black87),
         ),
-        // 搜索输入框
         Expanded(
           child: TextField(
             controller: _searchController,
             autofocus: true,
-            style: TextStyle(
-              color: isDark ? Colors.white : Colors.black87,
-              fontSize: 16,
-            ),
+            style: TextStyle(color: isDark ? Colors.white : Colors.black87),
             decoration: InputDecoration(
               hintText: '搜索电影、剧集...',
-              hintStyle: TextStyle(
-                color: isDark ? Colors.grey[500] : Colors.grey[400],
-                fontSize: 16,
-              ),
+              hintStyle: TextStyle(color: isDark ? Colors.grey[500] : Colors.grey[400]),
               border: InputBorder.none,
-              enabledBorder: InputBorder.none,
-              focusedBorder: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 8),
             ),
             onChanged: (v) =>
                 ref.read(videoListProvider.notifier).setSearchQuery(v),
           ),
         ),
-        // 清除按钮
         if (_searchController.text.isNotEmpty)
           IconButton(
             onPressed: () {
               _searchController.clear();
               ref.read(videoListProvider.notifier).setSearchQuery('');
             },
-            icon: Icon(
-              Icons.close_rounded,
-              color: isDark ? Colors.grey[400] : Colors.grey[600],
-            ),
-            tooltip: '清除',
+            icon: Icon(Icons.close, color: isDark ? Colors.grey[400] : Colors.grey[600]),
           ),
       ],
     );

@@ -547,23 +547,30 @@ class _BookListPageState extends ConsumerState<BookListPage> {
                 ],
               ),
             ),
-            // 右侧操作按钮
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildHeaderButton(
-                  icon: Icons.search_rounded,
-                  onTap: () => setState(() => _showSearch = true),
-                  isDark: isDark,
-                ),
-                const SizedBox(width: 8),
-                _buildHeaderButton(
-                  icon: Icons.refresh_rounded,
-                  onTap: () =>
-                      ref.read(bookListProvider.notifier).forceRefresh(),
-                  isDark: isDark,
-                ),
-              ],
+            // 右侧操作按钮（与音乐/视频页面风格一致）
+            IconButton(
+              onPressed: () => setState(() => _showSearch = true),
+              icon: Icon(
+                Icons.search_rounded,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
+              tooltip: '搜索',
+            ),
+            IconButton(
+              onPressed: () => ref.read(bookListProvider.notifier).forceRefresh(),
+              icon: Icon(
+                Icons.refresh_rounded,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
+              tooltip: '刷新',
+            ),
+            IconButton(
+              onPressed: () => _showSettingsMenu(context),
+              icon: Icon(
+                Icons.more_vert_rounded,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
+              tooltip: '更多',
             ),
           ],
         ),
@@ -654,29 +661,19 @@ class _BookListPageState extends ConsumerState<BookListPage> {
     required Color color,
     required bool isDark,
   }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: isDark
-            ? Colors.white.withValues(alpha: 0.08)
-            : color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: color),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: isDark ? Colors.grey[300] : Colors.grey[700],
-            ),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: color),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: isDark ? Colors.grey[400] : Colors.grey[600],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -712,65 +709,64 @@ class _BookListPageState extends ConsumerState<BookListPage> {
   Widget _buildSearchBar(BuildContext context, WidgetRef ref, bool isDark) {
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : Colors.white,
-        border: Border(
-          bottom: BorderSide(
-            color: isDark
-                ? AppColors.darkOutline.withValues(alpha: 0.2)
-                : Colors.grey.withValues(alpha: 0.2),
-          ),
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: isDark
+              ? [const Color(0xFF1A1814), AppColors.darkBackground]
+              : [_themeColor.withValues(alpha: 0.08), Colors.grey[50]!],
         ),
       ),
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          padding: EdgeInsets.fromLTRB(
+            AppSpacing.appBarHorizontalPadding,
+            AppSpacing.appBarVerticalPadding,
+            AppSpacing.appBarHorizontalPadding,
+            AppSpacing.lg,
+          ),
           child: Row(
             children: [
               IconButton(
-                icon: Icon(
-                  Icons.arrow_back_rounded,
-                  color: isDark ? Colors.grey[400] : Colors.grey[600],
-                ),
                 onPressed: () {
-                  setState(() {
-                    _showSearch = false;
-                    _searchController.clear();
-                    ref.read(bookListProvider.notifier).setSearchQuery('');
-                  });
+                  setState(() => _showSearch = false);
+                  _searchController.clear();
+                  ref.read(bookListProvider.notifier).setSearchQuery('');
                 },
+                icon: Icon(
+                  Icons.arrow_back,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
               ),
               Expanded(
                 child: TextField(
                   controller: _searchController,
                   autofocus: true,
+                  style: TextStyle(color: isDark ? Colors.white : Colors.black87),
                   decoration: InputDecoration(
-                    hintText: '搜索图书...',
+                    hintText: '搜索图书、漫画、笔记...',
                     hintStyle: TextStyle(
                       color: isDark ? Colors.grey[500] : Colors.grey[400],
                     ),
                     border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 8),
                   ),
-                  style: TextStyle(
-                    color: isDark ? Colors.white : Colors.black87,
-                    fontSize: 16,
-                  ),
-                  onChanged: (v) =>
-                      ref.read(bookListProvider.notifier).setSearchQuery(v),
+                  onChanged: (value) {
+                    ref.read(bookListProvider.notifier).setSearchQuery(value);
+                  },
                 ),
               ),
               if (_searchController.text.isNotEmpty)
                 IconButton(
-                  icon: Icon(
-                    Icons.close_rounded,
-                    color: isDark ? Colors.grey[400] : Colors.grey[600],
-                  ),
                   onPressed: () {
                     _searchController.clear();
                     ref.read(bookListProvider.notifier).setSearchQuery('');
                   },
+                  icon: Icon(
+                    Icons.close,
+                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  ),
                 ),
             ],
           ),
@@ -779,30 +775,39 @@ class _BookListPageState extends ConsumerState<BookListPage> {
     );
   }
 
-  Widget _buildHeaderButton({
-    required IconData icon,
-    required VoidCallback onTap,
-    required bool isDark,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
-        child: Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: isDark
-                ? Colors.white.withValues(alpha: 0.08)
-                : _themeColor.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(
-            icon,
-            color: isDark ? Colors.grey[400] : Colors.grey[600],
-            size: 20,
-          ),
+  /// 设置菜单
+  void _showSettingsMenu(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.settings_rounded),
+              title: const Text('媒体库设置'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (context) => const MediaLibraryPage(),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.cloud_rounded),
+              title: const Text('连接源管理'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (context) => const SourcesPage(),
+                  ),
+                );
+              },
+            ),
+          ],
         ),
       ),
     );
