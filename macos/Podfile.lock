@@ -24,6 +24,9 @@ PODS:
   - path_provider_foundation (0.0.1):
     - Flutter
     - FlutterMacOS
+  - pdfrx (0.0.6):
+    - Flutter
+    - FlutterMacOS
   - share_plus (0.0.1):
     - FlutterMacOS
   - sqflite_darwin (0.0.4):
@@ -48,6 +51,7 @@ DEPENDENCIES:
   - media_kit_video (from `Flutter/ephemeral/.symlinks/plugins/media_kit_video/macos`)
   - package_info_plus (from `Flutter/ephemeral/.symlinks/plugins/package_info_plus/macos`)
   - path_provider_foundation (from `Flutter/ephemeral/.symlinks/plugins/path_provider_foundation/darwin`)
+  - pdfrx (from `Flutter/ephemeral/.symlinks/plugins/pdfrx/darwin`)
   - share_plus (from `Flutter/ephemeral/.symlinks/plugins/share_plus/macos`)
   - sqflite_darwin (from `Flutter/ephemeral/.symlinks/plugins/sqflite_darwin/darwin`)
   - url_launcher_macos (from `Flutter/ephemeral/.symlinks/plugins/url_launcher_macos/macos`)
@@ -77,6 +81,8 @@ EXTERNAL SOURCES:
     :path: Flutter/ephemeral/.symlinks/plugins/package_info_plus/macos
   path_provider_foundation:
     :path: Flutter/ephemeral/.symlinks/plugins/path_provider_foundation/darwin
+  pdfrx:
+    :path: Flutter/ephemeral/.symlinks/plugins/pdfrx/darwin
   share_plus:
     :path: Flutter/ephemeral/.symlinks/plugins/share_plus/macos
   sqflite_darwin:
@@ -100,12 +106,13 @@ SPEC CHECKSUMS:
   media_kit_video: fa6564e3799a0a28bff39442334817088b7ca758
   package_info_plus: f0052d280d17aa382b932f399edf32507174e870
   path_provider_foundation: bb55f6dbba17d0dccd6737fe6f7f34fbd0376880
+  pdfrx: 310e84d01e06fd2af26e16507a0e48c27e99195c
   share_plus: 510bf0af1a42cd602274b4629920c9649c52f4cc
   sqflite_darwin: 20b2a3a3b70e43edae938624ce550a3cbf66a3d0
   url_launcher_macos: f87a979182d112f911de6820aefddaf56ee9fbfd
   volume_controller: 5c068e6d085c80dadd33fc2c918d2114b775b3dd
   wakelock_plus: 917609be14d812ddd9e9528876538b2263aaa03b
 
-PODFILE CHECKSUM: 346bfb2deb41d4a6ebd6f6799f92188bde2d246f
+PODFILE CHECKSUM: 5595108d9be8e7f6b8fd4d7a117ac41f42e98d64
 
 COCOAPODS: 1.16.2
