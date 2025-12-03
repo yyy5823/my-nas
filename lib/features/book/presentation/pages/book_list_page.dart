@@ -7,6 +7,8 @@ import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/book/data/services/book_library_cache_service.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
 import 'package:my_nas/features/book/presentation/pages/book_reader_page.dart';
+import 'package:my_nas/features/book/presentation/pages/epub_reader_page.dart';
+import 'package:my_nas/features/book/presentation/pages/pdf_reader_page.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
@@ -1586,9 +1588,23 @@ class _BookGridItem extends ConsumerWidget {
 
     if (!context.mounted) return;
 
+    // 根据格式选择阅读器
+    Widget readerPage;
+    switch (bookItem.format) {
+      case BookFormat.epub:
+        readerPage = EpubReaderPage(book: bookItem);
+      case BookFormat.pdf:
+        readerPage = PdfReaderPage(book: bookItem);
+      case BookFormat.txt:
+      case BookFormat.mobi:
+      case BookFormat.azw3:
+      case BookFormat.unknown:
+        readerPage = BookReaderPage(book: bookItem);
+    }
+
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (context) => BookReaderPage(book: bookItem),
+        builder: (context) => readerPage,
       ),
     );
   }

@@ -14,11 +14,19 @@ import 'package:my_nas/features/sources/presentation/pages/media_library_page.da
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
-import 'package:my_nas/shared/widgets/empty_widget.dart';
+import 'package:my_nas/features/comic/presentation/pages/comic_reader_page.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
 import 'package:my_nas/shared/widgets/media_setup_widget.dart';
 
-/// 漫画项目（代表一个漫画文件夹）
+/// 漫画类型
+enum ComicType {
+  folder, // 文件夹形式（包含图片文件）
+  cbz,    // CBZ 压缩包
+  cbr,    // CBR 压缩包
+  cb7,    // CB7 压缩包
+}
+
+/// 漫画项目（代表一个漫画文件夹或压缩包）
 class ComicItem {
   ComicItem({
     required this.folderPath,
@@ -27,6 +35,8 @@ class ComicItem {
     this.coverPath,
     this.pageCount = 0,
     this.modifiedTime,
+    this.type = ComicType.folder,
+    this.fileSize,
   });
 
   final String folderPath;
@@ -35,6 +45,39 @@ class ComicItem {
   final String? coverPath;
   final int pageCount;
   final DateTime? modifiedTime;
+  final ComicType type;
+  final int? fileSize;
+
+  /// 是否是压缩包格式
+  bool get isArchive => type != ComicType.folder;
+
+  /// 获取漫画格式图标
+  IconData get formatIcon => switch (type) {
+    ComicType.folder => Icons.folder_rounded,
+    ComicType.cbz => Icons.archive_rounded,
+    ComicType.cbr => Icons.archive_rounded,
+    ComicType.cb7 => Icons.archive_rounded,
+  };
+
+  /// 格式化文件大小
+  String get displaySize {
+    if (fileSize == null) return '';
+    if (fileSize! < 1024) return '$fileSize B';
+    if (fileSize! < 1024 * 1024) return '${(fileSize! / 1024).toStringAsFixed(1)} KB';
+    if (fileSize! < 1024 * 1024 * 1024) {
+      return '${(fileSize! / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
+    return '${(fileSize! / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+  }
+
+  /// 从文件扩展名获取漫画类型
+  static ComicType? typeFromExtension(String fileName) {
+    final ext = fileName.toLowerCase();
+    if (ext.endsWith('.cbz') || ext.endsWith('.zip')) return ComicType.cbz;
+    if (ext.endsWith('.cbr') || ext.endsWith('.rar')) return ComicType.cbr;
+    if (ext.endsWith('.cb7') || ext.endsWith('.7z')) return ComicType.cb7;
+    return null;
+  }
 
   ComicLibraryCacheEntry toCacheEntry() => ComicLibraryCacheEntry(
         sourceId: sourceId,
@@ -43,7 +86,25 @@ class ComicItem {
         coverPath: coverPath,
         pageCount: pageCount,
         modifiedTime: modifiedTime,
+        comicType: type.name,
+        fileSize: fileSize,
       );
+
+  factory ComicItem.fromCacheEntry(ComicLibraryCacheEntry entry) {
+    return ComicItem(
+      folderPath: entry.folderPath,
+      folderName: entry.folderName,
+      sourceId: entry.sourceId,
+      coverPath: entry.coverPath,
+      pageCount: entry.pageCount,
+      modifiedTime: entry.modifiedTime,
+      type: ComicType.values.firstWhere(
+        (t) => t.name == entry.comicType,
+        orElse: () => ComicType.folder,
+      ),
+      fileSize: entry.fileSize,
+    );
+  }
 }
 
 /// 漫画列表状态
@@ -131,16 +192,7 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
     if (cache != null && cache.comics.isNotEmpty) {
       state = ComicListLoading(fromCache: true, currentFolder: '加载缓存...');
 
-      final comics = cache.comics.map((entry) {
-        return ComicItem(
-          folderPath: entry.folderPath,
-          folderName: entry.folderName,
-          sourceId: entry.sourceId,
-          coverPath: entry.coverPath,
-          pageCount: entry.pageCount,
-          modifiedTime: entry.modifiedTime,
-        );
-      }).toList();
+      final comics = cache.comics.map(ComicItem.fromCacheEntry).toList();
 
       state = ComicListLoaded(comics: comics, fromCache: true);
       logger.i('从缓存加载了 ${comics.length} 本漫画');
@@ -198,16 +250,7 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
       if (cache != null) {
         state = ComicListLoading(fromCache: true, currentFolder: '加载缓存...');
 
-        final comics = cache.comics.map((entry) {
-          return ComicItem(
-            folderPath: entry.folderPath,
-            folderName: entry.folderName,
-            sourceId: entry.sourceId,
-            coverPath: entry.coverPath,
-            pageCount: entry.pageCount,
-            modifiedTime: entry.modifiedTime,
-          );
-        }).toList();
+        final comics = cache.comics.map(ComicItem.fromCacheEntry).toList();
 
         state = ComicListLoaded(comics: comics, fromCache: true);
         logger.i('从缓存加载了 ${comics.length} 本漫画');
@@ -282,6 +325,22 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
               coverPath: comicInfo.coverPath,
               pageCount: comicInfo.pageCount,
               modifiedTime: item.modifiedTime,
+              type: ComicType.folder,
+            ));
+          }
+        } else {
+          // 检查是否是漫画压缩包
+          final comicType = ComicItem.typeFromExtension(item.name);
+          if (comicType != null) {
+            // 去掉扩展名作为漫画名称
+            final nameWithoutExt = _removeExtension(item.name);
+            comics.add(ComicItem(
+              folderPath: item.path,
+              folderName: nameWithoutExt,
+              sourceId: sourceId,
+              modifiedTime: item.modifiedTime,
+              type: comicType,
+              fileSize: item.size,
             ));
           }
         }
@@ -289,6 +348,15 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
     } on Exception catch (e) {
       logger.w('扫描漫画目录失败: $path - $e');
     }
+  }
+
+  /// 移除文件扩展名
+  String _removeExtension(String fileName) {
+    final lastDot = fileName.lastIndexOf('.');
+    if (lastDot > 0) {
+      return fileName.substring(0, lastDot);
+    }
+    return fileName;
   }
 
   Future<({String? coverPath, int pageCount})?> _checkIfComicFolder(
@@ -789,7 +857,7 @@ class _ComicCard extends ConsumerWidget {
                   ),
                 ),
               ),
-              // 标题和页数
+              // 标题和信息
               Padding(
                 padding: const EdgeInsets.all(8),
                 child: Column(
@@ -806,12 +874,30 @@ class _ComicCard extends ConsumerWidget {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      '${comic.pageCount} 页',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[600],
-                      ),
+                    Row(
+                      children: [
+                        // 格式图标
+                        Icon(
+                          comic.formatIcon,
+                          size: 12,
+                          color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[600],
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            comic.isArchive
+                                ? comic.displaySize.isNotEmpty
+                                    ? comic.displaySize
+                                    : comic.type.name.toUpperCase()
+                                : '${comic.pageCount} 页',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[600],
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -853,9 +939,11 @@ class _ComicCard extends ConsumerWidget {
   }
 
   void _openComic(BuildContext context, WidgetRef ref) {
-    // TODO: 实现漫画阅读器
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('打开漫画: ${comic.folderName}')),
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => ComicReaderPage(comic: comic),
+      ),
     );
   }
 }

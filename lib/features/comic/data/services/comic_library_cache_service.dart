@@ -11,6 +11,8 @@ class ComicLibraryCacheEntry {
     this.coverPath,
     this.pageCount = 0,
     this.modifiedTime,
+    this.comicType = 'folder',
+    this.fileSize,
   });
 
   final String sourceId;
@@ -19,6 +21,8 @@ class ComicLibraryCacheEntry {
   final String? coverPath;
   final int pageCount;
   final DateTime? modifiedTime;
+  final String comicType;
+  final int? fileSize;
 
   Map<String, dynamic> toJson() => {
         'sourceId': sourceId,
@@ -27,6 +31,8 @@ class ComicLibraryCacheEntry {
         'coverPath': coverPath,
         'pageCount': pageCount,
         'modifiedTime': modifiedTime?.toIso8601String(),
+        'comicType': comicType,
+        'fileSize': fileSize,
       };
 
   factory ComicLibraryCacheEntry.fromJson(Map<String, dynamic> json) =>
@@ -39,6 +45,8 @@ class ComicLibraryCacheEntry {
         modifiedTime: json['modifiedTime'] != null
             ? DateTime.parse(json['modifiedTime'] as String)
             : null,
+        comicType: json['comicType'] as String? ?? 'folder',
+        fileSize: json['fileSize'] as int?,
       );
 }
 

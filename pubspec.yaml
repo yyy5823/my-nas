@@ -84,6 +84,13 @@ dependencies:
   share_plus: ^10.1.4
   gal: ^2.3.0
 
+  # Ebook & Comic Reading
+  epub_decoder: ^0.1.4  # EPUB parsing library
+  pdfrx: ^1.0.96  # Cross-platform PDF viewer
+  photo_view: ^0.15.0  # Pinch-to-zoom for comic pages
+  scrollable_positioned_list: ^0.3.8  # For efficient scrolling in reader
+  archive: ^3.6.1  # ZIP/CBZ archive handling
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
