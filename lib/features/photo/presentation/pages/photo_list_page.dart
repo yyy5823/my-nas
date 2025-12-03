@@ -1393,6 +1393,10 @@ class _PhotoGridItem extends ConsumerWidget {
                   return null;
                 }
               },
+              getFileSystem: (sourceId) {
+                final conn = connections[sourceId];
+                return conn?.adapter.fileSystem;
+              },
             ),
           ),
         );
@@ -1417,6 +1421,10 @@ class _PhotoGridItem extends ConsumerWidget {
               debugPrint('PhotoViewer: 获取URL失败 path=$path, error=$e');
               return null;
             }
+          },
+          getFileSystem: (sourceId) {
+            final conn = connections[sourceId];
+            return conn?.adapter.fileSystem;
           },
         ),
       ),

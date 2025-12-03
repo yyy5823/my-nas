@@ -8,9 +8,14 @@ import 'package:intl/intl.dart';
 import 'package:my_nas/core/utils/platform_capabilities.dart';
 import 'package:my_nas/features/photo/data/services/photo_save_service.dart';
 import 'package:my_nas/features/photo/domain/entities/photo_item.dart';
+import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
+import 'package:my_nas/shared/widgets/stream_image.dart';
 
 /// 照片 URL 获取回调
 typedef PhotoUrlGetter = Future<String?> Function(String path, String sourceId);
+
+/// 文件系统获取回调
+typedef FileSystemGetter = NasFileSystem? Function(String sourceId);
 
 /// 照片查看器页面
 class PhotoViewerPage extends StatefulWidget {
@@ -19,11 +24,13 @@ class PhotoViewerPage extends StatefulWidget {
     required this.photos,
     required this.initialIndex,
     this.getPhotoUrl,
+    this.getFileSystem,
   });
 
   final List<PhotoItem> photos;
   final int initialIndex;
   final PhotoUrlGetter? getPhotoUrl;
+  final FileSystemGetter? getFileSystem;
 
   @override
   State<PhotoViewerPage> createState() => _PhotoViewerPageState();
@@ -203,10 +210,12 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
               itemBuilder: (context, index) {
                 final item = widget.photos[index];
                 final cachedUrl = _loadedUrls[item.path];
+                final fileSystem = widget.getFileSystem?.call(item.sourceId);
                 return _PhotoPage(
                   photo: item,
                   cachedUrl: cachedUrl,
                   onLoadUrl: () => _loadPhotoUrl(index),
+                  fileSystem: fileSystem,
                 );
               },
             ),
@@ -947,11 +956,13 @@ class _PhotoPage extends StatefulWidget {
     required this.photo,
     this.cachedUrl,
     this.onLoadUrl,
+    this.fileSystem,
   });
 
   final PhotoItem photo;
   final String? cachedUrl;
   final Future<String?> Function()? onLoadUrl;
+  final NasFileSystem? fileSystem;
 
   @override
   State<_PhotoPage> createState() => _PhotoPageState();
@@ -964,62 +975,43 @@ class _PhotoPageState extends State<_PhotoPage> {
   bool _hasError = false;
   String? _errorMessage;
 
-  /// 检查是否是 HTTP/HTTPS URL
-  bool _isHttpUrl(String? url) {
-    if (url == null || url.isEmpty) return false;
-    return url.startsWith('http://') || url.startsWith('https://');
-  }
 
-  /// 检查是否是 file:// URL
-  bool _isFileUrl(String? url) {
-    if (url == null || url.isEmpty) return false;
-    return url.startsWith('file://');
-  }
-
-  /// 从 file:// URL 获取本地文件路径
-  String? _getLocalFilePath(String url) {
-    if (!url.startsWith('file://')) return null;
-    try {
-      final uri = Uri.parse(url);
-      return uri.toFilePath();
-    } catch (e) {
-      debugPrint('PhotoViewer: 无法解析 file:// URL: $url - $e');
-      return null;
-    }
-  }
 
   /// 构建适合 URL 类型的图片组件
+  /// 使用 StreamImage 统一处理所有类型的图片加载
   Widget _buildImageFromUrl({
     required String url,
     required BoxFit fit,
     Widget Function(BuildContext, Widget, ImageChunkEvent?)? loadingBuilder,
     Widget Function(BuildContext, Object, StackTrace?)? errorBuilder,
   }) {
-    // HTTP/HTTPS URL - 使用 Image.network
-    if (_isHttpUrl(url)) {
-      return Image.network(
-        url,
-        fit: fit,
-        loadingBuilder: loadingBuilder,
-        errorBuilder: errorBuilder,
-      );
-    }
-
-    // file:// URL - 使用 Image.file
-    if (_isFileUrl(url)) {
-      final filePath = _getLocalFilePath(url);
-      if (filePath != null) {
-        return Image.file(
-          File(filePath),
-          fit: fit,
-          errorBuilder: errorBuilder,
-        );
-      }
-    }
-
-    // 无法处理的 URL 类型
-    return errorBuilder?.call(context, Exception('不支持的 URL 类型: $url'), StackTrace.current) ??
-        const SizedBox.shrink();
+    // 使用 StreamImage 统一处理
+    // StreamImage 会自动处理 HTTP、file:// URL，以及在 iOS/macOS 上的流式加载
+    return StreamImage(
+      url: url,
+      path: widget.photo.path,
+      fileSystem: widget.fileSystem,
+      fit: fit,
+      placeholder: loadingBuilder != null
+          ? Builder(
+              builder: (context) => loadingBuilder(
+                context,
+                const SizedBox.shrink(),
+                null,
+              ),
+            )
+          : null,
+      errorWidget: errorBuilder != null
+          ? Builder(
+              builder: (context) => errorBuilder(
+                context,
+                Exception('图片加载失败'),
+                StackTrace.current,
+              ),
+            )
+          : null,
+      cacheKey: widget.photo.path,
+    );
   }
 
   @override

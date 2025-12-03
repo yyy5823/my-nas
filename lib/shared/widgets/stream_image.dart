@@ -93,6 +93,16 @@ class _StreamImageState extends State<StreamImage> {
     return url.startsWith('file://');
   }
 
+  /// 在iOS/macOS平台上，file:// URL应该使用流式加载
+  /// 因为沙盒限制可能导致直接文件访问失败
+  bool get _shouldUseStreamForFileUrl {
+    if (!_hasValidFileUrl) return false;
+    // 如果没有提供 fileSystem 和 path，无法使用流式加载
+    if (widget.fileSystem == null || widget.path == null) return false;
+    // iOS/macOS 平台优先使用流式加载
+    return Platform.isIOS || Platform.isMacOS;
+  }
+
   /// 从 file:// URL 获取本地文件路径
   String? get _localFilePath {
     final url = widget.url;
@@ -116,8 +126,9 @@ class _StreamImageState extends State<StreamImage> {
       return;
     }
 
-    // 如果有有效的 file:// URL，使用 Image.file
-    if (_hasValidFileUrl) {
+    // 如果有有效的 file:// URL，在非iOS/macOS平台使用 Image.file
+    // 在iOS/macOS平台，由于沙盒限制，优先使用流式加载
+    if (_hasValidFileUrl && !_shouldUseStreamForFileUrl) {
       setState(() {
         _imageBytes = null;
         _hasError = false;
@@ -206,7 +217,8 @@ class _StreamImageState extends State<StreamImage> {
     }
 
     // 使用本地文件 (file:// URL)
-    if (_hasValidFileUrl) {
+    // 在iOS/macOS上，如果有fileSystem和path，会fallback到流式加载
+    if (_hasValidFileUrl && !_shouldUseStreamForFileUrl) {
       final filePath = _localFilePath;
       if (filePath != null) {
         return Image.file(
