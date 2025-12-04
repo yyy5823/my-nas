@@ -4,9 +4,6 @@ import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/utils/logger.dart';
-import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
-import 'package:my_nas/features/sources/domain/entities/media_library.dart';
-import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/pages/media_library_page.dart';
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
@@ -215,11 +212,10 @@ class VideoListError extends VideoListState {
 }
 
 class VideoListNotifier extends StateNotifier<VideoListState> {
-  VideoListNotifier(this._ref) : super(VideoListLoading()) {
+  VideoListNotifier(Ref ref) : super(VideoListLoading()) {
     _init();
   }
 
-  final Ref _ref;
   final VideoMetadataService _metadataService = VideoMetadataService.instance;
   final VideoLibraryCacheService _cacheService = VideoLibraryCacheService.instance;
 
@@ -228,21 +224,18 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       await _metadataService.init();
       await _cacheService.init();
 
-      // 立即尝试从缓存加载，不等待连接
-      await _loadFromCacheImmediately();
+      // 从缓存加载视频数据
+      await _loadFromCache();
     } catch (e) {
       logger.e('VideoListNotifier: 初始化失败', e);
-      // 初始化失败，显示空列表
       state = VideoListLoaded(videos: [], fromCache: false);
     }
   }
 
-  /// 立即从缓存加载视频数据，不检查连接状态
-  Future<void> _loadFromCacheImmediately() async {
+  /// 从缓存加载视频数据
+  Future<void> _loadFromCache() async {
     final cache = _cacheService.getCache();
     if (cache != null && cache.videos.isNotEmpty) {
-      state = VideoListLoading(fromCache: true, currentFolder: '加载缓存...');
-
       final videos = cache.videos.map((entry) => VideoFileWithSource(
           file: FileItem(
             name: entry.fileName,
@@ -270,290 +263,17 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
         fromCache: true,
       );
 
-      // 后台加载缺失的元数据
-      _loadMissingMetadata(videos);
-
-      logger.i('从缓存加载了 ${videos.length} 个视频');
+      logger.i('VideoListNotifier: 从缓存加载了 ${videos.length} 个视频');
     } else {
-      // 没有缓存，显示空状态并提示用户刷新
+      // 没有缓存，显示空状态
       state = VideoListLoaded(videos: [], fromCache: true);
+      logger.i('VideoListNotifier: 无缓存数据');
     }
   }
 
-  /// 加载视频（优先使用缓存）
-  Future<void> loadVideos({bool forceRefresh = false, int maxDepth = 3}) async {
-    final connections = _ref.read(activeConnectionsProvider);
-    final configAsync = _ref.read(mediaLibraryConfigProvider);
-
-    // 等待配置加载
-    MediaLibraryConfig? config = configAsync.valueOrNull;
-    if (config == null) {
-      state = VideoListLoading(currentFolder: '正在加载配置...');
-      for (var i = 0; i < 10; i++) {
-        await Future<void>.delayed(const Duration(milliseconds: 500));
-        final updated = _ref.read(mediaLibraryConfigProvider);
-        config = updated.valueOrNull;
-        if (config != null) break;
-        if (updated.hasError) {
-          state = VideoListError('加载媒体库配置失败');
-          return;
-        }
-      }
-      if (config == null) {
-        state = VideoListLoaded(videos: []);
-        return;
-      }
-    }
-
-    final videoPaths = config.getEnabledPathsForType(MediaType.video);
-    if (videoPaths.isEmpty) {
-      state = VideoListLoaded(videos: []);
-      return;
-    }
-
-    final connectedPaths = videoPaths.where((path) {
-      final conn = connections[path.sourceId];
-      return conn?.status == SourceStatus.connected;
-    }).toList();
-
-    if (connectedPaths.isEmpty) {
-      // 没有已连接的源，保持当前缓存状态并提示
-      logger.w('没有已连接的源，无法扫描视频');
-      // 保持当前状态，如果是空的则显示空列表
-      if (state is! VideoListLoaded || (state as VideoListLoaded).videos.isEmpty) {
-        state = VideoListLoaded(videos: [], fromCache: true);
-      }
-      return;
-    }
-
-    final sourceIds = connectedPaths.map((p) => p.sourceId).toList();
-
-    // 尝试使用缓存
-    if (!forceRefresh && _cacheService.isCacheValid(sourceIds)) {
-      final cache = _cacheService.getCache();
-      if (cache != null) {
-        state = VideoListLoading(fromCache: true, currentFolder: '加载缓存...');
-
-        final videos = cache.videos.map((entry) => VideoFileWithSource(
-            file: FileItem(
-              name: entry.fileName,
-              path: entry.filePath,
-              size: entry.size,
-              isDirectory: false,
-              modifiedTime: entry.modifiedTime,
-              thumbnailUrl: entry.thumbnailUrl,
-            ),
-            sourceId: entry.sourceId,
-          )).toList();
-
-        // 加载缓存的元数据
-        final metadataMap = <String, VideoMetadata>{};
-        for (final video in videos) {
-          final cached = _metadataService.getCached(video.sourceId, video.path);
-          if (cached != null) {
-            metadataMap[cached.uniqueKey] = cached;
-          }
-        }
-
-        state = VideoListLoaded(
-          videos: videos,
-          metadataMap: metadataMap,
-          fromCache: true,
-        );
-
-        // 后台加载缺失的元数据
-        _loadMissingMetadata(videos);
-
-        logger.i('从缓存加载了 ${videos.length} 个视频');
-        return;
-      }
-    }
-
-    // 扫描文件系统
-    state = VideoListLoading();
-    final videos = <VideoFileWithSource>[];
-    var scannedFolders = 0;
-    final totalFolders = connectedPaths.length;
-    var lastUpdateCount = 0;
-
-    for (final mediaPath in connectedPaths) {
-      final connection = connections[mediaPath.sourceId];
-      if (connection == null) continue;
-
-      state = VideoListLoading(
-        progress: scannedFolders / totalFolders,
-        currentFolder: mediaPath.displayName,
-        partialVideos: List.from(videos),
-        scannedCount: videos.length,
-      );
-
-      try {
-        await _scanFolderRecursively(
-          connection.adapter.fileSystem,
-          mediaPath.path,
-          videos,
-          sourceId: mediaPath.sourceId,
-          currentDepth: 0,
-          maxDepth: maxDepth,
-          onBatchFound: () {
-            // 每找到 10 个新视频更新一次 UI
-            if (videos.length - lastUpdateCount >= 10) {
-              lastUpdateCount = videos.length;
-              state = VideoListLoading(
-                progress: scannedFolders / totalFolders,
-                currentFolder: mediaPath.displayName,
-                partialVideos: List.from(videos),
-                scannedCount: videos.length,
-              );
-            }
-          },
-        );
-      } on Exception catch (e) {
-        logger.w('扫描文件夹失败: ${mediaPath.path} - $e');
-      }
-
-      scannedFolders++;
-
-      // 每完成一个目录更新一次
-      state = VideoListLoading(
-        progress: scannedFolders / totalFolders,
-        currentFolder: scannedFolders < totalFolders ? '继续扫描...' : '扫描完成',
-        partialVideos: List.from(videos),
-        scannedCount: videos.length,
-      );
-    }
-
-    logger.i('视频扫描完成，共找到 ${videos.length} 个视频');
-
-    // 保存到缓存
-    final cacheEntries = videos.map((v) => v.toCacheEntry()).toList();
-    await _cacheService.saveCache(VideoLibraryCache(
-      videos: cacheEntries,
-      lastUpdated: DateTime.now(),
-      sourceIds: sourceIds,
-    ));
-
-    // 加载元数据
-    final metadataMap = <String, VideoMetadata>{};
-    for (final video in videos) {
-      final cached = _metadataService.getCached(video.sourceId, video.path);
-      if (cached != null) {
-        metadataMap[cached.uniqueKey] = cached;
-      }
-    }
-
-    state = VideoListLoaded(videos: videos, metadataMap: metadataMap);
-
-    // 后台加载缺失的元数据
-    _loadMissingMetadata(videos);
-  }
-
-  Future<void> _scanFolderRecursively(
-    NasFileSystem fileSystem,
-    String path,
-    List<VideoFileWithSource> videos, {
-    required String sourceId,
-    required int currentDepth,
-    required int maxDepth,
-    VoidCallback? onBatchFound,
-  }) async {
-    if (currentDepth > maxDepth) return;
-
-    try {
-      final files = await fileSystem.listDirectory(path);
-
-      for (final file in files) {
-        if (file.type == FileType.video) {
-          videos.add(VideoFileWithSource(file: file, sourceId: sourceId));
-          onBatchFound?.call();
-        } else if (file.isDirectory && currentDepth < maxDepth) {
-          if (file.name.startsWith('.') ||
-              file.name.startsWith('@') ||
-              file.name == '#recycle') {
-            continue;
-          }
-
-          await _scanFolderRecursively(
-            fileSystem,
-            file.path,
-            videos,
-            sourceId: sourceId,
-            currentDepth: currentDepth + 1,
-            maxDepth: maxDepth,
-            onBatchFound: onBatchFound,
-          );
-        }
-      }
-    } on Exception catch (e) {
-      logger.w('扫描子文件夹失败: $path - $e');
-    }
-  }
-
-  Future<void> _loadMissingMetadata(List<VideoFileWithSource> videos) async {
-    final current = state;
-    if (current is! VideoListLoaded) return;
-    final connections = _ref.read(activeConnectionsProvider);
-
-    final missingVideos = videos.where((v) {
-      final key = '${v.sourceId}_${v.path}';
-      final existing = current.metadataMap[key];
-      // 如果没有元数据，或者元数据没有封面，都需要加载
-      return existing == null || existing.displayPosterUrl == null;
-    }).toList();
-
-    if (missingVideos.isEmpty) return;
-
-    state = current.copyWith(isLoadingMetadata: true, metadataProgress: 0);
-
-    final updatedMap = Map<String, VideoMetadata>.from(current.metadataMap);
-    final total = missingVideos.length;
-
-    for (var i = 0; i < missingVideos.length; i++) {
-      final video = missingVideos[i];
-
-      try {
-        // 获取视频 URL 用于生成缩略图
-        String? videoUrl;
-        final connection = connections[video.sourceId];
-        if (connection?.status == SourceStatus.connected) {
-          try {
-            videoUrl = await connection!.adapter.fileSystem.getFileUrl(video.path);
-          } catch (e) {
-            logger.w('获取视频 URL 失败: ${video.name}');
-          }
-        }
-
-        final metadata = await _metadataService.getOrFetch(
-          sourceId: video.sourceId,
-          filePath: video.path,
-          fileName: video.name,
-          fileSystem: connection?.adapter.fileSystem,
-          videoUrl: videoUrl,
-        );
-        updatedMap[metadata.uniqueKey] = metadata;
-
-        if ((i + 1) % 5 == 0 || i == missingVideos.length - 1) {
-          final currentState = state;
-          if (currentState is VideoListLoaded) {
-            state = currentState.copyWith(
-              metadataMap: Map.from(updatedMap),
-              metadataProgress: (i + 1) / total,
-            );
-          }
-        }
-      } on Exception catch (e) {
-        logger.w('获取元数据失败: ${video.name} - $e');
-      }
-
-      if (i < missingVideos.length - 1) {
-        await Future<void>.delayed(const Duration(milliseconds: 300));
-      }
-    }
-
-    final finalState = state;
-    if (finalState is VideoListLoaded) {
-      state = finalState.copyWith(isLoadingMetadata: false);
-    }
+  /// 重新从缓存加载（扫描完成后调用）
+  Future<void> reloadFromCache() async {
+    await _loadFromCache();
   }
 
   void setTab(VideoTab tab) {
@@ -568,12 +288,6 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     if (current is VideoListLoaded) {
       state = current.copyWith(searchQuery: query);
     }
-  }
-
-  /// 强制刷新（从源重新扫描）
-  Future<void> forceRefresh() async {
-    await _cacheService.clearCache();
-    await loadVideos(forceRefresh: true);
   }
 }
 
@@ -635,7 +349,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
                 ),
               VideoListError(:final message) => AppErrorWidget(
                   message: message,
-                  onRetry: () => ref.read(videoListProvider.notifier).loadVideos(),
+                  onRetry: () => ref.read(videoListProvider.notifier).reloadFromCache(),
                 ),
               VideoListLoaded loaded => loaded.videos.isEmpty
                   ? _buildEmptyState(context, ref, loaded, isDark)
@@ -1153,12 +867,6 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
         // 继续观看（横向卡片）
         _ContinueWatchingSection(isDark: isDark),
 
-        // 元数据加载进度
-        if (state.isLoadingMetadata)
-          SliverToBoxAdapter(
-            child: _buildMetadataProgress(state, isDark),
-          ),
-
         // 最近添加（纵向海报）
         if (recentVideos.isNotEmpty)
           SliverToBoxAdapter(
@@ -1362,31 +1070,6 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
       logger.e('播放视频失败', e);
     }
   }
-
-  Widget _buildMetadataProgress(VideoListLoaded state, bool isDark) => Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 16,
-            height: 16,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              value: state.metadataProgress > 0 ? state.metadataProgress : null,
-              color: AppColors.primary,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Text(
-            '正在获取影片信息... ${(state.metadataProgress * 100).toInt()}%',
-            style: TextStyle(
-              fontSize: 12,
-              color: isDark ? Colors.grey[400] : Colors.grey[600],
-            ),
-          ),
-        ],
-      ),
-    );
 
   Future<void> _openVideoDetail(
     BuildContext context,

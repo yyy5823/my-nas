@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -18,6 +19,7 @@ import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/features/sources/presentation/widgets/folder_picker_sheet.dart';
 import 'package:my_nas/features/video/data/services/video_library_cache_service.dart';
+import 'package:my_nas/features/video/data/services/video_scanner_service.dart';
 import 'package:my_nas/features/video/presentation/pages/video_list_page.dart';
 
 class MediaLibraryPage extends ConsumerWidget {
@@ -440,6 +442,27 @@ class _MediaScanSection extends ConsumerStatefulWidget {
 
 class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
   bool _isScanning = false;
+  VideoScanProgress? _videoScanProgress;
+  StreamSubscription<VideoScanProgress>? _progressSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    // 监听视频扫描进度
+    if (widget.mediaType == MediaType.video) {
+      _progressSubscription = VideoScannerService.instance.progressStream.listen((progress) {
+        if (mounted) {
+          setState(() => _videoScanProgress = progress);
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _progressSubscription?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -612,12 +635,14 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
   (bool, double, String?, String) _getMediaState() {
     switch (widget.mediaType) {
       case MediaType.video:
-        final state = ref.watch(videoListProvider);
-        final isLoading = state is VideoListLoading;
-        final progress = state is VideoListLoading ? state.progress : 0.0;
-        final folder = state is VideoListLoading ? state.currentFolder : null;
+        // 使用 VideoScannerService 的进度
+        final scannerIsScanning = VideoScannerService.instance.isScanning;
+        final progress = _videoScanProgress;
+        final isLoading = scannerIsScanning || (progress != null && progress.phase != VideoScanPhase.completed && progress.phase != VideoScanPhase.error);
+        final scanProgress = progress?.progress ?? 0.0;
+        final folder = progress?.description;
         final cacheInfo = VideoLibraryCacheService.instance.getCacheInfo();
-        return (isLoading, progress, folder, cacheInfo);
+        return (isLoading, scanProgress, folder, cacheInfo);
 
       case MediaType.music:
         final state = ref.watch(musicListProvider);
@@ -684,7 +709,13 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
     try {
       switch (widget.mediaType) {
         case MediaType.video:
-          await ref.read(videoListProvider.notifier).loadVideos(forceRefresh: true);
+          // 使用新的 VideoScannerService
+          await VideoScannerService.instance.scan(
+            paths: widget.paths,
+            connections: widget.connections,
+          );
+          // 扫描完成后，通知 VideoListNotifier 重新加载缓存
+          ref.read(videoListProvider.notifier).reloadFromCache();
         case MediaType.music:
           await ref.read(musicListProvider.notifier).loadMusic(forceRefresh: true);
         case MediaType.photo:
