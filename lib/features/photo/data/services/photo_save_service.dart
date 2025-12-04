@@ -55,12 +55,14 @@ class PhotoSaveService {
     File? tempFile;
 
     try {
-      logger.i('PhotoSaveService: 开始下载照片: $fileName');
+      logger.i('PhotoSaveService: 开始下载照片: $fileName, URL: $url');
+      logger.i('PhotoSaveService: 平台信息 - isDesktop=$isDesktop, isMobile=$isMobile, canSaveToGallery=$canSaveToGallery');
 
       // 1. 下载文件到临时目录
       final tempDir = await getTemporaryDirectory();
       final tempPath = p.join(tempDir.path, 'photo_download_$fileName');
       tempFile = File(tempPath);
+      logger.i('PhotoSaveService: 临时文件路径: $tempPath');
 
       final response = await _dio.download(
         url,
@@ -73,15 +75,27 @@ class PhotoSaveService {
         },
       );
 
+      logger.i('PhotoSaveService: 下载完成, HTTP状态码: ${response.statusCode}');
+
       if (response.statusCode != 200) {
         return SaveResult.failure('下载失败: HTTP ${response.statusCode}');
       }
 
-      if (!await tempFile.exists()) {
+      final fileExists = await tempFile.exists();
+      final fileSize = fileExists ? await tempFile.length() : 0;
+      logger.i('PhotoSaveService: 临时文件检查 - 存在=$fileExists, 大小=$fileSize bytes');
+
+      if (!fileExists) {
         return SaveResult.failure('下载的文件不存在');
       }
 
+      if (fileSize == 0) {
+        await _cleanupTempFile(tempFile);
+        return SaveResult.failure('下载的文件为空');
+      }
+
       // 2. 根据平台保存文件
+      logger.i('PhotoSaveService: 准备保存文件, 目标平台: ${isDesktop ? "桌面" : "移动"}');
       if (isDesktop) {
         return _saveToDesktop(tempFile, fileName);
       } else {
@@ -96,13 +110,15 @@ class PhotoSaveService {
         return SaveResult.cancelled();
       }
 
-      logger.e('PhotoSaveService: 下载失败', e);
+      logger.e('PhotoSaveService: 下载失败 (DioException)', e);
+      logger.e('PhotoSaveService: DioException type=${e.type}, message=${e.message}');
       return SaveResult.failure('下载失败: ${_getDioErrorMessage(e)}');
-    } on Exception catch (e) {
+    } on Exception catch (e, stackTrace) {
       // 清理临时文件
       await _cleanupTempFile(tempFile);
 
-      logger.e('PhotoSaveService: 保存失败', e);
+      logger.e('PhotoSaveService: 保存失败 (Exception)', e);
+      logger.e('PhotoSaveService: StackTrace: $stackTrace');
       return SaveResult.failure('保存失败: $e');
     }
   }
@@ -119,14 +135,17 @@ class PhotoSaveService {
     File? tempFile;
 
     try {
-      logger.i('PhotoSaveService: 开始从流下载照片: $fileName');
+      logger.i('PhotoSaveService: 开始从流下载照片: $fileName, path=$path');
+      logger.i('PhotoSaveService: 文件系统类型: ${fileSystem.runtimeType}');
 
       // 1. 获取文件信息（用于计算进度）
       int? totalSize;
       try {
         final fileInfo = await fileSystem.getFileInfo(path);
         totalSize = fileInfo.size;
-      } on Exception catch (_) {
+        logger.i('PhotoSaveService: 文件大小: $totalSize bytes');
+      } on Exception catch (e) {
+        logger.w('PhotoSaveService: 获取文件信息失败: $e');
         // 获取文件信息失败，继续下载但不显示进度
       }
 
@@ -134,7 +153,9 @@ class PhotoSaveService {
       final tempDir = await getTemporaryDirectory();
       final tempPath = p.join(tempDir.path, 'photo_download_$fileName');
       tempFile = File(tempPath);
+      logger.i('PhotoSaveService: 临时文件路径: $tempPath');
 
+      logger.i('PhotoSaveService: 开始获取文件流...');
       final stream = await fileSystem.getFileStream(path);
       final sink = tempFile.openWrite();
       var receivedBytes = 0;
@@ -148,22 +169,34 @@ class PhotoSaveService {
       }
 
       await sink.close();
+      logger.i('PhotoSaveService: 流式下载完成, 接收字节数: $receivedBytes');
 
-      if (!await tempFile.exists()) {
+      final fileExists = await tempFile.exists();
+      final fileSize = fileExists ? await tempFile.length() : 0;
+      logger.i('PhotoSaveService: 临时文件检查 - 存在=$fileExists, 大小=$fileSize bytes');
+
+      if (!fileExists) {
         return SaveResult.failure('下载的文件不存在');
       }
 
+      if (fileSize == 0) {
+        await _cleanupTempFile(tempFile);
+        return SaveResult.failure('下载的文件为空');
+      }
+
       // 3. 根据平台保存文件
+      logger.i('PhotoSaveService: 准备保存文件, 目标平台: ${isDesktop ? "桌面" : "移动"}');
       if (isDesktop) {
         return _saveToDesktop(tempFile, fileName);
       } else {
         return _saveToGallery(tempFile, fileName);
       }
-    } on Exception catch (e) {
+    } on Exception catch (e, stackTrace) {
       // 清理临时文件
       await _cleanupTempFile(tempFile);
 
       logger.e('PhotoSaveService: 从流下载失败', e);
+      logger.e('PhotoSaveService: StackTrace: $stackTrace');
       return SaveResult.failure('保存失败: $e');
     }
   }
@@ -281,16 +314,32 @@ class PhotoSaveService {
     bool deleteAfter = true,
   }) async {
     try {
+      // 检查源文件是否存在和大小
+      final fileExists = await sourceFile.exists();
+      final fileSize = fileExists ? await sourceFile.length() : 0;
+      logger.i('PhotoSaveService: 准备保存到相册, 文件存在=$fileExists, 大小=$fileSize bytes, 路径=${sourceFile.path}');
+
+      if (!fileExists) {
+        return SaveResult.failure('临时文件不存在');
+      }
+
+      if (fileSize == 0) {
+        if (deleteAfter) await _cleanupTempFile(sourceFile);
+        return SaveResult.failure('下载的文件为空');
+      }
+
       // 使用 gal 库保存到相册
+      logger.i('PhotoSaveService: 调用 Gal.putImage...');
       await Gal.putImage(sourceFile.path, album: 'MyNAS');
 
       // 删除临时文件
       if (deleteAfter) await _cleanupTempFile(sourceFile);
 
-      logger.i('PhotoSaveService: 照片已保存到相册');
+      logger.i('PhotoSaveService: 照片已成功保存到相册');
       return SaveResult.success(null, isGallery: true);
     } on GalException catch (e) {
-      logger.e('PhotoSaveService: 保存到相册失败', e);
+      logger.e('PhotoSaveService: 保存到相册失败 (GalException)', e);
+      logger.e('PhotoSaveService: GalException type=${e.type}, platformException=${e.platformException}');
       if (deleteAfter) await _cleanupTempFile(sourceFile);
 
       // 处理权限问题
@@ -298,8 +347,9 @@ class PhotoSaveService {
         return SaveResult.failure('没有相册访问权限，请在设置中授权');
       }
       return SaveResult.failure('保存到相册失败: ${e.type.name}');
-    } on Exception catch (e) {
-      logger.e('PhotoSaveService: 保存到相册失败', e);
+    } on Exception catch (e, stackTrace) {
+      logger.e('PhotoSaveService: 保存到相册失败 (Exception)', e);
+      logger.e('PhotoSaveService: StackTrace: $stackTrace');
       if (deleteAfter) await _cleanupTempFile(sourceFile);
       return SaveResult.failure('保存到相册失败: $e');
     }

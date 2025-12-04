@@ -24,13 +24,16 @@ class NasStreamAudioSource extends StreamAudioSource {
   Future<StreamAudioResponse> request([int? start, int? end]) async {
     try {
       final requestStart = start ?? 0;
-      logger.d('NasStreamAudioSource: 请求音频流 path=$path, range=$requestStart-$end');
+      logger.i('NasStreamAudioSource: ===== 请求音频流 =====');
+      logger.i('NasStreamAudioSource: path=$path');
+      logger.i('NasStreamAudioSource: range=$requestStart-$end');
 
       // 获取文件大小（使用缓存避免重复请求）
       if (_cachedSourceLength == null) {
+        logger.d('NasStreamAudioSource: 获取文件信息...');
         final fileInfo = await fileSystem.getFileInfo(path);
         _cachedSourceLength = fileInfo.size;
-        logger.d('NasStreamAudioSource: 文件大小 = $_cachedSourceLength bytes');
+        logger.i('NasStreamAudioSource: 文件大小 = $_cachedSourceLength bytes');
       }
 
       final sourceLength = _cachedSourceLength!;
@@ -52,6 +55,8 @@ class NasStreamAudioSource extends StreamAudioSource {
       // 文件大小为 N 字节，最后一个字节的索引是 N-1
       final effectiveEnd = end != null && end < sourceLength ? end : null;
 
+      logger.d('NasStreamAudioSource: 获取文件流 range=$requestStart-$effectiveEnd...');
+
       // 获取文件流
       // 注意：HTTP Range 是闭区间 [start, end]，所以 bytes=0-2 返回 3 字节
       final stream = await fileSystem.getFileStream(
@@ -68,10 +73,20 @@ class NasStreamAudioSource extends StreamAudioSource {
           ? (effectiveEnd - requestStart + 1)
           : (sourceLength - requestStart);
 
-      logger.d('NasStreamAudioSource: 返回流 offset=$requestStart, contentLength=$contentLength, sourceLength=$sourceLength');
+      logger.i('NasStreamAudioSource: 返回 StreamAudioResponse');
+      logger.i('NasStreamAudioSource: offset=$requestStart, contentLength=$contentLength, sourceLength=$sourceLength');
+      logger.i('NasStreamAudioSource: contentType=${_getContentType(path)}');
 
-      // 包装流以添加错误处理
-      final wrappedStream = stream.handleError((Object error, StackTrace stackTrace) {
+      // 包装流以添加错误处理和日志
+      int bytesReceived = 0;
+      final wrappedStream = stream.map((chunk) {
+        bytesReceived += chunk.length;
+        if (bytesReceived % (1024 * 1024) < chunk.length) {
+          // 每 1MB 打印一次日志
+          logger.d('NasStreamAudioSource: 已接收 ${(bytesReceived / 1024 / 1024).toStringAsFixed(1)} MB');
+        }
+        return chunk;
+      }).handleError((Object error, StackTrace stackTrace) {
         logger.e('NasStreamAudioSource: 流读取错误', error, stackTrace);
       });
 

@@ -169,14 +169,20 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
     // 监听播放位置
     _player.positionStream.listen((position) {
+      // 只在位置变化超过1秒时记录日志，避免日志过多
+      if ((position.inSeconds - state.position.inSeconds).abs() >= 1) {
+        logger.d('MusicPlayer: positionStream => $position (duration: ${state.duration})');
+      }
       state = state.copyWith(position: position);
     });
 
     // 监听总时长
     _player.durationStream.listen((duration) {
-      logger.d('MusicPlayer: durationStream => $duration');
+      logger.i('MusicPlayer: durationStream => $duration');
       if (duration != null) {
         state = state.copyWith(duration: duration);
+      } else {
+        logger.w('MusicPlayer: durationStream 返回 null');
       }
     });
 

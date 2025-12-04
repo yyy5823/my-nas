@@ -297,46 +297,27 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
 
     logger.i('VideoListNotifier: 首屏元数据加载完成，共 ${metadataMap.length} 个');
 
-    // 第二阶段：后台加载剩余内容
+    // 第二阶段：后台加载剩余内容（不阻塞 UI）
     if (videos.length > firstBatchSize) {
-      await Future<void>.delayed(Duration.zero); // 让出执行权
+      // 使用较长的延迟确保 UI 帧能够渲染
+      await Future<void>.delayed(const Duration(milliseconds: 16));
 
-      const batchSize = 100; // 后续批次可以更大
       final remainingVideos = videos.skip(firstBatchSize).toList();
-      final totalBatches = (remainingVideos.length / batchSize).ceil();
 
-      for (var batch = 0; batch < totalBatches; batch++) {
-        final start = batch * batchSize;
-        final end = (start + batchSize).clamp(0, remainingVideos.length);
-        final batchVideos = remainingVideos.sublist(start, end);
-
-        for (final video in batchVideos) {
-          final cached = _metadataService.getCached(video.sourceId, video.path);
-          if (cached != null) {
-            metadataMap[cached.uniqueKey] = cached;
-          }
-        }
-
-        // 更新状态
-        final currentState = state;
-        if (currentState is VideoListLoaded) {
-          state = currentState.copyWith(
-            metadataMap: Map.from(metadataMap),
-            metadataProgress: (firstBatchSize + (batch + 1) * batchSize) / videos.length,
-          );
-        }
-
-        // 让出执行权
-        if (batch < totalBatches - 1) {
-          await Future<void>.delayed(Duration.zero);
+      // 一次性加载所有剩余元数据，不再分批更新 state
+      for (final video in remainingVideos) {
+        final cached = _metadataService.getCached(video.sourceId, video.path);
+        if (cached != null) {
+          metadataMap[cached.uniqueKey] = cached;
         }
       }
     }
 
-    // 完成加载
+    // 完成加载 - 只更新一次 state
     final finalState = state;
     if (finalState is VideoListLoaded) {
       state = finalState.copyWith(
+        metadataMap: Map.from(metadataMap),
         isLoadingMetadata: false,
         metadataProgress: 1.0,
       );
@@ -1252,8 +1233,39 @@ class _ContinueWatchingCard extends ConsumerWidget {
   final VideoHistoryItem item;
   final bool isDark;
 
+  /// 获取可用的海报 URL
+  /// 优先使用元数据中的 TMDB 海报，其次是可加载的 thumbnailUrl
+  String? _getDisplayPosterUrl() {
+    // 从元数据服务获取海报（需要 sourceId）
+    if (item.sourceId != null) {
+      final metadataService = VideoMetadataService.instance;
+      final metadata = metadataService.getCached(item.sourceId!, item.videoPath);
+
+      // 优先使用元数据中的海报（通常是 TMDB 的 http URL）
+      if (metadata?.displayPosterUrl != null) {
+        final url = metadata!.displayPosterUrl!;
+        // 确保 URL 是可加载的（http/https 或 file://）
+        if (AdaptiveImage.isSupportedUrl(url)) {
+          return url;
+        }
+      }
+    }
+
+    // 检查历史记录中的 thumbnailUrl 是否可用
+    if (item.thumbnailUrl != null && item.thumbnailUrl!.isNotEmpty) {
+      if (AdaptiveImage.isSupportedUrl(item.thumbnailUrl!)) {
+        return item.thumbnailUrl;
+      }
+    }
+
+    return null;
+  }
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) => Container(
+  Widget build(BuildContext context, WidgetRef ref) {
+    final posterUrl = _getDisplayPosterUrl();
+
+    return Container(
       width: 200,
       margin: const EdgeInsets.only(right: 12),
       child: Material(
@@ -1278,9 +1290,9 @@ class _ContinueWatchingCard extends ConsumerWidget {
                         borderRadius: const BorderRadius.vertical(
                           top: Radius.circular(12),
                         ),
-                        child: item.thumbnailUrl != null && item.thumbnailUrl!.isNotEmpty
+                        child: posterUrl != null
                             ? AdaptiveImage(
-                                imageUrl: item.thumbnailUrl!,
+                                imageUrl: posterUrl,
                                 fit: BoxFit.cover,
                                 placeholder: (_) => _buildThumbnailPlaceholder(),
                                 errorWidget: (_, __) => _buildThumbnailPlaceholder(),
@@ -1338,17 +1350,18 @@ class _ContinueWatchingCard extends ConsumerWidget {
         ),
       ),
     );
+  }
 
   Widget _buildThumbnailPlaceholder() => Container(
-      color: isDark ? Colors.grey[800] : Colors.grey[200],
-      child: const Center(
-        child: Icon(
-          Icons.play_circle_rounded,
-          size: 40,
-          color: Colors.white54,
+        color: isDark ? Colors.grey[800] : Colors.grey[200],
+        child: const Center(
+          child: Icon(
+            Icons.play_circle_rounded,
+            size: 40,
+            color: Colors.white54,
+          ),
         ),
-      ),
-    );
+      );
 
   String _formatDuration(Duration d) {
     final hours = d.inHours;
@@ -1418,7 +1431,8 @@ class _PartialVideoCard extends StatelessWidget {
                 fit: StackFit.expand,
                 children: [
                   // 缩略图或占位符
-                  if (video.thumbnailUrl != null)
+                  if (video.thumbnailUrl != null &&
+                      AdaptiveImage.isSupportedUrl(video.thumbnailUrl!))
                     AdaptiveImage(
                       imageUrl: video.thumbnailUrl!,
                       fit: BoxFit.cover,
