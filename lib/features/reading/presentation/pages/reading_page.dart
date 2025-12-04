@@ -87,43 +87,74 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
     );
   }
 
-  Widget _buildAppBar(BuildContext context, bool isDark, int currentTab) {
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
-        border: Border(
-          bottom: BorderSide(
-            color: isDark
-                ? AppColors.darkOutline.withValues(alpha: 0.2)
-                : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
+  Widget _buildAppBar(BuildContext context, bool isDark, int currentTab) =>
+      Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: isDark
+                ? [const Color(0xFF2E2A1A), AppColors.darkBackground] // 深琥珀棕色调
+                : [Colors.amber.withValues(alpha: 0.08), Colors.grey[50]!],
           ),
         ),
-      ),
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: SizedBox(
-            height: 40, // 确保和其他导航页面的顶栏高度一致
+        child: SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 16, 16),
             child: Row(
               children: [
-                // 当前类型标题
-                Text(
-                  ReadingContentType.values[currentTab].label,
-                  style: context.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: isDark ? AppColors.darkOnSurface : null,
+                // 问候语和当前类型标题
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _getGreeting(),
+                        style: context.textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(
+                            ReadingContentType.values[currentTab].icon,
+                            size: 14,
+                            color: Colors.amber[700],
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            ReadingContentType.values[currentTab].label,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: isDark ? Colors.grey[400] : Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
-                const Spacer(),
                 // 类型切换按钮
                 _buildTypeSwitcher(context, isDark, currentTab),
               ],
             ),
           ),
         ),
-      ),
-    );
+      );
+
+  String _getGreeting() {
+    final hour = DateTime.now().hour;
+    if (hour < 6) return '夜深了';
+    if (hour < 9) return '早上好';
+    if (hour < 12) return '上午好';
+    if (hour < 14) return '中午好';
+    if (hour < 18) return '下午好';
+    if (hour < 22) return '晚上好';
+    return '夜深了';
   }
 
   Widget _buildTypeSwitcher(BuildContext context, bool isDark, int currentTab) {

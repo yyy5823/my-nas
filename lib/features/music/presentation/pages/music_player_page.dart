@@ -16,11 +16,9 @@ class MusicPlayerPage extends ConsumerStatefulWidget {
   const MusicPlayerPage({super.key});
 
   /// 全屏打开音乐播放器（隐藏底部导航栏）
-  static Future<void> open(BuildContext context) {
-    return Navigator.of(context, rootNavigator: true).push(
+  static Future<void> open(BuildContext context) => Navigator.of(context, rootNavigator: true).push(
       MaterialPageRoute<void>(builder: (context) => const MusicPlayerPage()),
     );
-  }
 
   @override
   ConsumerState<MusicPlayerPage> createState() => _MusicPlayerPageState();
@@ -81,7 +79,7 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
       extendBodyBehindAppBar: true,
       backgroundColor: isDark ? AppColors.darkBackground : Colors.grey[100],
       appBar: _buildAppBar(context, ref, currentMusic, isDark),
-      body: Container(
+      body: DecoratedBox(
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
@@ -187,8 +185,7 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
     MusicItem currentMusic,
     MusicPlayerState playerState,
     bool isDark,
-  ) {
-    return Column(
+  ) => Column(
       key: const ValueKey('lyric_mode'),
       children: [
         // 歌词视图
@@ -215,7 +212,7 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
                 Colors.transparent,
                 (isDark ? AppColors.darkBackground : Colors.grey[100]!)
                     .withValues(alpha: 0.9),
-                isDark ? AppColors.darkBackground : Colors.grey[100]!,
+                if (isDark) AppColors.darkBackground else Colors.grey[100]!,
               ],
             ),
           ),
@@ -291,15 +288,13 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
         ),
       ],
     );
-  }
 
   /// 歌词模式下的额外控制按钮（音量、封面等）
   Widget _buildLyricModeExtraControls(
     BuildContext context,
     MusicPlayerState state,
     bool isDark,
-  ) {
-    return Padding(
+  ) => Padding(
       // 添加额外的底部 padding 以适应 iOS 的 Home Indicator 区域
       padding: EdgeInsets.only(
         bottom: MediaQuery.of(context).padding.bottom > 0 ? 8 : 0,
@@ -333,10 +328,8 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
         ],
       ),
     );
-  }
 
-  Widget _buildMiniCoverPlaceholder(bool isDark) {
-    return Container(
+  Widget _buildMiniCoverPlaceholder(bool isDark) => Container(
       color: isDark ? Colors.grey[800] : Colors.grey[300],
       child: Icon(
         Icons.music_note_rounded,
@@ -344,7 +337,6 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
         color: isDark ? Colors.grey[600] : Colors.grey[400],
       ),
     );
-  }
 
   /// 构建迷你封面图片，优先使用嵌入的封面数据，其次是封面 URL
   Widget _buildMiniCoverImage(MusicItem music, double size, bool isDark) {
@@ -483,12 +475,10 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
     return Center(
       child: AnimatedBuilder(
         animation: _rotationController,
-        builder: (context, child) {
-          return Transform.rotate(
+        builder: (context, child) => Transform.rotate(
             angle: playerState.isPlaying ? _rotationController.value * 2 * math.pi : 0,
             child: child,
-          );
-        },
+          ),
         child: Container(
           width: size,
           height: size,
@@ -558,8 +548,7 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
     );
   }
 
-  Widget _buildCoverPlaceholder(double size, bool isDark) {
-    return Container(
+  Widget _buildCoverPlaceholder(double size, bool isDark) => Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
@@ -577,7 +566,6 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
         color: isDark ? Colors.grey[600] : Colors.grey[400],
       ),
     );
-  }
 
   /// 构建封面图片，优先使用嵌入的封面数据，其次是封面 URL
   Widget _buildCoverImage(MusicItem music, double size, bool isDark) {
@@ -607,8 +595,7 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
     return _buildCoverPlaceholder(size, isDark);
   }
 
-  Widget _buildTrackInfo(BuildContext context, MusicItem currentMusic, bool isDark) {
-    return Padding(
+  Widget _buildTrackInfo(BuildContext context, MusicItem currentMusic, bool isDark) => Padding(
       padding: const EdgeInsets.symmetric(horizontal: 32),
       child: Column(
         children: [
@@ -637,15 +624,13 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
         ],
       ),
     );
-  }
 
   Widget _buildProgressBar(
     BuildContext context,
     WidgetRef ref,
     MusicPlayerState state,
     bool isDark,
-  ) {
-    return Padding(
+  ) => Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
         children: [
@@ -694,7 +679,6 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
         ],
       ),
     );
-  }
 
   Widget _buildControlButtons(
     BuildContext context,
@@ -794,8 +778,7 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
     BuildContext context,
     MusicPlayerState state,
     bool isDark,
-  ) {
-    return Padding(
+  ) => Padding(
       padding: const EdgeInsets.symmetric(horizontal: 48),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -826,7 +809,6 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
         ],
       ),
     );
-  }
 
   IconData _getPlayModeIcon(PlayMode mode) => switch (mode) {
         PlayMode.loop => Icons.repeat_rounded,
@@ -871,8 +853,7 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
               ),
             ),
             const SizedBox(height: 16),
-            ...[15, 30, 45, 60, 90].map((minutes) {
-              return ListTile(
+            ...[15, 30, 45, 60, 90].map((minutes) => ListTile(
                 title: Text(
                   '$minutes 分钟后',
                   style: TextStyle(color: isDark ? Colors.white : Colors.black87),
@@ -886,8 +867,7 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
                     ),
                   );
                 },
-              );
-            }),
+              )),
             ListTile(
               title: Text(
                 '播放完当前歌曲后',
@@ -914,8 +894,7 @@ class _VolumePopupButton extends ConsumerWidget {
   final bool isDark;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return IconButton(
+  Widget build(BuildContext context, WidgetRef ref) => IconButton(
       onPressed: () => _showVolumePopup(context, ref),
       icon: Icon(
         volume == 0
@@ -927,7 +906,6 @@ class _VolumePopupButton extends ConsumerWidget {
       ),
       tooltip: '音量',
     );
-  }
 
   void _showVolumePopup(BuildContext context, WidgetRef ref) {
     final RenderBox button = context.findRenderObject()! as RenderBox;
@@ -1044,8 +1022,7 @@ class _VolumeButtonState extends ConsumerState<_VolumeButton> {
   bool _showSlider = false;
 
   @override
-  Widget build(BuildContext context) {
-    return Row(
+  Widget build(BuildContext context) => Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         IconButton(
@@ -1082,5 +1059,4 @@ class _VolumeButtonState extends ConsumerState<_VolumeButton> {
           ),
       ],
     );
-  }
 }

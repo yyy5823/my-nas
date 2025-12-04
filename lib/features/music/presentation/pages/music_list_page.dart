@@ -647,8 +647,8 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: isDark
-              ? [AppColors.darkSurface, AppColors.darkBackground]
-              : [AppColors.primary.withValues(alpha: 0.1), Colors.grey[50]!],
+              ? [const Color(0xFF2E1A1A), AppColors.darkBackground] // 深红棕色调
+              : [Colors.deepOrange.withValues(alpha: 0.08), Colors.grey[50]!],
         ),
       ),
       child: SafeArea(
@@ -2760,8 +2760,7 @@ class _MusicListTile extends ConsumerWidget {
     );
   }
 
-  Widget _buildFallbackCover(String title) {
-    return Center(
+  Widget _buildFallbackCover(String title) => Center(
       child: Text(
         title.isNotEmpty ? title[0].toUpperCase() : '♪',
         style: const TextStyle(
@@ -2771,7 +2770,6 @@ class _MusicListTile extends ConsumerWidget {
         ),
       ),
     );
-  }
 
   Future<void> _playTrack(BuildContext context, WidgetRef ref) async {
     final connections = ref.read(activeConnectionsProvider);
@@ -3479,14 +3477,12 @@ class _FolderTile extends ConsumerWidget {
         collapsedShape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
         ),
-        children: tracks.asMap().entries.map((entry) {
-          return _CompactMusicTile(
+        children: tracks.asMap().entries.map((entry) => _CompactMusicTile(
             track: entry.value,
             isDark: isDark,
             allTracks: tracks,
             trackIndex: entry.key,
-          );
-        }).toList(),
+          )).toList(),
       ),
     );
 }

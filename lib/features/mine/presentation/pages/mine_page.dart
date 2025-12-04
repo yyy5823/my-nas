@@ -937,7 +937,7 @@ class _TmdbApiKeyTileState extends State<_TmdbApiKeyTile> {
   }
 }
 
-/// 传输卡片组件
+/// 传输卡片组件 - 下载和同步合并在一个卡片中
 class _TransferCard extends ConsumerWidget {
   const _TransferCard({required this.isDark});
 
@@ -964,38 +964,72 @@ class _TransferCard extends ConsumerWidget {
     final completed = tasks.where((t) => t.status == DownloadStatus.completed).toList();
     final hasActiveTasks = downloading.isNotEmpty;
 
-    return Column(
-      children: [
-        // 下载按钮
-        _buildTransferButton(
-          context,
-          icon: Icons.download_rounded,
-          label: '下载',
-          count: downloading.length,
-          subtitle: hasActiveTasks
-              ? '${downloading.length} 个任务进行中'
-              : completed.isEmpty
-                  ? '暂无下载任务'
-                  : '${completed.length} 个已完成',
-          color: AppColors.primary,
-          isActive: hasActiveTasks,
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark
+            ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
+            : AppColors.lightSurface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isDark
+              ? AppColors.darkOutline.withValues(alpha: 0.2)
+              : AppColors.lightOutline.withValues(alpha: 0.3),
         ),
-        const SizedBox(height: AppSpacing.sm),
-        // 同步按钮（预留）
-        _buildTransferButton(
-          context,
-          icon: Icons.sync_rounded,
-          label: '同步',
-          count: 0,
-          subtitle: '暂无同步任务',
-          color: AppColors.accent,
-          isActive: false,
+        boxShadow: isDark
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.03),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Column(
+          children: [
+            // 下载项
+            _buildTransferItem(
+              context,
+              icon: Icons.download_rounded,
+              label: '下载',
+              count: downloading.length,
+              subtitle: hasActiveTasks
+                  ? '${downloading.length} 个任务进行中'
+                  : completed.isEmpty
+                      ? '暂无下载任务'
+                      : '${completed.length} 个已完成',
+              color: AppColors.primary,
+              isActive: hasActiveTasks,
+            ),
+            // 分隔线
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+              child: Divider(
+                height: 1,
+                color: isDark
+                    ? AppColors.darkOutline.withValues(alpha: 0.2)
+                    : AppColors.lightOutline.withValues(alpha: 0.3),
+              ),
+            ),
+            // 同步项
+            _buildTransferItem(
+              context,
+              icon: Icons.sync_rounded,
+              label: '同步',
+              count: 0,
+              subtitle: '暂无同步任务',
+              color: AppColors.accent,
+              isActive: false,
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
-  Widget _buildTransferButton(
+  Widget _buildTransferItem(
     BuildContext context, {
     required IconData icon,
     required String label,
@@ -1003,24 +1037,11 @@ class _TransferCard extends ConsumerWidget {
     required String subtitle,
     required Color color,
     required bool isActive,
-  }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark
-            ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
-            : AppColors.lightSurface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isDark
-              ? AppColors.darkOutline.withValues(alpha: 0.2)
-              : AppColors.lightOutline.withValues(alpha: 0.3),
-        ),
-      ),
-      child: Material(
+  }) =>
+      Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: () => showDownloadManager(context),
-          borderRadius: BorderRadius.circular(16),
           child: Padding(
             padding: const EdgeInsets.symmetric(
               horizontal: AppSpacing.lg,
@@ -1036,12 +1057,12 @@ class _TransferCard extends ConsumerWidget {
                       width: 40,
                       height: 40,
                       decoration: BoxDecoration(
-                        color: color.withValues(alpha: isActive ? 0.15 : 0.08),
+                        color: color.withValues(alpha: isActive ? 0.15 : 0.12),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Icon(
                         icon,
-                        color: isActive ? color : color.withValues(alpha: 0.5),
+                        color: isActive ? color : color,
                         size: 20,
                       ),
                     ),
@@ -1082,9 +1103,9 @@ class _TransferCard extends ConsumerWidget {
                     children: [
                       Text(
                         label,
-                        style: context.textTheme.titleMedium?.copyWith(
+                        style: context.textTheme.bodyLarge?.copyWith(
                           fontWeight: FontWeight.w500,
-                          color: isDark ? AppColors.darkOnSurface : null,
+                          color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -1133,7 +1154,5 @@ class _TransferCard extends ConsumerWidget {
             ),
           ),
         ),
-      ),
-    );
-  }
+      );
 }

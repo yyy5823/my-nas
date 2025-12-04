@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
+import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:my_nas/app/app.dart';
 import 'package:my_nas/core/di/injection.dart';
@@ -34,6 +35,10 @@ Future<void> _initApp() async {
 
   // Initialize MediaKit for video playback
   MediaKit.ensureInitialized();
+
+  // Initialize JustAudioMediaKit to use MediaKit as audio backend
+  // This fixes the just_audio_windows threading issue on Windows
+  JustAudioMediaKit.ensureInitialized();
 
   // Initialize Hive for local storage
   await Hive.initFlutter();

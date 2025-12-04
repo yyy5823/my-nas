@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
@@ -23,9 +26,12 @@ class MediaLibraryPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final screenWidth = MediaQuery.of(context).size.width;
-    // 宽屏使用固定 Tab，窄屏使用可滚动 Tab
-    final useScrollableTab = screenWidth < 500;
+
+    // 判断是否为移动端
+    final isMobile = !kIsWeb && (Platform.isIOS || Platform.isAndroid);
+
+    // 移动端始终使用固定Tab（平均分割），桌面端根据屏幕宽度决定
+    final useScrollableTab = !isMobile && MediaQuery.of(context).size.width < 500;
 
     return DefaultTabController(
       length: MediaType.values.length,
