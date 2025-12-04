@@ -29,9 +29,9 @@ class AppErrorWidget extends StatelessWidget {
               height: 88,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: AppColors.error.withOpacity(0.1),
+                color: AppColors.error.withValues(alpha: 0.1),
                 border: Border.all(
-                  color: AppColors.error.withOpacity(0.2),
+                  color: AppColors.error.withValues(alpha: 0.2),
                   width: 2,
                 ),
               ),
@@ -73,8 +73,7 @@ class AppErrorWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildRetryButton(BuildContext context, bool isDark) {
-    return Container(
+  Widget _buildRetryButton(BuildContext context, bool isDark) => Container(
       height: 48,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(14),
@@ -83,7 +82,7 @@ class AppErrorWidget extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: AppColors.error.withOpacity(0.3),
+            color: AppColors.error.withValues(alpha: 0.3),
             blurRadius: 16,
             offset: const Offset(0, 6),
           ),
@@ -116,5 +115,4 @@ class AppErrorWidget extends StatelessWidget {
         ),
       ),
     );
-  }
 }

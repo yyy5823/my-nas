@@ -134,7 +134,7 @@ class _MainScaffoldState extends State<MainScaffold> {
         border: Border(
           right: BorderSide(
             color: isDark
-                ? AppColors.darkOutline.withOpacity(0.3)
+                ? AppColors.darkOutline.withValues(alpha: 0.3)
                 : context.colorScheme.outlineVariant,
           ),
         ),
@@ -198,7 +198,7 @@ class _MainScaffoldState extends State<MainScaffold> {
                         ),
                         decoration: BoxDecoration(
                           color: isSelected
-                              ? AppColors.primary.withOpacity(isDark ? 0.2 : 0.1)
+                              ? AppColors.primary.withValues(alpha: isDark ? 0.2 : 0.1)
                               : Colors.transparent,
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -252,7 +252,7 @@ class _MainScaffoldState extends State<MainScaffold> {
         border: Border(
           top: BorderSide(
             color: isDark
-                ? AppColors.darkOutline.withOpacity(0.3)
+                ? AppColors.darkOutline.withValues(alpha: 0.3)
                 : context.colorScheme.outlineVariant,
           ),
         ),
@@ -285,7 +285,7 @@ class _MainScaffoldState extends State<MainScaffold> {
                           ),
                           decoration: BoxDecoration(
                             color: isSelected
-                                ? AppColors.primary.withOpacity(isDark ? 0.2 : 0.1)
+                                ? AppColors.primary.withValues(alpha: isDark ? 0.2 : 0.1)
                                 : Colors.transparent,
                             borderRadius: BorderRadius.circular(16),
                           ),

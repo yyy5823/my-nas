@@ -166,8 +166,8 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
                     shape: BoxShape.circle,
                     gradient: RadialGradient(
                       colors: [
-                        AppColors.primary.withOpacity(0.3),
-                        AppColors.primary.withOpacity(0.0),
+                        AppColors.primary.withValues(alpha: 0.3),
+                        AppColors.primary.withValues(alpha: 0.0),
                       ],
                     ),
                   ),
@@ -183,8 +183,8 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
                     shape: BoxShape.circle,
                     gradient: RadialGradient(
                       colors: [
-                        AppColors.secondary.withOpacity(0.25),
-                        AppColors.secondary.withOpacity(0.0),
+                        AppColors.secondary.withValues(alpha: 0.25),
+                        AppColors.secondary.withValues(alpha: 0.0),
                       ],
                     ),
                   ),
@@ -200,8 +200,8 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
                     shape: BoxShape.circle,
                     gradient: RadialGradient(
                       colors: [
-                        AppColors.accent.withOpacity(0.15),
-                        AppColors.accent.withOpacity(0.0),
+                        AppColors.accent.withValues(alpha: 0.15),
+                        AppColors.accent.withValues(alpha: 0.0),
                       ],
                     ),
                   ),
@@ -225,7 +225,7 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
             borderRadius: BorderRadius.circular(28),
             boxShadow: [
               BoxShadow(
-                color: AppColors.primary.withOpacity(0.4),
+                color: AppColors.primary.withValues(alpha: 0.4),
                 blurRadius: 30,
                 offset: const Offset(0, 10),
               ),
@@ -414,11 +414,11 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
         labelText: label,
         hintText: hint,
         labelStyle: const TextStyle(color: AppColors.darkOnSurfaceVariant),
-        hintStyle: TextStyle(color: AppColors.darkOnSurfaceVariant.withOpacity(0.5)),
+        hintStyle: TextStyle(color: AppColors.darkOnSurfaceVariant.withValues(alpha: 0.5)),
         prefixIcon: Icon(icon, color: AppColors.darkOnSurfaceVariant),
         suffixIcon: suffixIcon,
         filled: true,
-        fillColor: AppColors.darkSurfaceVariant.withOpacity(0.5),
+        fillColor: AppColors.darkSurfaceVariant.withValues(alpha: 0.5),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide.none,
@@ -426,7 +426,7 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide(
-            color: AppColors.darkOutline.withOpacity(0.3),
+            color: AppColors.darkOutline.withValues(alpha: 0.3),
           ),
         ),
         focusedBorder: OutlineInputBorder(
@@ -456,10 +456,10 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: AppColors.darkSurfaceVariant.withOpacity(0.5),
+        color: AppColors.darkSurfaceVariant.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: AppColors.darkOutline.withOpacity(0.3),
+          color: AppColors.darkOutline.withValues(alpha: 0.3),
         ),
       ),
       child: Row(
@@ -544,7 +544,7 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
         vertical: AppSpacing.sm,
       ),
       decoration: BoxDecoration(
-        color: AppColors.darkSurfaceVariant.withOpacity(0.3),
+        color: AppColors.darkSurfaceVariant.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -597,7 +597,7 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
             vertical: AppSpacing.sm,
           ),
           decoration: BoxDecoration(
-            color: AppColors.darkSurfaceVariant.withOpacity(0.3),
+            color: AppColors.darkSurfaceVariant.withValues(alpha: 0.3),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
           ),
           child: Row(
@@ -647,11 +647,11 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
             vertical: AppSpacing.sm,
           ),
           decoration: BoxDecoration(
-            color: AppColors.darkSurfaceVariant.withOpacity(0.3),
+            color: AppColors.darkSurfaceVariant.withValues(alpha: 0.3),
             borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
             border: Border(
               top: BorderSide(
-                color: AppColors.darkOutline.withOpacity(0.2),
+                color: AppColors.darkOutline.withValues(alpha: 0.2),
               ),
             ),
           ),
@@ -710,7 +710,7 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
             ? null
             : [
                 BoxShadow(
-                  color: AppColors.primary.withOpacity(0.4),
+                  color: AppColors.primary.withValues(alpha: 0.4),
                   blurRadius: 20,
                   offset: const Offset(0, 8),
                 ),
@@ -834,7 +834,7 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
                   vertical: AppSpacing.sm,
                 ),
                 decoration: BoxDecoration(
-                  color: AppColors.darkSurfaceVariant.withOpacity(0.3),
+                  color: AppColors.darkSurfaceVariant.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
@@ -887,7 +887,7 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
                   gradient: AppColors.accentGradient,
                   boxShadow: [
                     BoxShadow(
-                      color: AppColors.accent.withOpacity(0.4),
+                      color: AppColors.accent.withValues(alpha: 0.4),
                       blurRadius: 20,
                       offset: const Offset(0, 8),
                     ),

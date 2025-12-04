@@ -587,7 +587,7 @@ class _ComicListContentState extends ConsumerState<ComicListContent> {
                 margin: const EdgeInsets.only(left: 8),
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.2),
+                  color: Colors.green.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: const Text(
@@ -834,7 +834,7 @@ class _ComicCard extends ConsumerWidget {
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: isDark
-                  ? AppColors.darkOutline.withOpacity(0.2)
+                  ? AppColors.darkOutline.withValues(alpha: 0.2)
                   : Colors.grey[300]!,
             ),
           ),

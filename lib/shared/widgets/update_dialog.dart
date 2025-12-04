@@ -99,7 +99,7 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
             width: 64,
             height: 64,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
+              color: Colors.white.withValues(alpha: 0.2),
               shape: BoxShape.circle,
             ),
             child: const Icon(
@@ -125,7 +125,7 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: isDark
-            ? AppColors.darkSurfaceVariant.withOpacity(0.5)
+            ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
             : AppColors.lightSurfaceVariant,
         borderRadius: BorderRadius.circular(12),
       ),
@@ -210,8 +210,8 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
           constraints: const BoxConstraints(maxHeight: 150),
           decoration: BoxDecoration(
             color: isDark
-                ? AppColors.darkSurfaceVariant.withOpacity(0.3)
-                : AppColors.lightSurfaceVariant.withOpacity(0.5),
+                ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
+                : AppColors.lightSurfaceVariant.withValues(alpha: 0.5),
             borderRadius: BorderRadius.circular(12),
           ),
           child: SingleChildScrollView(
@@ -269,7 +269,7 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
       margin: const EdgeInsets.only(bottom: AppSpacing.md),
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        color: AppColors.error.withOpacity(0.1),
+        color: AppColors.error.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -408,7 +408,7 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primary.withOpacity(0.3),
+            color: AppColors.primary.withValues(alpha: 0.3),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -502,7 +502,7 @@ class _CheckUpdateTileState extends ConsumerState<CheckUpdateTile> {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.12),
+                  color: AppColors.primary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
@@ -547,7 +547,7 @@ class _CheckUpdateTileState extends ConsumerState<CheckUpdateTile> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: AppColors.success.withOpacity(0.12),
+                    color: AppColors.success.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(

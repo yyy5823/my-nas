@@ -55,11 +55,11 @@ class _LoadingWidgetState extends State<LoadingWidget>
                     endAngle: 3.14 * 2,
                     transform: GradientRotation(_controller.value * 3.14 * 2),
                     colors: [
-                      AppColors.primary.withOpacity(0),
+                      AppColors.primary.withValues(alpha: 0),
                       AppColors.primary,
                       AppColors.secondary,
                       AppColors.accent,
-                      AppColors.primary.withOpacity(0),
+                      AppColors.primary.withValues(alpha: 0),
                     ],
                     stops: const [0.0, 0.25, 0.5, 0.75, 1.0],
                   ),
@@ -83,7 +83,7 @@ class _LoadingWidgetState extends State<LoadingWidget>
                           gradient: AppColors.primaryGradient,
                           boxShadow: [
                             BoxShadow(
-                              color: AppColors.primary.withOpacity(0.4),
+                              color: AppColors.primary.withValues(alpha: 0.4),
                               blurRadius: 12,
                             ),
                           ],

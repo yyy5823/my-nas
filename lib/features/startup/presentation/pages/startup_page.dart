@@ -102,7 +102,7 @@ class _StartupPageState extends ConsumerState<StartupPage> {
                     borderRadius: BorderRadius.circular(28),
                     boxShadow: [
                       BoxShadow(
-                        color: AppColors.primary.withOpacity(0.4),
+                        color: AppColors.primary.withValues(alpha: 0.4),
                         blurRadius: 30,
                         offset: const Offset(0, 10),
                       ),
@@ -121,7 +121,7 @@ class _StartupPageState extends ConsumerState<StartupPage> {
                     .animate(onPlay: (c) => c.repeat())
                     .shimmer(
                       duration: 2000.ms,
-                      color: Colors.white.withOpacity(0.3),
+                      color: Colors.white.withValues(alpha: 0.3),
                     ),
                 const SizedBox(height: 32),
 

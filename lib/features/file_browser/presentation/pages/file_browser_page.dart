@@ -97,8 +97,8 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
         border: Border(
           bottom: BorderSide(
             color: isDark
-                ? AppColors.darkOutline.withOpacity(0.2)
-                : context.colorScheme.outlineVariant.withOpacity(0.5),
+                ? AppColors.darkOutline.withValues(alpha: 0.2)
+                : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
           ),
         ),
       ),
@@ -219,13 +219,13 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
       decoration: BoxDecoration(
         color: isDark
-            ? AppColors.darkSurfaceVariant.withOpacity(0.3)
-            : AppColors.lightSurfaceVariant.withOpacity(0.6),
+            ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
+            : AppColors.lightSurfaceVariant.withValues(alpha: 0.6),
         border: Border(
           bottom: BorderSide(
             color: isDark
-                ? AppColors.darkOutline.withOpacity(0.1)
-                : AppColors.lightOutline.withOpacity(0.2),
+                ? AppColors.darkOutline.withValues(alpha: 0.1)
+                : AppColors.lightOutline.withValues(alpha: 0.2),
           ),
         ),
       ),
@@ -235,7 +235,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
             width: 32,
             height: 32,
             decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(0.12),
+              color: AppColors.primary.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
@@ -363,8 +363,8 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
       height: 40,
       decoration: BoxDecoration(
         color: isDark
-            ? AppColors.darkSurfaceVariant.withOpacity(0.2)
-            : AppColors.lightSurfaceVariant.withOpacity(0.5),
+            ? AppColors.darkSurfaceVariant.withValues(alpha: 0.2)
+            : AppColors.lightSurfaceVariant.withValues(alpha: 0.5),
       ),
       child: ListView(
         scrollDirection: Axis.horizontal,
@@ -526,7 +526,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
               width: 80,
               height: 80,
               decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.12),
+                color: AppColors.primary.withValues(alpha: 0.12),
                 shape: BoxShape.circle,
               ),
               child: Icon(
@@ -558,7 +558,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
-                    color: AppColors.primary.withOpacity(0.3),
+                    color: AppColors.primary.withValues(alpha: 0.3),
                     blurRadius: 12,
                     offset: const Offset(0, 4),
                   ),
@@ -639,7 +639,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
         gradient: AppColors.primaryGradient,
         boxShadow: [
           BoxShadow(
-            color: AppColors.primary.withOpacity(0.4),
+            color: AppColors.primary.withValues(alpha: 0.4),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -703,8 +703,8 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
             child: Divider(
               color: isDark
-                  ? AppColors.darkOutline.withOpacity(0.2)
-                  : AppColors.lightOutline.withOpacity(0.3),
+                  ? AppColors.darkOutline.withValues(alpha: 0.2)
+                  : AppColors.lightOutline.withValues(alpha: 0.3),
             ),
           ),
           _buildSwitchTile(
@@ -836,7 +836,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
             ),
             filled: true,
             fillColor: isDark
-                ? AppColors.darkSurfaceVariant.withOpacity(0.5)
+                ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
                 : AppColors.lightSurfaceVariant,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
@@ -945,8 +945,8 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
             child: Divider(
               color: isDark
-                  ? AppColors.darkOutline.withOpacity(0.2)
-                  : AppColors.lightOutline.withOpacity(0.3),
+                  ? AppColors.darkOutline.withValues(alpha: 0.2)
+                  : AppColors.lightOutline.withValues(alpha: 0.3),
             ),
           ),
           if (!file.isDirectory) ...[
@@ -1029,7 +1029,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
       width: 52,
       height: 52,
       decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
+        color: color.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Icon(
@@ -1094,7 +1094,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
             ),
             filled: true,
             fillColor: isDark
-                ? AppColors.darkSurfaceVariant.withOpacity(0.5)
+                ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
                 : AppColors.lightSurfaceVariant,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
@@ -1412,12 +1412,12 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
           ),
           decoration: BoxDecoration(
             color: isDark
-                ? AppColors.darkSurface.withOpacity(0.95)
-                : AppColors.lightSurface.withOpacity(0.98),
+                ? AppColors.darkSurface.withValues(alpha: 0.95)
+                : AppColors.lightSurface.withValues(alpha: 0.98),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
             border: Border(
               top: BorderSide(
-                color: isDark ? AppColors.glassStroke : AppColors.lightOutline.withOpacity(0.2),
+                color: isDark ? AppColors.glassStroke : AppColors.lightOutline.withValues(alpha: 0.2),
               ),
             ),
           ),
@@ -1431,8 +1431,8 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
                 height: 4,
                 decoration: BoxDecoration(
                   color: isDark
-                      ? AppColors.darkOnSurfaceVariant.withOpacity(0.3)
-                      : AppColors.lightOnSurfaceVariant.withOpacity(0.3),
+                      ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.3)
+                      : AppColors.lightOnSurfaceVariant.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -1490,9 +1490,9 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
                 height: 40,
                 decoration: BoxDecoration(
                   color: isSelected
-                      ? AppColors.primary.withOpacity(0.15)
+                      ? AppColors.primary.withValues(alpha: 0.15)
                       : (isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant)
-                          .withOpacity(0.5),
+                          .withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
@@ -1553,7 +1553,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
             height: 40,
             decoration: BoxDecoration(
               color: (isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant)
-                  .withOpacity(0.5),
+                  .withValues(alpha: 0.5),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
@@ -1605,7 +1605,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: iconColor.withOpacity(0.12),
+                  color: iconColor.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
@@ -1716,7 +1716,7 @@ class _DestinationBrowserState extends ConsumerState<_DestinationBrowser> {
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: widget.isDark
-                ? AppColors.darkSurfaceVariant.withOpacity(0.5)
+                ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
                 : AppColors.lightSurfaceVariant,
             borderRadius: BorderRadius.circular(12),
           ),
@@ -1775,7 +1775,7 @@ class _DestinationBrowserState extends ConsumerState<_DestinationBrowser> {
                                 width: 40,
                                 height: 40,
                                 decoration: BoxDecoration(
-                                  color: AppColors.fileFolder.withOpacity(0.15),
+                                  color: AppColors.fileFolder.withValues(alpha: 0.15),
                                   borderRadius: BorderRadius.circular(10),
                                 ),
                                 child: const Icon(

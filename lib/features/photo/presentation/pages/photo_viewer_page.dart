@@ -319,7 +319,7 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
                     Text(
                       '${_currentIndex + 1} / ${widget.photos.length}',
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.7),
+                        color: Colors.white.withValues(alpha: 0.7),
                         fontSize: 12,
                       ),
                     ),
@@ -374,14 +374,14 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
                     if (photo.modifiedAt != null) ...[
                       Icon(
                         Icons.calendar_today_rounded,
-                        color: Colors.white.withOpacity(0.7),
+                        color: Colors.white.withValues(alpha: 0.7),
                         size: 14,
                       ),
                       const SizedBox(width: 6),
                       Text(
                         DateFormat('yyyy-MM-dd HH:mm').format(photo.modifiedAt!),
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.7),
+                          color: Colors.white.withValues(alpha: 0.7),
                           fontSize: 12,
                         ),
                       ),
@@ -391,14 +391,14 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
                     if (photo.size > 0) ...[
                       Icon(
                         Icons.insert_drive_file_outlined,
-                        color: Colors.white.withOpacity(0.7),
+                        color: Colors.white.withValues(alpha: 0.7),
                         size: 14,
                       ),
                       const SizedBox(width: 6),
                       Text(
                         photo.displaySize,
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.7),
+                          color: Colors.white.withValues(alpha: 0.7),
                           fontSize: 12,
                         ),
                       ),
@@ -1138,7 +1138,7 @@ class _PhotoPageState extends State<_PhotoPage> {
                   Text(
                     '${(progress * 100).toInt()}%',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.7),
+                      color: Colors.white.withValues(alpha: 0.7),
                       fontSize: 12,
                     ),
                   ),
@@ -1212,13 +1212,13 @@ class _PhotoPageState extends State<_PhotoPage> {
         Icon(
           Icons.broken_image_outlined,
           size: 64,
-          color: Colors.white.withOpacity(0.5),
+          color: Colors.white.withValues(alpha: 0.5),
         ),
         const SizedBox(height: 16),
         Text(
           '加载失败',
           style: TextStyle(
-            color: Colors.white.withOpacity(0.7),
+            color: Colors.white.withValues(alpha: 0.7),
             fontSize: 16,
           ),
         ),
@@ -1228,7 +1228,7 @@ class _PhotoPageState extends State<_PhotoPage> {
           child: Text(
             errorMessage,
             style: TextStyle(
-              color: Colors.white.withOpacity(0.5),
+              color: Colors.white.withValues(alpha: 0.5),
               fontSize: 12,
             ),
             textAlign: TextAlign.center,
@@ -1341,7 +1341,7 @@ class _InfoRow extends StatelessWidget {
             child: Text(
               label,
               style: TextStyle(
-                color: Colors.white.withOpacity(0.6),
+                color: Colors.white.withValues(alpha: 0.6),
                 fontSize: 14,
               ),
             ),
@@ -1388,7 +1388,7 @@ class _ShareOptionTile extends StatelessWidget {
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.1),
+                color: Colors.white.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(icon, color: Colors.white, size: 24),
@@ -1410,7 +1410,7 @@ class _ShareOptionTile extends StatelessWidget {
                   Text(
                     subtitle,
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.6),
+                      color: Colors.white.withValues(alpha: 0.6),
                       fontSize: 13,
                     ),
                   ),
@@ -1419,7 +1419,7 @@ class _ShareOptionTile extends StatelessWidget {
             ),
             Icon(
               Icons.chevron_right,
-              color: Colors.white.withOpacity(0.5),
+              color: Colors.white.withValues(alpha: 0.5),
             ),
           ],
         ),

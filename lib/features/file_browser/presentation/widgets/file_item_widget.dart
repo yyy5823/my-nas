@@ -32,13 +32,13 @@ class FileItemWidget extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         color: isDark
-            ? AppColors.darkSurfaceVariant.withOpacity(0.3)
+            ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
             : context.colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: isDark
-              ? AppColors.darkOutline.withOpacity(0.2)
-              : context.colorScheme.outlineVariant.withOpacity(0.5),
+              ? AppColors.darkOutline.withValues(alpha: 0.2)
+              : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
         ),
       ),
       child: Material(
@@ -127,13 +127,13 @@ class FileItemWidget extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: isDark
-            ? AppColors.darkSurfaceVariant.withOpacity(0.3)
+            ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
             : context.colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: isDark
-              ? AppColors.darkOutline.withOpacity(0.2)
-              : context.colorScheme.outlineVariant.withOpacity(0.5),
+              ? AppColors.darkOutline.withValues(alpha: 0.2)
+              : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
         ),
       ),
       child: Material(
@@ -193,7 +193,7 @@ class FileItemWidget extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: color.withOpacity(isDark ? 0.15 : 0.1),
+        color: color.withValues(alpha: isDark ? 0.15 : 0.1),
         borderRadius: BorderRadius.circular(size * 0.3),
       ),
       child: Icon(

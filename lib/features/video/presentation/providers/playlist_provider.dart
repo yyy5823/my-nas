@@ -277,6 +277,4 @@ class PlaylistNotifier extends StateNotifier<PlaylistState> {
 
 /// 播放列表 provider
 final playlistProvider =
-    StateNotifierProvider<PlaylistNotifier, PlaylistState>((ref) {
-  return PlaylistNotifier();
-});
+    StateNotifierProvider<PlaylistNotifier, PlaylistState>((ref) => PlaylistNotifier());

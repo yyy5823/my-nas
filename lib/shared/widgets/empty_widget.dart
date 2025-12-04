@@ -43,15 +43,15 @@ class EmptyWidget extends StatelessWidget {
                 ),
                 border: Border.all(
                   color: isDark
-                      ? AppColors.darkOutline.withOpacity(0.3)
-                      : AppColors.lightOutline.withOpacity(0.5),
+                      ? AppColors.darkOutline.withValues(alpha: 0.3)
+                      : AppColors.lightOutline.withValues(alpha: 0.5),
                   width: 2,
                 ),
                 boxShadow: isDark
                     ? null
                     : [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
+                          color: Colors.black.withValues(alpha: 0.05),
                           blurRadius: 20,
                           offset: const Offset(0, 8),
                         ),
@@ -61,8 +61,8 @@ class EmptyWidget extends StatelessWidget {
                 icon ?? Icons.inbox_outlined,
                 size: 44,
                 color: isDark
-                    ? AppColors.darkOnSurfaceVariant.withOpacity(0.6)
-                    : AppColors.lightOnSurfaceVariant.withOpacity(0.6),
+                    ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.6)
+                    : AppColors.lightOnSurfaceVariant.withValues(alpha: 0.6),
               ),
             ),
             const SizedBox(height: AppSpacing.xl),

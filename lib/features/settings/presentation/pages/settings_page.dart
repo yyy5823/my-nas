@@ -183,7 +183,7 @@ class SettingsPage extends ConsumerWidget {
         Container(
           padding: const EdgeInsets.all(6),
           decoration: BoxDecoration(
-            color: AppColors.primary.withOpacity(0.1),
+            color: AppColors.primary.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(
@@ -213,19 +213,19 @@ class SettingsPage extends ConsumerWidget {
     return Container(
       decoration: BoxDecoration(
         color: isDark
-            ? AppColors.darkSurfaceVariant.withOpacity(0.3)
+            ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
             : AppColors.lightSurface,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: isDark
-              ? AppColors.darkOutline.withOpacity(0.2)
-              : AppColors.lightOutline.withOpacity(0.3),
+              ? AppColors.darkOutline.withValues(alpha: 0.2)
+              : AppColors.lightOutline.withValues(alpha: 0.3),
         ),
         boxShadow: isDark
             ? null
             : [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.03),
+                  color: Colors.black.withValues(alpha: 0.03),
                   blurRadius: 10,
                   offset: const Offset(0, 4),
                 ),
@@ -266,7 +266,7 @@ class SettingsPage extends ConsumerWidget {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: iconColor.withOpacity(0.12),
+                  color: iconColor.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
@@ -325,8 +325,8 @@ class SettingsPage extends ConsumerWidget {
       child: Divider(
         height: 1,
         color: isDark
-            ? AppColors.darkOutline.withOpacity(0.2)
-            : AppColors.lightOutline.withOpacity(0.3),
+            ? AppColors.darkOutline.withValues(alpha: 0.2)
+            : AppColors.lightOutline.withValues(alpha: 0.3),
       ),
     );
   }
@@ -412,12 +412,12 @@ class SettingsPage extends ConsumerWidget {
         child: Container(
           decoration: BoxDecoration(
             color: isDark
-                ? AppColors.darkSurface.withOpacity(0.95)
-                : AppColors.lightSurface.withOpacity(0.98),
+                ? AppColors.darkSurface.withValues(alpha: 0.95)
+                : AppColors.lightSurface.withValues(alpha: 0.98),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
             border: Border(
               top: BorderSide(
-                color: isDark ? AppColors.glassStroke : AppColors.lightOutline.withOpacity(0.2),
+                color: isDark ? AppColors.glassStroke : AppColors.lightOutline.withValues(alpha: 0.2),
               ),
             ),
           ),
@@ -432,8 +432,8 @@ class SettingsPage extends ConsumerWidget {
                   height: 4,
                   decoration: BoxDecoration(
                     color: isDark
-                        ? AppColors.darkOnSurfaceVariant.withOpacity(0.3)
-                        : AppColors.lightOnSurfaceVariant.withOpacity(0.3),
+                        ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.3)
+                        : AppColors.lightOnSurfaceVariant.withValues(alpha: 0.3),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -481,9 +481,9 @@ class SettingsPage extends ConsumerWidget {
                 height: 40,
                 decoration: BoxDecoration(
                   color: isSelected
-                      ? AppColors.primary.withOpacity(0.15)
+                      ? AppColors.primary.withValues(alpha: 0.15)
                       : (isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant)
-                          .withOpacity(0.5),
+                          .withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
@@ -572,7 +572,7 @@ class _VersionTileState extends State<_VersionTile> {
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: AppColors.secondary.withOpacity(0.12),
+                color: AppColors.secondary.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
@@ -663,7 +663,7 @@ class _LicenseTileState extends State<_LicenseTile> {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: AppColors.tertiary.withOpacity(0.12),
+                  color: AppColors.tertiary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
@@ -780,7 +780,7 @@ class _TmdbApiKeyTileState extends State<_TmdbApiKeyTile> {
                 ),
                 filled: true,
                 fillColor: widget.isDark
-                    ? AppColors.darkSurfaceVariant.withOpacity(0.3)
+                    ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
                     : Colors.grey[100],
               ),
               style: TextStyle(
@@ -857,7 +857,7 @@ class _TmdbApiKeyTileState extends State<_TmdbApiKeyTile> {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: AppColors.fileVideo.withOpacity(0.12),
+                  color: AppColors.fileVideo.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
@@ -896,7 +896,7 @@ class _TmdbApiKeyTileState extends State<_TmdbApiKeyTile> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.12),
+                    color: Colors.green.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: const Row(

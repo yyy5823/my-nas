@@ -39,12 +39,12 @@ class DownloadManagerSheet extends ConsumerWidget {
           child: Container(
             decoration: BoxDecoration(
               color: isDark
-                  ? AppColors.darkSurface.withOpacity(0.95)
-                  : AppColors.lightSurface.withOpacity(0.98),
+                  ? AppColors.darkSurface.withValues(alpha: 0.95)
+                  : AppColors.lightSurface.withValues(alpha: 0.98),
               borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
               border: Border(
                 top: BorderSide(
-                  color: isDark ? AppColors.glassStroke : AppColors.lightOutline.withOpacity(0.2),
+                  color: isDark ? AppColors.glassStroke : AppColors.lightOutline.withValues(alpha: 0.2),
                 ),
               ),
             ),
@@ -57,8 +57,8 @@ class DownloadManagerSheet extends ConsumerWidget {
                   height: 4,
                   decoration: BoxDecoration(
                     color: isDark
-                        ? AppColors.darkOnSurfaceVariant.withOpacity(0.3)
-                        : AppColors.lightOnSurfaceVariant.withOpacity(0.3),
+                        ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.3)
+                        : AppColors.lightOnSurfaceVariant.withValues(alpha: 0.3),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -71,7 +71,7 @@ class DownloadManagerSheet extends ConsumerWidget {
                         width: 40,
                         height: 40,
                         decoration: BoxDecoration(
-                          color: AppColors.primary.withOpacity(0.12),
+                          color: AppColors.primary.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: const Icon(
@@ -98,8 +98,8 @@ class DownloadManagerSheet extends ConsumerWidget {
                   child: Divider(
                     height: 1,
                     color: isDark
-                        ? AppColors.darkOutline.withOpacity(0.2)
-                        : AppColors.lightOutline.withOpacity(0.3),
+                        ? AppColors.darkOutline.withValues(alpha: 0.2)
+                        : AppColors.lightOutline.withValues(alpha: 0.3),
                   ),
                 ),
                 // 任务列表
@@ -162,7 +162,7 @@ class DownloadManagerSheet extends ConsumerWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
             color: isDark
-                ? AppColors.darkSurfaceVariant.withOpacity(0.5)
+                ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
                 : AppColors.lightSurfaceVariant,
             borderRadius: BorderRadius.circular(12),
           ),
@@ -187,7 +187,7 @@ class DownloadManagerSheet extends ConsumerWidget {
             width: 80,
             height: 80,
             decoration: BoxDecoration(
-              color: AppColors.success.withOpacity(0.12),
+              color: AppColors.success.withValues(alpha: 0.12),
               shape: BoxShape.circle,
             ),
             child: const Icon(
@@ -234,13 +234,13 @@ class _DownloadTaskTile extends ConsumerWidget {
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
       decoration: BoxDecoration(
         color: isDark
-            ? AppColors.darkSurfaceVariant.withOpacity(0.3)
+            ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
             : AppColors.lightSurface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: isDark
-              ? AppColors.darkOutline.withOpacity(0.2)
-              : AppColors.lightOutline.withOpacity(0.3),
+              ? AppColors.darkOutline.withValues(alpha: 0.2)
+              : AppColors.lightOutline.withValues(alpha: 0.3),
         ),
       ),
       child: Padding(
@@ -312,7 +312,7 @@ class _DownloadTaskTile extends ConsumerWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: AppColors.error.withOpacity(0.1),
+                  color: AppColors.error.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
@@ -355,7 +355,7 @@ class _DownloadTaskTile extends ConsumerWidget {
       width: 40,
       height: 40,
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(12),
       ),
       child: showProgress

@@ -87,7 +87,7 @@ class _ElegantSegmentControlState extends State<ElegantSegmentControl>
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final backgroundColor = widget.backgroundColor ??
-        (isDark ? AppColors.darkSurfaceVariant.withOpacity(0.5) : Colors.grey[200]!);
+        (isDark ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5) : Colors.grey[200]!);
     final selectedColor = widget.selectedColor ??
         (isDark ? AppColors.darkOnSurface : Colors.black87);
     final unselectedColor = widget.unselectedColor ??
@@ -111,8 +111,7 @@ class _ElegantSegmentControlState extends State<ElegantSegmentControl>
               // 滑动指示器
               AnimatedBuilder(
                 animation: _slideAnimation,
-                builder: (context, child) {
-                  return Positioned(
+                builder: (context, child) => Positioned(
                     left: _slideAnimation.value * itemWidth,
                     top: 0,
                     bottom: 0,
@@ -123,15 +122,14 @@ class _ElegantSegmentControlState extends State<ElegantSegmentControl>
                         borderRadius: BorderRadius.circular(10),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.08),
+                            color: Colors.black.withValues(alpha: 0.08),
                             blurRadius: 8,
                             offset: const Offset(0, 2),
                           ),
                         ],
                       ),
                     ),
-                  );
-                },
+                  ),
               ),
               // 分段项目
               Row(
@@ -260,8 +258,7 @@ class _GlowingSegmentControlState extends State<GlowingSegmentControl>
               // 发光指示器
               AnimatedBuilder(
                 animation: _animation,
-                builder: (context, child) {
-                  return Positioned(
+                builder: (context, child) => Positioned(
                     left: _animation.value * itemWidth + 4,
                     top: 4,
                     bottom: 4,
@@ -270,7 +267,7 @@ class _GlowingSegmentControlState extends State<GlowingSegmentControl>
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           colors: [
-                            accentColor.withOpacity(0.8),
+                            accentColor.withValues(alpha: 0.8),
                             accentColor,
                           ],
                           begin: Alignment.topLeft,
@@ -279,15 +276,14 @@ class _GlowingSegmentControlState extends State<GlowingSegmentControl>
                         borderRadius: BorderRadius.circular(12),
                         boxShadow: [
                           BoxShadow(
-                            color: accentColor.withOpacity(0.4),
+                            color: accentColor.withValues(alpha: 0.4),
                             blurRadius: 12,
                             offset: const Offset(0, 4),
                           ),
                         ],
                       ),
                     ),
-                  );
-                },
+                  ),
               ),
               // 分段项目
               Row(

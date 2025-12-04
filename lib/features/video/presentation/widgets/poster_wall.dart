@@ -313,8 +313,7 @@ class _PosterCardState extends State<PosterCard> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildPlaceholder(bool isDark) {
-    return Container(
+  Widget _buildPlaceholder(bool isDark) => Container(
       color: isDark ? AppColors.darkSurfaceElevated : Colors.grey[200],
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -343,10 +342,8 @@ class _PosterCardState extends State<PosterCard> with SingleTickerProviderStateM
         ],
       ),
     );
-  }
 
-  Widget _buildRatingBadge() {
-    return Container(
+  Widget _buildRatingBadge() => Container(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
       decoration: BoxDecoration(
         color: _getRatingColor(),
@@ -372,7 +369,6 @@ class _PosterCardState extends State<PosterCard> with SingleTickerProviderStateM
         ],
       ),
     );
-  }
 
   Color _getRatingColor() {
     final rating = widget.metadata.rating ?? 0;
@@ -508,8 +504,7 @@ class PosterRow extends StatelessWidget {
     );
   }
 
-  Widget _buildMiniPlaceholder(bool isDark, VideoMetadata metadata) {
-    return Container(
+  Widget _buildMiniPlaceholder(bool isDark, VideoMetadata metadata) => Container(
       color: isDark ? AppColors.darkSurfaceElevated : Colors.grey[200],
       child: Center(
         child: Icon(
@@ -521,5 +516,4 @@ class PosterRow extends StatelessWidget {
         ),
       ),
     );
-  }
 }

@@ -45,8 +45,7 @@ class MusicFileWithSource {
   });
 
   /// 从缓存条目创建
-  factory MusicFileWithSource.fromCacheEntry(MusicLibraryCacheEntry entry) {
-    return MusicFileWithSource(
+  factory MusicFileWithSource.fromCacheEntry(MusicLibraryCacheEntry entry) => MusicFileWithSource(
       file: FileItem(
         name: entry.fileName,
         path: entry.filePath,
@@ -66,7 +65,6 @@ class MusicFileWithSource {
       coverBase64: entry.coverBase64,
       metadataExtracted: entry.metadataExtracted,
     );
-  }
 
   final FileItem file;
   final String sourceId;
@@ -108,7 +106,7 @@ class MusicFileWithSource {
   }
 
   /// 显示的专辑
-  String get displayAlbum => album?.isNotEmpty == true ? album! : '未知专辑';
+  String get displayAlbum => album?.isNotEmpty ?? false ? album! : '未知专辑';
 
   /// 是否有封面
   bool get hasCover => coverBase64 != null && coverBase64!.isNotEmpty;
@@ -164,8 +162,7 @@ class MusicFileWithSource {
     String? genre,
     String? coverBase64,
     bool? metadataExtracted,
-  }) {
-    return MusicFileWithSource(
+  }) => MusicFileWithSource(
       file: file,
       sourceId: sourceId,
       title: title ?? this.title,
@@ -178,13 +175,12 @@ class MusicFileWithSource {
       coverBase64: coverBase64 ?? this.coverBase64,
       metadataExtracted: metadataExtracted ?? this.metadataExtracted,
     );
-  }
 }
 
 /// 音乐列表状态
 final musicListProvider =
     StateNotifierProvider<MusicListNotifier, MusicListState>(
-        (ref) => MusicListNotifier(ref));
+        MusicListNotifier.new);
 
 sealed class MusicListState {}
 
@@ -684,8 +680,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
   }
 
   /// 构建首页头部
-  Widget _buildHeader(BuildContext context, WidgetRef ref, bool isDark, MusicListState state) {
-    return Container(
+  Widget _buildHeader(BuildContext context, WidgetRef ref, bool isDark, MusicListState state) => Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -710,7 +705,6 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
         ),
       ),
     );
-  }
 
   /// 问候语头部
   Widget _buildGreetingHeader(BuildContext context, WidgetRef ref, bool isDark, MusicListState state) {
@@ -769,8 +763,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
   }
 
   /// 搜索栏
-  Widget _buildSearchBar(BuildContext context, WidgetRef ref, bool isDark) {
-    return Row(
+  Widget _buildSearchBar(BuildContext context, WidgetRef ref, bool isDark) => Row(
       children: [
         IconButton(
           onPressed: () {
@@ -806,7 +799,6 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
           ),
       ],
     );
-  }
 
   void _showSettingsMenu(BuildContext context) {
     showModalBottomSheet<void>(
@@ -1119,8 +1111,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
   }
 
   /// 浏览音乐库区域
-  Widget _buildBrowseSection(BuildContext context, WidgetRef ref, MusicListLoaded state, bool isDark, bool isDesktop) {
-    return Column(
+  Widget _buildBrowseSection(BuildContext context, WidgetRef ref, MusicListLoaded state, bool isDark, bool isDesktop) => Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
@@ -1170,7 +1161,6 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
         ),
       ],
     );
-  }
 
   /// 搜索结果
   Widget _buildSearchResults(BuildContext context, WidgetRef ref, MusicListLoaded state, bool isDark) {
@@ -1694,8 +1684,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
     WidgetRef ref,
     MusicListLoaded state,
     bool isDark,
-  ) {
-    return RefreshIndicator(
+  ) => RefreshIndicator(
       onRefresh: () => ref.read(musicListProvider.notifier).forceRefresh(),
       child: CustomScrollView(
         slivers: [
@@ -1720,7 +1709,6 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
         ],
       ),
     );
-  }
 }
 
 // ==================== 新版首页组件 ====================
@@ -2066,8 +2054,7 @@ class _EmptyPlaylistHint extends StatelessWidget {
   final bool isDesktop;
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
+  Widget build(BuildContext context) => Container(
       padding: EdgeInsets.all(isDesktop ? 32 : 20),
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3) : Colors.grey[100],
@@ -2147,7 +2134,6 @@ class _EmptyPlaylistHint extends StatelessWidget {
               ],
             ),
     );
-  }
 }
 
 /// 浏览分类标签
@@ -2243,8 +2229,7 @@ class _MusicCategoryPage extends ConsumerWidget {
     );
   }
 
-  Widget _buildContent(BuildContext context, WidgetRef ref, bool isDark) {
-    return switch (category) {
+  Widget _buildContent(BuildContext context, WidgetRef ref, bool isDark) => switch (category) {
       MusicCategory.all => _AllSongsView(tracks: tracks, isDark: isDark),
       MusicCategory.artists => _ArtistsView(tracks: tracks, isDark: isDark),
       MusicCategory.albums => _AlbumsView(tracks: tracks, isDark: isDark),
@@ -2252,7 +2237,6 @@ class _MusicCategoryPage extends ConsumerWidget {
       MusicCategory.favorites => _FavoritesView(isDark: isDark),
       MusicCategory.recent => _RecentView(isDark: isDark),
     };
-  }
 }
 
 /// 全部歌曲视图
@@ -2510,7 +2494,7 @@ class _MusicCacheInfoBar extends ConsumerWidget {
                 child: Container(
                   padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
-                    color: AppColors.fileAudio.withOpacity(0.1),
+                    color: AppColors.fileAudio.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Icon(
@@ -3000,8 +2984,7 @@ class _MusicListTile extends ConsumerWidget {
             // 已有歌单列表
             if (playlistState.playlists.isNotEmpty) ...[
               const Divider(),
-              ...playlistState.playlists.take(5).map((playlist) {
-                return ListTile(
+              ...playlistState.playlists.take(5).map((playlist) => ListTile(
                   leading: Container(
                     width: 40,
                     height: 40,
@@ -3041,8 +3024,7 @@ class _MusicListTile extends ConsumerWidget {
                       );
                     }
                   },
-                );
-              }),
+                )),
             ],
             const SizedBox(height: 16),
           ],
@@ -3168,8 +3150,7 @@ class _ArtistTile extends ConsumerWidget {
   final bool isDark;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Container(
+  Widget build(BuildContext context, WidgetRef ref) => Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       decoration: BoxDecoration(
         color: isDark
@@ -3219,17 +3200,14 @@ class _ArtistTile extends ConsumerWidget {
         collapsedShape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
         ),
-        children: tracks.asMap().entries.map((entry) {
-          return _CompactMusicTile(
+        children: tracks.asMap().entries.map((entry) => _CompactMusicTile(
             track: entry.value,
             isDark: isDark,
             allTracks: tracks,
             trackIndex: entry.key,
-          );
-        }).toList(),
+          )).toList(),
       ),
     );
-  }
 }
 
 /// 专辑视图
@@ -3292,8 +3270,7 @@ class _AlbumCard extends ConsumerWidget {
   final bool isDark;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return GestureDetector(
+  Widget build(BuildContext context, WidgetRef ref) => GestureDetector(
       onTap: () => _showAlbumTracks(context, ref),
       child: Container(
         decoration: BoxDecoration(
@@ -3363,7 +3340,6 @@ class _AlbumCard extends ConsumerWidget {
         ),
       ),
     );
-  }
 
   void _showAlbumTracks(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -3442,14 +3418,12 @@ class _AlbumCard extends ConsumerWidget {
               child: ListView.builder(
                 controller: scrollController,
                 itemCount: tracks.length,
-                itemBuilder: (context, index) {
-                  return _CompactMusicTile(
+                itemBuilder: (context, index) => _CompactMusicTile(
                     track: tracks[index],
                     isDark: isDark,
                     allTracks: tracks,
                     trackIndex: index,
-                  );
-                },
+                  ),
               ),
             ),
           ],
@@ -3513,8 +3487,7 @@ class _FolderTile extends ConsumerWidget {
   final bool isDark;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Container(
+  Widget build(BuildContext context, WidgetRef ref) => Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       decoration: BoxDecoration(
         color: isDark
@@ -3567,7 +3540,6 @@ class _FolderTile extends ConsumerWidget {
         }).toList(),
       ),
     );
-  }
 }
 
 /// 收藏视图
@@ -3941,8 +3913,7 @@ class _PlaylistTile extends ConsumerWidget {
   final bool isDark;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Container(
+  Widget build(BuildContext context, WidgetRef ref) => Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       decoration: BoxDecoration(
         color: isDark
@@ -4001,7 +3972,6 @@ class _PlaylistTile extends ConsumerWidget {
         ),
       ),
     );
-  }
 
   void _showPlaylistDetail(BuildContext context, WidgetRef ref) {
     showModalBottomSheet<void>(
@@ -4286,13 +4256,11 @@ class _PlaylistDetailSheet extends ConsumerWidget {
               : ListView.builder(
                   controller: scrollController,
                   itemCount: tracksInPlaylist.length,
-                  itemBuilder: (context, index) {
-                    return _PlaylistTrackTile(
+                  itemBuilder: (context, index) => _PlaylistTrackTile(
                       track: tracksInPlaylist[index],
                       playlistId: playlist.id,
                       isDark: isDark,
-                    );
-                  },
+                    ),
                 ),
         ),
       ],
@@ -4809,8 +4777,7 @@ class _CompactMusicTile extends ConsumerWidget {
             ),
             if (playlistState.playlists.isNotEmpty) ...[
               const Divider(),
-              ...playlistState.playlists.take(5).map((playlist) {
-                return ListTile(
+              ...playlistState.playlists.take(5).map((playlist) => ListTile(
                   leading: Container(
                     width: 40,
                     height: 40,
@@ -4842,8 +4809,7 @@ class _CompactMusicTile extends ConsumerWidget {
                       );
                     }
                   },
-                );
-              }),
+                )),
             ],
             const SizedBox(height: 16),
           ],
@@ -4920,8 +4886,7 @@ class _PlayAllButton extends ConsumerWidget {
   final bool isDark;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return ElevatedButton.icon(
+  Widget build(BuildContext context, WidgetRef ref) => ElevatedButton.icon(
       onPressed: () => _playAll(context, ref),
       icon: const Icon(Icons.play_arrow_rounded, size: 20),
       label: const Text('播放全部'),
@@ -4934,7 +4899,6 @@ class _PlayAllButton extends ConsumerWidget {
         ),
       ),
     );
-  }
 
   Future<void> _playAll(BuildContext context, WidgetRef ref) async {
     if (tracks.isEmpty) return;
@@ -4970,8 +4934,7 @@ class _PlayAllButton extends ConsumerWidget {
 }
 
 /// 空状态视图
-Widget _buildEmptyView(String message, IconData icon, bool isDark) {
-  return Center(
+Widget _buildEmptyView(String message, IconData icon, bool isDark) => Center(
     child: Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -4995,7 +4958,6 @@ Widget _buildEmptyView(String message, IconData icon, bool isDark) {
       ],
     ),
   );
-}
 
 /// 根据索引获取渐变色
 List<Color> _getGradientColorsForIndex(int index) {
