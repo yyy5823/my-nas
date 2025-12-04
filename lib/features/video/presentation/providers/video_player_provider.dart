@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:my_nas/core/services/media_proxy_server.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/video/data/services/subtitle_service.dart';
 import 'package:my_nas/features/video/data/services/video_history_service.dart';
@@ -330,6 +331,28 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
     logger.d('VideoPlayer: URL => ${video.url}');
     logger.d('VideoPlayer: size=${video.size}, path=${video.path}');
 
+    // 确定播放 URL（SMB 等协议需要通过代理）
+    String playUrl = video.url;
+    if (video.needsProxy) {
+      if (video.sourceId == null) {
+        logger.e('VideoPlayer: SMB 视频缺少 sourceId，无法使用代理');
+        state = state.copyWith(errorMessage: '无法播放：缺少数据源信息');
+        return;
+      }
+      try {
+        playUrl = await MediaProxyServer.instance.registerFile(
+          sourceId: video.sourceId!,
+          filePath: video.path,
+          fileSize: video.size,
+        );
+        logger.i('VideoPlayer: 使用代理 URL => $playUrl');
+      } catch (e) {
+        logger.e('VideoPlayer: 启动代理服务器失败', e);
+        state = state.copyWith(errorMessage: '无法启动媒体代理服务');
+        return;
+      }
+    }
+
     // 确定起始位置
     Duration? resumePosition = startPosition;
 
@@ -345,7 +368,7 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
     // 打开视频并设置起始位置
     logger.d('VideoPlayer: 正在打开视频源...');
     try {
-      await _player.open(Media(video.url));
+      await _player.open(Media(playUrl));
       logger.d('VideoPlayer: 视频源打开成功');
     } catch (e, stackTrace) {
       logger.e('VideoPlayer: 打开视频失败', e, stackTrace);
@@ -389,6 +412,7 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
         videoPath: video.path,
         videoName: video.name,
         videoUrl: video.url,
+        sourceId: video.sourceId,
         thumbnailUrl: video.thumbnailUrl,
         size: video.size,
         watchedAt: DateTime.now(),

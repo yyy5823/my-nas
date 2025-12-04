@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/features/music/presentation/pages/music_player_page.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
 
 /// 底部迷你播放器
@@ -51,40 +52,51 @@ class MiniPlayer extends ConsumerWidget {
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: Row(
                 children: [
-                  // 封面
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      borderRadius: AppRadius.borderRadiusSm,
-                      color: context.colorScheme.surfaceContainerHighest,
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: _buildCoverImage(context, currentMusic.coverData, currentMusic.coverUrl),
-                  ),
-                  const SizedBox(width: 12),
-                  // 歌曲信息
+                  // 点击封面和歌曲信息区域打开全屏播放器
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          currentMusic.displayTitle,
-                          style: context.textTheme.bodyMedium,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          currentMusic.displayArtist,
-                          style: context.textTheme.bodySmall?.copyWith(
-                            color: context.colorScheme.onSurfaceVariant,
+                    child: GestureDetector(
+                      onTap: () => MusicPlayerPage.open(context),
+                      behavior: HitTestBehavior.opaque,
+                      child: Row(
+                        children: [
+                          // 封面
+                          Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              borderRadius: AppRadius.borderRadiusSm,
+                              color: context.colorScheme.surfaceContainerHighest,
+                            ),
+                            clipBehavior: Clip.antiAlias,
+                            child: _buildCoverImage(context, currentMusic.coverData, currentMusic.coverUrl),
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
+                          const SizedBox(width: 12),
+                          // 歌曲信息
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  currentMusic.displayTitle,
+                                  style: context.textTheme.bodyMedium,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  currentMusic.displayArtist,
+                                  style: context.textTheme.bodySmall?.copyWith(
+                                    color: context.colorScheme.onSurfaceVariant,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   // 控制按钮

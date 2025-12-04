@@ -193,6 +193,7 @@ class VideoHistoryItem {
     required this.videoPath,
     required this.videoName,
     required this.videoUrl,
+    this.sourceId,
     this.thumbnailUrl,
     this.size = 0,
     this.lastPosition,
@@ -203,6 +204,7 @@ class VideoHistoryItem {
   final String videoPath;
   final String videoName;
   final String videoUrl;
+  final String? sourceId;
   final String? thumbnailUrl;
   final int size;
   final Duration? lastPosition;
@@ -220,6 +222,7 @@ class VideoHistoryItem {
     String? videoPath,
     String? videoName,
     String? videoUrl,
+    String? sourceId,
     String? thumbnailUrl,
     int? size,
     Duration? lastPosition,
@@ -230,6 +233,7 @@ class VideoHistoryItem {
         videoPath: videoPath ?? this.videoPath,
         videoName: videoName ?? this.videoName,
         videoUrl: videoUrl ?? this.videoUrl,
+        sourceId: sourceId ?? this.sourceId,
         thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
         size: size ?? this.size,
         lastPosition: lastPosition ?? this.lastPosition,
@@ -241,6 +245,7 @@ class VideoHistoryItem {
         'videoPath': videoPath,
         'videoName': videoName,
         'videoUrl': videoUrl,
+        'sourceId': sourceId,
         'thumbnailUrl': thumbnailUrl,
         'size': size,
         'lastPositionMs': lastPosition?.inMilliseconds,
@@ -252,6 +257,7 @@ class VideoHistoryItem {
         videoPath: json['videoPath'] as String,
         videoName: json['videoName'] as String,
         videoUrl: json['videoUrl'] as String,
+        sourceId: json['sourceId'] as String?,
         thumbnailUrl: json['thumbnailUrl'] as String?,
         size: json['size'] as int? ?? 0,
         lastPosition: json['lastPositionMs'] != null

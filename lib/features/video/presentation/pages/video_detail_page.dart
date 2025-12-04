@@ -500,6 +500,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         name: widget.metadata.displayTitle,
         path: widget.metadata.filePath,
         url: url,
+        sourceId: widget.sourceId,
         size: 0,
         thumbnailUrl: widget.metadata.displayPosterUrl,
       );
@@ -535,6 +536,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         name: '${localFile.displayTitle} - ${episode.name}',
         path: localFile.filePath,
         url: url,
+        sourceId: widget.sourceId,
         size: 0,
         thumbnailUrl: episode.stillUrl.isNotEmpty ? episode.stillUrl : localFile.displayPosterUrl,
       );

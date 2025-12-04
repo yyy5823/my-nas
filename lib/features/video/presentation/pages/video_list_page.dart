@@ -221,18 +221,22 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
 
   Future<void> _init() async {
     try {
-      await _metadataService.init();
-      await _cacheService.init();
+      // 并行初始化服务
+      await Future.wait([
+        _metadataService.init(),
+        _cacheService.init(),
+      ]);
 
-      // 从缓存加载视频数据
-      await _loadFromCache();
+      // 从缓存加载视频数据（异步分批加载）
+      // 使用 unawaited 让加载在后台进行，不阻塞
+      _loadFromCache();
     } catch (e) {
       logger.e('VideoListNotifier: 初始化失败', e);
       state = VideoListLoaded(videos: [], fromCache: false);
     }
   }
 
-  /// 从缓存加载视频数据
+  /// 从缓存加载视频数据（优化：分批加载元数据）
   Future<void> _loadFromCache() async {
     final cache = _cacheService.getCache();
     if (cache != null && cache.videos.isNotEmpty) {
@@ -248,27 +252,97 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
           sourceId: entry.sourceId,
         )).toList();
 
-      // 加载缓存的元数据
-      final metadataMap = <String, VideoMetadata>{};
-      for (final video in videos) {
-        final cached = _metadataService.getCached(video.sourceId, video.path);
-        if (cached != null) {
-          metadataMap[cached.uniqueKey] = cached;
-        }
-      }
-
+      // 第一阶段：快速显示视频列表（无元数据）
       state = VideoListLoaded(
         videos: videos,
-        metadataMap: metadataMap,
+        metadataMap: const {},
         fromCache: true,
+        isLoadingMetadata: true,
       );
 
-      logger.i('VideoListNotifier: 从缓存加载了 ${videos.length} 个视频');
+      logger.i('VideoListNotifier: 快速加载了 ${videos.length} 个视频');
+
+      // 第二阶段：异步分批加载元数据
+      await _loadMetadataBatched(videos);
     } else {
       // 没有缓存，显示空状态
       state = VideoListLoaded(videos: [], fromCache: true);
       logger.i('VideoListNotifier: 无缓存数据');
     }
+  }
+
+  /// 分批加载元数据，优先加载首屏内容
+  Future<void> _loadMetadataBatched(List<VideoFileWithSource> videos) async {
+    final metadataMap = <String, VideoMetadata>{};
+
+    // 第一阶段：优先加载首屏内容（前 30 个，覆盖推荐、最近添加、电影等首屏分类）
+    const firstBatchSize = 30;
+    final firstBatch = videos.take(firstBatchSize).toList();
+
+    for (final video in firstBatch) {
+      final cached = _metadataService.getCached(video.sourceId, video.path);
+      if (cached != null) {
+        metadataMap[cached.uniqueKey] = cached;
+      }
+    }
+
+    // 立即更新首屏数据
+    final current = state;
+    if (current is VideoListLoaded) {
+      state = current.copyWith(
+        metadataMap: Map.from(metadataMap),
+        metadataProgress: firstBatch.length / videos.length,
+      );
+    }
+
+    logger.i('VideoListNotifier: 首屏元数据加载完成，共 ${metadataMap.length} 个');
+
+    // 第二阶段：后台加载剩余内容
+    if (videos.length > firstBatchSize) {
+      await Future<void>.delayed(Duration.zero); // 让出执行权
+
+      const batchSize = 100; // 后续批次可以更大
+      final remainingVideos = videos.skip(firstBatchSize).toList();
+      final totalBatches = (remainingVideos.length / batchSize).ceil();
+
+      for (var batch = 0; batch < totalBatches; batch++) {
+        final start = batch * batchSize;
+        final end = (start + batchSize).clamp(0, remainingVideos.length);
+        final batchVideos = remainingVideos.sublist(start, end);
+
+        for (final video in batchVideos) {
+          final cached = _metadataService.getCached(video.sourceId, video.path);
+          if (cached != null) {
+            metadataMap[cached.uniqueKey] = cached;
+          }
+        }
+
+        // 更新状态
+        final currentState = state;
+        if (currentState is VideoListLoaded) {
+          state = currentState.copyWith(
+            metadataMap: Map.from(metadataMap),
+            metadataProgress: (firstBatchSize + (batch + 1) * batchSize) / videos.length,
+          );
+        }
+
+        // 让出执行权
+        if (batch < totalBatches - 1) {
+          await Future<void>.delayed(Duration.zero);
+        }
+      }
+    }
+
+    // 完成加载
+    final finalState = state;
+    if (finalState is VideoListLoaded) {
+      state = finalState.copyWith(
+        isLoadingMetadata: false,
+        metadataProgress: 1.0,
+      );
+    }
+
+    logger.i('VideoListNotifier: 全部元数据加载完成，共 ${metadataMap.length} 个');
   }
 
   /// 重新从缓存加载（扫描完成后调用）
@@ -829,8 +903,8 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     final isDesktop = screenWidth > 800;
 
     // 获取最近添加的视频（按修改时间排序）
-    // 用于分类行显示，限制 20 个
-    final recentVideos = _getRecentVideos(state, limit: 20);
+    // 用于分类行显示，限制 10 个
+    final recentVideos = _getRecentVideos(state, limit: 10);
     // 用于查看更多页面，不限制数量
     final allRecentVideos = _getRecentVideos(state);
 
@@ -877,7 +951,10 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               isDark: isDark,
               icon: Icons.schedule_rounded,
               iconColor: Colors.blue,
-              maxCount: 20,
+              maxCount: 10,
+              onViewAll: allRecentVideos.length > 10
+                  ? () => _showCategoryPage(context, '最近添加', allRecentVideos)
+                  : null,
             ),
           ),
 
@@ -891,7 +968,10 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               isDark: isDark,
               icon: Icons.movie_rounded,
               iconColor: AppColors.primary,
-              maxCount: 20,
+              maxCount: 10,
+              onViewAll: movies.length > 10
+                  ? () => _showCategoryPage(context, '电影', movies)
+                  : null,
             ),
           ),
 
@@ -905,7 +985,10 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               isDark: isDark,
               icon: Icons.live_tv_rounded,
               iconColor: AppColors.accent,
-              maxCount: 20,
+              maxCount: 10,
+              onViewAll: tvShows.length > 10
+                  ? () => _showCategoryPage(context, '剧集', tvShows)
+                  : null,
             ),
           ),
 
@@ -919,7 +1002,10 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               isDark: isDark,
               icon: Icons.star_rounded,
               iconColor: Colors.amber,
-              maxCount: 20,
+              maxCount: 10,
+              onViewAll: topRated.length > 15
+                  ? () => _showCategoryPage(context, '高分推荐', topRated.skip(5).toList())
+                  : null,
             ),
           ),
 
@@ -1055,6 +1141,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
         name: metadata.displayTitle,
         path: metadata.filePath,
         url: url,
+        sourceId: metadata.sourceId,
         size: 0,
         thumbnailUrl: metadata.displayPosterUrl,
       );
@@ -1279,6 +1366,7 @@ class _ContinueWatchingCard extends ConsumerWidget {
       name: item.videoName,
       path: item.videoPath,
       url: item.videoUrl,
+      sourceId: item.sourceId,
       size: item.size,
       thumbnailUrl: item.thumbnailUrl,
       lastPosition: item.lastPosition,
@@ -2102,6 +2190,45 @@ class _ViewMoreCardState extends State<_ViewMoreCard> {
   }
 }
 
+/// 懒加载海报卡片包装器
+///
+/// 使用 AutomaticKeepAliveClientMixin 保持已加载的卡片状态，
+/// 滚动回来时不需要重新加载图片
+class _LazyPosterCard extends ConsumerStatefulWidget {
+  const _LazyPosterCard({
+    super.key,
+    required this.metadata,
+    required this.onTap,
+    required this.isDark,
+    this.width = 130,
+  });
+
+  final VideoMetadata metadata;
+  final VoidCallback onTap;
+  final bool isDark;
+  final double width;
+
+  @override
+  ConsumerState<_LazyPosterCard> createState() => _LazyPosterCardState();
+}
+
+class _LazyPosterCardState extends ConsumerState<_LazyPosterCard>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
+    return _VerticalPosterCard(
+      metadata: widget.metadata,
+      onTap: widget.onTap,
+      isDark: widget.isDark,
+      width: widget.width,
+    );
+  }
+}
+
 /// 纵向海报卡片（2:3 比例，Netflix 风格）
 class _VerticalPosterCard extends ConsumerStatefulWidget {
   const _VerticalPosterCard({
@@ -2845,6 +2972,8 @@ class _CategoryFullPageState extends ConsumerState<_CategoryFullPage> {
                 ? _buildEmptyState(isDark)
                 : GridView.builder(
                     padding: const EdgeInsets.all(16),
+                    // 限制预加载区域，减少内存占用和初始加载时间
+                    cacheExtent: 200,
                     gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: crossAxisCount,
                       childAspectRatio: 0.55,
@@ -2854,7 +2983,8 @@ class _CategoryFullPageState extends ConsumerState<_CategoryFullPage> {
                     itemCount: filteredItems.length,
                     itemBuilder: (context, index) {
                       final metadata = filteredItems[index];
-                      return _VerticalPosterCard(
+                      return _LazyPosterCard(
+                        key: ValueKey(metadata.uniqueKey),
                         metadata: metadata,
                         onTap: () => _openVideoDetail(context, metadata),
                         isDark: isDark,
@@ -2868,14 +2998,12 @@ class _CategoryFullPageState extends ConsumerState<_CategoryFullPage> {
     );
   }
 
-  /// 构建状态栏
+  /// 构建状态栏（仅在有筛选条件时显示）
   Widget _buildStatusBar(bool isDark, bool isWide) {
-    final sortLabel = switch (_sortType) {
-      _SortType.rating => '评分',
-      _SortType.year => '年份',
-      _SortType.name => '名称',
-      _SortType.recent => '添加时间',
-    };
+    // 只有在有筛选条件时才显示状态栏
+    if (_selectedGenre == null) {
+      return const SizedBox.shrink();
+    }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -2888,27 +3016,24 @@ class _CategoryFullPageState extends ConsumerState<_CategoryFullPage> {
           ),
         ),
       ),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
+      child: Row(
         children: [
-          // 排序标签
-          _buildChip(
-            label: '$sortLabel ${_sortDescending ? '↓' : '↑'}',
-            icon: Icons.sort_rounded,
-            isDark: isDark,
-            onTap: () => _showSortOptions(context, isDark),
+          Text(
+            '筛选: ',
+            style: TextStyle(
+              fontSize: 12,
+              color: isDark ? Colors.grey[400] : Colors.grey[600],
+            ),
           ),
           // 筛选标签
-          if (_selectedGenre != null)
-            _buildChip(
-              label: _selectedGenre!,
-              icon: Icons.local_movies_rounded,
-              isDark: isDark,
-              isActive: true,
-              onTap: () => setState(() => _selectedGenre = null),
-              onClose: () => setState(() => _selectedGenre = null),
-            ),
+          _buildChip(
+            label: _selectedGenre!,
+            icon: Icons.local_movies_rounded,
+            isDark: isDark,
+            isActive: true,
+            onTap: () => setState(() => _selectedGenre = null),
+            onClose: () => setState(() => _selectedGenre = null),
+          ),
         ],
       ),
     );

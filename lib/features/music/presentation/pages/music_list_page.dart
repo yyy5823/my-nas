@@ -209,6 +209,45 @@ enum MusicScanPhase {
   metadata,    // 提取元数据
 }
 
+/// 音乐排序选项
+enum MusicSortOption {
+  name('名称', Icons.sort_by_alpha_rounded),
+  artist('歌手', Icons.person_rounded),
+  album('专辑', Icons.album_rounded),
+  dateAdded('添加时间', Icons.schedule_rounded),
+  duration('时长', Icons.timer_rounded);
+
+  const MusicSortOption(this.label, this.icon);
+  final String label;
+  final IconData icon;
+}
+
+/// 排序方向
+enum SortDirection { ascending, descending }
+
+/// 音乐排序状态
+class MusicSortState {
+  const MusicSortState({
+    this.option = MusicSortOption.name,
+    this.direction = SortDirection.ascending,
+  });
+  final MusicSortOption option;
+  final SortDirection direction;
+
+  MusicSortState copyWith({
+    MusicSortOption? option,
+    SortDirection? direction,
+  }) => MusicSortState(
+      option: option ?? this.option,
+      direction: direction ?? this.direction,
+    );
+}
+
+/// 音乐排序 Provider
+final musicSortProvider = StateProvider<MusicSortState>(
+  (ref) => const MusicSortState(),
+);
+
 class MusicListNotConnected extends MusicListState {}
 
 class MusicListLoaded extends MusicListState {
@@ -960,7 +999,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
           )
         else
           SizedBox(
-            height: 160,
+            height: 175, // 封面120 + 间距8 + 标题16 + 间距2 + 歌手14 + 边距
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -1932,23 +1971,23 @@ class _RecentTrackCard extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                     color: isDark ? Colors.white : Colors.black87,
                   ),
-                  maxLines: isDesktop ? 1 : 2,
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              if (isDesktop)
-                SizedBox(
-                  width: coverSize,
-                  child: Text(
-                    artist,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: isDark ? Colors.grey[400] : Colors.grey[600],
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+              const SizedBox(height: 2),
+              SizedBox(
+                width: coverSize,
+                child: Text(
+                  artist,
+                  style: TextStyle(
+                    fontSize: isDesktop ? 12 : 11,
+                    color: isDark ? Colors.grey[400] : Colors.grey[600],
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
+              ),
             ],
           ),
         ),
@@ -2350,19 +2389,23 @@ class _AllSongsView extends ConsumerWidget {
       );
     }
 
+    // 应用排序
+    final sortState = ref.watch(musicSortProvider);
+    final sortedTracks = _applySorting(tracks, sortState);
+
     return Column(
       children: [
         // 播放控制栏
-        _buildControlBar(context, ref),
+        _buildControlBar(context, ref, sortState),
         Expanded(
           child: ListView.builder(
             padding: const EdgeInsets.only(bottom: 16),
-            itemCount: tracks.length,
+            itemCount: sortedTracks.length,
             itemBuilder: (context, index) => _ModernMusicTile(
-              track: tracks[index],
+              track: sortedTracks[index],
               index: index,
               isDark: isDark,
-              allTracks: tracks,
+              allTracks: sortedTracks,
             ),
           ),
         ),
@@ -2370,7 +2413,35 @@ class _AllSongsView extends ConsumerWidget {
     );
   }
 
-  Widget _buildControlBar(BuildContext context, WidgetRef ref) => Container(
+  List<MusicFileWithSource> _applySorting(
+    List<MusicFileWithSource> tracks,
+    MusicSortState sortState,
+  ) {
+    final sorted = List<MusicFileWithSource>.from(tracks);
+
+    sorted.sort((a, b) {
+      int result;
+      switch (sortState.option) {
+        case MusicSortOption.name:
+          result = a.displayTitle.toLowerCase().compareTo(b.displayTitle.toLowerCase());
+        case MusicSortOption.artist:
+          result = a.displayArtist.toLowerCase().compareTo(b.displayArtist.toLowerCase());
+        case MusicSortOption.album:
+          result = a.displayAlbum.toLowerCase().compareTo(b.displayAlbum.toLowerCase());
+        case MusicSortOption.dateAdded:
+          final aTime = a.modifiedTime ?? DateTime(1970);
+          final bTime = b.modifiedTime ?? DateTime(1970);
+          result = aTime.compareTo(bTime);
+        case MusicSortOption.duration:
+          result = (a.duration ?? 0).compareTo(b.duration ?? 0);
+      }
+      return sortState.direction == SortDirection.ascending ? result : -result;
+    });
+
+    return sorted;
+  }
+
+  Widget _buildControlBar(BuildContext context, WidgetRef ref, MusicSortState sortState) => Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: Row(
         children: [
@@ -2410,7 +2481,7 @@ class _AllSongsView extends ConsumerWidget {
               borderRadius: BorderRadius.circular(24),
             ),
             child: IconButton(
-              onPressed: () {},
+              onPressed: () => _showSortOptions(context, ref, sortState),
               icon: Icon(
                 Icons.sort_rounded,
                 color: isDark ? Colors.white70 : Colors.black87,
@@ -2421,6 +2492,83 @@ class _AllSongsView extends ConsumerWidget {
         ],
       ),
     );
+
+  void _showSortOptions(BuildContext context, WidgetRef ref, MusicSortState currentSort) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 拖动指示器
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: isDark ? Colors.grey[700] : Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            // 标题
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.sort_rounded,
+                    color: isDark ? Colors.white70 : Colors.black87,
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    '排序方式',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                  const Spacer(),
+                  // 排序方向切换
+                  _SortDirectionButton(
+                    direction: currentSort.direction,
+                    isDark: isDark,
+                    onTap: () {
+                      final newDirection = currentSort.direction == SortDirection.ascending
+                          ? SortDirection.descending
+                          : SortDirection.ascending;
+                      ref.read(musicSortProvider.notifier).state = currentSort.copyWith(
+                        direction: newDirection,
+                      );
+                      Navigator.pop(context);
+                    },
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            // 排序选项列表
+            ...MusicSortOption.values.map((option) => _SortOptionTile(
+              option: option,
+              isSelected: currentSort.option == option,
+              isDark: isDark,
+              onTap: () {
+                ref.read(musicSortProvider.notifier).state = currentSort.copyWith(
+                  option: option,
+                );
+                Navigator.pop(context);
+              },
+            )),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
 
   Future<void> _playAll(BuildContext context, WidgetRef ref) async {
     logger.i('_AllSongsView._playAll: 开始播放全部 (${tracks.length} 首)');
@@ -4122,20 +4270,22 @@ class _RecentTrackTile extends ConsumerWidget {
           width: 48,
           height: 48,
           decoration: BoxDecoration(
-            gradient: isPlaying
-                ? const LinearGradient(
-                    colors: [AppColors.fileAudio, AppColors.secondary],
+            gradient: item.coverData == null && item.coverUrl == null
+                ? LinearGradient(
+                    colors: isPlaying
+                        ? [AppColors.fileAudio, AppColors.secondary]
+                        : [
+                            AppColors.primary.withValues(alpha: 0.7),
+                            AppColors.secondary.withValues(alpha: 0.7),
+                          ],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   )
                 : null,
-            color: isPlaying ? null : (isDark ? Colors.grey[800] : Colors.grey[200]),
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Icon(
-            isPlaying ? Icons.equalizer_rounded : Icons.music_note_rounded,
-            color: isPlaying ? Colors.white : (isDark ? Colors.grey[600] : Colors.grey[400]),
-          ),
+          clipBehavior: Clip.antiAlias,
+          child: _buildCover(isPlaying),
         ),
         title: Text(
           item.displayTitle,
@@ -4160,6 +4310,62 @@ class _RecentTrackTile extends ConsumerWidget {
       ),
     );
   }
+
+  Widget _buildCover(bool isPlaying) {
+    // 优先使用嵌入的封面数据
+    if (item.coverData != null && item.coverData!.isNotEmpty) {
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.memory(
+            Uint8List.fromList(item.coverData!),
+            fit: BoxFit.cover,
+            gaplessPlayback: true,
+            errorBuilder: (_, __, ___) => _buildPlaceholder(isPlaying),
+          ),
+          if (isPlaying) _buildPlayingOverlay(),
+        ],
+      );
+    }
+
+    // 其次使用封面 URL
+    if (item.coverUrl != null) {
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.network(
+            item.coverUrl!,
+            fit: BoxFit.cover,
+            gaplessPlayback: true,
+            errorBuilder: (_, __, ___) => _buildPlaceholder(isPlaying),
+          ),
+          if (isPlaying) _buildPlayingOverlay(),
+        ],
+      );
+    }
+
+    // 默认显示音符图标
+    return _buildPlaceholder(isPlaying);
+  }
+
+  Widget _buildPlaceholder(bool isPlaying) => Center(
+        child: Icon(
+          isPlaying ? Icons.equalizer_rounded : Icons.music_note_rounded,
+          color: Colors.white,
+          size: 24,
+        ),
+      );
+
+  Widget _buildPlayingOverlay() => Container(
+        color: Colors.black.withValues(alpha: 0.3),
+        child: const Center(
+          child: Icon(
+            Icons.equalizer_rounded,
+            color: Colors.white,
+            size: 24,
+          ),
+        ),
+      );
 }
 
 /// 歌单视图
@@ -4794,6 +5000,107 @@ class _PlaylistTrackTile extends ConsumerWidget {
     Navigator.of(context).pop();
     await MusicPlayerPage.open(context);
   }
+}
+
+/// 排序方向切换按钮
+class _SortDirectionButton extends StatelessWidget {
+  const _SortDirectionButton({
+    required this.direction,
+    required this.isDark,
+    required this.onTap,
+  });
+
+  final SortDirection direction;
+  final bool isDark;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: isDark
+                ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
+                : Colors.grey[100],
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                direction == SortDirection.ascending
+                    ? Icons.arrow_upward_rounded
+                    : Icons.arrow_downward_rounded,
+                size: 16,
+                color: AppColors.primary,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                direction == SortDirection.ascending ? '升序' : '降序',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: isDark ? Colors.white70 : Colors.black87,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+}
+
+/// 排序选项列表项
+class _SortOptionTile extends StatelessWidget {
+  const _SortOptionTile({
+    required this.option,
+    required this.isSelected,
+    required this.isDark,
+    required this.onTap,
+  });
+
+  final MusicSortOption option;
+  final bool isSelected;
+  final bool isDark;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+      leading: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: isSelected
+              ? AppColors.primary.withValues(alpha: 0.15)
+              : (isDark ? Colors.grey[800] : Colors.grey[100]),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Icon(
+          option.icon,
+          color: isSelected
+              ? AppColors.primary
+              : (isDark ? Colors.white70 : Colors.black54),
+          size: 20,
+        ),
+      ),
+      title: Text(
+        option.label,
+        style: TextStyle(
+          fontSize: 15,
+          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+          color: isSelected
+              ? AppColors.primary
+              : (isDark ? Colors.white : Colors.black87),
+        ),
+      ),
+      trailing: isSelected
+          ? Icon(Icons.check_rounded, color: AppColors.primary, size: 22)
+          : null,
+      onTap: onTap,
+    );
 }
 
 /// 渐变播放按钮
