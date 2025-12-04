@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:my_nas/core/utils/logger.dart';
 
@@ -114,7 +115,7 @@ class VideoLibraryCacheService {
     }
   }
 
-  /// 获取缓存
+  /// 获取缓存（同步版本，用于快速检查）
   VideoLibraryCache? getCache() {
     final data = _box?.get(_cacheKey);
     if (data == null) return null;
@@ -122,6 +123,20 @@ class VideoLibraryCacheService {
       return VideoLibraryCache.fromMap(data as Map<dynamic, dynamic>);
     } catch (e) {
       logger.e('VideoLibraryCacheService: 解析缓存失败', e);
+      return null;
+    }
+  }
+
+  /// 异步获取缓存（在 isolate 中反序列化大量数据，避免阻塞 UI）
+  Future<VideoLibraryCache?> getCacheAsync() async {
+    final data = _box?.get(_cacheKey);
+    if (data == null) return null;
+    try {
+      // 将 Map 转换为可在 isolate 之间传递的格式
+      final jsonStr = jsonEncode(data);
+      return compute(_parseCache, jsonStr);
+    } catch (e) {
+      logger.e('VideoLibraryCacheService: 异步解析缓存失败', e);
       return null;
     }
   }
@@ -184,4 +199,10 @@ class VideoLibraryCacheService {
 
     return '${cache.videos.length} 个视频 · $sizeText · $ageText更新';
   }
+}
+
+/// 在 isolate 中解析缓存数据（顶级函数，供 compute 使用）
+VideoLibraryCache _parseCache(String jsonStr) {
+  final data = jsonDecode(jsonStr) as Map<String, dynamic>;
+  return VideoLibraryCache.fromMap(data);
 }

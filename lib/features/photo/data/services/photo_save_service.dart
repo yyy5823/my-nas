@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:gal/gal.dart';
+import 'package:image/image.dart' as img;
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/core/utils/platform_capabilities.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart' hide FileType;
@@ -328,9 +329,12 @@ class PhotoSaveService {
         return SaveResult.failure('下载的文件为空');
       }
 
+      // 更新 EXIF 时间戳为当前时间，使照片在相册中按下载时间排序
+      final processedFile = await _updateExifTimestamp(sourceFile, fileName);
+
       // 使用 gal 库保存到相册
       logger.i('PhotoSaveService: 调用 Gal.putImage...');
-      await Gal.putImage(sourceFile.path, album: 'MyNAS');
+      await Gal.putImage(processedFile.path, album: 'MyNAS');
 
       // 删除临时文件
       if (deleteAfter) await _cleanupTempFile(sourceFile);
@@ -664,6 +668,54 @@ class PhotoSaveService {
     // 移除前导点
     final extWithoutDot = ext.substring(1);
     return [extWithoutDot];
+  }
+
+  /// 更新图片的 EXIF 时间戳为当前时间
+  ///
+  /// 这样保存到相册后，照片会按下载时间排序而不是原始拍摄时间
+  /// 解决了从 NAS 下载的照片可能排列在相册很前面的问题
+  Future<File> _updateExifTimestamp(File sourceFile, String fileName) async {
+    try {
+      final ext = p.extension(fileName).toLowerCase();
+
+      // 只处理 JPEG 图片，其他格式（PNG、GIF等）通常不带 EXIF 或处理方式不同
+      if (ext != '.jpg' && ext != '.jpeg') {
+        logger.i('PhotoSaveService: 非 JPEG 格式，跳过 EXIF 时间戳更新');
+        return sourceFile;
+      }
+
+      final bytes = await sourceFile.readAsBytes();
+      final image = img.decodeJpg(bytes);
+
+      if (image == null) {
+        logger.w('PhotoSaveService: 无法解码 JPEG 图片，跳过 EXIF 时间戳更新');
+        return sourceFile;
+      }
+
+      // 格式化当前时间为 EXIF 日期格式: "YYYY:MM:DD HH:MM:SS"
+      final now = DateTime.now();
+      final exifDateStr = '${now.year}:${now.month.toString().padLeft(2, '0')}:${now.day.toString().padLeft(2, '0')} '
+          '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+
+      // 更新 EXIF 时间相关字段
+      // DateTimeOriginal - 原始拍摄时间
+      // DateTimeDigitized - 数字化时间
+      // DateTime - 文件修改时间
+      image.exif.exifIfd['DateTimeOriginal'] = exifDateStr;
+      image.exif.exifIfd['DateTimeDigitized'] = exifDateStr;
+      image.exif.imageIfd['DateTime'] = exifDateStr;
+
+      // 重新编码并保存
+      final updatedBytes = img.encodeJpg(image, quality: 95);
+      await sourceFile.writeAsBytes(updatedBytes);
+
+      logger.i('PhotoSaveService: EXIF 时间戳已更新为 $exifDateStr');
+      return sourceFile;
+    } on Exception catch (e) {
+      // 如果更新失败，仍然使用原文件
+      logger.w('PhotoSaveService: 更新 EXIF 时间戳失败: $e，使用原文件');
+      return sourceFile;
+    }
   }
 
   /// 清理临时文件

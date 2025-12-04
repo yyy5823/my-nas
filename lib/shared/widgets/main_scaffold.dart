@@ -56,19 +56,19 @@ class _MainScaffoldState extends State<MainScaffold> {
     _Destination(
       icon: Icons.play_circle_outline_rounded,
       selectedIcon: Icons.play_circle_rounded,
-      label: '视频',
+      label: '影视',
       route: Routes.video,
     ),
     _Destination(
       icon: Icons.music_note_outlined,
       selectedIcon: Icons.music_note_rounded,
-      label: '音乐',
+      label: '曲库',
       route: Routes.music,
     ),
     _Destination(
       icon: Icons.photo_library_outlined,
       selectedIcon: Icons.photo_library_rounded,
-      label: '照片',
+      label: '相册',
       route: Routes.photo,
     ),
     _Destination(

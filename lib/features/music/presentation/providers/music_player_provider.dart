@@ -137,6 +137,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
   final Ref _ref;
   late final AudioPlayer _player;
+  Timer? _positionUpdateTimer;
 
   AudioPlayer get player => _player;
 
@@ -196,6 +197,41 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
         state = state.copyWith(errorMessage: e.toString());
       },
     );
+
+    // 监听播放状态变化来管理定时器
+    _player.playingStream.listen((playing) {
+      if (playing) {
+        _startPositionUpdateTimer();
+      } else {
+        _stopPositionUpdateTimer();
+      }
+    });
+  }
+
+  /// 启动位置更新定时器（作为 positionStream 的备用机制）
+  void _startPositionUpdateTimer() {
+    _stopPositionUpdateTimer();
+    _positionUpdateTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
+      final position = _player.position;
+      final duration = _player.duration;
+
+      // 更新位置
+      if (position != state.position) {
+        state = state.copyWith(position: position);
+      }
+
+      // 如果播放器有了新的 duration，更新它
+      if (duration != null && duration != state.duration && duration > Duration.zero) {
+        logger.i('MusicPlayer: 定时器检测到 duration 更新 => $duration');
+        state = state.copyWith(duration: duration);
+      }
+    });
+  }
+
+  /// 停止位置更新定时器
+  void _stopPositionUpdateTimer() {
+    _positionUpdateTimer?.cancel();
+    _positionUpdateTimer = null;
   }
 
   /// 应用保存的设置
@@ -301,8 +337,16 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       logger.d('MusicPlayer: 音频源设置成功');
 
       // 检查音频时长是否获取成功
-      final duration = _player.duration;
-      logger.d('MusicPlayer: 音频时长 => $duration');
+      final playerDuration = _player.duration;
+      logger.i('MusicPlayer: 播放器时长 => $playerDuration');
+
+      // 如果播放器没有获取到时长，但 MusicItem 有时长信息，使用它
+      if (playerDuration == null && music.duration != null) {
+        logger.i('MusicPlayer: 使用 MusicItem 的时长信息 => ${music.duration}');
+        state = state.copyWith(duration: music.duration);
+      } else if (playerDuration != null) {
+        state = state.copyWith(duration: playerDuration);
+      }
 
       if (startPosition != null && startPosition > Duration.zero) {
         logger.d('MusicPlayer: 跳转到位置 $startPosition');
@@ -529,6 +573,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
   @override
   void dispose() {
+    _stopPositionUpdateTimer();
     _player.dispose();
     super.dispose();
   }

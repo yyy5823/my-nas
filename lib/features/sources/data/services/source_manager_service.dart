@@ -117,7 +117,7 @@ class SourceManagerService {
   Future<void> init() async {
     if (_initialized) return;
 
-    await Hive.initFlutter();
+    // Hive.initFlutter() 已在 main.dart 中调用，这里直接打开 box
     _sourcesBox = await Hive.openBox('sources');
     _libraryBox = await Hive.openBox('media_library');
     _initialized = true;

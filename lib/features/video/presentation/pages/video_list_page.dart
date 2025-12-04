@@ -238,7 +238,8 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
 
   /// 从缓存加载视频数据（优化：分批加载元数据）
   Future<void> _loadFromCache() async {
-    final cache = _cacheService.getCache();
+    // 使用异步版本在 isolate 中反序列化，避免阻塞 UI
+    final cache = await _cacheService.getCacheAsync();
     if (cache != null && cache.videos.isNotEmpty) {
       final videos = cache.videos.map((entry) => VideoFileWithSource(
           file: FileItem(
@@ -262,6 +263,9 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
 
       logger.i('VideoListNotifier: 快速加载了 ${videos.length} 个视频');
 
+      // 让 UI 先渲染视频列表
+      await Future<void>.delayed(const Duration(milliseconds: 16));
+
       // 第二阶段：异步分批加载元数据
       await _loadMetadataBatched(videos);
     } else {
@@ -272,6 +276,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
   }
 
   /// 分批加载元数据，优先加载首屏内容
+  /// 使用分批处理避免阻塞 UI 主线程
   Future<void> _loadMetadataBatched(List<VideoFileWithSource> videos) async {
     final metadataMap = <String, VideoMetadata>{};
 
@@ -297,18 +302,31 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
 
     logger.i('VideoListNotifier: 首屏元数据加载完成，共 ${metadataMap.length} 个');
 
-    // 第二阶段：后台加载剩余内容（不阻塞 UI）
+    // 第二阶段：后台分批加载剩余内容，每批之间让出执行权避免阻塞 UI
     if (videos.length > firstBatchSize) {
-      // 使用较长的延迟确保 UI 帧能够渲染
+      // 先让 UI 渲染首屏
       await Future<void>.delayed(const Duration(milliseconds: 16));
 
       final remainingVideos = videos.skip(firstBatchSize).toList();
+      const batchSize = 50; // 每批处理 50 个，平衡性能和响应性
+      final totalBatches = (remainingVideos.length / batchSize).ceil();
 
-      // 一次性加载所有剩余元数据，不再分批更新 state
-      for (final video in remainingVideos) {
-        final cached = _metadataService.getCached(video.sourceId, video.path);
-        if (cached != null) {
-          metadataMap[cached.uniqueKey] = cached;
+      for (var batch = 0; batch < totalBatches; batch++) {
+        final start = batch * batchSize;
+        final end = (start + batchSize).clamp(0, remainingVideos.length);
+        final batchVideos = remainingVideos.sublist(start, end);
+
+        // 处理当前批次
+        for (final video in batchVideos) {
+          final cached = _metadataService.getCached(video.sourceId, video.path);
+          if (cached != null) {
+            metadataMap[cached.uniqueKey] = cached;
+          }
+        }
+
+        // 每批之间让出执行权，允许 UI 响应用户操作
+        if (batch < totalBatches - 1) {
+          await Future<void>.delayed(Duration.zero);
         }
       }
     }

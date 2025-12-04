@@ -16,7 +16,7 @@ class VideoHistoryService {
   Future<void> init() async {
     if (_initialized) return;
 
-    await Hive.initFlutter();
+    // Hive.initFlutter() 已在 main.dart 中调用，这里直接打开 box
     _historyBox = await Hive.openBox('video_history');
     _progressBox = await Hive.openBox('video_progress');
     _initialized = true;

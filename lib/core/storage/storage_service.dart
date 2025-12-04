@@ -19,7 +19,7 @@ class HiveStorageService implements StorageService {
 
   @override
   Future<void> init() async {
-    await Hive.initFlutter();
+    // Hive.initFlutter() 已在 main.dart 中调用，这里直接打开 box
     _box = await Hive.openBox(_boxName);
     logger.i('HiveStorageService initialized: $_boxName');
   }
