@@ -51,6 +51,11 @@ class AdaptiveImage extends StatelessWidget {
     return url.startsWith('http://') || url.startsWith('https://');
   }
 
+  /// 检查 URL 是否可以直接加载（支持的协议）
+  static bool isSupportedUrl(String url) {
+    return isLocalFile(url) || isNetworkUrl(url) || !url.contains('://');
+  }
+
   /// 将 file:// URL 转换为本地文件路径
   static String? toLocalPath(String url) {
     if (!isLocalFile(url)) return null;
@@ -64,6 +69,12 @@ class AdaptiveImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 检查是否是不支持的协议（如 smb://）
+    if (!isSupportedUrl(imageUrl)) {
+      return errorWidget?.call(context, 'Unsupported URL scheme') ??
+          _buildDefaultError(context);
+    }
+
     if (isLocalFile(imageUrl)) {
       return _buildLocalImage(context);
     } else if (isNetworkUrl(imageUrl)) {

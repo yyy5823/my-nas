@@ -248,19 +248,27 @@ class VideoMetadataService {
         metadata.episodeTitle = nfoData.episodeTitle;
         metadata.lastUpdated = DateTime.now();
 
-        // 如果有本地海报，获取 URL
+        // 如果有本地海报，获取 URL（跳过不支持直接 URL 访问的协议如 SMB）
         if (nfoData.posterPath != null) {
           try {
-            metadata.posterUrl = await fileSystem.getFileUrl(nfoData.posterPath!);
+            final posterUrl = await fileSystem.getFileUrl(nfoData.posterPath!);
+            // 只保存 http/https/file 协议的 URL，跳过 smb:// 等不支持直接访问的协议
+            if (posterUrl.startsWith('http') || posterUrl.startsWith('file')) {
+              metadata.posterUrl = posterUrl;
+            }
           } catch (e) {
             logger.w('VideoMetadataService: 获取本地海报 URL 失败', e);
           }
         }
 
-        // 如果有本地背景图，获取 URL
+        // 如果有本地背景图，获取 URL（跳过不支持直接 URL 访问的协议如 SMB）
         if (nfoData.fanartPath != null) {
           try {
-            metadata.backdropUrl = await fileSystem.getFileUrl(nfoData.fanartPath!);
+            final backdropUrl = await fileSystem.getFileUrl(nfoData.fanartPath!);
+            // 只保存 http/https/file 协议的 URL
+            if (backdropUrl.startsWith('http') || backdropUrl.startsWith('file')) {
+              metadata.backdropUrl = backdropUrl;
+            }
           } catch (e) {
             logger.w('VideoMetadataService: 获取本地背景图 URL 失败', e);
           }

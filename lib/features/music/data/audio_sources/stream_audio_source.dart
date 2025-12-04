@@ -48,10 +48,12 @@ class NasStreamAudioSource extends StreamAudioSource {
         );
       }
 
-      // 确保 end 不超过文件大小
-      final effectiveEnd = end != null && end <= sourceLength ? end : null;
+      // 确保 end 不超过文件的最后一个字节索引
+      // 文件大小为 N 字节，最后一个字节的索引是 N-1
+      final effectiveEnd = end != null && end < sourceLength ? end : null;
 
       // 获取文件流
+      // 注意：HTTP Range 是闭区间 [start, end]，所以 bytes=0-2 返回 3 字节
       final stream = await fileSystem.getFileStream(
         path,
         range: FileRange(
@@ -61,8 +63,9 @@ class NasStreamAudioSource extends StreamAudioSource {
       );
 
       // 计算内容长度
+      // HTTP Range 是闭区间，所以 contentLength = end - start + 1
       final contentLength = effectiveEnd != null
-          ? (effectiveEnd - requestStart)
+          ? (effectiveEnd - requestStart + 1)
           : (sourceLength - requestStart);
 
       logger.d('NasStreamAudioSource: 返回流 offset=$requestStart, contentLength=$contentLength, sourceLength=$sourceLength');

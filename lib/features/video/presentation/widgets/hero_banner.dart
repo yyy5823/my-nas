@@ -166,7 +166,10 @@ class _HeroBannerItem extends StatelessWidget {
   Widget build(BuildContext context) {
     // 优先使用背景图，没有则使用海报
     final imageUrl = metadata.backdropUrl ?? metadata.posterUrl;
-    final hasImage = imageUrl != null && imageUrl.isNotEmpty;
+    // 检查 URL 是否有效（跳过 smb:// 等不支持的协议）
+    final hasImage = imageUrl != null &&
+        imageUrl.isNotEmpty &&
+        (imageUrl.startsWith('http') || imageUrl.startsWith('file'));
 
     return GestureDetector(
       onTap: onTap,
@@ -543,7 +546,10 @@ class _CompactBannerCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final imageUrl = metadata.backdropUrl ?? metadata.posterUrl;
-    final hasImage = imageUrl != null && imageUrl.isNotEmpty;
+    // 检查 URL 是否有效（跳过 smb:// 等不支持的协议）
+    final hasImage = imageUrl != null &&
+        imageUrl.isNotEmpty &&
+        (imageUrl.startsWith('http') || imageUrl.startsWith('file'));
 
     return GestureDetector(
       onTap: onTap,
