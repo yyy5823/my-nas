@@ -193,7 +193,13 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
         ),
         // 底部控制区域
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          padding: EdgeInsets.only(
+            left: 24,
+            right: 24,
+            top: 16,
+            // 在 iOS 上添加额外的底部 padding 以避免与 Home Indicator 重叠
+            bottom: 16 + MediaQuery.of(context).padding.bottom,
+          ),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
@@ -230,13 +236,7 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
                         ],
                       ),
                       clipBehavior: Clip.antiAlias,
-                      child: currentMusic.coverUrl != null
-                          ? Image.network(
-                              currentMusic.coverUrl!,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => _buildMiniCoverPlaceholder(isDark),
-                            )
-                          : _buildMiniCoverPlaceholder(isDark),
+                      child: _buildMiniCoverImage(currentMusic, 56, isDark),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -290,38 +290,50 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
   Widget _buildLyricModeVolumeControl(MusicPlayerState state, bool isDark) {
     return Consumer(
       builder: (context, ref, _) {
-        return Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.volume_down_rounded,
-              size: 20,
-              color: isDark ? Colors.grey[500] : Colors.grey[600],
-            ),
-            Expanded(
-              child: SliderTheme(
-                data: SliderTheme.of(context).copyWith(
-                  trackHeight: 3,
-                  activeTrackColor: AppColors.primary.withValues(alpha: 0.8),
-                  inactiveTrackColor: isDark ? Colors.grey[800] : Colors.grey[300],
-                  thumbColor: AppColors.primary,
-                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
-                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
-                ),
-                child: Slider(
-                  value: state.volume,
-                  onChanged: (value) {
-                    ref.read(musicPlayerControllerProvider.notifier).setVolume(value);
-                  },
+        // 读取实际的播放器状态以获取最新音量值
+        final currentState = ref.watch(musicPlayerControllerProvider);
+        final volume = currentState.volume.clamp(0.0, 1.0);
+
+        return Padding(
+          // 添加额外的底部 padding 以适应 iOS 的 Home Indicator 区域
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).padding.bottom > 0 ? 8 : 0,
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                volume == 0
+                    ? Icons.volume_off_rounded
+                    : Icons.volume_down_rounded,
+                size: 20,
+                color: isDark ? Colors.grey[500] : Colors.grey[600],
+              ),
+              Expanded(
+                child: SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    trackHeight: 3,
+                    activeTrackColor: AppColors.primary.withValues(alpha: 0.8),
+                    inactiveTrackColor: isDark ? Colors.grey[800] : Colors.grey[300],
+                    thumbColor: AppColors.primary,
+                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+                  ),
+                  child: Slider(
+                    value: volume,
+                    onChanged: (value) {
+                      ref.read(musicPlayerControllerProvider.notifier).setVolume(value);
+                    },
+                  ),
                 ),
               ),
-            ),
-            Icon(
-              Icons.volume_up_rounded,
-              size: 20,
-              color: isDark ? Colors.grey[500] : Colors.grey[600],
-            ),
-          ],
+              Icon(
+                Icons.volume_up_rounded,
+                size: 20,
+                color: isDark ? Colors.grey[500] : Colors.grey[600],
+              ),
+            ],
+          ),
         );
       },
     );
@@ -336,6 +348,34 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
         color: isDark ? Colors.grey[600] : Colors.grey[400],
       ),
     );
+  }
+
+  /// 构建迷你封面图片，优先使用嵌入的封面数据，其次是封面 URL
+  Widget _buildMiniCoverImage(MusicItem music, double size, bool isDark) {
+    // 优先使用嵌入的封面数据
+    if (music.coverData != null && music.coverData!.isNotEmpty) {
+      return Image.memory(
+        Uint8List.fromList(music.coverData!),
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _buildMiniCoverPlaceholder(isDark),
+      );
+    }
+
+    // 其次使用封面 URL
+    if (music.coverUrl != null) {
+      return Image.network(
+        music.coverUrl!,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _buildMiniCoverPlaceholder(isDark),
+      );
+    }
+
+    // 没有封面时显示占位符
+    return _buildMiniCoverPlaceholder(isDark);
   }
 
   PreferredSizeWidget _buildAppBar(

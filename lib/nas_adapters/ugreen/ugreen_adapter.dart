@@ -195,7 +195,12 @@ class UGreenAdapter implements NasAdapter {
         final files = await _webdavClient!.readDir('/');
 
         logger.i('UGreenAdapter: WebDAV 连接成功 (${files.length} 项)');
-        _fileSystem = WebDavFileSystem(client: _webdavClient!);
+        _fileSystem = WebDavFileSystem(
+          client: _webdavClient!,
+          baseUrl: webdavUrl,
+          username: config.username,
+          password: config.password,
+        );
         return;
       } catch (e) {
         logger.w('UGreenAdapter: WebDAV $davPath 失败', e);

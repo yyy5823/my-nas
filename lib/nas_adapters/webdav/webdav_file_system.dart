@@ -1,12 +1,36 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:dio/dio.dart';
+import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:path/path.dart' as p;
 import 'package:webdav_client/webdav_client.dart' as webdav;
 
 /// WebDAV 文件系统实现
 class WebDavFileSystem implements NasFileSystem {
-  WebDavFileSystem({required webdav.Client client}) : _client = client;
+  WebDavFileSystem({
+    required webdav.Client client,
+    required String baseUrl,
+    required String username,
+    required String password,
+  })  : _client = client,
+        _baseUrl = baseUrl,
+        _authHeader = 'Basic ${base64Encode(utf8.encode('$username:$password'))}' {
+    _dio = Dio(BaseOptions(
+      baseUrl: baseUrl,
+      connectTimeout: const Duration(seconds: 30),
+      receiveTimeout: const Duration(seconds: 60),
+      headers: {
+        'Authorization': _authHeader,
+      },
+    ));
+  }
 
   final webdav.Client _client;
+  final String _baseUrl;
+  final String _authHeader;
+  late final Dio _dio;
 
   @override
   Future<List<FileItem>> listDirectory(String path) async {
@@ -46,12 +70,45 @@ class WebDavFileSystem implements NasFileSystem {
 
   @override
   Future<Stream<List<int>>> getFileStream(String path, {FileRange? range}) async {
-    final bytes = await _client.read(path);
-    if (range != null) {
-      final end = range.end ?? bytes.length;
-      return Stream.value(bytes.sublist(range.start, end));
+    logger.d('WebDavFileSystem: getFileStream path=$path, range=$range');
+
+    try {
+      // 使用 Dio 进行流式读取，支持 Range 请求
+      final headers = <String, dynamic>{};
+      if (range != null) {
+        final rangeStart = range.start;
+        final rangeEnd = range.end != null ? '${range.end}' : '';
+        headers['Range'] = 'bytes=$rangeStart-$rangeEnd';
+        logger.d('WebDavFileSystem: 使用 Range 请求: bytes=$rangeStart-$rangeEnd');
+      }
+
+      final response = await _dio.get<ResponseBody>(
+        path,
+        options: Options(
+          responseType: ResponseType.stream,
+          headers: headers,
+          validateStatus: (status) => status != null && status < 400,
+        ),
+      );
+
+      final stream = response.data?.stream;
+      if (stream == null) {
+        throw Exception('无法获取文件流');
+      }
+
+      return stream;
+    } on DioException catch (e) {
+      logger.e('WebDavFileSystem: getFileStream 失败', e);
+
+      // 降级到原有方式：一次性读取
+      logger.w('WebDavFileSystem: 降级到一次性读取模式');
+      final bytes = await _client.read(path);
+      if (range != null) {
+        final end = range.end ?? bytes.length;
+        return Stream.value(bytes.sublist(range.start, end));
+      }
+      return Stream.value(bytes);
     }
-    return Stream.value(bytes);
   }
 
   @override

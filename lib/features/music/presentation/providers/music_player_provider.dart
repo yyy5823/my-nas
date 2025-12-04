@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:my_nas/core/utils/logger.dart';
@@ -348,6 +350,15 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
             connection.adapter.fileSystem,
             music.path,
           );
+        }
+      } else {
+        // 本地文件：直接从文件路径提取
+        final uri = Uri.tryParse(music.url);
+        if (uri != null && uri.scheme == 'file') {
+          final file = File(uri.toFilePath());
+          if (await file.exists()) {
+            metadata = await metadataService.extractFromLocalFile(file);
+          }
         }
       }
 

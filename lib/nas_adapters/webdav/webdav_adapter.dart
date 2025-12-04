@@ -56,7 +56,12 @@ class WebDavAdapter implements NasAdapter {
       // 测试连接 - 尝试读取根目录
       await _client!.ping();
 
-      _fileSystem = WebDavFileSystem(client: _client!);
+      _fileSystem = WebDavFileSystem(
+        client: _client!,
+        baseUrl: config.baseUrl,
+        username: config.username,
+        password: config.password,
+      );
       _connected = true;
 
       logger.i('WebDavAdapter: 连接成功');
