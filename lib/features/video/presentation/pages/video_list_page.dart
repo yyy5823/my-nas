@@ -91,6 +91,11 @@ class VideoListLoaded extends VideoListState {
   final double metadataProgress;
   final bool fromCache;
 
+  // 缓存计算结果，避免重复计算
+  List<VideoMetadata>? _cachedMovies;
+  Map<String, List<VideoMetadata>>? _cachedTvShowGroups;
+  List<VideoMetadata>? _cachedTopRatedMovies;
+
   /// 根据当前分类过滤视频
   List<VideoMetadata> get filteredMetadata {
     var result = videos.map((v) {
@@ -146,20 +151,25 @@ class VideoListLoaded extends VideoListState {
     return result;
   }
 
-  /// 获取电影列表
-  List<VideoMetadata> get movies => videos.map((v) {
-        final key = '${v.sourceId}_${v.path}';
-        return metadataMap[key] ??
-            VideoMetadata(
-              filePath: v.path,
-              sourceId: v.sourceId,
-              fileName: v.name,
-              thumbnailUrl: v.thumbnailUrl,
-            );
-      }).where((m) => m.category != MediaCategory.tvShow).toList();
+  /// 获取电影列表（缓存计算结果）
+  List<VideoMetadata> get movies {
+    if (_cachedMovies != null) return _cachedMovies!;
+    _cachedMovies = videos.map((v) {
+      final key = '${v.sourceId}_${v.path}';
+      return metadataMap[key] ??
+          VideoMetadata(
+            filePath: v.path,
+            sourceId: v.sourceId,
+            fileName: v.name,
+            thumbnailUrl: v.thumbnailUrl,
+          );
+    }).where((m) => m.category != MediaCategory.tvShow).toList();
+    return _cachedMovies!;
+  }
 
-  /// 获取剧集列表（按剧集名分组）
+  /// 获取剧集列表（按剧集名分组，缓存计算结果）
   Map<String, List<VideoMetadata>> get tvShowGroups {
+    if (_cachedTvShowGroups != null) return _cachedTvShowGroups!;
     final groups = <String, List<VideoMetadata>>{};
     for (final video in videos) {
       final key = '${video.sourceId}_${video.path}';
@@ -178,14 +188,19 @@ class VideoListLoaded extends VideoListState {
         return (a.episodeNumber ?? 0).compareTo(b.episodeNumber ?? 0);
       });
     }
-    return groups;
+    _cachedTvShowGroups = groups;
+    return _cachedTvShowGroups!;
   }
 
-  /// 获取高分电影（评分 >= 7）
-  List<VideoMetadata> get topRatedMovies => movies
+  /// 获取高分电影（评分 >= 7，缓存计算结果）
+  List<VideoMetadata> get topRatedMovies {
+    if (_cachedTopRatedMovies != null) return _cachedTopRatedMovies!;
+    _cachedTopRatedMovies = movies
         .where((m) => (m.rating ?? 0) >= 7)
         .toList()
       ..sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
+    return _cachedTopRatedMovies!;
+  }
 
   VideoListLoaded copyWith({
     List<VideoFileWithSource>? videos,

@@ -139,6 +139,11 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   late final AudioPlayer _player;
   Timer? _positionUpdateTimer;
 
+  // 用于位置估算的变量（当 StreamAudioSource 无法获取真实位置时使用）
+  DateTime? _playStartTime;
+  Duration _playStartPosition = Duration.zero;
+  bool _useEstimatedPosition = false;
+
   AudioPlayer get player => _player;
 
   void _initPlayer() {
@@ -153,10 +158,22 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       logger.i('MusicPlayer: playingStream => $playing');
       state = state.copyWith(isPlaying: playing);
 
-      // 管理定时器
+      // 管理定时器和位置估算
       if (playing) {
+        // 开始播放时记录时间点
+        if (_useEstimatedPosition) {
+          _playStartTime = DateTime.now();
+          _playStartPosition = state.position;
+          logger.d('MusicPlayer: 开始位置估算 - startPosition=$_playStartPosition');
+        }
         _startPositionUpdateTimer();
       } else {
+        // 暂停时更新起始位置
+        if (_useEstimatedPosition && _playStartTime != null) {
+          _playStartPosition = _getEstimatedPosition();
+          _playStartTime = null;
+          logger.d('MusicPlayer: 暂停位置估算 - savedPosition=$_playStartPosition');
+        }
         _stopPositionUpdateTimer();
       }
     });
@@ -207,30 +224,63 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
   }
 
-  /// 启动位置更新定时器（作为 positionStream 的备用机制）
+  /// 获取估算的播放位置
+  Duration _getEstimatedPosition() {
+    if (_playStartTime == null) {
+      return _playStartPosition;
+    }
+    final elapsed = DateTime.now().difference(_playStartTime!);
+    final estimated = _playStartPosition + elapsed;
+
+    // 不超过总时长
+    if (state.duration > Duration.zero && estimated > state.duration) {
+      return state.duration;
+    }
+    return estimated;
+  }
+
+  /// 启动位置更新定时器
   void _startPositionUpdateTimer() {
     _stopPositionUpdateTimer();
-    logger.i('MusicPlayer: 启动位置更新定时器');
+    logger.i('MusicPlayer: 启动位置更新定时器 (useEstimated=$_useEstimatedPosition)');
 
     _positionUpdateTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
-      final position = _player.position;
+      final playerPosition = _player.position;
       final duration = _player.duration;
       final playerState = _player.processingState;
 
+      // 决定使用哪个位置
+      Duration effectivePosition;
+      if (_useEstimatedPosition) {
+        effectivePosition = _getEstimatedPosition();
+      } else {
+        effectivePosition = playerPosition;
+      }
+
       // 每秒打印一次状态
-      if (position.inMilliseconds % 1000 < 200) {
-        logger.d('MusicPlayer: 定时器轮询 - position=$position, duration=$duration, state=$playerState');
+      if (effectivePosition.inMilliseconds % 1000 < 200) {
+        logger.d('MusicPlayer: 定时器 - position=$effectivePosition (player=$playerPosition), duration=${state.duration}, state=$playerState');
       }
 
       // 更新位置
-      if (position != state.position) {
-        state = state.copyWith(position: position);
+      if (effectivePosition != state.position) {
+        state = state.copyWith(position: effectivePosition);
       }
 
       // 如果播放器有了新的 duration，更新它
       if (duration != null && duration != state.duration && duration > Duration.zero) {
         logger.i('MusicPlayer: 定时器检测到 duration 更新 => $duration');
         state = state.copyWith(duration: duration);
+        // 如果播放器能获取到有效 duration，可能也能获取 position
+        // 但保持当前模式不变，以确保一致性
+      }
+
+      // 检测播放完成（基于估算位置）
+      if (_useEstimatedPosition &&
+          state.duration > Duration.zero &&
+          effectivePosition >= state.duration) {
+        logger.i('MusicPlayer: 估算位置达到结尾，触发播放完成');
+        _onTrackCompleted();
       }
     });
   }
@@ -273,9 +323,14 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     logger.d('MusicPlayer: size=${music.size}, path=${music.path}, sourceId=${music.sourceId}');
 
     try {
-      // 先停止当前播放
+      // 先停止当前播放并重置位置估算
       await _player.stop();
-      logger.d('MusicPlayer: 已停止当前播放');
+      _stopPositionUpdateTimer();
+      _useEstimatedPosition = false;
+      _playStartTime = null;
+      _playStartPosition = Duration.zero;
+      state = state.copyWith(position: Duration.zero, duration: Duration.zero);
+      logger.d('MusicPlayer: 已停止当前播放并重置状态');
 
       // 验证 URL 格式
       final uri = Uri.tryParse(music.url);
@@ -322,6 +377,9 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
           path: music.path,
           tag: music.id,
         );
+        // NasStreamAudioSource 在 iOS 上无法获取真实播放位置，需要使用估算
+        _useEstimatedPosition = true;
+        logger.i('MusicPlayer: 启用位置估算模式 (NasStreamAudioSource)');
       } else if (uri.scheme == 'file') {
         // 本地文件
         logger.d('MusicPlayer: 使用 AudioSource.uri (本地文件)');
@@ -343,16 +401,59 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       await _player.setAudioSource(audioSource);
       logger.d('MusicPlayer: 音频源设置成功');
 
-      // 检查音频时长是否获取成功
+      // 获取音频时长 - 使用多种来源
+      Duration? effectiveDuration;
+
+      // 1. 首先检查播放器是否获取到时长
       final playerDuration = _player.duration;
       logger.i('MusicPlayer: 播放器时长 => $playerDuration');
 
-      // 如果播放器没有获取到时长，但 MusicItem 有时长信息，使用它
-      if (playerDuration == null && music.duration != null) {
+      if (playerDuration != null && playerDuration > Duration.zero) {
+        effectiveDuration = playerDuration;
+        logger.i('MusicPlayer: 使用播放器时长');
+      }
+      // 2. 如果播放器没有时长，使用 MusicItem 的元数据时长
+      else if (music.duration != null && music.duration! > Duration.zero) {
+        effectiveDuration = music.duration;
         logger.i('MusicPlayer: 使用 MusicItem 的时长信息 => ${music.duration}');
-        state = state.copyWith(duration: music.duration);
-      } else if (playerDuration != null) {
-        state = state.copyWith(duration: playerDuration);
+      }
+      // 3. 如果仍然没有时长且是 NAS 源，尝试通过直接 URL 获取时长
+      else if (music.sourceId != null) {
+        logger.i('MusicPlayer: 尝试通过直接 URL 获取音频时长...');
+        try {
+          final connections = _ref.read(activeConnectionsProvider);
+          final connection = connections[music.sourceId];
+          if (connection != null) {
+            // 获取直接访问 URL
+            final directUrl = await connection.adapter.fileSystem.getFileUrl(music.path);
+            logger.d('MusicPlayer: 直接 URL => ${directUrl.substring(0, directUrl.length.clamp(0, 100))}...');
+
+            // 使用临时播放器获取时长
+            final tempPlayer = AudioPlayer();
+            try {
+              await tempPlayer.setUrl(directUrl);
+              final tempDuration = tempPlayer.duration;
+              if (tempDuration != null && tempDuration > Duration.zero) {
+                effectiveDuration = tempDuration;
+                logger.i('MusicPlayer: 从直接 URL 获取到时长 => $tempDuration');
+              }
+            } catch (e) {
+              logger.w('MusicPlayer: 通过直接 URL 获取时长失败: $e');
+            } finally {
+              await tempPlayer.dispose();
+            }
+          }
+        } catch (e) {
+          logger.w('MusicPlayer: 获取直接 URL 失败: $e');
+        }
+      }
+
+      // 应用时长
+      if (effectiveDuration != null) {
+        state = state.copyWith(duration: effectiveDuration);
+        logger.i('MusicPlayer: 最终时长 => $effectiveDuration');
+      } else {
+        logger.w('MusicPlayer: 无法获取音频时长');
       }
 
       if (startPosition != null && startPosition > Duration.zero) {
@@ -502,6 +603,11 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   /// 停止
   Future<void> stop() async {
     await _player.stop();
+    _stopPositionUpdateTimer();
+    _useEstimatedPosition = false;
+    _playStartTime = null;
+    _playStartPosition = Duration.zero;
+    state = state.copyWith(position: Duration.zero, duration: Duration.zero);
     _ref.read(currentMusicProvider.notifier).state = null;
   }
 
@@ -545,6 +651,20 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
   /// 跳转到指定位置
   Future<void> seek(Duration position) async {
+    logger.d('MusicPlayer: seek => $position (useEstimated=$_useEstimatedPosition)');
+
+    // 对于估算模式，需要更新起始位置
+    if (_useEstimatedPosition) {
+      _playStartPosition = position;
+      if (state.isPlaying) {
+        _playStartTime = DateTime.now();
+      } else {
+        _playStartTime = null;
+      }
+      // 立即更新 UI
+      state = state.copyWith(position: position);
+    }
+
     await _player.seek(position);
   }
 
