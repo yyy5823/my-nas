@@ -50,18 +50,7 @@ class MinePage extends ConsumerWidget {
                   context,
                   isDark,
                   children: [
-                    _buildSettingsTile(
-                      context,
-                      isDark,
-                      icon: Icons.storage_rounded,
-                      iconColor: AppColors.info,
-                      title: '连接源',
-                      subtitle: '管理 NAS、WebDAV、SMB 等连接',
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute<void>(builder: (_) => const SourcesPage()),
-                      ),
-                    ),
+                    _buildSourcesTile(context, ref, isDark),
                     _buildDivider(isDark),
                     _buildSettingsTile(
                       context,
@@ -75,8 +64,6 @@ class MinePage extends ConsumerWidget {
                         MaterialPageRoute<void>(builder: (_) => const MediaLibraryPage()),
                       ),
                     ),
-                    _buildDivider(isDark),
-                    _buildConnectionStatusTile(context, ref, isDark),
                   ],
                 ),
 
@@ -382,30 +369,115 @@ class MinePage extends ConsumerWidget {
     );
   }
 
-  Widget _buildConnectionStatusTile(BuildContext context, WidgetRef ref, bool isDark) {
+  Widget _buildSourcesTile(BuildContext context, WidgetRef ref, bool isDark) {
     final connections = ref.watch(activeConnectionsProvider);
     final connectedCount = connections.values
         .where((c) => c.status == SourceStatus.connected)
         .length;
     final totalCount = connections.length;
 
-    final statusText = totalCount == 0
-        ? '未配置连接源'
-        : '$connectedCount / $totalCount 已连接';
     final statusColor = connectedCount == 0
         ? AppColors.warning
         : connectedCount == totalCount
             ? Colors.green
             : AppColors.accent;
 
-    return _buildSettingsTile(
-      context,
-      isDark,
-      icon: connectedCount > 0 ? Icons.cloud_done_rounded : Icons.cloud_off_rounded,
-      iconColor: statusColor,
-      title: '连接状态',
-      subtitle: statusText,
-      showChevron: false,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute<void>(builder: (_) => const SourcesPage()),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.md,
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppColors.info.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.storage_rounded,
+                  color: AppColors.info,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '连接源',
+                      style: context.textTheme.bodyLarge?.copyWith(
+                        color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '管理 NAS、WebDAV、SMB 等连接',
+                      style: context.textTheme.bodySmall?.copyWith(
+                        color: isDark
+                            ? AppColors.darkOnSurfaceVariant
+                            : AppColors.lightOnSurfaceVariant,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              // 连接状态徽章
+              if (totalCount > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: statusColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: statusColor,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '$connectedCount/$totalCount',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: statusColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: isDark
+                      ? AppColors.darkOnSurfaceVariant
+                      : AppColors.lightOnSurfaceVariant,
+                  size: 22,
+                ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
