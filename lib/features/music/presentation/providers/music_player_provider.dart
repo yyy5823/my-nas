@@ -250,29 +250,16 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
       logger.d('MusicPlayer: 正在设置音频源 (MIME: $mimeType)...');
 
-      // 根据 URL scheme 选择合适的音频源
-      // 优先使用 URL 直接播放（HTTP/HTTPS/file），只有无法直接访问时才使用流式加载
+      // 根据音频来源选择合适的音频源
+      // 对于 NAS 源，优先使用 NasStreamAudioSource 以确保认证和编码正确处理
+      // 对于本地文件或其他直接 URL，使用 AudioSource.uri
       final AudioSource audioSource;
 
-      if (uri.scheme == 'http' || uri.scheme == 'https') {
-        // HTTP/HTTPS URL - 直接使用 URL 播放
-        // 这包括 Synology 等提供下载 URL 的 NAS 源
-        logger.d('MusicPlayer: 使用 AudioSource.uri (HTTP/HTTPS)');
-        audioSource = AudioSource.uri(
-          uri,
-          headers: {
-            'Accept': mimeType,
-          },
-        );
-      } else if (uri.scheme == 'file') {
-        // 本地文件
-        logger.d('MusicPlayer: 使用 AudioSource.uri (本地文件)');
-        audioSource = AudioSource.uri(uri);
-      } else if (music.sourceId != null) {
-        // 无法直接通过 URL 访问的 NAS 源（如 SMB）：使用流式音频源
-        logger.d('MusicPlayer: 检测到需要流式加载的 NAS 源 (sourceId=${music.sourceId})');
+      if (music.sourceId != null) {
+        // NAS 源：使用流式音频源，通过 Dart HTTP 客户端处理认证
+        // 这可以避免 iOS AVPlayer 对 NAS URL 的兼容性问题（如自签名证书、特殊字符编码等）
+        logger.d('MusicPlayer: 检测到 NAS 源 (sourceId=${music.sourceId})');
 
-        // 获取文件系统
         final connections = _ref.read(activeConnectionsProvider);
         final connection = connections[music.sourceId];
 
@@ -285,6 +272,19 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
           fileSystem: connection.adapter.fileSystem,
           path: music.path,
           tag: music.id,
+        );
+      } else if (uri.scheme == 'file') {
+        // 本地文件
+        logger.d('MusicPlayer: 使用 AudioSource.uri (本地文件)');
+        audioSource = AudioSource.uri(uri);
+      } else if (uri.scheme == 'http' || uri.scheme == 'https') {
+        // 非 NAS 源的 HTTP/HTTPS URL - 直接播放
+        logger.d('MusicPlayer: 使用 AudioSource.uri (HTTP/HTTPS)');
+        audioSource = AudioSource.uri(
+          uri,
+          headers: {
+            'Accept': mimeType,
+          },
         );
       } else {
         throw Exception('不支持的音频协议: ${uri.scheme}');
