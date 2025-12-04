@@ -491,17 +491,17 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     setState(() => _isPlaying = true);
 
     try {
-      final url = await _getVideoUrl(widget.metadata.filePath);
-      if (url == null) return;
+      final videoInfo = await _getVideoInfo(widget.metadata.filePath);
+      if (videoInfo == null) return;
 
       if (!mounted) return;
 
       final videoItem = VideoItem(
         name: widget.metadata.displayTitle,
         path: widget.metadata.filePath,
-        url: url,
+        url: videoInfo.url,
         sourceId: widget.sourceId,
-        size: 0,
+        size: videoInfo.size,
         thumbnailUrl: widget.metadata.displayPosterUrl,
       );
 
@@ -527,17 +527,17 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     setState(() => _isPlaying = true);
 
     try {
-      final url = await _getVideoUrl(localFile.filePath);
-      if (url == null) return;
+      final videoInfo = await _getVideoInfo(localFile.filePath);
+      if (videoInfo == null) return;
 
       if (!mounted) return;
 
       final videoItem = VideoItem(
         name: '${localFile.displayTitle} - ${episode.name}',
         path: localFile.filePath,
-        url: url,
+        url: videoInfo.url,
         sourceId: widget.sourceId,
-        size: 0,
+        size: videoInfo.size,
         thumbnailUrl: episode.stillUrl.isNotEmpty ? episode.stillUrl : localFile.displayPosterUrl,
       );
 
@@ -557,7 +557,8 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     }
   }
 
-  Future<String?> _getVideoUrl(String filePath) async {
+  /// 获取视频信息（URL 和文件大小）
+  Future<_VideoPlayInfo?> _getVideoInfo(String filePath) async {
     final connections = ref.read(activeConnectionsProvider);
     final connection = connections[widget.sourceId];
 
@@ -581,7 +582,33 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       return null;
     }
 
-    return connection.adapter.fileSystem.getFileUrl(filePath);
+    try {
+      final fileSystem = connection.adapter.fileSystem;
+
+      // 获取文件信息以获得大小
+      final fileInfo = await fileSystem.getFileInfo(filePath);
+      final url = await fileSystem.getFileUrl(filePath);
+
+      return _VideoPlayInfo(url: url, size: fileInfo.size);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error_outline_rounded, color: Colors.white),
+                const SizedBox(width: 12),
+                Expanded(child: Text('获取视频信息失败: $e')),
+              ],
+            ),
+            backgroundColor: Colors.red[600],
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+      return null;
+    }
   }
 
   void _onRecommendationTap(TmdbMediaItem item) {
@@ -595,4 +622,15 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       ),
     );
   }
+}
+
+/// 视频播放信息
+class _VideoPlayInfo {
+  const _VideoPlayInfo({
+    required this.url,
+    required this.size,
+  });
+
+  final String url;
+  final int size;
 }
