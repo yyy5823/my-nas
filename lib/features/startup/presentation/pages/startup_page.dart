@@ -6,6 +6,8 @@ import 'package:my_nas/app/router/routes.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
+import 'package:my_nas/features/video/data/services/video_library_cache_service.dart';
+import 'package:my_nas/features/video/data/services/video_metadata_service.dart';
 
 class StartupPage extends ConsumerStatefulWidget {
   const StartupPage({super.key});
@@ -35,9 +37,14 @@ class _StartupPageState extends ConsumerState<StartupPage> {
     });
 
     try {
-      // 初始化源管理服务（快速的本地初始化）
-      final manager = ref.read(sourceManagerProvider);
-      await manager.init();
+      // 并行初始化所有服务，加快启动速度
+      await Future.wait([
+        // 初始化源管理服务
+        ref.read(sourceManagerProvider).init(),
+        // 预初始化视频相关服务，避免首次进入视频页面时的延迟
+        VideoLibraryCacheService.instance.init(),
+        VideoMetadataService.instance.init(),
+      ]);
 
       logger.i('StartupPage: 初始化完成，进入主界面');
 

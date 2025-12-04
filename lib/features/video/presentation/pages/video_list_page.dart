@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
@@ -213,7 +214,10 @@ class VideoListError extends VideoListState {
 
 class VideoListNotifier extends StateNotifier<VideoListState> {
   VideoListNotifier(Ref ref) : super(VideoListLoading()) {
-    _init();
+    // 使用 addPostFrameCallback 推迟初始化，确保导航动画不被阻塞
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _init();
+    });
   }
 
   final VideoMetadataService _metadataService = VideoMetadataService.instance;
@@ -221,15 +225,18 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
 
   Future<void> _init() async {
     try {
+      logger.d('VideoListNotifier: 开始初始化...');
+
       // 并行初始化服务
       await Future.wait([
         _metadataService.init(),
         _cacheService.init(),
       ]);
 
+      logger.d('VideoListNotifier: 服务初始化完成，开始加载缓存');
+
       // 从缓存加载视频数据（异步分批加载）
-      // 使用 unawaited 让加载在后台进行，不阻塞
-      _loadFromCache();
+      await _loadFromCache();
     } catch (e) {
       logger.e('VideoListNotifier: 初始化失败', e);
       state = VideoListLoaded(videos: [], fromCache: false);

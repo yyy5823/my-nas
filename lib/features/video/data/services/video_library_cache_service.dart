@@ -132,9 +132,9 @@ class VideoLibraryCacheService {
     final data = _box?.get(_cacheKey);
     if (data == null) return null;
     try {
-      // 将 Map 转换为可在 isolate 之间传递的格式
-      final jsonStr = jsonEncode(data);
-      return compute(_parseCache, jsonStr);
+      // 直接传递 Map 数据到 isolate 进行解析
+      // Hive 返回的 Map 是可序列化的，可以直接跨 isolate 传递
+      return compute(_parseCacheFromMap, Map<String, dynamic>.from(data as Map));
     } catch (e) {
       logger.e('VideoLibraryCacheService: 异步解析缓存失败', e);
       return null;
@@ -202,7 +202,6 @@ class VideoLibraryCacheService {
 }
 
 /// 在 isolate 中解析缓存数据（顶级函数，供 compute 使用）
-VideoLibraryCache _parseCache(String jsonStr) {
-  final data = jsonDecode(jsonStr) as Map<String, dynamic>;
+VideoLibraryCache _parseCacheFromMap(Map<String, dynamic> data) {
   return VideoLibraryCache.fromMap(data);
 }
