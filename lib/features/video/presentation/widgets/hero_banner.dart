@@ -457,7 +457,7 @@ class _CompactHeroBannerState extends State<CompactHeroBanner> {
   @override
   void initState() {
     super.initState();
-    _pageController = PageController(viewportFraction: 0.85);
+    _pageController = PageController(viewportFraction: 0.92);
   }
 
   @override

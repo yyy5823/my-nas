@@ -230,23 +230,6 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
 
       // 立即尝试从缓存加载，不等待连接
       await _loadFromCacheImmediately();
-
-      // 监听连接状态变化，当有新连接时自动刷新
-      _ref.listen<Map<String, SourceConnection>>(activeConnectionsProvider, (previous, next) {
-        final prevConnected = previous?.values.where((c) => c.status == SourceStatus.connected).length ?? 0;
-        final nextConnected = next.values.where((c) => c.status == SourceStatus.connected).length;
-
-        // 当连接数增加时，自动刷新视频列表
-        if (nextConnected > prevConnected) {
-          final currentState = state;
-          // 如果当前是空列表或者是从缓存加载的，尝试重新扫描
-          if (currentState is VideoListLoaded &&
-              (currentState.videos.isEmpty || currentState.fromCache)) {
-            logger.i('VideoListNotifier: 检测到新连接，自动刷新视频列表');
-            loadVideos();
-          }
-        }
-      });
     } catch (e) {
       logger.e('VideoListNotifier: 初始化失败', e);
       // 初始化失败，显示空列表
@@ -1186,8 +1169,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               isDark: isDark,
               icon: Icons.schedule_rounded,
               iconColor: Colors.blue,
-              maxCount: 10,
-              onViewAll: () => _showCategoryPage(context, '最近添加', allRecentVideos),
+              maxCount: 20,
             ),
           ),
 
@@ -1201,8 +1183,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               isDark: isDark,
               icon: Icons.movie_rounded,
               iconColor: AppColors.primary,
-              maxCount: 10,
-              onViewAll: () => _showCategoryPage(context, '电影', movies),
+              maxCount: 20,
             ),
           ),
 
@@ -1216,8 +1197,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               isDark: isDark,
               icon: Icons.live_tv_rounded,
               iconColor: AppColors.accent,
-              maxCount: 10,
-              onViewAll: () => _showCategoryPage(context, '剧集', tvShows),
+              maxCount: 20,
             ),
           ),
 
@@ -1231,8 +1211,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               isDark: isDark,
               icon: Icons.star_rounded,
               iconColor: Colors.amber,
-              maxCount: 10,
-              onViewAll: () => _showCategoryPage(context, '高分推荐', topRated),
+              maxCount: 20,
             ),
           ),
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:my_nas/app/router/app_router.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
@@ -935,8 +936,8 @@ class _ComicCard extends ConsumerWidget {
   }
 
   void _openComic(BuildContext context, WidgetRef ref) {
-    Navigator.push(
-      context,
+    // 使用 rootNavigatorKey 确保阅读器全屏显示，不显示底部导航栏
+    Navigator.of(rootNavigatorKey.currentContext!).push(
       MaterialPageRoute<void>(
         builder: (_) => ComicReaderPage(comic: comic),
       ),
