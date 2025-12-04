@@ -113,23 +113,18 @@ class FileListSkeleton extends StatelessWidget {
   final bool isGridView;
 
   @override
-  Widget build(BuildContext context) {
-    return SkeletonLoader(
+  Widget build(BuildContext context) => SkeletonLoader(
       child: isGridView ? _buildGridSkeleton(context) : _buildListSkeleton(context),
     );
-  }
 
-  Widget _buildListSkeleton(BuildContext context) {
-    return ListView.builder(
+  Widget _buildListSkeleton(BuildContext context) => ListView.builder(
       padding: const EdgeInsets.symmetric(vertical: 8),
       physics: const NeverScrollableScrollPhysics(),
       itemCount: itemCount,
       itemBuilder: (context, index) => _FileListItemSkeleton(index: index),
     );
-  }
 
-  Widget _buildGridSkeleton(BuildContext context) {
-    return GridView.builder(
+  Widget _buildGridSkeleton(BuildContext context) => GridView.builder(
       padding: const EdgeInsets.all(16),
       physics: const NeverScrollableScrollPhysics(),
       gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
@@ -141,7 +136,6 @@ class FileListSkeleton extends StatelessWidget {
       itemCount: itemCount,
       itemBuilder: (context, index) => _FileGridItemSkeleton(index: index),
     );
-  }
 }
 
 class _FileListItemSkeleton extends StatelessWidget {

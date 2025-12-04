@@ -61,9 +61,7 @@ class FavoritesNotifier extends StateNotifier<FavoritesState> {
   }
 
   /// 检查是否已收藏
-  Future<bool> isFavorite(String videoPath) async {
-    return _service.isFavorite(videoPath);
-  }
+  Future<bool> isFavorite(String videoPath) async => _service.isFavorite(videoPath);
 
   /// 清空所有收藏
   Future<void> clearAll() async {
@@ -74,9 +72,7 @@ class FavoritesNotifier extends StateNotifier<FavoritesState> {
 
 /// 收藏列表 provider
 final favoritesProvider =
-    StateNotifierProvider<FavoritesNotifier, FavoritesState>((ref) {
-  return FavoritesNotifier();
-});
+    StateNotifierProvider<FavoritesNotifier, FavoritesState>((ref) => FavoritesNotifier());
 
 /// 检查特定视频是否已收藏
 final isFavoriteProvider =
@@ -174,9 +170,7 @@ class BookmarksNotifier extends StateNotifier<BookmarksState> {
 
 /// 书签列表 provider
 final bookmarksProvider =
-    StateNotifierProvider<BookmarksNotifier, BookmarksState>((ref) {
-  return BookmarksNotifier();
-});
+    StateNotifierProvider<BookmarksNotifier, BookmarksState>((ref) => BookmarksNotifier());
 
 /// 获取特定视频的书签
 final videoBookmarksProvider =

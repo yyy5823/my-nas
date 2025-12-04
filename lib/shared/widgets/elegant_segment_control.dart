@@ -111,8 +111,7 @@ class _ElegantSegmentControlState extends State<ElegantSegmentControl>
               // 滑动指示器
               AnimatedBuilder(
                 animation: _slideAnimation,
-                builder: (context, child) {
-                  return Positioned(
+                builder: (context, child) => Positioned(
                     left: _slideAnimation.value * itemWidth,
                     top: 0,
                     bottom: 0,
@@ -130,8 +129,7 @@ class _ElegantSegmentControlState extends State<ElegantSegmentControl>
                         ],
                       ),
                     ),
-                  );
-                },
+                  ),
               ),
               // 分段项目
               Row(
@@ -260,8 +258,7 @@ class _GlowingSegmentControlState extends State<GlowingSegmentControl>
               // 发光指示器
               AnimatedBuilder(
                 animation: _animation,
-                builder: (context, child) {
-                  return Positioned(
+                builder: (context, child) => Positioned(
                     left: _animation.value * itemWidth + 4,
                     top: 4,
                     bottom: 4,
@@ -286,8 +283,7 @@ class _GlowingSegmentControlState extends State<GlowingSegmentControl>
                         ],
                       ),
                     ),
-                  );
-                },
+                  ),
               ),
               // 分段项目
               Row(

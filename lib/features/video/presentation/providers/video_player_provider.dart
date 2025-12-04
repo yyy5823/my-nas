@@ -15,9 +15,7 @@ final currentVideoProvider = StateProvider<VideoItem?>((ref) => null);
 
 /// 视频播放器控制器
 final videoPlayerControllerProvider =
-    StateNotifierProvider<VideoPlayerNotifier, VideoPlayerState>((ref) {
-  return VideoPlayerNotifier(ref);
-});
+    StateNotifierProvider<VideoPlayerNotifier, VideoPlayerState>((ref) => VideoPlayerNotifier(ref));
 
 /// 可用字幕列表
 final availableSubtitlesProvider = StateProvider<List<SubtitleItem>>((ref) => []);

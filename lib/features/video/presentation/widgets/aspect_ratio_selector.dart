@@ -109,8 +109,7 @@ class _AspectRatioTile extends StatelessWidget {
   final bool isSelected;
   final VoidCallback onTap;
 
-  IconData get _icon {
-    return switch (mode) {
+  IconData get _icon => switch (mode) {
       AspectRatioMode.auto => Icons.auto_fix_high,
       AspectRatioMode.fill => Icons.fullscreen,
       AspectRatioMode.contain => Icons.fit_screen,
@@ -120,10 +119,8 @@ class _AspectRatioTile extends StatelessWidget {
       AspectRatioMode.r21x9 => Icons.panorama_wide_angle_outlined,
       AspectRatioMode.r1x1 => Icons.crop_square,
     };
-  }
 
-  String get _description {
-    return switch (mode) {
+  String get _description => switch (mode) {
       AspectRatioMode.auto => '根据视频自动调整',
       AspectRatioMode.fill => '拉伸填满屏幕',
       AspectRatioMode.contain => '完整显示，可能有黑边',
@@ -133,7 +130,6 @@ class _AspectRatioTile extends StatelessWidget {
       AspectRatioMode.r21x9 => '超宽屏/电影比例',
       AspectRatioMode.r1x1 => '正方形',
     };
-  }
 
   @override
   Widget build(BuildContext context) => ListTile(

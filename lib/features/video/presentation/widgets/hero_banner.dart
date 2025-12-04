@@ -93,14 +93,12 @@ class _HeroBannerState extends State<HeroBanner> {
                 setState(() => _currentPage = page);
               },
               itemCount: widget.items.length,
-              itemBuilder: (context, index) {
-                return _HeroBannerItem(
+              itemBuilder: (context, index) => _HeroBannerItem(
                   metadata: widget.items[index],
                   onTap: () => widget.onItemTap(widget.items[index]),
                   onPlayTap: () => widget.onPlayTap(widget.items[index]),
                   isDark: isDark,
-                );
-              },
+                ),
             ),
 
             // 底部指示器
@@ -325,8 +323,7 @@ class _HeroBannerItem extends StatelessWidget {
                   Wrap(
                     spacing: 8,
                     runSpacing: 4,
-                    children: metadata.genreList.take(3).map((genre) {
-                      return Container(
+                    children: metadata.genreList.take(3).map((genre) => Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 8,
                           vertical: 3,
@@ -345,8 +342,7 @@ class _HeroBannerItem extends StatelessWidget {
                             fontSize: 11,
                           ),
                         ),
-                      );
-                    }).toList(),
+                      )).toList(),
                   ),
                 const SizedBox(height: 16),
 
@@ -425,8 +421,7 @@ class _HeroBannerItem extends StatelessWidget {
     );
   }
 
-  Widget _buildPlaceholder() {
-    return Container(
+  Widget _buildPlaceholder() => Container(
       color: isDark ? Colors.grey[900] : Colors.grey[300],
       child: Center(
         child: Icon(
@@ -436,7 +431,6 @@ class _HeroBannerItem extends StatelessWidget {
         ),
       ),
     );
-  }
 }
 
 /// 紧凑版英雄横幅（用于移动端）
@@ -489,8 +483,7 @@ class _CompactHeroBannerState extends State<CompactHeroBanner> {
               controller: _pageController,
               onPageChanged: (page) => setState(() => _currentPage = page),
               itemCount: widget.items.length,
-              itemBuilder: (context, index) {
-                return AnimatedBuilder(
+              itemBuilder: (context, index) => AnimatedBuilder(
                   animation: _pageController,
                   builder: (context, child) {
                     double value = 1.0;
@@ -508,8 +501,7 @@ class _CompactHeroBannerState extends State<CompactHeroBanner> {
                     onTap: () => widget.onItemTap(widget.items[index]),
                     isDark: isDark,
                   ),
-                );
-              },
+                ),
             ),
           ),
           const SizedBox(height: 12),

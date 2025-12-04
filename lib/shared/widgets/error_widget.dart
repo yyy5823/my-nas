@@ -73,8 +73,7 @@ class AppErrorWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildRetryButton(BuildContext context, bool isDark) {
-    return Container(
+  Widget _buildRetryButton(BuildContext context, bool isDark) => Container(
       height: 48,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(14),
@@ -116,5 +115,4 @@ class AppErrorWidget extends StatelessWidget {
         ),
       ),
     );
-  }
 }

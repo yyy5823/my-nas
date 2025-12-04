@@ -239,9 +239,7 @@ class PlaybackSettingsNotifier extends StateNotifier<PlaybackSettings> {
 
 /// 播放设置 provider
 final playbackSettingsProvider =
-    StateNotifierProvider<PlaybackSettingsNotifier, PlaybackSettings>((ref) {
-  return PlaybackSettingsNotifier();
-});
+    StateNotifierProvider<PlaybackSettingsNotifier, PlaybackSettings>((ref) => PlaybackSettingsNotifier());
 
 /// 可用的播放速度列表
 const availableSpeeds = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];

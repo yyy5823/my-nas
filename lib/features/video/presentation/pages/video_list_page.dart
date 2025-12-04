@@ -671,8 +671,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     WidgetRef ref,
     bool isDark,
     VideoListState state,
-  ) {
-    return Container(
+  ) => Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -697,7 +696,6 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
         ),
       ),
     );
-  }
 
   /// 问候语头部
   Widget _buildGreetingHeader(
@@ -817,8 +815,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     required String label,
     required Color color,
     required bool isDark,
-  }) {
-    return Row(
+  }) => Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(icon, size: 14, color: color),
@@ -832,7 +829,6 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
         ),
       ],
     );
-  }
 
   /// 设置菜单
   void _showSettingsMenu(BuildContext context) {
@@ -1223,8 +1219,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     WidgetRef ref,
     VideoListLoaded state,
     bool isDark,
-  ) {
-    return Container(
+  ) => Container(
       height: 50,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
@@ -1269,10 +1264,8 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
         }).toList(),
       ),
     );
-  }
 
-  Widget _buildMetadataProgress(VideoListLoaded state, bool isDark) {
-    return Container(
+  Widget _buildMetadataProgress(VideoListLoaded state, bool isDark) => Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         children: [
@@ -1296,7 +1289,6 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
         ],
       ),
     );
-  }
 
   List<Widget> _buildContentSections(
     BuildContext context,
@@ -1425,8 +1417,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     Color iconColor,
     bool isDark, {
     bool showSeeAll = false,
-  }) {
-    return SliverToBoxAdapter(
+  }) => SliverToBoxAdapter(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1489,7 +1480,6 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
         ],
       ),
     );
-  }
 
   Widget _buildPosterGrid(
     BuildContext context,
@@ -1624,8 +1614,7 @@ class _ContinueWatchingCard extends ConsumerWidget {
   final bool isDark;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Container(
+  Widget build(BuildContext context, WidgetRef ref) => Container(
       width: 200,
       margin: const EdgeInsets.only(right: 12),
       child: Material(
@@ -1712,7 +1701,6 @@ class _ContinueWatchingCard extends ConsumerWidget {
         ),
       ),
     );
-  }
 
   String _formatDuration(Duration d) {
     final hours = d.inHours;
@@ -1758,12 +1746,11 @@ class _PartialVideoCard extends StatelessWidget {
   final bool isDark;
 
   @override
-  Widget build(BuildContext context) {
-    return Column(
+  Widget build(BuildContext context) => Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(
-          child: Container(
+          child: DecoratedBox(
             decoration: BoxDecoration(
               color: isDark ? Colors.grey[850] : Colors.grey[200],
               borderRadius: BorderRadius.circular(12),
@@ -1837,17 +1824,14 @@ class _PartialVideoCard extends StatelessWidget {
         ),
       ],
     );
-  }
 
-  Widget _buildPlaceholder() {
-    return Center(
+  Widget _buildPlaceholder() => Center(
       child: Icon(
         Icons.movie_rounded,
         size: 40,
         color: isDark ? Colors.grey[600] : Colors.grey[400],
       ),
     );
-  }
 }
 
 /// 海报卡片（带播放进度）
@@ -2123,8 +2107,7 @@ class _PosterCardState extends ConsumerState<_PosterCard> {
     );
   }
 
-  Widget _buildPlaceholder() {
-    return Container(
+  Widget _buildPlaceholder() => Container(
       color: widget.isDark ? Colors.grey[850] : Colors.grey[200],
       child: Center(
         child: Icon(
@@ -2136,7 +2119,6 @@ class _PosterCardState extends ConsumerState<_PosterCard> {
         ),
       ),
     );
-  }
 
   Color _getRatingColor() {
     final rating = widget.metadata.rating ?? 0;

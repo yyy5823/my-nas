@@ -166,9 +166,7 @@ class SubtitleStyleNotifier extends StateNotifier<SubtitleStyle> {
 
 /// 字幕样式 provider
 final subtitleStyleProvider =
-    StateNotifierProvider<SubtitleStyleNotifier, SubtitleStyle>((ref) {
-  return SubtitleStyleNotifier();
-});
+    StateNotifierProvider<SubtitleStyleNotifier, SubtitleStyle>((ref) => SubtitleStyleNotifier());
 
 /// 预设字幕颜色
 const subtitleColors = [
@@ -196,10 +194,8 @@ final subtitleBackgrounds = [
 const subtitleFontSizes = [16.0, 20.0, 24.0, 28.0, 32.0, 36.0, 40.0];
 
 extension ColorToInt on Color {
-  int toARGB32() {
-    return ((alpha * 255).round() << 24) |
-        ((red * 255).round() << 16) |
-        ((green * 255).round() << 8) |
-        (blue * 255).round();
-  }
+  int toARGB32() => ((alpha * 255) << 24) |
+        ((red * 255) << 16) |
+        ((green * 255) << 8) |
+        (blue * 255);
 }

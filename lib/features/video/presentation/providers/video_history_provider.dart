@@ -2,9 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/features/video/data/services/video_history_service.dart';
 
 /// 视频历史服务 Provider
-final videoHistoryServiceProvider = Provider<VideoHistoryService>((ref) {
-  return VideoHistoryService.instance;
-});
+final videoHistoryServiceProvider = Provider<VideoHistoryService>((ref) => VideoHistoryService.instance);
 
 /// 播放历史 Provider
 final videoHistoryProvider = FutureProvider<List<VideoHistoryItem>>((ref) async {
