@@ -190,8 +190,20 @@ key.properties
 # Development docs (not for public)
 /docs/
 
-# Keep Podfile.lock for iOS/macOS builds
-!**/ios/Podfile.lock
-!**/macos/Podfile.lock
+# Podfile.lock - 由 CocoaPods 自动生成，包含本地依赖版本
+# 不同开发环境可能有不同的版本，不需要提交
+**/ios/Podfile.lock
+**/macos/Podfile.lock
+
+# Xcode project files - 包含本地路径和用户特定设置
+**/ios/Runner.xcodeproj/project.pbxproj
+**/macos/Runner.xcodeproj/project.pbxproj
+
+# Injectable 自动生成的配置文件
+lib/core/di/injection.config.dart
+
+# Claude Code 配置
 CLAUDE.md
+
+# Windows null device file
 nul

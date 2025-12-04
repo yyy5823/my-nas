@@ -2207,10 +2207,143 @@ class _ViewMoreCardState extends State<_ViewMoreCard> {
 
   @override
   Widget build(BuildContext context) {
-    // 纵向: 130x195, 横向: 220x124
-    final width = widget.useVerticalStyle ? 130.0 : 220.0;
-    final height = widget.useVerticalStyle ? 195.0 : 124.0;
+    // 与 _VerticalPosterCard 保持一致的尺寸
+    // 纵向: 宽130, 海报高195 (2:3比例), 横向: 220x124
+    const verticalWidth = 130.0;
+    const verticalPosterHeight = 195.0; // 130 * 1.5
+    const horizontalWidth = 220.0;
+    const horizontalHeight = 124.0;
 
+    final width = widget.useVerticalStyle ? verticalWidth : horizontalWidth;
+    final posterHeight = widget.useVerticalStyle ? verticalPosterHeight : horizontalHeight;
+
+    if (widget.useVerticalStyle) {
+      // 纵向样式：与 _VerticalPosterCard 结构完全一致
+      return Container(
+        width: width,
+        margin: const EdgeInsets.only(right: 12),
+        child: MouseRegion(
+          onEnter: (_) => setState(() => _isHovered = true),
+          onExit: (_) => setState(() => _isHovered = false),
+          child: GestureDetector(
+            onTap: widget.onTap,
+            child: AnimatedScale(
+              scale: _isHovered ? 1.05 : 1.0,
+              duration: const Duration(milliseconds: 150),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 海报区域 - 与 _VerticalPosterCard 的海报容器保持一致
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    width: width,
+                    height: posterHeight,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: _isHovered
+                            ? [
+                                AppColors.primary.withValues(alpha: 0.3),
+                                AppColors.primary.withValues(alpha: 0.1),
+                              ]
+                            : [
+                                widget.isDark ? Colors.grey[850]! : Colors.grey[200]!,
+                                widget.isDark ? Colors.grey[900]! : Colors.grey[100]!,
+                              ],
+                      ),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: _isHovered
+                            ? AppColors.primary
+                            : (widget.isDark ? Colors.grey[700]! : Colors.grey[300]!),
+                        width: _isHovered ? 2 : 1,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: _isHovered ? 0.4 : 0.2),
+                          blurRadius: _isHovered ? 16 : 8,
+                          offset: Offset(0, _isHovered ? 8 : 4),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        // 图标
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          width: 56,
+                          height: 56,
+                          decoration: BoxDecoration(
+                            color: _isHovered
+                                ? AppColors.primary.withValues(alpha: 0.2)
+                                : (widget.isDark ? Colors.grey[800] : Colors.grey[300]),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.grid_view_rounded,
+                            color: _isHovered
+                                ? AppColors.primary
+                                : (widget.isDark ? Colors.grey[400] : Colors.grey[600]),
+                            size: 28,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        // 文字
+                        Text(
+                          '查看全部',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: _isHovered
+                                ? AppColors.primary
+                                : (widget.isDark ? Colors.white : Colors.black87),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        // 数量
+                        Text(
+                          widget.remainingCount > 0
+                              ? '还有 ${widget.remainingCount} 部'
+                              : '共 ${widget.totalCount} 部',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: widget.isDark ? Colors.grey[500] : Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // 标题区域 - 与 _VerticalPosterCard 保持一致的间距
+                  const SizedBox(height: 8),
+                  Text(
+                    '更多内容',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: widget.isDark ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                  // 副标题 - 与 _VerticalPosterCard 的年份行对应
+                  Text(
+                    '共 ${widget.totalCount} 部',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: widget.isDark ? Colors.grey[500] : Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // 横向样式保持原有实现
     return Container(
       margin: const EdgeInsets.only(right: 12),
       child: MouseRegion(
@@ -2223,7 +2356,7 @@ class _ViewMoreCardState extends State<_ViewMoreCard> {
             duration: const Duration(milliseconds: 150),
             child: Container(
               width: width,
-              height: height,
+              height: posterHeight,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
@@ -2255,14 +2388,14 @@ class _ViewMoreCardState extends State<_ViewMoreCard> {
                       ]
                     : null,
               ),
-              child: Column(
+              child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   // 图标
                   AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
-                    width: 56,
-                    height: 56,
+                    width: 40,
+                    height: 40,
                     decoration: BoxDecoration(
                       color: _isHovered
                           ? AppColors.primary.withValues(alpha: 0.2)
@@ -2274,31 +2407,36 @@ class _ViewMoreCardState extends State<_ViewMoreCard> {
                       color: _isHovered
                           ? AppColors.primary
                           : (widget.isDark ? Colors.grey[400] : Colors.grey[600]),
-                      size: 28,
+                      size: 20,
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(width: 12),
                   // 文字
-                  Text(
-                    '查看全部',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: _isHovered
-                          ? AppColors.primary
-                          : (widget.isDark ? Colors.white : Colors.black87),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  // 数量
-                  Text(
-                    widget.remainingCount > 0
-                        ? '还有 ${widget.remainingCount} 部'
-                        : '共 ${widget.totalCount} 部',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: widget.isDark ? Colors.grey[500] : Colors.grey[600],
-                    ),
+                  Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '查看全部',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: _isHovered
+                              ? AppColors.primary
+                              : (widget.isDark ? Colors.white : Colors.black87),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        widget.remainingCount > 0
+                            ? '还有 ${widget.remainingCount} 部'
+                            : '共 ${widget.totalCount} 部',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: widget.isDark ? Colors.grey[500] : Colors.grey[600],
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
