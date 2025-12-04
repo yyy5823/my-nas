@@ -653,14 +653,6 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
             tooltip: state.viewMode == PhotoViewMode.grid ? '时间线' : '网格',
           ),
         IconButton(
-          onPressed: () => ref.read(photoListProvider.notifier).forceRefresh(),
-          icon: Icon(
-            Icons.refresh_rounded,
-            color: isDark ? Colors.white : Colors.black87,
-          ),
-          tooltip: '刷新',
-        ),
-        IconButton(
           onPressed: () => _showSettingsMenu(context),
           icon: Icon(
             Icons.more_vert_rounded,

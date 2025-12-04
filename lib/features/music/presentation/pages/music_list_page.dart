@@ -706,14 +706,6 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
           tooltip: '搜索',
         ),
         IconButton(
-          onPressed: () => ref.read(musicListProvider.notifier).loadMusic(forceRefresh: true),
-          icon: Icon(
-            Icons.refresh_rounded,
-            color: isDark ? Colors.white : Colors.black87,
-          ),
-          tooltip: '刷新',
-        ),
-        IconButton(
           onPressed: () => _showSettingsMenu(context),
           icon: Icon(
             Icons.more_vert_rounded,
