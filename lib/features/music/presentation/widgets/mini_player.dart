@@ -123,6 +123,7 @@ class MiniPlayer extends ConsumerWidget {
       return Image.memory(
         Uint8List.fromList(coverData),
         fit: BoxFit.cover,
+        gaplessPlayback: true, // 防止闪烁
         errorBuilder: (_, _, _) => _buildCoverPlaceholder(context),
       );
     }
@@ -131,6 +132,7 @@ class MiniPlayer extends ConsumerWidget {
       return Image.network(
         coverUrl,
         fit: BoxFit.cover,
+        gaplessPlayback: true,
         errorBuilder: (_, _, _) => _buildCoverPlaceholder(context),
       );
     }

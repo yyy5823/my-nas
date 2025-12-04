@@ -344,9 +344,11 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
     if (music.coverData != null && music.coverData!.isNotEmpty) {
       return Image.memory(
         Uint8List.fromList(music.coverData!),
+        key: ValueKey('mini_cover_${music.id}'),
         width: size,
         height: size,
         fit: BoxFit.cover,
+        gaplessPlayback: true,
         errorBuilder: (_, __, ___) => _buildMiniCoverPlaceholder(isDark),
       );
     }
@@ -355,9 +357,11 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
     if (music.coverUrl != null) {
       return Image.network(
         music.coverUrl!,
+        key: ValueKey('mini_cover_url_${music.id}'),
         width: size,
         height: size,
         fit: BoxFit.cover,
+        gaplessPlayback: true,
         errorBuilder: (_, __, ___) => _buildMiniCoverPlaceholder(isDark),
       );
     }
@@ -573,9 +577,11 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
     if (music.coverData != null && music.coverData!.isNotEmpty) {
       return Image.memory(
         Uint8List.fromList(music.coverData!),
+        key: ValueKey('cover_${music.id}'),
         width: size,
         height: size,
         fit: BoxFit.cover,
+        gaplessPlayback: true, // 防止动画时闪烁
         errorBuilder: (_, __, ___) => _buildCoverPlaceholder(size, isDark),
       );
     }
@@ -584,9 +590,11 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
     if (music.coverUrl != null) {
       return Image.network(
         music.coverUrl!,
+        key: ValueKey('cover_url_${music.id}'),
         width: size,
         height: size,
         fit: BoxFit.cover,
+        gaplessPlayback: true,
         errorBuilder: (_, __, ___) => _buildCoverPlaceholder(size, isDark),
       );
     }

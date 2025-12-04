@@ -87,13 +87,21 @@ class MusicMetadataService {
     }
   }
 
+  /// 渐进式读取大小（从小到大尝试）
+  static const List<int> _progressiveReadSizes = [
+    512 * 1024,      // 512KB - 快速尝试，适用于小元数据文件
+    1024 * 1024,     // 1MB
+    2 * 1024 * 1024, // 2MB
+    4 * 1024 * 1024, // 4MB
+    -1,              // -1 表示读取整个文件
+  ];
+
   /// 从 NAS 文件提取元数据
-  /// 需要先下载文件头部到本地临时文件
+  /// 使用渐进式重试策略：从小到大尝试不同的读取大小，确保所有文件都能被正确解析
   /// [skipLyrics] 为 true 时跳过歌词提取，用于后台批量扫描
   Future<MusicMetadata?> extractFromNasFile(
     NasFileSystem fileSystem,
     String path, {
-    int maxBytes = 512 * 1024, // 默认读取前 512KB，足够读取大多数 ID3 标签
     bool skipLyrics = false,
   }) async {
     if (!_initialized) await init();
@@ -108,9 +116,61 @@ class MusicMetadataService {
 
       // 获取文件信息
       final fileInfo = await fileSystem.getFileInfo(path);
-      final bytesToRead = fileInfo.size < maxBytes ? fileInfo.size : maxBytes;
+      final fileSize = fileInfo.size;
 
-      // 读取文件头部
+      // 渐进式尝试不同的读取大小
+      for (final targetSize in _progressiveReadSizes) {
+        final bytesToRead = targetSize == -1 ? fileSize : (fileSize < targetSize ? fileSize : targetSize);
+
+        // 如果已经尝试过这个大小或更大，跳过
+        if (targetSize != -1 && bytesToRead == fileSize && targetSize != _progressiveReadSizes.first) {
+          // 已经读取了整个文件但还没成功，继续下一次尝试（最后一次是 -1）
+          if (targetSize != _progressiveReadSizes[_progressiveReadSizes.length - 2]) {
+            continue;
+          }
+        }
+
+        final result = await _tryExtractMetadata(
+          fileSystem,
+          path,
+          bytesToRead,
+          cacheKey,
+          skipLyrics: skipLyrics,
+        );
+
+        if (result != null) {
+          return result;
+        }
+
+        // 如果已经读取了整个文件还是失败，不再重试
+        if (bytesToRead >= fileSize) {
+          logger.w('MusicMetadataService: 读取整个文件后仍无法解析元数据: $path');
+          break;
+        }
+
+        logger.d('MusicMetadataService: 尝试更大的读取大小: $path (当前: $bytesToRead)');
+      }
+
+      return null;
+    } catch (e, stackTrace) {
+      logger.w('MusicMetadataService: 提取 NAS 文件元数据失败: $path', e, stackTrace);
+      return null;
+    }
+  }
+
+  /// 尝试使用指定大小提取元数据
+  Future<MusicMetadata?> _tryExtractMetadata(
+    NasFileSystem fileSystem,
+    String path,
+    int bytesToRead,
+    String cacheKey, {
+    bool skipLyrics = false,
+  }) async {
+    File? tempFile;
+    try {
+      logger.d('MusicMetadataService: 尝试读取 $bytesToRead 字节: $path');
+
+      // 读取文件
       final stream = await fileSystem.getFileStream(
         path,
         range: FileRange(start: 0, end: bytesToRead),
@@ -124,36 +184,53 @@ class MusicMetadataService {
       // 保存到临时文件（使用唯一文件名避免并发冲突）
       final ext = p.extension(path).toLowerCase();
       final uniqueId = '${DateTime.now().microsecondsSinceEpoch}_${Random().nextInt(999999)}';
-      final tempFile = File(p.join(_cacheDir.path, 'temp_metadata_$uniqueId$ext'));
+      tempFile = File(p.join(_cacheDir.path, 'temp_metadata_$uniqueId$ext'));
       await tempFile.writeAsBytes(Uint8List.fromList(chunks));
 
-      try {
-        final metadata = readMetadata(tempFile, getImage: true);
-        final result = _convertMetadata(metadata, path, skipLyrics: skipLyrics);
-        _metadataCache[cacheKey] = result;
-        return result;
-      } finally {
-        // 清理临时文件（延迟删除以确保文件已关闭）
-        try {
-          if (await tempFile.exists()) {
-            await tempFile.delete();
-          }
-        } catch (e) {
-          // 文件可能仍被占用，稍后重试一次
-          await Future<void>.delayed(const Duration(milliseconds: 100));
-          try {
-            if (await tempFile.exists()) {
-              await tempFile.delete();
-            }
-          } catch (_) {
-            // 忽略删除失败，临时文件会在下次启动时被清理
-            logger.d('MusicMetadataService: 临时文件删除失败，将稍后清理: ${tempFile.path}');
-          }
-        }
+      final metadata = readMetadata(tempFile, getImage: true);
+      final result = _convertMetadata(metadata, path, skipLyrics: skipLyrics);
+      _metadataCache[cacheKey] = result;
+
+      logger.d('MusicMetadataService: 成功提取元数据 (读取 $bytesToRead 字节): $path');
+      return result;
+    } on MetadataParserException catch (e) {
+      // 解析异常，可能需要更多数据
+      if (e.toString().contains('Expected more data')) {
+        logger.d('MusicMetadataService: 数据不足，需要读取更多: $path');
+        return null; // 返回 null 让调用者重试更大的大小
       }
-    } catch (e, stackTrace) {
-      logger.w('MusicMetadataService: 提取 NAS 文件元数据失败: $path', e, stackTrace);
+      // 其他解析异常，记录但不抛出
+      logger.d('MusicMetadataService: 解析异常: $path - $e');
       return null;
+    } catch (e) {
+      // 其他异常
+      logger.d('MusicMetadataService: 提取失败: $path - $e');
+      return null;
+    } finally {
+      // 清理临时文件
+      if (tempFile != null) {
+        await _deleteTempFile(tempFile);
+      }
+    }
+  }
+
+  /// 安全删除临时文件
+  Future<void> _deleteTempFile(File tempFile) async {
+    try {
+      if (await tempFile.exists()) {
+        await tempFile.delete();
+      }
+    } catch (e) {
+      // 文件可能仍被占用，稍后重试一次
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      try {
+        if (await tempFile.exists()) {
+          await tempFile.delete();
+        }
+      } catch (_) {
+        // 忽略删除失败，临时文件会在下次启动时被清理
+        logger.d('MusicMetadataService: 临时文件删除失败，将稍后清理: ${tempFile.path}');
+      }
     }
   }
 

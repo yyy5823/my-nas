@@ -2213,9 +2213,37 @@ class _AllSongsView extends ConsumerWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.music_off_rounded, size: 64, color: Colors.grey[400]),
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    AppColors.primary.withValues(alpha: 0.2),
+                    AppColors.secondary.withValues(alpha: 0.2),
+                  ],
+                ),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.music_off_rounded, size: 40, color: AppColors.primary),
+            ),
             const SizedBox(height: 16),
-            Text('暂无歌曲', style: TextStyle(color: Colors.grey[600])),
+            Text(
+              '暂无歌曲',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+                color: isDark ? Colors.grey[400] : Colors.grey[600],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '扫描音乐库以添加歌曲',
+              style: TextStyle(
+                fontSize: 13,
+                color: isDark ? Colors.grey[600] : Colors.grey[500],
+              ),
+            ),
           ],
         ),
       );
@@ -2223,39 +2251,75 @@ class _AllSongsView extends ConsumerWidget {
 
     return Column(
       children: [
-        // 播放全部按钮
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              FilledButton.icon(
-                onPressed: () => _playAll(context, ref),
-                icon: const Icon(Icons.play_arrow_rounded),
-                label: const Text('播放全部'),
-              ),
-              const SizedBox(width: 12),
-              OutlinedButton.icon(
-                onPressed: () => _shufflePlay(context, ref),
-                icon: const Icon(Icons.shuffle_rounded),
-                label: const Text('随机播放'),
-              ),
-            ],
-          ),
-        ),
+        // 播放控制栏
+        _buildControlBar(context, ref),
         Expanded(
           child: ListView.builder(
+            padding: const EdgeInsets.only(bottom: 16),
             itemCount: tracks.length,
-            itemBuilder: (context, index) => _CompactMusicTile(
+            itemBuilder: (context, index) => _ModernMusicTile(
               track: tracks[index],
+              index: index,
               isDark: isDark,
               allTracks: tracks,
-              trackIndex: index,
             ),
           ),
         ),
       ],
     );
   }
+
+  Widget _buildControlBar(BuildContext context, WidgetRef ref) => Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: Row(
+        children: [
+          // 播放全部按钮
+          Expanded(
+            child: _GradientPlayButton(
+              onPressed: () => _playAll(context, ref),
+              icon: Icons.play_arrow_rounded,
+              label: '播放全部',
+            ),
+          ),
+          const SizedBox(width: 12),
+          // 随机播放按钮
+          Container(
+            decoration: BoxDecoration(
+              color: isDark
+                  ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
+                  : Colors.grey[100],
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: IconButton(
+              onPressed: () => _shufflePlay(context, ref),
+              icon: Icon(
+                Icons.shuffle_rounded,
+                color: isDark ? Colors.white70 : Colors.black87,
+              ),
+              tooltip: '随机播放',
+            ),
+          ),
+          const SizedBox(width: 8),
+          // 排序按钮
+          Container(
+            decoration: BoxDecoration(
+              color: isDark
+                  ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
+                  : Colors.grey[100],
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: IconButton(
+              onPressed: () {},
+              icon: Icon(
+                Icons.sort_rounded,
+                color: isDark ? Colors.white70 : Colors.black87,
+              ),
+              tooltip: '排序',
+            ),
+          ),
+        ],
+      ),
+    );
 
   Future<void> _playAll(BuildContext context, WidgetRef ref) async {
     logger.i('_AllSongsView._playAll: 开始播放全部 (${tracks.length} 首)');
@@ -2754,6 +2818,7 @@ class _MusicListTile extends ConsumerWidget {
           ? Image.memory(
               Uint8List.fromList(coverData),
               fit: BoxFit.cover,
+              gaplessPlayback: true,
               errorBuilder: (context, error, stackTrace) => _buildFallbackCover(title),
             )
           : _buildFallbackCover(title),
@@ -4336,6 +4401,540 @@ class _PlaylistTrackTile extends ConsumerWidget {
     Navigator.of(context).pop();
     await MusicPlayerPage.open(context);
   }
+}
+
+/// 渐变播放按钮
+class _GradientPlayButton extends StatelessWidget {
+  const _GradientPlayButton({
+    required this.onPressed,
+    required this.icon,
+    required this.label,
+  });
+
+  final VoidCallback onPressed;
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(24),
+        child: Ink(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [AppColors.primary, AppColors.secondary],
+            ),
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, color: Colors.white, size: 22),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+}
+
+/// 现代风格音乐列表项
+class _ModernMusicTile extends ConsumerWidget {
+  const _ModernMusicTile({
+    required this.track,
+    required this.index,
+    required this.isDark,
+    required this.allTracks,
+  });
+
+  final MusicFileWithSource track;
+  final int index;
+  final bool isDark;
+  final List<MusicFileWithSource> allTracks;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final currentMusic = ref.watch(currentMusicProvider);
+    final isPlaying = currentMusic?.path == track.path;
+    final title = track.displayTitle;
+    final artist = track.displayArtist;
+    final coverData = track.coverData;
+
+    // 检查源是否已连接
+    final connections = ref.watch(activeConnectionsProvider);
+    final connection = connections[track.sourceId];
+    final isConnected = connection != null && connection.status == SourceStatus.connected;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        color: isPlaying
+            ? AppColors.primary.withValues(alpha: isDark ? 0.15 : 0.08)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _playTrack(context, ref),
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                // 序号或播放指示器
+                SizedBox(
+                  width: 32,
+                  child: isPlaying
+                      ? _PlayingIndicator(isDark: isDark)
+                      : Text(
+                          '${index + 1}',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: isDark
+                                ? Colors.grey[500]
+                                : Colors.grey[600],
+                          ),
+                        ),
+                ),
+                const SizedBox(width: 12),
+                // 封面
+                _buildCover(coverData, title, isPlaying, isConnected),
+                const SizedBox(width: 14),
+                // 标题和艺术家
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: isPlaying ? FontWeight.w600 : FontWeight.w500,
+                          color: isPlaying
+                              ? AppColors.primary
+                              : isConnected
+                                  ? (isDark ? Colors.white : Colors.black87)
+                                  : (isDark ? Colors.grey[600] : Colors.grey[500]),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          if (!isConnected) ...[
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.orange.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text(
+                                '离线',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.orange,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                          ],
+                          Flexible(
+                            child: Text(
+                              artist,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: isDark ? Colors.grey[500] : Colors.grey[600],
+                              ),
+                            ),
+                          ),
+                          if (track.duration != null) ...[
+                            Text(
+                              ' · ',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: isDark ? Colors.grey[600] : Colors.grey[500],
+                              ),
+                            ),
+                            Text(
+                              track.durationText,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: isDark ? Colors.grey[600] : Colors.grey[500],
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                // 更多按钮
+                IconButton(
+                  onPressed: () => _showMoreOptions(context, ref),
+                  icon: Icon(
+                    Icons.more_horiz_rounded,
+                    color: isDark ? Colors.grey[500] : Colors.grey[600],
+                    size: 22,
+                  ),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCover(List<int>? coverData, String title, bool isPlaying, bool isConnected) {
+    final size = 52.0;
+
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        color: isDark ? Colors.grey[800] : Colors.grey[200],
+        boxShadow: isPlaying
+            ? [
+                BoxShadow(
+                  color: AppColors.primary.withValues(alpha: 0.3),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ]
+            : null,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: coverData != null
+          ? Image.memory(
+              Uint8List.fromList(coverData),
+              fit: BoxFit.cover,
+              gaplessPlayback: true,
+              errorBuilder: (_, __, ___) => _buildFallbackCover(title, isConnected),
+            )
+          : _buildFallbackCover(title, isConnected),
+    );
+  }
+
+  Widget _buildFallbackCover(String title, bool isConnected) {
+    final gradientColors = _getGradientForTitle(title);
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: gradientColors,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Center(
+        child: Text(
+          title.isNotEmpty ? title[0].toUpperCase() : '♪',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+            shadows: [
+              Shadow(
+                color: Colors.black.withValues(alpha: 0.2),
+                blurRadius: 4,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<Color> _getGradientForTitle(String title) {
+    final hash = title.hashCode;
+    final gradients = [
+      [const Color(0xFF667eea), const Color(0xFF764ba2)],
+      [const Color(0xFFf093fb), const Color(0xFFf5576c)],
+      [const Color(0xFF4facfe), const Color(0xFF00f2fe)],
+      [const Color(0xFF43e97b), const Color(0xFF38f9d7)],
+      [const Color(0xFFfa709a), const Color(0xFFfee140)],
+      [const Color(0xFF30cfd0), const Color(0xFF330867)],
+      [const Color(0xFFa8edea), const Color(0xFFfed6e3)],
+      [const Color(0xFFff9a9e), const Color(0xFFfecfef)],
+    ];
+    return gradients[hash.abs() % gradients.length];
+  }
+
+  Future<void> _playTrack(BuildContext context, WidgetRef ref) async {
+    final connections = ref.read(activeConnectionsProvider);
+    final connection = connections[track.sourceId];
+    if (connection == null || connection.status != SourceStatus.connected) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('源未连接，请先连接到 NAS')),
+        );
+      }
+      return;
+    }
+
+    try {
+      final url = await connection.adapter.fileSystem.getFileUrl(track.path);
+      final musicItem = MusicItem.fromFileItem(
+        track.file,
+        url,
+        sourceId: track.sourceId,
+        title: track.title,
+        artist: track.artist,
+        album: track.album,
+        durationMs: track.duration,
+        trackNumber: track.trackNumber,
+        year: track.year,
+        genre: track.genre,
+        coverData: track.coverData,
+      );
+
+      // 设置播放队列
+      final queue = <MusicItem>[];
+      for (final t in allTracks) {
+        final conn = connections[t.sourceId];
+        if (conn == null || conn.status != SourceStatus.connected) continue;
+        final trackUrl = await conn.adapter.fileSystem.getFileUrl(t.path);
+        queue.add(MusicItem.fromFileItem(
+          t.file,
+          trackUrl,
+          sourceId: t.sourceId,
+          title: t.title,
+          artist: t.artist,
+          album: t.album,
+          durationMs: t.duration,
+          coverData: t.coverData,
+        ));
+      }
+
+      ref.read(playQueueProvider.notifier).setQueue(queue);
+      ref.read(musicPlayerControllerProvider.notifier).updateCurrentIndex(index);
+      await ref.read(musicPlayerControllerProvider.notifier).play(musicItem);
+
+      if (context.mounted) {
+        await MusicPlayerPage.open(context);
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('播放失败: $e')),
+        );
+      }
+    }
+  }
+
+  void _showMoreOptions(BuildContext context, WidgetRef ref) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 拖拽指示器
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[400],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            // 歌曲信息头
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      color: isDark ? Colors.grey[800] : Colors.grey[200],
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: track.coverData != null
+                        ? Image.memory(
+                            Uint8List.fromList(track.coverData!),
+                            fit: BoxFit.cover,
+                          )
+                        : Icon(
+                            Icons.music_note_rounded,
+                            color: isDark ? Colors.grey[600] : Colors.grey[400],
+                          ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          track.displayTitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                        ),
+                        Text(
+                          track.displayArtist,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: isDark ? Colors.grey[400] : Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            _BottomSheetOption(
+              icon: Icons.queue_play_next_rounded,
+              label: '下一首播放',
+              isDark: isDark,
+              onTap: () {
+                Navigator.pop(context);
+                // TODO: Add to play next
+              },
+            ),
+            _BottomSheetOption(
+              icon: Icons.playlist_add_rounded,
+              label: '添加到播放队列',
+              isDark: isDark,
+              onTap: () {
+                Navigator.pop(context);
+                // TODO: Add to queue
+              },
+            ),
+            _BottomSheetOption(
+              icon: Icons.favorite_border_rounded,
+              label: '添加到我喜欢',
+              isDark: isDark,
+              onTap: () {
+                Navigator.pop(context);
+                // TODO: Add to favorites
+              },
+            ),
+            _BottomSheetOption(
+              icon: Icons.playlist_add_check_rounded,
+              label: '添加到歌单',
+              isDark: isDark,
+              onTap: () {
+                Navigator.pop(context);
+                // TODO: Add to playlist
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 播放中动画指示器
+class _PlayingIndicator extends StatefulWidget {
+  const _PlayingIndicator({required this.isDark});
+  final bool isDark;
+
+  @override
+  State<_PlayingIndicator> createState() => _PlayingIndicatorState();
+}
+
+class _PlayingIndicatorState extends State<_PlayingIndicator>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 600),
+      vsync: this,
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) => Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(3, (index) {
+            final delay = index * 0.2;
+            final animValue = ((_controller.value + delay) % 1.0);
+            return Container(
+              width: 3,
+              height: 8 + (animValue * 8),
+              margin: const EdgeInsets.symmetric(horizontal: 1),
+              decoration: BoxDecoration(
+                color: AppColors.primary,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            );
+          }),
+        ),
+    );
+}
+
+/// 底部弹窗选项
+class _BottomSheetOption extends StatelessWidget {
+  const _BottomSheetOption({
+    required this.icon,
+    required this.label,
+    required this.isDark,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool isDark;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+      leading: Icon(icon, color: isDark ? Colors.white70 : Colors.black87),
+      title: Text(
+        label,
+        style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+      ),
+      onTap: onTap,
+    );
 }
 
 /// 紧凑型音乐列表项
