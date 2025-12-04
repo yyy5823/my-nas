@@ -995,13 +995,15 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     bool isDark,
   ) {
     final width = MediaQuery.of(context).size.width;
-    final crossAxisCount = width > 1200 ? 7 : width > 900 ? 6 : width > 600 ? 5 : 3;
+    // 横向视频卡片需要更少的列数
+    final crossAxisCount = width > 1200 ? 5 : width > 900 ? 4 : width > 600 ? 3 : 2;
 
+    // 使用横向比例，适合视频缩略图 (16:9 = 1.78，加上标题区域约 1.4)
     return GridView.builder(
       padding: const EdgeInsets.all(16),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: crossAxisCount,
-        childAspectRatio: 0.65,
+        childAspectRatio: 1.4,
         mainAxisSpacing: 16,
         crossAxisSpacing: 12,
       ),
@@ -1454,9 +1456,9 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               ],
             ),
           ),
-          // 海报横向滚动
+          // 横向视频卡片滚动
           SizedBox(
-            height: 200,
+            height: 160,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -1467,11 +1469,10 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
                   index: index,
                   slideOffset: 0,
                   delay: const Duration(milliseconds: 40),
-                  child: _PosterCard(
+                  child: _HorizontalVideoCard(
                     metadata: metadata,
                     onTap: () => _openVideoDetail(context, ref, metadata),
                     isDark: isDark,
-                    width: 120,
                   ),
                 );
               },
@@ -1489,14 +1490,16 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     bool isDark,
   ) {
     final width = MediaQuery.of(context).size.width;
-    final crossAxisCount = width > 1200 ? 7 : width > 900 ? 6 : width > 600 ? 5 : 3;
+    // 横向视频卡片需要更少的列数
+    final crossAxisCount = width > 1200 ? 5 : width > 900 ? 4 : width > 600 ? 3 : 2;
 
     return SliverPadding(
       padding: const EdgeInsets.all(16),
       sliver: SliverGrid(
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: crossAxisCount,
-          childAspectRatio: 0.65,
+          // 横向比例：视频缩略图 16:9，加上标题区域
+          childAspectRatio: 1.4,
           mainAxisSpacing: 16,
           crossAxisSpacing: 12,
         ),
@@ -1639,16 +1642,14 @@ class _ContinueWatchingCard extends ConsumerWidget {
                         borderRadius: const BorderRadius.vertical(
                           top: Radius.circular(12),
                         ),
-                        child: Container(
-                          color: isDark ? Colors.grey[800] : Colors.grey[200],
-                          child: const Center(
-                            child: Icon(
-                              Icons.play_circle_rounded,
-                              size: 40,
-                              color: Colors.white54,
-                            ),
-                          ),
-                        ),
+                        child: item.thumbnailUrl != null && item.thumbnailUrl!.isNotEmpty
+                            ? AdaptiveImage(
+                                imageUrl: item.thumbnailUrl!,
+                                fit: BoxFit.cover,
+                                placeholder: (_) => _buildThumbnailPlaceholder(),
+                                errorWidget: (_, __) => _buildThumbnailPlaceholder(),
+                              )
+                            : _buildThumbnailPlaceholder(),
                       ),
                       // 进度条
                       Positioned(
@@ -1702,6 +1703,17 @@ class _ContinueWatchingCard extends ConsumerWidget {
       ),
     );
 
+  Widget _buildThumbnailPlaceholder() => Container(
+      color: isDark ? Colors.grey[800] : Colors.grey[200],
+      child: const Center(
+        child: Icon(
+          Icons.play_circle_rounded,
+          size: 40,
+          color: Colors.white54,
+        ),
+      ),
+    );
+
   String _formatDuration(Duration d) {
     final hours = d.inHours;
     final minutes = d.inMinutes.remainder(60);
@@ -1735,7 +1747,7 @@ class _ContinueWatchingCard extends ConsumerWidget {
   }
 }
 
-/// 扫描中的简化视频卡片
+/// 扫描中的简化视频卡片（横向布局）
 class _PartialVideoCard extends StatelessWidget {
   const _PartialVideoCard({
     required this.video,
@@ -1749,75 +1761,83 @@ class _PartialVideoCard extends StatelessWidget {
   Widget build(BuildContext context) => Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // 横向视频缩略图
         Expanded(
-          child: DecoratedBox(
+          child: Container(
             decoration: BoxDecoration(
               color: isDark ? Colors.grey[850] : Colors.grey[200],
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(10),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.15),
+                  blurRadius: 6,
+                  offset: const Offset(0, 3),
+                ),
+              ],
             ),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                // 缩略图或占位符
-                if (video.thumbnailUrl != null)
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: AdaptiveImage(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  // 缩略图或占位符
+                  if (video.thumbnailUrl != null)
+                    AdaptiveImage(
                       imageUrl: video.thumbnailUrl!,
                       fit: BoxFit.cover,
                       placeholder: (_) => _buildPlaceholder(),
                       errorWidget: (_, __) => _buildPlaceholder(),
-                    ),
-                  )
-                else
-                  _buildPlaceholder(),
-                // 扫描中标记
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black54,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SizedBox(
-                          width: 8,
-                          height: 8,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 1.5,
-                            color: Colors.white,
+                    )
+                  else
+                    _buildPlaceholder(),
+                  // 扫描中标记
+                  Positioned(
+                    top: 6,
+                    right: 6,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 8,
+                            height: 8,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 1.5,
+                              color: Colors.white,
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 4),
-                        const Text(
-                          '扫描中',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 9,
+                          const SizedBox(width: 4),
+                          const Text(
+                            '扫描中',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 9,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         Text(
           video.name,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            fontSize: 12,
+            fontSize: 11,
             fontWeight: FontWeight.w500,
             color: isDark ? Colors.white : null,
           ),
@@ -1828,7 +1848,7 @@ class _PartialVideoCard extends StatelessWidget {
   Widget _buildPlaceholder() => Center(
       child: Icon(
         Icons.movie_rounded,
-        size: 40,
+        size: 32,
         color: isDark ? Colors.grey[600] : Colors.grey[400],
       ),
     );
@@ -2115,6 +2135,272 @@ class _PosterCardState extends ConsumerState<_PosterCard> {
               ? Icons.live_tv_rounded
               : Icons.movie_rounded,
           size: 40,
+          color: widget.isDark ? Colors.grey[600] : Colors.grey[400],
+        ),
+      ),
+    );
+
+  Color _getRatingColor() {
+    final rating = widget.metadata.rating ?? 0;
+    if (rating >= 8) return Colors.green;
+    if (rating >= 6) return Colors.orange;
+    return Colors.red;
+  }
+}
+
+/// 横向视频卡片（适合视频缩略图 16:9）
+class _HorizontalVideoCard extends ConsumerStatefulWidget {
+  const _HorizontalVideoCard({
+    required this.metadata,
+    required this.onTap,
+    required this.isDark,
+  });
+
+  final VideoMetadata metadata;
+  final VoidCallback onTap;
+  final bool isDark;
+
+  @override
+  ConsumerState<_HorizontalVideoCard> createState() => _HorizontalVideoCardState();
+}
+
+class _HorizontalVideoCardState extends ConsumerState<_HorizontalVideoCard> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final displayPoster = widget.metadata.displayPosterUrl;
+    final hasPoster = displayPoster != null && displayPoster.isNotEmpty;
+
+    // 获取播放进度
+    final progressAsync = ref.watch(allVideoProgressProvider);
+    final progress = progressAsync.valueOrNull?[widget.metadata.filePath];
+    final hasProgress = progress != null && progress.progressPercent > 0.02 && progress.progressPercent < 0.98;
+
+    return Container(
+      width: 220,
+      margin: const EdgeInsets.only(right: 12),
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _isHovered = true),
+        onExit: (_) => setState(() => _isHovered = false),
+        child: GestureDetector(
+          onTap: widget.onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            transform: Matrix4.identity()..scale(_isHovered ? 1.03 : 1.0),
+            transformAlignment: Alignment.center,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 视频缩略图（16:9 比例）
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: _isHovered ? 0.35 : 0.2),
+                          blurRadius: _isHovered ? 12 : 6,
+                          offset: Offset(0, _isHovered ? 6 : 3),
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          // 缩略图
+                          if (hasPoster)
+                            AdaptiveImage(
+                              imageUrl: displayPoster,
+                              fit: BoxFit.cover,
+                              placeholder: (_) => _buildPlaceholder(),
+                              errorWidget: (_, __) => _buildPlaceholder(),
+                            )
+                          else
+                            _buildPlaceholder(),
+
+                          // 渐变遮罩（底部）
+                          Positioned(
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            child: Container(
+                              height: 40,
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Colors.transparent,
+                                    Colors.black.withValues(alpha: 0.7),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+
+                          // 播放进度条
+                          if (hasProgress)
+                            Positioned(
+                              left: 0,
+                              right: 0,
+                              bottom: 0,
+                              child: Container(
+                                height: 3,
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.5),
+                                  borderRadius: const BorderRadius.only(
+                                    bottomLeft: Radius.circular(10),
+                                    bottomRight: Radius.circular(10),
+                                  ),
+                                ),
+                                child: FractionallySizedBox(
+                                  alignment: Alignment.centerLeft,
+                                  widthFactor: progress.progressPercent.clamp(0.0, 1.0),
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primary,
+                                      borderRadius: BorderRadius.only(
+                                        bottomLeft: const Radius.circular(10),
+                                        bottomRight: progress.progressPercent > 0.95
+                                            ? const Radius.circular(10)
+                                            : Radius.zero,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                          // 时长或进度标签
+                          Positioned(
+                            bottom: 6,
+                            right: 6,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.7),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                hasProgress
+                                    ? '${(progress.progressPercent * 100).toInt()}%'
+                                    : (widget.metadata.runtime != null
+                                        ? '${widget.metadata.runtime}分钟'
+                                        : ''),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ),
+
+                          // 评分徽章
+                          if (widget.metadata.rating != null && widget.metadata.rating! > 0)
+                            Positioned(
+                              top: 6,
+                              left: 6,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: _getRatingColor(),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.star_rounded, size: 10, color: Colors.white),
+                                    const SizedBox(width: 2),
+                                    Text(
+                                      widget.metadata.ratingText,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+
+                          // 剧集标记
+                          if (widget.metadata.category == MediaCategory.tvShow)
+                            Positioned(
+                              top: 6,
+                              right: 6,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: AppColors.accent,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  widget.metadata.seasonNumber != null
+                                      ? 'S${widget.metadata.seasonNumber}'
+                                      : '剧集',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                          // 悬停边框
+                          if (_isHovered)
+                            Container(
+                              decoration: BoxDecoration(
+                                border: Border.all(color: AppColors.primary, width: 2),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                // 标题和年份
+                const SizedBox(height: 6),
+                Text(
+                  widget.metadata.displayTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: widget.isDark ? Colors.white : null,
+                  ),
+                ),
+                if (widget.metadata.year != null)
+                  Text(
+                    '${widget.metadata.year}',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: widget.isDark ? Colors.grey[500] : Colors.grey[600],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPlaceholder() => Container(
+      color: widget.isDark ? Colors.grey[850] : Colors.grey[200],
+      child: Center(
+        child: Icon(
+          widget.metadata.category == MediaCategory.tvShow
+              ? Icons.live_tv_rounded
+              : Icons.movie_rounded,
+          size: 36,
           color: widget.isDark ? Colors.grey[600] : Colors.grey[400],
         ),
       ),
