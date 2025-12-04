@@ -1192,7 +1192,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               icon: Icons.schedule_rounded,
               iconColor: Colors.blue,
               maxCount: 10,
-              onViewAll: recentVideos.length > 10 ? () => _showCategoryPage(context, '最近添加', recentVideos) : null,
+              onViewAll: () => _showCategoryPage(context, '最近添加', recentVideos),
             ),
           ),
 
@@ -1207,7 +1207,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               icon: Icons.movie_rounded,
               iconColor: AppColors.primary,
               maxCount: 10,
-              onViewAll: movies.length > 10 ? () => _showCategoryPage(context, '电影', movies) : null,
+              onViewAll: () => _showCategoryPage(context, '电影', movies),
             ),
           ),
 
@@ -1222,7 +1222,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               icon: Icons.live_tv_rounded,
               iconColor: AppColors.accent,
               maxCount: 10,
-              onViewAll: tvShows.length > 10 ? () => _showCategoryPage(context, '剧集', tvShows) : null,
+              onViewAll: () => _showCategoryPage(context, '剧集', tvShows),
             ),
           ),
 
@@ -1237,7 +1237,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               icon: Icons.star_rounded,
               iconColor: Colors.amber,
               maxCount: 10,
-              onViewAll: topRated.length > 15 ? () => _showCategoryPage(context, '高分推荐', topRated) : null,
+              onViewAll: () => _showCategoryPage(context, '高分推荐', topRated),
             ),
           ),
 
@@ -2068,7 +2068,9 @@ class _CategoryRow extends StatelessWidget {
     if (items.isEmpty) return const SizedBox.shrink();
 
     final displayItems = items.take(maxCount).toList();
-    final hasMore = items.length > maxCount;
+    // 始终显示"查看更多"卡片（只要有 onViewAll 回调）
+    final showViewMore = onViewAll != null;
+    final remainingCount = items.length > maxCount ? items.length - maxCount : 0;
     final effectiveIconColor = iconColor ?? AppColors.primary;
 
     // 根据海报类型计算高度
@@ -2105,7 +2107,8 @@ class _CategoryRow extends StatelessWidget {
                   ),
                 ),
               ),
-              if (hasMore && onViewAll != null)
+              // 标题栏的"查看全部"按钮
+              if (showViewMore)
                 TextButton(
                   onPressed: onViewAll,
                   style: TextButton.styleFrom(
@@ -2115,7 +2118,7 @@ class _CategoryRow extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        '查看全部',
+                        '查看全部 (${items.length})',
                         style: TextStyle(
                           color: AppColors.primary,
                           fontSize: 13,
@@ -2140,15 +2143,16 @@ class _CategoryRow extends StatelessWidget {
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: displayItems.length + (hasMore ? 1 : 0),
+            itemCount: displayItems.length + (showViewMore ? 1 : 0),
             itemBuilder: (context, index) {
               // 最后一个是"查看更多"卡片
-              if (hasMore && index == displayItems.length) {
+              if (showViewMore && index == displayItems.length) {
                 return _ViewMoreCard(
                   onTap: onViewAll,
                   isDark: isDark,
                   useVerticalStyle: useVerticalPosters,
-                  remainingCount: items.length - maxCount,
+                  remainingCount: remainingCount,
+                  totalCount: items.length,
                 );
               }
 
@@ -2181,12 +2185,14 @@ class _ViewMoreCard extends StatefulWidget {
     required this.isDark,
     this.useVerticalStyle = true,
     this.remainingCount = 0,
+    this.totalCount = 0,
   });
 
   final VoidCallback? onTap;
   final bool isDark;
   final bool useVerticalStyle;
   final int remainingCount;
+  final int totalCount;
 
   @override
   State<_ViewMoreCard> createState() => _ViewMoreCardState();
@@ -2201,63 +2207,97 @@ class _ViewMoreCardState extends State<_ViewMoreCard> {
     final width = widget.useVerticalStyle ? 130.0 : 220.0;
     final height = widget.useVerticalStyle ? 195.0 : 124.0;
 
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedScale(
-          scale: _isHovered ? 1.05 : 1.0,
-          duration: const Duration(milliseconds: 150),
-          child: Container(
-            width: width,
-            height: height,
-            decoration: BoxDecoration(
-              color: widget.isDark
-                  ? Colors.grey[850]?.withValues(alpha: 0.8)
-                  : Colors.grey[200],
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: _isHovered
-                    ? AppColors.primary.withValues(alpha: 0.8)
-                    : (widget.isDark ? Colors.grey[700]! : Colors.grey[300]!),
-                width: _isHovered ? 2 : 1,
+    return Container(
+      margin: const EdgeInsets.only(right: 12),
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _isHovered = true),
+        onExit: (_) => setState(() => _isHovered = false),
+        child: GestureDetector(
+          onTap: widget.onTap,
+          child: AnimatedScale(
+            scale: _isHovered ? 1.05 : 1.0,
+            duration: const Duration(milliseconds: 150),
+            child: Container(
+              width: width,
+              height: height,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: _isHovered
+                      ? [
+                          AppColors.primary.withValues(alpha: 0.3),
+                          AppColors.primary.withValues(alpha: 0.1),
+                        ]
+                      : [
+                          widget.isDark ? Colors.grey[850]! : Colors.grey[200]!,
+                          widget.isDark ? Colors.grey[900]! : Colors.grey[100]!,
+                        ],
+                ),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: _isHovered
+                      ? AppColors.primary
+                      : (widget.isDark ? Colors.grey[700]! : Colors.grey[300]!),
+                  width: _isHovered ? 2 : 1,
+                ),
+                boxShadow: _isHovered
+                    ? [
+                        BoxShadow(
+                          color: AppColors.primary.withValues(alpha: 0.3),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ]
+                    : null,
               ),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: _isHovered ? 0.2 : 0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.arrow_forward_rounded,
-                    color: AppColors.primary,
-                    size: 24,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  '查看更多',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: widget.isDark ? Colors.white : Colors.black87,
-                  ),
-                ),
-                if (widget.remainingCount > 0)
-                  Text(
-                    '还有 ${widget.remainingCount} 部',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: widget.isDark ? Colors.grey[400] : Colors.grey[600],
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // 图标
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: _isHovered
+                          ? AppColors.primary.withValues(alpha: 0.2)
+                          : (widget.isDark ? Colors.grey[800] : Colors.grey[300]),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.grid_view_rounded,
+                      color: _isHovered
+                          ? AppColors.primary
+                          : (widget.isDark ? Colors.grey[400] : Colors.grey[600]),
+                      size: 28,
                     ),
                   ),
-              ],
+                  const SizedBox(height: 12),
+                  // 文字
+                  Text(
+                    '查看全部',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: _isHovered
+                          ? AppColors.primary
+                          : (widget.isDark ? Colors.white : Colors.black87),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  // 数量
+                  Text(
+                    widget.remainingCount > 0
+                        ? '还有 ${widget.remainingCount} 部'
+                        : '共 ${widget.totalCount} 部',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: widget.isDark ? Colors.grey[500] : Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -2287,11 +2327,19 @@ class _VerticalPosterCard extends ConsumerStatefulWidget {
 class _VerticalPosterCardState extends ConsumerState<_VerticalPosterCard> {
   bool _isHovered = false;
 
+  // 缓存图片 URL 避免重复计算
+  late final String? _posterUrl;
+  late final bool _hasPoster;
+
+  @override
+  void initState() {
+    super.initState();
+    _posterUrl = widget.metadata.displayPosterUrl;
+    _hasPoster = _posterUrl != null && _posterUrl!.isNotEmpty;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final displayPoster = widget.metadata.displayPosterUrl;
-    final hasPoster = displayPoster != null && displayPoster.isNotEmpty;
-
     // 获取播放进度
     final progressAsync = ref.watch(allVideoProgressProvider);
     final progress = progressAsync.valueOrNull?[widget.metadata.filePath];
@@ -2314,8 +2362,9 @@ class _VerticalPosterCardState extends ConsumerState<_VerticalPosterCard> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 海报图片
-                Container(
+                // 海报图片容器
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
                   width: widget.width,
                   height: posterHeight,
                   decoration: BoxDecoration(
@@ -2333,32 +2382,36 @@ class _VerticalPosterCardState extends ConsumerState<_VerticalPosterCard> {
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        // 海报图片
-                        if (hasPoster)
-                          AdaptiveImage(
-                            imageUrl: displayPoster,
-                            fit: BoxFit.cover,
-                            placeholder: (_) => _buildPlaceholder(),
-                            errorWidget: (_, __) => _buildPlaceholder(),
-                          )
-                        else
-                          _buildPlaceholder(),
+                        // 海报图片 - 使用 RepaintBoundary 防止重绘
+                        RepaintBoundary(
+                          child: _hasPoster
+                              ? AdaptiveImage(
+                                  key: ValueKey(_posterUrl),
+                                  imageUrl: _posterUrl!,
+                                  fit: BoxFit.cover,
+                                  placeholder: (_) => _buildPlaceholder(),
+                                  errorWidget: (_, __) => _buildPlaceholder(),
+                                )
+                              : _buildPlaceholder(),
+                        ),
 
-                        // 渐变遮罩（底部）
+                        // 渐变遮罩（底部）- 静态，不需要重建
                         Positioned(
                           left: 0,
                           right: 0,
                           bottom: 0,
-                          child: Container(
-                            height: 60,
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                                colors: [
-                                  Colors.transparent,
-                                  Colors.black.withValues(alpha: 0.7),
-                                ],
+                          child: IgnorePointer(
+                            child: Container(
+                              height: 60,
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Colors.transparent,
+                                    Colors.black.withValues(alpha: 0.7),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
@@ -2370,26 +2423,28 @@ class _VerticalPosterCardState extends ConsumerState<_VerticalPosterCard> {
                             left: 0,
                             right: 0,
                             bottom: 0,
-                            child: Container(
-                              height: 3,
-                              decoration: BoxDecoration(
-                                color: Colors.black.withValues(alpha: 0.5),
-                                borderRadius: const BorderRadius.only(
-                                  bottomLeft: Radius.circular(8),
-                                  bottomRight: Radius.circular(8),
+                            child: IgnorePointer(
+                              child: Container(
+                                height: 3,
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.5),
+                                  borderRadius: const BorderRadius.only(
+                                    bottomLeft: Radius.circular(8),
+                                    bottomRight: Radius.circular(8),
+                                  ),
                                 ),
-                              ),
-                              child: FractionallySizedBox(
-                                alignment: Alignment.centerLeft,
-                                widthFactor: progress.progressPercent.clamp(0.0, 1.0),
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: AppColors.primary,
-                                    borderRadius: BorderRadius.only(
-                                      bottomLeft: const Radius.circular(8),
-                                      bottomRight: progress.progressPercent > 0.95
-                                          ? const Radius.circular(8)
-                                          : Radius.zero,
+                                child: FractionallySizedBox(
+                                  alignment: Alignment.centerLeft,
+                                  widthFactor: progress.progressPercent.clamp(0.0, 1.0),
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primary,
+                                      borderRadius: BorderRadius.only(
+                                        bottomLeft: const Radius.circular(8),
+                                        bottomRight: progress.progressPercent > 0.95
+                                            ? const Radius.circular(8)
+                                            : Radius.zero,
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -2479,17 +2534,24 @@ class _VerticalPosterCardState extends ConsumerState<_VerticalPosterCard> {
                             ),
                           ),
 
-                        // 悬停边框
-                        if (_isHovered)
-                          Container(
-                            decoration: BoxDecoration(
-                              border: Border.all(
-                                color: AppColors.primary.withValues(alpha: 0.8),
-                                width: 2,
+                        // 悬停边框 - 使用 AnimatedOpacity 避免重建
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: AnimatedOpacity(
+                              opacity: _isHovered ? 1.0 : 0.0,
+                              duration: const Duration(milliseconds: 150),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  border: Border.all(
+                                    color: AppColors.primary,
+                                    width: 2,
+                                  ),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
                               ),
-                              borderRadius: BorderRadius.circular(8),
                             ),
                           ),
+                        ),
                       ],
                     ),
                   ),
@@ -2563,10 +2625,19 @@ class _HorizontalVideoCard extends ConsumerStatefulWidget {
 class _HorizontalVideoCardState extends ConsumerState<_HorizontalVideoCard> {
   bool _isHovered = false;
 
+  // 缓存图片 URL 避免重复计算
+  late final String? _posterUrl;
+  late final bool _hasPoster;
+
+  @override
+  void initState() {
+    super.initState();
+    _posterUrl = widget.metadata.displayPosterUrl;
+    _hasPoster = _posterUrl != null && _posterUrl!.isNotEmpty;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final displayPoster = widget.metadata.displayPosterUrl;
-    final hasPoster = displayPoster != null && displayPoster.isNotEmpty;
 
     // 获取播放进度
     final progressAsync = ref.watch(allVideoProgressProvider);
@@ -2606,32 +2677,36 @@ class _HorizontalVideoCardState extends ConsumerState<_HorizontalVideoCard> {
                       child: Stack(
                         fit: StackFit.expand,
                         children: [
-                          // 缩略图
-                          if (hasPoster)
-                            AdaptiveImage(
-                              imageUrl: displayPoster,
-                              fit: BoxFit.cover,
-                              placeholder: (_) => _buildPlaceholder(),
-                              errorWidget: (_, __) => _buildPlaceholder(),
-                            )
-                          else
-                            _buildPlaceholder(),
+                          // 缩略图 - 使用 RepaintBoundary 防止重绘
+                          RepaintBoundary(
+                            child: _hasPoster
+                                ? AdaptiveImage(
+                                    key: ValueKey(_posterUrl),
+                                    imageUrl: _posterUrl!,
+                                    fit: BoxFit.cover,
+                                    placeholder: (_) => _buildPlaceholder(),
+                                    errorWidget: (_, __) => _buildPlaceholder(),
+                                  )
+                                : _buildPlaceholder(),
+                          ),
 
                           // 渐变遮罩（底部）
                           Positioned(
                             left: 0,
                             right: 0,
                             bottom: 0,
-                            child: Container(
-                              height: 40,
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                  colors: [
-                                    Colors.transparent,
-                                    Colors.black.withValues(alpha: 0.7),
-                                  ],
+                            child: IgnorePointer(
+                              child: Container(
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                    colors: [
+                                      Colors.transparent,
+                                      Colors.black.withValues(alpha: 0.7),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
@@ -2748,14 +2823,21 @@ class _HorizontalVideoCardState extends ConsumerState<_HorizontalVideoCard> {
                               ),
                             ),
 
-                          // 悬停边框
-                          if (_isHovered)
-                            Container(
-                              decoration: BoxDecoration(
-                                border: Border.all(color: AppColors.primary, width: 2),
-                                borderRadius: BorderRadius.circular(10),
+                          // 悬停边框 - 使用 AnimatedOpacity 避免重建
+                          Positioned.fill(
+                            child: IgnorePointer(
+                              child: AnimatedOpacity(
+                                opacity: _isHovered ? 1.0 : 0.0,
+                                duration: const Duration(milliseconds: 150),
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    border: Border.all(color: AppColors.primary, width: 2),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
                               ),
                             ),
+                          ),
                         ],
                       ),
                     ),

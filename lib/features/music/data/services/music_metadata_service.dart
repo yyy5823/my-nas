@@ -136,6 +136,7 @@ class MusicMetadataService {
           bytesToRead,
           cacheKey,
           skipLyrics: skipLyrics,
+          actualFileSize: fileSize,
         );
 
         if (result != null) {
@@ -165,6 +166,7 @@ class MusicMetadataService {
     int bytesToRead,
     String cacheKey, {
     bool skipLyrics = false,
+    required int actualFileSize,
   }) async {
     File? tempFile;
     try {
@@ -188,10 +190,17 @@ class MusicMetadataService {
       await tempFile.writeAsBytes(Uint8List.fromList(chunks));
 
       final metadata = readMetadata(tempFile, getImage: true);
-      final result = _convertMetadata(metadata, path, skipLyrics: skipLyrics);
+      // 如果只读取了部分文件，duration 是不准确的（基于截断数据计算），需要跳过
+      final isPartialRead = bytesToRead < actualFileSize;
+      final result = _convertMetadata(
+        metadata,
+        path,
+        skipLyrics: skipLyrics,
+        skipDuration: isPartialRead, // 部分读取时跳过不准确的 duration
+      );
       _metadataCache[cacheKey] = result;
 
-      logger.d('MusicMetadataService: 成功提取元数据 (读取 $bytesToRead 字节): $path');
+      logger.d('MusicMetadataService: 成功提取元数据 (读取 $bytesToRead 字节, 跳过时长=$isPartialRead): $path');
       return result;
     } on MetadataParserException catch (e) {
       // 解析异常，可能需要更多数据
@@ -236,7 +245,13 @@ class MusicMetadataService {
 
   /// 将 audio_metadata_reader 的元数据转换为我们的格式
   /// [skipLyrics] 为 true 时跳过歌词提取
-  MusicMetadata _convertMetadata(AudioMetadata metadata, String filePath, {bool skipLyrics = false}) {
+  /// [skipDuration] 为 true 时跳过时长提取（用于部分文件读取时，避免不准确的时长）
+  MusicMetadata _convertMetadata(
+    AudioMetadata metadata,
+    String filePath, {
+    bool skipLyrics = false,
+    bool skipDuration = false,
+  }) {
     String? artist;
     String? album;
     String? title;
@@ -250,7 +265,10 @@ class MusicMetadataService {
     // 提取通用字段
     title = metadata.title;
     album = metadata.album;
-    duration = metadata.duration;
+    // 只有完整读取文件时才提取时长，部分读取时 duration 不准确
+    if (!skipDuration) {
+      duration = metadata.duration;
+    }
 
     // 提取艺术家（可能有多个）
     if (metadata.artist != null) {

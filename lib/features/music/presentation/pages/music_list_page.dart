@@ -559,7 +559,9 @@ enum MusicCategory {
   albums('专辑', Icons.album_rounded),
   folders('文件夹', Icons.folder_rounded),
   favorites('我喜欢', Icons.favorite_rounded),
-  recent('最近播放', Icons.history_rounded);
+  recent('最近播放', Icons.history_rounded),
+  genres('流派', Icons.category_rounded),
+  years('年代', Icons.date_range_rounded);
 
   const MusicCategory(this.label, this.icon);
   final String label;
@@ -1072,7 +1074,15 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
   }
 
   /// 浏览音乐库区域
-  Widget _buildBrowseSection(BuildContext context, WidgetRef ref, MusicListLoaded state, bool isDark, bool isDesktop) => Column(
+  Widget _buildBrowseSection(BuildContext context, WidgetRef ref, MusicListLoaded state, bool isDark, bool isDesktop) {
+    // 统计各分类数量
+    final artistCount = _getUniqueArtists(state.tracks).length;
+    final albumCount = _getUniqueAlbums(state.tracks).length;
+    final genreCount = _getUniqueGenres(state.tracks).length;
+    final yearCount = _getUniqueYears(state.tracks).length;
+    final folderCount = _getUniqueFolders(state.tracks).length;
+
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
@@ -1090,12 +1100,13 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Wrap(
-            spacing: isDesktop ? 16 : 8,
+            spacing: isDesktop ? 12 : 8,
             runSpacing: isDesktop ? 12 : 8,
             children: [
               _BrowseChip(
                 icon: Icons.person_rounded,
                 label: '艺术家',
+                count: artistCount,
                 color: Colors.purple,
                 isDark: isDark,
                 isDesktop: isDesktop,
@@ -1104,14 +1115,34 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
               _BrowseChip(
                 icon: Icons.album_rounded,
                 label: '专辑',
+                count: albumCount,
                 color: Colors.orange,
                 isDark: isDark,
                 isDesktop: isDesktop,
                 onTap: () => _navigateToCategory(context, MusicCategory.albums, state),
               ),
               _BrowseChip(
+                icon: Icons.category_rounded,
+                label: '流派',
+                count: genreCount,
+                color: Colors.pink,
+                isDark: isDark,
+                isDesktop: isDesktop,
+                onTap: () => _navigateToCategory(context, MusicCategory.genres, state),
+              ),
+              _BrowseChip(
+                icon: Icons.date_range_rounded,
+                label: '年代',
+                count: yearCount,
+                color: Colors.indigo,
+                isDark: isDark,
+                isDesktop: isDesktop,
+                onTap: () => _navigateToCategory(context, MusicCategory.years, state),
+              ),
+              _BrowseChip(
                 icon: Icons.folder_rounded,
                 label: '文件夹',
+                count: folderCount,
                 color: Colors.teal,
                 isDark: isDark,
                 isDesktop: isDesktop,
@@ -1122,6 +1153,62 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
         ),
       ],
     );
+  }
+
+  Set<String> _getUniqueArtists(List<MusicFileWithSource> tracks) {
+    final artists = <String>{};
+    for (final track in tracks) {
+      if (track.artist != null && track.artist!.isNotEmpty) {
+        artists.add(track.artist!);
+      }
+    }
+    return artists;
+  }
+
+  Set<String> _getUniqueAlbums(List<MusicFileWithSource> tracks) {
+    final albums = <String>{};
+    for (final track in tracks) {
+      if (track.album != null && track.album!.isNotEmpty) {
+        albums.add(track.album!);
+      }
+    }
+    return albums;
+  }
+
+  Set<String> _getUniqueGenres(List<MusicFileWithSource> tracks) {
+    final genres = <String>{};
+    for (final track in tracks) {
+      if (track.genre != null && track.genre!.isNotEmpty) {
+        // 流派可能是逗号分隔的多个
+        for (final g in track.genre!.split(',')) {
+          final trimmed = g.trim();
+          if (trimmed.isNotEmpty) genres.add(trimmed);
+        }
+      }
+    }
+    return genres;
+  }
+
+  Set<int> _getUniqueYears(List<MusicFileWithSource> tracks) {
+    final years = <int>{};
+    for (final track in tracks) {
+      if (track.year != null && track.year! > 1900) {
+        years.add(track.year!);
+      }
+    }
+    return years;
+  }
+
+  Set<String> _getUniqueFolders(List<MusicFileWithSource> tracks) {
+    final folders = <String>{};
+    for (final track in tracks) {
+      final parts = track.path.split('/');
+      if (parts.length > 1) {
+        folders.add(parts[parts.length - 2]);
+      }
+    }
+    return folders;
+  }
 
   /// 搜索结果
   Widget _buildSearchResults(BuildContext context, WidgetRef ref, MusicListLoaded state, bool isDark) {
@@ -1830,6 +1917,7 @@ class _RecentTrackCard extends StatelessWidget {
                         fit: BoxFit.cover,
                         width: coverSize,
                         height: coverSize,
+                        gaplessPlayback: true,
                         errorBuilder: (context, error, stackTrace) => Icon(
                           Icons.music_note_rounded,
                           size: isDesktop ? 56 : 48,
@@ -2101,11 +2189,13 @@ class _BrowseChip extends StatelessWidget {
     required this.color,
     required this.isDark,
     required this.onTap,
+    this.count,
     this.isDesktop = false,
   });
 
   final IconData icon;
   final String label;
+  final int? count;
   final Color color;
   final bool isDark;
   final VoidCallback onTap;
@@ -2113,42 +2203,59 @@ class _BrowseChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final borderRadius = isDesktop ? 24.0 : 20.0;
+    final borderRadius = isDesktop ? 16.0 : 12.0;
 
     return Material(
-      color: color.withValues(alpha: isDark ? 0.2 : 0.1),
+      color: color.withValues(alpha: isDark ? 0.15 : 0.08),
       borderRadius: BorderRadius.circular(borderRadius),
-      elevation: isDesktop ? 1 : 0,
-      shadowColor: color.withValues(alpha: 0.3),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(borderRadius),
         child: Container(
           padding: EdgeInsets.symmetric(
-            horizontal: isDesktop ? 24 : 16,
-            vertical: isDesktop ? 14 : 10,
+            horizontal: isDesktop ? 16 : 12,
+            vertical: isDesktop ? 12 : 10,
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: isDesktop ? 22 : 18, color: color),
-              SizedBox(width: isDesktop ? 12 : 8),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: isDesktop ? 15 : 13,
-                  fontWeight: FontWeight.w500,
-                  color: isDark ? Colors.white : Colors.black87,
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: isDark ? 0.3 : 0.15),
+                  borderRadius: BorderRadius.circular(8),
                 ),
+                child: Icon(icon, size: isDesktop ? 18 : 16, color: color),
               ),
-              if (isDesktop) ...[
-                const SizedBox(width: 8),
-                Icon(
-                  Icons.arrow_forward_ios_rounded,
-                  size: 14,
-                  color: color.withValues(alpha: 0.7),
-                ),
-              ],
+              SizedBox(width: isDesktop ? 10 : 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: isDesktop ? 14 : 13,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                  if (count != null && count! > 0)
+                    Text(
+                      '$count',
+                      style: TextStyle(
+                        fontSize: isDesktop ? 11 : 10,
+                        color: isDark ? Colors.grey[500] : Colors.grey[600],
+                      ),
+                    ),
+                ],
+              ),
+              SizedBox(width: isDesktop ? 8 : 4),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: isDesktop ? 18 : 16,
+                color: isDark ? Colors.grey[600] : Colors.grey[400],
+              ),
             ],
           ),
         ),
@@ -2193,6 +2300,8 @@ class _MusicCategoryPage extends ConsumerWidget {
       MusicCategory.folders => _FoldersView(tracks: tracks, isDark: isDark),
       MusicCategory.favorites => _FavoritesView(isDark: isDark),
       MusicCategory.recent => _RecentView(isDark: isDark),
+      MusicCategory.genres => _GenresView(tracks: tracks, isDark: isDark),
+      MusicCategory.years => _YearsView(tracks: tracks, isDark: isDark),
     };
 }
 
@@ -3524,6 +3633,298 @@ class _FolderTile extends ConsumerWidget {
         ),
         title: Text(
           folderName,
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            color: isDark ? Colors.white : Colors.black87,
+          ),
+        ),
+        subtitle: Text(
+          '${tracks.length} 首歌曲',
+          style: TextStyle(
+            fontSize: 12,
+            color: isDark ? Colors.grey[400] : Colors.grey[600],
+          ),
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        collapsedShape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        children: tracks.asMap().entries.map((entry) => _CompactMusicTile(
+            track: entry.value,
+            isDark: isDark,
+            allTracks: tracks,
+            trackIndex: entry.key,
+          )).toList(),
+      ),
+    );
+}
+
+/// 流派视图
+class _GenresView extends ConsumerWidget {
+  const _GenresView({
+    required this.tracks,
+    required this.isDark,
+  });
+
+  final List<MusicFileWithSource> tracks;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // 按流派分组
+    final genreMap = <String, List<MusicFileWithSource>>{};
+    for (final track in tracks) {
+      if (track.genre != null && track.genre!.isNotEmpty) {
+        // 流派可能是逗号分隔的多个
+        for (final g in track.genre!.split(',')) {
+          final genre = g.trim();
+          if (genre.isNotEmpty) {
+            genreMap.putIfAbsent(genre, () => []).add(track);
+          }
+        }
+      } else {
+        genreMap.putIfAbsent('未知流派', () => []).add(track);
+      }
+    }
+
+    final genres = genreMap.entries.toList()
+      ..sort((a, b) => b.value.length.compareTo(a.value.length)); // 按歌曲数量排序
+
+    if (genres.isEmpty) {
+      return _buildEmptyView('暂无流派信息', Icons.category_outlined, isDark);
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      itemCount: genres.length,
+      itemBuilder: (context, index) {
+        final entry = genres[index];
+        return _GenreTile(
+          genreName: entry.key,
+          tracks: entry.value,
+          isDark: isDark,
+          color: _getColorForIndex(index),
+        );
+      },
+    );
+  }
+
+  Color _getColorForIndex(int index) {
+    final colors = [
+      Colors.pink,
+      Colors.purple,
+      Colors.indigo,
+      Colors.blue,
+      Colors.cyan,
+      Colors.teal,
+      Colors.green,
+      Colors.orange,
+      Colors.deepOrange,
+      Colors.red,
+    ];
+    return colors[index % colors.length];
+  }
+}
+
+class _GenreTile extends ConsumerWidget {
+  const _GenreTile({
+    required this.genreName,
+    required this.tracks,
+    required this.isDark,
+    required this.color,
+  });
+
+  final String genreName;
+  final List<MusicFileWithSource> tracks;
+  final bool isDark;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      decoration: BoxDecoration(
+        color: isDark
+            ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
+            : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark
+              ? AppColors.darkOutline.withValues(alpha: 0.2)
+              : Colors.grey.withValues(alpha: 0.2),
+        ),
+      ),
+      child: ExpansionTile(
+        leading: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [color.withValues(alpha: 0.8), color.withValues(alpha: 0.4)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: const Icon(Icons.category_rounded, color: Colors.white, size: 24),
+        ),
+        title: Text(
+          genreName,
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            color: isDark ? Colors.white : Colors.black87,
+          ),
+        ),
+        subtitle: Text(
+          '${tracks.length} 首歌曲',
+          style: TextStyle(
+            fontSize: 12,
+            color: isDark ? Colors.grey[400] : Colors.grey[600],
+          ),
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        collapsedShape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        children: tracks.asMap().entries.map((entry) => _CompactMusicTile(
+            track: entry.value,
+            isDark: isDark,
+            allTracks: tracks,
+            trackIndex: entry.key,
+          )).toList(),
+      ),
+    );
+}
+
+/// 年代视图
+class _YearsView extends ConsumerWidget {
+  const _YearsView({
+    required this.tracks,
+    required this.isDark,
+  });
+
+  final List<MusicFileWithSource> tracks;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // 按年代分组
+    final yearMap = <String, List<MusicFileWithSource>>{};
+    for (final track in tracks) {
+      if (track.year != null && track.year! > 1900) {
+        // 按年代（每10年）分组
+        final decade = (track.year! ~/ 10) * 10;
+        final decadeLabel = '${decade}s';
+        yearMap.putIfAbsent(decadeLabel, () => []).add(track);
+      } else {
+        yearMap.putIfAbsent('未知年代', () => []).add(track);
+      }
+    }
+
+    final years = yearMap.entries.toList()
+      ..sort((a, b) {
+        // 未知年代放最后
+        if (a.key == '未知年代') return 1;
+        if (b.key == '未知年代') return -1;
+        return b.key.compareTo(a.key); // 按年代倒序
+      });
+
+    if (years.isEmpty) {
+      return _buildEmptyView('暂无年代信息', Icons.date_range_rounded, isDark);
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      itemCount: years.length,
+      itemBuilder: (context, index) {
+        final entry = years[index];
+        return _YearTile(
+          yearLabel: entry.key,
+          tracks: entry.value,
+          isDark: isDark,
+          color: _getColorForDecade(entry.key),
+        );
+      },
+    );
+  }
+
+  Color _getColorForDecade(String decade) {
+    switch (decade) {
+      case '2020s':
+        return Colors.purple;
+      case '2010s':
+        return Colors.blue;
+      case '2000s':
+        return Colors.teal;
+      case '1990s':
+        return Colors.green;
+      case '1980s':
+        return Colors.orange;
+      case '1970s':
+        return Colors.deepOrange;
+      case '1960s':
+        return Colors.red;
+      default:
+        return Colors.grey;
+    }
+  }
+}
+
+class _YearTile extends ConsumerWidget {
+  const _YearTile({
+    required this.yearLabel,
+    required this.tracks,
+    required this.isDark,
+    required this.color,
+  });
+
+  final String yearLabel;
+  final List<MusicFileWithSource> tracks;
+  final bool isDark;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      decoration: BoxDecoration(
+        color: isDark
+            ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
+            : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark
+              ? AppColors.darkOutline.withValues(alpha: 0.2)
+              : Colors.grey.withValues(alpha: 0.2),
+        ),
+      ),
+      child: ExpansionTile(
+        leading: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [color.withValues(alpha: 0.8), color.withValues(alpha: 0.4)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Center(
+            child: Text(
+              yearLabel.replaceAll('s', ''),
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+            ),
+          ),
+        ),
+        title: Text(
+          yearLabel == '未知年代' ? yearLabel : '$yearLabel 年代',
           style: TextStyle(
             fontWeight: FontWeight.w600,
             color: isDark ? Colors.white : Colors.black87,
