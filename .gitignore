@@ -194,3 +194,4 @@ key.properties
 !**/ios/Podfile.lock
 !**/macos/Podfile.lock
 CLAUDE.md
+nul

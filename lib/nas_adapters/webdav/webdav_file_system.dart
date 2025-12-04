@@ -56,9 +56,9 @@ class WebDavFileSystem implements NasFileSystem {
 
   @override
   Future<String> getFileUrl(String path, {Duration? expiry}) async {
-    // WebDAV 不支持直接获取 URL，返回完整路径
-    // 实际下载需要使用 getFileStream
-    throw UnimplementedError('WebDAV 不支持直接获取 URL，请使用流式下载');
+    // WebDAV 返回特殊的 webdav:// URI 格式
+    // 应用层需要使用 getFileStream 进行实际访问
+    return 'webdav://local$path';
   }
 
   @override

@@ -1,9 +1,103 @@
 import 'dart:io';
 
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:video_snapshot_generator/video_snapshot_generator.dart';
+
+/// 视频路径工具类
+///
+/// 处理不同来源的视频路径转换
+class VideoPathUtils {
+  VideoPathUtils._();
+
+  /// 将视频 URL 转换为可用于缩略图生成的路径
+  ///
+  /// 处理以下情况：
+  /// - file:// URI（本地文件）- 转换为本地文件路径
+  /// - http/https URL（远程文件）- 直接返回，FFmpeg 可处理
+  /// - smb:// URI（SMB 共享）- 需要流式下载，返回 null
+  /// - webdav:// URI（WebDAV）- 需要流式下载，返回 null
+  /// - 本地路径（非 URI）- 直接返回
+  static String? convertToLocalPath(String videoUrl) {
+    if (videoUrl.isEmpty) return null;
+
+    // 处理 file:// URI
+    if (videoUrl.startsWith('file://')) {
+      try {
+        final uri = Uri.parse(videoUrl);
+        // Uri.toFilePath() 会自动处理 URL 解码和平台路径格式
+        final localPath = uri.toFilePath(windows: Platform.isWindows);
+        logger.d('VideoPathUtils: file URI 转换为本地路径: $videoUrl -> $localPath');
+        return localPath;
+      } catch (e) {
+        logger.e('VideoPathUtils: 解析 file URI 失败: $videoUrl', e);
+        return null;
+      }
+    }
+
+    // HTTP/HTTPS URL - FFmpeg 可以直接处理
+    if (videoUrl.startsWith('http://') || videoUrl.startsWith('https://')) {
+      return videoUrl;
+    }
+
+    // SMB URI - 需要通过流式下载处理
+    if (isSmbUri(videoUrl)) {
+      return null;
+    }
+
+    // WebDAV URI - 需要通过流式下载处理
+    if (isWebDavUri(videoUrl)) {
+      return null;
+    }
+
+    // 其他情况假设是本地路径
+    return videoUrl;
+  }
+
+  /// 检查是否是 SMB URI
+  static bool isSmbUri(String path) {
+    return path.startsWith('smb://');
+  }
+
+  /// 检查是否是 WebDAV URI
+  static bool isWebDavUri(String path) {
+    return path.startsWith('webdav://');
+  }
+
+  /// 检查是否需要流式下载（SMB、WebDAV 等不支持直接 URL 访问的协议）
+  static bool needsStreamDownload(String path) {
+    return isSmbUri(path) || isWebDavUri(path);
+  }
+
+  /// 检查路径是否是本地文件（可直接访问）
+  static bool isLocalFile(String path) {
+    if (path.startsWith('file://')) {
+      final localPath = convertToLocalPath(path);
+      if (localPath != null) {
+        return File(localPath).existsSync();
+      }
+      return false;
+    }
+
+    // 这些协议不是本地文件
+    if (path.startsWith('http://') ||
+        path.startsWith('https://') ||
+        isSmbUri(path) ||
+        isWebDavUri(path)) {
+      return false;
+    }
+
+    // 假设是本地路径
+    return File(path).existsSync();
+  }
+
+  /// 检查路径是否是 HTTP/HTTPS URL
+  static bool isHttpUrl(String path) {
+    return path.startsWith('http://') || path.startsWith('https://');
+  }
+}
 
 /// 视频缩略图服务
 ///
@@ -57,13 +151,15 @@ class VideoThumbnailService {
 
   /// 从视频 URL 生成缩略图
   ///
-  /// [videoUrl] 视频的 HTTP/HTTPS URL
-  /// [videoPath] 视频在 NAS 上的路径（用于生成缓存键）
+  /// [videoUrl] 视频的 URL（可以是 http/https/file/smb 等）
+  /// [videoPath] 视频在 NAS 上的路径（用于生成缓存键和流式下载）
   /// [timeMs] 截取位置（毫秒，默认 5000 即 5 秒位置）
+  /// [fileSystem] 可选的文件系统接口，用于 SMB 等需要流式下载的协议
   Future<String?> generateThumbnail({
     required String videoUrl,
     required String videoPath,
     int timeMs = 5000,
+    NasFileSystem? fileSystem,
   }) async {
     if (_cacheDir == null) {
       await init();
@@ -87,8 +183,10 @@ class VideoThumbnailService {
     // 开始生成任务
     final task = _doGenerateThumbnail(
       videoUrl: videoUrl,
+      videoPath: videoPath,
       cacheKey: cacheKey,
       timeMs: timeMs,
+      fileSystem: fileSystem,
     );
     _generatingTasks[cacheKey] = task;
 
@@ -102,17 +200,86 @@ class VideoThumbnailService {
 
   Future<String?> _doGenerateThumbnail({
     required String videoUrl,
+    required String videoPath,
     required String cacheKey,
     required int timeMs,
+    NasFileSystem? fileSystem,
   }) async {
+    String? tempFilePath;
+
     try {
       logger.d('VideoThumbnailService: 开始生成缩略图 $videoUrl');
 
+      String? effectivePath;
+
+      // 检查是否需要流式下载（SMB、WebDAV 等协议）
+      final needsDownload = VideoPathUtils.needsStreamDownload(videoUrl) && fileSystem != null;
+
+      if (needsDownload) {
+        final protocol = VideoPathUtils.isSmbUri(videoUrl) ? 'SMB' : 'WebDAV';
+        logger.d('VideoThumbnailService: 使用流式下载处理 $protocol 视频');
+
+        // 渐进式下载：从小到大尝试不同的下载大小
+        for (var sizeLevel = 0; sizeLevel < _downloadSizes.length; sizeLevel++) {
+          // 清理上一次的临时文件
+          if (tempFilePath != null) {
+            try {
+              await File(tempFilePath).delete();
+            } catch (_) {}
+          }
+
+          tempFilePath = await _downloadVideoForThumbnail(
+            fileSystem: fileSystem,
+            filePath: videoPath,
+            cacheKey: cacheKey,
+            sizeLevel: sizeLevel,
+          );
+
+          if (tempFilePath == null) {
+            logger.w('VideoThumbnailService: $protocol 视频下载失败');
+            return null;
+          }
+
+          // 尝试生成缩略图
+          final result = await _tryGenerateFromPath(tempFilePath, timeMs);
+          if (result != null) {
+            // 成功，复制到缓存目录
+            final thumbnailPath = p.join(_cacheDir!.path, '$cacheKey.jpg');
+            await File(result).copy(thumbnailPath);
+            logger.i('VideoThumbnailService: 缩略图生成成功 $thumbnailPath (下载 ${_downloadSizes[sizeLevel] ~/ 1024 ~/ 1024}MB)');
+            return thumbnailPath;
+          }
+
+          // 如果不是最后一次尝试，继续下载更大的片段
+          if (sizeLevel < _downloadSizes.length - 1) {
+            logger.d('VideoThumbnailService: 下载 ${_downloadSizes[sizeLevel] ~/ 1024 ~/ 1024}MB 不足以生成缩略图，尝试更大的片段');
+          }
+        }
+
+        logger.w('VideoThumbnailService: 所有下载大小都无法生成缩略图');
+        return null;
+      } else {
+        // 转换路径：将 file:// URI 转换为本地路径
+        effectivePath = VideoPathUtils.convertToLocalPath(videoUrl);
+        if (effectivePath == null) {
+          // 如果是需要流式下载的协议但没有提供 fileSystem，给出提示
+          if (VideoPathUtils.needsStreamDownload(videoUrl)) {
+            final protocol = VideoPathUtils.isSmbUri(videoUrl) ? 'SMB' : 'WebDAV';
+            logger.w('VideoThumbnailService: $protocol 路径需要提供 fileSystem 参数: $videoUrl');
+          } else {
+            logger.w('VideoThumbnailService: 无法处理的视频路径: $videoUrl');
+          }
+          return null;
+        }
+      }
+
+      logger.d('VideoThumbnailService: 使用路径: $effectivePath');
+
       // 使用 video_snapshot_generator 提取帧
       final result = await VideoSnapshotGenerator.generateThumbnail(
-        videoPath: videoUrl,
+        videoPath: effectivePath,
         options: ThumbnailOptions(
-          videoPath: videoUrl,
+          videoPath: effectivePath,
           width: 480,
           height: 270,
           quality: 80,
@@ -143,6 +310,113 @@ class VideoThumbnailService {
     } catch (e, stackTrace) {
       logger.e('VideoThumbnailService: 生成缩略图失败', e, stackTrace);
       return null;
+    } finally {
+      // 清理临时文件
+      if (tempFilePath != null) {
+        try {
+          final tempFile = File(tempFilePath);
+          if (await tempFile.exists()) {
+            await tempFile.delete();
+            logger.d('VideoThumbnailService: 已清理临时文件 $tempFilePath');
+          }
+        } catch (e) {
+          logger.w('VideoThumbnailService: 清理临时文件失败', e);
+        }
+      }
+    }
+  }
+
+  /// 尝试从指定路径生成缩略图
+  ///
+  /// 返回生成的缩略图路径，如果失败则返回 null
+  Future<String?> _tryGenerateFromPath(String videoPath, int timeMs) async {
+    try {
+      final result = await VideoSnapshotGenerator.generateThumbnail(
+        videoPath: videoPath,
+        options: ThumbnailOptions(
+          videoPath: videoPath,
+          width: 480,
+          height: 270,
+          quality: 80,
+          timeMs: timeMs,
+          format: ThumbnailFormat.jpeg,
+        ),
+      );
+
+      if (result.success && result.path.isNotEmpty) {
+        return result.path;
+      }
+      return null;
+    } catch (e) {
+      logger.d('VideoThumbnailService: 尝试生成缩略图失败: $e');
+      return null;
+    }
+  }
+
+  /// 下载视频片段的大小级别（渐进式下载）
+  static const _downloadSizes = [
+    2 * 1024 * 1024, // 2MB - 大多数视频足够
+    5 * 1024 * 1024, // 5MB - 复杂编码的视频
+    10 * 1024 * 1024, // 10MB - 最后尝试
+  ];
+
+  /// 下载视频的前几 MB 用于生成缩略图
+  ///
+  /// 对于 SMB、WebDAV 等需要流式访问的协议，采用渐进式下载策略：
+  /// 1. 首先尝试下载 2MB（对于大多数视频足够提取帧）
+  /// 2. 如果生成失败，增加到 5MB
+  /// 3. 最后尝试 10MB
+  ///
+  /// 这样可以显著减少网络传输和存储占用
+  Future<String?> _downloadVideoForThumbnail({
+    required NasFileSystem fileSystem,
+    required String filePath,
+    required String cacheKey,
+    int sizeLevel = 0,
+  }) async {
+    if (sizeLevel >= _downloadSizes.length) {
+      logger.w('VideoThumbnailService: 已尝试所有下载大小级别，放弃');
+      return null;
+    }
+
+    final downloadSize = _downloadSizes[sizeLevel];
+
+    try {
+      logger.d('VideoThumbnailService: 开始下载视频片段 $filePath (${downloadSize ~/ 1024 ~/ 1024}MB)');
+
+      // 获取文件扩展名
+      final ext = p.extension(filePath).toLowerCase();
+      final tempPath = p.join(_cacheDir!.path, 'temp_$cacheKey$ext');
+
+      // 使用范围请求只下载指定大小
+      final stream = await fileSystem.getFileStream(
+        filePath,
+        range: FileRange(start: 0, end: downloadSize),
+      );
+
+      // 写入临时文件
+      final tempFile = File(tempPath);
+      final sink = tempFile.openWrite();
+
+      var bytesWritten = 0;
+      await for (final chunk in stream) {
+        sink.add(chunk);
+        bytesWritten += chunk.length;
+
+        // 限制下载大小
+        if (bytesWritten >= downloadSize) {
+          break;
+        }
+      }
+
+      await sink.flush();
+      await sink.close();
+
+      logger.d('VideoThumbnailService: 视频片段下载完成, 大小: ${bytesWritten ~/ 1024}KB');
+      return tempPath;
+    } catch (e) {
+      logger.e('VideoThumbnailService: 下载视频片段失败', e);
+      return null;
     }
   }
 
@@ -165,10 +439,17 @@ class VideoThumbnailService {
     try {
       final cacheKey = _generateCacheKey(localPath);
 
+      // 转换路径：将 file:// URI 转换为本地路径
+      final effectivePath = VideoPathUtils.convertToLocalPath(localPath);
+      if (effectivePath == null) {
+        logger.w('VideoThumbnailService: 无法处理的本地路径: $localPath');
+        return null;
+      }
+
       final result = await VideoSnapshotGenerator.generateThumbnail(
-        videoPath: localPath,
+        videoPath: effectivePath,
         options: ThumbnailOptions(
-          videoPath: localPath,
+          videoPath: effectivePath,
           width: 480,
           height: 270,
           quality: 80,

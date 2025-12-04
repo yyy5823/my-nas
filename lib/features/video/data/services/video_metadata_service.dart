@@ -2,6 +2,7 @@ import 'package:hive_ce/hive.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/video/data/services/nfo_scraper_service.dart';
 import 'package:my_nas/features/video/data/services/tmdb_service.dart';
+import 'package:my_nas/features/video/data/services/video_history_service.dart';
 import 'package:my_nas/features/video/data/services/video_thumbnail_service.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
@@ -19,6 +20,7 @@ class VideoMetadataService {
   final TmdbService _tmdbService = TmdbService.instance;
   final NfoScraperService _nfoService = NfoScraperService.instance;
   final VideoThumbnailService _thumbnailService = VideoThumbnailService.instance;
+  final VideoHistoryService _historyService = VideoHistoryService.instance;
 
   /// 初始化
   Future<void> init() async {
@@ -63,6 +65,41 @@ class VideoMetadataService {
   /// 清除所有缓存
   Future<void> clearAll() async {
     await _box?.clear();
+  }
+
+  /// 当播放进度更新时，刷新缩略图
+  ///
+  /// 此方法应在视频播放停止后调用，用于更新缩略图为当前停止位置的帧
+  /// 仅对没有刮削封面的视频有效
+  Future<void> refreshThumbnailOnProgressUpdate({
+    required String sourceId,
+    required String filePath,
+    required String videoUrl,
+    NasFileSystem? fileSystem,
+  }) async {
+    try {
+      final metadata = getCached(sourceId, filePath);
+      if (metadata == null) return;
+
+      // 如果有刮削封面（TMDB 海报或 NAS 缩略图），不需要更新缩略图
+      if (metadata.posterUrl != null || metadata.thumbnailUrl != null) {
+        logger.d('VideoMetadataService: 视频有刮削封面，跳过缩略图更新');
+        return;
+      }
+
+      // 删除旧的缩略图缓存，强制重新生成
+      await _thumbnailService.deleteCached(filePath);
+
+      // 重新生成缩略图（会使用新的播放位置）
+      await _tryGenerateThumbnail(metadata, videoUrl, fileSystem);
+
+      // 保存更新后的元数据
+      await save(metadata);
+
+      logger.i('VideoMetadataService: 已更新缩略图为当前播放位置 "${metadata.fileName}"');
+    } catch (e) {
+      logger.w('VideoMetadataService: 更新缩略图失败', e);
+    }
   }
 
   /// 获取所有缓存的元数据
@@ -126,7 +163,7 @@ class VideoMetadataService {
 
     // 如果没有封面图，尝试生成缩略图
     if (metadata.displayPosterUrl == null && videoUrl != null) {
-      await _tryGenerateThumbnail(metadata, videoUrl);
+      await _tryGenerateThumbnail(metadata, videoUrl, fileSystem);
     }
 
     // 保存到缓存
@@ -136,7 +173,17 @@ class VideoMetadataService {
   }
 
   /// 尝试为视频生成缩略图
-  Future<void> _tryGenerateThumbnail(VideoMetadata metadata, String videoUrl) async {
+  ///
+  /// [fileSystem] 可选的文件系统接口，用于 SMB 等需要流式下载的协议
+  ///
+  /// 缩略图位置选择策略：
+  /// 1. 如果有播放历史，使用上次停止的位置作为缩略图帧
+  /// 2. 如果没有播放历史，使用默认的 5 秒位置
+  Future<void> _tryGenerateThumbnail(
+    VideoMetadata metadata,
+    String videoUrl,
+    NasFileSystem? fileSystem,
+  ) async {
     try {
       // 检查是否已有缓存的生成缩略图
       final cachedUrl = _thumbnailService.getCachedThumbnailUrl(metadata.filePath);
@@ -145,12 +192,22 @@ class VideoMetadataService {
         return;
       }
 
-      logger.d('VideoMetadataService: 尝试为 "${metadata.fileName}" 生成缩略图');
+      // 获取播放历史，决定缩略图位置
+      int timeMs = 5000; // 默认 5 秒位置
+      final progress = await _historyService.getProgress(metadata.filePath);
+      if (progress != null && progress.position.inMilliseconds > 0) {
+        // 使用上次停止的位置
+        timeMs = progress.position.inMilliseconds;
+        logger.d('VideoMetadataService: 使用播放历史位置生成缩略图 "${metadata.fileName}" @ ${progress.position.inSeconds}s');
+      } else {
+        logger.d('VideoMetadataService: 尝试为 "${metadata.fileName}" 生成缩略图 @ 5s');
+      }
 
       final thumbnailPath = await _thumbnailService.generateThumbnail(
         videoUrl: videoUrl,
         videoPath: metadata.filePath,
-        timeMs: 5000, // 5秒位置
+        timeMs: timeMs,
+        fileSystem: fileSystem, // 传递 fileSystem 用于 SMB 等协议
       );
 
       if (thumbnailPath != null) {
