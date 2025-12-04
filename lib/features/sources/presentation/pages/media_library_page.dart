@@ -616,7 +616,12 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
       case MediaType.music:
         final state = ref.watch(musicListProvider);
         final isLoading = state is MusicListLoading;
-        final progress = state is MusicListLoading ? state.progress : 0.0;
+        // 使用元数据提取进度（如果在提取元数据阶段）
+        final progress = state is MusicListLoading
+            ? (state.phase == MusicScanPhase.metadata
+                ? state.metadataProgress
+                : state.progress)
+            : 0.0;
         final folder = state is MusicListLoading ? state.currentFolder : null;
         final cacheInfo = MusicLibraryCacheService.instance.getCacheInfo();
         return (isLoading, progress, folder, cacheInfo);

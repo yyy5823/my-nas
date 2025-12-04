@@ -102,6 +102,10 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
   Timer? _progressSaveTimer;
   VideoItem? _currentVideo;
 
+  // Stream subscriptions 管理
+  final List<StreamSubscription<dynamic>> _subscriptions = [];
+  bool _isDisposed = false;
+
   Player get player => _player;
   VideoController get videoController => _videoController;
 
@@ -116,7 +120,8 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
     _applySettings();
 
     // 监听播放状态
-    _player.stream.playing.listen((playing) {
+    _subscriptions.add(_player.stream.playing.listen((playing) {
+      if (_isDisposed) return;
       state = state.copyWith(isPlaying: playing);
 
       // 开始播放时启动进度保存定时器
@@ -127,42 +132,49 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
         // 暂停时保存一次进度
         _saveCurrentProgress();
       }
-    });
+    }));
 
     // 监听缓冲状态
-    _player.stream.buffering.listen((buffering) {
+    _subscriptions.add(_player.stream.buffering.listen((buffering) {
+      if (_isDisposed) return;
       state = state.copyWith(isBuffering: buffering);
-    });
+    }));
 
     // 监听播放位置
-    _player.stream.position.listen((position) {
+    _subscriptions.add(_player.stream.position.listen((position) {
+      if (_isDisposed) return;
       state = state.copyWith(position: position);
-    });
+    }));
 
     // 监听总时长
-    _player.stream.duration.listen((duration) {
+    _subscriptions.add(_player.stream.duration.listen((duration) {
+      if (_isDisposed) return;
       state = state.copyWith(duration: duration);
-    });
+    }));
 
     // 监听音量
-    _player.stream.volume.listen((volume) {
+    _subscriptions.add(_player.stream.volume.listen((volume) {
+      if (_isDisposed) return;
       state = state.copyWith(volume: volume / 100);
-    });
+    }));
 
     // 监听倍速
-    _player.stream.rate.listen((rate) {
+    _subscriptions.add(_player.stream.rate.listen((rate) {
+      if (_isDisposed) return;
       state = state.copyWith(speed: rate);
-    });
+    }));
 
     // 监听错误
-    _player.stream.error.listen((error) {
+    _subscriptions.add(_player.stream.error.listen((error) {
+      if (_isDisposed) return;
       if (error.isNotEmpty) {
         state = state.copyWith(errorMessage: error);
       }
-    });
+    }));
 
     // 监听播放完成
-    _player.stream.completed.listen((completed) {
+    _subscriptions.add(_player.stream.completed.listen((completed) {
+      if (_isDisposed) return;
       if (completed && _currentVideo != null) {
         // 播放完成，清除进度
         _historyService.clearProgress(_currentVideo!.path);
@@ -171,7 +183,7 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
         // 尝试播放下一个
         _playNextFromPlaylist();
       }
-    });
+    }));
   }
 
   /// 应用保存的设置
@@ -181,6 +193,70 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
     await _player.setRate(settings.speed);
     state = state.copyWith(volume: settings.volume, speed: settings.speed);
     logger.i('VideoPlayerNotifier: 应用设置 volume=${settings.volume}, speed=${settings.speed}');
+  }
+
+  /// 重新初始化 stream listeners（在 stopSync 后再次播放时调用）
+  void _reinitStreamListeners() {
+    // 确保先清理旧的订阅
+    for (final subscription in _subscriptions) {
+      subscription.cancel();
+    }
+    _subscriptions.clear();
+
+    // 重新添加所有 stream listeners
+    _subscriptions.add(_player.stream.playing.listen((playing) {
+      if (_isDisposed) return;
+      state = state.copyWith(isPlaying: playing);
+      if (playing) {
+        _startProgressSaveTimer();
+      } else {
+        _stopProgressSaveTimer();
+        _saveCurrentProgress();
+      }
+    }));
+
+    _subscriptions.add(_player.stream.buffering.listen((buffering) {
+      if (_isDisposed) return;
+      state = state.copyWith(isBuffering: buffering);
+    }));
+
+    _subscriptions.add(_player.stream.position.listen((position) {
+      if (_isDisposed) return;
+      state = state.copyWith(position: position);
+    }));
+
+    _subscriptions.add(_player.stream.duration.listen((duration) {
+      if (_isDisposed) return;
+      state = state.copyWith(duration: duration);
+    }));
+
+    _subscriptions.add(_player.stream.volume.listen((volume) {
+      if (_isDisposed) return;
+      state = state.copyWith(volume: volume / 100);
+    }));
+
+    _subscriptions.add(_player.stream.rate.listen((rate) {
+      if (_isDisposed) return;
+      state = state.copyWith(speed: rate);
+    }));
+
+    _subscriptions.add(_player.stream.error.listen((error) {
+      if (_isDisposed) return;
+      if (error.isNotEmpty) {
+        state = state.copyWith(errorMessage: error);
+      }
+    }));
+
+    _subscriptions.add(_player.stream.completed.listen((completed) {
+      if (_isDisposed) return;
+      if (completed && _currentVideo != null) {
+        _historyService.clearProgress(_currentVideo!.path);
+        logger.d('VideoPlayerNotifier: 播放完成，清除进度');
+        _playNextFromPlaylist();
+      }
+    }));
+
+    logger.d('VideoPlayerNotifier: 重新初始化 stream listeners');
   }
 
   /// 尝试从播放列表播放下一个
@@ -214,10 +290,20 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
   }
 
   Future<void> _saveCurrentProgress() async {
-    if (_currentVideo == null) return;
-    if (state.position.inSeconds < 5) return; // 忽略前5秒
-    if (state.duration.inSeconds < 10) return; // 忽略太短的视频
+    if (_currentVideo == null) {
+      logger.d('VideoPlayerNotifier: 保存进度跳过 - 无当前视频');
+      return;
+    }
+    if (state.position.inSeconds < 5) {
+      logger.d('VideoPlayerNotifier: 保存进度跳过 - 位置小于5秒');
+      return;
+    }
+    if (state.duration.inSeconds < 10) {
+      logger.d('VideoPlayerNotifier: 保存进度跳过 - 时长小于10秒');
+      return;
+    }
 
+    logger.d('VideoPlayerNotifier: 保存进度 ${_currentVideo!.path} => ${state.position.inSeconds}s / ${state.duration.inSeconds}s');
     await _historyService.saveProgress(
       videoPath: _currentVideo!.path,
       position: state.position,
@@ -227,6 +313,12 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
 
   /// 播放视频
   Future<void> play(VideoItem video, {Duration? startPosition}) async {
+    // 如果之前已停止，需要重新初始化 stream listeners
+    if (_isDisposed) {
+      _isDisposed = false;
+      _reinitStreamListeners();
+    }
+
     // 保存当前视频进度
     await _saveCurrentProgress();
 
@@ -335,14 +427,55 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
 
   /// 同步停止（用于 dispose，不等待异步操作）
   void stopSync() {
-    // 先同步保存进度
-    _saveCurrentProgress();
+    // 标记为已停止，防止 stream listeners 继续更新状态
+    _isDisposed = true;
+
+    // 取消所有 stream subscriptions
+    for (final subscription in _subscriptions) {
+      subscription.cancel();
+    }
+    _subscriptions.clear();
+
     _stopProgressSaveTimer();
+
+    // 保存当前视频和状态的引用，用于异步保存进度
+    final videoToSave = _currentVideo;
+    final positionToSave = state.position;
+    final durationToSave = state.duration;
+
     // 直接停止播放器
     _player.pause();
     _player.stop();
     _currentVideo = null;
-    _ref.read(currentVideoProvider.notifier).state = null;
+
+    // 延迟修改 provider 状态，避免在 dispose 期间修改
+    Future.microtask(() {
+      try {
+        _ref.read(currentVideoProvider.notifier).state = null;
+      } catch (e) {
+        // 忽略错误，可能 provider 已经被销毁
+      }
+    });
+
+    // 异步保存进度（使用保存的引用）
+    if (videoToSave != null &&
+        positionToSave.inSeconds >= 5 &&
+        durationToSave.inSeconds >= 10) {
+      logger.d('VideoPlayerNotifier: 异步保存进度 ${videoToSave.path} => ${positionToSave.inSeconds}s / ${durationToSave.inSeconds}s');
+      Future.microtask(() async {
+        try {
+          await _historyService.saveProgress(
+            videoPath: videoToSave.path,
+            position: positionToSave,
+            duration: durationToSave,
+          );
+          logger.i('VideoPlayerNotifier: 进度保存成功');
+        } catch (e) {
+          logger.e('VideoPlayerNotifier: 保存进度失败', e);
+        }
+      });
+    }
+
     logger.i('VideoPlayerNotifier: 同步停止播放');
   }
 
@@ -480,6 +613,13 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
 
   @override
   void dispose() {
+    _isDisposed = true;
+    // 取消所有 stream subscriptions
+    for (final subscription in _subscriptions) {
+      subscription.cancel();
+    }
+    _subscriptions.clear();
+
     _saveCurrentProgress();
     _stopProgressSaveTimer();
     _player.dispose();

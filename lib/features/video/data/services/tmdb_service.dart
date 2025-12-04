@@ -198,6 +198,134 @@ class TmdbService {
       return null;
     }
   }
+
+  /// 获取电影推荐
+  Future<TmdbSearchResult> getMovieRecommendations(
+    int movieId, {
+    int page = 1,
+    String language = 'zh-CN',
+  }) async {
+    if (!hasApiKey) return TmdbSearchResult.empty();
+
+    try {
+      final params = {
+        'api_key': _apiKey,
+        'page': page.toString(),
+        'language': language,
+      };
+
+      final uri = Uri.parse('$_baseUrl/movie/$movieId/recommendations')
+          .replace(queryParameters: params);
+      final response = await http.get(uri);
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body) as Map<String, dynamic>;
+        return TmdbSearchResult.fromJson(data, isMovie: true);
+      } else {
+        logger.e('TMDB获取电影推荐失败: ${response.statusCode}');
+        return TmdbSearchResult.empty();
+      }
+    } catch (e) {
+      logger.e('TMDB获取电影推荐异常', e);
+      return TmdbSearchResult.empty();
+    }
+  }
+
+  /// 获取电视剧推荐
+  Future<TmdbSearchResult> getTvRecommendations(
+    int tvId, {
+    int page = 1,
+    String language = 'zh-CN',
+  }) async {
+    if (!hasApiKey) return TmdbSearchResult.empty();
+
+    try {
+      final params = {
+        'api_key': _apiKey,
+        'page': page.toString(),
+        'language': language,
+      };
+
+      final uri = Uri.parse('$_baseUrl/tv/$tvId/recommendations')
+          .replace(queryParameters: params);
+      final response = await http.get(uri);
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body) as Map<String, dynamic>;
+        return TmdbSearchResult.fromJson(data, isMovie: false);
+      } else {
+        logger.e('TMDB获取电视剧推荐失败: ${response.statusCode}');
+        return TmdbSearchResult.empty();
+      }
+    } catch (e) {
+      logger.e('TMDB获取电视剧推荐异常', e);
+      return TmdbSearchResult.empty();
+    }
+  }
+
+  /// 获取相似电影
+  Future<TmdbSearchResult> getSimilarMovies(
+    int movieId, {
+    int page = 1,
+    String language = 'zh-CN',
+  }) async {
+    if (!hasApiKey) return TmdbSearchResult.empty();
+
+    try {
+      final params = {
+        'api_key': _apiKey,
+        'page': page.toString(),
+        'language': language,
+      };
+
+      final uri = Uri.parse('$_baseUrl/movie/$movieId/similar')
+          .replace(queryParameters: params);
+      final response = await http.get(uri);
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body) as Map<String, dynamic>;
+        return TmdbSearchResult.fromJson(data, isMovie: true);
+      } else {
+        logger.e('TMDB获取相似电影失败: ${response.statusCode}');
+        return TmdbSearchResult.empty();
+      }
+    } catch (e) {
+      logger.e('TMDB获取相似电影异常', e);
+      return TmdbSearchResult.empty();
+    }
+  }
+
+  /// 获取相似电视剧
+  Future<TmdbSearchResult> getSimilarTvShows(
+    int tvId, {
+    int page = 1,
+    String language = 'zh-CN',
+  }) async {
+    if (!hasApiKey) return TmdbSearchResult.empty();
+
+    try {
+      final params = {
+        'api_key': _apiKey,
+        'page': page.toString(),
+        'language': language,
+      };
+
+      final uri = Uri.parse('$_baseUrl/tv/$tvId/similar')
+          .replace(queryParameters: params);
+      final response = await http.get(uri);
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body) as Map<String, dynamic>;
+        return TmdbSearchResult.fromJson(data, isMovie: false);
+      } else {
+        logger.e('TMDB获取相似电视剧失败: ${response.statusCode}');
+        return TmdbSearchResult.empty();
+      }
+    } catch (e) {
+      logger.e('TMDB获取相似电视剧异常', e);
+      return TmdbSearchResult.empty();
+    }
+  }
 }
 
 /// 图片尺寸

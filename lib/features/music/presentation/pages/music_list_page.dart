@@ -191,12 +191,22 @@ class MusicListLoading extends MusicListState {
     this.fromCache = false,
     this.partialTracks = const [],
     this.scannedCount = 0,
+    this.phase = MusicScanPhase.scanning,
+    this.metadataProgress = 0,
   });
   final double progress;
   final String? currentFolder;
   final bool fromCache;
   final List<MusicFileWithSource> partialTracks;
   final int scannedCount;
+  final MusicScanPhase phase;
+  final double metadataProgress; // 元数据提取进度 0-1
+}
+
+/// 扫描阶段
+enum MusicScanPhase {
+  scanning,    // 扫描文件
+  metadata,    // 提取元数据
 }
 
 class MusicListNotConnected extends MusicListState {}
@@ -249,9 +259,6 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
   final MusicLibraryCacheService _cacheService = MusicLibraryCacheService.instance;
   final MusicMetadataService _metadataService = MusicMetadataService.instance;
 
-  /// 是否正在提取元数据
-  bool _isExtractingMetadata = false;
-
   Future<void> _init() async {
     try {
       await _cacheService.init();
@@ -284,9 +291,6 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
 
       state = MusicListLoaded(tracks: tracks, fromCache: true);
       logger.i('从缓存加载了 ${tracks.length} 首音乐');
-
-      // 在后台提取未提取的元数据
-      unawaited(extractMetadataInBackground());
     } else {
       state = MusicListLoaded(tracks: [], fromCache: true);
     }
@@ -335,7 +339,7 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
 
     final sourceIds = connectedPaths.map((p) => p.sourceId).toList();
 
-    // 尝试使用缓存
+    // 尝试使用缓存（直接显示，无需后台提取）
     if (!forceRefresh && _cacheService.isCacheValid(sourceIds)) {
       final cache = _cacheService.getCache();
       if (cache != null) {
@@ -347,15 +351,12 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
 
         state = MusicListLoaded(tracks: tracks, fromCache: true);
         logger.i('从缓存加载了 ${tracks.length} 首音乐');
-
-        // 在后台提取未提取的元数据
-        unawaited(extractMetadataInBackground());
         return;
       }
     }
 
-    // 扫描文件系统
-    state = MusicListLoading();
+    // 第一阶段：扫描文件系统
+    state = MusicListLoading(phase: MusicScanPhase.scanning);
     final tracks = <MusicFileWithSource>[];
     var scannedFolders = 0;
     final totalFolders = connectedPaths.length;
@@ -366,6 +367,7 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
       if (connection == null) continue;
 
       state = MusicListLoading(
+        phase: MusicScanPhase.scanning,
         progress: scannedFolders / totalFolders,
         currentFolder: mediaPath.displayName,
         partialTracks: List.from(tracks),
@@ -384,6 +386,7 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
             if (tracks.length - lastUpdateCount >= 20) {
               lastUpdateCount = tracks.length;
               state = MusicListLoading(
+                phase: MusicScanPhase.scanning,
                 progress: scannedFolders / totalFolders,
                 currentFolder: mediaPath.displayName,
                 partialTracks: List.from(tracks),
@@ -397,18 +400,16 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
       }
 
       scannedFolders++;
-
-      state = MusicListLoading(
-        progress: scannedFolders / totalFolders,
-        currentFolder: scannedFolders < totalFolders ? '继续扫描...' : '扫描完成',
-        partialTracks: List.from(tracks),
-        scannedCount: tracks.length,
-      );
     }
 
     logger.i('音乐扫描完成，共找到 ${tracks.length} 首音乐');
 
-    // 保存到缓存
+    // 第二阶段：提取元数据
+    if (tracks.isNotEmpty) {
+      await _extractMetadataForTracks(tracks, connections);
+    }
+
+    // 保存到缓存（带元数据）
     final cacheEntries = tracks.map((t) => t.toCacheEntry()).toList();
     await _cacheService.saveCache(MusicLibraryCache(
       tracks: cacheEntries,
@@ -417,9 +418,82 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
     ));
 
     state = MusicListLoaded(tracks: tracks);
+    logger.i('音乐库加载完成，共 ${tracks.length} 首音乐');
+  }
 
-    // 在后台提取元数据
-    unawaited(extractMetadataInBackground());
+  /// 提取曲目元数据（封面、艺术家、专辑等）
+  Future<void> _extractMetadataForTracks(
+    List<MusicFileWithSource> tracks,
+    Map<String, SourceConnection> connections,
+  ) async {
+    await _metadataService.init();
+
+    final totalTracks = tracks.length;
+    var processedCount = 0;
+
+    state = MusicListLoading(
+      phase: MusicScanPhase.metadata,
+      currentFolder: '正在提取元数据...',
+      metadataProgress: 0,
+      scannedCount: totalTracks,
+    );
+
+    for (var i = 0; i < tracks.length; i++) {
+      final track = tracks[i];
+      final connection = connections[track.sourceId];
+
+      if (connection == null || connection.status != SourceStatus.connected) {
+        processedCount++;
+        continue;
+      }
+
+      try {
+        // 从 NAS 提取元数据（跳过歌词，歌词在播放时按需提取）
+        final metadata = await _metadataService.extractFromNasFile(
+          connection.adapter.fileSystem,
+          track.path,
+          skipLyrics: true,
+        );
+
+        if (metadata != null) {
+          // 更新 track 的元数据
+          tracks[i] = track.copyWithMetadata(
+            title: metadata.title,
+            artist: metadata.artist,
+            album: metadata.album,
+            duration: metadata.duration?.inMilliseconds,
+            trackNumber: metadata.trackNumber,
+            year: metadata.year,
+            genre: metadata.genre,
+            coverBase64: metadata.coverData != null
+                ? base64Encode(metadata.coverData!)
+                : null,
+            metadataExtracted: true,
+          );
+        } else {
+          tracks[i] = track.copyWithMetadata(metadataExtracted: true);
+        }
+      } catch (e) {
+        logger.w('提取元数据失败 ${track.path}: $e');
+        tracks[i] = track.copyWithMetadata(metadataExtracted: true);
+      }
+
+      processedCount++;
+
+      // 每处理10首或每5%更新一次进度
+      if (processedCount % 10 == 0 || processedCount == totalTracks) {
+        final progress = processedCount / totalTracks;
+        state = MusicListLoading(
+          phase: MusicScanPhase.metadata,
+          currentFolder: '正在提取元数据 ($processedCount/$totalTracks)',
+          metadataProgress: progress,
+          scannedCount: totalTracks,
+          partialTracks: List.from(tracks),
+        );
+      }
+    }
+
+    logger.i('元数据提取完成，处理了 $processedCount 首音乐');
   }
 
   Future<void> _scanForMusic(
@@ -474,119 +548,6 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
   Future<void> forceRefresh() async {
     await _cacheService.clearCache();
     await loadMusic(forceRefresh: true);
-  }
-
-  /// 在后台提取未提取元数据的曲目
-  /// 每次提取一批，避免阻塞
-  Future<void> extractMetadataInBackground() async {
-    if (_isExtractingMetadata) return;
-    _isExtractingMetadata = true;
-
-    try {
-      await _metadataService.init();
-
-      // 获取未提取元数据的曲目
-      final tracksWithoutMetadata = _cacheService.getTracksWithoutMetadata();
-      if (tracksWithoutMetadata.isEmpty) {
-        logger.i('MusicListNotifier: 所有曲目都已提取元数据');
-        return;
-      }
-
-      logger.i('MusicListNotifier: 开始后台提取元数据，共 ${tracksWithoutMetadata.length} 首待处理');
-
-      // 获取连接
-      final connections = _ref.read(activeConnectionsProvider);
-
-      // 批量处理，每次处理一批
-      const batchSize = 10;
-      final updates = <String, MusicLibraryCacheEntry>{};
-      var processedCount = 0;
-
-      for (final entry in tracksWithoutMetadata) {
-        // 检查是否仍在挂载状态
-        if (!mounted) break;
-
-        final connection = connections[entry.sourceId];
-        if (connection == null || connection.status != SourceStatus.connected) {
-          continue;
-        }
-
-        try {
-          // 从 NAS 提取元数据（跳过歌词，歌词在播放时按需提取）
-          final metadata = await _metadataService.extractFromNasFile(
-            connection.adapter.fileSystem,
-            entry.filePath,
-            skipLyrics: true,
-          );
-
-          if (metadata != null) {
-            // 更新缓存条目
-            final updatedEntry = entry.copyWithMetadata(
-              title: metadata.title,
-              artist: metadata.artist,
-              album: metadata.album,
-              duration: metadata.duration?.inMilliseconds,
-              trackNumber: metadata.trackNumber,
-              year: metadata.year,
-              genre: metadata.genre,
-              coverBase64: metadata.coverData != null
-                  ? base64Encode(metadata.coverData!)
-                  : null,
-              metadataExtracted: true,
-            );
-            updates[entry.uniqueKey] = updatedEntry;
-          } else {
-            // 标记为已提取（即使没有元数据）
-            final updatedEntry = entry.copyWithMetadata(metadataExtracted: true);
-            updates[entry.uniqueKey] = updatedEntry;
-          }
-
-          processedCount++;
-
-          // 每批处理完毕后更新缓存和状态
-          if (updates.length >= batchSize) {
-            await _updateTracksWithMetadata(updates);
-            updates.clear();
-            // 短暂延迟，避免阻塞 UI
-            await Future<void>.delayed(const Duration(milliseconds: 100));
-          }
-        } catch (e) {
-          logger.w('MusicListNotifier: 提取元数据失败 ${entry.filePath}: $e');
-          // 标记为已提取，避免重复尝试
-          final updatedEntry = entry.copyWithMetadata(metadataExtracted: true);
-          updates[entry.uniqueKey] = updatedEntry;
-        }
-      }
-
-      // 处理剩余的更新
-      if (updates.isNotEmpty) {
-        await _updateTracksWithMetadata(updates);
-      }
-
-      logger.i('MusicListNotifier: 后台元数据提取完成，处理了 $processedCount 首');
-    } finally {
-      _isExtractingMetadata = false;
-    }
-  }
-
-  /// 更新曲目元数据并刷新状态
-  Future<void> _updateTracksWithMetadata(Map<String, MusicLibraryCacheEntry> updates) async {
-    // 更新缓存
-    await _cacheService.updateTracksMetadata(updates);
-
-    // 更新当前状态中的曲目
-    final current = state;
-    if (current is MusicListLoaded) {
-      final updatedTracks = current.tracks.map((track) {
-        final updated = updates[track.uniqueKey];
-        if (updated != null) {
-          return MusicFileWithSource.fromCacheEntry(updated);
-        }
-        return track;
-      }).toList();
-
-      state = current.copyWith(tracks: updatedTracks);
-    }
   }
 }
 
@@ -1231,9 +1192,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
       await ref.read(musicPlayerControllerProvider.notifier).play(musicItem);
 
       if (context.mounted) {
-        await Navigator.of(context).push(
-          MaterialPageRoute<void>(builder: (context) => const MusicPlayerPage()),
-        );
+        await MusicPlayerPage.open(context);
       }
     } catch (e) {
       if (context.mounted) {
@@ -1291,9 +1250,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
 
       // 导航到播放器页面
       if (context.mounted) {
-        unawaited(Navigator.of(context).push(
-          MaterialPageRoute<void>(builder: (context) => const MusicPlayerPage()),
-        ));
+        unawaited(MusicPlayerPage.open(context));
       }
 
       // 在后台构建完整播放队列
@@ -2341,9 +2298,7 @@ class _AllSongsView extends ConsumerWidget {
       logger.i('_AllSongsView._playAll: 播放成功');
 
       if (context.mounted) {
-        await Navigator.of(context).push(
-          MaterialPageRoute<void>(builder: (context) => const MusicPlayerPage()),
-        );
+        await MusicPlayerPage.open(context);
       }
     } catch (e, stackTrace) {
       logger.e('_AllSongsView._playAll: 播放失败', e, stackTrace);
@@ -2395,9 +2350,7 @@ class _AllSongsView extends ConsumerWidget {
       logger.i('_AllSongsView._shufflePlay: 播放成功');
 
       if (context.mounted) {
-        await Navigator.of(context).push(
-          MaterialPageRoute<void>(builder: (context) => const MusicPlayerPage()),
-        );
+        await MusicPlayerPage.open(context);
       }
     } catch (e, stackTrace) {
       logger.e('_AllSongsView._shufflePlay: 播放失败', e, stackTrace);
@@ -2851,11 +2804,7 @@ class _MusicListTile extends ConsumerWidget {
 
     await ref.read(musicPlayerControllerProvider.notifier).play(musicItem);
 
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (context) => const MusicPlayerPage(),
-      ),
-    );
+    await MusicPlayerPage.open(context);
   }
 
   Future<void> _handleMenuAction(BuildContext context, WidgetRef ref, String action) async {
@@ -3603,11 +3552,7 @@ class _FavoriteTrackTile extends ConsumerWidget {
         onTap: () async {
           await ref.read(musicPlayerControllerProvider.notifier).play(item);
           if (context.mounted) {
-            await Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (context) => const MusicPlayerPage(),
-              ),
-            );
+            await MusicPlayerPage.open(context);
           }
         },
         leading: Container(
@@ -3716,11 +3661,7 @@ class _RecentTrackTile extends ConsumerWidget {
         onTap: () async {
           await ref.read(musicPlayerControllerProvider.notifier).play(item);
           if (context.mounted) {
-            await Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (context) => const MusicPlayerPage(),
-              ),
-            );
+            await MusicPlayerPage.open(context);
           }
         },
         leading: Container(
@@ -4037,11 +3978,7 @@ class _PlaylistTile extends ConsumerWidget {
     await ref.read(musicPlayerControllerProvider.notifier).play(musicItems.first);
 
     if (context.mounted) {
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (context) => const MusicPlayerPage(),
-        ),
-      );
+      await MusicPlayerPage.open(context);
     }
   }
 
@@ -4293,11 +4230,7 @@ class _PlaylistDetailSheet extends ConsumerWidget {
 
     if (context.mounted) {
       Navigator.of(context).pop();
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (context) => const MusicPlayerPage(),
-        ),
-      );
+      await MusicPlayerPage.open(context);
     }
   }
 }
@@ -4405,11 +4338,7 @@ class _PlaylistTrackTile extends ConsumerWidget {
     await ref.read(musicPlayerControllerProvider.notifier).play(musicItem);
 
     Navigator.of(context).pop();
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (context) => const MusicPlayerPage(),
-      ),
-    );
+    await MusicPlayerPage.open(context);
   }
 }
 
@@ -4587,11 +4516,7 @@ class _CompactMusicTile extends ConsumerWidget {
       logger.i('_CompactMusicTile._playTrack: 播放成功，跳转到播放页');
 
       // 导航到播放器页面
-      unawaited(Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (context) => const MusicPlayerPage(),
-        ),
-      ));
+      unawaited(MusicPlayerPage.open(context));
 
       // 在后台构建完整播放队列
       if (allTracks != null && allTracks!.isNotEmpty) {
@@ -4924,11 +4849,7 @@ class _PlayAllButton extends ConsumerWidget {
 
     if (context.mounted) {
       Navigator.of(context).pop();
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (context) => const MusicPlayerPage(),
-        ),
-      );
+      await MusicPlayerPage.open(context);
     }
   }
 }

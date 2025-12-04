@@ -88,7 +88,7 @@ class VideoHistoryService {
       history.map((h) => h.toJson()).toList(),
     );
 
-    logger.d('VideoHistoryService: 添加历史 ${item.videoName}');
+    logger.d('VideoHistoryService: 添加历史 ${item.videoName}, thumbnailUrl=${item.thumbnailUrl}');
   }
 
   /// 获取播放历史
@@ -115,8 +115,11 @@ class VideoHistoryService {
     final history = await getHistory(limit: 50);
     final continueList = <VideoHistoryItem>[];
 
+    logger.d('VideoHistoryService: 获取继续观看, 历史记录数: ${history.length}');
+
     for (final item in history) {
       final progress = await getProgress(item.videoPath);
+      logger.d('VideoHistoryService: 检查 ${item.videoName}, progress=${progress?.progressPercent}, thumbnailUrl=${item.thumbnailUrl}');
       if (progress != null && progress.progressPercent > 0.05 && progress.progressPercent < 0.95) {
         continueList.add(item.copyWith(
           lastPosition: progress.position,
@@ -126,6 +129,7 @@ class VideoHistoryService {
       }
     }
 
+    logger.d('VideoHistoryService: 继续观看列表数: ${continueList.length}');
     return continueList;
   }
 

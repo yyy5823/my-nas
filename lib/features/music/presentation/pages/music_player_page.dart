@@ -15,6 +15,13 @@ import 'package:my_nas/features/music/presentation/widgets/music_settings_sheet.
 class MusicPlayerPage extends ConsumerStatefulWidget {
   const MusicPlayerPage({super.key});
 
+  /// 全屏打开音乐播放器（隐藏底部导航栏）
+  static Future<void> open(BuildContext context) {
+    return Navigator.of(context, rootNavigator: true).push(
+      MaterialPageRoute<void>(builder: (context) => const MusicPlayerPage()),
+    );
+  }
+
   @override
   ConsumerState<MusicPlayerPage> createState() => _MusicPlayerPageState();
 }
@@ -277,8 +284,8 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
               // 控制按钮
               _buildControlButtons(context, ref, playerState, isDark),
               const SizedBox(height: 8),
-              // 音量控制（歌词模式下）
-              _buildLyricModeVolumeControl(playerState, isDark),
+              // 额外控制（歌词模式下）
+              _buildLyricModeExtraControls(context, playerState, isDark),
             ],
           ),
         ),
@@ -286,56 +293,45 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
     );
   }
 
-  /// 歌词模式下的音量控制条
-  Widget _buildLyricModeVolumeControl(MusicPlayerState state, bool isDark) {
-    return Consumer(
-      builder: (context, ref, _) {
-        // 读取实际的播放器状态以获取最新音量值
-        final currentState = ref.watch(musicPlayerControllerProvider);
-        final volume = currentState.volume.clamp(0.0, 1.0);
-
-        return Padding(
-          // 添加额外的底部 padding 以适应 iOS 的 Home Indicator 区域
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).padding.bottom > 0 ? 8 : 0,
+  /// 歌词模式下的额外控制按钮（音量、封面等）
+  Widget _buildLyricModeExtraControls(
+    BuildContext context,
+    MusicPlayerState state,
+    bool isDark,
+  ) {
+    return Padding(
+      // 添加额外的底部 padding 以适应 iOS 的 Home Indicator 区域
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).padding.bottom > 0 ? 8 : 0,
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          // 音量控制按钮（点击弹出滑块）
+          _VolumePopupButton(
+            volume: state.volume,
+            isDark: isDark,
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                volume == 0
-                    ? Icons.volume_off_rounded
-                    : Icons.volume_down_rounded,
-                size: 20,
-                color: isDark ? Colors.grey[500] : Colors.grey[600],
-              ),
-              Expanded(
-                child: SliderTheme(
-                  data: SliderTheme.of(context).copyWith(
-                    trackHeight: 3,
-                    activeTrackColor: AppColors.primary.withValues(alpha: 0.8),
-                    inactiveTrackColor: isDark ? Colors.grey[800] : Colors.grey[300],
-                    thumbColor: AppColors.primary,
-                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
-                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
-                  ),
-                  child: Slider(
-                    value: volume,
-                    onChanged: (value) {
-                      ref.read(musicPlayerControllerProvider.notifier).setVolume(value);
-                    },
-                  ),
-                ),
-              ),
-              Icon(
-                Icons.volume_up_rounded,
-                size: 20,
-                color: isDark ? Colors.grey[500] : Colors.grey[600],
-              ),
-            ],
+          // 切换到封面按钮
+          IconButton(
+            onPressed: _toggleLyricView,
+            icon: Icon(
+              Icons.album_rounded,
+              color: isDark ? Colors.grey[400] : Colors.grey[600],
+            ),
+            tooltip: '切换到封面',
           ),
-        );
-      },
+          // 定时关闭
+          IconButton(
+            onPressed: () => _showSleepTimer(context),
+            icon: Icon(
+              Icons.timer_outlined,
+              color: isDark ? Colors.grey[400] : Colors.grey[600],
+            ),
+            tooltip: '定时关闭',
+          ),
+        ],
+      ),
     );
   }
 
@@ -900,6 +896,130 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
               onTap: () => Navigator.pop(context),
             ),
             const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 音量弹出按钮（点击弹出垂直滑块）
+class _VolumePopupButton extends ConsumerWidget {
+  const _VolumePopupButton({
+    required this.volume,
+    required this.isDark,
+  });
+
+  final double volume;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return IconButton(
+      onPressed: () => _showVolumePopup(context, ref),
+      icon: Icon(
+        volume == 0
+            ? Icons.volume_off_rounded
+            : volume < 0.5
+                ? Icons.volume_down_rounded
+                : Icons.volume_up_rounded,
+        color: isDark ? Colors.grey[400] : Colors.grey[600],
+      ),
+      tooltip: '音量',
+    );
+  }
+
+  void _showVolumePopup(BuildContext context, WidgetRef ref) {
+    final RenderBox button = context.findRenderObject()! as RenderBox;
+    final RenderBox overlay = Navigator.of(context).overlay!.context.findRenderObject()! as RenderBox;
+    final buttonPosition = button.localToGlobal(Offset.zero, ancestor: overlay);
+
+    showDialog<void>(
+      context: context,
+      barrierColor: Colors.transparent,
+      builder: (dialogContext) => Stack(
+        children: [
+          // 点击外部关闭
+          Positioned.fill(
+            child: GestureDetector(
+              onTap: () => Navigator.of(dialogContext).pop(),
+              behavior: HitTestBehavior.opaque,
+              child: Container(color: Colors.transparent),
+            ),
+          ),
+          // 音量弹窗
+          Positioned(
+            left: buttonPosition.dx - 10,
+            bottom: overlay.size.height - buttonPosition.dy + 8,
+            child: _VolumePopupContent(isDark: isDark),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 音量弹窗内容
+class _VolumePopupContent extends ConsumerWidget {
+  const _VolumePopupContent({required this.isDark});
+
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final volume = ref.watch(
+      musicPlayerControllerProvider.select((s) => s.volume.clamp(0.0, 1.0)),
+    );
+
+    return Material(
+      elevation: 8,
+      borderRadius: BorderRadius.circular(12),
+      color: isDark ? AppColors.darkSurface : Colors.white,
+      child: Container(
+        width: 48,
+        height: 160,
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Column(
+          children: [
+            Icon(
+              Icons.volume_up_rounded,
+              size: 18,
+              color: isDark ? Colors.grey[400] : Colors.grey[600],
+            ),
+            Expanded(
+              child: RotatedBox(
+                quarterTurns: 3,
+                child: SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    trackHeight: 4,
+                    activeTrackColor: AppColors.primary,
+                    inactiveTrackColor: isDark ? Colors.grey[800] : Colors.grey[300],
+                    thumbColor: AppColors.primary,
+                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+                  ),
+                  child: Slider(
+                    value: volume,
+                    onChanged: (value) {
+                      ref.read(musicPlayerControllerProvider.notifier).setVolume(value);
+                    },
+                  ),
+                ),
+              ),
+            ),
+            Icon(
+              Icons.volume_off_rounded,
+              size: 18,
+              color: isDark ? Colors.grey[400] : Colors.grey[600],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${(volume * 100).round()}%',
+              style: TextStyle(
+                fontSize: 11,
+                color: isDark ? Colors.grey[400] : Colors.grey[600],
+              ),
+            ),
           ],
         ),
       ),

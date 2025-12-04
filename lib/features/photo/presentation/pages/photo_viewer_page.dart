@@ -1,11 +1,12 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/core/utils/platform_capabilities.dart';
+import 'package:my_nas/features/photo/data/services/photo_favorites_service.dart';
 import 'package:my_nas/features/photo/data/services/photo_save_service.dart';
 import 'package:my_nas/features/photo/domain/entities/photo_item.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
@@ -17,6 +18,9 @@ typedef PhotoUrlGetter = Future<String?> Function(String path, String sourceId);
 /// 文件系统获取回调
 typedef FileSystemGetter = NasFileSystem? Function(String sourceId);
 
+/// 照片删除回调
+typedef PhotoDeleteCallback = void Function(PhotoItem photo);
+
 /// 照片查看器页面
 class PhotoViewerPage extends StatefulWidget {
   const PhotoViewerPage({
@@ -25,12 +29,15 @@ class PhotoViewerPage extends StatefulWidget {
     required this.initialIndex,
     this.getPhotoUrl,
     this.getFileSystem,
+    this.onPhotoDeleted,
   });
 
   final List<PhotoItem> photos;
   final int initialIndex;
   final PhotoUrlGetter? getPhotoUrl;
   final FileSystemGetter? getFileSystem;
+  /// 照片删除后的回调（用于通知列表页刷新）
+  final PhotoDeleteCallback? onPhotoDeleted;
 
   @override
   State<PhotoViewerPage> createState() => _PhotoViewerPageState();
@@ -50,6 +57,15 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
 
   /// 缓存已加载的原图 URL
   final Map<String, String> _loadedUrls = {};
+
+  /// 收藏服务
+  final _favoritesService = PhotoFavoritesService.instance;
+
+  /// 当前照片是否已收藏
+  bool _isFavorite = false;
+
+  /// 正在切换收藏状态
+  bool _isTogglingFavorite = false;
 
   @override
   void initState() {
@@ -78,6 +94,53 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
 
     // 启动自动隐藏定时器
     _startAutoHideTimer();
+
+    // 加载收藏状态
+    _loadFavoriteStatus();
+  }
+
+  /// 加载当前照片的收藏状态
+  Future<void> _loadFavoriteStatus() async {
+    final photo = widget.photos[_currentIndex];
+    final isFav = await _favoritesService.isFavorite(photo.path, photo.sourceId);
+    if (mounted) {
+      setState(() {
+        _isFavorite = isFav;
+      });
+    }
+  }
+
+  /// 切换收藏状态
+  Future<void> _toggleFavorite() async {
+    if (_isTogglingFavorite) return;
+
+    final photo = widget.photos[_currentIndex];
+    setState(() {
+      _isTogglingFavorite = true;
+    });
+
+    try {
+      final newState = await _favoritesService.toggleFavorite(photo);
+      if (mounted) {
+        setState(() {
+          _isFavorite = newState;
+          _isTogglingFavorite = false;
+        });
+      }
+    } on Exception catch (e) {
+      logger.e('PhotoViewerPage: 切换收藏失败', e);
+      if (mounted) {
+        setState(() {
+          _isTogglingFavorite = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('收藏操作失败: $e'),
+            backgroundColor: Colors.red[700],
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -206,6 +269,8 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
                 if (_showOverlay) {
                   _startAutoHideTimer();
                 }
+                // 加载新页面的收藏状态
+                _loadFavoriteStatus();
               },
               itemBuilder: (context, index) {
                 final item = widget.photos[index];
@@ -423,17 +488,14 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
                   ),
                   // 收藏
                   _ActionButton(
-                    icon: Icons.favorite_border,
-                    label: '收藏',
-                    onTap: () {
-                      _startAutoHideTimer();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('收藏功能开发中'),
-                          duration: Duration(seconds: 1),
-                        ),
-                      );
-                    },
+                    icon: _isFavorite ? Icons.favorite : Icons.favorite_border,
+                    label: _isFavorite ? '已收藏' : '收藏',
+                    onTap: _isTogglingFavorite
+                        ? null
+                        : () {
+                            _startAutoHideTimer();
+                            _toggleFavorite();
+                          },
                   ),
                   // 下载（所有平台都支持，桌面端用文件选择器，移动端保存到相册）
                   _ActionButton(
@@ -537,6 +599,7 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
   }
 
   /// 下载照片
+  /// 智能下载：根据 URL 类型和文件系统自动选择下载方式
   Future<void> _downloadPhoto(BuildContext context, PhotoItem photo) async {
     // 获取当前照片的 URL
     final url = _loadedUrls[photo.path] ?? photo.url;
@@ -544,6 +607,9 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
       _showErrorSnackBar(context, '无法获取照片地址');
       return;
     }
+
+    // 获取文件系统（用于 SMB/WebDAV 等流式下载）
+    final fileSystem = widget.getFileSystem?.call(photo.sourceId);
 
     // 移动端需要先请求权限
     final saveService = PhotoSaveService.instance;
@@ -611,10 +677,12 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
       ),
     );
 
-    // 执行下载
-    final result = await saveService.downloadPhoto(
+    // 使用智能下载：自动根据 URL 类型选择下载方式
+    final result = await saveService.smartDownloadPhoto(
       url: url,
+      path: photo.path,
       fileName: photo.name,
+      fileSystem: fileSystem,
       cancelToken: cancelToken,
       onProgress: (progress) {
         if (!cancelToken.isCancelled) {
@@ -642,6 +710,7 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
   }
 
   /// 分享照片
+  /// 智能分享：根据 URL 类型和文件系统自动选择分享方式
   Future<void> _sharePhoto(BuildContext context, PhotoItem photo) async {
     final url = _loadedUrls[photo.path] ?? photo.url;
 
@@ -650,6 +719,9 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
       return;
     }
 
+    // 获取文件系统（用于 SMB/WebDAV 等流式分享）
+    final fileSystem = widget.getFileSystem?.call(photo.sourceId);
+
     // 检查分享功能是否可用
     final saveService = PhotoSaveService.instance;
     if (!saveService.canShare) {
@@ -657,67 +729,84 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
       return;
     }
 
-    // 在桌面端，提供选择：分享文件或复制链接
+    // 在桌面端，提供选择：分享文件或复制链接/路径
     if (saveService.isDesktop) {
-      _showShareOptionsDialog(context, photo, url);
+      _showShareOptionsDialog(context, photo, url, fileSystem);
       return;
     }
 
     // 移动端直接使用系统分享
+    await _executeSmartShare(context, photo, url, fileSystem);
+  }
+
+  /// 执行智能分享
+  Future<void> _executeSmartShare(
+    BuildContext context,
+    PhotoItem photo,
+    String url,
+    NasFileSystem? fileSystem,
+  ) async {
+    final saveService = PhotoSaveService.instance;
     final cancelToken = CancelToken();
     final progressNotifier = ValueNotifier<double>(0);
     final dialogCompleter = Completer<void>();
 
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => PopScope(
-        canPop: false,
-        child: AlertDialog(
-          backgroundColor: Colors.grey[900],
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ValueListenableBuilder<double>(
-                valueListenable: progressNotifier,
-                builder: (_, progress, __) => Column(
-                  children: [
-                    CircularProgressIndicator(
-                      value: progress > 0 ? progress : null,
-                      color: Colors.white,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      progress > 0
-                          ? '准备分享 ${(progress * 100).toInt()}%'
-                          : '正在准备...',
-                      style: const TextStyle(color: Colors.white70),
-                    ),
-                  ],
+    // 本地文件不需要显示进度（直接分享）
+    final isLocalFile = url.startsWith('file://');
+
+    if (!isLocalFile) {
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => PopScope(
+          canPop: false,
+          child: AlertDialog(
+            backgroundColor: Colors.grey[900],
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ValueListenableBuilder<double>(
+                  valueListenable: progressNotifier,
+                  builder: (_, progress, __) => Column(
+                    children: [
+                      CircularProgressIndicator(
+                        value: progress > 0 ? progress : null,
+                        color: Colors.white,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        progress > 0
+                            ? '准备分享 ${(progress * 100).toInt()}%'
+                            : '正在准备...',
+                        style: const TextStyle(color: Colors.white70),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              TextButton(
-                onPressed: () {
-                  // 取消下载
-                  cancelToken.cancel('用户取消');
-                  if (!dialogCompleter.isCompleted) {
-                    dialogCompleter.complete();
-                  }
-                  Navigator.of(dialogContext).pop();
-                },
-                child: const Text('取消'),
-              ),
-            ],
+                const SizedBox(height: 16),
+                TextButton(
+                  onPressed: () {
+                    cancelToken.cancel('用户取消');
+                    if (!dialogCompleter.isCompleted) {
+                      dialogCompleter.complete();
+                    }
+                    Navigator.of(dialogContext).pop();
+                  },
+                  child: const Text('取消'),
+                ),
+              ],
+            ),
           ),
         ),
-      ),
-    );
+      );
+    }
 
-    // 执行分享
-    final result = await saveService.sharePhoto(
+    // 使用智能分享
+    final result = await saveService.smartSharePhoto(
       url: url,
+      path: photo.path,
       fileName: photo.name,
+      fileSystem: fileSystem,
       cancelToken: cancelToken,
       onProgress: (progress) {
         if (!cancelToken.isCancelled) {
@@ -726,8 +815,8 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
       },
     );
 
-    // 关闭进度对话框（如果还没关闭）
-    if (context.mounted && !dialogCompleter.isCompleted) {
+    // 关闭进度对话框（如果显示了的话）
+    if (!isLocalFile && context.mounted && !dialogCompleter.isCompleted) {
       dialogCompleter.complete();
       if (Navigator.of(context).canPop()) {
         Navigator.of(context).pop();
@@ -743,14 +832,43 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
   }
 
   /// 显示桌面端分享选项对话框
-  void _showShareOptionsDialog(BuildContext context, PhotoItem photo, String url) {
+  void _showShareOptionsDialog(
+    BuildContext context,
+    PhotoItem photo,
+    String url,
+    NasFileSystem? fileSystem,
+  ) {
+    // 判断 URL 类型
+    final isHttpUrl = url.startsWith('http://') || url.startsWith('https://');
+    final isLocalFile = url.startsWith('file://');
+
+    // 根据 URL 类型决定复制选项的文案
+    String copyTitle;
+    String copySubtitle;
+    String copyContent;
+
+    if (isHttpUrl) {
+      copyTitle = '复制链接';
+      copySubtitle = '将照片链接复制到剪贴板';
+      copyContent = url;
+    } else if (isLocalFile) {
+      copyTitle = '复制路径';
+      copySubtitle = '将文件路径复制到剪贴板';
+      copyContent = Uri.parse(url).toFilePath();
+    } else {
+      // SMB/WebDAV 等
+      copyTitle = '复制路径';
+      copySubtitle = '将文件路径复制到剪贴板';
+      copyContent = photo.path;
+    }
+
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.grey[900],
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => SafeArea(
+      builder: (sheetContext) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: Column(
@@ -772,20 +890,20 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
                   const Spacer(),
                   IconButton(
                     icon: const Icon(Icons.close, color: Colors.white70),
-                    onPressed: () => Navigator.pop(context),
+                    onPressed: () => Navigator.pop(sheetContext),
                   ),
                 ],
               ),
               const SizedBox(height: 20),
-              // 复制链接
+              // 复制链接/路径
               _ShareOptionTile(
-                icon: Icons.link,
-                title: '复制链接',
-                subtitle: '将照片链接复制到剪贴板',
+                icon: isHttpUrl ? Icons.link : Icons.folder_outlined,
+                title: copyTitle,
+                subtitle: copySubtitle,
                 onTap: () {
-                  Navigator.pop(context);
-                  Clipboard.setData(ClipboardData(text: url));
-                  _showSuccessSnackBar(context, '链接已复制');
+                  Navigator.pop(sheetContext);
+                  Clipboard.setData(ClipboardData(text: copyContent));
+                  _showSuccessSnackBar(context, '$copyTitle已复制');
                 },
               ),
               const Divider(color: Colors.white24),
@@ -793,10 +911,10 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
               _ShareOptionTile(
                 icon: Icons.file_present_outlined,
                 title: '分享文件',
-                subtitle: '下载后使用系统分享功能',
+                subtitle: isLocalFile ? '使用系统分享功能' : '下载后使用系统分享功能',
                 onTap: () async {
-                  Navigator.pop(context);
-                  await _sharePhotoFile(context, photo, url);
+                  Navigator.pop(sheetContext);
+                  await _executeSmartShare(context, photo, url, fileSystem);
                 },
               ),
             ],
@@ -804,85 +922,6 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
         ),
       ),
     );
-  }
-
-  /// 分享照片文件（桌面端）
-  Future<void> _sharePhotoFile(BuildContext context, PhotoItem photo, String url) async {
-    final saveService = PhotoSaveService.instance;
-    final cancelToken = CancelToken();
-    final progressNotifier = ValueNotifier<double>(0);
-    final dialogCompleter = Completer<void>();
-
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => PopScope(
-        canPop: false,
-        child: AlertDialog(
-          backgroundColor: Colors.grey[900],
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ValueListenableBuilder<double>(
-                valueListenable: progressNotifier,
-                builder: (_, progress, __) => Column(
-                  children: [
-                    CircularProgressIndicator(
-                      value: progress > 0 ? progress : null,
-                      color: Colors.white,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      progress > 0
-                          ? '准备分享 ${(progress * 100).toInt()}%'
-                          : '正在准备...',
-                      style: const TextStyle(color: Colors.white70),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextButton(
-                onPressed: () {
-                  cancelToken.cancel('用户取消');
-                  if (!dialogCompleter.isCompleted) {
-                    dialogCompleter.complete();
-                  }
-                  Navigator.of(dialogContext).pop();
-                },
-                child: const Text('取消'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-
-    final result = await saveService.sharePhoto(
-      url: url,
-      fileName: photo.name,
-      cancelToken: cancelToken,
-      onProgress: (progress) {
-        if (!cancelToken.isCancelled) {
-          progressNotifier.value = progress;
-        }
-      },
-    );
-
-    // 关闭进度对话框（如果还没关闭）
-    if (context.mounted && !dialogCompleter.isCompleted) {
-      dialogCompleter.complete();
-      if (Navigator.of(context).canPop()) {
-        Navigator.of(context).pop();
-      }
-    }
-
-    // 显示结果（取消时不显示）
-    if (!context.mounted || result.isCancelled) return;
-
-    if (result.isFailure) {
-      _showErrorSnackBar(context, result.error ?? '分享失败');
-    }
   }
 
   void _showSuccessSnackBar(BuildContext context, String message) {
@@ -919,9 +958,18 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
 
   /// 确认删除
   void _confirmDelete(BuildContext context, PhotoItem photo) {
+    // 获取文件系统
+    final fileSystem = widget.getFileSystem?.call(photo.sourceId);
+
+    // 检查是否可以删除
+    if (fileSystem == null) {
+      _showErrorSnackBar(context, '无法获取文件系统，无法删除');
+      return;
+    }
+
     showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         backgroundColor: Colors.grey[900],
         title: const Text(
           '删除照片',
@@ -933,27 +981,105 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
+            onPressed: () => Navigator.of(dialogContext).pop(false),
             child: const Text('取消'),
           ),
           TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
             style: TextButton.styleFrom(foregroundColor: Colors.red),
             child: const Text('删除'),
           ),
         ],
       ),
-    ).then((confirmed) {
-      if (confirmed == true) {
-        // TODO: 实现实际删除功能
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('删除功能开发中'),
-            duration: Duration(seconds: 1),
-          ),
-        );
+    ).then((confirmed) async {
+      if (confirmed ?? false) {
+        if (!context.mounted) return;
+        await _deletePhoto(context, photo, fileSystem);
       }
     });
+  }
+
+  /// 执行删除照片
+  Future<void> _deletePhoto(
+    BuildContext context,
+    PhotoItem photo,
+    NasFileSystem fileSystem,
+  ) async {
+    // 显示删除进度
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          backgroundColor: Colors.grey[900],
+          content: const Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(color: Colors.white),
+              SizedBox(height: 16),
+              Text(
+                '正在删除...',
+                style: TextStyle(color: Colors.white70),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    try {
+      // 执行删除
+      await fileSystem.delete(photo.path);
+      logger.i('PhotoViewerPage: 已删除照片 ${photo.path}');
+
+      // 关闭进度对话框
+      if (context.mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+
+      // 通知外部删除成功
+      widget.onPhotoDeleted?.call(photo);
+
+      // 从收藏中移除（如果已收藏）
+      if (_isFavorite) {
+        await _favoritesService.removeFromFavorites(photo.path, photo.sourceId);
+      }
+
+      // 处理删除后的导航
+      if (!context.mounted) return;
+
+      // 如果只有一张照片，直接返回
+      if (widget.photos.length <= 1) {
+        _showSuccessSnackBar(context, '照片已删除');
+        Navigator.of(context).pop();
+        return;
+      }
+
+      // 显示成功消息
+      _showSuccessSnackBar(context, '照片已删除');
+
+      // 从列表中移除并更新视图
+      setState(() {
+        widget.photos.removeAt(_currentIndex);
+        if (_currentIndex >= widget.photos.length) {
+          _currentIndex = widget.photos.length - 1;
+        }
+      });
+
+      // 重新加载收藏状态
+      _loadFavoriteStatus();
+    } on Exception catch (e) {
+      logger.e('PhotoViewerPage: 删除照片失败', e);
+
+      // 关闭进度对话框
+      if (context.mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+
+      if (!context.mounted) return;
+      _showErrorSnackBar(context, '删除失败: $e');
+    }
   }
 }
 
@@ -1256,10 +1382,11 @@ class _ActionButton extends StatelessWidget {
 
   final IconData icon;
   final String label;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
+    final isDisabled = onTap == null;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
@@ -1270,14 +1397,14 @@ class _ActionButton extends StatelessWidget {
           children: [
             Icon(
               icon,
-              color: Colors.white,
+              color: isDisabled ? Colors.white38 : Colors.white,
               size: 26,
             ),
             const SizedBox(height: 4),
             Text(
               label,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: isDisabled ? Colors.white38 : Colors.white,
                 fontSize: 11,
               ),
             ),
