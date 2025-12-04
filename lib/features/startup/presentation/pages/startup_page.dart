@@ -63,6 +63,9 @@ class _StartupPageState extends ConsumerState<StartupPage> {
     // 使用 Future.microtask 确保在当前帧之后执行，避免阻塞导航
     Future.microtask(() async {
       try {
+        // 等待网络栈完全初始化（iOS 启动后网络可能需要一点时间就绪）
+        await Future<void>.delayed(const Duration(seconds: 2));
+
         logger.i('StartupPage: 开始后台自动连接...');
         await ref.read(activeConnectionsProvider.notifier).autoConnectAll();
         logger.i('StartupPage: 后台自动连接完成');

@@ -522,9 +522,16 @@ class SourceManagerService {
     logger.i('SourceManagerService: 自动连接完成');
   }
 
-  /// 自动连接单个源（带超时处理）
+  /// 自动连接单个源（带超时处理和重试机制）
   Future<void> _autoConnectSource(SourceEntity source) async {
-    const timeout = Duration(seconds: 15);
+    // SMB 和 WebDAV 需要更长的超时时间，因为涉及网络协议协商
+    final timeout = switch (source.type) {
+      SourceType.smb || SourceType.webdav => const Duration(seconds: 45),
+      _ => const Duration(seconds: 20),
+    };
+
+    // SMB 连接可能在网络刚初始化时不稳定，允许重试
+    final maxRetries = source.type == SourceType.smb ? 2 : 1;
 
     try {
       // 本地存储不需要凭证，直接连接
@@ -556,31 +563,49 @@ class SourceManagerService {
       if (credential != null) {
         logger.i('SourceManagerService: 自动连接 ${source.name} (deviceId: ${credential.deviceId != null ? "有" : "无"})');
 
-        // saveCredential=true 确保如果连接返回新的 deviceId，会被保存
-        final connection = await connect(
-          source,
-          password: credential.password,
-          saveCredential: true,
-        ).timeout(timeout, onTimeout: () {
-          logger.w('SourceManagerService: ${source.name} 连接超时');
-          return SourceConnection(
-            source: source,
-            adapter: _createAdapter(source.type),
-            status: SourceStatus.error,
-            errorMessage: '连接超时',
-          );
-        });
+        // 带重试的连接逻辑
+        SourceConnection? connection;
+        for (var attempt = 1; attempt <= maxRetries; attempt++) {
+          if (attempt > 1) {
+            logger.i('SourceManagerService: ${source.name} 重试连接 (第 $attempt 次)');
+            // 重试前等待一小段时间
+            await Future<void>.delayed(const Duration(seconds: 2));
+          }
 
-        // 记录连接结果
-        switch (connection.status) {
-          case SourceStatus.connected:
-            logger.i('SourceManagerService: ${source.name} 自动连接成功');
-          case SourceStatus.requires2FA:
-            logger.w('SourceManagerService: ${source.name} 需要2FA (deviceId 可能已失效)');
-          case SourceStatus.error:
-            logger.e('SourceManagerService: ${source.name} 连接失败: ${connection.errorMessage}');
-          default:
+          // saveCredential=true 确保如果连接返回新的 deviceId，会被保存
+          connection = await connect(
+            source,
+            password: credential.password,
+            saveCredential: true,
+          ).timeout(timeout, onTimeout: () {
+            logger.w('SourceManagerService: ${source.name} 连接超时 (第 $attempt 次)');
+            return SourceConnection(
+              source: source,
+              adapter: _createAdapter(source.type),
+              status: SourceStatus.error,
+              errorMessage: '连接超时',
+            );
+          });
+
+          // 如果连接成功或者需要2FA，不再重试
+          if (connection.status == SourceStatus.connected ||
+              connection.status == SourceStatus.requires2FA) {
             break;
+          }
+        }
+
+        // 记录最终连接结果
+        if (connection != null) {
+          switch (connection.status) {
+            case SourceStatus.connected:
+              logger.i('SourceManagerService: ${source.name} 自动连接成功');
+            case SourceStatus.requires2FA:
+              logger.w('SourceManagerService: ${source.name} 需要2FA (deviceId 可能已失效)');
+            case SourceStatus.error:
+              logger.e('SourceManagerService: ${source.name} 连接失败: ${connection.errorMessage}');
+            default:
+              break;
+          }
         }
       } else {
         logger.d('SourceManagerService: ${source.name} 没有保存的凭证，跳过自动连接');

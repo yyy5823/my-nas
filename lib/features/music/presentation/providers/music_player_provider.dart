@@ -150,8 +150,15 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
     // 监听播放状态
     _player.playingStream.listen((playing) {
-      logger.d('MusicPlayer: playingStream => $playing');
+      logger.i('MusicPlayer: playingStream => $playing');
       state = state.copyWith(isPlaying: playing);
+
+      // 管理定时器
+      if (playing) {
+        _startPositionUpdateTimer();
+      } else {
+        _stopPositionUpdateTimer();
+      }
     });
 
     // 监听缓冲状态
@@ -198,22 +205,22 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       },
     );
 
-    // 监听播放状态变化来管理定时器
-    _player.playingStream.listen((playing) {
-      if (playing) {
-        _startPositionUpdateTimer();
-      } else {
-        _stopPositionUpdateTimer();
-      }
-    });
   }
 
   /// 启动位置更新定时器（作为 positionStream 的备用机制）
   void _startPositionUpdateTimer() {
     _stopPositionUpdateTimer();
+    logger.i('MusicPlayer: 启动位置更新定时器');
+
     _positionUpdateTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
       final position = _player.position;
       final duration = _player.duration;
+      final playerState = _player.processingState;
+
+      // 每秒打印一次状态
+      if (position.inMilliseconds % 1000 < 200) {
+        logger.d('MusicPlayer: 定时器轮询 - position=$position, duration=$duration, state=$playerState');
+      }
 
       // 更新位置
       if (position != state.position) {
