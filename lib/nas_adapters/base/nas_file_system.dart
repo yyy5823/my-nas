@@ -9,6 +9,14 @@ abstract class NasFileSystem {
   /// 获取文件下载流
   Future<Stream<List<int>>> getFileStream(String path, {FileRange? range});
 
+  /// 通过 URL 获取数据流
+  ///
+  /// 用于在需要绕过证书验证等场景下，通过已知 URL 获取数据
+  /// 默认实现抛出 UnimplementedError，子类可按需实现
+  Future<Stream<List<int>>> getUrlStream(String url) {
+    throw UnimplementedError('getUrlStream is not implemented');
+  }
+
   /// 获取文件直接访问 URL
   Future<String> getFileUrl(String path, {Duration? expiry});
 

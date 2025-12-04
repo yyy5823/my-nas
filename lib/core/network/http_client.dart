@@ -21,35 +21,27 @@ class InsecureHttpClient {
   }
 
   /// GET 请求
-  static Future<http.Response> get(Uri url, {Map<String, String>? headers}) {
-    return client.get(url, headers: headers);
-  }
+  static Future<http.Response> get(Uri url, {Map<String, String>? headers}) => client.get(url, headers: headers);
 
   /// POST 请求
   static Future<http.Response> post(
     Uri url, {
     Map<String, String>? headers,
     Object? body,
-  }) {
-    return client.post(url, headers: headers, body: body);
-  }
+  }) => client.post(url, headers: headers, body: body);
 
   /// PUT 请求
   static Future<http.Response> put(
     Uri url, {
     Map<String, String>? headers,
     Object? body,
-  }) {
-    return client.put(url, headers: headers, body: body);
-  }
+  }) => client.put(url, headers: headers, body: body);
 
   /// DELETE 请求
   static Future<http.Response> delete(
     Uri url, {
     Map<String, String>? headers,
-  }) {
-    return client.delete(url, headers: headers);
-  }
+  }) => client.delete(url, headers: headers);
 
   /// 关闭客户端
   static void close() {

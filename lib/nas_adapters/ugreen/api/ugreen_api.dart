@@ -459,6 +459,26 @@ class UGreenApi {
     return '$baseUrl/ugreen/v1/file/thumbnail?path=${Uri.encodeComponent(path)}&size=$sizeParam&token=$_token';
   }
 
+  /// 通过 URL 获取数据流
+  ///
+  /// 用于在需要绕过证书验证等场景下，通过已知 URL 获取数据
+  Future<Stream<List<int>>> getUrlStream(String url) async {
+    logger.d('UGreenApi: getUrlStream => $url');
+
+    final response = await dio.get<ResponseBody>(
+      url,
+      options: Options(
+        responseType: ResponseType.stream,
+      ),
+    );
+
+    if (response.data == null) {
+      throw Exception('获取 URL 数据流失败：响应为空');
+    }
+
+    return response.data!.stream;
+  }
+
   /// 创建目录
   Future<void> createDirectory(String path) async {
     await _request(

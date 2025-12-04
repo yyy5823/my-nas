@@ -45,15 +45,13 @@ class PdfReaderLoaded extends PdfReaderState {
     int? currentPage,
     int? totalPages,
     bool? isDarkMode,
-  }) {
-    return PdfReaderLoaded(
+  }) => PdfReaderLoaded(
       filePath: filePath ?? this.filePath,
       document: document ?? this.document,
       currentPage: currentPage ?? this.currentPage,
       totalPages: totalPages ?? this.totalPages,
       isDarkMode: isDarkMode ?? this.isDarkMode,
     );
-  }
 }
 
 class PdfReaderError extends PdfReaderState {
@@ -200,8 +198,7 @@ class _PdfReaderPageState extends ConsumerState<PdfReaderPage> {
     );
   }
 
-  Widget _buildError(String message) {
-    return Center(
+  Widget _buildError(String message) => Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
@@ -224,10 +221,8 @@ class _PdfReaderPageState extends ConsumerState<PdfReaderPage> {
         ),
       ),
     );
-  }
 
-  Widget _buildReader(BuildContext context, PdfReaderLoaded state) {
-    return Stack(
+  Widget _buildReader(BuildContext context, PdfReaderLoaded state) => Stack(
       children: [
         // PDF 内容
         GestureDetector(
@@ -276,10 +271,8 @@ class _PdfReaderPageState extends ConsumerState<PdfReaderPage> {
         if (_showThumbnails) _buildThumbnailPanel(context, state),
       ],
     );
-  }
 
-  Widget _buildTopBar(BuildContext context, PdfReaderLoaded state) {
-    return Container(
+  Widget _buildTopBar(BuildContext context, PdfReaderLoaded state) => Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -333,10 +326,8 @@ class _PdfReaderPageState extends ConsumerState<PdfReaderPage> {
         ),
       ),
     );
-  }
 
-  Widget _buildBottomBar(BuildContext context, PdfReaderLoaded state) {
-    return Container(
+  Widget _buildBottomBar(BuildContext context, PdfReaderLoaded state) => Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.bottomCenter,
@@ -459,14 +450,12 @@ class _PdfReaderPageState extends ConsumerState<PdfReaderPage> {
         ),
       ),
     );
-  }
 
   Widget _buildBottomButton({
     required IconData icon,
     required String label,
     required VoidCallback onTap,
-  }) {
-    return GestureDetector(
+  }) => GestureDetector(
       onTap: onTap,
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -477,10 +466,8 @@ class _PdfReaderPageState extends ConsumerState<PdfReaderPage> {
         ],
       ),
     );
-  }
 
-  Widget _buildThumbnailPanel(BuildContext context, PdfReaderLoaded state) {
-    return Positioned(
+  Widget _buildThumbnailPanel(BuildContext context, PdfReaderLoaded state) => Positioned(
       top: 0,
       bottom: 0,
       right: 0,
@@ -563,5 +550,4 @@ class _PdfReaderPageState extends ConsumerState<PdfReaderPage> {
         ),
       ),
     );
-  }
 }

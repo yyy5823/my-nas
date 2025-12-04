@@ -45,8 +45,7 @@ class _LoadingWidgetState extends State<LoadingWidget>
         children: [
           AnimatedBuilder(
             animation: _controller,
-            builder: (context, child) {
-              return Container(
+            builder: (context, child) => Container(
                 width: widget.size,
                 height: widget.size,
                 decoration: BoxDecoration(
@@ -93,8 +92,7 @@ class _LoadingWidgetState extends State<LoadingWidget>
                     ),
                   ),
                 ),
-              );
-            },
+              ),
           ),
           if (widget.message != null) ...[
             const SizedBox(height: 20),

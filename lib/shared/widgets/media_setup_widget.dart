@@ -263,8 +263,7 @@ class MediaSetupWidget extends ConsumerWidget {
     );
   }
 
-  IconData _getDefaultIcon() {
-    return switch (mediaType) {
+  IconData _getDefaultIcon() => switch (mediaType) {
       MediaType.video => Icons.movie_outlined,
       MediaType.music => Icons.library_music_outlined,
       MediaType.photo => Icons.photo_library_outlined,
@@ -272,5 +271,4 @@ class MediaSetupWidget extends ConsumerWidget {
       MediaType.book => Icons.menu_book_outlined,
       MediaType.note => Icons.note_outlined,
     };
-  }
 }

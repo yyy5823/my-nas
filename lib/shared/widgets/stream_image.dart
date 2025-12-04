@@ -9,6 +9,9 @@ import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 /// 支持流式加载的图片组件
 ///
 /// 优先使用 HTTP URL，如果 URL 无效则通过流加载图片数据
+///
+/// 注意：在 iOS 平台上，对于 HTTPS URL（可能使用自签名证书），
+/// 会自动降级到流式加载以避免证书验证问题。
 class StreamImage extends StatefulWidget {
   const StreamImage({
     super.key,
@@ -21,6 +24,7 @@ class StreamImage extends StatefulWidget {
     this.width,
     this.height,
     this.cacheKey,
+    this.forceStream = false,
   });
 
   /// HTTP URL（如果可用）
@@ -49,6 +53,10 @@ class StreamImage extends StatefulWidget {
 
   /// 缓存键
   final String? cacheKey;
+
+  /// 强制使用流式加载（即使有有效的 HTTP URL）
+  /// 用于解决自签名证书等问题
+  final bool forceStream;
 
   @override
   State<StreamImage> createState() => _StreamImageState();
@@ -93,6 +101,52 @@ class _StreamImageState extends State<StreamImage> {
     return url.startsWith('file://');
   }
 
+  /// 检查是否应该使用流式加载
+  ///
+  /// 在以下情况下使用流式加载：
+  /// 1. forceStream = true（强制流式加载）
+  /// 2. iOS 平台有 HTTP/HTTPS URL（避免自签名证书和其他兼容性问题）
+  /// 3. iOS/macOS 平台 + file:// URL（沙盒限制）
+  ///
+  /// 注意：iOS 上的 CachedNetworkImage 可能存在以下问题：
+  /// - 自签名证书不被接受
+  /// - 某些 NAS 的 HTTP 响应格式可能不兼容
+  /// - 网络超时处理不一致
+  /// 因此，对于 NAS 图片，统一使用流式加载以确保兼容性
+  bool get _shouldUseStream {
+    // 如果没有提供 fileSystem 和 path，无法使用流式加载
+    if (widget.fileSystem == null || widget.path == null) return false;
+
+    // 强制流式加载
+    if (widget.forceStream) return true;
+
+    // iOS 平台特殊处理：对于 NAS 的 HTTP/HTTPS URL，优先使用流式加载
+    // 这样可以利用 Dio 的自签名证书支持和更好的错误处理
+    if (Platform.isIOS) {
+      if (_hasValidHttpUrl) {
+        logger.d('StreamImage: iOS 平台 HTTP(S) URL，使用流式加载以确保兼容性');
+        return true;
+      }
+      // file:// URL 由于沙盒限制需要流式加载
+      if (_hasValidFileUrl) {
+        return true;
+      }
+    }
+
+    // macOS 平台对 HTTPS 自签名证书也有问题
+    if (Platform.isMacOS) {
+      if (_hasValidHttpUrl && widget.url!.startsWith('https://')) {
+        logger.d('StreamImage: macOS HTTPS URL，使用流式加载以支持自签名证书');
+        return true;
+      }
+      if (_hasValidFileUrl) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   /// 在iOS/macOS平台上，file:// URL应该使用流式加载
   /// 因为沙盒限制可能导致直接文件访问失败
   bool get _shouldUseStreamForFileUrl {
@@ -118,8 +172,14 @@ class _StreamImageState extends State<StreamImage> {
 
   Future<void> _loadImage() async {
     logger.d(
-      'StreamImage: _loadImage called, url=${widget.url}, path=${widget.path}, hasFileSystem=${widget.fileSystem != null}',
+      'StreamImage: _loadImage called, url=${widget.url}, path=${widget.path}, hasFileSystem=${widget.fileSystem != null}, shouldUseStream=$_shouldUseStream',
     );
+
+    // 检查是否应该使用流式加载（iOS/macOS 自签名证书、file:// URL、forceStream）
+    if (_shouldUseStream) {
+      await _loadImageViaStream();
+      return;
+    }
 
     // 如果有有效的 HTTP URL，使用 CachedNetworkImage
     if (_hasValidHttpUrl) {
@@ -142,6 +202,16 @@ class _StreamImageState extends State<StreamImage> {
       return;
     }
 
+    // 需要通过流加载
+    await _loadImageViaStream();
+  }
+
+  /// 通过流式加载图片
+  ///
+  /// 加载策略：
+  /// 1. 如果有 URL，优先通过 getUrlStream 加载（可以加载缩略图）
+  /// 2. 如果 URL 加载失败或没有 URL，通过 getFileStream 加载原文件
+  Future<void> _loadImageViaStream() async {
     // 检查内存缓存
     if (_cacheKey.isNotEmpty && _memoryCache.containsKey(_cacheKey)) {
       logger.d('StreamImage: Using cached image for $_cacheKey');
@@ -154,9 +224,9 @@ class _StreamImageState extends State<StreamImage> {
     }
 
     // 需要通过流加载
-    if (widget.path == null || widget.fileSystem == null) {
+    if (widget.fileSystem == null) {
       logger.w(
-        'StreamImage: Cannot stream - path=${widget.path}, fileSystem=${widget.fileSystem != null ? "exists" : "null"}, url=${widget.url}',
+        'StreamImage: Cannot stream - fileSystem is null, url=${widget.url}',
       );
       setState(() {
         _hasError = true;
@@ -164,16 +234,36 @@ class _StreamImageState extends State<StreamImage> {
       return;
     }
 
-    logger.d('StreamImage: Starting stream load for ${widget.path}');
+    logger.d('StreamImage: Starting stream load, url=${widget.url}, path=${widget.path}');
     setState(() {
       _isLoading = true;
       _hasError = false;
     });
 
     try {
-      final stream = await widget.fileSystem!.getFileStream(widget.path!);
-      final bytes = <int>[];
+      Stream<List<int>>? stream;
 
+      // 优先使用 URL 加载（可以加载缩略图）
+      if (_hasValidHttpUrl) {
+        try {
+          stream = await widget.fileSystem!.getUrlStream(widget.url!);
+          logger.d('StreamImage: Using URL stream for ${widget.url}');
+        } catch (e) {
+          logger.w('StreamImage: URL stream failed, falling back to file stream: $e');
+          // URL 加载失败，继续尝试文件流
+        }
+      }
+
+      // 如果 URL 加载失败或没有 URL，使用文件流
+      if (stream == null) {
+        if (widget.path == null) {
+          throw Exception('无法加载图片：没有可用的 URL 或路径');
+        }
+        stream = await widget.fileSystem!.getFileStream(widget.path!);
+        logger.d('StreamImage: Using file stream for ${widget.path}');
+      }
+
+      final bytes = <int>[];
       await for (final chunk in stream) {
         bytes.addAll(chunk);
         // 限制图片大小，防止内存溢出
@@ -184,7 +274,7 @@ class _StreamImageState extends State<StreamImage> {
       }
 
       logger.d(
-        'StreamImage: Stream loaded ${bytes.length} bytes for ${widget.path}',
+        'StreamImage: Stream loaded ${bytes.length} bytes',
       );
       final imageData = Uint8List.fromList(bytes);
 
@@ -209,7 +299,7 @@ class _StreamImageState extends State<StreamImage> {
         });
       }
     } catch (e, stackTrace) {
-      logger.e('StreamImage: 加载图片失败 ${widget.path}', e, stackTrace);
+      logger.e('StreamImage: 加载图片失败', e, stackTrace);
       if (mounted) {
         setState(() {
           _hasError = true;
@@ -221,7 +311,12 @@ class _StreamImageState extends State<StreamImage> {
 
   @override
   Widget build(BuildContext context) {
-    // 优先使用 HTTP URL
+    // 如果使用流式加载（iOS/macOS HTTPS、file:// URL、forceStream）
+    if (_shouldUseStream) {
+      return _buildStreamImage();
+    }
+
+    // 优先使用 HTTP URL（非 iOS/macOS HTTPS 或无 fileSystem）
     if (_hasValidHttpUrl) {
       return CachedNetworkImage(
         imageUrl: widget.url!,
@@ -248,6 +343,12 @@ class _StreamImageState extends State<StreamImage> {
       }
     }
 
+    // 默认使用流式加载
+    return _buildStreamImage();
+  }
+
+  /// 构建流式加载的图片组件
+  Widget _buildStreamImage() {
     // 显示加载中
     if (_isLoading) {
       return widget.placeholder ?? _buildPlaceholder();

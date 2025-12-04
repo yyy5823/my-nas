@@ -152,7 +152,7 @@ class MusicMetadataService {
 
     // 提取流派
     final genres = metadata.genres;
-    if (genres != null && genres.isNotEmpty) {
+    if (genres.isNotEmpty) {
       genre = genres.join(', ');
     }
 

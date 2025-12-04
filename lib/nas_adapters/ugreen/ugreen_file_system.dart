@@ -100,14 +100,15 @@ class UGreenFileSystem implements NasFileSystem {
 
   @override
   Future<Stream<List<int>>> getFileStream(String path, {FileRange? range}) async {
-    // 绿联 NAS 文件流获取需要通过 HTTP 下载
-    throw UnimplementedError('绿联 NAS 文件流功能尚未实现');
+    final url = await api.getFileUrl(path);
+    return api.getUrlStream(url);
   }
 
   @override
-  Future<String> getFileUrl(String path, {Duration? expiry}) async {
-    return api.getFileUrl(path);
-  }
+  Future<Stream<List<int>>> getUrlStream(String url) => api.getUrlStream(url);
+
+  @override
+  Future<String> getFileUrl(String path, {Duration? expiry}) => api.getFileUrl(path);
 
   @override
   Future<void> createDirectory(String path) async {
@@ -150,8 +151,6 @@ class UGreenFileSystem implements NasFileSystem {
   }
 
   @override
-  Future<String?> getThumbnailUrl(String path, {ThumbnailSize? size}) async {
-    // 绿联 NAS 尝试获取缩略图
-    return api.getThumbnailUrl(path, size: size);
-  }
+  Future<String?> getThumbnailUrl(String path, {ThumbnailSize? size}) async =>
+      api.getThumbnailUrl(path, size: size);
 }

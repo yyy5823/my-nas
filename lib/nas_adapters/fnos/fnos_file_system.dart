@@ -86,14 +86,14 @@ class FnOSFileSystem implements NasFileSystem {
   }
 
   @override
-  Future<Stream<List<int>>> getFileStream(String path, {FileRange? range}) async {
-    throw UnimplementedError('飞牛 NAS 文件流功能尚未实现');
-  }
+  Future<Stream<List<int>>> getFileStream(String path, {FileRange? range}) async =>
+      api.getUrlStream(await api.getFileUrl(path));
 
   @override
-  Future<String> getFileUrl(String path, {Duration? expiry}) async {
-    return api.getFileUrl(path);
-  }
+  Future<Stream<List<int>>> getUrlStream(String url) => api.getUrlStream(url);
+
+  @override
+  Future<String> getFileUrl(String path, {Duration? expiry}) async => api.getFileUrl(path);
 
   @override
   Future<void> createDirectory(String path) async {
@@ -136,7 +136,6 @@ class FnOSFileSystem implements NasFileSystem {
   }
 
   @override
-  Future<String?> getThumbnailUrl(String path, {ThumbnailSize? size}) async {
-    return api.getThumbnailUrl(path, size: size);
-  }
+  Future<String?> getThumbnailUrl(String path, {ThumbnailSize? size}) async =>
+      api.getThumbnailUrl(path, size: size);
 }

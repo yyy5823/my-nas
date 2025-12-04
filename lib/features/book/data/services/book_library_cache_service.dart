@@ -29,8 +29,7 @@ class BookLibraryCacheEntry {
         'modifiedTime': modifiedTime?.millisecondsSinceEpoch,
       };
 
-  factory BookLibraryCacheEntry.fromMap(Map<dynamic, dynamic> map) {
-    return BookLibraryCacheEntry(
+  factory BookLibraryCacheEntry.fromMap(Map<dynamic, dynamic> map) => BookLibraryCacheEntry(
       sourceId: map['sourceId'] as String,
       filePath: map['filePath'] as String,
       fileName: map['fileName'] as String,
@@ -39,7 +38,6 @@ class BookLibraryCacheEntry {
           ? DateTime.fromMillisecondsSinceEpoch(map['modifiedTime'] as int)
           : null,
     );
-  }
 }
 
 /// 图书库缓存

@@ -58,10 +58,11 @@ class QnapFileSystem implements NasFileSystem {
   }
 
   @override
-  Future<Stream<List<int>>> getFileStream(String path, {FileRange? range}) {
-    // QNAP 使用 URL 下载，这里返回空流
-    throw UnimplementedError('请使用 getFileUrl 获取下载链接');
-  }
+  Future<Stream<List<int>>> getFileStream(String path, {FileRange? range}) =>
+      _api.getUrlStream(_api.getDownloadUrl(path));
+
+  @override
+  Future<Stream<List<int>>> getUrlStream(String url) => _api.getUrlStream(url);
 
   @override
   Future<String> getFileUrl(String path, {Duration? expiry}) async =>

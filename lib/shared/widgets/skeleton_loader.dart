@@ -52,10 +52,8 @@ class _SkeletonLoaderState extends State<SkeletonLoader>
 
     return AnimatedBuilder(
       animation: _animation,
-      builder: (context, child) {
-        return ShaderMask(
-          shaderCallback: (bounds) {
-            return LinearGradient(
+      builder: (context, child) => ShaderMask(
+          shaderCallback: (bounds) => LinearGradient(
               begin: Alignment.centerLeft,
               end: Alignment.centerRight,
               colors: [
@@ -68,12 +66,10 @@ class _SkeletonLoaderState extends State<SkeletonLoader>
                 _animation.value.clamp(0.0, 1.0),
                 (_animation.value + 0.3).clamp(0.0, 1.0),
               ],
-            ).createShader(bounds);
-          },
+            ).createShader(bounds),
           blendMode: BlendMode.srcATop,
           child: widget.child,
-        );
-      },
+        ),
     );
   }
 }

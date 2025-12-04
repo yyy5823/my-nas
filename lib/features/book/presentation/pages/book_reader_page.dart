@@ -15,7 +15,8 @@ import 'package:path_provider/path_provider.dart';
 /// 阅读器状态
 final bookReaderProvider =
     StateNotifierProvider.family<BookReaderNotifier, BookReaderState, BookItem>(
-        (ref, book) => BookReaderNotifier(book));
+      (ref, book) => BookReaderNotifier(book),
+    );
 
 sealed class BookReaderState {}
 
@@ -48,21 +49,20 @@ class BookReaderLoaded extends BookReaderState {
     double? lineHeight,
     Color? backgroundColor,
     Color? textColor,
-  }) {
-    return BookReaderLoaded(
-      content: content ?? this.content,
-      currentPage: currentPage ?? this.currentPage,
-      totalPages: totalPages ?? this.totalPages,
-      fontSize: fontSize ?? this.fontSize,
-      lineHeight: lineHeight ?? this.lineHeight,
-      backgroundColor: backgroundColor ?? this.backgroundColor,
-      textColor: textColor ?? this.textColor,
-    );
-  }
+  }) => BookReaderLoaded(
+    content: content ?? this.content,
+    currentPage: currentPage ?? this.currentPage,
+    totalPages: totalPages ?? this.totalPages,
+    fontSize: fontSize ?? this.fontSize,
+    lineHeight: lineHeight ?? this.lineHeight,
+    backgroundColor: backgroundColor ?? this.backgroundColor,
+    textColor: textColor ?? this.textColor,
+  );
 }
 
 class BookReaderError extends BookReaderState {
   BookReaderError(this.message);
+
   final String message;
 }
 
@@ -237,17 +237,20 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
       body: switch (state) {
         BookReaderLoading() => const LoadingWidget(message: '加载中...'),
         BookReaderError(:final message) => AppErrorWidget(
-            message: message,
-            onRetry: () =>
-                ref.read(bookReaderProvider(widget.book).notifier).loadBook(),
-          ),
+          message: message,
+          onRetry: () =>
+              ref.read(bookReaderProvider(widget.book).notifier).loadBook(),
+        ),
         BookReaderLoaded() => _buildReader(context, state, isDark),
       },
     );
   }
 
-  Widget _buildReader(BuildContext context, BookReaderLoaded state, bool isDark) {
-    return Stack(
+  Widget _buildReader(
+    BuildContext context,
+    BookReaderLoaded state,
+    bool isDark,
+  ) => Stack(
       children: [
         // 阅读内容
         GestureDetector(
@@ -299,18 +302,13 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
           ),
       ],
     );
-  }
 
-  Widget _buildTopBar(BuildContext context, bool isDark) {
-    return Container(
+  Widget _buildTopBar(BuildContext context, bool isDark) => Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [
-            Colors.black.withValues(alpha: 0.7),
-            Colors.transparent,
-          ],
+          colors: [Colors.black.withValues(alpha: 0.7), Colors.transparent],
         ),
       ),
       child: SafeArea(
@@ -366,18 +364,18 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
         ),
       ),
     );
-  }
 
-  Widget _buildBottomBar(BuildContext context, BookReaderLoaded state, bool isDark) {
+  Widget _buildBottomBar(
+    BuildContext context,
+    BookReaderLoaded state,
+    bool isDark,
+  ) {
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.bottomCenter,
           end: Alignment.topCenter,
-          colors: [
-            Colors.black.withValues(alpha: 0.7),
-            Colors.transparent,
-          ],
+          colors: [Colors.black.withValues(alpha: 0.7), Colors.transparent],
         ),
       ),
       child: SafeArea(
@@ -422,8 +420,11 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     );
   }
 
-  Widget _buildSettingsPanel(BuildContext context, BookReaderLoaded state, bool isDark) {
-    return Container(
+  Widget _buildSettingsPanel(
+    BuildContext context,
+    BookReaderLoaded state,
+    bool isDark,
+  ) => Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurface : Colors.white,
@@ -540,7 +541,6 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
         ],
       ),
     );
-  }
 
   Widget _buildSettingRow(
     BuildContext context, {
@@ -548,8 +548,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     required String value,
     required bool isDark,
     required Widget child,
-  }) {
-    return Column(
+  }) => Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
@@ -573,7 +572,6 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
         child,
       ],
     );
-  }
 
   Widget _buildThemeOption({
     required Color color,
@@ -581,8 +579,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     required String label,
     required bool isSelected,
     required VoidCallback onTap,
-  }) {
-    return GestureDetector(
+  }) => GestureDetector(
       onTap: onTap,
       child: Column(
         children: [
@@ -600,10 +597,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
             child: Center(
               child: Text(
                 'Aa',
-                style: TextStyle(
-                  color: textColor,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(color: textColor, fontWeight: FontWeight.bold),
               ),
             ),
           ),
@@ -618,5 +612,4 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
         ],
       ),
     );
-  }
 }

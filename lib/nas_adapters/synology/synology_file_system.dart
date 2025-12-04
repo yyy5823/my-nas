@@ -56,13 +56,11 @@ class SynologyFileSystem implements NasFileSystem {
   }
 
   @override
-  Future<Stream<List<int>>> getFileStream(String path, {FileRange? range}) {
-    return _api.getFileStream(
-      path,
-      start: range?.start,
-      end: range?.end,
-    );
-  }
+  Future<Stream<List<int>>> getFileStream(String path, {FileRange? range}) =>
+      _api.getFileStream(path, start: range?.start, end: range?.end);
+
+  @override
+  Future<Stream<List<int>>> getUrlStream(String url) => _api.getUrlStream(url);
 
   @override
   Future<String> getFileUrl(String path, {Duration? expiry}) async =>

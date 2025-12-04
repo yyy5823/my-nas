@@ -298,6 +298,26 @@ class QnapApi {
     return '${_dio.options.baseUrl}/cgi-bin/filemanager/utilRequest.cgi?$queryString';
   }
 
+  /// 通过 URL 获取数据流
+  ///
+  /// 用于在需要绕过证书验证等场景下，通过已知 URL 获取数据
+  Future<Stream<List<int>>> getUrlStream(String url) async {
+    logger.d('QnapApi: getUrlStream => $url');
+
+    final response = await _dio.get<ResponseBody>(
+      url,
+      options: Options(
+        responseType: ResponseType.stream,
+      ),
+    );
+
+    if (response.data == null) {
+      throw Exception('获取 URL 数据流失败：响应为空');
+    }
+
+    return response.data!.stream;
+  }
+
   /// 搜索文件
   Future<List<QnapFile>> searchFiles({
     required String folderPath,

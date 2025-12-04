@@ -40,23 +40,21 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       body: CustomScrollView(
         slivers: [
           // 顶部背景和海报
-          SliverToBoxAdapter(
-            child: _buildHeader(context, isDark, isWide),
-          ),
+          SliverToBoxAdapter(child: _buildHeader(context, isDark, isWide)),
 
           // 内容区域
-          SliverToBoxAdapter(
-            child: _buildContent(context, isDark, isWide),
-          ),
+          SliverToBoxAdapter(child: _buildContent(context, isDark, isWide)),
         ],
       ),
     );
   }
 
   Widget _buildHeader(BuildContext context, bool isDark, bool isWide) {
-    final hasBackdrop = widget.metadata.backdropUrl != null &&
+    final hasBackdrop =
+        widget.metadata.backdropUrl != null &&
         widget.metadata.backdropUrl!.isNotEmpty;
-    final hasPoster = widget.metadata.posterUrl != null &&
+    final hasPoster =
+        widget.metadata.posterUrl != null &&
         widget.metadata.posterUrl!.isNotEmpty;
 
     return Stack(
@@ -70,10 +68,14 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
               imageUrl: widget.metadata.backdropUrl!,
               fit: BoxFit.cover,
               placeholder: (_, __) => Container(
-                color: isDark ? AppColors.darkSurfaceElevated : Colors.grey[300],
+                color: isDark
+                    ? AppColors.darkSurfaceElevated
+                    : Colors.grey[300],
               ),
               errorWidget: (_, __, ___) => Container(
-                color: isDark ? AppColors.darkSurfaceElevated : Colors.grey[300],
+                color: isDark
+                    ? AppColors.darkSurfaceElevated
+                    : Colors.grey[300],
               ),
             ),
           )
@@ -118,7 +120,10 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
                   shape: BoxShape.circle,
                 ),
                 child: IconButton(
-                  icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                  icon: const Icon(
+                    Icons.arrow_back_rounded,
+                    color: Colors.white,
+                  ),
                   onPressed: () => Navigator.of(context).pop(),
                 ),
               ),
@@ -160,9 +165,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
                   ),
                 const SizedBox(width: 24),
                 // 标题信息
-                Expanded(
-                  child: _buildTitleSection(context, isDark),
-                ),
+                Expanded(child: _buildTitleSection(context, isDark)),
               ],
             ),
           )
@@ -202,9 +205,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
                       ),
                     const SizedBox(width: 16),
                     // 标题信息
-                    Expanded(
-                      child: _buildTitleSection(context, isDark),
-                    ),
+                    Expanded(child: _buildTitleSection(context, isDark)),
                   ],
                 ),
               ],
@@ -214,160 +215,156 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     );
   }
 
-  Widget _buildTitleSection(BuildContext context, bool isDark) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // 分类标签
-        if (widget.metadata.category != MediaCategory.unknown)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            margin: const EdgeInsets.only(bottom: 8),
-            decoration: BoxDecoration(
-              color: widget.metadata.category == MediaCategory.tvShow
-                  ? AppColors.accent.withValues(alpha: 0.9)
-                  : AppColors.primary.withValues(alpha: 0.9),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Text(
-              widget.metadata.category == MediaCategory.tvShow ? '电视剧' : '电影',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-              ),
+  Widget _buildTitleSection(BuildContext context, bool isDark) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      // 分类标签
+      if (widget.metadata.category != MediaCategory.unknown)
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          margin: const EdgeInsets.only(bottom: 8),
+          decoration: BoxDecoration(
+            color: widget.metadata.category == MediaCategory.tvShow
+                ? AppColors.accent.withValues(alpha: 0.9)
+                : AppColors.primary.withValues(alpha: 0.9),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(
+            widget.metadata.category == MediaCategory.tvShow ? '电视剧' : '电影',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
             ),
           ),
+        ),
 
-        // 标题
+      // 标题
+      Text(
+        widget.metadata.displayTitle,
+        style: TextStyle(
+          fontSize: 24,
+          fontWeight: FontWeight.bold,
+          color: isDark ? AppColors.darkOnSurface : Colors.black87,
+        ),
+      ),
+
+      // 原始标题
+      if (widget.metadata.originalTitle != null &&
+          widget.metadata.originalTitle != widget.metadata.title)
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(
+            widget.metadata.originalTitle!,
+            style: TextStyle(
+              fontSize: 14,
+              color: isDark ? AppColors.darkOnSurfaceVariant : Colors.black54,
+            ),
+          ),
+        ),
+
+      const SizedBox(height: 12),
+
+      // 元数据行
+      Wrap(
+        spacing: 12,
+        runSpacing: 8,
+        children: [
+          // 年份
+          if (widget.metadata.year != null)
+            _buildMetaChip(
+              Icons.calendar_today_rounded,
+              '${widget.metadata.year}',
+              isDark,
+            ),
+
+          // 评分
+          if (widget.metadata.rating != null && widget.metadata.rating! > 0)
+            _buildRatingChip(widget.metadata.rating!, isDark),
+
+          // 时长
+          if (widget.metadata.runtimeText.isNotEmpty)
+            _buildMetaChip(
+              Icons.schedule_rounded,
+              widget.metadata.runtimeText,
+              isDark,
+            ),
+
+          // 季/集
+          if (widget.metadata.category == MediaCategory.tvShow) ...[
+            if (widget.metadata.seasonNumber != null)
+              _buildMetaChip(
+                Icons.folder_rounded,
+                '第 ${widget.metadata.seasonNumber} 季',
+                isDark,
+              ),
+            if (widget.metadata.episodeNumber != null)
+              _buildMetaChip(
+                Icons.play_circle_outline_rounded,
+                '第 ${widget.metadata.episodeNumber} 集',
+                isDark,
+              ),
+          ],
+        ],
+      ),
+
+      const SizedBox(height: 16),
+
+      // 播放按钮
+      ElevatedButton.icon(
+        onPressed: _isPlaying ? null : _playVideo,
+        icon: _isPlaying
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              )
+            : const Icon(Icons.play_arrow_rounded),
+        label: Text(_isPlaying ? '正在加载...' : '播放'),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.primary,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(30),
+          ),
+        ),
+      ),
+    ],
+  );
+
+  Widget _buildMetaChip(IconData icon, String text, bool isDark) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+    decoration: BoxDecoration(
+      color: isDark
+          ? Colors.white.withValues(alpha: 0.1)
+          : Colors.black.withValues(alpha: 0.08),
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          icon,
+          size: 14,
+          color: isDark ? AppColors.darkOnSurfaceVariant : Colors.black54,
+        ),
+        const SizedBox(width: 6),
         Text(
-          widget.metadata.displayTitle,
+          text,
           style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
             color: isDark ? AppColors.darkOnSurface : Colors.black87,
           ),
         ),
-
-        // 原始标题
-        if (widget.metadata.originalTitle != null &&
-            widget.metadata.originalTitle != widget.metadata.title)
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text(
-              widget.metadata.originalTitle!,
-              style: TextStyle(
-                fontSize: 14,
-                color: isDark ? AppColors.darkOnSurfaceVariant : Colors.black54,
-              ),
-            ),
-          ),
-
-        const SizedBox(height: 12),
-
-        // 元数据行
-        Wrap(
-          spacing: 12,
-          runSpacing: 8,
-          children: [
-            // 年份
-            if (widget.metadata.year != null)
-              _buildMetaChip(
-                Icons.calendar_today_rounded,
-                '${widget.metadata.year}',
-                isDark,
-              ),
-
-            // 评分
-            if (widget.metadata.rating != null && widget.metadata.rating! > 0)
-              _buildRatingChip(widget.metadata.rating!, isDark),
-
-            // 时长
-            if (widget.metadata.runtimeText.isNotEmpty)
-              _buildMetaChip(
-                Icons.schedule_rounded,
-                widget.metadata.runtimeText,
-                isDark,
-              ),
-
-            // 季/集
-            if (widget.metadata.category == MediaCategory.tvShow) ...[
-              if (widget.metadata.seasonNumber != null)
-                _buildMetaChip(
-                  Icons.folder_rounded,
-                  '第 ${widget.metadata.seasonNumber} 季',
-                  isDark,
-                ),
-              if (widget.metadata.episodeNumber != null)
-                _buildMetaChip(
-                  Icons.play_circle_outline_rounded,
-                  '第 ${widget.metadata.episodeNumber} 集',
-                  isDark,
-                ),
-            ],
-          ],
-        ),
-
-        const SizedBox(height: 16),
-
-        // 播放按钮
-        ElevatedButton.icon(
-          onPressed: _isPlaying ? null : _playVideo,
-          icon: _isPlaying
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                )
-              : const Icon(Icons.play_arrow_rounded),
-          label: Text(_isPlaying ? '正在加载...' : '播放'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.primary,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(30),
-            ),
-          ),
-        ),
       ],
-    );
-  }
-
-  Widget _buildMetaChip(IconData icon, String text, bool isDark) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: isDark
-            ? Colors.white.withValues(alpha: 0.1)
-            : Colors.black.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            size: 14,
-            color: isDark ? AppColors.darkOnSurfaceVariant : Colors.black54,
-          ),
-          const SizedBox(width: 6),
-          Text(
-            text,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: isDark ? AppColors.darkOnSurface : Colors.black87,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+    ),
+  );
 
   Widget _buildRatingChip(double rating, bool isDark) {
     Color ratingColor;
@@ -388,11 +385,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            Icons.star_rounded,
-            size: 16,
-            color: ratingColor,
-          ),
+          Icon(Icons.star_rounded, size: 16, color: ratingColor),
           const SizedBox(width: 4),
           Text(
             rating.toStringAsFixed(1),
@@ -407,8 +400,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     );
   }
 
-  Widget _buildContent(BuildContext context, bool isDark, bool isWide) {
-    return Padding(
+  Widget _buildContent(BuildContext context, bool isDark, bool isWide) => Padding(
       padding: EdgeInsets.all(isWide ? 40 : 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -463,9 +455,11 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: widget.metadata.genreList.map((genre) {
-                return Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              children: widget.metadata.genreList.map((genre) => Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
                     color: isDark
                         ? AppColors.darkSurfaceElevated
@@ -485,8 +479,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
                       color: isDark ? AppColors.darkOnSurface : Colors.black87,
                     ),
                   ),
-                );
-              }).toList(),
+                )).toList(),
             ),
             const SizedBox(height: 24),
           ],
@@ -526,9 +519,11 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: widget.metadata.castList.map((actor) {
-                return Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              children: widget.metadata.castList.map((actor) => Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
                     color: isDark
                         ? AppColors.darkSurfaceElevated
@@ -548,8 +543,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
                       color: isDark ? AppColors.darkOnSurface : Colors.black87,
                     ),
                   ),
-                );
-              }).toList(),
+                )).toList(),
             ),
             const SizedBox(height: 24),
           ],
@@ -561,10 +555,8 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         ],
       ),
     );
-  }
 
-  Widget _buildFileInfo(BuildContext context, bool isDark) {
-    return Container(
+  Widget _buildFileInfo(BuildContext context, bool isDark) => Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurfaceElevated : Colors.white,
@@ -593,10 +585,8 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         ],
       ),
     );
-  }
 
-  Widget _buildFileInfoRow(String label, String value, bool isDark) {
-    return Padding(
+  Widget _buildFileInfoRow(String label, String value, bool isDark) => Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -623,7 +613,6 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         ],
       ),
     );
-  }
 
   Future<void> _playVideo() async {
     setState(() => _isPlaying = true);

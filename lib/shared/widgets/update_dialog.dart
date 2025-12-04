@@ -9,13 +9,11 @@ import 'package:my_nas/shared/services/update_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// 显示更新对话框
-Future<void> showUpdateDialog(BuildContext context, UpdateInfo updateInfo) {
-  return showDialog<void>(
+Future<void> showUpdateDialog(BuildContext context, UpdateInfo updateInfo) => showDialog<void>(
     context: context,
     barrierDismissible: false,
     builder: (context) => UpdateDialog(updateInfo: updateInfo),
   );
-}
 
 class UpdateDialog extends ConsumerStatefulWidget {
   const UpdateDialog({required this.updateInfo, super.key});
@@ -88,8 +86,7 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
     );
   }
 
-  Widget _buildHeader(bool isDark) {
-    return Container(
+  Widget _buildHeader(bool isDark) => Container(
       width: double.infinity,
       padding: const EdgeInsets.all(AppSpacing.xl),
       decoration: BoxDecoration(
@@ -123,10 +120,8 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
         ],
       ),
     );
-  }
 
-  Widget _buildVersionInfo(bool isDark) {
-    return Container(
+  Widget _buildVersionInfo(bool isDark) => Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: isDark
@@ -168,10 +163,8 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
         ],
       ),
     );
-  }
 
-  Widget _buildVersionBadge(String label, String version, Color color) {
-    return Column(
+  Widget _buildVersionBadge(String label, String version, Color color) => Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
@@ -191,10 +184,8 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
         ),
       ],
     );
-  }
 
-  Widget _buildReleaseNotes(bool isDark) {
-    return Column(
+  Widget _buildReleaseNotes(bool isDark) => Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
@@ -237,10 +228,8 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
         ),
       ],
     );
-  }
 
-  Widget _buildProgress(bool isDark) {
-    return Column(
+  Widget _buildProgress(bool isDark) => Column(
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -275,10 +264,8 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
         const SizedBox(height: AppSpacing.lg),
       ],
     );
-  }
 
-  Widget _buildError(bool isDark) {
-    return Container(
+  Widget _buildError(bool isDark) => Container(
       margin: const EdgeInsets.only(bottom: AppSpacing.md),
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
@@ -301,7 +288,6 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
         ],
       ),
     );
-  }
 
   Widget _buildActions(bool isDark, UpdateStatus status) {
     if (status == UpdateStatus.downloading) {
@@ -416,8 +402,7 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
   Widget _buildGradientButton({
     required VoidCallback onPressed,
     required Widget child,
-  }) {
-    return Container(
+  }) => DecoratedBox(
       decoration: BoxDecoration(
         gradient: AppColors.primaryGradient,
         borderRadius: BorderRadius.circular(12),
@@ -441,7 +426,6 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
         ),
       ),
     );
-  }
 
   Future<void> _openAppStore() async {
     // 替换为你的 App Store ID
@@ -496,7 +480,7 @@ class _CheckUpdateTileState extends ConsumerState<CheckUpdateTile> {
             : () async {
                 await _service.checkForUpdates();
                 if (_service.hasUpdate && _service.updateInfo != null && mounted) {
-                  showUpdateDialog(context, _service.updateInfo!);
+                  await showUpdateDialog(context, _service.updateInfo!);
                 } else if (_service.status == UpdateStatus.notAvailable && mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('当前已是最新版本')),

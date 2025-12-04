@@ -53,9 +53,7 @@ class VideoFileWithSource {
 
 /// 视频列表状态
 final videoListProvider =
-    StateNotifierProvider<VideoListNotifier, VideoListState>((ref) {
-  return VideoListNotifier(ref);
-});
+    StateNotifierProvider<VideoListNotifier, VideoListState>(VideoListNotifier.new);
 
 /// 视频分类标签
 enum VideoTab { all, movies, tvShows, recent }
@@ -187,12 +185,10 @@ class VideoListLoaded extends VideoListState {
   }
 
   /// 获取高分电影（评分 >= 7）
-  List<VideoMetadata> get topRatedMovies {
-    return movies
+  List<VideoMetadata> get topRatedMovies => movies
         .where((m) => (m.rating ?? 0) >= 7)
         .toList()
       ..sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
-  }
 
   VideoListLoaded copyWith({
     List<VideoFileWithSource>? videos,
@@ -265,8 +261,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     if (cache != null && cache.videos.isNotEmpty) {
       state = VideoListLoading(fromCache: true, currentFolder: '加载缓存...');
 
-      final videos = cache.videos.map((entry) {
-        return VideoFileWithSource(
+      final videos = cache.videos.map((entry) => VideoFileWithSource(
           file: FileItem(
             name: entry.fileName,
             path: entry.filePath,
@@ -276,8 +271,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
             thumbnailUrl: entry.thumbnailUrl,
           ),
           sourceId: entry.sourceId,
-        );
-      }).toList();
+        )).toList();
 
       // 加载缓存的元数据
       final metadataMap = <String, VideoMetadata>{};
@@ -358,8 +352,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       if (cache != null) {
         state = VideoListLoading(fromCache: true, currentFolder: '加载缓存...');
 
-        final videos = cache.videos.map((entry) {
-          return VideoFileWithSource(
+        final videos = cache.videos.map((entry) => VideoFileWithSource(
             file: FileItem(
               name: entry.fileName,
               path: entry.filePath,
@@ -369,8 +362,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
               thumbnailUrl: entry.thumbnailUrl,
             ),
             sourceId: entry.sourceId,
-          );
-        }).toList();
+          )).toList();
 
         // 加载缓存的元数据
         final metadataMap = <String, VideoMetadata>{};
@@ -783,8 +775,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
   }
 
   /// 搜索栏
-  Widget _buildSearchBar(BuildContext context, WidgetRef ref, bool isDark) {
-    return Row(
+  Widget _buildSearchBar(BuildContext context, WidgetRef ref, bool isDark) => Row(
       children: [
         IconButton(
           onPressed: () {
@@ -819,7 +810,6 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
           ),
       ],
     );
-  }
 
   /// 统计标签
   Widget _buildStatChip({

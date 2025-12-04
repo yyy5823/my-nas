@@ -188,8 +188,7 @@ class BookListNotifier extends StateNotifier<BookListState> {
     if (cache != null && cache.books.isNotEmpty) {
       state = BookListLoading(fromCache: true, currentFolder: '加载缓存...');
 
-      final books = cache.books.map((entry) {
-        return BookFileWithSource(
+      final books = cache.books.map((entry) => BookFileWithSource(
           file: FileItem(
             name: entry.fileName,
             path: entry.filePath,
@@ -198,8 +197,7 @@ class BookListNotifier extends StateNotifier<BookListState> {
             modifiedTime: entry.modifiedTime,
           ),
           sourceId: entry.sourceId,
-        );
-      }).toList();
+        )).toList();
 
       state = BookListLoaded(books: books, fromCache: true);
       logger.i('从缓存加载了 ${books.length} 本图书');
@@ -456,8 +454,7 @@ class _BookListPageState extends ConsumerState<BookListPage> {
     WidgetRef ref,
     bool isDark,
     BookListState state,
-  ) {
-    return Container(
+  ) => Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -482,11 +479,9 @@ class _BookListPageState extends ConsumerState<BookListPage> {
         ),
       ),
     );
-  }
 
   /// 搜索栏内容（用于在 header 容器内显示）
-  Widget _buildSearchBarContent(BuildContext context, WidgetRef ref, bool isDark) {
-    return Row(
+  Widget _buildSearchBarContent(BuildContext context, WidgetRef ref, bool isDark) => Row(
       children: [
         IconButton(
           onPressed: () {
@@ -530,7 +525,6 @@ class _BookListPageState extends ConsumerState<BookListPage> {
           ),
       ],
     );
-  }
 
   Widget _buildGreetingHeader(
     BuildContext context,
@@ -692,8 +686,7 @@ class _BookListPageState extends ConsumerState<BookListPage> {
     required String label,
     required Color color,
     required bool isDark,
-  }) {
-    return Row(
+  }) => Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(icon, size: 14, color: color),
@@ -707,7 +700,6 @@ class _BookListPageState extends ConsumerState<BookListPage> {
         ),
       ],
     );
-  }
 
   Widget _buildFormatChip(BookFormat format, int count, bool isDark) {
     final color = _getFormatColor(format);
@@ -728,15 +720,13 @@ class _BookListPageState extends ConsumerState<BookListPage> {
     );
   }
 
-  Color _getFormatColor(BookFormat format) {
-    return switch (format) {
+  Color _getFormatColor(BookFormat format) => switch (format) {
       BookFormat.epub => const Color(0xFF6366F1),
       BookFormat.pdf => const Color(0xFFEF4444),
       BookFormat.txt => const Color(0xFF6B7280),
       BookFormat.mobi || BookFormat.azw3 => const Color(0xFFF59E0B),
       BookFormat.unknown => const Color(0xFF6B7280),
     };
-  }
 
   /// 设置菜单
   void _showSettingsMenu(BuildContext context) {
@@ -781,8 +771,7 @@ class _BookListPageState extends ConsumerState<BookListPage> {
     String? currentFolder,
     bool fromCache,
     bool isDark,
-  ) {
-    return Center(
+  ) => Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -828,7 +817,6 @@ class _BookListPageState extends ConsumerState<BookListPage> {
         ],
       ),
     );
-  }
 
   Widget _buildEmptyState(
     BuildContext context,
@@ -938,8 +926,7 @@ class _BookListPageState extends ConsumerState<BookListPage> {
     WidgetRef ref,
     BookListLoaded state,
     bool isDark,
-  ) {
-    return RefreshIndicator(
+  ) => RefreshIndicator(
       onRefresh: () => ref.read(bookListProvider.notifier).forceRefresh(),
       child: CustomScrollView(
         slivers: [
@@ -968,7 +955,6 @@ class _BookListPageState extends ConsumerState<BookListPage> {
         ],
       ),
     );
-  }
 }
 
 /// 缓存信息条
@@ -1095,15 +1081,13 @@ class _BookCacheInfoBar extends ConsumerWidget {
     );
   }
 
-  Color _getFormatColor(BookFormat format) {
-    return switch (format) {
+  Color _getFormatColor(BookFormat format) => switch (format) {
       BookFormat.epub => const Color(0xFF6366F1),
       BookFormat.pdf => const Color(0xFFEF4444),
       BookFormat.txt => const Color(0xFF6B7280),
       BookFormat.mobi || BookFormat.azw3 => const Color(0xFFF59E0B),
       BookFormat.unknown => const Color(0xFF6B7280),
     };
-  }
 }
 
 /// 图书列表内容组件（供阅读页面复用）
@@ -1241,8 +1225,7 @@ class _BookListContentState extends ConsumerState<BookListContent> {
     String? currentFolder,
     bool fromCache,
     bool isDark,
-  ) {
-    return Center(
+  ) => Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -1277,15 +1260,13 @@ class _BookListContentState extends ConsumerState<BookListContent> {
         ],
       ),
     );
-  }
 
   Widget _buildBookGrid(
     BuildContext context,
     WidgetRef ref,
     BookListLoaded state,
     bool isDark,
-  ) {
-    return RefreshIndicator(
+  ) => RefreshIndicator(
       onRefresh: () => ref.read(bookListProvider.notifier).forceRefresh(),
       child: GridView.builder(
         padding: const EdgeInsets.all(AppSpacing.md),
@@ -1302,7 +1283,6 @@ class _BookListContentState extends ConsumerState<BookListContent> {
         ),
       ),
     );
-  }
 }
 
 class _BookGridItem extends ConsumerWidget {
@@ -1423,8 +1403,7 @@ class _BookGridItem extends ConsumerWidget {
     return dotIndex > 0 ? filename.substring(0, dotIndex) : filename;
   }
 
-  LinearGradient _getFormatGradient(BookFormat format) {
-    return switch (format) {
+  LinearGradient _getFormatGradient(BookFormat format) => switch (format) {
       BookFormat.epub => const LinearGradient(
           colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
           begin: Alignment.topLeft,
@@ -1451,17 +1430,14 @@ class _BookGridItem extends ConsumerWidget {
           end: Alignment.bottomRight,
         ),
     };
-  }
 
-  IconData _getFormatIcon(BookFormat format) {
-    return switch (format) {
+  IconData _getFormatIcon(BookFormat format) => switch (format) {
       BookFormat.epub => Icons.auto_stories_rounded,
       BookFormat.pdf => Icons.picture_as_pdf_rounded,
       BookFormat.txt => Icons.description_rounded,
       BookFormat.mobi || BookFormat.azw3 => Icons.book_rounded,
       BookFormat.unknown => Icons.insert_drive_file_rounded,
     };
-  }
 
   Future<void> _openBook(BuildContext context, WidgetRef ref) async {
     final connections = ref.read(activeConnectionsProvider);

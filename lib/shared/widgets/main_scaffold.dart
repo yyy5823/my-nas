@@ -246,8 +246,7 @@ class _MainScaffoldState extends State<MainScaffold> {
     );
   }
 
-  Widget _buildMobileNav(BuildContext context, int currentIndex, bool isDark) {
-    return Container(
+  Widget _buildMobileNav(BuildContext context, int currentIndex, bool isDark) => Container(
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
         border: Border(
@@ -324,7 +323,6 @@ class _MainScaffoldState extends State<MainScaffold> {
         ),
       ),
     );
-  }
 }
 
 class _Destination {

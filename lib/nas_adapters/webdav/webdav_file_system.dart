@@ -112,11 +112,29 @@ class WebDavFileSystem implements NasFileSystem {
   }
 
   @override
-  Future<String> getFileUrl(String path, {Duration? expiry}) async {
-    // WebDAV 返回特殊的 webdav:// URI 格式
-    // 应用层需要使用 getFileStream 进行实际访问
-    return 'webdav://local$path';
+  Future<Stream<List<int>>> getUrlStream(String url) async {
+    // WebDAV 使用 Dio 获取 URL 数据流
+    final response = await _dio.get<ResponseBody>(
+      url,
+      options: Options(
+        responseType: ResponseType.stream,
+        validateStatus: (status) => status != null && status < 400,
+      ),
+    );
+
+    final stream = response.data?.stream;
+    if (stream == null) {
+      throw Exception('无法获取 URL 数据流');
+    }
+
+    return stream;
   }
+
+  @override
+  Future<String> getFileUrl(String path, {Duration? expiry}) async =>
+      // WebDAV 返回特殊的 webdav:// URI 格式
+      // 应用层需要使用 getFileStream 进行实际访问
+      'webdav://local$path';
 
   @override
   Future<void> createDirectory(String path) async {

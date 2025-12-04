@@ -141,12 +141,14 @@ class SmbFileSystem implements NasFileSystem {
   }
 
   @override
-  Future<String> getFileUrl(String path, {Duration? expiry}) async {
-    // SMB 不支持直接 URL 访问，需要通过流来访问
-    // 返回一个特殊的 smb:// URL 格式，应用层需要处理
-    final host = 'smb-local'; // 占位符
-    return 'smb://$host$path';
-  }
+  Future<Stream<List<int>>> getUrlStream(String url) =>
+      throw UnimplementedError('SMB 不支持通过 URL 获取数据流');
+
+  @override
+  Future<String> getFileUrl(String path, {Duration? expiry}) async =>
+      // SMB 不支持直接 URL 访问，需要通过流来访问
+      // 返回一个特殊的 smb:// URL 格式，应用层需要处理
+      'smb://smb-local$path';
 
   @override
   Future<void> createDirectory(String path) async {

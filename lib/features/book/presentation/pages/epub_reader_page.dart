@@ -57,8 +57,7 @@ class EpubReaderLoaded extends EpubReaderState {
     double? fontSize,
     double? lineHeight,
     ReaderTheme? theme,
-  }) {
-    return EpubReaderLoaded(
+  }) => EpubReaderLoaded(
       epub: epub ?? this.epub,
       chapters: chapters ?? this.chapters,
       chapterContents: chapterContents ?? this.chapterContents,
@@ -67,7 +66,6 @@ class EpubReaderLoaded extends EpubReaderState {
       lineHeight: lineHeight ?? this.lineHeight,
       theme: theme ?? this.theme,
     );
-  }
 }
 
 class EpubReaderError extends EpubReaderState {
@@ -330,8 +328,7 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
     );
   }
 
-  Widget _buildError(String message) {
-    return Center(
+  Widget _buildError(String message) => Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
@@ -354,10 +351,8 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
         ),
       ),
     );
-  }
 
-  Widget _buildReader(BuildContext context, EpubReaderLoaded state) {
-    return Stack(
+  Widget _buildReader(BuildContext context, EpubReaderLoaded state) => Stack(
       children: [
         // 阅读内容
         GestureDetector(
@@ -483,10 +478,8 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
         if (_showSettings) _buildSettingsPanel(context, state),
       ],
     );
-  }
 
-  Widget _buildTopBar(BuildContext context, EpubReaderLoaded state) {
-    return Container(
+  Widget _buildTopBar(BuildContext context, EpubReaderLoaded state) => Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -545,10 +538,8 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
         ),
       ),
     );
-  }
 
-  Widget _buildBottomBar(BuildContext context, EpubReaderLoaded state) {
-    return Container(
+  Widget _buildBottomBar(BuildContext context, EpubReaderLoaded state) => Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.bottomCenter,
@@ -633,14 +624,12 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
         ),
       ),
     );
-  }
 
   Widget _buildBottomButton({
     required IconData icon,
     required String label,
     required VoidCallback onTap,
-  }) {
-    return GestureDetector(
+  }) => GestureDetector(
       onTap: onTap,
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -651,7 +640,6 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
         ],
       ),
     );
-  }
 
   Widget _buildTocDrawer(BuildContext context, EpubReaderLoaded state) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -814,8 +802,7 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
             Text('阅读主题', style: context.textTheme.bodyMedium),
             const SizedBox(height: 12),
             Row(
-              children: ReaderTheme.values.map((theme) {
-                return Padding(
+              children: ReaderTheme.values.map((theme) => Padding(
                   padding: const EdgeInsets.only(right: 12),
                   child: _buildThemeOption(
                     theme: theme,
@@ -823,8 +810,7 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
                     onTap: () =>
                         ref.read(epubReaderProvider(widget.book).notifier).setTheme(theme),
                   ),
-                );
-              }).toList(),
+                )).toList(),
             ),
           ],
         ),
@@ -837,8 +823,7 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
     required String label,
     required String value,
     required Widget child,
-  }) {
-    return Column(
+  }) => Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
@@ -851,14 +836,12 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
         child,
       ],
     );
-  }
 
   Widget _buildThemeOption({
     required ReaderTheme theme,
     required bool isSelected,
     required VoidCallback onTap,
-  }) {
-    return GestureDetector(
+  }) => GestureDetector(
       onTap: onTap,
       child: Column(
         children: [
@@ -894,5 +877,4 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
         ],
       ),
     );
-  }
 }

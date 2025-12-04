@@ -23,8 +23,8 @@ class SecureStorageException implements Exception {
     if (error is PlatformException) {
       // macOS/iOS Keychain entitlement 错误码
       return error.code == 'Unexpected security result code' ||
-          error.message?.contains('-34018') == true ||
-          error.message?.contains('entitlement') == true;
+          (error.message?.contains('-34018') ?? false) ||
+          (error.message?.contains('entitlement') ?? false);
     }
     return false;
   }
@@ -60,7 +60,7 @@ class AuthStorageService {
     if (error is PlatformException) {
       // Keychain entitlement 错误 (-34018)
       if (error.code == 'Unexpected security result code' ||
-          error.message?.contains('-34018') == true) {
+          (error.message?.contains('-34018') ?? false)) {
         logger.w(
           'AuthStorageService: 安全存储不可用 ($operation) - '
           '可能缺少 Keychain entitlement 权限，自动登录功能已禁用',
@@ -248,9 +248,7 @@ class AuthStorageService {
   }
 
   /// 获取最后连接的ID
-  Future<String?> getLastConnectionId() async {
-    return _safeRead(_keyLastConnectionId);
-  }
+  Future<String?> getLastConnectionId() async => _safeRead(_keyLastConnectionId);
 
   /// 清除所有认证数据
   Future<void> clearAll() async {

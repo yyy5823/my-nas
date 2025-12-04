@@ -90,8 +90,7 @@ class ComicItem {
         fileSize: fileSize,
       );
 
-  factory ComicItem.fromCacheEntry(ComicLibraryCacheEntry entry) {
-    return ComicItem(
+  factory ComicItem.fromCacheEntry(ComicLibraryCacheEntry entry) => ComicItem(
       folderPath: entry.folderPath,
       folderName: entry.folderName,
       sourceId: entry.sourceId,
@@ -104,7 +103,6 @@ class ComicItem {
       ),
       fileSize: entry.fileSize,
     );
-  }
 }
 
 /// 漫画列表状态
@@ -535,8 +533,7 @@ class _ComicListContentState extends ConsumerState<ComicListContent> {
     );
   }
 
-  Widget _buildToolbar(BuildContext context, bool isDark, ComicListState state) {
-    return Container(
+  Widget _buildToolbar(BuildContext context, bool isDark, ComicListState state) => Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
@@ -625,7 +622,6 @@ class _ComicListContentState extends ConsumerState<ComicListContent> {
         ],
       ),
     );
-  }
 
   Widget _buildTypeSwitcher(BuildContext context, WidgetRef ref, bool isDark) {
     final currentIndex = ref.watch(readingTabProvider);

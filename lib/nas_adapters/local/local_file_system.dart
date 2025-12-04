@@ -73,10 +73,13 @@ class LocalFileSystem implements NasFileSystem {
   }
 
   @override
-  Future<String> getFileUrl(String path, {Duration? expiry}) async {
-    // 本地文件直接返回 file:// URI
-    return _api.getFileUri(path);
-  }
+  Future<Stream<List<int>>> getUrlStream(String url) =>
+      throw UnimplementedError('本地文件系统不支持通过 URL 获取数据流');
+
+  @override
+  Future<String> getFileUrl(String path, {Duration? expiry}) async =>
+      // 本地文件直接返回 file:// URI
+      _api.getFileUri(path);
 
   @override
   Future<void> createDirectory(String path) async {
