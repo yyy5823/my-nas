@@ -1140,7 +1140,10 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     final isDesktop = screenWidth > 800;
 
     // 获取最近添加的视频（按修改时间排序）
-    final recentVideos = _getRecentVideos(state);
+    // 用于分类行显示，限制 20 个
+    final recentVideos = _getRecentVideos(state, limit: 20);
+    // 用于查看更多页面，不限制数量
+    final allRecentVideos = _getRecentVideos(state);
 
     // 获取电影列表
     final movies = state.movies;
@@ -1192,7 +1195,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               icon: Icons.schedule_rounded,
               iconColor: Colors.blue,
               maxCount: 10,
-              onViewAll: () => _showCategoryPage(context, '最近添加', recentVideos),
+              onViewAll: () => _showCategoryPage(context, '最近添加', allRecentVideos),
             ),
           ),
 
@@ -1248,7 +1251,8 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
   }
 
   /// 获取最近添加的视频
-  List<VideoMetadata> _getRecentVideos(VideoListLoaded state) {
+  /// [limit] 为空时返回所有视频
+  List<VideoMetadata> _getRecentVideos(VideoListLoaded state, {int? limit}) {
     final result = state.videos.map((v) {
       final key = '${v.sourceId}_${v.path}';
       return state.metadataMap[key] ??
@@ -1274,7 +1278,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
           .compareTo(videoA.modifiedTime ?? DateTime(1970));
     });
 
-    return result.take(20).toList();
+    return limit != null ? result.take(limit).toList() : result;
   }
 
   /// 显示分类页面
