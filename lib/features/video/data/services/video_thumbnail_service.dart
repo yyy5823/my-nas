@@ -1,10 +1,12 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:media_kit/media_kit.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:video_snapshot_generator/video_snapshot_generator.dart';
 
 /// 视频路径工具类
 ///
@@ -16,7 +18,7 @@ class VideoPathUtils {
   ///
   /// 处理以下情况：
   /// - file:// URI（本地文件）- 转换为本地文件路径
-  /// - http/https URL（远程文件）- 直接返回，FFmpeg 可处理
+  /// - http/https URL（远程文件）- 直接返回，media_kit 可处理
   /// - smb:// URI（SMB 共享）- 需要流式下载，返回 null
   /// - webdav:// URI（WebDAV）- 需要流式下载，返回 null
   /// - 本地路径（非 URI）- 直接返回
@@ -37,7 +39,7 @@ class VideoPathUtils {
       }
     }
 
-    // HTTP/HTTPS URL - FFmpeg 可以直接处理
+    // HTTP/HTTPS URL - media_kit 可以直接处理
     if (videoUrl.startsWith('http://') || videoUrl.startsWith('https://')) {
       return videoUrl;
     }
@@ -101,8 +103,8 @@ class VideoPathUtils {
 
 /// 视频缩略图服务
 ///
-/// 用于在没有 TMDB/NFO 元数据时，通过提取视频帧生成缩略图
-/// 类似于 Emby/Jellyfin 的 Screen Grabber 功能
+/// 使用 media_kit 提取视频帧生成缩略图，无需依赖系统 FFmpeg
+/// 支持所有平台：Windows/macOS/iOS/Android/Linux
 class VideoThumbnailService {
   VideoThumbnailService._();
 
@@ -213,7 +215,8 @@ class VideoThumbnailService {
       String? effectivePath;
 
       // 检查是否需要流式下载（SMB、WebDAV 等协议）
-      final needsDownload = VideoPathUtils.needsStreamDownload(videoUrl) && fileSystem != null;
+      final needsDownload =
+          VideoPathUtils.needsStreamDownload(videoUrl) && fileSystem != null;
 
       if (needsDownload) {
         final protocol = VideoPathUtils.isSmbUri(videoUrl) ? 'SMB' : 'WebDAV';
@@ -241,18 +244,20 @@ class VideoThumbnailService {
           }
 
           // 尝试生成缩略图
-          final result = await _tryGenerateFromPath(tempFilePath, timeMs);
+          final result = await _captureFrameWithMediaKit(tempFilePath, timeMs);
           if (result != null) {
-            // 成功，复制到缓存目录
+            // 成功，保存到缓存目录
             final thumbnailPath = p.join(_cacheDir!.path, '$cacheKey.jpg');
-            await File(result).copy(thumbnailPath);
-            logger.i('VideoThumbnailService: 缩略图生成成功 $thumbnailPath (下载 ${_downloadSizes[sizeLevel] ~/ 1024 ~/ 1024}MB)');
+            await File(thumbnailPath).writeAsBytes(result);
+            logger.i(
+                'VideoThumbnailService: 缩略图生成成功 $thumbnailPath (下载 ${_downloadSizes[sizeLevel] ~/ 1024 ~/ 1024}MB)');
             return thumbnailPath;
           }
 
           // 如果不是最后一次尝试，继续下载更大的片段
           if (sizeLevel < _downloadSizes.length - 1) {
-            logger.d('VideoThumbnailService: 下载 ${_downloadSizes[sizeLevel] ~/ 1024 ~/ 1024}MB 不足以生成缩略图，尝试更大的片段');
+            logger.d(
+                'VideoThumbnailService: 下载 ${_downloadSizes[sizeLevel] ~/ 1024 ~/ 1024}MB 不足以生成缩略图，尝试更大的片段');
           }
         }
 
@@ -265,7 +270,8 @@ class VideoThumbnailService {
           // 如果是需要流式下载的协议但没有提供 fileSystem，给出提示
           if (VideoPathUtils.needsStreamDownload(videoUrl)) {
             final protocol = VideoPathUtils.isSmbUri(videoUrl) ? 'SMB' : 'WebDAV';
-            logger.w('VideoThumbnailService: $protocol 路径需要提供 fileSystem 参数: $videoUrl');
+            logger.w(
+                'VideoThumbnailService: $protocol 路径需要提供 fileSystem 参数: $videoUrl');
           } else {
             logger.w('VideoThumbnailService: 无法处理的视频路径: $videoUrl');
           }
@@ -275,35 +281,17 @@ class VideoThumbnailService {
 
       logger.d('VideoThumbnailService: 使用路径: $effectivePath');
 
-      // 使用 video_snapshot_generator 提取帧
-      final result = await VideoSnapshotGenerator.generateThumbnail(
-        videoPath: effectivePath,
-        options: ThumbnailOptions(
-          videoPath: effectivePath,
-          width: 480,
-          height: 270,
-          quality: 80,
-          timeMs: timeMs,
-          format: ThumbnailFormat.jpeg,
-        ),
-      );
+      // 使用 media_kit 提取帧
+      final imageBytes = await _captureFrameWithMediaKit(effectivePath, timeMs);
 
-      if (!result.success || result.path.isEmpty) {
-        logger.w('VideoThumbnailService: 提取帧失败: ${result.errorMessage}');
+      if (imageBytes == null) {
+        logger.w('VideoThumbnailService: 提取帧失败');
         return null;
       }
 
-      // 复制到我们的缓存目录
+      // 保存到缓存目录
       final thumbnailPath = p.join(_cacheDir!.path, '$cacheKey.jpg');
-      final sourceFile = File(result.path);
-      if (await sourceFile.exists()) {
-        await sourceFile.copy(thumbnailPath);
-        // 可选：删除原始文件以节省空间
-        // await sourceFile.delete();
-      } else {
-        logger.w('VideoThumbnailService: 生成的缩略图文件不存在 ${result.path}');
-        return null;
-      }
+      await File(thumbnailPath).writeAsBytes(imageBytes);
 
       logger.i('VideoThumbnailService: 缩略图生成成功 $thumbnailPath');
       return thumbnailPath;
@@ -326,30 +314,85 @@ class VideoThumbnailService {
     }
   }
 
-  /// 尝试从指定路径生成缩略图
+  /// 使用 media_kit 从视频中提取帧
   ///
-  /// 返回生成的缩略图路径，如果失败则返回 null
-  Future<String?> _tryGenerateFromPath(String videoPath, int timeMs) async {
+  /// 返回 JPEG 格式的图片字节数据
+  Future<Uint8List?> _captureFrameWithMediaKit(
+    String videoPath,
+    int timeMs,
+  ) async {
+    Player? player;
+
     try {
-      final result = await VideoSnapshotGenerator.generateThumbnail(
-        videoPath: videoPath,
-        options: ThumbnailOptions(
-          videoPath: videoPath,
-          width: 480,
-          height: 270,
-          quality: 80,
-          timeMs: timeMs,
-          format: ThumbnailFormat.jpeg,
+      logger.d('VideoThumbnailService: 使用 media_kit 提取帧: $videoPath @ ${timeMs}ms');
+
+      // 创建播放器实例
+      player = Player(
+        configuration: const PlayerConfiguration(
+          // 不需要视频输出，只需要截图
+          vo: 'null',
+          // 静音
+          muted: true,
+          // 日志级别
+          logLevel: MPVLogLevel.warn,
         ),
       );
 
-      if (result.success && result.path.isNotEmpty) {
-        return result.path;
+      // 打开视频
+      await player.open(Media(videoPath), play: false);
+
+      // 等待视频加载完成（duration > 0）
+      final durationCompleter = Completer<Duration>();
+      StreamSubscription<Duration>? durationSubscription;
+
+      durationSubscription = player.stream.duration.listen((duration) {
+        if (duration > Duration.zero && !durationCompleter.isCompleted) {
+          durationCompleter.complete(duration);
+          durationSubscription?.cancel();
+        }
+      });
+
+      // 设置超时
+      final duration = await durationCompleter.future.timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          durationSubscription?.cancel();
+          throw TimeoutException('视频加载超时');
+        },
+      );
+
+      logger.d('VideoThumbnailService: 视频时长: ${duration.inSeconds}s');
+
+      // 确定截取位置（不超过视频时长的 90%）
+      final maxTimeMs = (duration.inMilliseconds * 0.9).toInt();
+      final seekTimeMs = timeMs.clamp(0, maxTimeMs);
+
+      // Seek 到指定位置
+      await player.seek(Duration(milliseconds: seekTimeMs));
+
+      // 等待 seek 完成并等待帧渲染
+      // media_kit 需要一小段时间来渲染帧
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+
+      // 截取当前帧（JPEG 格式）
+      final screenshot = await player.screenshot(format: 'image/jpeg');
+
+      if (screenshot == null || screenshot.isEmpty) {
+        logger.w('VideoThumbnailService: screenshot 返回空数据');
+        return null;
       }
+
+      logger.d('VideoThumbnailService: 截图成功，大小: ${screenshot.length} bytes');
+      return screenshot;
+    } on TimeoutException catch (e) {
+      logger.w('VideoThumbnailService: $e');
       return null;
-    } catch (e) {
-      logger.d('VideoThumbnailService: 尝试生成缩略图失败: $e');
+    } catch (e, stackTrace) {
+      logger.e('VideoThumbnailService: media_kit 提取帧失败', e, stackTrace);
       return null;
+    } finally {
+      // 释放播放器资源
+      await player?.dispose();
     }
   }
 
@@ -382,7 +425,8 @@ class VideoThumbnailService {
     final downloadSize = _downloadSizes[sizeLevel];
 
     try {
-      logger.d('VideoThumbnailService: 开始下载视频片段 $filePath (${downloadSize ~/ 1024 ~/ 1024}MB)');
+      logger.d(
+          'VideoThumbnailService: 开始下载视频片段 $filePath (${downloadSize ~/ 1024 ~/ 1024}MB)');
 
       // 获取文件扩展名
       final ext = p.extension(filePath).toLowerCase();
@@ -412,7 +456,8 @@ class VideoThumbnailService {
       await sink.flush();
       await sink.close();
 
-      logger.d('VideoThumbnailService: 视频片段下载完成, 大小: ${bytesWritten ~/ 1024}KB');
+      logger.d(
+          'VideoThumbnailService: 视频片段下载完成, 大小: ${bytesWritten ~/ 1024}KB');
       return tempPath;
     } catch (e) {
       logger.e('VideoThumbnailService: 下载视频片段失败', e);
@@ -446,31 +491,16 @@ class VideoThumbnailService {
         return null;
       }
 
-      final result = await VideoSnapshotGenerator.generateThumbnail(
-        videoPath: effectivePath,
-        options: ThumbnailOptions(
-          videoPath: effectivePath,
-          width: 480,
-          height: 270,
-          quality: 80,
-          timeMs: timeMs,
-          format: ThumbnailFormat.jpeg,
-        ),
-      );
+      final imageBytes = await _captureFrameWithMediaKit(effectivePath, timeMs);
 
-      if (!result.success || result.path.isEmpty) {
-        logger.w('VideoThumbnailService: 从本地文件提取帧失败: ${result.errorMessage}');
+      if (imageBytes == null) {
+        logger.w('VideoThumbnailService: 从本地文件提取帧失败');
         return null;
       }
 
-      // 复制到我们的缓存目录
+      // 保存到缓存目录
       final thumbnailPath = p.join(_cacheDir!.path, '$cacheKey.jpg');
-      final sourceFile = File(result.path);
-      if (await sourceFile.exists()) {
-        await sourceFile.copy(thumbnailPath);
-      } else {
-        return null;
-      }
+      await File(thumbnailPath).writeAsBytes(imageBytes);
 
       return thumbnailPath;
     } catch (e) {

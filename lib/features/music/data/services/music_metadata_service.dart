@@ -40,17 +40,27 @@ class MusicMetadataService {
 
     final cacheKey = file.path;
     if (_metadataCache.containsKey(cacheKey)) {
+      logger.d('MusicMetadataService: 使用缓存的元数据: ${file.path}');
       return _metadataCache[cacheKey];
     }
 
     try {
-      logger.d('MusicMetadataService: 提取本地文件元数据: ${file.path}');
+      logger.i('MusicMetadataService: 开始提取本地文件元数据: ${file.path}');
+      final fileSize = await file.length();
+      logger.d('MusicMetadataService: 文件大小 = $fileSize bytes');
+
       final metadata = readMetadata(file, getImage: true);
+      logger.d('MusicMetadataService: readMetadata 完成');
+      logger.d('MusicMetadataService: 原始元数据 - title=${metadata.title}, artist=${metadata.artist}, album=${metadata.album}');
+      logger.d('MusicMetadataService: 原始元数据 - pictures=${metadata.pictures.length}, lyrics=${metadata.lyrics != null}');
+
       final result = _convertMetadata(metadata, file.path);
       _metadataCache[cacheKey] = result;
+
+      logger.i('MusicMetadataService: 提取完成 - hasCover=${result.hasCover}, hasLyrics=${result.hasLyrics}');
       return result;
     } catch (e, stackTrace) {
-      logger.w('MusicMetadataService: 提取元数据失败: ${file.path}', e, stackTrace);
+      logger.e('MusicMetadataService: 提取元数据失败: ${file.path}', e, stackTrace);
       return null;
     }
   }

@@ -329,7 +329,7 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
             onBatchFound: onBatchFound,
           );
         } else if (item.type == FileType.audio) {
-          logger.d('扫描到音乐: ${item.name}, size=${item.size}, modifiedTime=${item.modifiedTime}');
+          // logger.d('扫描到音乐: ${item.name}, size=${item.size}, modifiedTime=${item.modifiedTime}');
           tracks.add(MusicFileWithSource(file: item, sourceId: sourceId));
           onBatchFound?.call();
         }

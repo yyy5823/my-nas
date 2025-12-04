@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -321,7 +322,8 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       _ref.read(musicHistoryProvider.notifier).addToHistory(music);
 
       // 在后台提取元数据
-      _extractMetadataInBackground(music);
+      logger.i('MusicPlayer: 开始后台提取元数据...');
+      unawaited(_extractMetadataInBackground(music));
     } catch (e, stackTrace) {
       logger.e('MusicPlayer: 播放失败', e, stackTrace);
       state = state.copyWith(errorMessage: '播放失败: $e', isBuffering: false);
@@ -330,8 +332,11 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
   /// 在后台提取音乐元数据
   Future<void> _extractMetadataInBackground(MusicItem music) async {
+    logger.d('MusicPlayer: 开始提取元数据 - name=${music.name}, sourceId=${music.sourceId}, url=${music.url}');
+
     // 如果已经有元数据，跳过
     if (music.coverData != null || music.lyrics != null) {
+      logger.d('MusicPlayer: 已有元数据，跳过 - hasCover=${music.coverData != null}, hasLyrics=${music.lyrics != null}');
       return;
     }
 
@@ -343,6 +348,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
       if (music.sourceId != null) {
         // NAS 文件：从连接中获取文件系统
+        logger.d('MusicPlayer: NAS文件，sourceId=${music.sourceId}');
         final connections = _ref.read(activeConnectionsProvider);
         final connection = connections[music.sourceId];
         if (connection != null && connection.status == SourceStatus.connected) {
@@ -350,15 +356,32 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
             connection.adapter.fileSystem,
             music.path,
           );
+        } else {
+          logger.w('MusicPlayer: NAS连接不可用 - connection=${connection != null}, status=${connection?.status}');
         }
       } else {
         // 本地文件：直接从文件路径提取
+        logger.d('MusicPlayer: 本地文件，解析URL...');
         final uri = Uri.tryParse(music.url);
+        logger.d('MusicPlayer: 解析结果 - uri=$uri, scheme=${uri?.scheme}');
+
         if (uri != null && uri.scheme == 'file') {
-          final file = File(uri.toFilePath());
-          if (await file.exists()) {
+          final filePath = uri.toFilePath();
+          logger.d('MusicPlayer: 文件路径 = $filePath');
+          final file = File(filePath);
+          final exists = await file.exists();
+          logger.d('MusicPlayer: 文件存在 = $exists');
+
+          if (exists) {
+            logger.d('MusicPlayer: 开始从本地文件提取元数据...');
             metadata = await metadataService.extractFromLocalFile(file);
+            logger.d('MusicPlayer: 提取完成 - metadata=${metadata != null}');
+            if (metadata != null) {
+              logger.d('MusicPlayer: 元数据详情 - title=${metadata.title}, artist=${metadata.artist}, album=${metadata.album}, hasCover=${metadata.coverData != null}, hasLyrics=${metadata.lyrics != null}');
+            }
           }
+        } else {
+          logger.w('MusicPlayer: URL格式不正确或不是file协议 - url=${music.url}');
         }
       }
 
@@ -366,13 +389,19 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
         // 更新当前播放的音乐信息
         final updatedMusic = metadataService.applyMetadataToItem(music, metadata);
         final currentMusic = _ref.read(currentMusicProvider);
+        logger.d('MusicPlayer: 当前播放ID=${currentMusic?.id}, 提取的音乐ID=${music.id}');
+
         if (currentMusic?.id == music.id) {
           _ref.read(currentMusicProvider.notifier).state = updatedMusic;
-          logger.i('MusicPlayer: 元数据已更新 - artist=${metadata.artist}, album=${metadata.album}');
+          logger.i('MusicPlayer: 元数据已更新 - artist=${metadata.artist}, album=${metadata.album}, hasCover=${metadata.coverData != null}, hasLyrics=${metadata.lyrics != null}');
+        } else {
+          logger.w('MusicPlayer: 当前播放的音乐已变更，跳过更新');
         }
+      } else {
+        logger.w('MusicPlayer: 未能提取到元数据');
       }
-    } catch (e) {
-      logger.w('MusicPlayer: 提取元数据失败: $e');
+    } catch (e, stackTrace) {
+      logger.e('MusicPlayer: 提取元数据失败: $e', e, stackTrace);
     }
   }
 

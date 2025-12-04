@@ -62,7 +62,6 @@ dependencies:
   media_kit: ^1.1.11
   media_kit_video: ^1.2.5
   media_kit_libs_video: ^1.0.5
-  video_snapshot_generator: ^0.1.0  # Cross-platform video thumbnail generation
 
   # Media - Audio
   just_audio: ^0.9.42
