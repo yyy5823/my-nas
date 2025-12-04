@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:audio_metadata_reader/audio_metadata_reader.dart';
@@ -30,8 +31,29 @@ class MusicMetadataService {
       await _cacheDir.create(recursive: true);
     }
 
+    // 清理旧的临时文件
+    await _cleanupTempFiles();
+
     _initialized = true;
     logger.i('MusicMetadataService: 初始化完成，缓存目录: ${_cacheDir.path}');
+  }
+
+  /// 清理遗留的临时文件
+  Future<void> _cleanupTempFiles() async {
+    try {
+      final files = _cacheDir.listSync();
+      for (final entity in files) {
+        if (entity is File && p.basename(entity.path).startsWith('temp_metadata_')) {
+          try {
+            await entity.delete();
+          } catch (_) {
+            // 忽略删除失败
+          }
+        }
+      }
+    } catch (e) {
+      logger.d('MusicMetadataService: 清理临时文件失败: $e');
+    }
   }
 
   /// 从本地文件提取元数据
@@ -99,9 +121,10 @@ class MusicMetadataService {
         chunks.addAll(chunk);
       }
 
-      // 保存到临时文件
+      // 保存到临时文件（使用唯一文件名避免并发冲突）
       final ext = p.extension(path).toLowerCase();
-      final tempFile = File(p.join(_cacheDir.path, 'temp_metadata$ext'));
+      final uniqueId = '${DateTime.now().microsecondsSinceEpoch}_${Random().nextInt(999999)}';
+      final tempFile = File(p.join(_cacheDir.path, 'temp_metadata_$uniqueId$ext'));
       await tempFile.writeAsBytes(Uint8List.fromList(chunks));
 
       try {
@@ -110,9 +133,22 @@ class MusicMetadataService {
         _metadataCache[cacheKey] = result;
         return result;
       } finally {
-        // 清理临时文件
-        if (await tempFile.exists()) {
-          await tempFile.delete();
+        // 清理临时文件（延迟删除以确保文件已关闭）
+        try {
+          if (await tempFile.exists()) {
+            await tempFile.delete();
+          }
+        } catch (e) {
+          // 文件可能仍被占用，稍后重试一次
+          await Future<void>.delayed(const Duration(milliseconds: 100));
+          try {
+            if (await tempFile.exists()) {
+              await tempFile.delete();
+            }
+          } catch (_) {
+            // 忽略删除失败，临时文件会在下次启动时被清理
+            logger.d('MusicMetadataService: 临时文件删除失败，将稍后清理: ${tempFile.path}');
+          }
         }
       }
     } catch (e, stackTrace) {

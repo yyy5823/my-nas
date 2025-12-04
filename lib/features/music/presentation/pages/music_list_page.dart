@@ -641,7 +641,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
   }
 
   /// 构建首页头部
-  Widget _buildHeader(BuildContext context, WidgetRef ref, bool isDark, MusicListState state) => Container(
+  Widget _buildHeader(BuildContext context, WidgetRef ref, bool isDark, MusicListState state) => DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -1246,7 +1246,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
       await ref.read(musicPlayerControllerProvider.notifier).play(musicItem);
 
       // 记录最近播放
-      ref.read(musicHistoryProvider.notifier).addToHistory(musicItem);
+      await ref.read(musicHistoryProvider.notifier).addToHistory(musicItem);
 
       // 导航到播放器页面
       if (context.mounted) {
@@ -1254,7 +1254,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
       }
 
       // 在后台构建完整播放队列
-      _buildPlayQueue(ref, connections, track, allTracks, trackIndex);
+      await _buildPlayQueue(ref, connections, track, allTracks, trackIndex);
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -4516,7 +4516,7 @@ class _CompactMusicTile extends ConsumerWidget {
 
       // 在后台构建完整播放队列
       if (allTracks != null && allTracks!.isNotEmpty) {
-        _buildPlayQueue(ref, connections, trackIndex ?? 0);
+        await _buildPlayQueue(ref, connections, trackIndex ?? 0);
       }
     } catch (e, stackTrace) {
       logger.e('_CompactMusicTile._playTrack: 播放失败', e, stackTrace);
