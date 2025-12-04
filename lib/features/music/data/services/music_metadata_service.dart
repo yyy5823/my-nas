@@ -67,10 +67,12 @@ class MusicMetadataService {
 
   /// 从 NAS 文件提取元数据
   /// 需要先下载文件头部到本地临时文件
+  /// [skipLyrics] 为 true 时跳过歌词提取，用于后台批量扫描
   Future<MusicMetadata?> extractFromNasFile(
     NasFileSystem fileSystem,
     String path, {
     int maxBytes = 512 * 1024, // 默认读取前 512KB，足够读取大多数 ID3 标签
+    bool skipLyrics = false,
   }) async {
     if (!_initialized) await init();
 
@@ -104,7 +106,7 @@ class MusicMetadataService {
 
       try {
         final metadata = readMetadata(tempFile, getImage: true);
-        final result = _convertMetadata(metadata, path);
+        final result = _convertMetadata(metadata, path, skipLyrics: skipLyrics);
         _metadataCache[cacheKey] = result;
         return result;
       } finally {
@@ -120,7 +122,8 @@ class MusicMetadataService {
   }
 
   /// 将 audio_metadata_reader 的元数据转换为我们的格式
-  MusicMetadata _convertMetadata(AudioMetadata metadata, String filePath) {
+  /// [skipLyrics] 为 true 时跳过歌词提取
+  MusicMetadata _convertMetadata(AudioMetadata metadata, String filePath, {bool skipLyrics = false}) {
     String? artist;
     String? album;
     String? title;
@@ -153,8 +156,10 @@ class MusicMetadataService {
       genre = genres.join(', ');
     }
 
-    // 提取歌词
-    lyrics = metadata.lyrics;
+    // 提取歌词（后台扫描时跳过，播放时按需提取）
+    if (!skipLyrics) {
+      lyrics = metadata.lyrics;
+    }
 
     // 提取封面图片
     if (metadata.pictures.isNotEmpty) {

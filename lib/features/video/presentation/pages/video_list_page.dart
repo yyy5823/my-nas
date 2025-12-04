@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
@@ -21,6 +20,7 @@ import 'package:my_nas/features/video/presentation/pages/video_player_page.dart'
 import 'package:my_nas/features/video/presentation/providers/video_history_provider.dart';
 import 'package:my_nas/features/video/presentation/widgets/hero_banner.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
+import 'package:my_nas/shared/widgets/adaptive_image.dart';
 import 'package:my_nas/shared/widgets/animated_list_item.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
 
@@ -1785,11 +1785,11 @@ class _PartialVideoCard extends StatelessWidget {
                 if (video.thumbnailUrl != null)
                   ClipRRect(
                     borderRadius: BorderRadius.circular(12),
-                    child: CachedNetworkImage(
+                    child: AdaptiveImage(
                       imageUrl: video.thumbnailUrl!,
                       fit: BoxFit.cover,
-                      placeholder: (_, __) => _buildPlaceholder(),
-                      errorWidget: (_, __, ___) => _buildPlaceholder(),
+                      placeholder: (_) => _buildPlaceholder(),
+                      errorWidget: (_, __) => _buildPlaceholder(),
                     ),
                   )
                 else
@@ -1926,11 +1926,11 @@ class _PosterCardState extends ConsumerState<_PosterCard> {
                         children: [
                           // 海报图片
                           if (hasPoster)
-                            CachedNetworkImage(
+                            AdaptiveImage(
                               imageUrl: displayPoster,
                               fit: BoxFit.cover,
-                              placeholder: (_, __) => _buildPlaceholder(),
-                              errorWidget: (_, __, ___) => _buildPlaceholder(),
+                              placeholder: (_) => _buildPlaceholder(),
+                              errorWidget: (_, __) => _buildPlaceholder(),
                             )
                           else
                             _buildPlaceholder(),

@@ -117,7 +117,9 @@ class _StreamImageState extends State<StreamImage> {
   }
 
   Future<void> _loadImage() async {
-    logger.d('StreamImage: _loadImage called, url=${widget.url}, path=${widget.path}, hasFileSystem=${widget.fileSystem != null}');
+    logger.d(
+      'StreamImage: _loadImage called, url=${widget.url}, path=${widget.path}, hasFileSystem=${widget.fileSystem != null}',
+    );
 
     // 如果有有效的 HTTP URL，使用 CachedNetworkImage
     if (_hasValidHttpUrl) {
@@ -153,7 +155,9 @@ class _StreamImageState extends State<StreamImage> {
 
     // 需要通过流加载
     if (widget.path == null || widget.fileSystem == null) {
-      logger.w('StreamImage: Cannot stream - path=${widget.path}, fileSystem=${widget.fileSystem != null ? "exists" : "null"}, url=${widget.url}');
+      logger.w(
+        'StreamImage: Cannot stream - path=${widget.path}, fileSystem=${widget.fileSystem != null ? "exists" : "null"}, url=${widget.url}',
+      );
       setState(() {
         _hasError = true;
       });
@@ -173,19 +177,24 @@ class _StreamImageState extends State<StreamImage> {
       await for (final chunk in stream) {
         bytes.addAll(chunk);
         // 限制图片大小，防止内存溢出
-        if (bytes.length > 50 * 1024 * 1024) { // 50MB 限制
+        if (bytes.length > 50 * 1024 * 1024) {
+          // 50MB 限制
           throw Exception('图片文件过大');
         }
       }
 
-      logger.d('StreamImage: Stream loaded ${bytes.length} bytes for ${widget.path}');
+      logger.d(
+        'StreamImage: Stream loaded ${bytes.length} bytes for ${widget.path}',
+      );
       final imageData = Uint8List.fromList(bytes);
 
       // 添加到缓存
       if (_cacheKey.isNotEmpty) {
         // 如果缓存满了，清除一半
         if (_memoryCache.length >= _maxCacheSize) {
-          final keysToRemove = _memoryCache.keys.take(_maxCacheSize ~/ 2).toList();
+          final keysToRemove = _memoryCache.keys
+              .take(_maxCacheSize ~/ 2)
+              .toList();
           for (final key in keysToRemove) {
             _memoryCache.remove(key);
           }
@@ -259,33 +268,25 @@ class _StreamImageState extends State<StreamImage> {
     );
   }
 
-  Widget _buildPlaceholder() {
-    return Container(
-      width: widget.width,
-      height: widget.height,
-      color: Colors.grey[300],
-      child: const Center(
-        child: SizedBox(
-          width: 24,
-          height: 24,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
+  Widget _buildPlaceholder() => Container(
+    width: widget.width,
+    height: widget.height,
+    color: Colors.grey[300],
+    child: const Center(
+      child: SizedBox(
+        width: 24,
+        height: 24,
+        child: CircularProgressIndicator(strokeWidth: 2),
       ),
-    );
-  }
+    ),
+  );
 
-  Widget _buildError() {
-    return Container(
-      width: widget.width,
-      height: widget.height,
-      color: Colors.grey[200],
-      child: Icon(
-        Icons.broken_image_rounded,
-        color: Colors.grey[400],
-        size: 32,
-      ),
-    );
-  }
+  Widget _buildError() => Container(
+    width: widget.width,
+    height: widget.height,
+    color: Colors.grey[200],
+    child: Icon(Icons.broken_image_rounded, color: Colors.grey[400], size: 32),
+  );
 
   /// 清除所有内存缓存
   static void clearCache() {

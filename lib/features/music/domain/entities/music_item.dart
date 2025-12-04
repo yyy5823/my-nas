@@ -8,6 +8,7 @@ class MusicItem {
     required this.path,
     required this.url,
     this.sourceId,
+    this.title,
     this.artist,
     this.album,
     this.duration,
@@ -27,6 +28,7 @@ class MusicItem {
   final String path;
   final String url;
   final String? sourceId;
+  final String? title; // 元数据中的标题
   final String? artist;
   final String? album;
   final Duration? duration;
@@ -41,7 +43,20 @@ class MusicItem {
   final List<int>? coverData; // 嵌入的封面图片数据
 
   /// 从文件项创建音乐项
-  factory MusicItem.fromFileItem(FileItem file, String url, {String? sourceId}) {
+  factory MusicItem.fromFileItem(
+    FileItem file,
+    String url, {
+    String? sourceId,
+    // 可选的预提取元数据
+    String? title,
+    String? artist,
+    String? album,
+    int? durationMs,
+    int? trackNumber,
+    int? year,
+    String? genre,
+    List<int>? coverData,
+  }) {
     final parsed = parseFileName(file.name);
     final folderPath = file.path.split('/');
     final folderName = folderPath.length >= 2 ? folderPath[folderPath.length - 2] : '';
@@ -52,7 +67,14 @@ class MusicItem {
       path: file.path,
       url: url,
       sourceId: sourceId,
-      artist: parsed.$1,
+      title: title,
+      artist: artist ?? parsed.$1,
+      album: album,
+      duration: durationMs != null ? Duration(milliseconds: durationMs) : null,
+      trackNumber: trackNumber,
+      year: year,
+      genre: genre,
+      coverData: coverData,
       size: file.size,
       folder: folderName,
     );
@@ -64,9 +86,9 @@ class MusicItem {
   /// 显示的专辑名称
   String get displayAlbum => album?.isNotEmpty == true ? album! : '未知专辑';
 
-  /// 显示标题（去除扩展名）
+  /// 显示标题（优先使用元数据标题，否则从文件名解析）
   String get displayTitle {
-    final nameWithoutExt = name.replaceAll(RegExp(r'\.[^.]+$'), '');
+    if (title != null && title!.isNotEmpty) return title!;
     final parsed = parseFileName(name);
     return parsed.$2;
   }
@@ -125,6 +147,7 @@ class MusicItem {
     String? path,
     String? url,
     String? sourceId,
+    String? title,
     String? artist,
     String? album,
     Duration? duration,
@@ -144,6 +167,7 @@ class MusicItem {
         path: path ?? this.path,
         url: url ?? this.url,
         sourceId: sourceId ?? this.sourceId,
+        title: title ?? this.title,
         artist: artist ?? this.artist,
         album: album ?? this.album,
         duration: duration ?? this.duration,

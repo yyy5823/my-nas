@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +9,7 @@ import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/data/services/music_library_cache_service.dart';
+import 'package:my_nas/features/music/data/services/music_metadata_service.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/presentation/pages/music_player_page.dart';
 import 'package:my_nas/features/music/presentation/providers/music_favorites_provider.dart';
@@ -29,10 +32,55 @@ class MusicFileWithSource {
   MusicFileWithSource({
     required this.file,
     required this.sourceId,
+    // 元数据字段
+    this.title,
+    this.artist,
+    this.album,
+    this.duration,
+    this.trackNumber,
+    this.year,
+    this.genre,
+    this.coverBase64,
+    this.metadataExtracted = false,
   });
+
+  /// 从缓存条目创建
+  factory MusicFileWithSource.fromCacheEntry(MusicLibraryCacheEntry entry) {
+    return MusicFileWithSource(
+      file: FileItem(
+        name: entry.fileName,
+        path: entry.filePath,
+        size: entry.size,
+        isDirectory: false,
+        modifiedTime: entry.modifiedTime,
+        thumbnailUrl: entry.thumbnailUrl,
+      ),
+      sourceId: entry.sourceId,
+      title: entry.title,
+      artist: entry.artist,
+      album: entry.album,
+      duration: entry.duration,
+      trackNumber: entry.trackNumber,
+      year: entry.year,
+      genre: entry.genre,
+      coverBase64: entry.coverBase64,
+      metadataExtracted: entry.metadataExtracted,
+    );
+  }
 
   final FileItem file;
   final String sourceId;
+
+  // 元数据字段
+  final String? title;
+  final String? artist;
+  final String? album;
+  final int? duration; // 毫秒
+  final int? trackNumber;
+  final int? year;
+  final String? genre;
+  final String? coverBase64; // Base64 编码的封面图片
+  final bool metadataExtracted; // 是否已提取过元数据
 
   String get name => file.name;
   String get path => file.path;
@@ -41,6 +89,52 @@ class MusicFileWithSource {
   String? get thumbnailUrl => file.thumbnailUrl;
   String get displaySize => file.displaySize;
 
+  /// 显示的标题（优先使用元数据标题，否则从文件名解析）
+  String get displayTitle {
+    if (title != null && title!.isNotEmpty) return title!;
+    final nameWithoutExt = name.replaceAll(RegExp(r'\.[^.]+$'), '');
+    // 尝试解析 "艺术家 - 歌曲名" 格式
+    final match = RegExp(r'^.+?\s*[-–—]\s*(.+)$').firstMatch(nameWithoutExt);
+    return match?.group(1)?.trim() ?? nameWithoutExt;
+  }
+
+  /// 显示的艺术家
+  String get displayArtist {
+    if (artist != null && artist!.isNotEmpty) return artist!;
+    // 尝试从文件名解析
+    final nameWithoutExt = name.replaceAll(RegExp(r'\.[^.]+$'), '');
+    final match = RegExp(r'^(.+?)\s*[-–—]\s*.+$').firstMatch(nameWithoutExt);
+    return match?.group(1)?.trim() ?? '未知艺术家';
+  }
+
+  /// 显示的专辑
+  String get displayAlbum => album?.isNotEmpty == true ? album! : '未知专辑';
+
+  /// 是否有封面
+  bool get hasCover => coverBase64 != null && coverBase64!.isNotEmpty;
+
+  /// 获取封面数据（从 Base64 解码）
+  List<int>? get coverData {
+    if (coverBase64 == null || coverBase64!.isEmpty) return null;
+    try {
+      return base64Decode(coverBase64!);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// 格式化时长
+  String get durationText {
+    if (duration == null) return '--:--';
+    final totalSeconds = duration! ~/ 1000;
+    final minutes = totalSeconds ~/ 60;
+    final seconds = totalSeconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  /// 唯一标识
+  String get uniqueKey => '${sourceId}_$path';
+
   MusicLibraryCacheEntry toCacheEntry() => MusicLibraryCacheEntry(
         sourceId: sourceId,
         filePath: path,
@@ -48,7 +142,43 @@ class MusicFileWithSource {
         thumbnailUrl: thumbnailUrl,
         size: size,
         modifiedTime: modifiedTime,
+        title: title,
+        artist: artist,
+        album: album,
+        duration: duration,
+        trackNumber: trackNumber,
+        year: year,
+        genre: genre,
+        coverBase64: coverBase64,
+        metadataExtracted: metadataExtracted,
       );
+
+  /// 复制并更新元数据
+  MusicFileWithSource copyWithMetadata({
+    String? title,
+    String? artist,
+    String? album,
+    int? duration,
+    int? trackNumber,
+    int? year,
+    String? genre,
+    String? coverBase64,
+    bool? metadataExtracted,
+  }) {
+    return MusicFileWithSource(
+      file: file,
+      sourceId: sourceId,
+      title: title ?? this.title,
+      artist: artist ?? this.artist,
+      album: album ?? this.album,
+      duration: duration ?? this.duration,
+      trackNumber: trackNumber ?? this.trackNumber,
+      year: year ?? this.year,
+      genre: genre ?? this.genre,
+      coverBase64: coverBase64 ?? this.coverBase64,
+      metadataExtracted: metadataExtracted ?? this.metadataExtracted,
+    );
+  }
 }
 
 /// 音乐列表状态
@@ -87,9 +217,14 @@ class MusicListLoaded extends MusicListState {
 
   List<MusicFileWithSource> get filteredTracks {
     if (searchQuery.isEmpty) return tracks;
-    return tracks
-        .where((t) => t.name.toLowerCase().contains(searchQuery.toLowerCase()))
-        .toList();
+    final query = searchQuery.toLowerCase();
+    return tracks.where((t) {
+      // 搜索文件名、标题、艺术家、专辑
+      return t.name.toLowerCase().contains(query) ||
+          (t.title?.toLowerCase().contains(query) ?? false) ||
+          (t.artist?.toLowerCase().contains(query) ?? false) ||
+          (t.album?.toLowerCase().contains(query) ?? false);
+    }).toList();
   }
 
   MusicListLoaded copyWith({
@@ -116,6 +251,10 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
 
   final Ref _ref;
   final MusicLibraryCacheService _cacheService = MusicLibraryCacheService.instance;
+  final MusicMetadataService _metadataService = MusicMetadataService.instance;
+
+  /// 是否正在提取元数据
+  bool _isExtractingMetadata = false;
 
   Future<void> _init() async {
     try {
@@ -143,22 +282,15 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
     if (cache != null && cache.tracks.isNotEmpty) {
       state = MusicListLoading(fromCache: true, currentFolder: '加载缓存...');
 
-      final tracks = cache.tracks.map((entry) {
-        return MusicFileWithSource(
-          file: FileItem(
-            name: entry.fileName,
-            path: entry.filePath,
-            size: entry.size,
-            isDirectory: false,
-            modifiedTime: entry.modifiedTime,
-            thumbnailUrl: entry.thumbnailUrl,
-          ),
-          sourceId: entry.sourceId,
-        );
-      }).toList();
+      final tracks = cache.tracks
+          .map((entry) => MusicFileWithSource.fromCacheEntry(entry))
+          .toList();
 
       state = MusicListLoaded(tracks: tracks, fromCache: true);
       logger.i('从缓存加载了 ${tracks.length} 首音乐');
+
+      // 在后台提取未提取的元数据
+      unawaited(extractMetadataInBackground());
     } else {
       state = MusicListLoaded(tracks: [], fromCache: true);
     }
@@ -213,22 +345,15 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
       if (cache != null) {
         state = MusicListLoading(fromCache: true, currentFolder: '加载缓存...');
 
-        final tracks = cache.tracks.map((entry) {
-          return MusicFileWithSource(
-            file: FileItem(
-              name: entry.fileName,
-              path: entry.filePath,
-              size: entry.size,
-              isDirectory: false,
-              modifiedTime: entry.modifiedTime,
-              thumbnailUrl: entry.thumbnailUrl,
-            ),
-            sourceId: entry.sourceId,
-          );
-        }).toList();
+        final tracks = cache.tracks
+            .map((entry) => MusicFileWithSource.fromCacheEntry(entry))
+            .toList();
 
         state = MusicListLoaded(tracks: tracks, fromCache: true);
         logger.i('从缓存加载了 ${tracks.length} 首音乐');
+
+        // 在后台提取未提取的元数据
+        unawaited(extractMetadataInBackground());
         return;
       }
     }
@@ -296,6 +421,9 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
     ));
 
     state = MusicListLoaded(tracks: tracks);
+
+    // 在后台提取元数据
+    unawaited(extractMetadataInBackground());
   }
 
   Future<void> _scanForMusic(
@@ -350,6 +478,119 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
   Future<void> forceRefresh() async {
     await _cacheService.clearCache();
     await loadMusic(forceRefresh: true);
+  }
+
+  /// 在后台提取未提取元数据的曲目
+  /// 每次提取一批，避免阻塞
+  Future<void> extractMetadataInBackground() async {
+    if (_isExtractingMetadata) return;
+    _isExtractingMetadata = true;
+
+    try {
+      await _metadataService.init();
+
+      // 获取未提取元数据的曲目
+      final tracksWithoutMetadata = _cacheService.getTracksWithoutMetadata();
+      if (tracksWithoutMetadata.isEmpty) {
+        logger.i('MusicListNotifier: 所有曲目都已提取元数据');
+        return;
+      }
+
+      logger.i('MusicListNotifier: 开始后台提取元数据，共 ${tracksWithoutMetadata.length} 首待处理');
+
+      // 获取连接
+      final connections = _ref.read(activeConnectionsProvider);
+
+      // 批量处理，每次处理一批
+      const batchSize = 10;
+      final updates = <String, MusicLibraryCacheEntry>{};
+      var processedCount = 0;
+
+      for (final entry in tracksWithoutMetadata) {
+        // 检查是否仍在挂载状态
+        if (!mounted) break;
+
+        final connection = connections[entry.sourceId];
+        if (connection == null || connection.status != SourceStatus.connected) {
+          continue;
+        }
+
+        try {
+          // 从 NAS 提取元数据（跳过歌词，歌词在播放时按需提取）
+          final metadata = await _metadataService.extractFromNasFile(
+            connection.adapter.fileSystem,
+            entry.filePath,
+            skipLyrics: true,
+          );
+
+          if (metadata != null) {
+            // 更新缓存条目
+            final updatedEntry = entry.copyWithMetadata(
+              title: metadata.title,
+              artist: metadata.artist,
+              album: metadata.album,
+              duration: metadata.duration?.inMilliseconds,
+              trackNumber: metadata.trackNumber,
+              year: metadata.year,
+              genre: metadata.genre,
+              coverBase64: metadata.coverData != null
+                  ? base64Encode(metadata.coverData!)
+                  : null,
+              metadataExtracted: true,
+            );
+            updates[entry.uniqueKey] = updatedEntry;
+          } else {
+            // 标记为已提取（即使没有元数据）
+            final updatedEntry = entry.copyWithMetadata(metadataExtracted: true);
+            updates[entry.uniqueKey] = updatedEntry;
+          }
+
+          processedCount++;
+
+          // 每批处理完毕后更新缓存和状态
+          if (updates.length >= batchSize) {
+            await _updateTracksWithMetadata(updates);
+            updates.clear();
+            // 短暂延迟，避免阻塞 UI
+            await Future<void>.delayed(const Duration(milliseconds: 100));
+          }
+        } catch (e) {
+          logger.w('MusicListNotifier: 提取元数据失败 ${entry.filePath}: $e');
+          // 标记为已提取，避免重复尝试
+          final updatedEntry = entry.copyWithMetadata(metadataExtracted: true);
+          updates[entry.uniqueKey] = updatedEntry;
+        }
+      }
+
+      // 处理剩余的更新
+      if (updates.isNotEmpty) {
+        await _updateTracksWithMetadata(updates);
+      }
+
+      logger.i('MusicListNotifier: 后台元数据提取完成，处理了 $processedCount 首');
+    } finally {
+      _isExtractingMetadata = false;
+    }
+  }
+
+  /// 更新曲目元数据并刷新状态
+  Future<void> _updateTracksWithMetadata(Map<String, MusicLibraryCacheEntry> updates) async {
+    // 更新缓存
+    await _cacheService.updateTracksMetadata(updates);
+
+    // 更新当前状态中的曲目
+    final current = state;
+    if (current is MusicListLoaded) {
+      final updatedTracks = current.tracks.map((track) {
+        final updated = updates[track.uniqueKey];
+        if (updated != null) {
+          return MusicFileWithSource.fromCacheEntry(updated);
+        }
+        return track;
+      }).toList();
+
+      state = current.copyWith(tracks: updatedTracks);
+    }
   }
 }
 
@@ -1032,7 +1273,20 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
       logger.d('_playTrack: 获取文件URL, path=${track.path}');
       final url = await connection.adapter.fileSystem.getFileUrl(track.path);
       logger.d('_playTrack: 文件URL => $url');
-      final musicItem = MusicItem.fromFileItem(track.file, url, sourceId: track.sourceId);
+      final musicItem = MusicItem.fromFileItem(
+        track.file,
+        url,
+        sourceId: track.sourceId,
+        // 传递预提取的元数据
+        title: track.title,
+        artist: track.artist,
+        album: track.album,
+        durationMs: track.duration,
+        trackNumber: track.trackNumber,
+        year: track.year,
+        genre: track.genre,
+        coverData: track.coverData,
+      );
 
       // 找到当前曲目在列表中的索引
       final trackIndex = allTracks.indexWhere((t) => t.path == track.path);
@@ -1096,7 +1350,20 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
         final conn = connections[t.sourceId];
         if (conn == null || conn.status != SourceStatus.connected) continue;
         final trackUrl = await conn.adapter.fileSystem.getFileUrl(t.path);
-        final item = MusicItem.fromFileItem(t.file, trackUrl, sourceId: t.sourceId);
+        final item = MusicItem.fromFileItem(
+          t.file,
+          trackUrl,
+          sourceId: t.sourceId,
+          // 传递预提取的元数据
+          title: t.title,
+          artist: t.artist,
+          album: t.album,
+          durationMs: t.duration,
+          trackNumber: t.trackNumber,
+          year: t.year,
+          genre: t.genre,
+          coverData: t.coverData,
+        );
         queue.add(item);
         if (t.path == currentTrack.path) {
           newCurrentIndex = queue.length - 1;
@@ -1570,9 +1837,10 @@ class _RecentTrackCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final coverSize = isDesktop ? 140.0 : 120.0;
-    final parsed = MusicItem.parseFileName(track.name);
-    final title = parsed.$2;
-    final artist = parsed.$1;
+    // 使用元数据（如已提取）或从文件名解析
+    final title = track.displayTitle;
+    final artist = track.displayArtist;
+    final coverData = track.coverData;
 
     return Material(
       color: Colors.transparent,
@@ -1589,14 +1857,16 @@ class _RecentTrackCard extends StatelessWidget {
                 width: coverSize,
                 height: coverSize,
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      AppColors.primary.withValues(alpha: 0.7),
-                      AppColors.secondary.withValues(alpha: 0.7),
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
+                  gradient: coverData == null
+                      ? LinearGradient(
+                          colors: [
+                            AppColors.primary.withValues(alpha: 0.7),
+                            AppColors.secondary.withValues(alpha: 0.7),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        )
+                      : null,
                   borderRadius: BorderRadius.circular(isDesktop ? 12 : 8),
                   boxShadow: isDesktop
                       ? [
@@ -1608,11 +1878,24 @@ class _RecentTrackCard extends StatelessWidget {
                         ]
                       : null,
                 ),
-                child: Icon(
-                  Icons.music_note_rounded,
-                  size: isDesktop ? 56 : 48,
-                  color: Colors.white,
-                ),
+                clipBehavior: Clip.antiAlias,
+                child: coverData != null
+                    ? Image.memory(
+                        Uint8List.fromList(coverData),
+                        fit: BoxFit.cover,
+                        width: coverSize,
+                        height: coverSize,
+                        errorBuilder: (context, error, stackTrace) => Icon(
+                          Icons.music_note_rounded,
+                          size: isDesktop ? 56 : 48,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Icon(
+                        Icons.music_note_rounded,
+                        size: isDesktop ? 56 : 48,
+                        color: Colors.white,
+                      ),
               ),
               SizedBox(height: isDesktop ? 12 : 8),
               SizedBox(
@@ -1628,7 +1911,7 @@ class _RecentTrackCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              if (isDesktop && artist != null)
+              if (isDesktop)
                 SizedBox(
                   width: coverSize,
                   child: Text(
@@ -2261,10 +2544,9 @@ class _MusicListTile extends ConsumerWidget {
     final currentMusic = ref.watch(currentMusicProvider);
     final isPlaying = currentMusic?.path == track.path;
 
-    // 解析艺术家和标题
-    final parsed = MusicItem.parseFileName(track.name);
-    final artist = parsed.$1;
-    final title = parsed.$2;
+    // 使用元数据（如已提取）或从文件名解析
+    final title = track.displayTitle;
+    final artist = track.displayArtist;
 
     // 根据索引生成渐变色
     final gradientColors = _getGradientColorsForIndex(index);
@@ -2320,38 +2602,11 @@ class _MusicListTile extends ConsumerWidget {
                 ),
                 const SizedBox(width: 12),
                 // 封面
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    gradient: LinearGradient(
-                      colors: isPlaying
-                          ? [AppColors.fileAudio, AppColors.secondary]
-                          : gradientColors,
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    boxShadow: isPlaying
-                        ? [
-                            BoxShadow(
-                              color: AppColors.fileAudio.withValues(alpha: 0.3),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ]
-                        : null,
-                  ),
-                  child: Center(
-                    child: Text(
-                      title.isNotEmpty ? title[0].toUpperCase() : '♪',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
+                _buildCoverWidget(
+                  context,
+                  title: title,
+                  isPlaying: isPlaying,
+                  gradientColors: gradientColors,
                 ),
                 const SizedBox(width: 12),
                 // 标题和艺术家
@@ -2372,21 +2627,45 @@ class _MusicListTile extends ConsumerWidget {
                         ),
                       ),
                       const SizedBox(height: 2),
-                      Text(
-                        artist ?? track.displaySize,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: context.textTheme.bodySmall?.copyWith(
-                          color: isDark
-                              ? AppColors.darkOnSurfaceVariant
-                              : context.colorScheme.onSurfaceVariant,
-                        ),
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              artist,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: context.textTheme.bodySmall?.copyWith(
+                                color: isDark
+                                    ? AppColors.darkOnSurfaceVariant
+                                    : context.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                          if (track.duration != null) ...[
+                            Text(
+                              ' · ',
+                              style: context.textTheme.bodySmall?.copyWith(
+                                color: isDark
+                                    ? AppColors.darkOnSurfaceVariant
+                                    : context.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                            Text(
+                              track.durationText,
+                              style: context.textTheme.bodySmall?.copyWith(
+                                color: isDark
+                                    ? AppColors.darkOnSurfaceVariant
+                                    : context.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ],
                   ),
                 ),
                 // 文件大小标签
-                if (artist != null)
+                if (track.metadataExtracted)
                   Container(
                     margin: const EdgeInsets.only(left: 8),
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -2500,6 +2779,63 @@ class _MusicListTile extends ConsumerWidget {
     );
   }
 
+  /// 构建封面组件
+  Widget _buildCoverWidget(
+    BuildContext context, {
+    required String title,
+    required bool isPlaying,
+    required List<Color> gradientColors,
+  }) {
+    final coverData = track.coverData;
+
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        gradient: coverData == null
+            ? LinearGradient(
+                colors: isPlaying
+                    ? [AppColors.fileAudio, AppColors.secondary]
+                    : gradientColors,
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              )
+            : null,
+        boxShadow: isPlaying
+            ? [
+                BoxShadow(
+                  color: AppColors.fileAudio.withValues(alpha: 0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ]
+            : null,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: coverData != null
+          ? Image.memory(
+              Uint8List.fromList(coverData),
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) => _buildFallbackCover(title),
+            )
+          : _buildFallbackCover(title),
+    );
+  }
+
+  Widget _buildFallbackCover(String title) {
+    return Center(
+      child: Text(
+        title.isNotEmpty ? title[0].toUpperCase() : '♪',
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 20,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
   Future<void> _playTrack(BuildContext context, WidgetRef ref) async {
     final connections = ref.read(activeConnectionsProvider);
     final connection = connections[track.sourceId];
@@ -2513,7 +2849,19 @@ class _MusicListTile extends ConsumerWidget {
     }
 
     final url = await connection.adapter.fileSystem.getFileUrl(track.path);
-    final musicItem = MusicItem.fromFileItem(track.file, url, sourceId: track.sourceId);
+    final musicItem = MusicItem.fromFileItem(
+      track.file,
+      url,
+      sourceId: track.sourceId,
+      title: track.title,
+      artist: track.artist,
+      album: track.album,
+      durationMs: track.duration,
+      trackNumber: track.trackNumber,
+      year: track.year,
+      genre: track.genre,
+      coverData: track.coverData,
+    );
 
     if (!context.mounted) return;
 
@@ -2539,7 +2887,19 @@ class _MusicListTile extends ConsumerWidget {
     }
 
     final url = await connection.adapter.fileSystem.getFileUrl(track.path);
-    final musicItem = MusicItem.fromFileItem(track.file, url, sourceId: track.sourceId);
+    final musicItem = MusicItem.fromFileItem(
+      track.file,
+      url,
+      sourceId: track.sourceId,
+      title: track.title,
+      artist: track.artist,
+      album: track.album,
+      durationMs: track.duration,
+      trackNumber: track.trackNumber,
+      year: track.year,
+      genre: track.genre,
+      coverData: track.coverData,
+    );
 
     switch (action) {
       case 'play_next':
@@ -2767,11 +3127,10 @@ class _ArtistsView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // 按艺术家分组
+    // 按艺术家分组（使用元数据或从文件名解析）
     final artistMap = <String, List<MusicFileWithSource>>{};
     for (final track in tracks) {
-      final parsed = MusicItem.parseFileName(track.name);
-      final artist = parsed.$1 ?? '未知艺术家';
+      final artist = track.displayArtist;
       artistMap.putIfAbsent(artist, () => []).add(track);
     }
 
@@ -3988,9 +4347,10 @@ class _PlaylistTrackTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final parsed = MusicItem.parseFileName(track.name);
-    final title = parsed.$2;
-    final artist = parsed.$1 ?? '未知艺术家';
+    // 使用元数据（如已提取）或从文件名解析
+    final title = track.displayTitle;
+    final artist = track.displayArtist;
+    final coverData = track.coverData;
 
     return ListTile(
       onTap: () => _playTrack(context, ref),
@@ -4002,11 +4362,24 @@ class _PlaylistTrackTile extends ConsumerWidget {
           color: isDark ? Colors.grey[800] : Colors.grey[200],
           borderRadius: BorderRadius.circular(8),
         ),
-        child: Icon(
-          Icons.music_note_rounded,
-          size: 20,
-          color: isDark ? Colors.grey[600] : Colors.grey[400],
-        ),
+        clipBehavior: Clip.antiAlias,
+        child: coverData != null
+            ? Image.memory(
+                Uint8List.fromList(coverData),
+                fit: BoxFit.cover,
+                width: 40,
+                height: 40,
+                errorBuilder: (context, error, stackTrace) => Icon(
+                  Icons.music_note_rounded,
+                  size: 20,
+                  color: isDark ? Colors.grey[600] : Colors.grey[400],
+                ),
+              )
+            : Icon(
+                Icons.music_note_rounded,
+                size: 20,
+                color: isDark ? Colors.grey[600] : Colors.grey[400],
+              ),
       ),
       title: Text(
         title,
@@ -4018,7 +4391,7 @@ class _PlaylistTrackTile extends ConsumerWidget {
         ),
       ),
       subtitle: Text(
-        artist,
+        '$artist${track.duration != null ? ' · ${track.durationText}' : ''}',
         style: TextStyle(
           fontSize: 11,
           color: isDark ? Colors.grey[500] : Colors.grey[600],
@@ -4088,8 +4461,10 @@ class _CompactMusicTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final parsed = MusicItem.parseFileName(track.name);
-    final title = parsed.$2;
+    // 使用元数据（如已提取）或从文件名解析
+    final title = track.displayTitle;
+    final artist = track.displayArtist;
+    final coverData = track.coverData;
 
     // 检查源是否已连接
     final connections = ref.watch(activeConnectionsProvider);
@@ -4108,13 +4483,28 @@ class _CompactMusicTile extends ConsumerWidget {
               color: isDark ? Colors.grey[800] : Colors.grey[200],
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(
-              Icons.music_note_rounded,
-              size: 20,
-              color: isConnected
-                  ? (isDark ? Colors.grey[600] : Colors.grey[400])
-                  : (isDark ? Colors.grey[700] : Colors.grey[350]),
-            ),
+            clipBehavior: Clip.antiAlias,
+            child: coverData != null
+                ? Image.memory(
+                    Uint8List.fromList(coverData),
+                    fit: BoxFit.cover,
+                    width: 40,
+                    height: 40,
+                    errorBuilder: (context, error, stackTrace) => Icon(
+                      Icons.music_note_rounded,
+                      size: 20,
+                      color: isConnected
+                          ? (isDark ? Colors.grey[600] : Colors.grey[400])
+                          : (isDark ? Colors.grey[700] : Colors.grey[350]),
+                    ),
+                  )
+                : Icon(
+                    Icons.music_note_rounded,
+                    size: 20,
+                    color: isConnected
+                        ? (isDark ? Colors.grey[600] : Colors.grey[400])
+                        : (isDark ? Colors.grey[700] : Colors.grey[350]),
+                  ),
           ),
           if (!isConnected)
             Positioned(
@@ -4152,7 +4542,9 @@ class _CompactMusicTile extends ConsumerWidget {
         ),
       ),
       subtitle: Text(
-        isConnected ? track.displaySize : '${track.displaySize} • 源未连接',
+        isConnected
+            ? '$artist${track.duration != null ? ' · ${track.durationText}' : ''}'
+            : '$artist • 源未连接',
         style: TextStyle(
           fontSize: 11,
           color: isConnected
@@ -4199,7 +4591,19 @@ class _CompactMusicTile extends ConsumerWidget {
       final url = await adapter.fileSystem.getFileUrl(track.path);
       logger.d('_CompactMusicTile._playTrack: 获取到 URL: $url');
 
-      final musicItem = MusicItem.fromFileItem(track.file, url, sourceId: track.sourceId);
+      final musicItem = MusicItem.fromFileItem(
+        track.file,
+        url,
+        sourceId: track.sourceId,
+        title: track.title,
+        artist: track.artist,
+        album: track.album,
+        durationMs: track.duration,
+        trackNumber: track.trackNumber,
+        year: track.year,
+        genre: track.genre,
+        coverData: track.coverData,
+      );
       logger.d('_CompactMusicTile._playTrack: 创建 MusicItem 成功');
 
       if (!context.mounted) {

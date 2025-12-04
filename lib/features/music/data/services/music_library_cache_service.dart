@@ -12,6 +12,16 @@ class MusicLibraryCacheEntry {
     this.thumbnailUrl,
     this.size = 0,
     this.modifiedTime,
+    // 元数据字段
+    this.title,
+    this.artist,
+    this.album,
+    this.duration,
+    this.trackNumber,
+    this.year,
+    this.genre,
+    this.coverBase64,
+    this.metadataExtracted = false,
   });
 
   final String sourceId;
@@ -21,7 +31,73 @@ class MusicLibraryCacheEntry {
   final int size;
   final DateTime? modifiedTime;
 
+  // 元数据字段
+  final String? title;
+  final String? artist;
+  final String? album;
+  final int? duration; // 毫秒
+  final int? trackNumber;
+  final int? year;
+  final String? genre;
+  final String? coverBase64; // Base64 编码的封面图片
+  final bool metadataExtracted; // 是否已提取过元数据
+
   String get uniqueKey => '${sourceId}_$filePath';
+
+  /// 显示的标题（优先使用元数据标题，否则从文件名解析）
+  String get displayTitle {
+    if (title != null && title!.isNotEmpty) return title!;
+    final nameWithoutExt = fileName.replaceAll(RegExp(r'\.[^.]+$'), '');
+    // 尝试解析 "艺术家 - 歌曲名" 格式
+    final match = RegExp(r'^.+?\s*[-–—]\s*(.+)$').firstMatch(nameWithoutExt);
+    return match?.group(1)?.trim() ?? nameWithoutExt;
+  }
+
+  /// 显示的艺术家
+  String get displayArtist {
+    if (artist != null && artist!.isNotEmpty) return artist!;
+    // 尝试从文件名解析
+    final nameWithoutExt = fileName.replaceAll(RegExp(r'\.[^.]+$'), '');
+    final match = RegExp(r'^(.+?)\s*[-–—]\s*.+$').firstMatch(nameWithoutExt);
+    return match?.group(1)?.trim() ?? '未知艺术家';
+  }
+
+  /// 显示的专辑
+  String get displayAlbum => album?.isNotEmpty == true ? album! : '未知专辑';
+
+  /// 是否有封面
+  bool get hasCover => coverBase64 != null && coverBase64!.isNotEmpty;
+
+  /// 复制并更新元数据
+  MusicLibraryCacheEntry copyWithMetadata({
+    String? title,
+    String? artist,
+    String? album,
+    int? duration,
+    int? trackNumber,
+    int? year,
+    String? genre,
+    String? coverBase64,
+    bool? metadataExtracted,
+  }) {
+    return MusicLibraryCacheEntry(
+      sourceId: sourceId,
+      filePath: filePath,
+      fileName: fileName,
+      thumbnailUrl: thumbnailUrl,
+      size: size,
+      modifiedTime: modifiedTime,
+      title: title ?? this.title,
+      artist: artist ?? this.artist,
+      album: album ?? this.album,
+      duration: duration ?? this.duration,
+      trackNumber: trackNumber ?? this.trackNumber,
+      year: year ?? this.year,
+      genre: genre ?? this.genre,
+      coverBase64: coverBase64 ?? this.coverBase64,
+      metadataExtracted: metadataExtracted ?? this.metadataExtracted,
+    );
+  }
 
   Map<String, dynamic> toMap() => {
         'sourceId': sourceId,
@@ -30,6 +106,15 @@ class MusicLibraryCacheEntry {
         'thumbnailUrl': thumbnailUrl,
         'size': size,
         'modifiedTime': modifiedTime?.millisecondsSinceEpoch,
+        'title': title,
+        'artist': artist,
+        'album': album,
+        'duration': duration,
+        'trackNumber': trackNumber,
+        'year': year,
+        'genre': genre,
+        'coverBase64': coverBase64,
+        'metadataExtracted': metadataExtracted,
       };
 
   factory MusicLibraryCacheEntry.fromMap(Map<dynamic, dynamic> map) {
@@ -42,6 +127,15 @@ class MusicLibraryCacheEntry {
       modifiedTime: map['modifiedTime'] != null
           ? DateTime.fromMillisecondsSinceEpoch(map['modifiedTime'] as int)
           : null,
+      title: map['title'] as String?,
+      artist: map['artist'] as String?,
+      album: map['album'] as String?,
+      duration: map['duration'] as int?,
+      trackNumber: map['trackNumber'] as int?,
+      year: map['year'] as int?,
+      genre: map['genre'] as String?,
+      coverBase64: map['coverBase64'] as String?,
+      metadataExtracted: map['metadataExtracted'] as bool? ?? false,
     );
   }
 }
@@ -180,5 +274,53 @@ class MusicLibraryCacheService {
             : '${age.inDays} 天前';
 
     return '${cache.tracks.length} 首音乐 · $sizeText · $ageText更新';
+  }
+
+  /// 更新单个曲目的元数据
+  Future<void> updateTrackMetadata(String uniqueKey, MusicLibraryCacheEntry updatedEntry) async {
+    final cache = getCache();
+    if (cache == null) return;
+
+    final tracks = cache.tracks.map((t) {
+      if (t.uniqueKey == uniqueKey) {
+        return updatedEntry;
+      }
+      return t;
+    }).toList();
+
+    final newCache = MusicLibraryCache(
+      tracks: tracks,
+      lastUpdated: cache.lastUpdated,
+      sourceIds: cache.sourceIds,
+    );
+
+    await _box?.put(_cacheKey, newCache.toMap());
+  }
+
+  /// 批量更新曲目元数据
+  Future<void> updateTracksMetadata(Map<String, MusicLibraryCacheEntry> updates) async {
+    final cache = getCache();
+    if (cache == null) return;
+
+    final tracks = cache.tracks.map((t) {
+      final updated = updates[t.uniqueKey];
+      return updated ?? t;
+    }).toList();
+
+    final newCache = MusicLibraryCache(
+      tracks: tracks,
+      lastUpdated: cache.lastUpdated,
+      sourceIds: cache.sourceIds,
+    );
+
+    await _box?.put(_cacheKey, newCache.toMap());
+    logger.d('MusicLibraryCacheService: 批量更新 ${updates.length} 首音乐的元数据');
+  }
+
+  /// 获取未提取元数据的曲目
+  List<MusicLibraryCacheEntry> getTracksWithoutMetadata() {
+    final cache = getCache();
+    if (cache == null) return [];
+    return cache.tracks.where((t) => !t.metadataExtracted).toList();
   }
 }

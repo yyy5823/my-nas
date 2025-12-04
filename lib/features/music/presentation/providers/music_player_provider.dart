@@ -346,9 +346,30 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
       MusicMetadata? metadata;
 
-      if (music.sourceId != null) {
-        // NAS 文件：从连接中获取文件系统
-        logger.d('MusicPlayer: NAS文件，sourceId=${music.sourceId}');
+      // 优先根据 URL scheme 判断文件类型
+      final uri = Uri.tryParse(music.url);
+      logger.d('MusicPlayer: 解析URL - uri=$uri, scheme=${uri?.scheme}');
+
+      if (uri != null && uri.scheme == 'file') {
+        // 本地文件：直接从文件路径提取（无论是否有 sourceId）
+        logger.d('MusicPlayer: 检测到本地文件 (file:// scheme)');
+        final filePath = uri.toFilePath();
+        logger.d('MusicPlayer: 文件路径 = $filePath');
+        final file = File(filePath);
+        final exists = await file.exists();
+        logger.d('MusicPlayer: 文件存在 = $exists');
+
+        if (exists) {
+          logger.d('MusicPlayer: 开始从本地文件提取元数据...');
+          metadata = await metadataService.extractFromLocalFile(file);
+          logger.d('MusicPlayer: 提取完成 - metadata=${metadata != null}');
+          if (metadata != null) {
+            logger.d('MusicPlayer: 元数据详情 - title=${metadata.title}, artist=${metadata.artist}, album=${metadata.album}, hasCover=${metadata.coverData != null}, hasLyrics=${metadata.lyrics != null}');
+          }
+        }
+      } else if (music.sourceId != null) {
+        // NAS 文件（非 file:// scheme 且有 sourceId）：从连接中获取文件系统
+        logger.d('MusicPlayer: 检测到 NAS 文件，sourceId=${music.sourceId}');
         final connections = _ref.read(activeConnectionsProvider);
         final connection = connections[music.sourceId];
         if (connection != null && connection.status == SourceStatus.connected) {
@@ -360,29 +381,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
           logger.w('MusicPlayer: NAS连接不可用 - connection=${connection != null}, status=${connection?.status}');
         }
       } else {
-        // 本地文件：直接从文件路径提取
-        logger.d('MusicPlayer: 本地文件，解析URL...');
-        final uri = Uri.tryParse(music.url);
-        logger.d('MusicPlayer: 解析结果 - uri=$uri, scheme=${uri?.scheme}');
-
-        if (uri != null && uri.scheme == 'file') {
-          final filePath = uri.toFilePath();
-          logger.d('MusicPlayer: 文件路径 = $filePath');
-          final file = File(filePath);
-          final exists = await file.exists();
-          logger.d('MusicPlayer: 文件存在 = $exists');
-
-          if (exists) {
-            logger.d('MusicPlayer: 开始从本地文件提取元数据...');
-            metadata = await metadataService.extractFromLocalFile(file);
-            logger.d('MusicPlayer: 提取完成 - metadata=${metadata != null}');
-            if (metadata != null) {
-              logger.d('MusicPlayer: 元数据详情 - title=${metadata.title}, artist=${metadata.artist}, album=${metadata.album}, hasCover=${metadata.coverData != null}, hasLyrics=${metadata.lyrics != null}');
-            }
-          }
-        } else {
-          logger.w('MusicPlayer: URL格式不正确或不是file协议 - url=${music.url}');
-        }
+        logger.w('MusicPlayer: 无法确定文件类型 - url=${music.url}, sourceId=${music.sourceId}');
       }
 
       if (metadata != null) {

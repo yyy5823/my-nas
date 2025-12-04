@@ -10,6 +10,7 @@ import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/features/video/data/services/subtitle_service.dart';
+import 'package:my_nas/features/video/data/services/video_metadata_service.dart';
 import 'package:my_nas/features/video/domain/entities/video_item.dart';
 import 'package:my_nas/features/video/presentation/providers/playlist_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/video_player_provider.dart';
@@ -17,6 +18,7 @@ import 'package:my_nas/features/video/presentation/widgets/aspect_ratio_selector
 import 'package:my_nas/features/video/presentation/widgets/bookmark_sheet.dart';
 import 'package:my_nas/features/video/presentation/widgets/video_controls.dart';
 import 'package:my_nas/features/video/presentation/widgets/video_gesture_controller.dart';
+import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 
 class VideoPlayerPage extends ConsumerStatefulWidget {
   const VideoPlayerPage({required this.video, super.key});
@@ -39,13 +41,22 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
   // 缓存 notifier 引用，避免在 dispose 后使用 ref
   VideoPlayerNotifier? _playerNotifier;
 
+  // 缓存源信息，用于 dispose 时更新缩略图
+  String? _sourceId;
+  NasFileSystem? _fileSystem;
+  String? _videoUrl;
+
   @override
   void initState() {
     super.initState();
     // 缓存 notifier 引用
     _playerNotifier = ref.read(videoPlayerControllerProvider.notifier);
-    // 开始播放
-    Future.microtask(() {
+
+    // 开始播放并缓存源信息
+    Future.microtask(() async {
+      // 缓存源信息（用于 dispose 时更新缩略图）
+      await _cacheSourceInfo();
+      // 开始播放
       _playerNotifier?.play(
             widget.video,
             startPosition: widget.video.lastPosition,
@@ -53,6 +64,23 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
       _loadSubtitles();
     });
     _startHideControlsTimer();
+  }
+
+  /// 缓存源信息，用于 dispose 时更新缩略图
+  Future<void> _cacheSourceInfo() async {
+    try {
+      final connections = ref.read(activeConnectionsProvider);
+      final connectedEntry = connections.entries.firstWhere(
+        (e) => e.value.status == SourceStatus.connected,
+        orElse: () => throw Exception('No connected source'),
+      );
+      _sourceId = connectedEntry.key;
+      _fileSystem = connectedEntry.value.adapter.fileSystem;
+      // 缓存视频 URL，用于后续缩略图生成
+      _videoUrl = await _fileSystem?.getFileUrl(widget.video.path);
+    } catch (e) {
+      logger.w('VideoPlayerPage: 缓存源信息失败', e);
+    }
   }
 
   /// 加载字幕
@@ -89,10 +117,37 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
     _hideControlsTimer?.cancel();
     // 同步停止播放 - 使用缓存的 notifier 引用，避免在 dispose 后使用 ref
     _playerNotifier?.stopSync();
+    // 后台更新缩略图（仅对没有刮削封面的视频有效）
+    _triggerThumbnailUpdate();
     // 恢复系统 UI
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setPreferredOrientations([]);
     super.dispose();
+  }
+
+  /// 后台触发缩略图更新
+  ///
+  /// 在播放器停止后，异步更新缩略图为当前停止位置的帧
+  /// 仅对没有刮削封面（posterUrl 和 thumbnailUrl 都为空）的视频有效
+  void _triggerThumbnailUpdate() {
+    if (_sourceId == null || _videoUrl == null) {
+      logger.d('VideoPlayerPage: 缺少源信息，跳过缩略图更新');
+      return;
+    }
+
+    // 使用 Future.microtask 在后台执行，不阻塞 dispose
+    Future.microtask(() async {
+      try {
+        await VideoMetadataService.instance.refreshThumbnailOnProgressUpdate(
+          sourceId: _sourceId!,
+          filePath: widget.video.path,
+          videoUrl: _videoUrl!,
+          fileSystem: _fileSystem,
+        );
+      } catch (e) {
+        logger.w('VideoPlayerPage: 后台更新缩略图失败', e);
+      }
+    });
   }
 
   void _startHideControlsTimer() {

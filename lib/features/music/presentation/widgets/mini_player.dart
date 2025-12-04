@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
@@ -58,14 +60,7 @@ class MiniPlayer extends ConsumerWidget {
                       color: context.colorScheme.surfaceContainerHighest,
                     ),
                     clipBehavior: Clip.antiAlias,
-                    child: currentMusic.coverUrl != null
-                        ? Image.network(
-                            currentMusic.coverUrl!,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) =>
-                                _buildCoverPlaceholder(context),
-                          )
-                        : _buildCoverPlaceholder(context),
+                    child: _buildCoverImage(context, currentMusic.coverData, currentMusic.coverUrl),
                   ),
                   const SizedBox(width: 12),
                   // 歌曲信息
@@ -75,7 +70,7 @@ class MiniPlayer extends ConsumerWidget {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(
-                          currentMusic.name,
+                          currentMusic.displayTitle,
                           style: context.textTheme.bodyMedium,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -120,6 +115,26 @@ class MiniPlayer extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  Widget _buildCoverImage(BuildContext context, List<int>? coverData, String? coverUrl) {
+    // 优先使用嵌入的封面图片
+    if (coverData != null && coverData.isNotEmpty) {
+      return Image.memory(
+        Uint8List.fromList(coverData),
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => _buildCoverPlaceholder(context),
+      );
+    }
+    // 其次使用 URL 封面
+    if (coverUrl != null) {
+      return Image.network(
+        coverUrl,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => _buildCoverPlaceholder(context),
+      );
+    }
+    return _buildCoverPlaceholder(context);
   }
 
   Widget _buildCoverPlaceholder(BuildContext context) => Center(

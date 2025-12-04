@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
@@ -246,18 +248,11 @@ class _QueueItem extends StatelessWidget {
                         ? AppColors.darkSurfaceElevated
                         : AppColors.lightSurfaceVariant),
               ),
-              child: Icon(
-                isPlaying ? Icons.equalizer_rounded : Icons.music_note_rounded,
-                color: isPlaying
-                    ? Colors.white
-                    : (isDark
-                        ? AppColors.darkOnSurfaceVariant
-                        : AppColors.lightOnSurfaceVariant),
-                size: 20,
-              ),
+              clipBehavior: Clip.antiAlias,
+              child: _buildCoverOrIcon(),
             ),
             title: Text(
-              track.name,
+              track.displayTitle,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -303,6 +298,47 @@ class _QueueItem extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      );
+
+  Widget _buildCoverOrIcon() {
+    // 优先使用嵌入的封面图片
+    final coverData = track.coverData;
+    if (coverData != null && coverData.isNotEmpty) {
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.memory(
+            Uint8List.fromList(coverData),
+            fit: BoxFit.cover,
+            errorBuilder: (_, _, _) => _buildIconWidget(),
+          ),
+          if (isPlaying)
+            ColoredBox(
+              color: Colors.black.withValues(alpha: 0.4),
+              child: const Center(
+                child: Icon(
+                  Icons.equalizer_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+            ),
+        ],
+      );
+    }
+    return _buildIconWidget();
+  }
+
+  Widget _buildIconWidget() => Center(
+        child: Icon(
+          isPlaying ? Icons.equalizer_rounded : Icons.music_note_rounded,
+          color: isPlaying
+              ? Colors.white
+              : (isDark
+                  ? AppColors.darkOnSurfaceVariant
+                  : AppColors.lightOnSurfaceVariant),
+          size: 20,
         ),
       );
 }

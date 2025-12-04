@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:path/path.dart' as p;
@@ -322,6 +323,7 @@ class VideoThumbnailService {
     int timeMs,
   ) async {
     Player? player;
+    VideoController? controller;
 
     try {
       logger.d('VideoThumbnailService: 使用 media_kit 提取帧: $videoPath @ ${timeMs}ms');
@@ -329,8 +331,6 @@ class VideoThumbnailService {
       // 创建播放器实例
       player = Player(
         configuration: const PlayerConfiguration(
-          // 不需要视频输出，只需要截图
-          vo: 'null',
           // 静音
           muted: true,
           // 日志级别
@@ -338,7 +338,17 @@ class VideoThumbnailService {
         ),
       );
 
-      // 打开视频
+      // 创建 VideoController 以确保视频帧被渲染
+      // screenshot() 需要有渲染输出才能工作
+      controller = VideoController(
+        player,
+        configuration: const VideoControllerConfiguration(
+          // 启用硬件加速
+          enableHardwareAcceleration: true,
+        ),
+      );
+
+      // 打开视频但不播放
       await player.open(Media(videoPath), play: false);
 
       // 等待视频加载完成（duration > 0）
@@ -370,9 +380,18 @@ class VideoThumbnailService {
       // Seek 到指定位置
       await player.seek(Duration(milliseconds: seekTimeMs));
 
-      // 等待 seek 完成并等待帧渲染
-      // media_kit 需要一小段时间来渲染帧
-      await Future<void>.delayed(const Duration(milliseconds: 500));
+      // 等待首帧渲染完成（带超时）
+      try {
+        await controller.waitUntilFirstFrameRendered.timeout(
+          const Duration(seconds: 5),
+        );
+      } on TimeoutException {
+        // 如果超时，继续尝试截图（可能已经渲染但事件未触发）
+        logger.d('VideoThumbnailService: 等待首帧渲染超时，继续尝试截图');
+      }
+
+      // 额外等待确保帧完全渲染
+      await Future<void>.delayed(const Duration(milliseconds: 300));
 
       // 截取当前帧（JPEG 格式）
       final screenshot = await player.screenshot(format: 'image/jpeg');
@@ -391,7 +410,7 @@ class VideoThumbnailService {
       logger.e('VideoThumbnailService: media_kit 提取帧失败', e, stackTrace);
       return null;
     } finally {
-      // 释放播放器资源
+      // 释放资源
       await player?.dispose();
     }
   }

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
+import 'package:my_nas/shared/widgets/adaptive_image.dart';
 
 /// 海报墙组件
 class PosterWall extends StatelessWidget {
@@ -178,13 +178,13 @@ class _PosterCardState extends State<PosterCard> with SingleTickerProviderStateM
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  // 海报图片或占位符（优先使用 TMDB 海报，没有则使用内置缩略图）
+                  // 海报图片或占位符（优先使用 TMDB 海报，没有则使用内置缩略图或生成的缩略图）
                   if (hasPoster)
-                    CachedNetworkImage(
+                    AdaptiveImage(
                       imageUrl: displayPoster,
                       fit: BoxFit.cover,
-                      placeholder: (_, __) => _buildPlaceholder(isDark),
-                      errorWidget: (_, __, ___) => _buildPlaceholder(isDark),
+                      placeholder: (_) => _buildPlaceholder(isDark),
+                      errorWidget: (_, __) => _buildPlaceholder(isDark),
                     )
                   else
                     _buildPlaceholder(isDark),
@@ -473,12 +473,12 @@ class PosterRow extends StatelessWidget {
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(8),
                               child: hasPoster
-                                  ? CachedNetworkImage(
+                                  ? AdaptiveImage(
                                       imageUrl: displayPoster,
                                       fit: BoxFit.cover,
                                       width: itemWidth,
-                                      placeholder: (_, __) => _buildMiniPlaceholder(isDark, metadata),
-                                      errorWidget: (_, __, ___) => _buildMiniPlaceholder(isDark, metadata),
+                                      placeholder: (_) => _buildMiniPlaceholder(isDark, metadata),
+                                      errorWidget: (_, __) => _buildMiniPlaceholder(isDark, metadata),
                                     )
                                   : _buildMiniPlaceholder(isDark, metadata),
                             ),
