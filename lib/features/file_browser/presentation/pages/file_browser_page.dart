@@ -1228,7 +1228,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
           ),
         ),
       );
-    } catch (e) {
+    } on Exception catch (e) {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(

@@ -56,7 +56,7 @@ class _FolderPickerSheetState extends State<FolderPickerSheet> {
         _items = items.where((f) => f.isDirectory).toList();
         _items.sort((a, b) => a.name.compareTo(b.name));
       });
-    } catch (e) {
+    } on Exception catch (e) {
       setState(() {
         _errorMessage = e.toString();
       });

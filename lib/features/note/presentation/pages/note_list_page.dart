@@ -74,8 +74,7 @@ class NotePageLoaded extends NotePageState {
     bool? isLoadingContent,
     bool? livePreview,
     bool clearSelection = false,
-  }) {
-    return NotePageLoaded(
+  }) => NotePageLoaded(
       treeNodes: treeNodes ?? this.treeNodes,
       selectedNode: clearSelection ? null : (selectedNode ?? this.selectedNode),
       content: clearSelection ? null : (content ?? this.content),
@@ -85,7 +84,6 @@ class NotePageLoaded extends NotePageState {
       isLoadingContent: isLoadingContent ?? this.isLoadingContent,
       livePreview: livePreview ?? this.livePreview,
     );
-  }
 }
 
 class NotePageError extends NotePageState {
@@ -260,8 +258,7 @@ class NotePageNotifier extends StateNotifier<NotePageState> {
     if (current is! NotePageLoaded) return;
 
     // 递归更新节点的展开状态
-    List<NoteTreeNode> updateNode(List<NoteTreeNode> nodes, String targetPath, bool expanded, List<NoteTreeNode>? newChildren) {
-      return nodes.map((n) {
+    List<NoteTreeNode> updateNode(List<NoteTreeNode> nodes, String targetPath, bool expanded, List<NoteTreeNode>? newChildren) => nodes.map((n) {
         if (n.path == targetPath) {
           return n.copyWith(
             isExpanded: expanded,
@@ -275,7 +272,6 @@ class NotePageNotifier extends StateNotifier<NotePageState> {
         }
         return n;
       }).toList();
-    }
 
     if (!node.isExpanded && node.children.isEmpty) {
       // 需要加载子节点
@@ -481,9 +477,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
   final _layoutService = NoteLayoutService.instance;
 
   /// 判断是否为移动端布局
-  bool _isMobileLayout(BuildContext context) {
-    return MediaQuery.of(context).size.width < _mobileBreakpoint;
-  }
+  bool _isMobileLayout(BuildContext context) => MediaQuery.of(context).size.width < _mobileBreakpoint;
 
   @override
   void initState() {
@@ -562,8 +556,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
     );
   }
 
-  Widget _buildEmptyState(BuildContext context, WidgetRef ref, bool isDark) {
-    return Center(
+  Widget _buildEmptyState(BuildContext context, WidgetRef ref, bool isDark) => Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
@@ -628,7 +621,6 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
         ),
       ),
     );
-  }
 
   Widget _buildAppBar(
     BuildContext context,
@@ -716,8 +708,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
     required VoidCallback onTap,
     required bool isDark,
     String? tooltip,
-  }) {
-    return Tooltip(
+  }) => Tooltip(
       message: tooltip ?? '',
       child: Material(
         color: Colors.transparent,
@@ -739,7 +730,6 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
         ),
       ),
     );
-  }
 
   Widget _buildMainLayout(
       BuildContext context, NotePageLoaded state, bool isDark) {
@@ -782,8 +772,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
 
   /// 移动端目录树视图
   Widget _buildMobileTreeView(
-      BuildContext context, NotePageLoaded state, bool isDark) {
-    return NoteTreeWidget(
+      BuildContext context, NotePageLoaded state, bool isDark) => NoteTreeWidget(
       nodes: state.treeNodes,
       selectedPath: state.selectedNode?.path,
       onNodeSelected: (node) =>
@@ -794,12 +783,10 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
           ref.read(notePageProvider.notifier).toggleFolder(node),
       isDark: isDark,
     );
-  }
 
   /// 移动端内容视图（带返回按钮）
   Widget _buildMobileContentView(
-      BuildContext context, NotePageLoaded state, bool isDark) {
-    return Column(
+      BuildContext context, NotePageLoaded state, bool isDark) => Column(
       children: [
         // 移动端顶部工具栏（带返回按钮）
         _buildMobileContentHeader(context, state, isDark),
@@ -817,7 +804,6 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
         ),
       ],
     );
-  }
 
   /// 移动端内容头部（带返回按钮）
   Widget _buildMobileContentHeader(
@@ -888,8 +874,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
   }
 
   /// 移动端模式切换（简化版）
-  Widget _buildMobileModeTabs(NotePageLoaded state, bool isDark) {
-    return Container(
+  Widget _buildMobileModeTabs(NotePageLoaded state, bool isDark) => Container(
       decoration: BoxDecoration(
         color: isDark
             ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
@@ -914,15 +899,13 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
         ],
       ),
     );
-  }
 
   Widget _buildMobileModeButton({
     required IconData icon,
     required bool isSelected,
     required VoidCallback onTap,
     required bool isDark,
-  }) {
-    return Material(
+  }) => Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
@@ -943,7 +926,6 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
         ),
       ),
     );
-  }
 
   /// 移动端编辑器带预览（上下布局）
   Widget _buildMobileEditorWithPreview(

@@ -311,7 +311,7 @@ class PhotoDatabaseService {
         try {
           final date = DateTime.parse(dateStr);
           groups.add((date: date, count: row['count'] as int));
-        } catch (_) {
+        } on Exception catch (_) {
           // 忽略解析失败的日期
         }
       }

@@ -114,7 +114,7 @@ class LyricService {
 
       logger.d('LyricService: 未找到歌词文件');
       return LyricData.empty;
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('LyricService: 加载歌词失败', e);
       return LyricData.empty;
     }
@@ -140,7 +140,7 @@ class LyricService {
         String content;
         try {
           content = utf8.decode(bytes);
-        } catch (_) {
+        } on Exception catch (_) {
           // 尝试 Latin-1 解码
           content = latin1.decode(bytes);
         }
@@ -151,7 +151,7 @@ class LyricService {
 
       client.close();
       return LyricData.empty;
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('LyricService: 下载歌词失败', e);
       return LyricData.empty;
     }

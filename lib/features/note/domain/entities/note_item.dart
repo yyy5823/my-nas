@@ -50,19 +50,27 @@ class TaskItem {
     DateTime? dueDate,
     int? priority,
     List<String>? tags,
-  }) {
-    return TaskItem(
+  }) => TaskItem(
       content: content ?? this.content,
       status: status ?? this.status,
       dueDate: dueDate ?? this.dueDate,
       priority: priority ?? this.priority,
       tags: tags ?? this.tags,
     );
-  }
 }
 
 /// 笔记实体
 class NoteItem {
+
+  /// 从 FileItem 创建
+  factory NoteItem.fromFileItem(FileItem file, String url) => NoteItem(
+      id: file.path,
+      name: file.name,
+      path: file.path,
+      url: url,
+      size: file.size,
+      modifiedAt: file.modifiedTime,
+    );
   const NoteItem({
     required this.id,
     required this.name,
@@ -108,18 +116,6 @@ class NoteItem {
   /// 是否有待办任务
   bool get hasTasks => tasks.isNotEmpty;
 
-  /// 从 FileItem 创建
-  factory NoteItem.fromFileItem(FileItem file, String url) {
-    return NoteItem(
-      id: file.path,
-      name: file.name,
-      path: file.path,
-      url: url,
-      size: file.size,
-      modifiedAt: file.modifiedTime,
-    );
-  }
-
   NoteItem copyWith({
     String? id,
     String? name,
@@ -132,8 +128,7 @@ class NoteItem {
     int? size,
     DateTime? modifiedAt,
     DateTime? createdAt,
-  }) {
-    return NoteItem(
+  }) => NoteItem(
       id: id ?? this.id,
       name: name ?? this.name,
       path: path ?? this.path,
@@ -146,5 +141,4 @@ class NoteItem {
       modifiedAt: modifiedAt ?? this.modifiedAt,
       createdAt: createdAt ?? this.createdAt,
     );
-  }
 }

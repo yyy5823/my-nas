@@ -179,7 +179,7 @@ class FnOSApi {
         // 继续尝试下一个端点
       } on DioException catch (e) {
         logger.w('FnOSApi: 端点 ${attempt['endpoint']} 失败: ${e.message}');
-      } catch (e) {
+      } on Exception catch (e) {
         logger.w('FnOSApi: 登录尝试失败', e);
       }
     }

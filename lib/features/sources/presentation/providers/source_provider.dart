@@ -4,30 +4,22 @@ import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 
 /// 源管理服务 Provider
-final sourceManagerProvider = Provider<SourceManagerService>((ref) {
-  return SourceManagerService.instance;
-});
+final sourceManagerProvider = Provider<SourceManagerService>((ref) => SourceManagerService.instance);
 
 /// 所有源列表 Provider
 final sourcesProvider =
     StateNotifierProvider<SourcesNotifier, AsyncValue<List<SourceEntity>>>(
-        (ref) {
-  return SourcesNotifier(ref);
-});
+        SourcesNotifier.new);
 
 /// 活跃连接 Provider
 final activeConnectionsProvider =
     StateNotifierProvider<ActiveConnectionsNotifier, Map<String, SourceConnection>>(
-        (ref) {
-  return ActiveConnectionsNotifier(ref);
-});
+        ActiveConnectionsNotifier.new);
 
 /// 媒体库配置 Provider
 final mediaLibraryConfigProvider =
     StateNotifierProvider<MediaLibraryConfigNotifier, AsyncValue<MediaLibraryConfig>>(
-        (ref) {
-  return MediaLibraryConfigNotifier(ref);
-});
+        MediaLibraryConfigNotifier.new);
 
 /// 源列表管理
 class SourcesNotifier extends StateNotifier<AsyncValue<List<SourceEntity>>> {
@@ -43,7 +35,7 @@ class SourcesNotifier extends StateNotifier<AsyncValue<List<SourceEntity>>> {
       await manager.init();
       final sources = await manager.getSources();
       state = AsyncValue.data(sources);
-    } catch (e, st) {
+    } on Exception catch (e, st) {
       state = AsyncValue.error(e, st);
     }
   }
@@ -204,7 +196,7 @@ class MediaLibraryConfigNotifier
       await manager.init();
       final config = await manager.getMediaLibraryConfig();
       state = AsyncValue.data(config);
-    } catch (e, st) {
+    } on Exception catch (e, st) {
       state = AsyncValue.error(e, st);
     }
   }

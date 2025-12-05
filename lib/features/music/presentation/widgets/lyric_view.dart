@@ -138,8 +138,7 @@ class _LyricViewState extends ConsumerState<LyricView> {
     );
   }
 
-  Widget _buildNoLyric(bool isDark) {
-    return Center(
+  Widget _buildNoLyric(bool isDark) => Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -168,7 +167,6 @@ class _LyricViewState extends ConsumerState<LyricView> {
         ],
       ),
     );
-  }
 }
 
 class _LyricLineWidget extends StatelessWidget {
@@ -189,8 +187,7 @@ class _LyricLineWidget extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
+  Widget build(BuildContext context) => GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
@@ -218,7 +215,6 @@ class _LyricLineWidget extends StatelessWidget {
         ),
       ),
     );
-  }
 }
 
 /// 紧凑型歌词显示（用于播放页底部）

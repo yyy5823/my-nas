@@ -69,9 +69,7 @@ class MusicFavoritesNotifier extends StateNotifier<MusicFavoritesState> {
 
 /// 收藏列表 provider
 final musicFavoritesProvider =
-    StateNotifierProvider<MusicFavoritesNotifier, MusicFavoritesState>((ref) {
-  return MusicFavoritesNotifier();
-});
+    StateNotifierProvider<MusicFavoritesNotifier, MusicFavoritesState>((ref) => MusicFavoritesNotifier());
 
 /// 检查特定音乐是否已收藏
 final isMusicFavoriteProvider =
@@ -148,9 +146,7 @@ class MusicHistoryNotifier extends StateNotifier<MusicHistoryState> {
 
 /// 播放历史 provider
 final musicHistoryProvider =
-    StateNotifierProvider<MusicHistoryNotifier, MusicHistoryState>((ref) {
-  return MusicHistoryNotifier();
-});
+    StateNotifierProvider<MusicHistoryNotifier, MusicHistoryState>((ref) => MusicHistoryNotifier());
 
 /// 最近播放 provider
 final recentMusicProvider =

@@ -46,12 +46,12 @@ class MusicMetadataService {
         if (entity is File && p.basename(entity.path).startsWith('temp_metadata_')) {
           try {
             await entity.delete();
-          } catch (_) {
+          } on Exception catch (_) {
             // 忽略删除失败
           }
         }
       }
-    } catch (e) {
+    } on Exception catch (e) {
       logger.d('MusicMetadataService: 清理临时文件失败: $e');
     }
   }
@@ -211,7 +211,7 @@ class MusicMetadataService {
       // 其他解析异常，记录但不抛出
       logger.d('MusicMetadataService: 解析异常: $path - $e');
       return null;
-    } catch (e) {
+    } on Exception catch (e) {
       // 其他异常
       logger.d('MusicMetadataService: 提取失败: $path - $e');
       return null;

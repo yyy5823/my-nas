@@ -56,7 +56,7 @@ class _StartupPageState extends ConsumerState<StartupPage> {
       // 后台异步进行自动连接（不阻塞主界面）
       // 使用 unawaited 明确表示不等待完成
       _autoConnectInBackground();
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('StartupPage: 初始化异常', e);
       if (mounted) {
         // 即使初始化失败也进入主界面，用户可以在设置中配置源
@@ -76,7 +76,7 @@ class _StartupPageState extends ConsumerState<StartupPage> {
         logger.i('StartupPage: 开始后台自动连接...');
         await ref.read(activeConnectionsProvider.notifier).autoConnectAll();
         logger.i('StartupPage: 后台自动连接完成');
-      } catch (e) {
+      } on Exception catch (e) {
         logger.e('StartupPage: 后台自动连接异常', e);
       }
     });
@@ -84,7 +84,7 @@ class _StartupPageState extends ConsumerState<StartupPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-      body: Container(
+      body: DecoratedBox(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,

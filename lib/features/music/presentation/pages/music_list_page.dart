@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -43,6 +44,7 @@ class MusicFileWithSource {
     this.year,
     this.genre,
     this.coverBase64,
+    this.coverPath,
     this.metadataExtracted = false,
   });
 
@@ -80,6 +82,7 @@ class MusicFileWithSource {
   final int? year;
   final String? genre;
   final String? coverBase64; // Base64 编码的封面图片
+  final String? coverPath; // 封面文件路径（磁盘缓存）
   final bool metadataExtracted; // 是否已提取过元数据
 
   String get name => file.name;
@@ -111,16 +114,25 @@ class MusicFileWithSource {
   String get displayAlbum => album?.isNotEmpty ?? false ? album! : '未知专辑';
 
   /// 是否有封面
-  bool get hasCover => coverBase64 != null && coverBase64!.isNotEmpty;
+  bool get hasCover =>
+      (coverBase64 != null && coverBase64!.isNotEmpty) ||
+      (coverPath != null && coverPath!.isNotEmpty);
 
-  /// 获取封面数据（从 Base64 解码）
+  /// 获取封面数据（从 Base64 解码，优先使用磁盘缓存会在 UI 层处理）
   List<int>? get coverData {
     if (coverBase64 == null || coverBase64!.isEmpty) return null;
     try {
       return base64Decode(coverBase64!);
-    } catch (e) {
+    } on Exception catch (e) {
       return null;
     }
+  }
+
+  /// 获取封面文件（用于 Image.file）
+  File? get coverFile {
+    if (coverPath == null || coverPath!.isEmpty) return null;
+    final file = File(coverPath!);
+    return file.existsSync() ? file : null;
   }
 
   /// 格式化时长
@@ -310,6 +322,7 @@ class MusicListLoaded extends MusicListState {
             duration: m.duration,
             year: m.year,
             genre: m.genre,
+            coverPath: m.coverPath,
             metadataExtracted: true,
           ))
       .toList();
@@ -337,6 +350,7 @@ class MusicListLoaded extends MusicListState {
             duration: m.duration,
             year: m.year,
             genre: m.genre,
+            coverPath: m.coverPath,
             metadataExtracted: true,
           ))
       .toList();
@@ -360,6 +374,7 @@ class MusicListLoaded extends MusicListState {
       duration: m.duration,
       year: m.year,
       genre: m.genre,
+      coverPath: m.coverPath,
       metadataExtracted: true,
     );
   }
@@ -435,7 +450,7 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
           loadMusic();
         }
       });
-    } catch (e) {
+    } on Exception on Exception catch (e) {
       logger.e('MusicListNotifier: 初始化失败', e);
       state = MusicListLoaded(totalCount: 0, fromCache: false);
     }
@@ -702,7 +717,7 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
           modifiedTime: track.modifiedTime,
           lastUpdated: DateTime.now(),
         ));
-      } catch (e) {
+      } on Exception catch (e) {
         logger.w('提取元数据失败 ${track.path}: $e');
         // 即使失败也保存基本信息
         metadataList.add(MusicTrackEntity(
@@ -1481,7 +1496,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
       if (context.mounted) {
         await MusicPlayerPage.open(context);
       }
-    } catch (e) {
+    } on Exception catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('播放失败: $e')),
@@ -1542,7 +1557,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
 
       // 在后台构建完整播放队列
       await _buildPlayQueue(ref, connections, track, allTracks, trackIndex);
-    } catch (e) {
+    } on Exception catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('播放失败: $e')),
@@ -1607,7 +1622,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
       // 更新播放队列
       ref.read(playQueueProvider.notifier).setQueue(queue);
       ref.read(musicPlayerControllerProvider.notifier).updateCurrentIndex(newCurrentIndex);
-    } catch (e) {
+    } on Exception catch (e) {
       logger.w('构建播放队列失败: $e');
     }
   }
@@ -2072,7 +2087,9 @@ class _RecentTrackCard extends StatelessWidget {
     // 使用元数据（如已提取）或从文件名解析
     final title = track.displayTitle;
     final artist = track.displayArtist;
+    final coverFile = track.coverFile;
     final coverData = track.coverData;
+    final hasCover = coverFile != null || coverData != null;
 
     return Material(
       color: Colors.transparent,
@@ -2089,7 +2106,7 @@ class _RecentTrackCard extends StatelessWidget {
                 width: coverSize,
                 height: coverSize,
                 decoration: BoxDecoration(
-                  gradient: coverData == null
+                  gradient: !hasCover
                       ? LinearGradient(
                           colors: [
                             AppColors.primary.withValues(alpha: 0.7),
@@ -2111,9 +2128,9 @@ class _RecentTrackCard extends StatelessWidget {
                       : null,
                 ),
                 clipBehavior: Clip.antiAlias,
-                child: coverData != null
-                    ? Image.memory(
-                        Uint8List.fromList(coverData),
+                child: coverFile != null
+                    ? Image.file(
+                        coverFile,
                         fit: BoxFit.cover,
                         width: coverSize,
                         height: coverSize,
@@ -2124,11 +2141,24 @@ class _RecentTrackCard extends StatelessWidget {
                           color: Colors.white,
                         ),
                       )
-                    : Icon(
-                        Icons.music_note_rounded,
-                        size: isDesktop ? 56 : 48,
-                        color: Colors.white,
-                      ),
+                    : coverData != null
+                        ? Image.memory(
+                            Uint8List.fromList(coverData),
+                            fit: BoxFit.cover,
+                            width: coverSize,
+                            height: coverSize,
+                            gaplessPlayback: true,
+                            errorBuilder: (context, error, stackTrace) => Icon(
+                              Icons.music_note_rounded,
+                              size: isDesktop ? 56 : 48,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Icon(
+                            Icons.music_note_rounded,
+                            size: isDesktop ? 56 : 48,
+                            color: Colors.white,
+                          ),
               ),
               SizedBox(height: isDesktop ? 12 : 8),
               SizedBox(
@@ -2782,7 +2812,7 @@ class _AllSongsView extends ConsumerWidget {
       if (context.mounted) {
         await MusicPlayerPage.open(context);
       }
-    } catch (e, stackTrace) {
+    } on Exception catch (e, stackTrace) {
       logger.e('_AllSongsView._playAll: 播放失败', e, stackTrace);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('播放失败: $e')));
@@ -2834,7 +2864,7 @@ class _AllSongsView extends ConsumerWidget {
       if (context.mounted) {
         await MusicPlayerPage.open(context);
       }
-    } catch (e, stackTrace) {
+    } on Exception catch (e, stackTrace) {
       logger.e('_AllSongsView._shufflePlay: 播放失败', e, stackTrace);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('播放失败: $e')));
@@ -3101,14 +3131,16 @@ class _MusicListTile extends ConsumerWidget {
     required bool isPlaying,
     required List<Color> gradientColors,
   }) {
+    final coverFile = track.coverFile;
     final coverData = track.coverData;
+    final hasCover = coverFile != null || coverData != null;
 
     return Container(
       width: 48,
       height: 48,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(8),
-        gradient: coverData == null
+        gradient: !hasCover
             ? LinearGradient(
                 colors: isPlaying
                     ? [AppColors.fileAudio, AppColors.secondary]
@@ -3128,14 +3160,21 @@ class _MusicListTile extends ConsumerWidget {
             : null,
       ),
       clipBehavior: Clip.antiAlias,
-      child: coverData != null
-          ? Image.memory(
-              Uint8List.fromList(coverData),
+      child: coverFile != null
+          ? Image.file(
+              coverFile,
               fit: BoxFit.cover,
               gaplessPlayback: true,
               errorBuilder: (context, error, stackTrace) => _buildFallbackCover(title),
             )
-          : _buildFallbackCover(title),
+          : coverData != null
+              ? Image.memory(
+                  Uint8List.fromList(coverData),
+                  fit: BoxFit.cover,
+                  gaplessPlayback: true,
+                  errorBuilder: (context, error, stackTrace) => _buildFallbackCover(title),
+                )
+              : _buildFallbackCover(title),
     );
   }
 
@@ -4622,6 +4661,7 @@ class _PlaylistTrackTile extends ConsumerWidget {
     // 使用元数据（如已提取）或从文件名解析
     final title = track.displayTitle;
     final artist = track.displayArtist;
+    final coverFile = track.coverFile;
     final coverData = track.coverData;
 
     return ListTile(
@@ -4635,9 +4675,9 @@ class _PlaylistTrackTile extends ConsumerWidget {
           borderRadius: BorderRadius.circular(8),
         ),
         clipBehavior: Clip.antiAlias,
-        child: coverData != null
-            ? Image.memory(
-                Uint8List.fromList(coverData),
+        child: coverFile != null
+            ? Image.file(
+                coverFile,
                 fit: BoxFit.cover,
                 width: 40,
                 height: 40,
@@ -4647,11 +4687,23 @@ class _PlaylistTrackTile extends ConsumerWidget {
                   color: isDark ? Colors.grey[600] : Colors.grey[400],
                 ),
               )
-            : Icon(
-                Icons.music_note_rounded,
-                size: 20,
-                color: isDark ? Colors.grey[600] : Colors.grey[400],
-              ),
+            : coverData != null
+                ? Image.memory(
+                    Uint8List.fromList(coverData),
+                    fit: BoxFit.cover,
+                    width: 40,
+                    height: 40,
+                    errorBuilder: (context, error, stackTrace) => Icon(
+                      Icons.music_note_rounded,
+                      size: 20,
+                      color: isDark ? Colors.grey[600] : Colors.grey[400],
+                    ),
+                  )
+                : Icon(
+                    Icons.music_note_rounded,
+                    size: 20,
+                    color: isDark ? Colors.grey[600] : Colors.grey[400],
+                  ),
       ),
       title: Text(
         title,
@@ -4882,6 +4934,7 @@ class _ModernMusicTile extends ConsumerWidget {
     final isPlaying = currentMusic?.path == track.path;
     final title = track.displayTitle;
     final artist = track.displayArtist;
+    final coverFile = track.coverFile;
     final coverData = track.coverData;
 
     // 检查源是否已连接
@@ -4925,7 +4978,7 @@ class _ModernMusicTile extends ConsumerWidget {
                 ),
                 const SizedBox(width: 12),
                 // 封面
-                _buildCover(coverData, title, isPlaying, isConnected),
+                _buildCover(coverFile, coverData, title, isPlaying, isConnected),
                 const SizedBox(width: 14),
                 // 标题和艺术家
                 Expanded(
@@ -5018,8 +5071,9 @@ class _ModernMusicTile extends ConsumerWidget {
     );
   }
 
-  Widget _buildCover(List<int>? coverData, String title, bool isPlaying, bool isConnected) {
+  Widget _buildCover(File? coverFile, List<int>? coverData, String title, bool isPlaying, bool isConnected) {
     final size = 52.0;
+    final hasCover = coverFile != null || coverData != null;
 
     return Container(
       width: size,
@@ -5038,12 +5092,19 @@ class _ModernMusicTile extends ConsumerWidget {
             : null,
       ),
       clipBehavior: Clip.antiAlias,
-      child: coverData != null
-          ? Image.memory(
-              Uint8List.fromList(coverData),
+      child: coverFile != null
+          ? Image.file(
+              coverFile,
               fit: BoxFit.cover,
               gaplessPlayback: true,
               errorBuilder: (_, __, ___) => _buildFallbackCover(title, isConnected),
+            )
+          : coverData != null
+              ? Image.memory(
+                  Uint8List.fromList(coverData),
+                  fit: BoxFit.cover,
+                  gaplessPlayback: true,
+                  errorBuilder: (_, __, ___) => _buildFallbackCover(title, isConnected),
             )
           : _buildFallbackCover(title, isConnected),
     );
@@ -5051,7 +5112,7 @@ class _ModernMusicTile extends ConsumerWidget {
 
   Widget _buildFallbackCover(String title, bool isConnected) {
     final gradientColors = _getGradientForTitle(title);
-    return Container(
+    return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: gradientColors,
@@ -5146,7 +5207,7 @@ class _ModernMusicTile extends ConsumerWidget {
       if (context.mounted) {
         await MusicPlayerPage.open(context);
       }
-    } catch (e) {
+    } on Exception catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('播放失败: $e')),
@@ -5189,15 +5250,20 @@ class _ModernMusicTile extends ConsumerWidget {
                       color: isDark ? Colors.grey[800] : Colors.grey[200],
                     ),
                     clipBehavior: Clip.antiAlias,
-                    child: track.coverData != null
-                        ? Image.memory(
-                            Uint8List.fromList(track.coverData!),
+                    child: track.coverFile != null
+                        ? Image.file(
+                            track.coverFile!,
                             fit: BoxFit.cover,
                           )
-                        : Icon(
-                            Icons.music_note_rounded,
-                            color: isDark ? Colors.grey[600] : Colors.grey[400],
-                          ),
+                        : track.coverData != null
+                            ? Image.memory(
+                                Uint8List.fromList(track.coverData!),
+                                fit: BoxFit.cover,
+                              )
+                            : Icon(
+                                Icons.music_note_rounded,
+                                color: isDark ? Colors.grey[600] : Colors.grey[400],
+                              ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -5308,7 +5374,7 @@ class _PlayingIndicatorState extends State<_PlayingIndicator>
           mainAxisAlignment: MainAxisAlignment.center,
           children: List.generate(3, (index) {
             final delay = index * 0.2;
-            final animValue = ((_controller.value + delay) % 1.0);
+            final animValue = (_controller.value + delay) % 1.0;
             return Container(
               width: 3,
               height: 8 + (animValue * 8),
@@ -5367,12 +5433,21 @@ class _CompactMusicTile extends ConsumerWidget {
     // 使用元数据（如已提取）或从文件名解析
     final title = track.displayTitle;
     final artist = track.displayArtist;
+    final coverFile = track.coverFile;
     final coverData = track.coverData;
 
     // 检查源是否已连接
     final connections = ref.watch(activeConnectionsProvider);
     final connection = connections[track.sourceId];
     final isConnected = connection != null && connection.status == SourceStatus.connected;
+
+    Widget buildFallbackIcon() => Icon(
+          Icons.music_note_rounded,
+          size: 20,
+          color: isConnected
+              ? (isDark ? Colors.grey[600] : Colors.grey[400])
+              : (isDark ? Colors.grey[700] : Colors.grey[350]),
+        );
 
     return ListTile(
       onTap: () => _playTrack(context, ref),
@@ -5387,27 +5462,23 @@ class _CompactMusicTile extends ConsumerWidget {
               borderRadius: BorderRadius.circular(8),
             ),
             clipBehavior: Clip.antiAlias,
-            child: coverData != null
-                ? Image.memory(
-                    Uint8List.fromList(coverData),
+            child: coverFile != null
+                ? Image.file(
+                    coverFile,
                     fit: BoxFit.cover,
                     width: 40,
                     height: 40,
-                    errorBuilder: (context, error, stackTrace) => Icon(
-                      Icons.music_note_rounded,
-                      size: 20,
-                      color: isConnected
-                          ? (isDark ? Colors.grey[600] : Colors.grey[400])
-                          : (isDark ? Colors.grey[700] : Colors.grey[350]),
-                    ),
+                    errorBuilder: (context, error, stackTrace) => buildFallbackIcon(),
                   )
-                : Icon(
-                    Icons.music_note_rounded,
-                    size: 20,
-                    color: isConnected
-                        ? (isDark ? Colors.grey[600] : Colors.grey[400])
-                        : (isDark ? Colors.grey[700] : Colors.grey[350]),
-                  ),
+                : coverData != null
+                    ? Image.memory(
+                        Uint8List.fromList(coverData),
+                        fit: BoxFit.cover,
+                        width: 40,
+                        height: 40,
+                        errorBuilder: (context, error, stackTrace) => buildFallbackIcon(),
+                      )
+                    : buildFallbackIcon(),
           ),
           if (!isConnected)
             Positioned(
@@ -5528,7 +5599,7 @@ class _CompactMusicTile extends ConsumerWidget {
       if (allTracks != null && allTracks!.isNotEmpty) {
         await _buildPlayQueue(ref, connections, trackIndex ?? 0);
       }
-    } catch (e, stackTrace) {
+    } on Exception catch (e, stackTrace) {
       logger.e('_CompactMusicTile._playTrack: 播放失败', e, stackTrace);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -5582,7 +5653,7 @@ class _CompactMusicTile extends ConsumerWidget {
       ref.read(playQueueProvider.notifier).setQueue(queue);
       ref.read(musicPlayerControllerProvider.notifier).updateCurrentIndex(newCurrentIndex);
       logger.d('_CompactMusicTile._buildPlayQueue: 队列构建完成，共 ${queue.length} 首');
-    } catch (e) {
+    } on Exception catch (e) {
       logger.w('_CompactMusicTile._buildPlayQueue: 构建播放队列失败: $e');
     }
   }
@@ -5644,7 +5715,7 @@ class _CompactMusicTile extends ConsumerWidget {
           _showAddToPlaylistSheet(context, ref, track.path);
         }
       }
-    } catch (e, stackTrace) {
+    } on Exception catch (e, stackTrace) {
       logger.e('_CompactMusicTile._handleAction: 操作失败', e, stackTrace);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

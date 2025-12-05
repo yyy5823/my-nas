@@ -16,6 +16,15 @@ enum MediaType {
 
 /// 媒体库目录
 class MediaLibraryPath {
+
+  factory MediaLibraryPath.fromJson(Map<String, dynamic> json) =>
+      MediaLibraryPath(
+        id: json['id'] as String,
+        sourceId: json['sourceId'] as String,
+        path: json['path'] as String,
+        name: json['name'] as String?,
+        isEnabled: json['isEnabled'] as bool? ?? true,
+      );
   MediaLibraryPath({
     String? id,
     required this.sourceId,
@@ -62,19 +71,28 @@ class MediaLibraryPath {
         'name': name,
         'isEnabled': isEnabled,
       };
-
-  factory MediaLibraryPath.fromJson(Map<String, dynamic> json) =>
-      MediaLibraryPath(
-        id: json['id'] as String,
-        sourceId: json['sourceId'] as String,
-        path: json['path'] as String,
-        name: json['name'] as String?,
-        isEnabled: json['isEnabled'] as bool? ?? true,
-      );
 }
 
 /// 媒体库配置
 class MediaLibraryConfig {
+
+  factory MediaLibraryConfig.fromJson(Map<String, dynamic> json) {
+    List<MediaLibraryPath> parsePaths(dynamic data) {
+      if (data == null) return [];
+      return (data as List<dynamic>)
+          .map((e) => MediaLibraryPath.fromJson(Map<String, dynamic>.from(e as Map)))
+          .toList();
+    }
+
+    return MediaLibraryConfig(
+      videoPaths: parsePaths(json['videoPaths']),
+      musicPaths: parsePaths(json['musicPaths']),
+      photoPaths: parsePaths(json['photoPaths']),
+      comicPaths: parsePaths(json['comicPaths']),
+      bookPaths: parsePaths(json['bookPaths']),
+      notePaths: parsePaths(json['notePaths']),
+    );
+  }
   const MediaLibraryConfig({
     this.videoPaths = const [],
     this.musicPaths = const [],
@@ -152,8 +170,7 @@ class MediaLibraryConfig {
   }
 
   /// 移除指定源的所有路径
-  MediaLibraryConfig removePathsForSource(String sourceId) {
-    return MediaLibraryConfig(
+  MediaLibraryConfig removePathsForSource(String sourceId) => MediaLibraryConfig(
       videoPaths: videoPaths.where((p) => p.sourceId != sourceId).toList(),
       musicPaths: musicPaths.where((p) => p.sourceId != sourceId).toList(),
       photoPaths: photoPaths.where((p) => p.sourceId != sourceId).toList(),
@@ -161,7 +178,6 @@ class MediaLibraryConfig {
       bookPaths: bookPaths.where((p) => p.sourceId != sourceId).toList(),
       notePaths: notePaths.where((p) => p.sourceId != sourceId).toList(),
     );
-  }
 
   Map<String, dynamic> toJson() => {
         'videoPaths': videoPaths.map((p) => p.toJson()).toList(),
@@ -171,22 +187,4 @@ class MediaLibraryConfig {
         'bookPaths': bookPaths.map((p) => p.toJson()).toList(),
         'notePaths': notePaths.map((p) => p.toJson()).toList(),
       };
-
-  factory MediaLibraryConfig.fromJson(Map<String, dynamic> json) {
-    List<MediaLibraryPath> parsePaths(dynamic data) {
-      if (data == null) return [];
-      return (data as List<dynamic>)
-          .map((e) => MediaLibraryPath.fromJson(Map<String, dynamic>.from(e as Map)))
-          .toList();
-    }
-
-    return MediaLibraryConfig(
-      videoPaths: parsePaths(json['videoPaths']),
-      musicPaths: parsePaths(json['musicPaths']),
-      photoPaths: parsePaths(json['photoPaths']),
-      comicPaths: parsePaths(json['comicPaths']),
-      bookPaths: parsePaths(json['bookPaths']),
-      notePaths: parsePaths(json['notePaths']),
-    );
-  }
 }

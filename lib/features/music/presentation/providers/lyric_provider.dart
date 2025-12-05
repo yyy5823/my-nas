@@ -9,9 +9,7 @@ import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 
 /// 当前歌词
-final currentLyricProvider = StateNotifierProvider<LyricNotifier, LyricState>((ref) {
-  return LyricNotifier(ref);
-});
+final currentLyricProvider = StateNotifierProvider<LyricNotifier, LyricState>(LyricNotifier.new);
 
 /// 歌词状态
 class LyricState {
@@ -29,13 +27,11 @@ class LyricState {
     LyricData? lyricData,
     bool? isLoading,
     String? error,
-  }) {
-    return LyricState(
+  }) => LyricState(
       lyricData: lyricData ?? this.lyricData,
       isLoading: isLoading ?? this.isLoading,
       error: error,
     );
-  }
 }
 
 /// 歌词管理器
@@ -104,7 +100,7 @@ class LyricNotifier extends StateNotifier<LyricState> {
         lyricData: lyricData,
         isLoading: false,
       );
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('LyricNotifier: 加载歌词失败', e);
       state = state.copyWith(
         isLoading: false,
@@ -128,7 +124,7 @@ class LyricNotifier extends StateNotifier<LyricState> {
         logger.i('LyricNotifier: 从音频文件提取到嵌入歌词');
         return LyricService.instance.parseLyrics(metadata.lyrics!);
       }
-    } catch (e) {
+    } on Exception catch (e) {
       logger.w('LyricNotifier: 从音频提取嵌入歌词失败', e);
     }
     return LyricData.empty;

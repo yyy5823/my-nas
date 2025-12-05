@@ -916,8 +916,8 @@ class _VolumePopupButton extends ConsumerWidget {
     );
 
   void _showVolumePopup(BuildContext context, WidgetRef ref) {
-    final RenderBox button = context.findRenderObject()! as RenderBox;
-    final RenderBox overlay = Navigator.of(context).overlay!.context.findRenderObject()! as RenderBox;
+    final button = context.findRenderObject()! as RenderBox;
+    final overlay = Navigator.of(context).overlay!.context.findRenderObject()! as RenderBox;
     final buttonPosition = button.localToGlobal(Offset.zero, ancestor: overlay);
 
     showDialog<void>(

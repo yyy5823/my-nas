@@ -80,7 +80,7 @@ class PlaylistService {
       _box = await Hive.openBox<Map<dynamic, dynamic>>(_boxName);
       _initialized = true;
       logger.i('PlaylistService: 初始化完成');
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('PlaylistService: 初始化失败', e);
     }
   }
@@ -121,7 +121,7 @@ class PlaylistService {
       if (data != null) {
         try {
           playlists.add(PlaylistEntry.fromMap(data));
-        } catch (_) {
+        } on Exception catch (_) {
           // 跳过无效数据
         }
       }
@@ -141,7 +141,7 @@ class PlaylistService {
     if (data != null) {
       try {
         return PlaylistEntry.fromMap(data);
-      } catch (_) {
+      } on Exception catch (_) {
         return null;
       }
     }

@@ -131,7 +131,7 @@ class FnOSAdapter implements NasAdapter {
 
     try {
       await _api?.logout();
-    } catch (e) {
+    } on Exception catch (e) {
       logger.w('FnOSAdapter: 登出时出错', e);
     }
 

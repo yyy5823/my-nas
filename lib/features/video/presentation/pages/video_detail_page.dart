@@ -578,7 +578,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       final url = await fileSystem.getFileUrl(filePath);
 
       return _VideoPlayInfo(url: url, size: fileInfo.size);
-    } catch (e) {
+    } on Exception catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

@@ -91,7 +91,7 @@ class QnapApi {
         '/cgi-bin/authLogout.cgi',
         queryParameters: {'sid': _sid},
       );
-    } catch (e) {
+    } on Exception catch (e) {
       logger.w('QnapApi: 登出时发生错误', e);
     } finally {
       _sid = null;

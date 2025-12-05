@@ -56,7 +56,7 @@ class MusicCoverCacheService {
       final file = File(path);
       await file.writeAsBytes(coverData);
       return path;
-    } catch (e) {
+    } on Exception catch (e) {
       logger.w('MusicCoverCacheService: 保存封面失败 $uniqueKey', e);
       return null;
     }
@@ -70,7 +70,7 @@ class MusicCoverCacheService {
     try {
       final data = base64Decode(base64Data);
       return saveCover(uniqueKey, Uint8List.fromList(data));
-    } catch (e) {
+    } on Exception catch (e) {
       logger.w('MusicCoverCacheService: 解码 Base64 封面失败', e);
       return null;
     }
@@ -86,7 +86,7 @@ class MusicCoverCacheService {
       if (await file.exists()) {
         return await file.readAsBytes();
       }
-    } catch (e) {
+    } on Exception catch (e) {
       logger.w('MusicCoverCacheService: 读取封面失败 $uniqueKey', e);
     }
     return null;
@@ -121,7 +121,7 @@ class MusicCoverCacheService {
       if (await file.exists()) {
         await file.delete();
       }
-    } catch (e) {
+    } on Exception catch (e) {
       logger.w('MusicCoverCacheService: 删除封面失败 $uniqueKey', e);
     }
   }
@@ -140,7 +140,7 @@ class MusicCoverCacheService {
         }
       }
       logger.i('MusicCoverCacheService: 已清空所有封面缓存');
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('MusicCoverCacheService: 清空缓存失败', e);
     }
   }
@@ -159,7 +159,7 @@ class MusicCoverCacheService {
           }
         }
       }
-    } catch (e) {
+    } on Exception catch (e) {
       logger.w('MusicCoverCacheService: 计算缓存大小失败', e);
     }
     return totalSize;

@@ -58,6 +58,15 @@ class StreamImage extends StatefulWidget {
   /// 用于解决自签名证书等问题
   final bool forceStream;
 
+  // 内存缓存（简单实现）
+  static final Map<String, Uint8List> _memoryCache = {};
+  static const int _maxCacheSize = 50; // 最多缓存50张图片
+
+  /// 清除所有内存缓存
+  static void clearCache() {
+    _memoryCache.clear();
+  }
+
   @override
   State<StreamImage> createState() => _StreamImageState();
 }
@@ -66,10 +75,6 @@ class _StreamImageState extends State<StreamImage> {
   Uint8List? _imageBytes;
   bool _isLoading = false;
   bool _hasError = false;
-
-  // 内存缓存（简单实现）
-  static final Map<String, Uint8List> _memoryCache = {};
-  static const int _maxCacheSize = 50; // 最多缓存50张图片
 
   @override
   void initState() {
@@ -213,10 +218,10 @@ class _StreamImageState extends State<StreamImage> {
   /// 2. 如果 URL 加载失败或没有 URL，通过 getFileStream 加载原文件
   Future<void> _loadImageViaStream() async {
     // 检查内存缓存
-    if (_cacheKey.isNotEmpty && _memoryCache.containsKey(_cacheKey)) {
+    if (_cacheKey.isNotEmpty && StreamImage._memoryCache.containsKey(_cacheKey)) {
       logger.d('StreamImage: Using cached image for $_cacheKey');
       setState(() {
-        _imageBytes = _memoryCache[_cacheKey];
+        _imageBytes = StreamImage._memoryCache[_cacheKey];
         _isLoading = false;
         _hasError = false;
       });
@@ -281,15 +286,15 @@ class _StreamImageState extends State<StreamImage> {
       // 添加到缓存
       if (_cacheKey.isNotEmpty) {
         // 如果缓存满了，清除一半
-        if (_memoryCache.length >= _maxCacheSize) {
-          final keysToRemove = _memoryCache.keys
-              .take(_maxCacheSize ~/ 2)
+        if (StreamImage._memoryCache.length >= StreamImage._maxCacheSize) {
+          final keysToRemove = StreamImage._memoryCache.keys
+              .take(StreamImage._maxCacheSize ~/ 2)
               .toList();
           for (final key in keysToRemove) {
-            _memoryCache.remove(key);
+            StreamImage._memoryCache.remove(key);
           }
         }
-        _memoryCache[_cacheKey] = imageData;
+        StreamImage._memoryCache[_cacheKey] = imageData;
       }
 
       if (mounted) {
@@ -388,11 +393,6 @@ class _StreamImageState extends State<StreamImage> {
     color: Colors.grey[200],
     child: Icon(Icons.broken_image_rounded, color: Colors.grey[400], size: 32),
   );
-
-  /// 清除所有内存缓存
-  static void clearCache() {
-    _memoryCache.clear();
-  }
 }
 
 /// 带缩略图的流式图片组件

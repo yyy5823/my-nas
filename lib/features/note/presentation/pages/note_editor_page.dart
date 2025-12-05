@@ -40,14 +40,12 @@ class NoteEditorLoaded extends NoteEditorState {
     List<TaskItem>? tasks,
     bool? isEditing,
     bool? hasChanges,
-  }) {
-    return NoteEditorLoaded(
+  }) => NoteEditorLoaded(
       content: content ?? this.content,
       tasks: tasks ?? this.tasks,
       isEditing: isEditing ?? this.isEditing,
       hasChanges: hasChanges ?? this.hasChanges,
     );
-  }
 }
 
 class NoteEditorError extends NoteEditorState {
@@ -238,15 +236,13 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
     );
   }
 
-  Widget _buildPreviewTab(BuildContext context, NoteEditorLoaded state, bool isDark) {
-    return SingleChildScrollView(
+  Widget _buildPreviewTab(BuildContext context, NoteEditorLoaded state, bool isDark) => SingleChildScrollView(
       padding: const EdgeInsets.all(AppSpacing.lg),
       child: _MarkdownPreview(
         content: state.content,
         isDark: isDark,
       ),
     );
-  }
 
   Widget _buildTasksTab(BuildContext context, NoteEditorLoaded state, bool isDark) {
     if (state.tasks.isEmpty) {
@@ -394,14 +390,12 @@ class _NoteEditorPageState extends ConsumerState<NoteEditorPage>
     required IconData icon,
     required String tooltip,
     required VoidCallback onTap,
-  }) {
-    return IconButton(
+  }) => IconButton(
       onPressed: onTap,
       icon: Icon(icon, size: 20),
       tooltip: tooltip,
       splashRadius: 20,
     );
-  }
 
   void _insertMarkdown(String prefix, String suffix) {
     final text = _editController.text;
@@ -608,23 +602,18 @@ class _MarkdownPreview extends StatelessWidget {
     );
   }
 
-  Widget _buildRichText(BuildContext context, String text) {
-    // 简单的富文本处理
-    return Text(
+  Widget _buildRichText(BuildContext context, String text) => Text(
       _stripMarkdown(text),
       style: context.textTheme.bodyMedium?.copyWith(
         color: isDark ? AppColors.darkOnSurface : null,
         height: 1.6,
       ),
     );
-  }
 
-  String _stripMarkdown(String text) {
-    return text
+  String _stripMarkdown(String text) => text
         .replaceAllMapped(RegExp(r'\*\*(.+?)\*\*'), (m) => m.group(1)!)
         .replaceAllMapped(RegExp(r'\*(.+?)\*'), (m) => m.group(1)!)
-        .replaceAllMapped(RegExp(r'~~(.+?)~~'), (m) => m.group(1)!)
-        .replaceAllMapped(RegExp(r'`(.+?)`'), (m) => m.group(1)!)
+        .replaceAllMapped(RegExp('~~(.+?)~~'), (m) => m.group(1)!)
+        .replaceAllMapped(RegExp('`(.+?)`'), (m) => m.group(1)!)
         .replaceAllMapped(RegExp(r'\[(.+?)\]\(.+?\)'), (m) => m.group(1)!);
-  }
 }

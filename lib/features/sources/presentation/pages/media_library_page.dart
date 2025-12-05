@@ -57,26 +57,21 @@ class MediaLibraryPage extends ConsumerWidget {
               fontSize: 12,
               fontWeight: FontWeight.normal,
             ),
-            tabs: MediaType.values.map((type) {
-              return Tab(
+            tabs: MediaType.values.map((type) => Tab(
                 iconMargin: const EdgeInsets.only(bottom: 4),
                 icon: Icon(_getMediaTypeIcon(type), size: 20),
                 text: type.displayName,
-              );
-            }).toList(),
+              )).toList(),
           ),
         ),
         body: TabBarView(
-          children: MediaType.values.map((type) {
-            return _MediaTypeTab(mediaType: type);
-          }).toList(),
+          children: MediaType.values.map((type) => _MediaTypeTab(mediaType: type)).toList(),
         ),
       ),
     );
   }
 
-  IconData _getMediaTypeIcon(MediaType type) {
-    return switch (type) {
+  IconData _getMediaTypeIcon(MediaType type) => switch (type) {
       MediaType.video => Icons.movie_outlined,
       MediaType.music => Icons.music_note_outlined,
       MediaType.photo => Icons.photo_library_outlined,
@@ -84,7 +79,6 @@ class MediaLibraryPage extends ConsumerWidget {
       MediaType.book => Icons.book_outlined,
       MediaType.note => Icons.note_outlined,
     };
-  }
 }
 
 class _MediaTypeTab extends ConsumerWidget {
@@ -173,8 +167,7 @@ class _MediaTypeTab extends ConsumerWidget {
     );
   }
 
-  Widget _buildNoSourcesState(BuildContext context) {
-    return Center(
+  Widget _buildNoSourcesState(BuildContext context) => Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
@@ -201,10 +194,8 @@ class _MediaTypeTab extends ConsumerWidget {
         ),
       ),
     );
-  }
 
-  Widget _buildEmptyState(BuildContext context) {
-    return Center(
+  Widget _buildEmptyState(BuildContext context) => Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
@@ -231,10 +222,8 @@ class _MediaTypeTab extends ConsumerWidget {
         ),
       ),
     );
-  }
 
-  IconData _getEmptyIcon() {
-    return switch (mediaType) {
+  IconData _getEmptyIcon() => switch (mediaType) {
       MediaType.video => Icons.video_library_outlined,
       MediaType.music => Icons.library_music_outlined,
       MediaType.photo => Icons.photo_library_outlined,
@@ -242,7 +231,6 @@ class _MediaTypeTab extends ConsumerWidget {
       MediaType.book => Icons.library_books_outlined,
       MediaType.note => Icons.sticky_note_2_outlined,
     };
-  }
 
   void _addPath(
     BuildContext context,
@@ -388,7 +376,7 @@ class _PathCard extends ConsumerWidget {
                     ],
                   ),
                 );
-                if (confirm == true) {
+                if (confirm ?? false) {
                   await ref
                       .read(mediaLibraryConfigProvider.notifier)
                       .removePath(mediaType, path.id);
@@ -577,7 +565,7 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
                 child: ElevatedButton.icon(
                   onPressed: isLoading || !hasConnectedSource
                       ? null
-                      : () => _scanMedia(),
+                      : _scanMedia,
                   icon: Icon(
                     isLoading ? Icons.hourglass_empty : Icons.refresh_rounded,
                   ),
@@ -593,7 +581,7 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
               OutlinedButton.icon(
                 onPressed: isLoading
                     ? null
-                    : () => _clearCache(),
+                    : _clearCache,
                 icon: const Icon(Icons.delete_outline),
                 label: const Text('清除缓存'),
                 style: OutlinedButton.styleFrom(
@@ -761,7 +749,7 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
       ),
     );
 
-    if (confirm == true) {
+    if (confirm ?? false) {
       switch (widget.mediaType) {
         case MediaType.video:
           await VideoLibraryCacheService.instance.clearCache();

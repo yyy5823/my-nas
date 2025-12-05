@@ -198,7 +198,7 @@ class MusicLibraryCacheService {
     try {
       _box = await Hive.openBox(_boxName);
       logger.i('MusicLibraryCacheService: 初始化完成');
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('MusicLibraryCacheService: 打开缓存失败，尝试删除并重建', e);
       await Hive.deleteBoxFromDisk(_boxName);
       _box = await Hive.openBox(_boxName);
@@ -212,7 +212,7 @@ class MusicLibraryCacheService {
     if (data == null) return null;
     try {
       return MusicLibraryCache.fromMap(data as Map<dynamic, dynamic>);
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('MusicLibraryCacheService: 解析缓存失败', e);
       return null;
     }
@@ -249,7 +249,7 @@ class MusicLibraryCacheService {
     try {
       final jsonStr = jsonEncode(data);
       return jsonStr.length;
-    } catch (e) {
+    } on Exception catch (e) {
       return 0;
     }
   }

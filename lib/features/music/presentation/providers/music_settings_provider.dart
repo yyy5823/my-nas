@@ -75,7 +75,7 @@ class MusicSettingsNotifier extends StateNotifier<MusicSettings> {
     try {
       _box = await Hive.openBox<Map<dynamic, dynamic>>(_boxName);
       _initialized = true;
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('MusicSettingsNotifier: 初始化失败', e);
     }
   }
@@ -143,9 +143,7 @@ class MusicSettingsNotifier extends StateNotifier<MusicSettings> {
 
 /// 音乐设置 provider
 final musicSettingsProvider =
-    StateNotifierProvider<MusicSettingsNotifier, MusicSettings>((ref) {
-  return MusicSettingsNotifier();
-});
+    StateNotifierProvider<MusicSettingsNotifier, MusicSettings>((ref) => MusicSettingsNotifier());
 
 /// 可用的淡入淡出时长选项
 const availableCrossfadeDurations = [0, 2, 4, 6, 8, 10, 12];

@@ -15,6 +15,7 @@ import 'package:my_nas/nas_adapters/smb/smb_adapter.dart';
 import 'package:my_nas/nas_adapters/synology/synology_adapter.dart';
 import 'package:my_nas/nas_adapters/ugreen/ugreen_adapter.dart';
 import 'package:my_nas/nas_adapters/webdav/webdav_adapter.dart';
+import 'package:my_nas/shared/widgets/stream_image.dart';
 
 /// 源连接信息
 class SourceConnection {
@@ -503,6 +504,9 @@ class SourceManagerService {
     for (final sourceId in _connections.keys.toList()) {
       await disconnect(sourceId);
     }
+    // 清理图片内存缓存
+    StreamImage.clearCache();
+    logger.i('SourceManagerService: 已清理图片内存缓存');
   }
 
   /// 自动连接所有启用自动连接的源

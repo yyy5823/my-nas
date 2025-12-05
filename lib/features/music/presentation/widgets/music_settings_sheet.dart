@@ -29,7 +29,7 @@ class MusicSettingsSheet extends ConsumerWidget {
       initialChildSize: 0.6,
       minChildSize: 0.4,
       maxChildSize: 0.85,
-      builder: (context, scrollController) => Container(
+      builder: (context, scrollController) => DecoratedBox(
         decoration: BoxDecoration(
           color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),

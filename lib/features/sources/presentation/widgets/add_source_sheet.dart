@@ -66,8 +66,7 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
+  Widget build(BuildContext context) => Container(
       padding: EdgeInsets.only(
         bottom: MediaQuery.of(context).viewInsets.bottom,
       ),
@@ -350,7 +349,6 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
         ),
       ),
     );
-  }
 
   Widget _buildSourceTypeSelector() {
     // 只显示已支持的源类型
@@ -517,7 +515,7 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
           });
         }
       }
-    } catch (e) {
+    } on Exception catch (e) {
       setState(() {
         _errorMessage = _getErrorMessage(e);
       });

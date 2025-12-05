@@ -21,7 +21,7 @@ class NoteLayoutService {
     try {
       _box = await Hive.openBox(_boxName);
       logger.i('NoteLayoutService: 初始化完成');
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('NoteLayoutService: 初始化失败', e);
       // 尝试删除并重建
       await Hive.deleteBoxFromDisk(_boxName);
@@ -30,9 +30,7 @@ class NoteLayoutService {
   }
 
   /// 获取侧边栏是否收起
-  bool get isSidebarCollapsed {
-    return _box?.get(_keySidebarCollapsed, defaultValue: false) as bool? ?? false;
-  }
+  bool get isSidebarCollapsed => _box?.get(_keySidebarCollapsed, defaultValue: false) as bool? ?? false;
 
   /// 设置侧边栏是否收起
   Future<void> setSidebarCollapsed(bool collapsed) async {
@@ -40,9 +38,7 @@ class NoteLayoutService {
   }
 
   /// 获取侧边栏宽度
-  double get sidebarWidth {
-    return (_box?.get(_keySidebarWidth, defaultValue: 280.0) as num?)?.toDouble() ?? 280.0;
-  }
+  double get sidebarWidth => (_box?.get(_keySidebarWidth, defaultValue: 280.0) as num?)?.toDouble() ?? 280.0;
 
   /// 设置侧边栏宽度
   Future<void> setSidebarWidth(double width) async {

@@ -23,8 +23,7 @@ final playQueueProvider =
 
 /// 音乐播放器控制器
 final musicPlayerControllerProvider =
-    StateNotifierProvider<MusicPlayerNotifier, MusicPlayerState>((ref) =>
-        MusicPlayerNotifier(ref));
+    StateNotifierProvider<MusicPlayerNotifier, MusicPlayerState>(MusicPlayerNotifier.new);
 
 /// 播放模式
 enum PlayMode {
@@ -318,9 +317,9 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     _ref.read(currentMusicProvider.notifier).state = music;
     state = state.copyWith(errorMessage: null, isBuffering: true);
 
-    logger.i('MusicPlayer: 开始播放 ${music.name}');
-    logger.d('MusicPlayer: URL => ${music.url}');
-    logger.d('MusicPlayer: size=${music.size}, path=${music.path}, sourceId=${music.sourceId}');
+    logger..i('MusicPlayer: 开始播放 ${music.name}')
+    ..d('MusicPlayer: URL => ${music.url}')
+    ..d('MusicPlayer: size=${music.size}, path=${music.path}, sourceId=${music.sourceId}');
 
     try {
       // 先停止当前播放并重置位置估算
@@ -437,13 +436,13 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
                 effectiveDuration = tempDuration;
                 logger.i('MusicPlayer: 从直接 URL 获取到时长 => $tempDuration');
               }
-            } catch (e) {
+            } on Exception catch (e) {
               logger.w('MusicPlayer: 通过直接 URL 获取时长失败: $e');
             } finally {
               await tempPlayer.dispose();
             }
           }
-        } catch (e) {
+        } on Exception catch (e) {
           logger.w('MusicPlayer: 获取直接 URL 失败: $e');
         }
       }
@@ -483,7 +482,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       // 在后台提取元数据
       logger.i('MusicPlayer: 开始后台提取元数据...');
       unawaited(_extractMetadataInBackground(music));
-    } catch (e, stackTrace) {
+    } on Exception catch (e, stackTrace) {
       logger.e('MusicPlayer: 播放失败', e, stackTrace);
       state = state.copyWith(errorMessage: '播放失败: $e', isBuffering: false);
     }
@@ -558,7 +557,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       } else {
         logger.w('MusicPlayer: 未能提取到元数据');
       }
-    } catch (e, stackTrace) {
+    } on Exception catch (e, stackTrace) {
       logger.e('MusicPlayer: 提取元数据失败: $e', e, stackTrace);
     }
   }

@@ -283,7 +283,7 @@ class UGreenApi {
         '/ugreen/v1/verify/logout',
         queryParameters: {'token': _token},
       );
-    } catch (e) {
+    } on Exception catch (e) {
       logger.w('UGreenApi: 登出请求失败', e);
     } finally {
       _token = null;

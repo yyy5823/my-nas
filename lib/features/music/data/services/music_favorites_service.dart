@@ -172,7 +172,7 @@ class MusicFavoritesService {
       _historyBox = await Hive.openBox<Map<dynamic, dynamic>>(_historyBoxName);
       _initialized = true;
       logger.i('MusicFavoritesService: 初始化完成');
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('MusicFavoritesService: 初始化失败', e);
     }
   }
@@ -229,7 +229,7 @@ class MusicFavoritesService {
       if (data != null) {
         try {
           favorites.add(MusicFavoriteItem.fromMap(data));
-        } catch (_) {
+        } on Exception catch (_) {
           // 跳过无效数据
         }
       }
@@ -299,7 +299,7 @@ class MusicFavoritesService {
       if (data != null) {
         try {
           history.add(MusicHistoryItem.fromMap(data));
-        } catch (_) {
+        } on Exception catch (_) {
           // 跳过无效数据
         }
       }

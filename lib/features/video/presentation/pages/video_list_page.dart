@@ -1067,7 +1067,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
       );
 
       ref.invalidate(continueWatchingProvider);
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('播放视频失败', e);
     }
   }

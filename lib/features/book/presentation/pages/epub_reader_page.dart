@@ -179,7 +179,7 @@ class EpubReaderNotifier extends StateNotifier<EpubReaderState> {
       );
 
       logger.i('EPUB 加载完成: ${epub.title}, ${chapters.length} 章节');
-    } catch (e, stackTrace) {
+    } on Exception catch (e, stackTrace) {
       logger.e('加载 EPUB 失败', e, stackTrace);
       state = EpubReaderError('加载失败: $e');
     }

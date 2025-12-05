@@ -522,7 +522,7 @@ class MusicDatabaseService {
     ''');
 
     return results
-        .map((r) => (genre: r['genre'] as String, count: r['count'] as int))
+        .map((r) => (genre: r['genre']! as String, count: r['count']! as int))
         .toList();
   }
 

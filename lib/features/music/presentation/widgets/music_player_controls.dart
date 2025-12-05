@@ -92,7 +92,7 @@ class MusicPlayerControls extends StatelessWidget {
           ),
           const SizedBox(width: 24),
           // 播放/暂停
-          Container(
+          DecoratedBox(
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: context.colorScheme.primary,

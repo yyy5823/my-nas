@@ -65,8 +65,7 @@ class SourcesPage extends ConsumerWidget {
     );
   }
 
-  Widget _buildEmptyState(BuildContext context) {
-    return Center(
+  Widget _buildEmptyState(BuildContext context) => Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
@@ -108,7 +107,6 @@ class SourcesPage extends ConsumerWidget {
         ),
       ),
     );
-  }
 
   void _showAddSourceSheet(BuildContext context) {
     showModalBottomSheet<void>(
@@ -260,8 +258,7 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
     );
   }
 
-  IconData _getSourceIcon() {
-    return switch (widget.source.type) {
+  IconData _getSourceIcon() => switch (widget.source.type) {
       SourceType.synology => Icons.storage,
       SourceType.ugreen => Icons.storage,
       SourceType.fnos => Icons.storage,
@@ -270,17 +267,14 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
       SourceType.smb => Icons.folder_shared,
       SourceType.local => Icons.phone_android,
     };
-  }
 
-  Color _getStatusColor() {
-    return switch (_status) {
+  Color _getStatusColor() => switch (_status) {
       SourceStatus.connected => Colors.green,
       SourceStatus.connecting => Colors.orange,
       SourceStatus.requires2FA => Colors.amber,
       SourceStatus.error => Colors.red,
       SourceStatus.disconnected => Colors.grey,
     };
-  }
 
   void _showSourceOptions(BuildContext context) {
     final bottomPadding = MediaQuery.of(context).viewPadding.bottom;

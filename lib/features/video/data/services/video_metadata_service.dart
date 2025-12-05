@@ -196,7 +196,7 @@ class VideoMetadataService {
       await save(metadata);
 
       logger.i('VideoMetadataService: 已更新缩略图为当前播放位置 "${metadata.fileName}"');
-    } catch (e) {
+    } on Exception catch (e) {
       logger.w('VideoMetadataService: 更新缩略图失败', e);
     }
   }
