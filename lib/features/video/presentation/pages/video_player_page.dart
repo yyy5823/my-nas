@@ -7,6 +7,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/features/video/data/services/subtitle_service.dart';
@@ -46,6 +47,10 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
   NasFileSystem? _fileSystem;
   String? _videoUrl;
 
+  // 缓存 provider 引用，避免异步操作后使用 ref
+  Map<String, SourceConnection>? _connections;
+  StateController<List<SubtitleItem>>? _subtitlesNotifier;
+
   // 记录上一次的横竖屏状态，避免重复设置
   Orientation? _lastOrientation;
 
@@ -54,18 +59,23 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
     super.initState();
     // 注册生命周期观察者
     WidgetsBinding.instance.addObserver(this);
-    // 缓存 notifier 引用
+    // 缓存 notifier 引用（在 widget 销毁前保存，避免异步操作后使用 ref）
     _playerNotifier = ref.read(videoPlayerControllerProvider.notifier);
+    _connections = ref.read(activeConnectionsProvider);
+    _subtitlesNotifier = ref.read(availableSubtitlesProvider.notifier);
 
     // 开始播放并缓存源信息
     Future.microtask(() async {
+      if (!mounted) return;
       // 缓存源信息（用于 dispose 时更新缩略图）
       await _cacheSourceInfo();
+      if (!mounted) return;
       // 开始播放
       await _playerNotifier?.play(
             widget.video,
             startPosition: widget.video.lastPosition,
           );
+      if (!mounted) return;
       await _loadSubtitles();
     });
     _startHideControlsTimer();
@@ -98,7 +108,10 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
   /// 缓存源信息，用于 dispose 时更新缩略图
   Future<void> _cacheSourceInfo() async {
     try {
-      final connections = ref.read(activeConnectionsProvider);
+      // 使用缓存的 connections，避免使用 ref
+      final connections = _connections;
+      if (connections == null || connections.isEmpty) return;
+
       final connectedEntry = connections.entries.firstWhere(
         (e) => e.value.status == SourceStatus.connected,
         orElse: () => throw Exception('No connected source'),
@@ -114,8 +127,10 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
 
   /// 加载字幕
   Future<void> _loadSubtitles() async {
-    // 查找第一个已连接的源
-    final connections = ref.read(activeConnectionsProvider);
+    // 使用缓存的 connections，避免使用 ref
+    final connections = _connections;
+    if (connections == null || connections.isEmpty) return;
+
     final connectedEntry = connections.entries.firstWhere(
       (e) => e.value.status == SourceStatus.connected,
       orElse: () => throw Exception('No connected source'),
@@ -129,11 +144,12 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
         fileSystem: adapter.fileSystem,
       );
 
-      ref.read(availableSubtitlesProvider.notifier).state = subtitles;
+      // 使用缓存的 notifier，避免使用 ref
+      _subtitlesNotifier?.state = subtitles;
 
       // 如果找到字幕，自动加载第一个
       if (subtitles.isNotEmpty) {
-        await ref.read(videoPlayerControllerProvider.notifier).setSubtitle(subtitles.first);
+        await _playerNotifier?.setSubtitle(subtitles.first);
         logger.i('VideoPlayerPage: 自动加载字幕 ${subtitles.first.name}');
       }
     } on Exception catch (e) {
