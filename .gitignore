@@ -195,9 +195,6 @@ key.properties
 **/ios/Podfile.lock
 **/macos/Podfile.lock
 
-# Xcode project files - 包含本地路径和用户特定设置
-**/ios/Runner.xcodeproj/project.pbxproj
-**/macos/Runner.xcodeproj/project.pbxproj
 
 # Injectable 自动生成的配置文件
 lib/core/di/injection.config.dart
