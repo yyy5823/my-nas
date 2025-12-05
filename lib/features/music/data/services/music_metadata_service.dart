@@ -72,16 +72,16 @@ class MusicMetadataService {
       logger.d('MusicMetadataService: 文件大小 = $fileSize bytes');
 
       final metadata = readMetadata(file, getImage: true);
-      logger.d('MusicMetadataService: readMetadata 完成');
-      logger.d('MusicMetadataService: 原始元数据 - title=${metadata.title}, artist=${metadata.artist}, album=${metadata.album}');
-      logger.d('MusicMetadataService: 原始元数据 - pictures=${metadata.pictures.length}, lyrics=${metadata.lyrics != null}');
+      logger..d('MusicMetadataService: readMetadata 完成')
+      ..d('MusicMetadataService: 原始元数据 - title=${metadata.title}, artist=${metadata.artist}, album=${metadata.album}')
+      ..d('MusicMetadataService: 原始元数据 - pictures=${metadata.pictures.length}, lyrics=${metadata.lyrics != null}');
 
       final result = _convertMetadata(metadata, file.path);
       _metadataCache[cacheKey] = result;
 
       logger.i('MusicMetadataService: 提取完成 - hasCover=${result.hasCover}, hasLyrics=${result.hasLyrics}');
       return result;
-    } catch (e, stackTrace) {
+    } on Exception catch (e, stackTrace) {
       logger.e('MusicMetadataService: 提取元数据失败: ${file.path}', e, stackTrace);
       return null;
     }
@@ -153,7 +153,7 @@ class MusicMetadataService {
       }
 
       return null;
-    } catch (e, stackTrace) {
+    } on Exception catch (e, stackTrace) {
       logger.w('MusicMetadataService: 提取 NAS 文件元数据失败: $path', e, stackTrace);
       return null;
     }
@@ -229,14 +229,14 @@ class MusicMetadataService {
       if (await tempFile.exists()) {
         await tempFile.delete();
       }
-    } catch (e) {
+    } on Exception catch (e) {
       // 文件可能仍被占用，稍后重试一次
       await Future<void>.delayed(const Duration(milliseconds: 100));
       try {
         if (await tempFile.exists()) {
           await tempFile.delete();
         }
-      } catch (_) {
+      } on Exception catch (_) {
         // 忽略删除失败，临时文件会在下次启动时被清理
         logger.d('MusicMetadataService: 临时文件删除失败，将稍后清理: ${tempFile.path}');
       }

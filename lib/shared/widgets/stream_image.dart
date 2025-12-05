@@ -164,7 +164,7 @@ class _StreamImageState extends State<StreamImage> {
     try {
       final uri = Uri.parse(url);
       return uri.toFilePath();
-    } catch (e) {
+    } on Exception catch (e) {
       logger.w('StreamImage: 无法解析 file:// URL: $url', e);
       return null;
     }
@@ -248,7 +248,7 @@ class _StreamImageState extends State<StreamImage> {
         try {
           stream = await widget.fileSystem!.getUrlStream(widget.url!);
           logger.d('StreamImage: Using URL stream for ${widget.url}');
-        } catch (e) {
+        } on Exception catch (e) {
           logger.w('StreamImage: URL stream failed, falling back to file stream: $e');
           // URL 加载失败，继续尝试文件流
         }
@@ -298,7 +298,7 @@ class _StreamImageState extends State<StreamImage> {
           _isLoading = false;
         });
       }
-    } catch (e, stackTrace) {
+    } on Exception catch (e, stackTrace) {
       logger.e('StreamImage: 加载图片失败', e, stackTrace);
       if (mounted) {
         setState(() {

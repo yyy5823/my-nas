@@ -27,8 +27,7 @@ Future<T?> showAppBottomSheet<T>({
   double maxChildSize = 0.9,
   bool useSafeArea = true,
   bool enableDrag = true,
-}) {
-  return showModalBottomSheet<T>(
+}) => showModalBottomSheet<T>(
     context: context,
     isScrollControlled: true,
     useSafeArea: useSafeArea,
@@ -49,7 +48,6 @@ Future<T?> showAppBottomSheet<T>({
             builder: builder,
           ),
   );
-}
 
 /// 可滚动的底部弹窗（使用 DraggableScrollableSheet）
 class _ScrollableBottomSheet extends StatelessWidget {
@@ -97,12 +95,11 @@ class _ScrollableBottomSheet extends StatelessWidget {
     );
   }
 
-  Widget _buildContainer(BuildContext context, bool isDark, {required Widget child}) {
-    return ClipRRect(
+  Widget _buildContainer(BuildContext context, bool isDark, {required Widget child}) => ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: Container(
+        child: DecoratedBox(
           decoration: BoxDecoration(
             color: isDark
                 ? AppColors.darkSurface.withValues(alpha: 0.95)
@@ -120,10 +117,8 @@ class _ScrollableBottomSheet extends StatelessWidget {
         ),
       ),
     );
-  }
 
-  Widget _buildDragHandle(bool isDark) {
-    return Container(
+  Widget _buildDragHandle(bool isDark) => Container(
       margin: const EdgeInsets.only(top: 12, bottom: 8),
       width: 40,
       height: 4,
@@ -134,7 +129,6 @@ class _ScrollableBottomSheet extends StatelessWidget {
         borderRadius: BorderRadius.circular(2),
       ),
     );
-  }
 
   Widget _buildHeader(BuildContext context, bool isDark) {
     if (titleWidget != null) {
@@ -200,7 +194,7 @@ class _FixedBottomSheet extends StatelessWidget {
       borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: Container(
+        child: DecoratedBox(
           decoration: BoxDecoration(
             color: isDark
                 ? AppColors.darkSurface.withValues(alpha: 0.95)
@@ -270,10 +264,8 @@ class _FixedBottomSheet extends StatelessWidget {
 /// 显示简单的选项菜单底部弹窗
 Future<T?> showOptionsBottomSheet<T>({
   required BuildContext context,
-  String? title,
-  required List<OptionItem<T>> options,
-}) {
-  return showAppBottomSheet<T>(
+  required List<OptionItem<T>> options, String? title,
+}) => showAppBottomSheet<T>(
     context: context,
     title: title,
     useScrollable: false,
@@ -285,7 +277,6 @@ Future<T?> showOptionsBottomSheet<T>({
       ],
     ),
   );
-}
 
 /// 选项项
 class OptionItem<T> {

@@ -36,7 +36,7 @@ class DownloadManagerSheet extends ConsumerWidget {
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-          child: Container(
+          child: DecoratedBox(
             decoration: BoxDecoration(
               color: isDark
                   ? AppColors.darkSurface.withValues(alpha: 0.95)
@@ -143,8 +143,7 @@ class DownloadManagerSheet extends ConsumerWidget {
     );
   }
 
-  Widget _buildClearButton(BuildContext context, WidgetRef ref, bool isDark) {
-    return Material(
+  Widget _buildClearButton(BuildContext context, WidgetRef ref, bool isDark) => Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: () {
@@ -176,10 +175,8 @@ class DownloadManagerSheet extends ConsumerWidget {
         ),
       ),
     );
-  }
 
-  Widget _buildEmptyState(BuildContext context, bool isDark) {
-    return Center(
+  Widget _buildEmptyState(BuildContext context, bool isDark) => Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -214,7 +211,6 @@ class DownloadManagerSheet extends ConsumerWidget {
         ],
       ),
     );
-  }
 }
 
 class _DownloadTaskTile extends ConsumerWidget {

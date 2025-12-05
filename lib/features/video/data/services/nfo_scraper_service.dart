@@ -471,7 +471,7 @@ class NfoScraperService {
     try {
       // 尝试获取图片的下载 URL 或缩略图 URL
       return await fileSystem.getFileUrl(imagePath);
-    } catch (e) {
+    } on Exception catch (e) {
       logger.w('NfoScraperService: 获取图片 URL 失败', e);
       return null;
     }

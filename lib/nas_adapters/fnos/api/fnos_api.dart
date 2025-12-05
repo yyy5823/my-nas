@@ -316,14 +316,16 @@ class FnOSApi {
         final data = response.data;
         logger.d('FnOSApi: listDirectory 响应 ($endpoint) => $data');
 
-        if (data is Map) {
+        if (data is Map<String, dynamic>) {
           final code = data['code'] ?? data['status'];
           if (code == 200 || code == 0 || data['success'] == true) {
             final items = <FnOSFileInfo>[];
-            final files = data['data']?['list'] ??
-                data['data']?['files'] ??
-                data['data']?['items'] ??
-                data['data'] ??
+            final respData = data['data'];
+            final dataMap = respData is Map<String, dynamic> ? respData : null;
+            final files = dataMap?['list'] ??
+                dataMap?['files'] ??
+                dataMap?['items'] ??
+                respData ??
                 data['result'] ??
                 [];
 
@@ -368,13 +370,15 @@ class FnOSApi {
 
         logger.d('FnOSApi: listShares 响应 ($endpoint) => $data');
 
-        if (data is Map) {
+        if (data is Map<String, dynamic>) {
           final code = data['code'] ?? data['status'];
           if (code == 200 || code == 0 || data['success'] == true) {
             final items = <FnOSFileInfo>[];
-            final shares = data['data']?['list'] ??
-                data['data']?['shares'] ??
-                data['data'] ??
+            final respData = data['data'];
+            final dataMap = respData is Map<String, dynamic> ? respData : null;
+            final shares = dataMap?['list'] ??
+                dataMap?['shares'] ??
+                respData ??
                 [];
 
             if (shares is List) {

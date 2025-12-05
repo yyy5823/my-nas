@@ -128,15 +128,13 @@ class _AnimatedGridItemState extends State<AnimatedGridItem>
   }
 
   @override
-  Widget build(BuildContext context) {
-    return FadeTransition(
+  Widget build(BuildContext context) => FadeTransition(
       opacity: _fadeAnimation,
       child: ScaleTransition(
         scale: _scaleAnimation,
         child: widget.child,
       ),
     );
-  }
 }
 
 /// 内容切换的平滑过渡组件
@@ -151,18 +149,14 @@ class AnimatedContentSwitcher extends StatelessWidget {
   final Duration duration;
 
   @override
-  Widget build(BuildContext context) {
-    return AnimatedSwitcher(
+  Widget build(BuildContext context) => AnimatedSwitcher(
       duration: duration,
       switchInCurve: Curves.easeOut,
       switchOutCurve: Curves.easeIn,
-      transitionBuilder: (child, animation) {
-        return FadeTransition(
+      transitionBuilder: (child, animation) => FadeTransition(
           opacity: animation,
           child: child,
-        );
-      },
+        ),
       child: child,
     );
-  }
 }

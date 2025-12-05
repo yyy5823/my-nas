@@ -1,4 +1,3 @@
-import 'package:hive_ce/hive.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/video/data/services/nfo_scraper_service.dart';
 import 'package:my_nas/features/video/data/services/tmdb_service.dart';
@@ -16,8 +15,6 @@ class VideoMetadataService {
   static VideoMetadataService get instance =>
       _instance ??= VideoMetadataService._();
 
-  static const String _hiveBoxName = 'video_metadata';
-
   final VideoDatabaseService _db = VideoDatabaseService.instance;
   final TmdbService _tmdbService = TmdbService.instance;
   final NfoScraperService _nfoService = NfoScraperService.instance;
@@ -25,7 +22,6 @@ class VideoMetadataService {
   final VideoHistoryService _historyService = VideoHistoryService.instance;
 
   bool _initialized = false;
-  bool _migrationCompleted = false;
 
   /// 初始化
   Future<void> init() async {
@@ -38,11 +34,6 @@ class VideoMetadataService {
         _thumbnailService.init(),
       ]);
 
-      // 检查是否需要从 Hive 迁移数据
-      if (!_migrationCompleted) {
-        await _checkAndMigrateFromHive();
-      }
-
       _initialized = true;
 
       final stats = await _db.getStats();
@@ -53,93 +44,10 @@ class VideoMetadataService {
     }
   }
 
-  /// 检查并从 Hive 迁移数据到 SQLite
-  Future<void> _checkAndMigrateFromHive() async {
-    try {
-      // 检查 SQLite 是否已有数据
-      final sqliteCount = await _db.getCount();
-      if (sqliteCount > 0) {
-        _migrationCompleted = true;
-        logger.d('VideoMetadataService: SQLite 已有数据，跳过迁移');
-        return;
-      }
-
-      // 尝试打开 Hive box
-      Box<dynamic>? hiveBox;
-      try {
-        hiveBox = await Hive.openBox<dynamic>(_hiveBoxName);
-      } catch (e) {
-        logger.w('VideoMetadataService: 无法打开 Hive box，跳过迁移', e);
-        _migrationCompleted = true;
-        return;
-      }
-
-      final hiveCount = hiveBox.length;
-      if (hiveCount == 0) {
-        await hiveBox.close();
-        _migrationCompleted = true;
-        logger.d('VideoMetadataService: Hive 无数据，跳过迁移');
-        return;
-      }
-
-      logger.i('VideoMetadataService: 开始从 Hive 迁移 $hiveCount 条数据到 SQLite');
-
-      // 批量迁移数据
-      final batch = <VideoMetadata>[];
-      const batchSize = 100;
-      var migrated = 0;
-
-      for (final key in hiveBox.keys) {
-        try {
-          final data = hiveBox.get(key);
-          if (data != null) {
-            final metadata = VideoMetadata.fromMap(data as Map<dynamic, dynamic>);
-            batch.add(metadata);
-
-            if (batch.length >= batchSize) {
-              await _db.upsertBatch(batch);
-              migrated += batch.length;
-              batch.clear();
-              logger.d('VideoMetadataService: 已迁移 $migrated/$hiveCount');
-            }
-          }
-        } catch (e) {
-          logger.w('VideoMetadataService: 迁移条目失败 $key', e);
-        }
-      }
-
-      // 处理剩余数据
-      if (batch.isNotEmpty) {
-        await _db.upsertBatch(batch);
-        migrated += batch.length;
-      }
-
-      await hiveBox.close();
-      _migrationCompleted = true;
-
-      logger.i('VideoMetadataService: 迁移完成，共迁移 $migrated 条数据');
-
-      // 可选：删除旧的 Hive 数据（取消注释以启用）
-      // await Hive.deleteBoxFromDisk(_hiveBoxName);
-      // logger.i('VideoMetadataService: 已删除旧的 Hive 数据');
-    } catch (e) {
-      logger.e('VideoMetadataService: 迁移失败', e);
-      _migrationCompleted = true; // 避免重复尝试
-    }
-  }
-
   /// 获取缓存的元数据（异步，使用 SQLite）
   Future<VideoMetadata?> getCachedAsync(String sourceId, String filePath) async {
     if (!_initialized) await init();
     return _db.get(sourceId, filePath);
-  }
-
-  /// 获取缓存的元数据（同步兼容接口，内部使用缓存）
-  /// 注意：首次调用可能返回 null，建议使用 getCachedAsync
-  VideoMetadata? getCached(String sourceId, String filePath) {
-    // 为了向后兼容，返回 null 并建议使用异步方法
-    // 真正的数据获取应该使用 getCachedAsync
-    return null;
   }
 
   /// 批量获取缓存的元数据（异步）
@@ -263,15 +171,6 @@ class VideoMetadataService {
   Future<int> getCount({MediaCategory? category}) async {
     if (!_initialized) await init();
     return _db.getCount(category: category);
-  }
-
-  // ============ 兼容旧接口（已废弃，仅用于过渡）============
-
-  /// @deprecated 使用 getPage() 替代，此方法会加载所有数据到内存
-  @Deprecated('使用 getPage() 分页查询替代')
-  List<VideoMetadata> getAll() {
-    logger.w('VideoMetadataService: getAll() 已废弃，请使用 getPage() 分页查询');
-    return []; // 返回空列表，强制调用方使用新 API
   }
 
   // ============ 元数据获取方法 ============

@@ -31,7 +31,7 @@ class _SkeletonLoaderState extends State<SkeletonLoader>
       duration: const Duration(milliseconds: 1500),
     )..repeat();
 
-    _animation = Tween<double>(begin: -1.0, end: 2.0).animate(
+    _animation = Tween<double>(begin: -1, end: 2).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeInOutSine),
     );
   }
@@ -210,7 +210,7 @@ class _FileGridItemSkeleton extends StatelessWidget {
 
     return Opacity(
       opacity: opacity,
-      child: Container(
+      child: DecoratedBox(
         decoration: BoxDecoration(
           color: isDark ? Colors.grey[850] : Colors.grey[200],
           borderRadius: BorderRadius.circular(12),

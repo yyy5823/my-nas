@@ -399,16 +399,18 @@ class UGreenApi {
         final respData = response.data;
         logger.d('UGreenApi: listDirectory 响应 => $respData');
 
-        if (respData is Map) {
+        if (respData is Map<String, dynamic>) {
           final code = respData['code'];
           if (code == 200) {
             final items = <UGreenFileInfo>[];
             // 尝试不同的响应结构
-            final files = respData['data']?['list'] ??
-                          respData['data']?['files'] ??
-                          respData['data']?['items'] ??
-                          respData['data']?['children'] ??
-                          respData['data'] ??
+            final data = respData['data'];
+            final dataMap = data is Map<String, dynamic> ? data : null;
+            final files = dataMap?['list'] ??
+                          dataMap?['files'] ??
+                          dataMap?['items'] ??
+                          dataMap?['children'] ??
+                          data ??
                           [];
 
             if (files is List) {
@@ -555,16 +557,18 @@ class UGreenApi {
         final respData = response.data;
         logger.d('UGreenApi: listShares 响应 ($endpoint) => $respData');
 
-        if (respData is Map && respData['code'] == 200) {
+        if (respData is Map<String, dynamic> && respData['code'] == 200) {
           final items = <UGreenFileInfo>[];
 
           // 尝试不同的响应结构
-          final shares = respData['data']?['list'] ??
-                         respData['data']?['shares'] ??
-                         respData['data']?['volumes'] ??
-                         respData['data']?['items'] ??
-                         respData['data']?['folders'] ??
-                         (respData['data'] is List ? respData['data'] : null) ??
+          final data = respData['data'];
+          final dataMap = data is Map<String, dynamic> ? data : null;
+          final shares = dataMap?['list'] ??
+                         dataMap?['shares'] ??
+                         dataMap?['volumes'] ??
+                         dataMap?['items'] ??
+                         dataMap?['folders'] ??
+                         (data is List ? data : null) ??
                          [];
 
           if (shares is List) {
@@ -646,16 +650,17 @@ class UGreenApi {
     final respData = response.data;
     logger.i('UGreenApi: storage/pool/list 完整响应 => $respData');
 
-    if (respData is! Map || respData['code'] != 200) {
+    if (respData is! Map<String, dynamic> || respData['code'] != 200) {
       return [];
     }
 
     final items = <UGreenFileInfo>[];
     final data = respData['data'];
+    final dataMap = data is Map<String, dynamic> ? data : null;
 
     // 尝试多种可能的响应结构
     // 结构 1: { pools: [ { volumes: [...] } ] }
-    final pools = data?['pools'] ?? data?['list'] ?? (data is List ? data : null) ?? [];
+    final pools = dataMap?['pools'] ?? dataMap?['list'] ?? (data is List ? data : null) ?? [];
     if (pools is List) {
       for (final pool in pools) {
         if (pool is! Map) continue;
@@ -716,7 +721,7 @@ class UGreenApi {
     }
 
     // 结构 2: 直接的共享列表
-    final directShares = data?['shares'] ?? data?['volumes'] ?? [];
+    final directShares = dataMap?['shares'] ?? dataMap?['volumes'] ?? [];
     if (directShares is List) {
       for (final share in directShares) {
         if (share is! Map) continue;

@@ -534,231 +534,12 @@ class _ComicListContentState extends ConsumerState<ComicListContent> {
     );
   }
 
-  Widget _buildToolbar(BuildContext context, bool isDark, ComicListState state) => Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
-        border: Border(
-          bottom: BorderSide(
-            color: isDark
-                ? AppColors.darkOutline.withValues(alpha: 0.1)
-                : context.colorScheme.outlineVariant.withValues(alpha: 0.3),
-          ),
-        ),
-      ),
-      child: Row(
-        children: [
-          // 类型切换按钮
-          _buildTypeSwitcher(context, ref, isDark),
-          const SizedBox(width: 8),
-          if (_showSearch)
-            Expanded(
-              child: TextField(
-                controller: _searchController,
-                autofocus: true,
-                decoration: InputDecoration(
-                  hintText: '搜索漫画...',
-                  hintStyle: TextStyle(
-                    color: isDark
-                        ? AppColors.darkOnSurfaceVariant
-                        : context.colorScheme.onSurfaceVariant,
-                  ),
-                  border: InputBorder.none,
-                  isDense: true,
-                  contentPadding: EdgeInsets.zero,
-                ),
-                style: TextStyle(
-                  color: isDark ? AppColors.darkOnSurface : null,
-                ),
-                onChanged: (v) =>
-                    ref.read(comicListProvider.notifier).setSearchQuery(v),
-              ),
-            )
-          else ...[
-            if (state is ComicListLoaded)
-              Text(
-                '${state.comics.length} 本漫画',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[600],
-                ),
-              ),
-            if (state is ComicListLoaded && state.fromCache)
-              Container(
-                margin: const EdgeInsets.only(left: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.green.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: const Text(
-                  '缓存',
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: Colors.green,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-          ],
-          const Spacer(),
-          _buildIconButton(
-            icon: _showSearch ? Icons.close : Icons.search_rounded,
-            onTap: () {
-              setState(() {
-                _showSearch = !_showSearch;
-                if (!_showSearch) {
-                  _searchController.clear();
-                  ref.read(comicListProvider.notifier).setSearchQuery('');
-                }
-              });
-            },
-            isDark: isDark,
-          ),
-          _buildIconButton(
-            icon: Icons.refresh_rounded,
-            onTap: () => ref.read(comicListProvider.notifier).forceRefresh(),
-            isDark: isDark,
-          ),
-        ],
-      ),
-    );
-
-  Widget _buildTypeSwitcher(BuildContext context, WidgetRef ref, bool isDark) {
-    final currentIndex = ref.watch(readingTabProvider);
-    final currentType = ReadingContentType.values[currentIndex];
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () => _showTypeMenu(context, ref, isDark, currentIndex),
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                currentType.icon,
-                size: 18,
-                color: AppColors.primary,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                currentType.label,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: isDark ? AppColors.darkOnSurface : Colors.black87,
-                ),
-              ),
-              const SizedBox(width: 2),
-              Icon(
-                Icons.arrow_drop_down_rounded,
-                size: 20,
-                color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[600],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showTypeMenu(BuildContext context, WidgetRef ref, bool isDark, int currentIndex) {
-    final RenderBox button = context.findRenderObject() as RenderBox;
-    final RenderBox overlay = Navigator.of(context).overlay!.context.findRenderObject() as RenderBox;
-    final RelativeRect position = RelativeRect.fromRect(
-      Rect.fromPoints(
-        button.localToGlobal(Offset.zero, ancestor: overlay),
-        button.localToGlobal(button.size.bottomRight(Offset.zero), ancestor: overlay),
-      ),
-      Offset.zero & overlay.size,
-    );
-
-    showMenu<int>(
-      context: context,
-      position: position,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      color: isDark ? AppColors.darkSurface : Colors.white,
-      items: ReadingContentType.values.asMap().entries.map((entry) {
-        final index = entry.key;
-        final type = entry.value;
-        final isSelected = index == currentIndex;
-
-        return PopupMenuItem<int>(
-          value: index,
-          child: Row(
-            children: [
-              Icon(
-                type.icon,
-                size: 20,
-                color: isSelected
-                    ? AppColors.primary
-                    : (isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[600]),
-              ),
-              const SizedBox(width: 12),
-              Text(
-                type.label,
-                style: TextStyle(
-                  color: isSelected
-                      ? AppColors.primary
-                      : (isDark ? AppColors.darkOnSurface : Colors.black87),
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                ),
-              ),
-              if (isSelected) ...[
-                const Spacer(),
-                Icon(
-                  Icons.check_rounded,
-                  size: 20,
-                  color: AppColors.primary,
-                ),
-              ],
-            ],
-          ),
-        );
-      }).toList(),
-    ).then((selectedIndex) {
-      if (selectedIndex != null && selectedIndex != currentIndex) {
-        ref.read(readingTabProvider.notifier).state = selectedIndex;
-      }
-    });
-  }
-
-  Widget _buildIconButton({
-    required IconData icon,
-    required VoidCallback onTap,
-    required bool isDark,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(
-            icon,
-            color: isDark ? AppColors.darkOnSurfaceVariant : null,
-            size: 20,
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildLoadingState(
     double progress,
     String? currentFolder,
     bool fromCache,
     bool isDark,
-  ) {
-    return Center(
+  ) => Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -793,10 +574,8 @@ class _ComicListContentState extends ConsumerState<ComicListContent> {
         ],
       ),
     );
-  }
 
-  Widget _buildComicGrid(BuildContext context, ComicListLoaded state, bool isDark) {
-    return RefreshIndicator(
+  Widget _buildComicGrid(BuildContext context, ComicListLoaded state, bool isDark) => RefreshIndicator(
       onRefresh: () => ref.read(comicListProvider.notifier).forceRefresh(),
       child: GridView.builder(
         padding: const EdgeInsets.all(AppSpacing.md),
@@ -813,7 +592,6 @@ class _ComicListContentState extends ConsumerState<ComicListContent> {
         },
       ),
     );
-  }
 }
 
 class _ComicCard extends ConsumerWidget {
@@ -823,13 +601,12 @@ class _ComicCard extends ConsumerWidget {
   final bool isDark;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Material(
+  Widget build(BuildContext context, WidgetRef ref) => Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: () => _openComic(context, ref),
         borderRadius: BorderRadius.circular(12),
-        child: Container(
+        child: DecoratedBox(
           decoration: BoxDecoration(
             color: isDark ? AppColors.darkSurfaceVariant : Colors.grey[100],
             borderRadius: BorderRadius.circular(12),
@@ -904,7 +681,6 @@ class _ComicCard extends ConsumerWidget {
         ),
       ),
     );
-  }
 
   Widget _buildCover(WidgetRef ref) {
     final adapter = ref.watch(activeAdapterProvider);
@@ -925,15 +701,13 @@ class _ComicCard extends ConsumerWidget {
     );
   }
 
-  Widget _buildPlaceholder() {
-    return Center(
+  Widget _buildPlaceholder() => Center(
       child: Icon(
         Icons.collections_bookmark_outlined,
         size: 40,
         color: isDark ? Colors.grey[600] : Colors.grey[400],
       ),
     );
-  }
 
   void _openComic(BuildContext context, WidgetRef ref) {
     // 使用 rootNavigatorKey 确保阅读器全屏显示，不显示底部导航栏

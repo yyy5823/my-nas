@@ -6,6 +6,11 @@ import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 
 /// 基于流的音频源
 /// 用于不支持直接 URL 访问的协议（如 SMB、WebDAV）
+///
+/// 注意：StreamAudioSource 被标记为实验性 API，但它是 just_audio 中
+/// 处理自定义流的唯一方式，且已稳定使用多年。对于 SMB/WebDAV 等协议，
+/// 没有其他替代方案。参见：https://github.com/ryanheise/just_audio
+// ignore: deprecated_member_use
 class NasStreamAudioSource extends StreamAudioSource {
   NasStreamAudioSource({
     required this.fileSystem,

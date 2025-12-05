@@ -61,7 +61,7 @@ class NotConnectedWidget extends StatelessWidget {
             ),
             if (showAddButton) ...[
               const SizedBox(height: 32),
-              Container(
+              DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: AppColors.primaryGradient,
                   borderRadius: BorderRadius.circular(16),

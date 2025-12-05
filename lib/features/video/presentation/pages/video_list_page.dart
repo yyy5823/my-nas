@@ -8,6 +8,7 @@ import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/sources/presentation/pages/media_library_page.dart';
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
+import 'package:my_nas/features/video/data/services/video_database_service.dart';
 import 'package:my_nas/features/video/data/services/video_history_service.dart';
 import 'package:my_nas/features/video/data/services/video_library_cache_service.dart';
 import 'package:my_nas/features/video/data/services/video_metadata_service.dart';
@@ -72,153 +73,98 @@ class VideoListLoading extends VideoListState {
   final int scannedCount;
 }
 
+/// 优化后的视频列表状态 - 使用分类数据而非全量内存加载
 class VideoListLoaded extends VideoListState {
   VideoListLoaded({
-    required this.videos,
+    required this.totalCount,
+    this.movieCount = 0,
+    this.tvShowCount = 0,
     this.currentTab = VideoTab.all,
     this.searchQuery = '',
-    this.metadataMap = const {},
     this.isLoadingMetadata = false,
-    this.metadataProgress = 0,
     this.fromCache = false,
+    // 分类数据 - 从 SQLite 分页加载
+    this.topRatedMovies = const [],
+    this.recentVideos = const [],
+    this.movies = const [],
+    this.tvShowGroups = const {},
+    // 搜索结果
+    this.searchResults = const [],
+    // 用于快速查找的 Map（O(1) 查找）
+    this.videoByKey = const {},
   });
 
-  final List<VideoFileWithSource> videos;
+  final int totalCount;
+  final int movieCount;
+  final int tvShowCount;
   final VideoTab currentTab;
   final String searchQuery;
-  final Map<String, VideoMetadata> metadataMap;
   final bool isLoadingMetadata;
-  final double metadataProgress;
   final bool fromCache;
 
-  // 缓存计算结果，避免重复计算
-  List<VideoMetadata>? _cachedMovies;
-  Map<String, List<VideoMetadata>>? _cachedTvShowGroups;
-  List<VideoMetadata>? _cachedTopRatedMovies;
+  // 分类数据 - 已从 SQLite 按评分排序
+  final List<VideoMetadata> topRatedMovies;
+  final List<VideoMetadata> recentVideos;
+  final List<VideoMetadata> movies;
+  final Map<String, List<VideoMetadata>> tvShowGroups;
 
-  /// 根据当前分类过滤视频
+  // 搜索结果
+  final List<VideoMetadata> searchResults;
+
+  // 用于 O(1) 查找的 Map
+  final Map<String, VideoMetadata> videoByKey;
+
+  /// 根据当前分类获取过滤后的数据
   List<VideoMetadata> get filteredMetadata {
-    var result = videos.map((v) {
-      final key = '${v.sourceId}_${v.path}';
-      return metadataMap[key] ??
-          VideoMetadata(
-            filePath: v.path,
-            sourceId: v.sourceId,
-            fileName: v.name,
-            thumbnailUrl: v.thumbnailUrl,
-          );
-    }).toList();
+    if (searchQuery.isNotEmpty) return searchResults;
 
-    // 搜索过滤
-    if (searchQuery.isNotEmpty) {
-      result = result
-          .where((m) =>
-              m.displayTitle.toLowerCase().contains(searchQuery.toLowerCase()))
-          .toList();
-    }
-
-    // 分类过滤
     switch (currentTab) {
       case VideoTab.all:
-        break;
+        // 返回所有视频（合并电影和剧集）
+        final allVideos = <VideoMetadata>[...movies];
+        for (final episodes in tvShowGroups.values) {
+          if (episodes.isNotEmpty) allVideos.add(episodes.first);
+        }
+        allVideos.sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
+        return allVideos;
       case VideoTab.movies:
-        result = result.where((m) => m.category != MediaCategory.tvShow).toList();
+        return movies;
       case VideoTab.tvShows:
-        result = result.where((m) => m.category == MediaCategory.tvShow).toList();
+        return tvShowGroups.values.map((e) => e.first).toList();
       case VideoTab.recent:
-        // 按最近修改时间排序
-        result.sort((a, b) {
-          final videoA = videos.firstWhere((v) => '${v.sourceId}_${v.path}' == a.uniqueKey,
-              orElse: () => videos.first);
-          final videoB = videos.firstWhere((v) => '${v.sourceId}_${v.path}' == b.uniqueKey,
-              orElse: () => videos.first);
-          return (videoB.modifiedTime ?? DateTime(1970))
-              .compareTo(videoA.modifiedTime ?? DateTime(1970));
-        });
-        result = result.take(20).toList();
+        return recentVideos;
     }
-
-    // 按评分排序（高评分优先）
-    if (currentTab != VideoTab.recent) {
-      result.sort((a, b) {
-        final ratingA = a.rating ?? 0;
-        final ratingB = b.rating ?? 0;
-        if (ratingA != ratingB) return ratingB.compareTo(ratingA);
-        return a.displayTitle.compareTo(b.displayTitle);
-      });
-    }
-
-    return result;
-  }
-
-  /// 获取电影列表（缓存计算结果）
-  List<VideoMetadata> get movies {
-    if (_cachedMovies != null) return _cachedMovies!;
-    _cachedMovies = videos.map((v) {
-      final key = '${v.sourceId}_${v.path}';
-      return metadataMap[key] ??
-          VideoMetadata(
-            filePath: v.path,
-            sourceId: v.sourceId,
-            fileName: v.name,
-            thumbnailUrl: v.thumbnailUrl,
-          );
-    }).where((m) => m.category != MediaCategory.tvShow).toList();
-    return _cachedMovies!;
-  }
-
-  /// 获取剧集列表（按剧集名分组，缓存计算结果）
-  Map<String, List<VideoMetadata>> get tvShowGroups {
-    if (_cachedTvShowGroups != null) return _cachedTvShowGroups!;
-    final groups = <String, List<VideoMetadata>>{};
-    for (final video in videos) {
-      final key = '${video.sourceId}_${video.path}';
-      final metadata = metadataMap[key];
-      if (metadata?.category == MediaCategory.tvShow) {
-        final showTitle = metadata!.title ?? metadata.fileName;
-        groups.putIfAbsent(showTitle, () => []).add(metadata);
-      }
-    }
-    // 按季集排序
-    for (final episodes in groups.values) {
-      episodes.sort((a, b) {
-        final seasonA = a.seasonNumber ?? 0;
-        final seasonB = b.seasonNumber ?? 0;
-        if (seasonA != seasonB) return seasonA.compareTo(seasonB);
-        return (a.episodeNumber ?? 0).compareTo(b.episodeNumber ?? 0);
-      });
-    }
-    _cachedTvShowGroups = groups;
-    return _cachedTvShowGroups!;
-  }
-
-  /// 获取高分电影（评分 >= 7，缓存计算结果）
-  List<VideoMetadata> get topRatedMovies {
-    if (_cachedTopRatedMovies != null) return _cachedTopRatedMovies!;
-    _cachedTopRatedMovies = movies
-        .where((m) => (m.rating ?? 0) >= 7)
-        .toList()
-      ..sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
-    return _cachedTopRatedMovies!;
   }
 
   VideoListLoaded copyWith({
-    List<VideoFileWithSource>? videos,
+    int? totalCount,
+    int? movieCount,
+    int? tvShowCount,
     VideoTab? currentTab,
     String? searchQuery,
-    Map<String, VideoMetadata>? metadataMap,
     bool? isLoadingMetadata,
-    double? metadataProgress,
     bool? fromCache,
+    List<VideoMetadata>? topRatedMovies,
+    List<VideoMetadata>? recentVideos,
+    List<VideoMetadata>? movies,
+    Map<String, List<VideoMetadata>>? tvShowGroups,
+    List<VideoMetadata>? searchResults,
+    Map<String, VideoMetadata>? videoByKey,
   }) =>
       VideoListLoaded(
-        videos: videos ?? this.videos,
+        totalCount: totalCount ?? this.totalCount,
+        movieCount: movieCount ?? this.movieCount,
+        tvShowCount: tvShowCount ?? this.tvShowCount,
         currentTab: currentTab ?? this.currentTab,
         searchQuery: searchQuery ?? this.searchQuery,
-        metadataMap: metadataMap ?? this.metadataMap,
         isLoadingMetadata: isLoadingMetadata ?? this.isLoadingMetadata,
-        metadataProgress: metadataProgress ?? this.metadataProgress,
         fromCache: fromCache ?? this.fromCache,
+        topRatedMovies: topRatedMovies ?? this.topRatedMovies,
+        recentVideos: recentVideos ?? this.recentVideos,
+        movies: movies ?? this.movies,
+        tvShowGroups: tvShowGroups ?? this.tvShowGroups,
+        searchResults: searchResults ?? this.searchResults,
+        videoByKey: videoByKey ?? this.videoByKey,
       );
 }
 
@@ -237,6 +183,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
 
   final VideoMetadataService _metadataService = VideoMetadataService.instance;
   final VideoLibraryCacheService _cacheService = VideoLibraryCacheService.instance;
+  final VideoDatabaseService _db = VideoDatabaseService.instance;
 
   Future<void> _init() async {
     try {
@@ -248,119 +195,78 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
         _cacheService.init(),
       ]);
 
-      logger.d('VideoListNotifier: 服务初始化完成，开始加载缓存');
+      logger.d('VideoListNotifier: 服务初始化完成，开始加载数据');
 
-      // 从缓存加载视频数据（异步分批加载）
-      await _loadFromCache();
+      // 从 SQLite 加载分类数据（高性能分页查询）
+      await _loadCategorizedData();
     } catch (e) {
       logger.e('VideoListNotifier: 初始化失败', e);
-      state = VideoListLoaded(videos: [], fromCache: false);
+      state = VideoListLoaded(totalCount: 0, fromCache: false);
     }
   }
 
-  /// 从缓存加载视频数据（优化：分批加载元数据）
-  Future<void> _loadFromCache() async {
-    // 使用异步版本在 isolate 中反序列化，避免阻塞 UI
-    final cache = await _cacheService.getCacheAsync();
-    if (cache != null && cache.videos.isNotEmpty) {
-      final videos = cache.videos.map((entry) => VideoFileWithSource(
-          file: FileItem(
-            name: entry.fileName,
-            path: entry.filePath,
-            size: entry.size,
-            isDirectory: false,
-            modifiedTime: entry.modifiedTime,
-            thumbnailUrl: entry.thumbnailUrl,
-          ),
-          sourceId: entry.sourceId,
-        )).toList();
+  /// 从 SQLite 加载分类数据（高性能）
+  Future<void> _loadCategorizedData() async {
+    state = VideoListLoading(fromCache: true);
 
-      // 第一阶段：快速显示视频列表（无元数据）
-      state = VideoListLoaded(
-        videos: videos,
-        metadataMap: const {},
-        fromCache: true,
-        isLoadingMetadata: true,
-      );
+    // 并行查询各分类数据（使用 SQLite 索引，O(log N) 复杂度）
+    final results = await Future.wait([
+      _db.getStats(),
+      _db.getTopRated(minRating: 7.0, limit: 20),
+      _db.getRecentlyUpdated(limit: 20),
+      _db.getByCategory(MediaCategory.movie, limit: 100),
+      _db.getByCategory(MediaCategory.tvShow, limit: 200),
+    ]);
 
-      logger.i('VideoListNotifier: 快速加载了 ${videos.length} 个视频');
+    final stats = results[0] as Map<String, dynamic>;
+    final topRated = results[1] as List<VideoMetadata>;
+    final recent = results[2] as List<VideoMetadata>;
+    final moviesList = results[3] as List<VideoMetadata>;
+    final tvShowsList = results[4] as List<VideoMetadata>;
 
-      // 让 UI 先渲染视频列表
-      await Future<void>.delayed(const Duration(milliseconds: 16));
-
-      // 第二阶段：异步分批加载元数据
-      await _loadMetadataBatched(videos);
-    } else {
-      // 没有缓存，显示空状态
-      state = VideoListLoaded(videos: [], fromCache: true);
-      logger.i('VideoListNotifier: 无缓存数据');
+    // 构建剧集分组（按剧名分组，使用 Map 避免重复遍历）
+    final tvShowGroups = <String, List<VideoMetadata>>{};
+    for (final metadata in tvShowsList) {
+      final showTitle = metadata.title ?? metadata.fileName;
+      tvShowGroups.putIfAbsent(showTitle, () => []).add(metadata);
     }
+    // 每个剧集组内按季集排序
+    for (final episodes in tvShowGroups.values) {
+      episodes.sort((a, b) {
+        final seasonA = a.seasonNumber ?? 0;
+        final seasonB = b.seasonNumber ?? 0;
+        if (seasonA != seasonB) return seasonA.compareTo(seasonB);
+        return (a.episodeNumber ?? 0).compareTo(b.episodeNumber ?? 0);
+      });
+    }
+
+    // 构建快速查找 Map
+    final videoByKey = <String, VideoMetadata>{};
+    for (final m in moviesList) {
+      videoByKey[m.uniqueKey] = m;
+    }
+    for (final m in tvShowsList) {
+      videoByKey[m.uniqueKey] = m;
+    }
+
+    state = VideoListLoaded(
+      totalCount: stats['total'] as int? ?? 0,
+      movieCount: stats['movies'] as int? ?? 0,
+      tvShowCount: stats['tvShows'] as int? ?? 0,
+      topRatedMovies: topRated,
+      recentVideos: recent,
+      movies: moviesList,
+      tvShowGroups: tvShowGroups,
+      videoByKey: videoByKey,
+      fromCache: true,
+    );
+
+    logger.i('VideoListNotifier: 数据加载完成，总计 ${stats['total']} 个视频');
   }
 
-  /// 分批加载元数据，优先加载首屏内容
-  /// 优化：使用 SQLite 异步批量查询
-  Future<void> _loadMetadataBatched(List<VideoFileWithSource> videos) async {
-    // 第一阶段：优先加载首屏内容（前 30 个，覆盖推荐、最近添加、电影等首屏分类）
-    const firstBatchSize = 30;
-    final firstBatch = videos.take(firstBatchSize).toList();
-
-    // 使用异步批量查询（SQLite）
-    final firstKeys = firstBatch.map((v) => (sourceId: v.sourceId, filePath: v.path)).toList();
-    final metadataMap = await _metadataService.getCachedBatch(firstKeys);
-
-    // 立即更新首屏数据
-    final current = state;
-    if (current is VideoListLoaded) {
-      state = current.copyWith(
-        metadataMap: Map.from(metadataMap),
-        metadataProgress: firstBatch.length / videos.length,
-      );
-    }
-
-    logger.i('VideoListNotifier: 首屏元数据加载完成，共 ${metadataMap.length} 个');
-
-    // 第二阶段：后台分批加载剩余内容，每批之间让出执行权避免阻塞 UI
-    if (videos.length > firstBatchSize) {
-      // 先让 UI 渲染首屏
-      await Future<void>.delayed(const Duration(milliseconds: 16));
-
-      final remainingVideos = videos.skip(firstBatchSize).toList();
-      const batchSize = 200; // SQLite 批量查询可以处理更大批次
-      final totalBatches = (remainingVideos.length / batchSize).ceil();
-
-      for (var batch = 0; batch < totalBatches; batch++) {
-        final start = batch * batchSize;
-        final end = (start + batchSize).clamp(0, remainingVideos.length);
-        final batchVideos = remainingVideos.sublist(start, end);
-
-        // 使用异步批量查询处理当前批次
-        final batchKeys = batchVideos.map((v) => (sourceId: v.sourceId, filePath: v.path)).toList();
-        final batchResult = await _metadataService.getCachedBatch(batchKeys);
-        metadataMap.addAll(batchResult);
-
-        // 每批之间让出执行权，允许 UI 响应用户操作
-        if (batch < totalBatches - 1) {
-          await Future<void>.delayed(Duration.zero);
-        }
-      }
-    }
-
-    // 完成加载 - 只更新一次 state
-    final finalState = state;
-    if (finalState is VideoListLoaded) {
-      state = finalState.copyWith(
-        metadataMap: Map.from(metadataMap),
-        isLoadingMetadata: false,
-        metadataProgress: 1.0,
-      );
-    }
-
-    logger.i('VideoListNotifier: 全部元数据加载完成，共 ${metadataMap.length} 个');
-  }
-
-  /// 重新从缓存加载（扫描完成后调用）
+  /// 重新加载数据（扫描完成后调用）
   Future<void> reloadFromCache() async {
-    await _loadFromCache();
+    await _loadCategorizedData();
   }
 
   void setTab(VideoTab tab) {
@@ -373,7 +279,27 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
   void setSearchQuery(String query) {
     final current = state;
     if (current is VideoListLoaded) {
-      state = current.copyWith(searchQuery: query);
+      if (query.isEmpty) {
+        state = current.copyWith(searchQuery: '', searchResults: []);
+      } else {
+        // 使用 SQLite 搜索（带索引）
+        _performSearch(query, current);
+      }
+    }
+  }
+
+  /// 执行搜索（使用 SQLite LIKE 查询）
+  Future<void> _performSearch(String query, VideoListLoaded current) async {
+    state = current.copyWith(searchQuery: query, isLoadingMetadata: true);
+
+    final results = await _db.search(query, limit: 100);
+
+    final newState = state;
+    if (newState is VideoListLoaded && newState.searchQuery == query) {
+      state = newState.copyWith(
+        searchResults: results,
+        isLoadingMetadata: false,
+      );
     }
   }
 }
@@ -438,7 +364,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
                   message: message,
                   onRetry: () => ref.read(videoListProvider.notifier).reloadFromCache(),
                 ),
-              VideoListLoaded loaded => loaded.videos.isEmpty
+              VideoListLoaded loaded => loaded.totalCount == 0
                   ? _buildEmptyState(context, ref, loaded, isDark)
                   : _buildVideoContent(context, ref, loaded, isDark),
             },
@@ -487,8 +413,8 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     bool isDark,
     VideoListState state,
   ) {
-    final videoCount = state is VideoListLoaded ? state.videos.length : 0;
-    final movieCount = state is VideoListLoaded ? state.movies.length : 0;
+    final videoCount = state is VideoListLoaded ? state.totalCount : 0;
+    final movieCount = state is VideoListLoaded ? state.movieCount : 0;
     final tvShowCount = state is VideoListLoaded ? state.tvShowGroups.length : 0;
 
     return Row(
@@ -1028,35 +954,10 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     );
   }
 
-  /// 获取最近添加的视频
-  /// [limit] 为空时返回所有视频
+  /// 获取最近添加的视频（使用 SQLite 预加载的数据）
   List<VideoMetadata> _getRecentVideos(VideoListLoaded state, {int? limit}) {
-    final result = state.videos.map((v) {
-      final key = '${v.sourceId}_${v.path}';
-      return state.metadataMap[key] ??
-          VideoMetadata(
-            filePath: v.path,
-            sourceId: v.sourceId,
-            fileName: v.name,
-            thumbnailUrl: v.thumbnailUrl,
-          );
-    }).toList();
-
-    // 按最近修改时间排序
-    result.sort((a, b) {
-      final videoA = state.videos.firstWhere(
-        (v) => '${v.sourceId}_${v.path}' == a.uniqueKey,
-        orElse: () => state.videos.first,
-      );
-      final videoB = state.videos.firstWhere(
-        (v) => '${v.sourceId}_${v.path}' == b.uniqueKey,
-        orElse: () => state.videos.first,
-      );
-      return (videoB.modifiedTime ?? DateTime(1970))
-          .compareTo(videoA.modifiedTime ?? DateTime(1970));
-    });
-
-    return limit != null ? result.take(limit).toList() : result;
+    final recentVideos = state.recentVideos;
+    return limit != null ? recentVideos.take(limit).toList() : recentVideos;
   }
 
   /// 显示分类页面
@@ -1265,31 +1166,14 @@ class _ContinueWatchingCard extends ConsumerWidget {
   final VideoHistoryItem item;
   final bool isDark;
 
-  /// 获取可用的海报 URL
-  /// 优先使用元数据中的 TMDB 海报，其次是可加载的 thumbnailUrl
+  /// 获取可用的海报 URL - 优先使用历史记录中的 thumbnailUrl
   String? _getDisplayPosterUrl() {
-    // 从元数据服务获取海报（需要 sourceId）
-    if (item.sourceId != null) {
-      final metadataService = VideoMetadataService.instance;
-      final metadata = metadataService.getCached(item.sourceId!, item.videoPath);
-
-      // 优先使用元数据中的海报（通常是 TMDB 的 http URL）
-      if (metadata?.displayPosterUrl != null) {
-        final url = metadata!.displayPosterUrl!;
-        // 确保 URL 是可加载的（http/https 或 file://）
-        if (AdaptiveImage.isSupportedUrl(url)) {
-          return url;
-        }
-      }
-    }
-
     // 检查历史记录中的 thumbnailUrl 是否可用
     if (item.thumbnailUrl != null && item.thumbnailUrl!.isNotEmpty) {
       if (AdaptiveImage.isSupportedUrl(item.thumbnailUrl!)) {
         return item.thumbnailUrl;
       }
     }
-
     return null;
   }
 
@@ -2304,7 +2188,7 @@ class _VerticalPosterCardState extends ConsumerState<_VerticalPosterCard> {
   void initState() {
     super.initState();
     _posterUrl = widget.metadata.displayPosterUrl;
-    _hasPoster = _posterUrl != null && _posterUrl!.isNotEmpty;
+    _hasPoster = _posterUrl != null && _posterUrl.isNotEmpty;
   }
 
   @override
@@ -2602,7 +2486,7 @@ class _HorizontalVideoCardState extends ConsumerState<_HorizontalVideoCard> {
   void initState() {
     super.initState();
     _posterUrl = widget.metadata.displayPosterUrl;
-    _hasPoster = _posterUrl != null && _posterUrl!.isNotEmpty;
+    _hasPoster = _posterUrl != null && _posterUrl.isNotEmpty;
   }
 
   @override

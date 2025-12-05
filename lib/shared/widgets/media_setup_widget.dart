@@ -223,7 +223,7 @@ class MediaSetupWidget extends ConsumerWidget {
 
     if (label == null) return const SizedBox.shrink();
 
-    return Container(
+    return DecoratedBox(
       decoration: BoxDecoration(
         gradient: AppColors.primaryGradient,
         borderRadius: BorderRadius.circular(16),

@@ -47,7 +47,7 @@ class _MainScaffoldState extends State<MainScaffold> {
     if (updateService.hasUpdate && updateService.updateInfo != null && mounted) {
       // 检查是否是桌面平台或移动平台（iOS 除外，因为需要通过 App Store 更新）
       if (!Platform.isIOS) {
-        showUpdateDialog(context, updateService.updateInfo!);
+        await showUpdateDialog(context, updateService.updateInfo!);
       }
     }
   }
@@ -246,7 +246,7 @@ class _MainScaffoldState extends State<MainScaffold> {
     );
   }
 
-  Widget _buildMobileNav(BuildContext context, int currentIndex, bool isDark) => Container(
+  Widget _buildMobileNav(BuildContext context, int currentIndex, bool isDark) => DecoratedBox(
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
         border: Border(

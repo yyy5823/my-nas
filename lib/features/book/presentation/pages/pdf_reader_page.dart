@@ -115,7 +115,7 @@ class PdfReaderNotifier extends StateNotifier<PdfReaderState> {
       );
 
       logger.i('PDF 加载完成: ${book.name}, ${document.pages.length} 页');
-    } catch (e, stackTrace) {
+    } on Exception catch (e, stackTrace) {
       logger.e('加载 PDF 失败', e, stackTrace);
       state = PdfReaderError('加载失败: $e');
     }
