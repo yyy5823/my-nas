@@ -57,7 +57,7 @@ class LocalFileApi {
             type: RootDirectoryType.drive,
           ));
         }
-      } catch (_) {
+      } on Exception catch (_) {
         // 忽略无法访问的驱动器
       }
     }
@@ -97,7 +97,7 @@ class LocalFileApi {
           }
         }
       }
-    } catch (e) {
+    } on Exception catch (e) {
       logger.w('LocalFileApi: 无法列出 /Volumes', e);
     }
 
@@ -144,7 +144,7 @@ class LocalFileApi {
           }
         }
       }
-    } catch (e) {
+    } on Exception catch (e) {
       logger.w('LocalFileApi: 无法列出 /media', e);
     }
 
@@ -199,7 +199,7 @@ class LocalFileApi {
           }
         }
       }
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('LocalFileApi: 获取 Android 存储目录失败', e);
     }
 
@@ -237,7 +237,7 @@ class LocalFileApi {
           type: RootDirectoryType.downloads,
         ));
       }
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('LocalFileApi: 获取 iOS 目录失败', e);
     }
 
@@ -269,7 +269,7 @@ class LocalFileApi {
             isHidden: isHidden,
             isReadOnly: stat.mode & 0x80 == 0, // 简化的只读检查
           ));
-        } catch (e) {
+        } on Exception catch (e) {
           // 跳过无法访问的文件
           logger.w('LocalFileApi: 无法获取文件信息 ${entity.path}', e);
         }
@@ -401,12 +401,12 @@ class LocalFileApi {
             ));
 
             if (results.length >= maxResults) break;
-          } catch (_) {
+          } on Exception catch (_) {
             // 跳过无法访问的文件
           }
         }
       }
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('LocalFileApi: 搜索失败', e);
     }
 
@@ -414,9 +414,7 @@ class LocalFileApi {
   }
 
   /// 获取文件的 URI
-  String getFileUri(String path) {
-    return Uri.file(path).toString();
-  }
+  String getFileUri(String path) => Uri.file(path).toString();
 }
 
 /// 根目录类型

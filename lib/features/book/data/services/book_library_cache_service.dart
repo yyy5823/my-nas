@@ -98,7 +98,7 @@ class BookLibraryCacheService {
     try {
       _box = await Hive.openBox(_boxName);
       logger.i('BookLibraryCacheService: 初始化完成');
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('BookLibraryCacheService: 打开缓存失败，尝试删除并重建', e);
       await Hive.deleteBoxFromDisk(_boxName);
       _box = await Hive.openBox(_boxName);
@@ -112,7 +112,7 @@ class BookLibraryCacheService {
     if (data == null) return null;
     try {
       return BookLibraryCache.fromMap(data as Map<dynamic, dynamic>);
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('BookLibraryCacheService: 解析缓存失败', e);
       return null;
     }
@@ -149,7 +149,7 @@ class BookLibraryCacheService {
     try {
       final jsonStr = jsonEncode(data);
       return jsonStr.length;
-    } catch (e) {
+    } on Exception catch (e) {
       return 0;
     }
   }

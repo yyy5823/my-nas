@@ -177,7 +177,7 @@ class BookListNotifier extends StateNotifier<BookListState> {
           loadBooks();
         }
       });
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('BookListNotifier: 初始化失败', e);
       state = BookListLoaded(books: [], fromCache: false);
     }

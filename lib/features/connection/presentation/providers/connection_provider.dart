@@ -149,7 +149,7 @@ class ConnectionStateNotifier extends StateNotifier<NasConnectionState> {
             rememberDevice: rememberDevice,
           ),
       };
-    } catch (e) {
+    } on Exception catch (e) {
       adapter?.dispose();
       state = ConnectionError(message: '连接失败: ${_getErrorMessage(e)}');
     }

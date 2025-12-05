@@ -255,7 +255,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
         // 阅读内容
         GestureDetector(
           onTap: () => setState(() => _showControls = !_showControls),
-          child: Container(
+          child: ColoredBox(
             color: state.backgroundColor,
             child: SafeArea(
               child: SingleChildScrollView(
@@ -303,7 +303,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
       ],
     );
 
-  Widget _buildTopBar(BuildContext context, bool isDark) => Container(
+  Widget _buildTopBar(BuildContext context, bool isDark) => DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -369,8 +369,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     BuildContext context,
     BookReaderLoaded state,
     bool isDark,
-  ) {
-    return Container(
+  ) => DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.bottomCenter,
@@ -418,7 +417,6 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
         ),
       ),
     );
-  }
 
   Widget _buildSettingsPanel(
     BuildContext context,

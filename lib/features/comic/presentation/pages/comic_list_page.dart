@@ -180,7 +180,7 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
           loadComics();
         }
       });
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('ComicListNotifier: 初始化失败', e);
       state = ComicListLoaded(comics: [], fromCache: false);
     }

@@ -61,7 +61,7 @@ class MediaProxyServer {
       _port = 0;
       _proxyFiles.clear();
       logger.i('MediaProxyServer: 已停止');
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('MediaProxyServer: 停止失败', e);
     }
   }
@@ -124,7 +124,7 @@ class MediaProxyServer {
 
     try {
       await _streamFile(request, fileInfo);
-    } catch (e, st) {
+    } on Exception catch (e, st) {
       logger.e('MediaProxyServer: 流式传输失败', e, st);
       if (!request.response.headers.persistentConnection) {
         request.response.statusCode = HttpStatus.internalServerError;
@@ -189,7 +189,7 @@ class MediaProxyServer {
       await request.response.addStream(stream);
       await request.response.close();
       logger.d('MediaProxyServer: 传输完成 ${fileInfo.filePath}');
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('MediaProxyServer: 传输中断 ${fileInfo.filePath}', e);
       await request.response.close();
     }

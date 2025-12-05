@@ -127,7 +127,7 @@ class AuthStorageService {
   String get deviceName {
     try {
       return Platform.localHostname;
-    } catch (_) {
+    } on Exception catch (_) {
       return 'MyNAS-Client';
     }
   }
@@ -168,7 +168,7 @@ class AuthStorageService {
         username: json['username'] as String,
         password: json['password'] as String,
       );
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('AuthStorageService: 解析凭证失败', e);
       return null;
     }
@@ -207,7 +207,7 @@ class AuthStorageService {
     try {
       final json = jsonDecode(data) as Map<String, dynamic>;
       return json.map((k, v) => MapEntry(k, v as String));
-    } catch (_) {
+    } on Exception catch (_) {
       return {};
     }
   }

@@ -130,8 +130,7 @@ class DownloadPage extends ConsumerWidget {
     );
   }
 
-  Widget _buildClearButton(BuildContext context, WidgetRef ref, bool isDark) {
-    return Material(
+  Widget _buildClearButton(BuildContext context, WidgetRef ref, bool isDark) => Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: () {
@@ -174,10 +173,8 @@ class DownloadPage extends ConsumerWidget {
         ),
       ),
     );
-  }
 
-  Widget _buildSectionHeader(BuildContext context, String title, IconData icon, bool isDark) {
-    return Row(
+  Widget _buildSectionHeader(BuildContext context, String title, IconData icon, bool isDark) => Row(
       children: [
         Container(
           padding: const EdgeInsets.all(6),
@@ -202,10 +199,8 @@ class DownloadPage extends ConsumerWidget {
         ),
       ],
     );
-  }
 
-  Widget _buildEmptyState(BuildContext context, bool isDark) {
-    return Center(
+  Widget _buildEmptyState(BuildContext context, bool isDark) => Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -242,7 +237,6 @@ class DownloadPage extends ConsumerWidget {
         ],
       ),
     );
-  }
 }
 
 class _DownloadTaskTile extends ConsumerWidget {

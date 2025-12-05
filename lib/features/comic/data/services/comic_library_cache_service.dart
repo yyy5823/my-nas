@@ -101,7 +101,7 @@ class ComicLibraryCacheService {
             Map<String, dynamic>.from(jsonDecode(data) as Map));
         logger.i('ComicLibraryCacheService: 加载缓存成功，共 ${_cache!.comics.length} 本漫画');
       }
-    } catch (e) {
+    } on Exception catch (e) {
       logger.w('ComicLibraryCacheService: 加载缓存失败', e);
       _cache = null;
     }
@@ -129,7 +129,7 @@ class ComicLibraryCacheService {
     try {
       await _storage.write(key: _cacheKey, value: jsonEncode(cache.toJson()));
       logger.i('ComicLibraryCacheService: 保存缓存成功，共 ${cache.comics.length} 本漫画');
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('ComicLibraryCacheService: 保存缓存失败', e);
     }
   }
@@ -139,7 +139,7 @@ class ComicLibraryCacheService {
     try {
       await _storage.delete(key: _cacheKey);
       logger.i('ComicLibraryCacheService: 清除缓存成功');
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('ComicLibraryCacheService: 清除缓存失败', e);
     }
   }
@@ -150,7 +150,7 @@ class ComicLibraryCacheService {
     try {
       final jsonStr = jsonEncode(_cache!.toJson());
       return jsonStr.length;
-    } catch (e) {
+    } on Exception catch (e) {
       return 0;
     }
   }

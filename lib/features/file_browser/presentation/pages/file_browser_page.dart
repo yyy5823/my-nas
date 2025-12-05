@@ -1589,8 +1589,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
     required String title,
     Color? titleColor,
     required VoidCallback onTap,
-  }) {
-    return Material(
+  }) => Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
@@ -1628,7 +1627,6 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
         ),
       ),
     );
-  }
 }
 
 /// 目录选择器组件

@@ -295,6 +295,11 @@ jobs:
           echo "=== After setup ==="
           ls -la macos/Runner.xcodeproj/
 
+          # 修改 macOS 部署目标为 11.0（file_picker 等插件需要）
+          echo "Updating macOS deployment target to 11.0..."
+          sed -i '' 's/MACOSX_DEPLOYMENT_TARGET = 10\.[0-9]*;/MACOSX_DEPLOYMENT_TARGET = 11.0;/g' macos/Runner.xcodeproj/project.pbxproj
+          echo "Deployment target updated"
+
           # 预缓存 macOS 工具链
           flutter precache --macos
 
