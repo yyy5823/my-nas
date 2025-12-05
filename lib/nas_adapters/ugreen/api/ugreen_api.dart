@@ -628,7 +628,7 @@ class UGreenApi {
           return rootFiles;
         }
       } on Exception catch (e) {
-        logger.d('UGreenApi: 尝试根路径 $rootPath 失败');
+        logger.d('UGreenApi: 尝试根路径 $rootPath 失败 (使用 $e)');
       }
     }
 

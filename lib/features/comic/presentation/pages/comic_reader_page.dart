@@ -103,7 +103,7 @@ class ComicReaderNotifier extends StateNotifier<ComicReaderState> {
       } else {
         await _loadFolderPages();
       }
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('加载漫画页面失败', e);
       state = state.copyWith(isLoading: false, error: '加载失败: $e');
     }
@@ -170,7 +170,7 @@ class ComicReaderNotifier extends StateNotifier<ComicReaderState> {
         // 暂时尝试当作 ZIP 处理（有些 cbr 实际是 zip）
         try {
           archive = archive_lib.ZipDecoder().decodeBytes(archiveBytes);
-        } catch (_) {
+        } on Exception catch (_) {
           state = state.copyWith(
             isLoading: false,
             error: 'RAR 格式暂不支持，请使用 CBZ 格式',
@@ -196,12 +196,12 @@ class ComicReaderNotifier extends StateNotifier<ComicReaderState> {
     final imageFiles = archive.files.where((file) {
       if (file.isFile) {
         final name = file.name.toLowerCase();
-        return _imageExtensions.any((ext) => name.endsWith(ext));
+        return _imageExtensions.any(name.endsWith);
       }
       return false;
-    }).toList();
+    }).toList()
 
-    imageFiles.sort((a, b) => a.name.compareTo(b.name));
+    ..sort((a, b) => a.name.compareTo(b.name));
 
     final pages = <ComicPage>[];
     for (var i = 0; i < imageFiles.length; i++) {

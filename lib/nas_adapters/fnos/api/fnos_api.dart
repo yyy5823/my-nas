@@ -304,7 +304,7 @@ class FnOSApi {
 
     for (final attempt in attempts) {
       try {
-        final endpoint = attempt['endpoint'] as String;
+        final endpoint = attempt['endpoint']! as String;
         Response response;
 
         if (attempt['method'] == 'POST') {

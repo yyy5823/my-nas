@@ -183,15 +183,8 @@ class WebDavFileSystem implements NasFileSystem {
   }
 
   @override
-  Future<List<FileItem>> search(String query, {String? path}) async {
-    // WebDAV 不支持搜索，返回空列表
-    // 可以通过遍历目录实现简单搜索，但效率较低
-    return [];
-  }
+  Future<List<FileItem>> search(String query, {String? path}) async => [];
 
   @override
-  Future<String?> getThumbnailUrl(String path, {ThumbnailSize? size}) async {
-    // WebDAV 不支持缩略图
-    return null;
-  }
+  Future<String?> getThumbnailUrl(String path, {ThumbnailSize? size}) async => null;
 }

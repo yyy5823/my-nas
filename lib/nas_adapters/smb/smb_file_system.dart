@@ -225,8 +225,5 @@ class SmbFileSystem implements NasFileSystem {
   }
 
   @override
-  Future<String?> getThumbnailUrl(String path, {ThumbnailSize? size}) async {
-    // SMB 不支持缩略图
-    return null;
-  }
+  Future<String?> getThumbnailUrl(String path, {ThumbnailSize? size}) async => null;
 }

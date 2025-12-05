@@ -96,8 +96,7 @@ class DownloadPage extends ConsumerWidget {
     );
   }
 
-  Widget _buildHeader(BuildContext context, WidgetRef ref, bool isDark) {
-    return Container(
+  Widget _buildHeader(BuildContext context, WidgetRef ref, bool isDark) => DecoratedBox(
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
         border: Border(
@@ -128,7 +127,6 @@ class DownloadPage extends ConsumerWidget {
         ),
       ),
     );
-  }
 
   Widget _buildClearButton(BuildContext context, WidgetRef ref, bool isDark) => Material(
       color: Colors.transparent,

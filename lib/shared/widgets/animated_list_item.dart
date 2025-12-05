@@ -61,15 +61,13 @@ class _AnimatedListItemState extends State<AnimatedListItem>
   }
 
   @override
-  Widget build(BuildContext context) {
-    return FadeTransition(
+  Widget build(BuildContext context) => FadeTransition(
       opacity: _fadeAnimation,
       child: SlideTransition(
         position: _slideAnimation,
         child: widget.child,
       ),
     );
-  }
 }
 
 /// 带有缩放淡入动画的网格项包装器

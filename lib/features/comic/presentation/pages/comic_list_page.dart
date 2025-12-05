@@ -379,7 +379,8 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
         coverPath: imageFiles.first.path,
         pageCount: imageFiles.length,
       );
-    } catch (e) {
+    } on Exception catch (e) {
+      logger.w('检查漫画目录失败: $folderPath - $e');
       return null;
     }
   }

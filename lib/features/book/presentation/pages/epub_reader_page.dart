@@ -202,14 +202,14 @@ class EpubReaderNotifier extends StateNotifier<EpubReaderState> {
 
   String _extractTextContent(String htmlContent) {
     // 移除 HTML 标签，保留文本
-    var text = htmlContent
+    final text = htmlContent
         // 保留段落换行
-        .replaceAll(RegExp(r'</p>', caseSensitive: false), '\n\n')
+        .replaceAll(RegExp('</p>', caseSensitive: false), '\n\n')
         .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n')
-        .replaceAll(RegExp(r'</h[1-6]>', caseSensitive: false), '\n\n')
-        .replaceAll(RegExp(r'</div>', caseSensitive: false), '\n')
+        .replaceAll(RegExp('</h[1-6]>', caseSensitive: false), '\n\n')
+        .replaceAll(RegExp('</div>', caseSensitive: false), '\n')
         // 移除所有其他标签
-        .replaceAll(RegExp(r'<[^>]+>'), '')
+        .replaceAll(RegExp('<[^>]+>'), '')
         // 解码 HTML 实体
         .replaceAll('&nbsp;', ' ')
         .replaceAll('&lt;', '<')

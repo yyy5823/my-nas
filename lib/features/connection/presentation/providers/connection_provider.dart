@@ -20,9 +20,7 @@ final connectionStateProvider =
 /// 保存的连接列表
 final savedConnectionsProvider =
     StateNotifierProvider<SavedConnectionsNotifier, List<ConnectionEntity>>(
-        (ref) {
-  return SavedConnectionsNotifier();
-});
+        (ref) => SavedConnectionsNotifier());
 
 /// 连接状态
 sealed class NasConnectionState {

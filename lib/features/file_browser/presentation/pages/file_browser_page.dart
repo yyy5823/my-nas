@@ -91,7 +91,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
     // 确定标题文本
     final title = widget.sourceName ?? '文件';
 
-    return Container(
+    return DecoratedBox(
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
         border: Border(
@@ -178,8 +178,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
     required VoidCallback onTap,
     required bool isDark,
     String? tooltip,
-  }) {
-    return Tooltip(
+  }) => Tooltip(
       message: tooltip ?? '',
       child: Material(
         color: Colors.transparent,
@@ -201,7 +200,6 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
         ),
       ),
     );
-  }
 
   Widget _buildSourceSelector(
     List<(SourceEntity, SourceConnection)> connectedSources,
@@ -437,8 +435,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
     required VoidCallback onTap,
     IconData? icon,
     bool isFirst = false,
-  }) {
-    return Row(
+  }) => Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         if (!isFirst)
@@ -479,7 +476,6 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
         ),
       ],
     );
-  }
 
   Widget _buildContent(FileListState state, bool isGridView, bool isDark) {
     final content = switch (state) {
@@ -515,8 +511,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
     return AnimatedContentSwitcher(child: content);
   }
 
-  Widget _buildNotConnectedPrompt(bool isDark) {
-    return Center(
+  Widget _buildNotConnectedPrompt(bool isDark) => Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
@@ -597,7 +592,6 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
         ),
       ),
     );
-  }
 
   Widget _buildList(List<FileItem> files, bool isDark) => ListView.builder(
         padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
@@ -632,8 +626,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
         ),
       );
 
-  Widget _buildFab(bool isDark) {
-    return Container(
+  Widget _buildFab(bool isDark) => Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
         gradient: AppColors.primaryGradient,
@@ -662,7 +655,6 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
         ),
       ),
     );
-  }
 
   void _handleFileTap(FileItem file) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -1299,7 +1291,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
   }
 
   void _showDestinationPicker(FileItem file, bool isDark, {required bool isCopy}) {
-    String selectedPath = '/';
+    var selectedPath = '/';
 
     showDialog<void>(
       context: context,

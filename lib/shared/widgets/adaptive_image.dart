@@ -43,19 +43,13 @@ class AdaptiveImage extends StatelessWidget {
   final Duration fadeInDuration;
 
   /// 检查是否是本地文件 URL
-  static bool isLocalFile(String url) {
-    return url.startsWith('file://');
-  }
+  static bool isLocalFile(String url) => url.startsWith('file://');
 
   /// 检查是否是网络 URL
-  static bool isNetworkUrl(String url) {
-    return url.startsWith('http://') || url.startsWith('https://');
-  }
+  static bool isNetworkUrl(String url) => url.startsWith('http://') || url.startsWith('https://');
 
   /// 检查 URL 是否可以直接加载（支持的协议）
-  static bool isSupportedUrl(String url) {
-    return isLocalFile(url) || isNetworkUrl(url) || !url.contains('://');
-  }
+  static bool isSupportedUrl(String url) => isLocalFile(url) || isNetworkUrl(url) || !url.contains('://');
 
   /// 将 file:// URL 转换为本地文件路径
   static String? toLocalPath(String url) {
@@ -127,8 +121,7 @@ class AdaptiveImage extends StatelessWidget {
     );
   }
 
-  Widget _buildNetworkImage(BuildContext context) {
-    return CachedNetworkImage(
+  Widget _buildNetworkImage(BuildContext context) => CachedNetworkImage(
       imageUrl: imageUrl,
       fit: fit,
       width: width,
@@ -139,10 +132,8 @@ class AdaptiveImage extends StatelessWidget {
       errorWidget: (context, _, error) =>
           errorWidget?.call(context, error) ?? _buildDefaultError(context),
     );
-  }
 
-  Widget _buildDefaultPlaceholder() {
-    return Container(
+  Widget _buildDefaultPlaceholder() => Container(
       width: width,
       height: height,
       color: Colors.grey[300],
@@ -150,10 +141,8 @@ class AdaptiveImage extends StatelessWidget {
         child: CircularProgressIndicator(strokeWidth: 2),
       ),
     );
-  }
 
-  Widget _buildDefaultError(BuildContext context) {
-    return Container(
+  Widget _buildDefaultError(BuildContext context) => Container(
       width: width,
       height: height,
       color: Colors.grey[800],
@@ -163,5 +152,4 @@ class AdaptiveImage extends StatelessWidget {
         size: 48,
       ),
     );
-  }
 }

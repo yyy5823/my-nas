@@ -2,9 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/shared/services/update_service.dart';
 
 /// 更新服务 Provider
-final updateServiceProvider = Provider<UpdateService>((ref) {
-  return UpdateService.instance;
-});
+final updateServiceProvider = Provider<UpdateService>((ref) => UpdateService.instance);
 
 /// 更新状态 Provider
 final updateStatusProvider = StreamProvider<UpdateStatus>((ref) async* {

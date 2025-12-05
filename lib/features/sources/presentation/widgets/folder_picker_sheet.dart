@@ -130,7 +130,8 @@ class _FolderPickerSheetState extends State<FolderPickerSheet> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: DropdownButtonFormField<SourceEntity>(
-                  value: _selectedSource,
+                  key: ValueKey(_selectedSource?.id),
+                  initialValue: _selectedSource,
                   decoration: const InputDecoration(
                     labelText: '选择源',
                     prefixIcon: Icon(Icons.storage),

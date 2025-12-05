@@ -15,6 +15,20 @@ class ComicLibraryCacheEntry {
     this.fileSize,
   });
 
+  factory ComicLibraryCacheEntry.fromJson(Map<String, dynamic> json) =>
+      ComicLibraryCacheEntry(
+        sourceId: json['sourceId'] as String,
+        folderPath: json['folderPath'] as String,
+        folderName: json['folderName'] as String,
+        coverPath: json['coverPath'] as String?,
+        pageCount: json['pageCount'] as int? ?? 0,
+        modifiedTime: json['modifiedTime'] != null
+            ? DateTime.parse(json['modifiedTime'] as String)
+            : null,
+        comicType: json['comicType'] as String? ?? 'folder',
+        fileSize: json['fileSize'] as int?,
+      );
+
   final String sourceId;
   final String folderPath;
   final String folderName;
@@ -34,20 +48,6 @@ class ComicLibraryCacheEntry {
         'comicType': comicType,
         'fileSize': fileSize,
       };
-
-  factory ComicLibraryCacheEntry.fromJson(Map<String, dynamic> json) =>
-      ComicLibraryCacheEntry(
-        sourceId: json['sourceId'] as String,
-        folderPath: json['folderPath'] as String,
-        folderName: json['folderName'] as String,
-        coverPath: json['coverPath'] as String?,
-        pageCount: json['pageCount'] as int? ?? 0,
-        modifiedTime: json['modifiedTime'] != null
-            ? DateTime.parse(json['modifiedTime'] as String)
-            : null,
-        comicType: json['comicType'] as String? ?? 'folder',
-        fileSize: json['fileSize'] as int?,
-      );
 }
 
 /// 漫画库缓存
@@ -58,16 +58,6 @@ class ComicLibraryCache {
     required this.sourceIds,
   });
 
-  final List<ComicLibraryCacheEntry> comics;
-  final DateTime lastUpdated;
-  final List<String> sourceIds;
-
-  Map<String, dynamic> toJson() => {
-        'comics': comics.map((c) => c.toJson()).toList(),
-        'lastUpdated': lastUpdated.toIso8601String(),
-        'sourceIds': sourceIds,
-      };
-
   factory ComicLibraryCache.fromJson(Map<String, dynamic> json) =>
       ComicLibraryCache(
         comics: (json['comics'] as List<dynamic>)
@@ -77,6 +67,16 @@ class ComicLibraryCache {
         lastUpdated: DateTime.parse(json['lastUpdated'] as String),
         sourceIds: List<String>.from(json['sourceIds'] as List),
       );
+
+  final List<ComicLibraryCacheEntry> comics;
+  final DateTime lastUpdated;
+  final List<String> sourceIds;
+
+  Map<String, dynamic> toJson() => {
+        'comics': comics.map((c) => c.toJson()).toList(),
+        'lastUpdated': lastUpdated.toIso8601String(),
+        'sourceIds': sourceIds,
+      };
 }
 
 /// 漫画库缓存服务
