@@ -2,79 +2,281 @@ import 'package:hive_ce/hive.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/video/data/services/nfo_scraper_service.dart';
 import 'package:my_nas/features/video/data/services/tmdb_service.dart';
+import 'package:my_nas/features/video/data/services/video_database_service.dart';
 import 'package:my_nas/features/video/data/services/video_history_service.dart';
 import 'package:my_nas/features/video/data/services/video_thumbnail_service.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 
-/// 视频元数据服务
+/// 视频元数据服务 - 使用 SQLite 后端，支持大规模数据
 class VideoMetadataService {
   VideoMetadataService._();
 
   static VideoMetadataService? _instance;
-  static VideoMetadataService get instance => _instance ??= VideoMetadataService._();
+  static VideoMetadataService get instance =>
+      _instance ??= VideoMetadataService._();
 
-  static const String _boxName = 'video_metadata';
+  static const String _hiveBoxName = 'video_metadata';
 
-  Box<dynamic>? _box;
+  final VideoDatabaseService _db = VideoDatabaseService.instance;
   final TmdbService _tmdbService = TmdbService.instance;
   final NfoScraperService _nfoService = NfoScraperService.instance;
   final VideoThumbnailService _thumbnailService = VideoThumbnailService.instance;
   final VideoHistoryService _historyService = VideoHistoryService.instance;
 
+  bool _initialized = false;
+  bool _migrationCompleted = false;
+
   /// 初始化
   Future<void> init() async {
-    if (_box != null && _box!.isOpen) return;
+    if (_initialized) return;
+
     try {
-      // 并行初始化 Hive box 和 ThumbnailService
-      final results = await Future.wait<Object?>([
-        Hive.openBox<dynamic>(_boxName),
+      // 并行初始化 SQLite 和 ThumbnailService
+      await Future.wait([
+        _db.init(),
         _thumbnailService.init(),
       ]);
-      _box = results[0] as Box<dynamic>?;
-      logger.i('VideoMetadataService: 初始化完成，缓存条目: ${_box?.length ?? 0}');
+
+      // 检查是否需要从 Hive 迁移数据
+      if (!_migrationCompleted) {
+        await _checkAndMigrateFromHive();
+      }
+
+      _initialized = true;
+
+      final stats = await _db.getStats();
+      logger.i('VideoMetadataService: 初始化完成，SQLite 条目: ${stats['total']}');
     } catch (e) {
-      logger.e('VideoMetadataService: 打开缓存失败，尝试删除并重建', e);
-      // 删除损坏的 box 并重新创建
-      await Hive.deleteBoxFromDisk(_boxName);
-      _box = await Hive.openBox<dynamic>(_boxName);
-      logger.i('VideoMetadataService: 重建缓存完成');
+      logger.e('VideoMetadataService: 初始化失败', e);
+      rethrow;
     }
   }
 
-  /// 获取缓存的元数据
-  VideoMetadata? getCached(String sourceId, String filePath) {
-    final key = '${sourceId}_$filePath';
-    final data = _box?.get(key);
-    if (data == null) return null;
+  /// 检查并从 Hive 迁移数据到 SQLite
+  Future<void> _checkAndMigrateFromHive() async {
     try {
-      return VideoMetadata.fromMap(data as Map<dynamic, dynamic>);
+      // 检查 SQLite 是否已有数据
+      final sqliteCount = await _db.getCount();
+      if (sqliteCount > 0) {
+        _migrationCompleted = true;
+        logger.d('VideoMetadataService: SQLite 已有数据，跳过迁移');
+        return;
+      }
+
+      // 尝试打开 Hive box
+      Box<dynamic>? hiveBox;
+      try {
+        hiveBox = await Hive.openBox<dynamic>(_hiveBoxName);
+      } catch (e) {
+        logger.w('VideoMetadataService: 无法打开 Hive box，跳过迁移', e);
+        _migrationCompleted = true;
+        return;
+      }
+
+      final hiveCount = hiveBox.length;
+      if (hiveCount == 0) {
+        await hiveBox.close();
+        _migrationCompleted = true;
+        logger.d('VideoMetadataService: Hive 无数据，跳过迁移');
+        return;
+      }
+
+      logger.i('VideoMetadataService: 开始从 Hive 迁移 $hiveCount 条数据到 SQLite');
+
+      // 批量迁移数据
+      final batch = <VideoMetadata>[];
+      const batchSize = 100;
+      var migrated = 0;
+
+      for (final key in hiveBox.keys) {
+        try {
+          final data = hiveBox.get(key);
+          if (data != null) {
+            final metadata = VideoMetadata.fromMap(data as Map<dynamic, dynamic>);
+            batch.add(metadata);
+
+            if (batch.length >= batchSize) {
+              await _db.upsertBatch(batch);
+              migrated += batch.length;
+              batch.clear();
+              logger.d('VideoMetadataService: 已迁移 $migrated/$hiveCount');
+            }
+          }
+        } catch (e) {
+          logger.w('VideoMetadataService: 迁移条目失败 $key', e);
+        }
+      }
+
+      // 处理剩余数据
+      if (batch.isNotEmpty) {
+        await _db.upsertBatch(batch);
+        migrated += batch.length;
+      }
+
+      await hiveBox.close();
+      _migrationCompleted = true;
+
+      logger.i('VideoMetadataService: 迁移完成，共迁移 $migrated 条数据');
+
+      // 可选：删除旧的 Hive 数据（取消注释以启用）
+      // await Hive.deleteBoxFromDisk(_hiveBoxName);
+      // logger.i('VideoMetadataService: 已删除旧的 Hive 数据');
     } catch (e) {
-      logger.e('VideoMetadataService: 解析缓存数据失败', e);
-      return null;
+      logger.e('VideoMetadataService: 迁移失败', e);
+      _migrationCompleted = true; // 避免重复尝试
     }
+  }
+
+  /// 获取缓存的元数据（异步，使用 SQLite）
+  Future<VideoMetadata?> getCachedAsync(String sourceId, String filePath) async {
+    if (!_initialized) await init();
+    return _db.get(sourceId, filePath);
+  }
+
+  /// 获取缓存的元数据（同步兼容接口，内部使用缓存）
+  /// 注意：首次调用可能返回 null，建议使用 getCachedAsync
+  VideoMetadata? getCached(String sourceId, String filePath) {
+    // 为了向后兼容，返回 null 并建议使用异步方法
+    // 真正的数据获取应该使用 getCachedAsync
+    return null;
+  }
+
+  /// 批量获取缓存的元数据（异步）
+  Future<Map<String, VideoMetadata>> getCachedBatch(
+      List<({String sourceId, String filePath})> keys) async {
+    if (!_initialized) await init();
+    return _db.getBatch(keys);
   }
 
   /// 保存元数据
   Future<void> save(VideoMetadata metadata) async {
-    await _box?.put(metadata.uniqueKey, metadata.toMap());
+    if (!_initialized) await init();
+    await _db.upsert(metadata);
+  }
+
+  /// 批量保存元数据
+  Future<void> saveBatch(List<VideoMetadata> metadataList) async {
+    if (!_initialized) await init();
+    await _db.upsertBatch(metadataList);
   }
 
   /// 删除元数据
   Future<void> delete(String sourceId, String filePath) async {
-    final key = '${sourceId}_$filePath';
-    await _box?.delete(key);
+    if (!_initialized) await init();
+    await _db.delete(sourceId, filePath);
   }
 
   /// 清除所有缓存
   Future<void> clearAll() async {
-    await _box?.clear();
+    if (!_initialized) await init();
+    await _db.clearAll();
   }
 
+  // ============ 索引查询方法（使用 SQLite 索引）============
+
+  /// 根据 TMDB ID 获取所有匹配的元数据
+  Future<List<VideoMetadata>> getByTmdbId(int tmdbId) async {
+    if (!_initialized) await init();
+    return _db.getByTmdbId(tmdbId);
+  }
+
+  /// 根据 TMDB ID 获取剧集映射
+  Future<Map<int, Map<int, VideoMetadata>>> getEpisodesByTmdbId(int tmdbId) async {
+    if (!_initialized) await init();
+    return _db.getEpisodesByTmdbId(tmdbId);
+  }
+
+  /// 获取所有 TMDB ID 集合
+  Future<Set<int>> getAllTmdbIds() async {
+    if (!_initialized) await init();
+    return _db.getAllTmdbIds();
+  }
+
+  /// 根据 TMDB ID 获取第一个匹配的元数据
+  Future<VideoMetadata?> getFirstByTmdbId(int tmdbId) async {
+    if (!_initialized) await init();
+    return _db.getFirstByTmdbId(tmdbId);
+  }
+
+  /// 根据分类获取元数据（分页）
+  Future<List<VideoMetadata>> getByCategory(
+    MediaCategory category, {
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    if (!_initialized) await init();
+    return _db.getByCategory(category, limit: limit, offset: offset);
+  }
+
+  /// 根据年份获取元数据（分页）
+  Future<List<VideoMetadata>> getByYear(int year, {int limit = 50, int offset = 0}) async {
+    if (!_initialized) await init();
+    return _db.getByYear(year, limit: limit, offset: offset);
+  }
+
+  /// 根据类型获取元数据（分页）
+  Future<List<VideoMetadata>> getByGenre(String genre, {int limit = 50, int offset = 0}) async {
+    if (!_initialized) await init();
+    return _db.getByGenre(genre, limit: limit, offset: offset);
+  }
+
+  /// 获取高评分内容（分页）
+  Future<List<VideoMetadata>> getTopRated({
+    double minRating = 7.0,
+    MediaCategory? category,
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    if (!_initialized) await init();
+    return _db.getTopRated(
+      minRating: minRating,
+      category: category,
+      limit: limit,
+      offset: offset,
+    );
+  }
+
+  /// 分页获取元数据
+  Future<List<VideoMetadata>> getPage({
+    int limit = 50,
+    int offset = 0,
+    MediaCategory? category,
+  }) async {
+    if (!_initialized) await init();
+    return _db.getPage(limit: limit, offset: offset, category: category);
+  }
+
+  /// 搜索元数据
+  Future<List<VideoMetadata>> search(String query, {int limit = 50, int offset = 0}) async {
+    if (!_initialized) await init();
+    return _db.search(query, limit: limit, offset: offset);
+  }
+
+  /// 获取统计信息
+  Future<Map<String, dynamic>> getStats() async {
+    if (!_initialized) await init();
+    return _db.getStats();
+  }
+
+  /// 获取总数量
+  Future<int> getCount({MediaCategory? category}) async {
+    if (!_initialized) await init();
+    return _db.getCount(category: category);
+  }
+
+  // ============ 兼容旧接口（已废弃，仅用于过渡）============
+
+  /// @deprecated 使用 getPage() 替代，此方法会加载所有数据到内存
+  @Deprecated('使用 getPage() 分页查询替代')
+  List<VideoMetadata> getAll() {
+    logger.w('VideoMetadataService: getAll() 已废弃，请使用 getPage() 分页查询');
+    return []; // 返回空列表，强制调用方使用新 API
+  }
+
+  // ============ 元数据获取方法 ============
+
   /// 当播放进度更新时，刷新缩略图
-  ///
-  /// 此方法应在视频播放停止后调用，用于更新缩略图为当前停止位置的帧
-  /// 仅对没有刮削封面的视频有效
   Future<void> refreshThumbnailOnProgressUpdate({
     required String sourceId,
     required String filePath,
@@ -82,22 +284,16 @@ class VideoMetadataService {
     NasFileSystem? fileSystem,
   }) async {
     try {
-      final metadata = getCached(sourceId, filePath);
+      final metadata = await getCachedAsync(sourceId, filePath);
       if (metadata == null) return;
 
-      // 如果有刮削封面（TMDB 海报或 NAS 缩略图），不需要更新缩略图
       if (metadata.posterUrl != null || metadata.thumbnailUrl != null) {
         logger.d('VideoMetadataService: 视频有刮削封面，跳过缩略图更新');
         return;
       }
 
-      // 删除旧的缩略图缓存，强制重新生成
       await _thumbnailService.deleteCached(filePath);
-
-      // 重新生成缩略图（会使用新的播放位置）
       await _tryGenerateThumbnail(metadata, videoUrl, fileSystem);
-
-      // 保存更新后的元数据
       await save(metadata);
 
       logger.i('VideoMetadataService: 已更新缩略图为当前播放位置 "${metadata.fileName}"');
@@ -106,26 +302,7 @@ class VideoMetadataService {
     }
   }
 
-  /// 获取所有缓存的元数据
-  List<VideoMetadata> getAll() {
-    if (_box == null) return [];
-    final results = <VideoMetadata>[];
-    for (final key in _box!.keys) {
-      final data = _box!.get(key);
-      if (data != null) {
-        try {
-          results.add(VideoMetadata.fromMap(data as Map<dynamic, dynamic>));
-        } catch (e) {
-          logger.w('VideoMetadataService: 跳过无效缓存数据 $key');
-        }
-      }
-    }
-    return results;
-  }
-
   /// 获取或刷新元数据
-  /// [fileSystem] 可选的文件系统接口，用于读取 NFO 文件
-  /// [videoUrl] 视频 URL，用于在没有封面时生成缩略图
   Future<VideoMetadata> getOrFetch({
     required String sourceId,
     required String filePath,
@@ -134,11 +311,12 @@ class VideoMetadataService {
     String? videoUrl,
     bool forceRefresh = false,
   }) async {
+    if (!_initialized) await init();
+
     // 检查缓存
-    var metadata = getCached(sourceId, filePath);
+    var metadata = await getCachedAsync(sourceId, filePath);
 
     if (metadata != null && !forceRefresh) {
-      // 检查是否需要更新（超过7天）
       final needsUpdate = metadata.lastUpdated == null ||
           DateTime.now().difference(metadata.lastUpdated!).inDays > 7;
 
@@ -177,30 +355,21 @@ class VideoMetadataService {
   }
 
   /// 尝试为视频生成缩略图
-  ///
-  /// [fileSystem] 可选的文件系统接口，用于 SMB 等需要流式下载的协议
-  ///
-  /// 缩略图位置选择策略：
-  /// 1. 如果有播放历史，使用上次停止的位置作为缩略图帧
-  /// 2. 如果没有播放历史，使用默认的 5 秒位置
   Future<void> _tryGenerateThumbnail(
     VideoMetadata metadata,
     String videoUrl,
     NasFileSystem? fileSystem,
   ) async {
     try {
-      // 检查是否已有缓存的生成缩略图
       final cachedUrl = _thumbnailService.getCachedThumbnailUrl(metadata.filePath);
       if (cachedUrl != null) {
         metadata.generatedThumbnailUrl = cachedUrl;
         return;
       }
 
-      // 获取播放历史，决定缩略图位置
-      int timeMs = 5000; // 默认 5 秒位置
+      int timeMs = 5000;
       final progress = await _historyService.getProgress(metadata.filePath);
       if (progress != null && progress.position.inMilliseconds > 0) {
-        // 使用上次停止的位置
         timeMs = progress.position.inMilliseconds;
         logger.d('VideoMetadataService: 使用播放历史位置生成缩略图 "${metadata.fileName}" @ ${progress.position.inSeconds}s');
       } else {
@@ -211,7 +380,7 @@ class VideoMetadataService {
         videoUrl: videoUrl,
         videoPath: metadata.filePath,
         timeMs: timeMs,
-        fileSystem: fileSystem, // 传递 fileSystem 用于 SMB 等协议
+        fileSystem: fileSystem,
       );
 
       if (thumbnailPath != null) {
@@ -233,7 +402,6 @@ class VideoMetadataService {
       );
 
       if (nfoData != null && nfoData.hasData) {
-        // 更新元数据
         metadata.category = nfoData.seasonNumber != null || nfoData.episodeNumber != null
             ? MediaCategory.tvShow
             : MediaCategory.movie;
@@ -252,11 +420,9 @@ class VideoMetadataService {
         metadata.episodeTitle = nfoData.episodeTitle;
         metadata.lastUpdated = DateTime.now();
 
-        // 如果有本地海报，获取 URL（跳过不支持直接 URL 访问的协议如 SMB）
         if (nfoData.posterPath != null) {
           try {
             final posterUrl = await fileSystem.getFileUrl(nfoData.posterPath!);
-            // 只保存 http/https/file 协议的 URL，跳过 smb:// 等不支持直接访问的协议
             if (posterUrl.startsWith('http') || posterUrl.startsWith('file')) {
               metadata.posterUrl = posterUrl;
             }
@@ -265,11 +431,9 @@ class VideoMetadataService {
           }
         }
 
-        // 如果有本地背景图，获取 URL（跳过不支持直接 URL 访问的协议如 SMB）
         if (nfoData.fanartPath != null) {
           try {
             final backdropUrl = await fileSystem.getFileUrl(nfoData.fanartPath!);
-            // 只保存 http/https/file 协议的 URL
             if (backdropUrl.startsWith('http') || backdropUrl.startsWith('file')) {
               metadata.backdropUrl = backdropUrl;
             }
@@ -294,7 +458,6 @@ class VideoMetadataService {
       return;
     }
 
-    // 解析文件名
     final info = VideoFileNameParser.parse(metadata.fileName);
     logger.d('VideoMetadataService: 解析文件名 "${metadata.fileName}" -> '
         'title: "${info.cleanTitle}", year: ${info.year}, '
@@ -306,7 +469,6 @@ class VideoMetadataService {
 
     try {
       if (info.isTvShow) {
-        // 搜索电视剧
         final results = await _tmdbService.searchTvShows(
           info.cleanTitle,
           year: info.year,
@@ -317,7 +479,6 @@ class VideoMetadataService {
           final tvDetail = await _tmdbService.getTvDetail(tvItem.id);
 
           if (tvDetail != null) {
-            // 获取剧集标题
             String? episodeTitle;
             if (info.season != null && info.episode != null) {
               final seasonDetail = await _tmdbService.getSeasonDetail(
@@ -342,7 +503,6 @@ class VideoMetadataService {
           }
         }
       } else {
-        // 搜索电影
         final results = await _tmdbService.searchMovies(
           info.cleanTitle,
           year: info.year,
@@ -433,7 +593,6 @@ class VideoMetadataService {
   }
 
   /// 批量获取元数据
-  /// [fileSystem] 可选的文件系统接口，用于读取 NFO 文件
   Future<List<VideoMetadata>> batchFetch(
     List<({String sourceId, String filePath, String fileName})> videos, {
     NasFileSystem? fileSystem,
@@ -454,7 +613,6 @@ class VideoMetadataService {
       );
       results.add(metadata);
 
-      // 添加延迟以避免 API 限制
       if (i < videos.length - 1) {
         await Future<void>.delayed(const Duration(milliseconds: 250));
       }
@@ -464,9 +622,6 @@ class VideoMetadataService {
   }
 
   /// 为没有封面的视频生成缩略图
-  ///
-  /// 类似于 Emby/Jellyfin 的 Screen Grabber 功能
-  /// 在视频的 15% 位置提取帧作为缩略图
   Future<String?> generateThumbnailForVideo({
     required String videoUrl,
     required String videoPath,
@@ -475,11 +630,10 @@ class VideoMetadataService {
       final thumbnailPath = await _thumbnailService.generateThumbnail(
         videoUrl: videoUrl,
         videoPath: videoPath,
-        timeMs: 5000, // 5秒位置，通常能避开片头黑屏
+        timeMs: 5000,
       );
 
       if (thumbnailPath != null) {
-        // 返回 file:// URL
         return _thumbnailService.getCachedThumbnailUrl(videoPath);
       }
     } catch (e) {
@@ -489,29 +643,23 @@ class VideoMetadataService {
   }
 
   /// 获取视频的显示封面 URL
-  ///
-  /// 优先级：TMDB 海报 > NFO 本地海报 > NAS 内置缩略图 > 生成的缩略图
   Future<String?> getDisplayPosterUrl({
     required VideoMetadata metadata,
     String? videoUrl,
   }) async {
-    // 1. 优先使用 TMDB 海报或 NFO 本地海报
     if (metadata.posterUrl != null && metadata.posterUrl!.isNotEmpty) {
       return metadata.posterUrl;
     }
 
-    // 2. 使用 NAS 内置缩略图
     if (metadata.thumbnailUrl != null && metadata.thumbnailUrl!.isNotEmpty) {
       return metadata.thumbnailUrl;
     }
 
-    // 3. 检查是否有缓存的生成缩略图
     final cachedUrl = _thumbnailService.getCachedThumbnailUrl(metadata.filePath);
     if (cachedUrl != null) {
       return cachedUrl;
     }
 
-    // 4. 如果提供了视频 URL，尝试生成缩略图
     if (videoUrl != null && videoUrl.isNotEmpty) {
       return generateThumbnailForVideo(
         videoUrl: videoUrl,

@@ -298,20 +298,15 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
   }
 
   /// 分批加载元数据，优先加载首屏内容
-  /// 使用分批处理避免阻塞 UI 主线程
+  /// 优化：使用 SQLite 异步批量查询
   Future<void> _loadMetadataBatched(List<VideoFileWithSource> videos) async {
-    final metadataMap = <String, VideoMetadata>{};
-
     // 第一阶段：优先加载首屏内容（前 30 个，覆盖推荐、最近添加、电影等首屏分类）
     const firstBatchSize = 30;
     final firstBatch = videos.take(firstBatchSize).toList();
 
-    for (final video in firstBatch) {
-      final cached = _metadataService.getCached(video.sourceId, video.path);
-      if (cached != null) {
-        metadataMap[cached.uniqueKey] = cached;
-      }
-    }
+    // 使用异步批量查询（SQLite）
+    final firstKeys = firstBatch.map((v) => (sourceId: v.sourceId, filePath: v.path)).toList();
+    final metadataMap = await _metadataService.getCachedBatch(firstKeys);
 
     // 立即更新首屏数据
     final current = state;
@@ -330,7 +325,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       await Future<void>.delayed(const Duration(milliseconds: 16));
 
       final remainingVideos = videos.skip(firstBatchSize).toList();
-      const batchSize = 50; // 每批处理 50 个，平衡性能和响应性
+      const batchSize = 200; // SQLite 批量查询可以处理更大批次
       final totalBatches = (remainingVideos.length / batchSize).ceil();
 
       for (var batch = 0; batch < totalBatches; batch++) {
@@ -338,13 +333,10 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
         final end = (start + batchSize).clamp(0, remainingVideos.length);
         final batchVideos = remainingVideos.sublist(start, end);
 
-        // 处理当前批次
-        for (final video in batchVideos) {
-          final cached = _metadataService.getCached(video.sourceId, video.path);
-          if (cached != null) {
-            metadataMap[cached.uniqueKey] = cached;
-          }
-        }
+        // 使用异步批量查询处理当前批次
+        final batchKeys = batchVideos.map((v) => (sourceId: v.sourceId, filePath: v.path)).toList();
+        final batchResult = await _metadataService.getCachedBatch(batchKeys);
+        metadataMap.addAll(batchResult);
 
         // 每批之间让出执行权，允许 UI 响应用户操作
         if (batch < totalBatches - 1) {

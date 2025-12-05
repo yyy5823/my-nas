@@ -58,6 +58,42 @@ class VideoHistoryService {
     }
   }
 
+  /// 批量获取播放进度 - 避免 N+1 查询问题
+  Future<Map<String, VideoProgress>> getProgressBatch(List<String> videoPaths) async {
+    if (!_initialized) await init();
+
+    final result = <String, VideoProgress>{};
+    for (final path in videoPaths) {
+      final data = _progressBox.get(path);
+      if (data != null) {
+        try {
+          result[path] = VideoProgress.fromJson(data as Map<dynamic, dynamic>);
+        } catch (e) {
+          logger.w('VideoHistoryService: 解析进度失败 $path');
+        }
+      }
+    }
+    return result;
+  }
+
+  /// 获取所有播放进度 - 一次性读取整个 box
+  Future<Map<String, VideoProgress>> getAllProgress() async {
+    if (!_initialized) await init();
+
+    final result = <String, VideoProgress>{};
+    for (final key in _progressBox.keys) {
+      final data = _progressBox.get(key);
+      if (data != null) {
+        try {
+          result[key as String] = VideoProgress.fromJson(data as Map<dynamic, dynamic>);
+        } catch (e) {
+          logger.w('VideoHistoryService: 解析进度失败 $key');
+        }
+      }
+    }
+    return result;
+  }
+
   /// 清除播放进度
   Future<void> clearProgress(String videoPath) async {
     if (!_initialized) await init();
@@ -110,16 +146,20 @@ class VideoHistoryService {
     }
   }
 
-  /// 获取继续观看列表（有进度且未看完的视频）
+  /// 获取继续观看列表（有进度且未看完的视频）- 优化：批量获取进度
   Future<List<VideoHistoryItem>> getContinueWatching({int limit = 10}) async {
     final history = await getHistory(limit: 50);
-    final continueList = <VideoHistoryItem>[];
+    if (history.isEmpty) return [];
 
     logger.d('VideoHistoryService: 获取继续观看, 历史记录数: ${history.length}');
 
+    // 批量获取所有需要的进度，避免 N+1 查询
+    final videoPaths = history.map((h) => h.videoPath).toList();
+    final progressMap = await getProgressBatch(videoPaths);
+
+    final continueList = <VideoHistoryItem>[];
     for (final item in history) {
-      final progress = await getProgress(item.videoPath);
-      logger.d('VideoHistoryService: 检查 ${item.videoName}, progress=${progress?.progressPercent}, thumbnailUrl=${item.thumbnailUrl}');
+      final progress = progressMap[item.videoPath];
       if (progress != null && progress.progressPercent > 0.05 && progress.progressPercent < 0.95) {
         continueList.add(item.copyWith(
           lastPosition: progress.position,

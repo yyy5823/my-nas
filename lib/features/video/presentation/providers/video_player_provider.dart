@@ -11,18 +11,18 @@ import 'package:my_nas/features/video/domain/entities/video_item.dart';
 import 'package:my_nas/features/video/presentation/providers/playback_settings_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/playlist_provider.dart';
 
-/// 当前播放的视频
-final currentVideoProvider = StateProvider<VideoItem?>((ref) => null);
+/// 当前播放的视频（autoDispose: 离开播放器页面后自动清理）
+final currentVideoProvider = StateProvider.autoDispose<VideoItem?>((ref) => null);
 
-/// 视频播放器控制器
+/// 视频播放器控制器（autoDispose: 离开播放器页面后自动清理资源）
 final videoPlayerControllerProvider =
-    StateNotifierProvider<VideoPlayerNotifier, VideoPlayerState>((ref) => VideoPlayerNotifier(ref));
+    StateNotifierProvider.autoDispose<VideoPlayerNotifier, VideoPlayerState>((ref) => VideoPlayerNotifier(ref));
 
-/// 可用字幕列表
-final availableSubtitlesProvider = StateProvider<List<SubtitleItem>>((ref) => []);
+/// 可用字幕列表（autoDispose）
+final availableSubtitlesProvider = StateProvider.autoDispose<List<SubtitleItem>>((ref) => []);
 
-/// 当前选中的字幕
-final currentSubtitleProvider = StateProvider<SubtitleItem?>((ref) => null);
+/// 当前选中的字幕（autoDispose）
+final currentSubtitleProvider = StateProvider.autoDispose<SubtitleItem?>((ref) => null);
 
 /// 播放器状态
 class VideoPlayerState {

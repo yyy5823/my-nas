@@ -25,20 +25,12 @@ final videoProgressProvider = FutureProvider.family<VideoProgress?, String>((ref
   return service.getProgress(videoPath);
 });
 
-/// 所有视频进度 Provider - 批量获取进度数据
+/// 所有视频进度 Provider - 优化：单次批量读取
 final allVideoProgressProvider = FutureProvider<Map<String, VideoProgress>>((ref) async {
   final service = ref.watch(videoHistoryServiceProvider);
   await service.init();
-  final history = await service.getHistory(limit: 200);
-
-  final progressMap = <String, VideoProgress>{};
-  for (final item in history) {
-    final progress = await service.getProgress(item.videoPath);
-    if (progress != null) {
-      progressMap[item.videoPath] = progress;
-    }
-  }
-  return progressMap;
+  // 使用批量读取，避免 N+1 查询问题
+  return service.getAllProgress();
 });
 
 /// 刷新播放历史
