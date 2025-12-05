@@ -327,7 +327,7 @@ class FnOSApi {
                 dataMap?['items'] ??
                 respData ??
                 data['result'] ??
-                [];
+                <dynamic>[];
 
             if (files is List) {
               for (final file in files) {
@@ -379,7 +379,7 @@ class FnOSApi {
             final shares = dataMap?['list'] ??
                 dataMap?['shares'] ??
                 respData ??
-                [];
+                <dynamic>[];
 
             if (shares is List) {
               for (final share in shares) {

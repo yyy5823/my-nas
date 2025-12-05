@@ -443,6 +443,7 @@ class _MediaScanSection extends ConsumerStatefulWidget {
 class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
   VideoScanProgress? _videoScanProgress;
   StreamSubscription<VideoScanProgress>? _progressSubscription;
+  bool _isScanning = false;
 
   @override
   void initState() {

@@ -1462,7 +1462,7 @@ class _PosterCardState extends ConsumerState<_PosterCard> {
           onTap: widget.onTap,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
-            transform: Matrix4.identity()..scale(_isHovered ? 1.05 : 1.0),
+            transform: Matrix4.identity()..scaleByDouble(_isHovered ? 1.05 : 1.0, _isHovered ? 1.05 : 1.0, 1.0, 1.0),
             transformAlignment: Alignment.center,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -2507,7 +2507,7 @@ class _HorizontalVideoCardState extends ConsumerState<_HorizontalVideoCard> {
           onTap: widget.onTap,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
-            transform: Matrix4.identity()..scale(_isHovered ? 1.03 : 1.0),
+            transform: Matrix4.identity()..scaleByDouble(_isHovered ? 1.03 : 1.0, _isHovered ? 1.03 : 1.0, 1.0, 1.0),
             transformAlignment: Alignment.center,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

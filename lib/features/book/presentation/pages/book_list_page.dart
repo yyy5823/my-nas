@@ -5,6 +5,7 @@ import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/book/data/services/book_database_service.dart';
 import 'package:my_nas/features/book/data/services/book_library_cache_service.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
 import 'package:my_nas/features/book/presentation/pages/book_reader_page.dart';
@@ -75,69 +76,105 @@ class BookListLoading extends BookListState {
 
 class BookListNotConnected extends BookListState {}
 
+/// 优化后的图书列表状态 - 使用预计算数据
 class BookListLoaded extends BookListState {
   BookListLoaded({
-    required this.books,
+    required this.totalCount,
+    this.totalSize = 0,
+    this.formatStats = const {},
     this.sortType = BookSortType.name,
     this.searchQuery = '',
     this.fromCache = false,
+    // 分类数据 - 从 SQLite 预加载
+    this.allBooks = const [],
+    this.searchResults = const [],
+    // 用于 O(1) 查找的 Map
+    this.bookByPath = const {},
   });
-  final List<BookFileWithSource> books;
+
+  final int totalCount;
+  final int totalSize;
+  final Map<BookFormat, int> formatStats;  // 预计算的格式统计
   final BookSortType sortType;
   final String searchQuery;
   final bool fromCache;
 
-  List<BookFileWithSource> get filteredBooks {
-    var result = List<BookFileWithSource>.from(books);
+  // 分类数据 - 已从 SQLite 预加载
+  final List<BookEntity> allBooks;
+  final List<BookEntity> searchResults;
 
-    // 搜索过滤
-    if (searchQuery.isNotEmpty) {
-      result = result
-          .where((b) => b.name.toLowerCase().contains(searchQuery.toLowerCase()))
-          .toList();
-    }
+  // 用于 O(1) 查找的 Map
+  final Map<String, BookEntity> bookByPath;
 
-    // 排序
-    switch (sortType) {
-      case BookSortType.name:
-        result.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-      case BookSortType.date:
-        result.sort((a, b) => (b.modifiedTime ?? DateTime(1970))
-            .compareTo(a.modifiedTime ?? DateTime(1970)));
-      case BookSortType.size:
-        result.sort((a, b) => b.size.compareTo(a.size));
-      case BookSortType.format:
-        result.sort((a, b) {
-          final formatA = BookItem.formatFromExtension(a.name).name;
-          final formatB = BookItem.formatFromExtension(b.name).name;
-          return formatA.compareTo(formatB);
-        });
-    }
+  /// 当前显示的图书（搜索时返回搜索结果）
+  List<BookEntity> get displayBooks =>
+      searchQuery.isNotEmpty ? searchResults : allBooks;
 
-    return result;
-  }
+  /// 兼容旧代码：返回 BookFileWithSource 列表
+  List<BookFileWithSource> get books => allBooks
+      .map((b) => BookFileWithSource(
+            file: FileItem(
+              name: b.fileName,
+              path: b.filePath,
+              size: b.size,
+              isDirectory: false,
+              modifiedTime: b.modifiedTime,
+            ),
+            sourceId: b.sourceId,
+          ))
+      .toList();
 
-  /// 按格式分组统计
-  Map<BookFormat, int> get formatStats {
-    final stats = <BookFormat, int>{};
-    for (final book in books) {
-      final format = BookItem.formatFromExtension(book.name);
-      stats[format] = (stats[format] ?? 0) + 1;
-    }
-    return stats;
+  /// 兼容旧代码：过滤后的图书
+  List<BookFileWithSource> get filteredBooks => displayBooks
+      .map((b) => BookFileWithSource(
+            file: FileItem(
+              name: b.fileName,
+              path: b.filePath,
+              size: b.size,
+              isDirectory: false,
+              modifiedTime: b.modifiedTime,
+            ),
+            sourceId: b.sourceId,
+          ))
+      .toList();
+
+  /// 通过路径获取图书 - O(1) 查找
+  BookFileWithSource? getBookByPath(String path) {
+    final b = bookByPath[path];
+    if (b == null) return null;
+    return BookFileWithSource(
+      file: FileItem(
+        name: b.fileName,
+        path: b.filePath,
+        size: b.size,
+        isDirectory: false,
+        modifiedTime: b.modifiedTime,
+      ),
+      sourceId: b.sourceId,
+    );
   }
 
   BookListLoaded copyWith({
-    List<BookFileWithSource>? books,
+    int? totalCount,
+    int? totalSize,
+    Map<BookFormat, int>? formatStats,
     BookSortType? sortType,
     String? searchQuery,
     bool? fromCache,
+    List<BookEntity>? allBooks,
+    List<BookEntity>? searchResults,
+    Map<String, BookEntity>? bookByPath,
   }) =>
       BookListLoaded(
-        books: books ?? this.books,
+        totalCount: totalCount ?? this.totalCount,
+        totalSize: totalSize ?? this.totalSize,
+        formatStats: formatStats ?? this.formatStats,
         sortType: sortType ?? this.sortType,
         searchQuery: searchQuery ?? this.searchQuery,
         fromCache: fromCache ?? this.fromCache,
+        allBooks: allBooks ?? this.allBooks,
+        searchResults: searchResults ?? this.searchResults,
+        bookByPath: bookByPath ?? this.bookByPath,
       );
 }
 
@@ -153,6 +190,7 @@ class BookListNotifier extends StateNotifier<BookListState> {
 
   final Ref _ref;
   final BookLibraryCacheService _cacheService = BookLibraryCacheService.instance;
+  final BookDatabaseService _db = BookDatabaseService.instance;
 
   /// 支持的电子书扩展名
   static const _supportedExtensions = [
@@ -165,8 +203,9 @@ class BookListNotifier extends StateNotifier<BookListState> {
 
   Future<void> _init() async {
     try {
+      await _db.init();
       await _cacheService.init();
-      await _loadFromCacheImmediately();
+      await _loadFromSqlite();
 
       // 监听连接状态变化
       _ref.listen<Map<String, SourceConnection>>(activeConnectionsProvider, (previous, next) {
@@ -179,32 +218,87 @@ class BookListNotifier extends StateNotifier<BookListState> {
       });
     } on Exception catch (e) {
       logger.e('BookListNotifier: 初始化失败', e);
-      state = BookListLoaded(books: [], fromCache: false);
+      state = BookListLoaded(totalCount: 0, fromCache: false);
     }
   }
 
-  /// 立即从缓存加载
-  Future<void> _loadFromCacheImmediately() async {
-    final cache = _cacheService.getCache();
-    if (cache != null && cache.books.isNotEmpty) {
-      state = BookListLoading(fromCache: true, currentFolder: '加载缓存...');
-
-      final books = cache.books.map((entry) => BookFileWithSource(
-          file: FileItem(
-            name: entry.fileName,
-            path: entry.filePath,
-            size: entry.size,
-            isDirectory: false,
-            modifiedTime: entry.modifiedTime,
-          ),
-          sourceId: entry.sourceId,
-        )).toList();
-
-      state = BookListLoaded(books: books, fromCache: true);
-      logger.i('从缓存加载了 ${books.length} 本图书');
-    } else {
-      state = BookListLoaded(books: [], fromCache: true);
+  /// 从 SQLite 加载数据
+  Future<void> _loadFromSqlite() async {
+    final count = await _db.getCount();
+    if (count == 0) {
+      // SQLite 为空，尝试从旧缓存迁移
+      await _migrateFromOldCache();
+      return;
     }
+
+    state = BookListLoading(fromCache: true, currentFolder: '加载数据...');
+
+    // 并行加载统计和数据
+    final results = await Future.wait([
+      _db.getStats(),
+      _db.getAll(),
+    ]);
+
+    final stats = results[0] as Map<String, dynamic>;
+    final allBooks = results[1] as List<BookEntity>;
+
+    // 转换格式统计
+    final rawFormatStats = stats['formatStats'] as Map<String, int>? ?? {};
+    final formatStats = <BookFormat, int>{};
+    for (final entry in rawFormatStats.entries) {
+      final format = BookFormat.values.firstWhere(
+        (f) => f.name == entry.key,
+        orElse: () => BookFormat.unknown,
+      );
+      formatStats[format] = entry.value;
+    }
+
+    // 构建快速查找 Map
+    final bookByPath = <String, BookEntity>{};
+    for (final b in allBooks) {
+      bookByPath[b.uniqueKey] = b;
+    }
+
+    state = BookListLoaded(
+      totalCount: stats['total'] as int? ?? 0,
+      totalSize: stats['totalSize'] as int? ?? 0,
+      formatStats: formatStats,
+      allBooks: allBooks,
+      bookByPath: bookByPath,
+      fromCache: true,
+    );
+
+    logger.i('BookListNotifier: 从 SQLite 加载了 ${allBooks.length} 本图书');
+  }
+
+  /// 从旧缓存迁移到 SQLite
+  Future<void> _migrateFromOldCache() async {
+    final cache = _cacheService.getCache();
+    if (cache == null || cache.books.isEmpty) {
+      state = BookListLoaded(totalCount: 0, fromCache: true);
+      return;
+    }
+
+    logger.i('BookListNotifier: 开始从 Hive 迁移 ${cache.books.length} 本图书');
+    state = BookListLoading(currentFolder: '正在迁移数据...', fromCache: true);
+
+    final entities = cache.books
+        .map((entry) => BookEntity(
+              sourceId: entry.sourceId,
+              filePath: entry.filePath,
+              fileName: entry.fileName,
+              format: BookItem.formatFromExtension(entry.fileName),
+              size: entry.size,
+              modifiedTime: entry.modifiedTime,
+              lastUpdated: DateTime.now(),
+            ))
+        .toList();
+
+    await _db.upsertBatch(entities);
+    logger.i('BookListNotifier: 迁移完成');
+
+    // 重新加载
+    await _loadFromSqlite();
   }
 
   Future<void> loadBooks({bool forceRefresh = false, int maxDepth = 3}) async {
@@ -228,7 +322,7 @@ class BookListNotifier extends StateNotifier<BookListState> {
       }
 
       if (config == null) {
-        state = BookListLoaded(books: []);
+        state = BookListLoaded(totalCount: 0);
         return;
       }
     }
@@ -236,7 +330,7 @@ class BookListNotifier extends StateNotifier<BookListState> {
     final bookPaths = config.getEnabledPathsForType(MediaType.book);
 
     if (bookPaths.isEmpty) {
-      state = BookListLoaded(books: []);
+      state = BookListLoaded(totalCount: 0);
       return;
     }
 
@@ -246,33 +340,18 @@ class BookListNotifier extends StateNotifier<BookListState> {
     }).toList();
 
     if (connectedPaths.isEmpty) {
-      if (state is! BookListLoaded || (state as BookListLoaded).books.isEmpty) {
+      final current = state;
+      if (current is! BookListLoaded || current.totalCount == 0) {
         state = BookListNotConnected();
       }
       return;
     }
 
-    final sourceIds = connectedPaths.map((p) => p.sourceId).toList();
-
-    // 尝试使用缓存
-    if (!forceRefresh && _cacheService.isCacheValid(sourceIds)) {
-      final cache = _cacheService.getCache();
-      if (cache != null) {
-        state = BookListLoading(fromCache: true, currentFolder: '加载缓存...');
-
-        final books = cache.books.map((entry) => BookFileWithSource(
-            file: FileItem(
-              name: entry.fileName,
-              path: entry.filePath,
-              size: entry.size,
-              isDirectory: false,
-              modifiedTime: entry.modifiedTime,
-            ),
-            sourceId: entry.sourceId,
-          )).toList();
-
-        state = BookListLoaded(books: books, fromCache: true);
-        logger.i('从缓存加载了 ${books.length} 本图书');
+    // 如果不是强制刷新且 SQLite 有数据，直接使用
+    if (!forceRefresh) {
+      final count = await _db.getCount();
+      if (count > 0) {
+        await _loadFromSqlite();
         return;
       }
     }
@@ -310,15 +389,29 @@ class BookListNotifier extends StateNotifier<BookListState> {
 
     logger.i('书籍扫描完成，共找到 ${books.length} 本书');
 
-    // 保存到缓存
-    final cacheEntries = books.map((b) => b.toCacheEntry()).toList();
-    await _cacheService.saveCache(BookLibraryCache(
-      books: cacheEntries,
-      lastUpdated: DateTime.now(),
-      sourceIds: sourceIds,
-    ));
+    // 保存到 SQLite
+    state = BookListLoading(
+      progress: 1.0,
+      currentFolder: '保存数据...',
+    );
 
-    state = BookListLoaded(books: books);
+    final entities = books
+        .map((b) => BookEntity(
+              sourceId: b.sourceId,
+              filePath: b.path,
+              fileName: b.name,
+              format: BookItem.formatFromExtension(b.name),
+              size: b.size,
+              modifiedTime: b.modifiedTime,
+              lastUpdated: DateTime.now(),
+            ))
+        .toList();
+
+    await _db.clear();
+    await _db.upsertBatch(entities);
+
+    // 重新从 SQLite 加载（确保状态一致）
+    await _loadFromSqlite();
   }
 
   Future<void> _scanForBooks(
@@ -366,7 +459,21 @@ class BookListNotifier extends StateNotifier<BookListState> {
   void setSearchQuery(String query) {
     final current = state;
     if (current is BookListLoaded) {
-      state = current.copyWith(searchQuery: query);
+      if (query.isEmpty) {
+        state = current.copyWith(searchQuery: '', searchResults: []);
+      } else {
+        // 使用 SQLite 搜索
+        _db.search(query).then((results) {
+          if (state is BookListLoaded) {
+            state = (state as BookListLoaded).copyWith(
+              searchQuery: query,
+              searchResults: results,
+            );
+          }
+        });
+        // 先更新搜索词，结果异步返回
+        state = current.copyWith(searchQuery: query);
+      }
     }
   }
 
@@ -379,6 +486,7 @@ class BookListNotifier extends StateNotifier<BookListState> {
 
   /// 强制刷新
   Future<void> forceRefresh() async {
+    await _db.clear();
     await _cacheService.clearCache();
     await loadBooks(forceRefresh: true);
   }
@@ -561,7 +669,7 @@ class _BookListPageState extends ConsumerState<BookListPage> {
                       children: [
                         _buildStatChip(
                           icon: Icons.menu_book_rounded,
-                          label: '${state.books.length} 本图书',
+                          label: '${state.totalCount} 本图书',
                           color: _themeColor,
                           isDark: isDark,
                         ),
@@ -975,7 +1083,7 @@ class _BookCacheInfoBar extends ConsumerWidget {
       return const SliverToBoxAdapter(child: SizedBox.shrink());
     }
 
-    final bookCount = state.books.length;
+    final bookCount = state.totalCount;
     final formatStats = state.formatStats;
     final cacheAge = DateTime.now().difference(cache.lastUpdated);
     final ageText = cacheAge.inHours < 1

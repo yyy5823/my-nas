@@ -660,7 +660,7 @@ class UGreenApi {
 
     // 尝试多种可能的响应结构
     // 结构 1: { pools: [ { volumes: [...] } ] }
-    final pools = dataMap?['pools'] ?? dataMap?['list'] ?? (data is List ? data : null) ?? [];
+    final pools = dataMap?['pools'] ?? dataMap?['list'] ?? (data is List ? data : null) ?? <dynamic>[];
     if (pools is List) {
       for (final pool in pools) {
         if (pool is! Map) continue;
@@ -668,7 +668,7 @@ class UGreenApi {
         logger.d('UGreenApi: 处理存储池: ${pool['name']} (${pool['id']})');
 
         // 从池中提取卷/共享
-        final volumes = pool['volumes'] ?? pool['shares'] ?? pool['folders'] ?? [];
+        final volumes = pool['volumes'] ?? pool['shares'] ?? pool['folders'] ?? <dynamic>[];
         if (volumes is List) {
           for (final vol in volumes) {
             if (vol is! Map) continue;
@@ -699,7 +699,7 @@ class UGreenApi {
         }
 
         // 有些 UGOS 版本可能将共享文件夹放在 pool 级别
-        final shareFolders = pool['share_folders'] ?? pool['shared_folders'] ?? [];
+        final shareFolders = pool['share_folders'] ?? pool['shared_folders'] ?? <dynamic>[];
         if (shareFolders is List) {
           for (final folder in shareFolders) {
             if (folder is! Map) continue;
@@ -721,7 +721,7 @@ class UGreenApi {
     }
 
     // 结构 2: 直接的共享列表
-    final directShares = dataMap?['shares'] ?? dataMap?['volumes'] ?? [];
+    final directShares = dataMap?['shares'] ?? dataMap?['volumes'] ?? <dynamic>[];
     if (directShares is List) {
       for (final share in directShares) {
         if (share is! Map) continue;

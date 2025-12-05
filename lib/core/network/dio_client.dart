@@ -52,8 +52,8 @@ class DioClient {
     if (allow) {
       logger.i('DioClient: 允许自签名 SSL 证书');
       (_dio.httpClientAdapter as IOHttpClientAdapter).createHttpClient = () {
-        final client = HttpClient();
-        client.badCertificateCallback = (cert, host, port) {
+        final client = HttpClient()
+        ..badCertificateCallback = (cert, host, port) {
           logger.w('DioClient: 接受自签名证书 - host: $host, port: $port');
           return true;
         };

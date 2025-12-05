@@ -65,7 +65,7 @@ class SubtitleStyle {
         'fontColor': fontColor.toARGB32(),
         'backgroundColor': backgroundColor.toARGB32(),
         'position': position.index,
-        'fontWeight': fontWeight.index,
+        'fontWeight': FontWeight.values.indexOf(fontWeight),
         'hasOutline': hasOutline,
         'outlineColor': outlineColor.toARGB32(),
         'outlineWidth': outlineWidth,
@@ -194,8 +194,9 @@ final subtitleBackgrounds = [
 const subtitleFontSizes = [16.0, 20.0, 24.0, 28.0, 32.0, 36.0, 40.0];
 
 extension ColorToInt on Color {
-  int toARGB32() => ((alpha * 255) << 24) |
-        ((red * 255) << 16) |
-        ((green * 255) << 8) |
-        (blue * 255);
+  int toARGB32() =>
+      ((a * 255.0).round().clamp(0, 255) << 24) |
+      ((r * 255.0).round().clamp(0, 255) << 16) |
+      ((g * 255.0).round().clamp(0, 255) << 8) |
+      (b * 255.0).round().clamp(0, 255);
 }

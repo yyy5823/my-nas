@@ -1,0 +1,333 @@
+import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/book/domain/entities/book_item.dart';
+import 'package:path/path.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:sqflite/sqflite.dart';
+
+/// 图书实体（用于 SQLite 存储）
+class BookEntity {
+  const BookEntity({
+    required this.sourceId,
+    required this.filePath,
+    required this.fileName,
+    required this.format,
+    this.size = 0,
+    this.modifiedTime,
+    this.lastUpdated,
+  });
+
+  final String sourceId;
+  final String filePath;
+  final String fileName;
+  final BookFormat format;
+  final int size;
+  final DateTime? modifiedTime;
+  final DateTime? lastUpdated;
+
+  String get uniqueKey => '${sourceId}_$filePath';
+
+  /// 显示名称（去除扩展名）
+  String get displayName {
+    final dotIndex = fileName.lastIndexOf('.');
+    return dotIndex > 0 ? fileName.substring(0, dotIndex) : fileName;
+  }
+
+  /// 显示的文件大小
+  String get displaySize {
+    if (size <= 0) return '未知大小';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    var unitIndex = 0;
+    var displaySize = size.toDouble();
+    while (displaySize >= 1024 && unitIndex < units.length - 1) {
+      displaySize /= 1024;
+      unitIndex++;
+    }
+    return '${displaySize.toStringAsFixed(displaySize < 10 ? 1 : 0)} ${units[unitIndex]}';
+  }
+
+  BookEntity copyWith({
+    String? sourceId,
+    String? filePath,
+    String? fileName,
+    BookFormat? format,
+    int? size,
+    DateTime? modifiedTime,
+    DateTime? lastUpdated,
+  }) =>
+      BookEntity(
+        sourceId: sourceId ?? this.sourceId,
+        filePath: filePath ?? this.filePath,
+        fileName: fileName ?? this.fileName,
+        format: format ?? this.format,
+        size: size ?? this.size,
+        modifiedTime: modifiedTime ?? this.modifiedTime,
+        lastUpdated: lastUpdated ?? this.lastUpdated,
+      );
+}
+
+/// 图书数据库服务 - 使用 SQLite 支持大规模数据和索引查询
+class BookDatabaseService {
+  BookDatabaseService._();
+
+  static BookDatabaseService? _instance;
+  static BookDatabaseService get instance =>
+      _instance ??= BookDatabaseService._();
+
+  Database? _db;
+  bool _initialized = false;
+
+  static const String _tableBooks = 'books';
+  static const String _colSourceId = 'source_id';
+  static const String _colFilePath = 'file_path';
+  static const String _colFileName = 'file_name';
+  static const String _colFormat = 'format';
+  static const String _colSize = 'size';
+  static const String _colModifiedTime = 'modified_time';
+  static const String _colLastUpdated = 'last_updated';
+
+  /// 初始化数据库
+  Future<void> init() async {
+    if (_initialized) return;
+
+    try {
+      final documentsDir = await getApplicationDocumentsDirectory();
+      final dbPath = join(documentsDir.path, 'book_library.db');
+
+      _db = await openDatabase(
+        dbPath,
+        version: 1,
+        onCreate: (db, version) async {
+          await db.execute('''
+            CREATE TABLE $_tableBooks (
+              $_colSourceId TEXT NOT NULL,
+              $_colFilePath TEXT NOT NULL,
+              $_colFileName TEXT NOT NULL,
+              $_colFormat TEXT NOT NULL,
+              $_colSize INTEGER DEFAULT 0,
+              $_colModifiedTime INTEGER,
+              $_colLastUpdated INTEGER,
+              PRIMARY KEY ($_colSourceId, $_colFilePath)
+            )
+          ''');
+
+          // 创建索引以加速查询
+          await db.execute(
+              'CREATE INDEX idx_books_format ON $_tableBooks ($_colFormat)');
+          await db.execute(
+              'CREATE INDEX idx_books_modified ON $_tableBooks ($_colModifiedTime DESC)');
+          await db.execute(
+              'CREATE INDEX idx_books_filename ON $_tableBooks ($_colFileName)');
+        },
+      );
+
+      _initialized = true;
+      logger.i('BookDatabaseService: 数据库初始化完成');
+    } catch (e) {
+      logger.e('BookDatabaseService: 数据库初始化失败', e);
+      rethrow;
+    }
+  }
+
+  /// 插入或更新图书
+  Future<void> upsert(BookEntity book) async {
+    if (!_initialized) await init();
+
+    await _db!.insert(
+      _tableBooks,
+      _toRow(book),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// 批量插入或更新
+  Future<void> upsertBatch(List<BookEntity> books) async {
+    if (!_initialized) await init();
+    if (books.isEmpty) return;
+
+    final batch = _db!.batch();
+    for (final book in books) {
+      batch.insert(
+        _tableBooks,
+        _toRow(book),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+    await batch.commit(noResult: true);
+  }
+
+  /// 获取单本图书
+  Future<BookEntity?> get(String sourceId, String filePath) async {
+    if (!_initialized) await init();
+
+    final results = await _db!.query(
+      _tableBooks,
+      where: '$_colSourceId = ? AND $_colFilePath = ?',
+      whereArgs: [sourceId, filePath],
+      limit: 1,
+    );
+
+    if (results.isEmpty) return null;
+    return _fromRow(results.first);
+  }
+
+  /// 获取所有图书
+  Future<List<BookEntity>> getAll({
+    String orderBy = 'file_name',
+    bool descending = false,
+  }) async {
+    if (!_initialized) await init();
+
+    final order = descending ? 'DESC' : 'ASC';
+    final results = await _db!.query(
+      _tableBooks,
+      orderBy: '$orderBy $order',
+    );
+
+    return results.map(_fromRow).toList();
+  }
+
+  /// 按格式获取图书
+  Future<List<BookEntity>> getByFormat(
+    BookFormat format, {
+    int? limit,
+    int offset = 0,
+  }) async {
+    if (!_initialized) await init();
+
+    final results = await _db!.query(
+      _tableBooks,
+      where: '$_colFormat = ?',
+      whereArgs: [format.name],
+      orderBy: '$_colFileName ASC',
+      limit: limit,
+      offset: offset,
+    );
+
+    return results.map(_fromRow).toList();
+  }
+
+  /// 搜索图书
+  Future<List<BookEntity>> search(
+    String query, {
+    int limit = 100,
+  }) async {
+    if (!_initialized) await init();
+    if (query.isEmpty) return [];
+
+    final results = await _db!.query(
+      _tableBooks,
+      where: '$_colFileName LIKE ?',
+      whereArgs: ['%$query%'],
+      orderBy: '$_colFileName ASC',
+      limit: limit,
+    );
+
+    return results.map(_fromRow).toList();
+  }
+
+  /// 获取统计信息
+  Future<Map<String, dynamic>> getStats() async {
+    if (!_initialized) await init();
+
+    final totalCount = Sqflite.firstIntValue(
+        await _db!.rawQuery('SELECT COUNT(*) FROM $_tableBooks'));
+
+    final totalSize = Sqflite.firstIntValue(
+            await _db!.rawQuery('SELECT SUM($_colSize) FROM $_tableBooks')) ??
+        0;
+
+    // 按格式统计
+    final formatResults = await _db!.rawQuery('''
+      SELECT $_colFormat, COUNT(*) as count
+      FROM $_tableBooks
+      GROUP BY $_colFormat
+    ''');
+
+    final formatStats = <String, int>{};
+    for (final row in formatResults) {
+      final format = row[_colFormat] as String;
+      final count = row['count'] as int;
+      formatStats[format] = count;
+    }
+
+    return {
+      'total': totalCount ?? 0,
+      'totalSize': totalSize,
+      'formatStats': formatStats,
+    };
+  }
+
+  /// 获取总数量
+  Future<int> getCount() async {
+    if (!_initialized) await init();
+    return Sqflite.firstIntValue(
+            await _db!.rawQuery('SELECT COUNT(*) FROM $_tableBooks')) ??
+        0;
+  }
+
+  /// 删除图书
+  Future<void> delete(String sourceId, String filePath) async {
+    if (!_initialized) await init();
+
+    await _db!.delete(
+      _tableBooks,
+      where: '$_colSourceId = ? AND $_colFilePath = ?',
+      whereArgs: [sourceId, filePath],
+    );
+  }
+
+  /// 清空所有数据
+  Future<void> clear() async {
+    if (!_initialized) await init();
+    await _db!.delete(_tableBooks);
+    logger.i('BookDatabaseService: 已清空所有数据');
+  }
+
+  /// 按来源ID删除
+  Future<void> deleteBySource(String sourceId) async {
+    if (!_initialized) await init();
+
+    await _db!.delete(
+      _tableBooks,
+      where: '$_colSourceId = ?',
+      whereArgs: [sourceId],
+    );
+  }
+
+  /// 关闭数据库
+  Future<void> close() async {
+    await _db?.close();
+    _db = null;
+    _initialized = false;
+  }
+
+  /// 转换为数据库行
+  Map<String, dynamic> _toRow(BookEntity b) => {
+        _colSourceId: b.sourceId,
+        _colFilePath: b.filePath,
+        _colFileName: b.fileName,
+        _colFormat: b.format.name,
+        _colSize: b.size,
+        _colModifiedTime: b.modifiedTime?.millisecondsSinceEpoch,
+        _colLastUpdated:
+            b.lastUpdated?.millisecondsSinceEpoch ?? DateTime.now().millisecondsSinceEpoch,
+      };
+
+  /// 从数据库行转换
+  BookEntity _fromRow(Map<String, dynamic> row) => BookEntity(
+        sourceId: row[_colSourceId] as String,
+        filePath: row[_colFilePath] as String,
+        fileName: row[_colFileName] as String,
+        format: BookFormat.values.firstWhere(
+          (f) => f.name == row[_colFormat],
+          orElse: () => BookFormat.unknown,
+        ),
+        size: row[_colSize] as int? ?? 0,
+        modifiedTime: row[_colModifiedTime] != null
+            ? DateTime.fromMillisecondsSinceEpoch(row[_colModifiedTime] as int)
+            : null,
+        lastUpdated: row[_colLastUpdated] != null
+            ? DateTime.fromMillisecondsSinceEpoch(row[_colLastUpdated] as int)
+            : null,
+      );
+}
