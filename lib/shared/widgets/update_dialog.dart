@@ -73,6 +73,8 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
                   const SizedBox(height: AppSpacing.lg),
                   // 下载进度
                   if (status == UpdateStatus.downloading) _buildProgress(isDark),
+                  // 安装中
+                  if (status == UpdateStatus.installing) _buildInstalling(isDark),
                   // 错误信息
                   if (status == UpdateStatus.error) _buildError(isDark),
                   // 按钮
@@ -121,7 +123,10 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
       ),
     );
 
-  Widget _buildVersionInfo(bool isDark) => Container(
+  Widget _buildVersionInfo(bool isDark) {
+    final hasDownload = widget.updateInfo.downloadUrl.isNotEmpty;
+
+    return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: isDark
@@ -144,14 +149,16 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '文件大小',
+                  hasDownload ? '文件大小' : '平台',
                   style: TextStyle(
                     fontSize: 12,
                     color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                   ),
                 ),
                 Text(
-                  widget.updateInfo.fileSizeText,
+                  hasDownload
+                      ? widget.updateInfo.fileSizeText
+                      : _getPlatformDisplayName(),
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
                     color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
@@ -163,6 +170,16 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
         ],
       ),
     );
+  }
+
+  String _getPlatformDisplayName() {
+    if (Platform.isIOS) return 'iOS';
+    if (Platform.isAndroid) return 'Android';
+    if (Platform.isMacOS) return 'macOS';
+    if (Platform.isWindows) return 'Windows';
+    if (Platform.isLinux) return 'Linux';
+    return '未知平台';
+  }
 
   Widget _buildVersionBadge(String label, String version, Color color) => Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -265,6 +282,32 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
       ],
     );
 
+  Widget _buildInstalling(bool isDark) => Container(
+      margin: const EdgeInsets.only(bottom: AppSpacing.md),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          const SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Text(
+            '正在安装...',
+            style: TextStyle(
+              fontSize: 13,
+              color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+            ),
+          ),
+        ],
+      ),
+    );
+
   Widget _buildError(bool isDark) => Container(
       margin: const EdgeInsets.only(bottom: AppSpacing.md),
       padding: const EdgeInsets.all(AppSpacing.md),
@@ -290,23 +333,27 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
     );
 
   Widget _buildActions(bool isDark, UpdateStatus status) {
+    // 下载中 - 显示取消按钮
     if (status == UpdateStatus.downloading) {
       return SizedBox(
         width: double.infinity,
         child: OutlinedButton(
-          onPressed: () {
-            _service.reset();
-            Navigator.pop(context);
-          },
+          onPressed: _service.cancelDownload,
           style: OutlinedButton.styleFrom(
             padding: const EdgeInsets.symmetric(vertical: 14),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
-          child: const Text('取消'),
+          child: const Text('取消下载'),
         ),
       );
     }
 
+    // 安装中 - 不显示按钮
+    if (status == UpdateStatus.installing) {
+      return const SizedBox.shrink();
+    }
+
+    // 准备安装
     if (status == UpdateStatus.readyToInstall) {
       return Column(
         children: [
@@ -351,31 +398,74 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
       );
     }
 
-    // 默认状态 - 显示下载和稍后按钮
+    // 错误状态 - 显示重试按钮
+    if (status == UpdateStatus.error) {
+      return Column(
+        children: [
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: () {
+                _service
+                  ..reset()
+                  ..checkForUpdates();
+              },
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.refresh_rounded, size: 20),
+                  SizedBox(width: 8),
+                  Text('重试'),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          // 提供打开 GitHub Releases 的选项
+          TextButton(
+            onPressed: _openReleasesPage,
+            child: Text(
+              '前往 GitHub 下载',
+              style: TextStyle(
+                color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              '关闭',
+              style: TextStyle(
+                color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    // 默认状态 - 显示下载/更新按钮
     return Column(
       children: [
         SizedBox(
           width: double.infinity,
           child: _buildGradientButton(
-            onPressed: () {
-              if (Platform.isIOS) {
-                // iOS 打开 App Store
-                _openAppStore();
-              } else {
-                _service.downloadUpdate();
-              }
-            },
+            onPressed: _handlePrimaryAction,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
-                  Platform.isIOS ? Icons.open_in_new_rounded : Icons.download_rounded,
+                  _getPrimaryActionIcon(),
                   color: Colors.white,
                   size: 20,
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  Platform.isIOS ? '前往 App Store' : '立即下载',
+                  _getPrimaryActionText(),
                   style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w600,
@@ -385,6 +475,20 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
             ),
           ),
         ),
+        // iOS 提供额外的 GitHub 下载选项（用于侧载）
+        if (Platform.isIOS && widget.updateInfo.downloadUrl.isEmpty) ...[
+          const SizedBox(height: AppSpacing.sm),
+          TextButton(
+            onPressed: _openReleasesPage,
+            child: Text(
+              '前往 GitHub 下载 IPA',
+              style: TextStyle(
+                color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ],
         const SizedBox(height: AppSpacing.sm),
         TextButton(
           onPressed: () => Navigator.pop(context),
@@ -397,6 +501,38 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
         ),
       ],
     );
+  }
+
+  IconData _getPrimaryActionIcon() {
+    if (Platform.isIOS) {
+      if (_service.config.hasAppStoreConfig) {
+        return Icons.open_in_new_rounded;
+      }
+      return Icons.language_rounded;
+    }
+    return Icons.download_rounded;
+  }
+
+  String _getPrimaryActionText() {
+    if (Platform.isIOS) {
+      if (_service.config.hasAppStoreConfig) {
+        return '前往 App Store';
+      }
+      return '查看更新详情';
+    }
+    return '立即下载';
+  }
+
+  Future<void> _handlePrimaryAction() async {
+    if (Platform.isIOS) {
+      if (_service.config.hasAppStoreConfig) {
+        await _openAppStore();
+      } else {
+        await _openReleasesPage();
+      }
+    } else {
+      await _service.downloadUpdate();
+    }
   }
 
   Widget _buildGradientButton({
@@ -428,9 +564,26 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
     );
 
   Future<void> _openAppStore() async {
-    // 替换为你的 App Store ID
-    const appStoreUrl = 'https://apps.apple.com/app/idXXXXXXXXX';
+    final appStoreUrl = _service.config.appStoreUrl;
+    if (appStoreUrl == null) {
+      await _openReleasesPage();
+      return;
+    }
+
     final uri = Uri.parse(appStoreUrl);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+    if (mounted) Navigator.pop(context);
+  }
+
+  Future<void> _openReleasesPage() async {
+    // 优先打开具体版本的页面
+    final url = widget.updateInfo.htmlUrl.isNotEmpty
+        ? widget.updateInfo.htmlUrl
+        : _service.config.releasesUrl;
+
+    final uri = Uri.parse(url);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
@@ -590,6 +743,8 @@ class _CheckUpdateTileState extends ConsumerState<CheckUpdateTile> {
         return '正在下载...';
       case UpdateStatus.readyToInstall:
         return '下载完成，点击安装';
+      case UpdateStatus.installing:
+        return '正在安装...';
       case UpdateStatus.error:
         return '检查失败，点击重试';
     }

@@ -11,6 +11,8 @@ import 'package:my_nas/features/photo/data/services/photo_save_service.dart';
 import 'package:my_nas/features/photo/domain/entities/photo_item.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/stream_image.dart';
+import 'package:photo_view/photo_view.dart';
+import 'package:photo_view/photo_view_gallery.dart';
 
 /// 照片 URL 获取回调
 typedef PhotoUrlGetter = Future<String?> Function(String path, String sourceId);
@@ -241,6 +243,88 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
     if (index < widget.photos.length - 1) _loadPhotoUrl(index + 1);
   }
 
+  /// 构建 PhotoViewGallery 的页面选项
+  /// 使用 StreamImageProvider 支持 SMB/WebDAV 等流式加载
+  PhotoViewGalleryPageOptions _buildPhotoViewGalleryPageOptions(
+    PhotoItem photo,
+    String? cachedUrl,
+    Future<String?> Function() onLoadUrl,
+    NasFileSystem? fileSystem,
+  ) {
+    // 优先使用已缓存的 URL，其次使用 photo.url
+    final displayUrl = cachedUrl ?? photo.url;
+    final hasDisplayUrl = displayUrl.isNotEmpty;
+    final hasOriginalImage = hasDisplayUrl && displayUrl != photo.thumbnailUrl;
+
+    // 如果没有有效的原图 URL，尝试加载
+    if (!hasOriginalImage && cachedUrl == null) {
+      // 异步加载 URL，加载完成后会触发 setState 更新
+      onLoadUrl();
+    }
+
+    // 决定使用哪个 URL
+    final imageUrl = hasOriginalImage ? displayUrl : (photo.thumbnailUrl ?? displayUrl);
+
+    return PhotoViewGalleryPageOptions.customChild(
+      child: StreamImage(
+        url: imageUrl,
+        path: photo.path,
+        fileSystem: fileSystem,
+        fit: BoxFit.contain,
+        placeholder: Center(
+          child: CircularProgressIndicator(
+            color: Colors.white.withValues(alpha: 0.7),
+          ),
+        ),
+        errorWidget: _buildErrorWidget(photo, onLoadUrl),
+        cacheKey: photo.path,
+      ),
+      initialScale: PhotoViewComputedScale.contained,
+      minScale: PhotoViewComputedScale.contained * 0.5,
+      maxScale: PhotoViewComputedScale.covered * 4,
+    );
+  }
+
+  /// 构建错误提示组件
+  Widget _buildErrorWidget(PhotoItem photo, Future<String?> Function() onLoadUrl) => Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          Icons.broken_image_outlined,
+          size: 64,
+          color: Colors.white.withValues(alpha: 0.5),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          '加载失败',
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.7),
+            fontSize: 16,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          photo.name,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.5),
+            fontSize: 12,
+          ),
+          textAlign: TextAlign.center,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(height: 16),
+        TextButton.icon(
+          onPressed: () {
+            onLoadUrl();
+            setState(() {});
+          },
+          icon: const Icon(Icons.refresh, color: Colors.white70),
+          label: const Text('重试', style: TextStyle(color: Colors.white70)),
+        ),
+      ],
+    );
+
   @override
   Widget build(BuildContext context) {
     final photo = widget.photos[_currentIndex];
@@ -253,9 +337,10 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
         behavior: HitTestBehavior.opaque,
         child: Stack(
           children: [
-            // 照片查看器
-            PageView.builder(
-              controller: _pageController,
+            // 照片查看器 - 使用 PhotoViewGallery 解决放大后拖动与翻页的手势冲突
+            PhotoViewGallery.builder(
+              scrollPhysics: const BouncingScrollPhysics(),
+              pageController: _pageController,
               itemCount: widget.photos.length,
               onPageChanged: (index) {
                 setState(() {
@@ -270,17 +355,41 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
                 // 加载新页面的收藏状态
                 _loadFavoriteStatus();
               },
-              itemBuilder: (context, index) {
+              builder: (context, index) {
                 final item = widget.photos[index];
                 final cachedUrl = _loadedUrls[item.path];
                 final fileSystem = widget.getFileSystem?.call(item.sourceId);
-                return _PhotoPage(
-                  photo: item,
-                  cachedUrl: cachedUrl,
-                  onLoadUrl: () => _loadPhotoUrl(index),
-                  fileSystem: fileSystem,
+                return _buildPhotoViewGalleryPageOptions(
+                  item,
+                  cachedUrl,
+                  () => _loadPhotoUrl(index),
+                  fileSystem,
                 );
               },
+              backgroundDecoration: const BoxDecoration(color: Colors.black),
+              loadingBuilder: (context, event) => Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(
+                      value: event == null || event.expectedTotalBytes == null
+                          ? null
+                          : event.cumulativeBytesLoaded / event.expectedTotalBytes!,
+                      color: Colors.white,
+                    ),
+                    if (event != null && event.expectedTotalBytes != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        '${((event.cumulativeBytesLoaded / event.expectedTotalBytes!) * 100).toInt()}%',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.7),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             ),
 
             // 顶部返回按钮（浮动）
@@ -1075,290 +1184,6 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
       _showErrorSnackBar(context, '删除失败: $e');
     }
   }
-}
-
-class _PhotoPage extends StatefulWidget {
-  const _PhotoPage({
-    required this.photo,
-    this.cachedUrl,
-    this.onLoadUrl,
-    this.fileSystem,
-  });
-
-  final PhotoItem photo;
-  final String? cachedUrl;
-  final Future<String?> Function()? onLoadUrl;
-  final NasFileSystem? fileSystem;
-
-  @override
-  State<_PhotoPage> createState() => _PhotoPageState();
-}
-
-class _PhotoPageState extends State<_PhotoPage> {
-  final _transformController = TransformationController();
-  String? _loadedUrl;
-  bool _isLoading = false;
-  bool _hasError = false;
-  String? _errorMessage;
-
-
-
-  /// 构建适合 URL 类型的图片组件
-  /// 使用 StreamImage 统一处理所有类型的图片加载
-  Widget _buildImageFromUrl({
-    required String url,
-    required BoxFit fit,
-    Widget Function(BuildContext, Widget, ImageChunkEvent?)? loadingBuilder,
-    Widget Function(BuildContext, Object, StackTrace?)? errorBuilder,
-  }) => StreamImage(
-      url: url,
-      path: widget.photo.path,
-      fileSystem: widget.fileSystem,
-      fit: fit,
-      placeholder: loadingBuilder != null
-          ? Builder(
-              builder: (context) => loadingBuilder(
-                context,
-                const SizedBox.shrink(),
-                null,
-              ),
-            )
-          : null,
-      errorWidget: errorBuilder != null
-          ? Builder(
-              builder: (context) => errorBuilder(
-                context,
-                Exception('图片加载失败'),
-                StackTrace.current,
-              ),
-            )
-          : null,
-      cacheKey: widget.photo.path,
-    );
-
-  @override
-  void initState() {
-    super.initState();
-    _loadedUrl = widget.cachedUrl;
-    // 如果没有原图 URL，则加载
-    if (_loadedUrl == null || _loadedUrl!.isEmpty) {
-      // 检查 photo.url 是否有效（不是缩略图）
-      if (widget.photo.url.isNotEmpty && widget.photo.url != widget.photo.thumbnailUrl) {
-        _loadedUrl = widget.photo.url;
-      } else {
-        _loadUrl();
-      }
-    }
-  }
-
-  @override
-  void didUpdateWidget(_PhotoPage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.cachedUrl != oldWidget.cachedUrl && widget.cachedUrl != null) {
-      setState(() {
-        _loadedUrl = widget.cachedUrl;
-        _hasError = false;
-        _errorMessage = null;
-      });
-    }
-  }
-
-  Future<void> _loadUrl() async {
-    if (_isLoading || widget.onLoadUrl == null) return;
-    _isLoading = true;
-    setState(() {
-      _hasError = false;
-      _errorMessage = null;
-    });
-
-    try {
-      final url = await widget.onLoadUrl!();
-      if (mounted && url != null && url.isNotEmpty) {
-        setState(() {
-          _loadedUrl = url;
-        });
-      }
-    } on Exception catch (e) {
-      if (mounted) {
-        setState(() {
-          _hasError = true;
-          _errorMessage = e.toString();
-        });
-      }
-    }
-    _isLoading = false;
-  }
-
-  @override
-  void dispose() {
-    _transformController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // 优先使用已加载的 URL，其次使用 photo.url
-    final displayUrl = _loadedUrl ?? widget.photo.url;
-    final hasThumbnail = widget.photo.thumbnailUrl != null && widget.photo.thumbnailUrl!.isNotEmpty;
-    final hasDisplayUrl = displayUrl.isNotEmpty;
-    // 检查是否有原图（不是缩略图）
-    final hasOriginalImage = hasDisplayUrl && displayUrl != widget.photo.thumbnailUrl;
-
-    return InteractiveViewer(
-      transformationController: _transformController,
-      minScale: 0.5,
-      maxScale: 4,
-      child: Center(
-        child: _buildImageContent(displayUrl, hasDisplayUrl, hasThumbnail, hasOriginalImage),
-      ),
-    );
-  }
-
-  Widget _buildImageContent(String displayUrl, bool hasDisplayUrl, bool hasThumbnail, bool hasOriginalImage) {
-    if (_hasError && !hasThumbnail && !hasOriginalImage) {
-      return _buildErrorWidget(_errorMessage ?? '加载失败');
-    }
-
-    // 没有任何可用 URL
-    if (!hasDisplayUrl && !hasThumbnail) {
-      return _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: Colors.white),
-            )
-          : _buildErrorWidget('没有可用的图片');
-    }
-
-    // 有原图 URL，直接加载原图
-    if (hasOriginalImage) {
-      return _buildImageFromUrl(
-        url: displayUrl,
-        fit: BoxFit.contain,
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) {
-            return child;
-          }
-          // 加载中显示进度指示器
-          final progress = loadingProgress.expectedTotalBytes != null
-              ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
-              : null;
-          return Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircularProgressIndicator(
-                  value: progress,
-                  color: Colors.white,
-                ),
-                if (progress != null) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    '${(progress * 100).toInt()}%',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.7),
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          );
-        },
-        errorBuilder: (context, error, stackTrace) {
-          debugPrint('PhotoViewer: Error loading image: $error');
-          // 加载原图失败时尝试使用缩略图
-          if (hasThumbnail) {
-            return _buildImageFromUrl(
-              url: widget.photo.thumbnailUrl!,
-              fit: BoxFit.contain,
-              errorBuilder: (_, _, _) => _buildErrorWidget('图片加载失败'),
-            );
-          }
-          return _buildErrorWidget(error.toString());
-        },
-      );
-    }
-
-    // 没有原图，正在加载中，显示缩略图 + 加载指示器
-    if (_isLoading && hasThumbnail) {
-      return Stack(
-        alignment: Alignment.center,
-        children: [
-          _buildImageFromUrl(
-            url: widget.photo.thumbnailUrl!,
-            fit: BoxFit.contain,
-            errorBuilder: (_, _, _) => const SizedBox.shrink(),
-          ),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.black54,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const CircularProgressIndicator(
-              color: Colors.white,
-              strokeWidth: 2,
-            ),
-          ),
-        ],
-      );
-    }
-
-    // 只有缩略图
-    if (hasThumbnail) {
-      return _buildImageFromUrl(
-        url: widget.photo.thumbnailUrl!,
-        fit: BoxFit.contain,
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) return child;
-          return const Center(
-            child: CircularProgressIndicator(color: Colors.white),
-          );
-        },
-        errorBuilder: (_, error, _) => _buildErrorWidget(error.toString()),
-      );
-    }
-
-    return _buildErrorWidget('没有可用的图片');
-  }
-
-  Widget _buildErrorWidget(String errorMessage) => Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(
-          Icons.broken_image_outlined,
-          size: 64,
-          color: Colors.white.withValues(alpha: 0.5),
-        ),
-        const SizedBox(height: 16),
-        Text(
-          '加载失败',
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.7),
-            fontSize: 16,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
-          child: Text(
-            errorMessage,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.5),
-              fontSize: 12,
-            ),
-            textAlign: TextAlign.center,
-            maxLines: 3,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        const SizedBox(height: 16),
-        TextButton.icon(
-          onPressed: _loadUrl,
-          icon: const Icon(Icons.refresh, color: Colors.white70),
-          label: const Text('重试', style: TextStyle(color: Colors.white70)),
-        ),
-      ],
-    );
 }
 
 class _ActionButton extends StatelessWidget {

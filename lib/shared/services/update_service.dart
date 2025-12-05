@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -8,6 +9,54 @@ import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
+/// 更新配置
+class UpdateConfig {
+  const UpdateConfig({
+    this.owner = 'chenqi92',
+    this.repo = 'my-nas',
+    this.appStoreId,
+    this.checkTimeout = const Duration(seconds: 30),
+    this.downloadTimeout = const Duration(minutes: 30),
+    this.maxRetries = 3,
+    this.retryDelay = const Duration(seconds: 2),
+  });
+
+  /// GitHub 仓库所有者
+  final String owner;
+
+  /// GitHub 仓库名
+  final String repo;
+
+  /// App Store ID（iOS 上架后填入）
+  /// 例如: '123456789'
+  final String? appStoreId;
+
+  /// 检查更新超时时间
+  final Duration checkTimeout;
+
+  /// 下载超时时间
+  final Duration downloadTimeout;
+
+  /// 最大重试次数
+  final int maxRetries;
+
+  /// 重试间隔
+  final Duration retryDelay;
+
+  /// GitHub API URL
+  String get apiUrl => 'https://api.github.com/repos/$owner/$repo/releases/latest';
+
+  /// GitHub Releases 页面 URL
+  String get releasesUrl => 'https://github.com/$owner/$repo/releases';
+
+  /// App Store URL
+  String? get appStoreUrl =>
+      appStoreId != null ? 'https://apps.apple.com/app/id$appStoreId' : null;
+
+  /// 是否已配置 App Store
+  bool get hasAppStoreConfig => appStoreId != null && appStoreId!.isNotEmpty;
+}
+
 /// 更新信息
 class UpdateInfo {
   const UpdateInfo({
@@ -17,7 +66,9 @@ class UpdateInfo {
     required this.downloadUrl,
     required this.fileName,
     required this.fileSize,
+    required this.htmlUrl,
     this.isMandatory = false,
+    this.allAssets = const [],
   });
 
   final String version;
@@ -26,7 +77,9 @@ class UpdateInfo {
   final String downloadUrl;
   final String fileName;
   final int fileSize;
+  final String htmlUrl;
   final bool isMandatory;
+  final List<AssetInfo> allAssets;
 
   String get fileSizeText {
     if (fileSize < 1024) return '$fileSize B';
@@ -38,6 +91,23 @@ class UpdateInfo {
   }
 }
 
+/// 资源文件信息
+class AssetInfo {
+  const AssetInfo({
+    required this.name,
+    required this.downloadUrl,
+    required this.size,
+    required this.platform,
+    this.architecture,
+  });
+
+  final String name;
+  final String downloadUrl;
+  final int size;
+  final String platform;
+  final String? architecture;
+}
+
 /// 更新状态
 enum UpdateStatus {
   idle,
@@ -46,145 +116,575 @@ enum UpdateStatus {
   notAvailable,
   downloading,
   readyToInstall,
+  installing,
   error,
+}
+
+/// 更新错误类型
+enum UpdateErrorType {
+  network,
+  timeout,
+  noRelease,
+  noPlatformAsset,
+  downloadFailed,
+  installFailed,
+  cancelled,
+  unknown,
+}
+
+/// 更新错误
+class UpdateError {
+  const UpdateError({
+    required this.type,
+    required this.message,
+    this.originalError,
+  });
+
+  final UpdateErrorType type;
+  final String message;
+  final Object? originalError;
+
+  String get userFriendlyMessage {
+    switch (type) {
+      case UpdateErrorType.network:
+        return '网络连接失败，请检查网络后重试';
+      case UpdateErrorType.timeout:
+        return '连接超时，请稍后重试';
+      case UpdateErrorType.noRelease:
+        return '未找到发布版本';
+      case UpdateErrorType.noPlatformAsset:
+        return '未找到当前平台的安装包';
+      case UpdateErrorType.downloadFailed:
+        return '下载失败，请重试';
+      case UpdateErrorType.installFailed:
+        return '安装失败，请手动安装';
+      case UpdateErrorType.cancelled:
+        return '操作已取消';
+      case UpdateErrorType.unknown:
+        return message;
+    }
+  }
+}
+
+/// 平台架构信息
+class PlatformArchitecture {
+  PlatformArchitecture._();
+
+  /// 获取当前系统架构
+  static String get current {
+    if (kIsWeb) return 'web';
+
+    if (Platform.isMacOS || Platform.isIOS) {
+      // macOS/iOS 通过 uname 获取架构
+      final result = Process.runSync('uname', ['-m']);
+      final arch = result.stdout.toString().trim().toLowerCase();
+      if (arch.contains('arm64') || arch.contains('aarch64')) {
+        return 'arm64';
+      }
+      return 'x86_64';
+    }
+
+    if (Platform.isAndroid) {
+      // Android 通过系统属性获取
+      // 常见架构: arm64-v8a, armeabi-v7a, x86_64, x86
+      final result = Process.runSync('getprop', ['ro.product.cpu.abi']);
+      final abi = result.stdout.toString().trim().toLowerCase();
+      if (abi.contains('arm64') || abi.contains('v8a')) {
+        return 'arm64-v8a';
+      } else if (abi.contains('armeabi') || abi.contains('v7a')) {
+        return 'armeabi-v7a';
+      } else if (abi.contains('x86_64')) {
+        return 'x86_64';
+      } else if (abi.contains('x86')) {
+        return 'x86';
+      }
+      return 'arm64-v8a'; // 默认
+    }
+
+    if (Platform.isWindows) {
+      // Windows 目前主要是 x64
+      final arch = Platform.environment['PROCESSOR_ARCHITECTURE'] ?? '';
+      if (arch.toLowerCase().contains('arm')) {
+        return 'arm64';
+      }
+      return 'x64';
+    }
+
+    if (Platform.isLinux) {
+      final result = Process.runSync('uname', ['-m']);
+      final arch = result.stdout.toString().trim().toLowerCase();
+      if (arch.contains('aarch64') || arch.contains('arm64')) {
+        return 'arm64';
+      }
+      return 'x64';
+    }
+
+    return 'unknown';
+  }
+
+  /// 获取平台名称
+  static String get platformName {
+    if (kIsWeb) return 'web';
+    if (Platform.isAndroid) return 'android';
+    if (Platform.isIOS) return 'ios';
+    if (Platform.isMacOS) return 'macos';
+    if (Platform.isWindows) return 'windows';
+    if (Platform.isLinux) return 'linux';
+    return 'unknown';
+  }
 }
 
 /// 更新服务
 class UpdateService extends ChangeNotifier {
-  factory UpdateService() => _instance ??= UpdateService._();
-  UpdateService._();
+  factory UpdateService({UpdateConfig? config}) {
+    _instance ??= UpdateService._(config ?? const UpdateConfig());
+    return _instance!;
+  }
+
+  UpdateService._(this._config);
 
   static UpdateService? _instance;
 
-  // GitHub 仓库信息
-  static const _owner = 'chenqi92';
-  static const _repo = 'my-nas';
-  static const _apiUrl = 'https://api.github.com/repos/$_owner/$_repo/releases/latest';
+  final UpdateConfig _config;
 
   UpdateStatus _status = UpdateStatus.idle;
   UpdateInfo? _updateInfo;
-  String? _errorMessage;
+  UpdateError? _error;
   double _downloadProgress = 0;
   String? _downloadedFilePath;
+  bool _isCancelled = false;
+  http.Client? _downloadClient;
 
+  // Getters
+  UpdateConfig get config => _config;
   UpdateStatus get status => _status;
   UpdateInfo? get updateInfo => _updateInfo;
-  String? get errorMessage => _errorMessage;
+  UpdateError? get error => _error;
+  String? get errorMessage => _error?.userFriendlyMessage;
   double get downloadProgress => _downloadProgress;
   String? get downloadedFilePath => _downloadedFilePath;
   bool get hasUpdate => _status == UpdateStatus.available || _status == UpdateStatus.readyToInstall;
+  bool get isChecking => _status == UpdateStatus.checking;
+  bool get isDownloading => _status == UpdateStatus.downloading;
 
-  /// 检查更新
+  /// 检查更新（带重试机制）
   Future<void> checkForUpdates({bool silent = false}) async {
     if (_status == UpdateStatus.checking || _status == UpdateStatus.downloading) {
       return;
     }
 
     _status = UpdateStatus.checking;
-    _errorMessage = null;
+    _error = null;
+    _isCancelled = false;
     notifyListeners();
 
-    try {
-      final response = await http.get(
-        Uri.parse(_apiUrl),
-        headers: {'Accept': 'application/vnd.github.v3+json'},
-      ).timeout(const Duration(seconds: 30));
+    for (var attempt = 1; attempt <= _config.maxRetries; attempt++) {
+      try {
+        await _doCheckForUpdates();
+        return; // 成功则返回
+      } on Exception catch (e) {
+        logger.w('UpdateService: 检查更新失败 (尝试 $attempt/${_config.maxRetries})', e);
 
-      if (response.statusCode != 200) {
-        throw Exception('GitHub API 返回错误: ${response.statusCode}');
-      }
-
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-      final tagName = (data['tag_name'] as String).replaceFirst('v', '');
-      // 解析远程版本（支持格式：0.1.5 或 0.1.5-build.2）
-      final (latestVersion, latestBuild) = _parseVersion(tagName);
-
-      final packageInfo = await PackageInfo.fromPlatform();
-      final currentVersion = packageInfo.version;
-      final currentBuild = int.tryParse(packageInfo.buildNumber) ?? 1;
-
-      logger.i('UpdateService: 当前版本 $currentVersion+$currentBuild, 最新版本 $latestVersion+$latestBuild');
-
-      if (_isNewerVersion(latestVersion, latestBuild, currentVersion, currentBuild)) {
-        final asset = _findPlatformAsset(data['assets'] as List<dynamic>);
-        if (asset != null) {
-          // 显示版本：如果 build > 1 则显示 0.1.5 (build 2)
-          final displayVersion = latestBuild > 1
-              ? '$latestVersion (build $latestBuild)'
-              : latestVersion;
-          _updateInfo = UpdateInfo(
-            version: displayVersion,
-            releaseNotes: data['body'] as String? ?? '暂无更新说明',
-            releaseDate: DateTime.parse(data['published_at'] as String),
-            downloadUrl: asset['browser_download_url'] as String,
-            fileName: asset['name'] as String,
-            fileSize: asset['size'] as int,
-          );
-          _status = UpdateStatus.available;
-          logger.i('UpdateService: 发现新版本 $displayVersion');
-        } else {
-          _status = UpdateStatus.notAvailable;
-          _errorMessage = '未找到当前平台的安装包';
-          logger.w('UpdateService: 未找到当前平台的安装包');
+        if (_isCancelled) {
+          _setError(UpdateErrorType.cancelled, '检查已取消');
+          return;
         }
+
+        if (attempt < _config.maxRetries) {
+          await Future<void>.delayed(_config.retryDelay);
+        } else {
+          _handleCheckError(e);
+        }
+      }
+    }
+  }
+
+  Future<void> _doCheckForUpdates() async {
+    final response = await http.get(
+      Uri.parse(_config.apiUrl),
+      headers: {'Accept': 'application/vnd.github.v3+json'},
+    ).timeout(_config.checkTimeout);
+
+    if (response.statusCode == 404) {
+      throw Exception('未找到发布版本');
+    }
+
+    if (response.statusCode != 200) {
+      throw Exception('GitHub API 返回错误: ${response.statusCode}');
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final tagName = (data['tag_name'] as String).replaceFirst('v', '');
+    final (latestVersion, latestBuild) = _parseVersion(tagName);
+
+    final packageInfo = await PackageInfo.fromPlatform();
+    final currentVersion = packageInfo.version;
+    final currentBuild = int.tryParse(packageInfo.buildNumber) ?? 1;
+
+    logger.i(
+      'UpdateService: 当前版本 $currentVersion+$currentBuild, '
+      '最新版本 $latestVersion+$latestBuild',
+    );
+
+    if (_isNewerVersion(latestVersion, latestBuild, currentVersion, currentBuild)) {
+      final assets = data['assets'] as List<dynamic>;
+      final allAssets = _parseAllAssets(assets);
+      final asset = _findBestPlatformAsset(assets);
+
+      if (asset != null) {
+        final displayVersion = latestBuild > 1
+            ? '$latestVersion (build $latestBuild)'
+            : latestVersion;
+
+        _updateInfo = UpdateInfo(
+          version: displayVersion,
+          releaseNotes: data['body'] as String? ?? '暂无更新说明',
+          releaseDate: DateTime.parse(data['published_at'] as String),
+          downloadUrl: asset['browser_download_url'] as String,
+          fileName: asset['name'] as String,
+          fileSize: asset['size'] as int,
+          htmlUrl: data['html_url'] as String? ?? _config.releasesUrl,
+          allAssets: allAssets,
+        );
+        _status = UpdateStatus.available;
+        logger.i('UpdateService: 发现新版本 $displayVersion');
+      } else if (Platform.isIOS) {
+        // iOS 没有安装包时，仍然显示有更新（引导到 App Store 或 GitHub）
+        final displayVersion = latestBuild > 1
+            ? '$latestVersion (build $latestBuild)'
+            : latestVersion;
+
+        _updateInfo = UpdateInfo(
+          version: displayVersion,
+          releaseNotes: data['body'] as String? ?? '暂无更新说明',
+          releaseDate: DateTime.parse(data['published_at'] as String),
+          downloadUrl: '',
+          fileName: '',
+          fileSize: 0,
+          htmlUrl: data['html_url'] as String? ?? _config.releasesUrl,
+          allAssets: allAssets,
+        );
+        _status = UpdateStatus.available;
+        logger.i('UpdateService: iOS 发现新版本 $displayVersion (无直接下载)');
       } else {
         _status = UpdateStatus.notAvailable;
-        logger.i('UpdateService: 当前已是最新版本');
+        _setError(UpdateErrorType.noPlatformAsset, '未找到当前平台 (${PlatformArchitecture.platformName}-${PlatformArchitecture.current}) 的安装包');
+        logger.w('UpdateService: 未找到当前平台的安装包');
       }
-    } on Exception catch (e) {
-      _status = UpdateStatus.error;
-      _errorMessage = e.toString();
-      logger.e('UpdateService: 检查更新失败', e);
+    } else {
+      _status = UpdateStatus.notAvailable;
+      logger.i('UpdateService: 当前已是最新版本');
     }
 
     notifyListeners();
   }
 
-  /// 下载更新
+  /// 解析所有资源文件
+  List<AssetInfo> _parseAllAssets(List<dynamic> assets) {
+    final result = <AssetInfo>[];
+    for (final asset in assets) {
+      if (asset is! Map<String, dynamic>) continue;
+      final name = (asset['name'] as String).toLowerCase();
+      final (platform, arch) = _detectPlatformFromName(name);
+      result.add(AssetInfo(
+        name: asset['name'] as String,
+        downloadUrl: asset['browser_download_url'] as String,
+        size: asset['size'] as int,
+        platform: platform,
+        architecture: arch,
+      ));
+    }
+    return result;
+  }
+
+  /// 从文件名检测平台和架构
+  (String platform, String? arch) _detectPlatformFromName(String name) {
+    if (name.contains('android')) {
+      if (name.contains('arm64') || name.contains('v8a')) {
+        return ('android', 'arm64-v8a');
+      } else if (name.contains('armeabi') || name.contains('v7a')) {
+        return ('android', 'armeabi-v7a');
+      } else if (name.contains('x86_64')) {
+        return ('android', 'x86_64');
+      } else if (name.contains('universal')) {
+        return ('android', 'universal');
+      }
+      return ('android', null);
+    }
+
+    if (name.contains('ios') || name.contains('.ipa')) {
+      return ('ios', 'arm64');
+    }
+
+    if (name.contains('macos') || name.contains('darwin')) {
+      if (name.contains('arm64')) {
+        return ('macos', 'arm64');
+      } else if (name.contains('x86_64') || name.contains('intel')) {
+        return ('macos', 'x86_64');
+      }
+      return ('macos', null);
+    }
+
+    if (name.contains('windows') || name.contains('win64') || name.contains('win32')) {
+      if (name.contains('arm64')) {
+        return ('windows', 'arm64');
+      }
+      return ('windows', 'x64');
+    }
+
+    if (name.contains('linux')) {
+      if (name.contains('arm64') || name.contains('aarch64')) {
+        return ('linux', 'arm64');
+      }
+      return ('linux', 'x64');
+    }
+
+    return ('unknown', null);
+  }
+
+  /// 查找当前平台的最佳安装包
+  Map<String, dynamic>? _findBestPlatformAsset(List<dynamic> assets) {
+    final platform = PlatformArchitecture.platformName;
+    final arch = PlatformArchitecture.current;
+
+    logger.d('UpdateService: 查找平台资源 platform=$platform, arch=$arch');
+
+    // 获取平台特定的文件模式和优先级
+    final patterns = _getPlatformPatterns(platform, arch);
+
+    // 按优先级查找
+    for (final pattern in patterns) {
+      for (final asset in assets) {
+        if (asset is! Map<String, dynamic>) continue;
+        final name = (asset['name'] as String).toLowerCase();
+        if (name.contains(pattern)) {
+          logger.d('UpdateService: 找到匹配资源 $name (pattern: $pattern)');
+          return asset;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /// 获取平台特定的文件名模式（按优先级排序）
+  List<String> _getPlatformPatterns(String platform, String arch) {
+    switch (platform) {
+      case 'android':
+        // Android 优先精确匹配架构，然后是通用包
+        return [
+          'android-$arch',
+          arch, // arm64-v8a, armeabi-v7a, x86_64
+          'android-universal',
+          'universal',
+          'android',
+          '.apk',
+        ];
+
+      case 'macos':
+        // macOS 优先匹配架构
+        if (arch == 'arm64') {
+          return [
+            'macos-arm64',
+            'darwin-arm64',
+            'apple-silicon',
+            '-arm64.dmg',
+            '-arm64.zip',
+            'macos',
+            'darwin',
+            '.dmg',
+          ];
+        } else {
+          return [
+            'macos-x86_64',
+            'macos-intel',
+            'darwin-x86_64',
+            '-x86_64.dmg',
+            '-x86_64.zip',
+            'macos',
+            'darwin',
+            '.dmg',
+          ];
+        }
+
+      case 'windows':
+        // Windows 优先 EXE 安装包
+        return [
+          'windows-x64-setup',
+          '-setup.exe',
+          'windows-x64',
+          'windows',
+          'win64',
+          '.exe',
+          '.msix',
+        ];
+
+      case 'linux':
+        if (arch == 'arm64') {
+          return [
+            'linux-arm64',
+            'linux-aarch64',
+            '-arm64.tar.gz',
+            '-arm64.appimage',
+            '-arm64.deb',
+          ];
+        } else {
+          return [
+            'linux-x64',
+            'linux-x86_64',
+            '-x64.tar.gz',
+            '-x64.appimage',
+            '-x64.deb',
+            'linux',
+            '.appimage',
+            '.deb',
+            '.tar.gz',
+          ];
+        }
+
+      case 'ios':
+        // iOS 不支持侧载，返回空
+        return [];
+
+      default:
+        return [];
+    }
+  }
+
+  void _handleCheckError(Exception e) {
+    if (e is TimeoutException) {
+      _setError(UpdateErrorType.timeout, '连接超时');
+    } else if (e is SocketException) {
+      _setError(UpdateErrorType.network, '网络连接失败');
+    } else if (e.toString().contains('未找到发布版本')) {
+      _setError(UpdateErrorType.noRelease, '未找到发布版本');
+    } else {
+      _setError(UpdateErrorType.unknown, e.toString());
+    }
+    notifyListeners();
+  }
+
+  void _setError(UpdateErrorType type, String message) {
+    _error = UpdateError(type: type, message: message);
+    _status = UpdateStatus.error;
+  }
+
+  /// 下载更新（带重试和断点续传支持）
   Future<void> downloadUpdate() async {
     if (_updateInfo == null || _status == UpdateStatus.downloading) {
       return;
     }
 
+    if (_updateInfo!.downloadUrl.isEmpty) {
+      _setError(UpdateErrorType.downloadFailed, '无可用下载链接');
+      notifyListeners();
+      return;
+    }
+
     _status = UpdateStatus.downloading;
     _downloadProgress = 0;
-    _errorMessage = null;
+    _error = null;
+    _isCancelled = false;
     notifyListeners();
 
-    try {
-      final client = http.Client();
-      final request = http.Request('GET', Uri.parse(_updateInfo!.downloadUrl));
-      final response = await client.send(request);
+    for (var attempt = 1; attempt <= _config.maxRetries; attempt++) {
+      try {
+        await _doDownloadUpdate();
+        return;
+      } on Exception catch (e) {
+        logger.w('UpdateService: 下载失败 (尝试 $attempt/${_config.maxRetries})', e);
 
-      if (response.statusCode != 200) {
-        throw Exception('下载失败: ${response.statusCode}');
+        if (_isCancelled) {
+          _setError(UpdateErrorType.cancelled, '下载已取消');
+          notifyListeners();
+          return;
+        }
+
+        if (attempt < _config.maxRetries) {
+          await Future<void>.delayed(_config.retryDelay);
+        } else {
+          _setError(UpdateErrorType.downloadFailed, '下载失败: $e');
+          notifyListeners();
+        }
       }
+    }
+  }
 
-      final contentLength = response.contentLength ?? _updateInfo!.fileSize;
-      final dir = await _getDownloadDirectory();
-      final file = File('${dir.path}/${_updateInfo!.fileName}');
-      final sink = file.openWrite();
+  Future<void> _doDownloadUpdate() async {
+    _downloadClient = http.Client();
+    final request = http.Request('GET', Uri.parse(_updateInfo!.downloadUrl));
 
-      var received = 0;
+    // 检查是否有已下载的部分（断点续传）
+    final dir = await _getDownloadDirectory();
+    final file = File('${dir.path}/${_updateInfo!.fileName}');
+    var existingLength = 0;
+
+    if (await file.exists()) {
+      existingLength = await file.length();
+      if (existingLength > 0 && existingLength < _updateInfo!.fileSize) {
+        request.headers['Range'] = 'bytes=$existingLength-';
+        logger.i('UpdateService: 断点续传从 $existingLength 字节开始');
+      } else if (existingLength >= _updateInfo!.fileSize) {
+        // 文件已完整下载
+        _downloadedFilePath = file.path;
+        _status = UpdateStatus.readyToInstall;
+        _downloadProgress = 1.0;
+        logger.i('UpdateService: 文件已存在且完整 ${file.path}');
+        return;
+      }
+    }
+
+    final response = await _downloadClient!.send(request);
+
+    if (_isCancelled) {
+      _downloadClient?.close();
+      throw Exception('下载已取消');
+    }
+
+    final isResuming = response.statusCode == 206;
+    if (response.statusCode != 200 && response.statusCode != 206) {
+      throw Exception('下载失败: ${response.statusCode}');
+    }
+
+    final contentLength = (response.contentLength ?? 0) + (isResuming ? existingLength : 0);
+    final totalSize = contentLength > 0 ? contentLength : _updateInfo!.fileSize;
+
+    final sink = file.openWrite(mode: isResuming ? FileMode.append : FileMode.write);
+    var received = isResuming ? existingLength : 0;
+
+    try {
       await for (final chunk in response.stream) {
+        if (_isCancelled) {
+          throw Exception('下载已取消');
+        }
         sink.add(chunk);
         received += chunk.length;
-        _downloadProgress = received / contentLength;
+        _downloadProgress = received / totalSize;
         notifyListeners();
       }
 
       await sink.close();
-      client.close();
-
-      _downloadedFilePath = file.path;
-      _status = UpdateStatus.readyToInstall;
-      logger.i('UpdateService: 下载完成 ${file.path}');
-    } on Exception catch (e) {
-      _status = UpdateStatus.error;
-      _errorMessage = '下载失败: $e';
-      logger.e('UpdateService: 下载失败', e);
+    } catch (e) {
+      await sink.close();
+      rethrow;
     }
 
+    _downloadClient?.close();
+    _downloadClient = null;
+
+    _downloadedFilePath = file.path;
+    _status = UpdateStatus.readyToInstall;
+    logger.i('UpdateService: 下载完成 ${file.path}');
+    notifyListeners();
+  }
+
+  /// 取消下载
+  void cancelDownload() {
+    _isCancelled = true;
+    _downloadClient?.close();
+    _downloadClient = null;
+    _status = UpdateStatus.available;
+    _downloadProgress = 0;
     notifyListeners();
   }
 
@@ -192,19 +692,31 @@ class UpdateService extends ChangeNotifier {
   Future<bool> installUpdate() async {
     if (_downloadedFilePath == null) return false;
 
+    _status = UpdateStatus.installing;
+    notifyListeners();
+
     try {
+      bool success;
       if (Platform.isWindows) {
-        return await _installWindows();
+        success = await _installWindows();
       } else if (Platform.isMacOS) {
-        return await _installMacOS();
+        success = await _installMacOS();
       } else if (Platform.isLinux) {
-        return await _installLinux();
+        success = await _installLinux();
       } else if (Platform.isAndroid) {
-        return await _installAndroid();
+        success = await _installAndroid();
+      } else {
+        success = false;
       }
-      return false;
+
+      if (!success) {
+        _status = UpdateStatus.readyToInstall;
+      }
+
+      return success;
     } on Exception catch (e) {
-      _errorMessage = '安装失败: $e';
+      _setError(UpdateErrorType.installFailed, '安装失败: $e');
+      _status = UpdateStatus.readyToInstall;
       logger.e('UpdateService: 安装失败', e);
       notifyListeners();
       return false;
@@ -221,13 +733,13 @@ class UpdateService extends ChangeNotifier {
       exit(0);
     } else if (file.endsWith('.msix') || file.endsWith('.msixbundle')) {
       // MSIX 安装
-      await Process.run('powershell', [
+      final result = await Process.run('powershell', [
         '-Command',
         'Add-AppxPackage',
         '-Path',
         file,
       ]);
-      return true;
+      return result.exitCode == 0;
     } else if (file.endsWith('.zip')) {
       // 便携版 - 打开文件夹让用户手动替换
       await Process.run('explorer', ['/select,', file]);
@@ -257,10 +769,10 @@ class UpdateService extends ChangeNotifier {
     final file = _downloadedFilePath!;
 
     if (file.endsWith('.deb')) {
-      // Debian/Ubuntu
+      // Debian/Ubuntu - 使用 pkexec 提权
       final result = await Process.run('pkexec', ['dpkg', '-i', file]);
       return result.exitCode == 0;
-    } else if (file.endsWith('.AppImage')) {
+    } else if (file.toLowerCase().endsWith('.appimage')) {
       // 设置执行权限并运行
       await Process.run('chmod', ['+x', file]);
       await Process.start(file, [], mode: ProcessStartMode.detached);
@@ -288,14 +800,12 @@ class UpdateService extends ChangeNotifier {
 
   /// 解析版本号（支持格式：0.1.5 或 0.1.5-build.2）
   (String version, int build) _parseVersion(String tagVersion) {
-    // 检查是否包含 -build. 后缀
     if (tagVersion.contains('-build.')) {
       final parts = tagVersion.split('-build.');
       final version = parts[0];
       final build = int.tryParse(parts[1]) ?? 1;
       return (version, build);
     }
-    // 没有 build 后缀，默认 build 为 1
     return (tagVersion, 1);
   }
 
@@ -306,8 +816,8 @@ class UpdateService extends ChangeNotifier {
     String currentVersion,
     int currentBuild,
   ) {
-    final latestParts = latestVersion.split('.').map(int.parse).toList();
-    final currentParts = currentVersion.split('.').map(int.parse).toList();
+    final latestParts = latestVersion.split('.').map((p) => int.tryParse(p) ?? 0).toList();
+    final currentParts = currentVersion.split('.').map((p) => int.tryParse(p) ?? 0).toList();
 
     // 首先比较主版本号
     for (var i = 0; i < latestParts.length && i < currentParts.length; i++) {
@@ -324,46 +834,18 @@ class UpdateService extends ChangeNotifier {
     return latestBuild > currentBuild;
   }
 
-  /// 查找当前平台的安装包
-  Map<String, dynamic>? _findPlatformAsset(List<dynamic> assets) {
-    final platformPatterns = _getPlatformPatterns();
-
-    for (final asset in assets) {
-      if (asset is! Map<String, dynamic>) continue;
-      final name = (asset['name'] as String).toLowerCase();
-      for (final pattern in platformPatterns) {
-        if (name.contains(pattern)) {
-          return asset;
-        }
-      }
-    }
-    return null;
-  }
-
-  /// 获取当前平台的文件名模式
-  List<String> _getPlatformPatterns() {
-    if (Platform.isWindows) {
-      return ['windows', 'win64', 'win32', '.exe', '.msix'];
-    } else if (Platform.isMacOS) {
-      // 区分 Intel 和 Apple Silicon
-      return ['macos', 'darwin', '.dmg'];
-    } else if (Platform.isLinux) {
-      return ['linux', '.appimage', '.deb', '.tar.gz'];
-    } else if (Platform.isAndroid) {
-      return ['android', '.apk'];
-    } else if (Platform.isIOS) {
-      // iOS 不支持侧载
-      return [];
-    }
-    return [];
-  }
-
   /// 获取下载目录
   Future<Directory> _getDownloadDirectory() async {
     if (Platform.isAndroid) {
-      // Android 使用外部存储
+      // Android 使用外部存储的 Download 目录
       final dir = await getExternalStorageDirectory();
-      return dir ?? await getApplicationDocumentsDirectory();
+      if (dir != null) {
+        final downloadDir = Directory('${dir.parent.parent.parent.parent.path}/Download');
+        if (await downloadDir.exists()) {
+          return downloadDir;
+        }
+      }
+      return getApplicationDocumentsDirectory();
     } else if (Platform.isIOS) {
       return getApplicationDocumentsDirectory();
     } else {
@@ -375,11 +857,15 @@ class UpdateService extends ChangeNotifier {
 
   /// 重置状态
   void reset() {
+    _isCancelled = true;
+    _downloadClient?.close();
+    _downloadClient = null;
     _status = UpdateStatus.idle;
     _updateInfo = null;
-    _errorMessage = null;
+    _error = null;
     _downloadProgress = 0;
     _downloadedFilePath = null;
+    _isCancelled = false;
     notifyListeners();
   }
 
@@ -397,4 +883,8 @@ class UpdateService extends ChangeNotifier {
       _downloadedFilePath = null;
     }
   }
+
+  /// 获取当前平台和架构信息
+  static String getPlatformInfo() =>
+      '${PlatformArchitecture.platformName}-${PlatformArchitecture.current}';
 }
