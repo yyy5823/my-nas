@@ -245,7 +245,7 @@ class VideoScannerService {
           }
         }
       }
-    } catch (e) {
+    } on Exception catch (e) {
       logger.w('VideoScannerService: 扫描目录失败 $path', e);
     }
   }
@@ -277,7 +277,7 @@ class VideoScannerService {
           fileSystem = conn.adapter.fileSystem;
           try {
             videoUrl = await fileSystem.getFileUrl(video.file.path);
-          } catch (e) {
+          } on Exception catch (e) {
             logger.w('VideoScannerService: 获取视频URL失败 ${video.file.path}');
           }
         }
@@ -297,7 +297,7 @@ class VideoScannerService {
         }
 
         results.add(metadata);
-      } catch (e) {
+      } on Exception catch (e) {
         logger.w('VideoScannerService: 获取元数据失败 ${video.file.name}', e);
 
         // 创建基础元数据

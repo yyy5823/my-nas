@@ -111,7 +111,7 @@ class SmbFileSystem implements NasFileSystem {
         const chunkSize = 64 * 1024; // 64KB chunks
         var remaining = length;
 
-        () async {
+        await () async {
           try {
             while (remaining > 0) {
               final toRead = remaining > chunkSize ? chunkSize : remaining;
@@ -121,7 +121,7 @@ class SmbFileSystem implements NasFileSystem {
               if (chunk.isEmpty) break;
             }
             await controller.close();
-          } catch (e) {
+          } on Exception catch (e) {
             controller.addError(e);
             await controller.close();
           } finally {

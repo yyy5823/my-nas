@@ -109,7 +109,7 @@ class VideoFavoritesService {
       _bookmarksBox = await Hive.openBox<Map<dynamic, dynamic>>(_bookmarksBoxName);
       _initialized = true;
       logger.i('VideoFavoritesService: 初始化完成');
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('VideoFavoritesService: 初始化失败', e);
     }
   }
@@ -165,7 +165,7 @@ class VideoFavoritesService {
       if (data != null) {
         try {
           favorites.add(VideoFavoriteItem.fromMap(data));
-        } catch (_) {
+        } on Exception catch (_) {
           // 跳过无效数据
         }
       }
@@ -219,7 +219,7 @@ class VideoFavoritesService {
           if (bookmark.videoPath == videoPath) {
             bookmarks.add(bookmark);
           }
-        } catch (_) {
+        } on Exception catch (_) {
           // 跳过无效数据
         }
       }
@@ -241,7 +241,7 @@ class VideoFavoritesService {
       if (data != null) {
         try {
           bookmarks.add(VideoBookmarkItem.fromMap(data));
-        } catch (_) {
+        } on Exception catch (_) {
           // 跳过无效数据
         }
       }

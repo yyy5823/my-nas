@@ -34,7 +34,7 @@ class VideoPathUtils {
         final localPath = uri.toFilePath(windows: Platform.isWindows);
         logger.d('VideoPathUtils: file URI 转换为本地路径: $videoUrl -> $localPath');
         return localPath;
-      } catch (e) {
+      } on Exception catch (e) {
         logger.e('VideoPathUtils: 解析 file URI 失败: $videoUrl', e);
         return null;
       }
@@ -60,19 +60,13 @@ class VideoPathUtils {
   }
 
   /// 检查是否是 SMB URI
-  static bool isSmbUri(String path) {
-    return path.startsWith('smb://');
-  }
+  static bool isSmbUri(String path) => path.startsWith('smb://');
 
   /// 检查是否是 WebDAV URI
-  static bool isWebDavUri(String path) {
-    return path.startsWith('webdav://');
-  }
+  static bool isWebDavUri(String path) => path.startsWith('webdav://');
 
   /// 检查是否需要流式下载（SMB、WebDAV 等不支持直接 URL 访问的协议）
-  static bool needsStreamDownload(String path) {
-    return isSmbUri(path) || isWebDavUri(path);
-  }
+  static bool needsStreamDownload(String path) => isSmbUri(path) || isWebDavUri(path);
 
   /// 检查路径是否是本地文件（可直接访问）
   static bool isLocalFile(String path) {
@@ -97,9 +91,7 @@ class VideoPathUtils {
   }
 
   /// 检查路径是否是 HTTP/HTTPS URL
-  static bool isHttpUrl(String path) {
-    return path.startsWith('http://') || path.startsWith('https://');
-  }
+  static bool isHttpUrl(String path) => path.startsWith('http://') || path.startsWith('https://');
 }
 
 /// 视频缩略图服务
@@ -126,7 +118,7 @@ class VideoThumbnailService {
         await _cacheDir!.create(recursive: true);
       }
       logger.i('VideoThumbnailService: 初始化完成，缓存目录: ${_cacheDir!.path}');
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('VideoThumbnailService: 初始化失败', e);
     }
   }
@@ -197,7 +189,7 @@ class VideoThumbnailService {
       final result = await task;
       return result;
     } finally {
-      _generatingTasks.remove(cacheKey);
+      await _generatingTasks.remove(cacheKey);
     }
   }
 
@@ -229,7 +221,7 @@ class VideoThumbnailService {
           if (tempFilePath != null) {
             try {
               await File(tempFilePath).delete();
-            } catch (_) {}
+            } on Exception catch (_) {}
           }
 
           tempFilePath = await _downloadVideoForThumbnail(
@@ -296,7 +288,7 @@ class VideoThumbnailService {
 
       logger.i('VideoThumbnailService: 缩略图生成成功 $thumbnailPath');
       return thumbnailPath;
-    } catch (e, stackTrace) {
+    } on Exception catch (e, stackTrace) {
       logger.e('VideoThumbnailService: 生成缩略图失败', e, stackTrace);
       return null;
     } finally {
@@ -308,7 +300,7 @@ class VideoThumbnailService {
             await tempFile.delete();
             logger.d('VideoThumbnailService: 已清理临时文件 $tempFilePath');
           }
-        } catch (e) {
+        } on Exception catch (e) {
           logger.w('VideoThumbnailService: 清理临时文件失败', e);
         }
       }
@@ -406,7 +398,7 @@ class VideoThumbnailService {
     } on TimeoutException catch (e) {
       logger.w('VideoThumbnailService: $e');
       return null;
-    } catch (e, stackTrace) {
+    } on Exception catch (e, stackTrace) {
       logger.e('VideoThumbnailService: media_kit 提取帧失败', e, stackTrace);
       return null;
     } finally {
@@ -478,7 +470,7 @@ class VideoThumbnailService {
       logger.d(
           'VideoThumbnailService: 视频片段下载完成, 大小: ${bytesWritten ~/ 1024}KB');
       return tempPath;
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('VideoThumbnailService: 下载视频片段失败', e);
       return null;
     }
@@ -522,7 +514,7 @@ class VideoThumbnailService {
       await File(thumbnailPath).writeAsBytes(imageBytes);
 
       return thumbnailPath;
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('VideoThumbnailService: 从本地文件生成缩略图失败', e);
       return null;
     }
@@ -534,7 +526,7 @@ class VideoThumbnailService {
     if (path != null) {
       try {
         await File(path).delete();
-      } catch (e) {
+      } on Exception catch (e) {
         logger.w('VideoThumbnailService: 删除缓存失败', e);
       }
     }
@@ -549,7 +541,7 @@ class VideoThumbnailService {
         await _cacheDir!.create(recursive: true);
       }
       logger.i('VideoThumbnailService: 缓存已清除');
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('VideoThumbnailService: 清除缓存失败', e);
     }
   }
@@ -564,7 +556,7 @@ class VideoThumbnailService {
           totalSize += await entity.length();
         }
       }
-    } catch (e) {
+    } on Exception catch (e) {
       logger.w('VideoThumbnailService: 计算缓存大小失败', e);
     }
     return totalSize;

@@ -150,7 +150,7 @@ class ComicLibraryCacheService {
     try {
       final jsonStr = jsonEncode(_cache!.toJson());
       return jsonStr.length;
-    } on Exception catch (e) {
+    } on Exception {
       return 0;
     }
   }

@@ -507,8 +507,7 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
     return const AssetImage('assets/images/placeholder.png');
   }
 
-  Widget _buildTopBar(BuildContext context, ComicReaderState state, bool isDark) {
-    return Container(
+  Widget _buildTopBar(BuildContext context, ComicReaderState state, bool isDark) => DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -625,15 +624,13 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
         ),
       ),
     );
-  }
 
   Widget _buildBottomBar(
     BuildContext context,
     ComicReaderState state,
     ComicReaderNotifier notifier,
     bool isDark,
-  ) {
-    return Container(
+  ) => DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.bottomCenter,
@@ -720,5 +717,4 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
         ),
       ),
     );
-  }
 }

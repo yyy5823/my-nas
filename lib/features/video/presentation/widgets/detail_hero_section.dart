@@ -107,8 +107,7 @@ class DetailHeroSection extends StatelessWidget {
   }
 
   /// 宽屏布局 (海报在左，信息在右)
-  Widget _buildWideLayout(bool isDark, bool hasPoster, String? displayPoster) {
-    return Row(
+  Widget _buildWideLayout(bool isDark, bool hasPoster, String? displayPoster) => Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         // 海报
@@ -157,11 +156,9 @@ class DetailHeroSection extends StatelessWidget {
         ),
       ],
     );
-  }
 
   /// 窄屏布局 (垂直排列)
-  Widget _buildNarrowLayout(bool isDark, bool hasPoster, String? displayPoster) {
-    return Column(
+  Widget _buildNarrowLayout(bool isDark, bool hasPoster, String? displayPoster) => Column(
       mainAxisAlignment: MainAxisAlignment.end,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -217,10 +214,8 @@ class DetailHeroSection extends StatelessWidget {
         _buildActionButtons(isDark, large: false),
       ],
     );
-  }
 
-  Widget _buildTitleSection(bool isDark, {bool large = false}) {
-    return Column(
+  Widget _buildTitleSection(bool isDark, {bool large = false}) => Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // 主标题
@@ -257,7 +252,6 @@ class DetailHeroSection extends StatelessWidget {
           ),
       ],
     );
-  }
 
   Widget _buildMetadataRow(bool isDark) {
     final items = <Widget>[];
@@ -308,8 +302,7 @@ class DetailHeroSection extends StatelessWidget {
     IconData? icon,
     Color? iconColor,
     Color? backgroundColor,
-  }) {
-    return Container(
+  }) => Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: backgroundColor ?? Colors.white.withValues(alpha: 0.15),
@@ -334,10 +327,8 @@ class DetailHeroSection extends StatelessWidget {
         ],
       ),
     );
-  }
 
-  Widget _buildTagline(bool isDark) {
-    return Text(
+  Widget _buildTagline(bool isDark) => Text(
       '"$tagline"',
       style: TextStyle(
         fontSize: 14,
@@ -345,7 +336,6 @@ class DetailHeroSection extends StatelessWidget {
         color: Colors.white.withValues(alpha: 0.8),
       ),
     );
-  }
 
   Widget _buildActionButtons(bool isDark, {bool large = false}) {
     final buttonHeight = large ? 48.0 : 42.0;
@@ -423,8 +413,7 @@ class DetailHeroSection extends StatelessWidget {
     );
   }
 
-  Widget _buildBackdropPlaceholder(bool isDark) {
-    return Container(
+  Widget _buildBackdropPlaceholder(bool isDark) => Container(
       color: isDark ? AppColors.darkSurface : Colors.grey[800],
       child: Center(
         child: Icon(
@@ -434,10 +423,8 @@ class DetailHeroSection extends StatelessWidget {
         ),
       ),
     );
-  }
 
-  Widget _buildPosterPlaceholder(bool isDark) {
-    return Container(
+  Widget _buildPosterPlaceholder(bool isDark) => Container(
       color: isDark ? AppColors.darkSurfaceVariant : Colors.grey[700],
       child: Center(
         child: Icon(
@@ -449,7 +436,6 @@ class DetailHeroSection extends StatelessWidget {
         ),
       ),
     );
-  }
 
   String _formatRuntime(int minutes) {
     if (minutes < 60) {

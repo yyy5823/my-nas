@@ -129,7 +129,7 @@ class UpdateService extends ChangeNotifier {
         _status = UpdateStatus.notAvailable;
         logger.i('UpdateService: 当前已是最新版本');
       }
-    } catch (e) {
+    } on Exception catch (e) {
       _status = UpdateStatus.error;
       _errorMessage = e.toString();
       logger.e('UpdateService: 检查更新失败', e);
@@ -177,7 +177,7 @@ class UpdateService extends ChangeNotifier {
       _downloadedFilePath = file.path;
       _status = UpdateStatus.readyToInstall;
       logger.i('UpdateService: 下载完成 ${file.path}');
-    } catch (e) {
+    } on Exception catch (e) {
       _status = UpdateStatus.error;
       _errorMessage = '下载失败: $e';
       logger.e('UpdateService: 下载失败', e);
@@ -201,7 +201,7 @@ class UpdateService extends ChangeNotifier {
         return await _installAndroid();
       }
       return false;
-    } catch (e) {
+    } on Exception catch (e) {
       _errorMessage = '安装失败: $e';
       logger.e('UpdateService: 安装失败', e);
       notifyListeners();
@@ -388,7 +388,7 @@ class UpdateService extends ChangeNotifier {
         if (await file.exists()) {
           await file.delete();
         }
-      } catch (e) {
+      } on Exception catch (e) {
         logger.w('UpdateService: 清理下载文件失败', e);
       }
       _downloadedFilePath = null;

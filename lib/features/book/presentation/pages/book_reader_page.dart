@@ -130,10 +130,7 @@ class BookReaderNotifier extends StateNotifier<BookReaderState> {
     return content;
   }
 
-  String _decodeGbk(List<int> bytes) {
-    // 简单的回退处理，实际项目中可能需要 charset_converter 包
-    return String.fromCharCodes(bytes);
-  }
+  String _decodeGbk(List<int> bytes) => String.fromCharCodes(bytes);
 
   Future<String> _loadEpubBook() async {
     final uri = Uri.parse(book.url);

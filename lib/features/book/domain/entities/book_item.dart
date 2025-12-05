@@ -78,8 +78,7 @@ class BookItem {
   }
 
   /// 从 FileItem 创建
-  factory BookItem.fromFileItem(FileItem file, String url) {
-    return BookItem(
+  factory BookItem.fromFileItem(FileItem file, String url) => BookItem(
       id: file.path,
       name: file.name,
       path: file.path,
@@ -87,7 +86,6 @@ class BookItem {
       format: formatFromExtension(file.name),
       size: file.size,
     );
-  }
 
   BookItem copyWith({
     String? id,
@@ -103,8 +101,7 @@ class BookItem {
     DateTime? lastReadAt,
     int? totalPages,
     int? currentPage,
-  }) {
-    return BookItem(
+  }) => BookItem(
       id: id ?? this.id,
       name: name ?? this.name,
       path: path ?? this.path,
@@ -119,5 +116,4 @@ class BookItem {
       totalPages: totalPages ?? this.totalPages,
       currentPage: currentPage ?? this.currentPage,
     );
-  }
 }

@@ -97,7 +97,7 @@ class SubtitleService {
       });
 
       logger.i('SubtitleService: 共找到 ${subtitles.length} 个字幕');
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('SubtitleService: 查找字幕失败', e);
     }
 

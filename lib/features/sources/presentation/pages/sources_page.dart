@@ -407,7 +407,7 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
           _errorMessage = connection?.errorMessage;
         });
       }
-    } catch (e) {
+    } on Exception catch (e) {
       setState(() {
         _errorMessage = e.toString();
       });
@@ -559,7 +559,7 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
             SnackBar(content: Text('已删除 "${widget.source.displayName}"')),
           );
         }
-      } catch (e) {
+      } on Exception catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(

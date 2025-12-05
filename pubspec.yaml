@@ -56,6 +56,7 @@ dependencies:
   markdown: ^7.2.2
 
   # Crypto
+  crypto: ^3.0.6
   pointycastle: ^3.9.1
 
   # Media - Video

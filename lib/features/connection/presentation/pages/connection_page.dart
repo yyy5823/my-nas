@@ -401,8 +401,7 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
     TextInputType? keyboardType,
     void Function(String)? onFieldSubmitted,
     String? Function(String?)? validator,
-  }) {
-    return TextFormField(
+  }) => TextFormField(
       controller: controller,
       enabled: enabled,
       obscureText: obscureText,
@@ -450,10 +449,8 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
         ),
       ),
     );
-  }
 
-  Widget _buildNasTypeSelector() {
-    return Container(
+  Widget _buildNasTypeSelector() => Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: AppColors.darkSurfaceVariant.withValues(alpha: 0.5),
@@ -482,7 +479,6 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
         ],
       ),
     );
-  }
 
   Widget _buildTypeOption({
     required NasAdapterType type,
@@ -537,8 +533,7 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
     );
   }
 
-  Widget _buildSslSwitch(bool isLoading) {
-    return Container(
+  Widget _buildSslSwitch(bool isLoading) => Container(
       padding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.md,
         vertical: AppSpacing.sm,
@@ -585,10 +580,8 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
         ],
       ),
     );
-  }
 
-  Widget _buildRememberOptions(bool isLoading) {
-    return Column(
+  Widget _buildRememberOptions(bool isLoading) => Column(
       children: [
         // 记住登录
         Container(
@@ -697,10 +690,8 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
         ),
       ],
     );
-  }
 
-  Widget _buildConnectButton(bool isLoading, NasConnectionState state) {
-    return Container(
+  Widget _buildConnectButton(bool isLoading, NasConnectionState state) => Container(
       height: 56,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
@@ -763,10 +754,8 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
         ),
       ),
     );
-  }
 
-  Widget _build2FACard(ConnectionRequires2FAState state) {
-    return ClipRRect(
+  Widget _build2FACard(ConnectionRequires2FAState state) => ClipRRect(
       borderRadius: BorderRadius.circular(24),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
@@ -931,5 +920,4 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
         ),
       ),
     );
-  }
 }

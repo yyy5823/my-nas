@@ -361,7 +361,7 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
             _showSettings = false;
             _showToc = false;
           }),
-          child: Container(
+          child: ColoredBox(
             color: state.theme.backgroundColor,
             child: SafeArea(
               child: Column(
@@ -479,7 +479,7 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
       ],
     );
 
-  Widget _buildTopBar(BuildContext context, EpubReaderLoaded state) => Container(
+  Widget _buildTopBar(BuildContext context, EpubReaderLoaded state) => DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -539,7 +539,7 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
       ),
     );
 
-  Widget _buildBottomBar(BuildContext context, EpubReaderLoaded state) => Container(
+  Widget _buildBottomBar(BuildContext context, EpubReaderLoaded state) => DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.bottomCenter,

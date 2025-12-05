@@ -95,7 +95,7 @@ class SubtitleStyleNotifier extends StateNotifier<SubtitleStyle> {
       if (data != null) {
         state = SubtitleStyle.fromMap(data);
       }
-    } catch (_) {
+    } on Exception catch (_) {
       // 使用默认值
     }
   }
@@ -104,7 +104,7 @@ class SubtitleStyleNotifier extends StateNotifier<SubtitleStyle> {
     try {
       final box = await Hive.openBox<Map<dynamic, dynamic>>(_boxName);
       await box.put(_key, state.toMap());
-    } catch (_) {
+    } on Exception catch (_) {
       // 忽略保存错误
     }
   }

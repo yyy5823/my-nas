@@ -149,7 +149,7 @@ class UGreenAdapter implements NasAdapter {
           _useWebDav = true;
         }
       }
-    } catch (e) {
+    } on Exception catch (e) {
       logger.w('UGreenAdapter: UGOS 文件 API 不可用，切换到 WebDAV', e);
       _useWebDav = true;
     }
@@ -158,7 +158,7 @@ class UGreenAdapter implements NasAdapter {
     if (_useWebDav) {
       try {
         await _initWebDav(config);
-      } catch (e) {
+      } on Exception catch (e) {
         logger.e('UGreenAdapter: WebDAV 初始化失败', e);
         // 仍然标记为已连接，但文件操作可能失败
       }
@@ -202,7 +202,7 @@ class UGreenAdapter implements NasAdapter {
           password: config.password,
         );
         return;
-      } catch (e) {
+      } on Exception catch (e) {
         logger.w('UGreenAdapter: WebDAV $davPath 失败', e);
       }
     }

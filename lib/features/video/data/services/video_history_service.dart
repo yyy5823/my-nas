@@ -52,7 +52,7 @@ class VideoHistoryService {
 
     try {
       return VideoProgress.fromJson(data as Map<dynamic, dynamic>);
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('VideoHistoryService: 解析进度失败', e);
       return null;
     }
@@ -68,7 +68,7 @@ class VideoHistoryService {
       if (data != null) {
         try {
           result[path] = VideoProgress.fromJson(data as Map<dynamic, dynamic>);
-        } catch (e) {
+        } on Exception catch (e) {
           logger.w('VideoHistoryService: 解析进度失败 $path');
         }
       }
@@ -86,7 +86,7 @@ class VideoHistoryService {
       if (data != null) {
         try {
           result[key as String] = VideoProgress.fromJson(data as Map<dynamic, dynamic>);
-        } catch (e) {
+        } on Exception catch (e) {
           logger.w('VideoHistoryService: 解析进度失败 $key');
         }
       }
@@ -140,7 +140,7 @@ class VideoHistoryService {
           .take(limit)
           .toList();
       return history;
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('VideoHistoryService: 解析历史失败', e);
       return [];
     }

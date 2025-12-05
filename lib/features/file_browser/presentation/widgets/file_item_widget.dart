@@ -124,7 +124,7 @@ class FileItemWidget extends StatelessWidget {
   Widget _buildGridItem(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Container(
+    return DecoratedBox(
       decoration: BoxDecoration(
         color: isDark
             ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)

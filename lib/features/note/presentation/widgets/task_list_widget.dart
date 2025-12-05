@@ -145,8 +145,7 @@ class TaskListWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildSectionHeader(BuildContext context, String title, int count) {
-    return Padding(
+  Widget _buildSectionHeader(BuildContext context, String title, int count) => Padding(
       padding: const EdgeInsets.only(bottom: 8, top: 8),
       child: Row(
         children: [
@@ -176,7 +175,6 @@ class TaskListWidget extends StatelessWidget {
         ],
       ),
     );
-  }
 }
 
 class _TaskTile extends StatelessWidget {
@@ -193,8 +191,7 @@ class _TaskTile extends StatelessWidget {
   final bool isDark;
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
+  Widget build(BuildContext context) => Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3) : Colors.white,
@@ -294,7 +291,6 @@ class _TaskTile extends StatelessWidget {
         ),
       ),
     );
-  }
 
   Color _getBorderColor() {
     if (task.isOverdue) return Colors.red.withValues(alpha: 0.5);
@@ -306,8 +302,7 @@ class _TaskTile extends StatelessWidget {
         : Colors.grey.shade200;
   }
 
-  Widget _buildCheckbox(BuildContext context) {
-    return Container(
+  Widget _buildCheckbox(BuildContext context) => Container(
       width: 28,
       height: 28,
       decoration: BoxDecoration(
@@ -330,7 +325,6 @@ class _TaskTile extends StatelessWidget {
           ? const Icon(Icons.check_rounded, color: Colors.white, size: 18)
           : null,
     );
-  }
 
   Widget _buildPriorityBadge() {
     final isUrgent = task.priority == 2;

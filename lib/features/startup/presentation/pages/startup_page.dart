@@ -83,8 +83,7 @@ class _StartupPageState extends ConsumerState<StartupPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
+  Widget build(BuildContext context) => Scaffold(
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -176,5 +175,4 @@ class _StartupPageState extends ConsumerState<StartupPage> {
         ),
       ),
     );
-  }
 }

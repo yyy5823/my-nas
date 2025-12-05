@@ -202,10 +202,10 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
     for (final subscription in _subscriptions) {
       subscription.cancel();
     }
-    _subscriptions.clear();
+    _subscriptions..clear()
 
     // 重新添加所有 stream listeners
-    _subscriptions.add(_player.stream.playing.listen((playing) {
+    ..add(_player.stream.playing.listen((playing) {
       if (_isDisposed) return;
       state = state.copyWith(isPlaying: playing);
       if (playing) {
@@ -214,41 +214,41 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
         _stopProgressSaveTimer();
         _saveCurrentProgress();
       }
-    }));
+    }))
 
-    _subscriptions.add(_player.stream.buffering.listen((buffering) {
+    ..add(_player.stream.buffering.listen((buffering) {
       if (_isDisposed) return;
       state = state.copyWith(isBuffering: buffering);
-    }));
+    }))
 
-    _subscriptions.add(_player.stream.position.listen((position) {
+    ..add(_player.stream.position.listen((position) {
       if (_isDisposed) return;
       state = state.copyWith(position: position);
-    }));
+    }))
 
-    _subscriptions.add(_player.stream.duration.listen((duration) {
+    ..add(_player.stream.duration.listen((duration) {
       if (_isDisposed) return;
       state = state.copyWith(duration: duration);
-    }));
+    }))
 
-    _subscriptions.add(_player.stream.volume.listen((volume) {
+    ..add(_player.stream.volume.listen((volume) {
       if (_isDisposed) return;
       state = state.copyWith(volume: volume / 100);
-    }));
+    }))
 
-    _subscriptions.add(_player.stream.rate.listen((rate) {
+    ..add(_player.stream.rate.listen((rate) {
       if (_isDisposed) return;
       state = state.copyWith(speed: rate);
-    }));
+    }))
 
-    _subscriptions.add(_player.stream.error.listen((error) {
+    ..add(_player.stream.error.listen((error) {
       if (_isDisposed) return;
       if (error.isNotEmpty) {
         state = state.copyWith(errorMessage: error);
       }
-    }));
+    }))
 
-    _subscriptions.add(_player.stream.completed.listen((completed) {
+    ..add(_player.stream.completed.listen((completed) {
       if (_isDisposed) return;
       if (completed && _currentVideo != null) {
         _historyService.clearProgress(_currentVideo!.path);
@@ -346,7 +346,7 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
           fileSize: video.size,
         );
         logger.i('VideoPlayer: 使用代理 URL => $playUrl');
-      } catch (e) {
+      } on Exception catch (e) {
         logger.e('VideoPlayer: 启动代理服务器失败', e);
         state = state.copyWith(errorMessage: '无法启动媒体代理服务');
         return;
@@ -370,7 +370,7 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
     try {
       await _player.open(Media(playUrl));
       logger.d('VideoPlayer: 视频源打开成功');
-    } catch (e, stackTrace) {
+    } on Exception catch (e, stackTrace) {
       logger.e('VideoPlayer: 打开视频失败', e, stackTrace);
       state = state.copyWith(errorMessage: e.toString());
       return;
@@ -476,7 +476,7 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
     Future.microtask(() {
       try {
         _ref.read(currentVideoProvider.notifier).state = null;
-      } catch (e) {
+      } on Exception catch (e) {
         // 忽略错误，可能 provider 已经被销毁
       }
     });
@@ -494,7 +494,7 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
             duration: durationToSave,
           );
           logger.i('VideoPlayerNotifier: 进度保存成功');
-        } catch (e) {
+        } on Exception catch (e) {
           logger.e('VideoPlayerNotifier: 保存进度失败', e);
         }
       });
@@ -571,7 +571,7 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
           SubtitleTrack.uri(subtitle.url, title: subtitle.name),
         );
         logger.i('VideoPlayerNotifier: 加载字幕 ${subtitle.name}');
-      } catch (e) {
+      } on Exception catch (e) {
         logger.e('VideoPlayerNotifier: 加载字幕失败', e);
       }
     }

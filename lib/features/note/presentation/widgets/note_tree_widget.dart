@@ -48,8 +48,7 @@ class NoteTreeNode {
     bool? isExpanded,
     FileItem? fileItem,
     String? url,
-  }) {
-    return NoteTreeNode(
+  }) => NoteTreeNode(
       name: name ?? this.name,
       path: path ?? this.path,
       type: type ?? this.type,
@@ -59,7 +58,6 @@ class NoteTreeNode {
       fileItem: fileItem ?? this.fileItem,
       url: url ?? this.url,
     );
-  }
 }
 
 /// 笔记目录树组件

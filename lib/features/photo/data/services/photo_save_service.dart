@@ -725,7 +725,7 @@ class PhotoSaveService {
       if (await file.exists()) {
         await file.delete();
       }
-    } catch (_) {}
+    } on Exception catch (_) {}
   }
 
   /// 延迟清理临时文件
@@ -737,8 +737,7 @@ class PhotoSaveService {
   }
 
   /// 获取 Dio 错误消息
-  String _getDioErrorMessage(DioException e) {
-    return switch (e.type) {
+  String _getDioErrorMessage(DioException e) => switch (e.type) {
       DioExceptionType.connectionTimeout => '连接超时',
       DioExceptionType.sendTimeout => '发送超时',
       DioExceptionType.receiveTimeout => '接收超时',
@@ -748,7 +747,6 @@ class PhotoSaveService {
       DioExceptionType.unknown => e.message ?? '未知错误',
       _ => e.message ?? '网络错误',
     };
-  }
 }
 
 /// 保存结果
@@ -778,14 +776,12 @@ class SaveResult {
   bool get isCancelled => status == SaveStatus.cancelled;
   bool get isFailure => status == SaveStatus.failure;
 
-  String get message {
-    return switch (status) {
+  String get message => switch (status) {
       SaveStatus.success when isGallery => '已保存到相册',
       SaveStatus.success => '已保存到: $path',
       SaveStatus.cancelled => '已取消',
       SaveStatus.failure => error ?? '保存失败',
     };
-  }
 }
 
 enum SaveStatus { success, failure, cancelled }

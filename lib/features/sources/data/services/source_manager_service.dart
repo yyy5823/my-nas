@@ -138,7 +138,7 @@ class SourceManagerService {
       return data
           .map((e) => SourceEntity.fromJson(Map<String, dynamic>.from(e as Map)))
           .toList();
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('SourceManagerService: 解析源列表失败', e);
       return [];
     }
@@ -178,7 +178,7 @@ class SourceManagerService {
       // 断开连接
       logger.d('SourceManagerService: 断开连接...');
       await disconnect(sourceId);
-    } catch (e) {
+    } on Exception catch (e) {
       logger.w('SourceManagerService: 断开连接时出错 (继续删除)', e);
     }
 
@@ -186,7 +186,7 @@ class SourceManagerService {
       // 删除凭证
       logger.d('SourceManagerService: 删除凭证...');
       await removeCredential(sourceId);
-    } catch (e) {
+    } on Exception catch (e) {
       logger.w('SourceManagerService: 删除凭证时出错 (继续删除)', e);
     }
 
@@ -204,7 +204,7 @@ class SourceManagerService {
       final config = await getMediaLibraryConfig();
       final newConfig = config.removePathsForSource(sourceId);
       await saveMediaLibraryConfig(newConfig);
-    } catch (e) {
+    } on Exception catch (e) {
       logger.w('SourceManagerService: 删除媒体库路径时出错', e);
     }
 
@@ -261,7 +261,7 @@ class SourceManagerService {
       final credential = SourceCredential.fromJson(json);
       logger.d('SourceManagerService: 读取凭证成功 $sourceId (deviceId: ${credential.deviceId != null ? "有" : "无"})');
       return credential;
-    } catch (e) {
+    } on Exception catch (e) {
       if (_handleSecureStorageError(e, 'getCredential')) {
         return null;
       }
@@ -280,7 +280,7 @@ class SourceManagerService {
       final key = '$_credentialPrefix$sourceId';
       await _secureStorage.delete(key: key);
       logger.i('SourceManagerService: 删除凭证 $sourceId');
-    } catch (e) {
+    } on Exception catch (e) {
       if (!_handleSecureStorageError(e, 'removeCredential')) {
         logger.e('SourceManagerService: 删除凭证失败', e);
       }
@@ -391,7 +391,7 @@ class SourceManagerService {
 
       _connections[source.id] = connection;
       return connection;
-    } catch (e) {
+    } on Exception catch (e) {
       final connection = SourceConnection(
         source: source,
         adapter: adapter,
@@ -610,7 +610,7 @@ class SourceManagerService {
       } else {
         logger.d('SourceManagerService: ${source.name} 没有保存的凭证，跳过自动连接');
       }
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('SourceManagerService: 自动连接异常 ${source.name}', e);
     }
   }
@@ -656,7 +656,7 @@ class SourceManagerService {
       final config = MediaLibraryConfig.fromJson(Map<String, dynamic>.from(data as Map));
       logger.i('SourceManagerService: 解析媒体库配置成功 - 视频路径: ${config.videoPaths.length}, 音乐路径: ${config.musicPaths.length}');
       return config;
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('SourceManagerService: 解析媒体库配置失败', e);
       return const MediaLibraryConfig();
     }

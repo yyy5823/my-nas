@@ -272,7 +272,7 @@ class _PdfReaderPageState extends ConsumerState<PdfReaderPage> {
       ],
     );
 
-  Widget _buildTopBar(BuildContext context, PdfReaderLoaded state) => Container(
+  Widget _buildTopBar(BuildContext context, PdfReaderLoaded state) => DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -327,7 +327,7 @@ class _PdfReaderPageState extends ConsumerState<PdfReaderPage> {
       ),
     );
 
-  Widget _buildBottomBar(BuildContext context, PdfReaderLoaded state) => Container(
+  Widget _buildBottomBar(BuildContext context, PdfReaderLoaded state) => DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.bottomCenter,

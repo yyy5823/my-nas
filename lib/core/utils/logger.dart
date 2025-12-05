@@ -64,7 +64,7 @@ Platform: ${Platform.operatingSystem}
       if (kDebugMode) {
         print('[Logger] File logging initialized: ${_logFile!.path}');
       }
-    } catch (e) {
+    } on Exception catch (e) {
       if (kDebugMode) {
         print('[Logger] Failed to initialize file logging: $e');
       }
@@ -108,7 +108,7 @@ Platform: ${Platform.operatingSystem}
       final content = _logBuffer.join();
       _logBuffer.clear();
       _logFile!.writeAsStringSync(content, mode: FileMode.append, flush: true);
-    } catch (e) {
+    } on Exception catch (e) {
       if (kDebugMode) {
         print('[Logger] Failed to write log: $e');
       }

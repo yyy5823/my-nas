@@ -46,7 +46,7 @@ class WebDavFileSystem implements NasFileSystem {
         size: f.size ?? 0,
         modifiedTime: f.mTime,
         createdTime: f.cTime,
-        extension: f.isDir == true ? null : p.extension(f.name ?? ''),
+        extension: f.isDir ?? false ? null : p.extension(f.name ?? ''),
       );
     }).toList();
   }
@@ -64,7 +64,7 @@ class WebDavFileSystem implements NasFileSystem {
       size: file.size ?? 0,
       modifiedTime: file.mTime,
       createdTime: file.cTime,
-      extension: file.isDir == true ? null : p.extension(file.name ?? ''),
+      extension: file.isDir ?? false ? null : p.extension(file.name ?? ''),
     );
   }
 

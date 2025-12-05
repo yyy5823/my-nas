@@ -56,7 +56,7 @@ class LyricData {
   int getCurrentLineIndex(Duration position) {
     if (lines.isEmpty) return -1;
 
-    for (int i = lines.length - 1; i >= 0; i--) {
+    for (var i = lines.length - 1; i >= 0; i--) {
       if (position >= lines[i].time) {
         return i;
       }

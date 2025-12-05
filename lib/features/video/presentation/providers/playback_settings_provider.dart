@@ -104,7 +104,7 @@ class PlaybackSettingsNotifier extends StateNotifier<PlaybackSettings> {
       _box = await Hive.openBox<Map<dynamic, dynamic>>(_boxName);
       _positionsBox = await Hive.openBox<Map<dynamic, dynamic>>(_positionsBoxName);
       _initialized = true;
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('PlaybackSettingsNotifier: 初始化失败', e);
     }
   }
@@ -194,7 +194,7 @@ class PlaybackSettingsNotifier extends StateNotifier<PlaybackSettings> {
       // 如果进度超过 95%，从头开始
       if (record.progress > 0.95) return null;
       return record.position;
-    } catch (_) {
+    } on Exception catch (_) {
       return null;
     }
   }
@@ -210,7 +210,7 @@ class PlaybackSettingsNotifier extends StateNotifier<PlaybackSettings> {
       if (data != null) {
         try {
           positions.add(VideoPosition.fromMap(data));
-        } catch (_) {
+        } on Exception catch (_) {
           // 跳过无效数据
         }
       }

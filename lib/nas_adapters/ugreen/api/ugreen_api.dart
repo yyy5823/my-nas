@@ -200,7 +200,7 @@ class UGreenApi {
         return UGreenAuthFailure(error: '无法连接到服务器，请检查地址和端口');
       }
       return UGreenAuthFailure(error: e.message ?? '网络错误');
-    } catch (e, st) {
+    } on Exception catch (e, st) {
       logger.e('UGreenApi: 登录异常', e, st);
       return UGreenAuthFailure(error: e.toString());
     }
@@ -389,8 +389,8 @@ class UGreenApi {
 
     for (final attempt in attempts) {
       try {
-        final endpoint = attempt['endpoint'] as String;
-        final data = attempt['data'] as Map<String, dynamic>;
+        final endpoint = attempt['endpoint']! as String;
+        final data = attempt['data']! as Map<String, dynamic>;
         final method = attempt['method'] as String? ?? 'POST';
         logger.d('UGreenApi: 尝试端点 => $endpoint ($method), 参数 => $data');
 
@@ -431,7 +431,7 @@ class UGreenApi {
             logger.w('UGreenApi: $endpoint 返回错误: $msg');
           }
         }
-      } catch (e) {
+      } on Exception catch (e) {
         logger.w('UGreenApi: 尝试失败', e);
       }
     }
@@ -522,7 +522,7 @@ class UGreenApi {
         logger.i('UGreenApi: 从存储池获取到 ${poolResult.length} 个共享文件夹');
         return poolResult;
       }
-    } catch (e) {
+    } on Exception catch (e) {
       logger.w('UGreenApi: 从存储池获取共享失败', e);
     }
 
@@ -599,7 +599,7 @@ class UGreenApi {
             return items;
           }
         }
-      } catch (e) {
+      } on Exception catch (e) {
         logger.w('UGreenApi: 尝试失败 ($attempt)', e);
       }
     }
@@ -627,7 +627,7 @@ class UGreenApi {
           }
           return rootFiles;
         }
-      } catch (e) {
+      } on Exception catch (e) {
         logger.d('UGreenApi: 尝试根路径 $rootPath 失败');
       }
     }
@@ -856,7 +856,7 @@ class UGreenApi {
           final minute = parts.length > 4 ? int.tryParse(parts[4]) ?? 0 : 0;
           final second = parts.length > 5 ? int.tryParse(parts[5]) ?? 0 : 0;
           return DateTime(year, month, day, hour, minute, second);
-        } catch (e) {
+        } on Exception catch (e) {
           logger.d('UGreenApi: 无法解析日期 $value');
         }
       }

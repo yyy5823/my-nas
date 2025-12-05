@@ -135,12 +135,10 @@ class _FolderPickerSheetState extends State<FolderPickerSheet> {
                     labelText: '选择源',
                     prefixIcon: Icon(Icons.storage),
                   ),
-                  items: widget.sources.map((source) {
-                    return DropdownMenuItem(
+                  items: widget.sources.map((source) => DropdownMenuItem(
                       value: source,
                       child: Text(source.displayName),
-                    );
-                  }).toList(),
+                    )).toList(),
                   onChanged: (source) {
                     setState(() {
                       _selectedSource = source;

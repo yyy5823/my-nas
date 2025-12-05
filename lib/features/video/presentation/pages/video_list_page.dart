@@ -199,7 +199,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
 
       // 从 SQLite 加载分类数据（高性能分页查询）
       await _loadCategorizedData();
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('VideoListNotifier: 初始化失败', e);
       state = VideoListLoaded(totalCount: 0, fromCache: false);
     }
@@ -212,7 +212,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     // 并行查询各分类数据（使用 SQLite 索引，O(log N) 复杂度）
     final results = await Future.wait([
       _db.getStats(),
-      _db.getTopRated(minRating: 7.0, limit: 20),
+      _db.getTopRated(minRating: 7, limit: 20),
       _db.getRecentlyUpdated(limit: 20),
       _db.getByCategory(MediaCategory.movie, limit: 100),
       _db.getByCategory(MediaCategory.tvShow, limit: 200),
@@ -1189,7 +1189,7 @@ class _ContinueWatchingCard extends ConsumerWidget {
         child: InkWell(
           onTap: () => _playVideo(context, ref),
           borderRadius: BorderRadius.circular(12),
-          child: Container(
+          child: DecoratedBox(
             decoration: BoxDecoration(
               color: isDark ? Colors.grey[900] : Colors.grey[100],
               borderRadius: BorderRadius.circular(12),
@@ -1329,7 +1329,7 @@ class _PartialVideoCard extends StatelessWidget {
       children: [
         // 横向视频缩略图
         Expanded(
-          child: Container(
+          child: DecoratedBox(
             decoration: BoxDecoration(
               color: isDark ? Colors.grey[850] : Colors.grey[200],
               borderRadius: BorderRadius.circular(10),
@@ -1469,7 +1469,7 @@ class _PosterCardState extends ConsumerState<_PosterCard> {
               children: [
                 // 海报
                 Expanded(
-                  child: Container(
+                  child: DecoratedBox(
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(12),
                       boxShadow: [
@@ -2977,8 +2977,7 @@ class _CategoryFullPageState extends ConsumerState<_CategoryFullPage> {
     bool isActive = false,
     VoidCallback? onTap,
     VoidCallback? onClose,
-  }) {
-    return GestureDetector(
+  }) => GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -3029,11 +3028,9 @@ class _CategoryFullPageState extends ConsumerState<_CategoryFullPage> {
         ),
       ),
     );
-  }
 
   /// 空状态
-  Widget _buildEmptyState(bool isDark) {
-    return Center(
+  Widget _buildEmptyState(bool isDark) => Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -3058,7 +3055,6 @@ class _CategoryFullPageState extends ConsumerState<_CategoryFullPage> {
         ],
       ),
     );
-  }
 
   /// 显示排序选项
   void _showSortOptions(BuildContext context, bool isDark) {

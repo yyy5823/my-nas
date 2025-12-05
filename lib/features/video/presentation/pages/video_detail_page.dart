@@ -120,8 +120,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     );
   }
 
-  Widget _buildMainContent(BuildContext context, bool isDark, bool isWide) {
-    return Padding(
+  Widget _buildMainContent(BuildContext context, bool isDark, bool isWide) => Padding(
       padding: EdgeInsets.symmetric(
         horizontal: isWide ? 24 : 0,
         vertical: 16,
@@ -167,7 +166,6 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         ],
       ),
     );
-  }
 
   Widget _buildEpisodeSection() {
     final tvDetailAsync = ref.watch(tvDetailProvider(widget.metadata.tmdbId!));
@@ -206,8 +204,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     );
   }
 
-  Widget _buildOverviewSection(bool isDark) {
-    return Padding(
+  Widget _buildOverviewSection(bool isDark) => Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -234,7 +231,6 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         ],
       ),
     );
-  }
 
   Widget _buildCastSection() {
     if (_isTvShow) {
@@ -366,8 +362,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     );
   }
 
-  Widget _buildInfoRow(String label, String value, bool isDark) {
-    return Padding(
+  Widget _buildInfoRow(String label, String value, bool isDark) => Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -397,18 +392,14 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         ],
       ),
     );
-  }
 
-  Widget _buildRecommendationsSection() {
-    return CombinedRecommendationsSection(
+  Widget _buildRecommendationsSection() => CombinedRecommendationsSection(
       tmdbId: widget.metadata.tmdbId!,
       isMovie: !_isTvShow,
       onItemTap: _onRecommendationTap,
     );
-  }
 
-  Widget _buildFileInfoSection(bool isDark) {
-    return Container(
+  Widget _buildFileInfoSection(bool isDark) => Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurfaceVariant : Colors.white,
@@ -435,13 +426,11 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         ],
       ),
     );
-  }
 
-  Widget _buildBackButton(BuildContext context, bool isDark) {
-    return Positioned(
+  Widget _buildBackButton(BuildContext context, bool isDark) => Positioned(
       top: MediaQuery.of(context).padding.top + 8,
       left: 8,
-      child: Container(
+      child: DecoratedBox(
         decoration: BoxDecoration(
           color: Colors.black.withValues(alpha: 0.3),
           shape: BoxShape.circle,
@@ -452,7 +441,6 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         ),
       ),
     );
-  }
 
   String _translateStatus(String status) {
     switch (status) {

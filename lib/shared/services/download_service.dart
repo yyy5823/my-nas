@@ -194,7 +194,7 @@ class DownloadService {
         status: DownloadStatus.failed,
         errorMessage: e.message ?? '下载失败',
       );
-    } catch (e) {
+    } on Exception catch (e) {
       _updateTask(
         taskId,
         status: DownloadStatus.failed,

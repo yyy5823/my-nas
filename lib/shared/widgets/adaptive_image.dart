@@ -62,7 +62,7 @@ class AdaptiveImage extends StatelessWidget {
     try {
       final uri = Uri.parse(url);
       return uri.toFilePath(windows: Platform.isWindows);
-    } catch (e) {
+    } on Exception catch (e) {
       return null;
     }
   }

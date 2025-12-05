@@ -197,7 +197,7 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
           loadPhotos();
         }
       });
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('PhotoListNotifier: 初始化失败', e);
       state = PhotoListLoaded(photos: [], fromCache: false);
     }
@@ -386,7 +386,7 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
       for (final file in files) {
         if (file.type == FileType.image) {
           // 尝试获取缩略图 URL（使用 medium 尺寸以提高清晰度）
-          String? thumbnailUrl = file.thumbnailUrl;
+          var thumbnailUrl = file.thumbnailUrl;
           if (thumbnailUrl == null || thumbnailUrl.isEmpty) {
             try {
               thumbnailUrl = await fileSystem.getThumbnailUrl(
@@ -396,7 +396,7 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
               if (thumbnailUrl != null) {
                 logger.d('PhotoScan: Got thumbnail URL for ${file.name}: $thumbnailUrl');
               }
-            } catch (e) {
+            } on Exception catch (e) {
               logger.d('PhotoScan: Failed to get thumbnail for ${file.name}: $e');
             }
           }
@@ -407,7 +407,7 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
             try {
               thumbnailUrl = await fileSystem.getFileUrl(file.path);
               logger.d('PhotoScan: Got file URL for ${file.name}: $thumbnailUrl');
-            } catch (e) {
+            } on Exception catch (e) {
               // getFileUrl 可能抛出 UnimplementedError（如 WebDAV）
               // 这种情况下 thumbnailUrl 保持为 null，让 StreamImage 使用流式加载
               logger.d('PhotoScan: No URL available for ${file.name}, will use stream: $e');
@@ -1350,7 +1350,7 @@ class _PhotoGridItem extends ConsumerWidget {
     try {
       currentUrl = await connection.adapter.fileSystem.getFileUrl(photo.path);
       debugPrint('PhotoViewer: got currentUrl = $currentUrl');
-    } catch (e) {
+    } on Exception catch (e) {
       debugPrint('PhotoViewer: failed to get url: $e');
       // 如果获取失败，留空，让查看器去获取
       currentUrl = '';
@@ -1395,7 +1395,7 @@ class _PhotoGridItem extends ConsumerWidget {
                 if (conn == null) return null;
                 try {
                   return await conn.adapter.fileSystem.getFileUrl(path);
-                } catch (e) {
+                } on Exception catch (e) {
                   debugPrint('PhotoViewer: 获取URL失败 path=$path, error=$e');
                   return null;
                 }
@@ -1424,7 +1424,7 @@ class _PhotoGridItem extends ConsumerWidget {
             }
             try {
               return await conn.adapter.fileSystem.getFileUrl(path);
-            } catch (e) {
+            } on Exception catch (e) {
               debugPrint('PhotoViewer: 获取URL失败 path=$path, error=$e');
               return null;
             }

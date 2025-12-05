@@ -64,7 +64,7 @@ class TmdbService {
         logger.e('TMDB搜索电影失败: ${response.statusCode}');
         return TmdbSearchResult.empty();
       }
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('TMDB搜索电影异常', e);
       return TmdbSearchResult.empty();
     }
@@ -102,7 +102,7 @@ class TmdbService {
         logger.e('TMDB搜索电视剧失败: ${response.statusCode}');
         return TmdbSearchResult.empty();
       }
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('TMDB搜索电视剧异常', e);
       return TmdbSearchResult.empty();
     }
@@ -132,7 +132,7 @@ class TmdbService {
         logger.e('TMDB获取电影详情失败: ${response.statusCode}');
         return null;
       }
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('TMDB获取电影详情异常', e);
       return null;
     }
@@ -162,7 +162,7 @@ class TmdbService {
         logger.e('TMDB获取电视剧详情失败: ${response.statusCode}');
         return null;
       }
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('TMDB获取电视剧详情异常', e);
       return null;
     }
@@ -193,7 +193,7 @@ class TmdbService {
         logger.e('TMDB获取季详情失败: ${response.statusCode}');
         return null;
       }
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('TMDB获取季详情异常', e);
       return null;
     }
@@ -225,7 +225,7 @@ class TmdbService {
         logger.e('TMDB获取电影推荐失败: ${response.statusCode}');
         return TmdbSearchResult.empty();
       }
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('TMDB获取电影推荐异常', e);
       return TmdbSearchResult.empty();
     }
@@ -257,7 +257,7 @@ class TmdbService {
         logger.e('TMDB获取电视剧推荐失败: ${response.statusCode}');
         return TmdbSearchResult.empty();
       }
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('TMDB获取电视剧推荐异常', e);
       return TmdbSearchResult.empty();
     }
@@ -289,7 +289,7 @@ class TmdbService {
         logger.e('TMDB获取相似电影失败: ${response.statusCode}');
         return TmdbSearchResult.empty();
       }
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('TMDB获取相似电影异常', e);
       return TmdbSearchResult.empty();
     }
@@ -321,7 +321,7 @@ class TmdbService {
         logger.e('TMDB获取相似电视剧失败: ${response.statusCode}');
         return TmdbSearchResult.empty();
       }
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('TMDB获取相似电视剧异常', e);
       return TmdbSearchResult.empty();
     }
@@ -398,8 +398,7 @@ class TmdbMediaItem {
     required this.genreIds,
   });
 
-  factory TmdbMediaItem.fromJson(Map<String, dynamic> json, {required bool isMovie}) {
-    return TmdbMediaItem(
+  factory TmdbMediaItem.fromJson(Map<String, dynamic> json, {required bool isMovie}) => TmdbMediaItem(
       id: json['id'] as int,
       title: (isMovie ? json['title'] : json['name']) as String? ?? '',
       originalTitle:
@@ -416,7 +415,6 @@ class TmdbMediaItem {
       genreIds:
           (json['genre_ids'] as List?)?.map((e) => e as int).toList() ?? [],
     );
-  }
 
   final int id;
   final String title;
@@ -660,8 +658,7 @@ class TmdbSeasonDetail {
     required this.episodes,
   });
 
-  factory TmdbSeasonDetail.fromJson(Map<String, dynamic> json) {
-    return TmdbSeasonDetail(
+  factory TmdbSeasonDetail.fromJson(Map<String, dynamic> json) => TmdbSeasonDetail(
       id: json['id'] as int,
       name: json['name'] as String? ?? '',
       overview: json['overview'] as String? ?? '',
@@ -673,7 +670,6 @@ class TmdbSeasonDetail {
               .toList() ??
           [],
     );
-  }
 
   final int id;
   final String name;
@@ -698,8 +694,7 @@ class TmdbSeason {
     required this.airDate,
   });
 
-  factory TmdbSeason.fromJson(Map<String, dynamic> json) {
-    return TmdbSeason(
+  factory TmdbSeason.fromJson(Map<String, dynamic> json) => TmdbSeason(
       id: json['id'] as int,
       name: json['name'] as String? ?? '',
       overview: json['overview'] as String? ?? '',
@@ -708,7 +703,6 @@ class TmdbSeason {
       episodeCount: json['episode_count'] as int? ?? 0,
       airDate: json['air_date'] as String? ?? '',
     );
-  }
 
   final int id;
   final String name;
@@ -735,8 +729,7 @@ class TmdbEpisode {
     required this.voteAverage,
   });
 
-  factory TmdbEpisode.fromJson(Map<String, dynamic> json) {
-    return TmdbEpisode(
+  factory TmdbEpisode.fromJson(Map<String, dynamic> json) => TmdbEpisode(
       id: json['id'] as int,
       name: json['name'] as String? ?? '',
       overview: json['overview'] as String? ?? '',
@@ -747,7 +740,6 @@ class TmdbEpisode {
       runtime: json['runtime'] as int? ?? 0,
       voteAverage: (json['vote_average'] as num?)?.toDouble() ?? 0.0,
     );
-  }
 
   final int id;
   final String name;
@@ -766,12 +758,10 @@ class TmdbEpisode {
 class TmdbGenre {
   TmdbGenre({required this.id, required this.name});
 
-  factory TmdbGenre.fromJson(Map<String, dynamic> json) {
-    return TmdbGenre(
+  factory TmdbGenre.fromJson(Map<String, dynamic> json) => TmdbGenre(
       id: json['id'] as int,
       name: json['name'] as String? ?? '',
     );
-  }
 
   final int id;
   final String name;
@@ -787,15 +777,13 @@ class TmdbCast {
     required this.order,
   });
 
-  factory TmdbCast.fromJson(Map<String, dynamic> json) {
-    return TmdbCast(
+  factory TmdbCast.fromJson(Map<String, dynamic> json) => TmdbCast(
       id: json['id'] as int,
       name: json['name'] as String? ?? '',
       character: json['character'] as String? ?? '',
       profilePath: json['profile_path'] as String?,
       order: json['order'] as int? ?? 0,
     );
-  }
 
   final int id;
   final String name;
@@ -816,15 +804,13 @@ class TmdbCrew {
     required this.profilePath,
   });
 
-  factory TmdbCrew.fromJson(Map<String, dynamic> json) {
-    return TmdbCrew(
+  factory TmdbCrew.fromJson(Map<String, dynamic> json) => TmdbCrew(
       id: json['id'] as int,
       name: json['name'] as String? ?? '',
       job: json['job'] as String? ?? '',
       department: json['department'] as String? ?? '',
       profilePath: json['profile_path'] as String?,
     );
-  }
 
   final int id;
   final String name;
@@ -844,14 +830,12 @@ class TmdbCompany {
     required this.originCountry,
   });
 
-  factory TmdbCompany.fromJson(Map<String, dynamic> json) {
-    return TmdbCompany(
+  factory TmdbCompany.fromJson(Map<String, dynamic> json) => TmdbCompany(
       id: json['id'] as int,
       name: json['name'] as String? ?? '',
       logoPath: json['logo_path'] as String?,
       originCountry: json['origin_country'] as String? ?? '',
     );
-  }
 
   final int id;
   final String name;
@@ -870,14 +854,12 @@ class TmdbNetwork {
     required this.originCountry,
   });
 
-  factory TmdbNetwork.fromJson(Map<String, dynamic> json) {
-    return TmdbNetwork(
+  factory TmdbNetwork.fromJson(Map<String, dynamic> json) => TmdbNetwork(
       id: json['id'] as int,
       name: json['name'] as String? ?? '',
       logoPath: json['logo_path'] as String?,
       originCountry: json['origin_country'] as String? ?? '',
     );
-  }
 
   final int id;
   final String name;

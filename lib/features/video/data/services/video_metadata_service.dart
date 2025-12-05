@@ -286,7 +286,7 @@ class VideoMetadataService {
         metadata.generatedThumbnailUrl = _thumbnailService.getCachedThumbnailUrl(metadata.filePath);
         logger.i('VideoMetadataService: 缩略图生成成功 "${metadata.fileName}"');
       }
-    } catch (e) {
+    } on Exception catch (e) {
       logger.w('VideoMetadataService: 生成缩略图失败 "${metadata.fileName}"', e);
     }
   }
@@ -301,23 +301,23 @@ class VideoMetadataService {
       );
 
       if (nfoData != null && nfoData.hasData) {
-        metadata.category = nfoData.seasonNumber != null || nfoData.episodeNumber != null
+        metadata..category = nfoData.seasonNumber != null || nfoData.episodeNumber != null
             ? MediaCategory.tvShow
-            : MediaCategory.movie;
-        metadata.tmdbId = nfoData.tmdbId;
-        metadata.title = nfoData.title;
-        metadata.originalTitle = nfoData.originalTitle;
-        metadata.year = nfoData.year;
-        metadata.overview = nfoData.plot;
-        metadata.rating = nfoData.rating;
-        metadata.runtime = nfoData.runtime;
-        metadata.genres = nfoData.genres?.join(', ');
-        metadata.director = nfoData.director;
-        metadata.cast = nfoData.actors?.take(5).join(', ');
-        metadata.seasonNumber = nfoData.seasonNumber;
-        metadata.episodeNumber = nfoData.episodeNumber;
-        metadata.episodeTitle = nfoData.episodeTitle;
-        metadata.lastUpdated = DateTime.now();
+            : MediaCategory.movie
+        ..tmdbId = nfoData.tmdbId
+        ..title = nfoData.title
+        ..originalTitle = nfoData.originalTitle
+        ..year = nfoData.year
+        ..overview = nfoData.plot
+        ..rating = nfoData.rating
+        ..runtime = nfoData.runtime
+        ..genres = nfoData.genres?.join(', ')
+        ..director = nfoData.director
+        ..cast = nfoData.actors?.take(5).join(', ')
+        ..seasonNumber = nfoData.seasonNumber
+        ..episodeNumber = nfoData.episodeNumber
+        ..episodeTitle = nfoData.episodeTitle
+        ..lastUpdated = DateTime.now();
 
         if (nfoData.posterPath != null) {
           try {
@@ -325,7 +325,7 @@ class VideoMetadataService {
             if (posterUrl.startsWith('http') || posterUrl.startsWith('file')) {
               metadata.posterUrl = posterUrl;
             }
-          } catch (e) {
+          } on Exception catch (e) {
             logger.w('VideoMetadataService: 获取本地海报 URL 失败', e);
           }
         }
@@ -336,7 +336,7 @@ class VideoMetadataService {
             if (backdropUrl.startsWith('http') || backdropUrl.startsWith('file')) {
               metadata.backdropUrl = backdropUrl;
             }
-          } catch (e) {
+          } on Exception catch (e) {
             logger.w('VideoMetadataService: 获取本地背景图 URL 失败', e);
           }
         }
@@ -344,7 +344,7 @@ class VideoMetadataService {
         logger.i('VideoMetadataService: 从 NFO 获取到元数据 "${nfoData.title}"');
         return true;
       }
-    } catch (e) {
+    } on Exception catch (e) {
       logger.w('VideoMetadataService: 从 NFO 获取元数据失败', e);
     }
     return false;
@@ -417,7 +417,7 @@ class VideoMetadataService {
           }
         }
       }
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('VideoMetadataService: 获取元数据失败', e);
     }
   }
@@ -436,7 +436,7 @@ class VideoMetadataService {
         final results = await _tmdbService.searchTvShows(query);
         return results.results;
       }
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('VideoMetadataService: 搜索失败', e);
       return [];
     }
@@ -451,7 +451,7 @@ class VideoMetadataService {
         await save(metadata);
         logger.i('VideoMetadataService: 手动匹配电影 "${movieDetail.title}"');
       }
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('VideoMetadataService: 手动匹配电影失败', e);
     }
   }
@@ -486,7 +486,7 @@ class VideoMetadataService {
         await save(metadata);
         logger.i('VideoMetadataService: 手动匹配电视剧 "${tvDetail.name}"');
       }
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('VideoMetadataService: 手动匹配电视剧失败', e);
     }
   }
@@ -535,7 +535,7 @@ class VideoMetadataService {
       if (thumbnailPath != null) {
         return _thumbnailService.getCachedThumbnailUrl(videoPath);
       }
-    } catch (e) {
+    } on Exception catch (e) {
       logger.w('VideoMetadataService: 生成视频缩略图失败', e);
     }
     return null;
@@ -575,7 +575,5 @@ class VideoMetadataService {
   }
 
   /// 获取缩略图缓存大小
-  Future<int> getThumbnailCacheSize() async {
-    return _thumbnailService.getCacheSize();
-  }
+  Future<int> getThumbnailCacheSize() async => _thumbnailService.getCacheSize();
 }

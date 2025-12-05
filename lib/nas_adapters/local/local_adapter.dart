@@ -100,7 +100,7 @@ class LocalAdapter implements NasAdapter {
   String _getHostname() {
     try {
       return Platform.localHostname;
-    } catch (_) {
+    } on Exception catch (_) {
       return '本地设备';
     }
   }

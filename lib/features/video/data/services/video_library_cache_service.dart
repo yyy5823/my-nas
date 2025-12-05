@@ -106,7 +106,7 @@ class VideoLibraryCacheService {
     try {
       _box = await Hive.openBox(_boxName);
       logger.i('VideoLibraryCacheService: 初始化完成');
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('VideoLibraryCacheService: 打开缓存失败，尝试删除并重建', e);
       // 删除损坏的 box 并重新创建
       await Hive.deleteBoxFromDisk(_boxName);
@@ -121,7 +121,7 @@ class VideoLibraryCacheService {
     if (data == null) return null;
     try {
       return VideoLibraryCache.fromMap(data as Map<dynamic, dynamic>);
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('VideoLibraryCacheService: 解析缓存失败', e);
       return null;
     }
@@ -135,7 +135,7 @@ class VideoLibraryCacheService {
       // 直接传递 Map 数据到 isolate 进行解析
       // Hive 返回的 Map 是可序列化的，可以直接跨 isolate 传递
       return compute(_parseCacheFromMap, Map<String, dynamic>.from(data as Map));
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('VideoLibraryCacheService: 异步解析缓存失败', e);
       return null;
     }
@@ -173,7 +173,7 @@ class VideoLibraryCacheService {
     try {
       final jsonStr = jsonEncode(data);
       return jsonStr.length;
-    } catch (e) {
+    } on Exception catch (e) {
       return 0;
     }
   }

@@ -57,8 +57,7 @@ class NfoMetadata {
     required String sourceId,
     required String fileName,
     String? thumbnailUrl,
-  }) {
-    return VideoMetadata(
+  }) => VideoMetadata(
       filePath: filePath,
       sourceId: sourceId,
       fileName: fileName,
@@ -81,7 +80,6 @@ class NfoMetadata {
       thumbnailUrl: thumbnailUrl,
       lastUpdated: DateTime.now(),
     );
-  }
 }
 
 /// NFO 刮削服务
@@ -136,7 +134,7 @@ class NfoScraperService {
             nfoContent = await _readFileAsString(fileSystem, file.path);
             logger.d('NfoScraperService: 找到匹配的 NFO 文件 ${file.name}');
             break;
-          } catch (e) {
+          } on Exception catch (e) {
             logger.w('NfoScraperService: 读取 NFO 文件失败 ${file.name}', e);
           }
         }
@@ -155,7 +153,7 @@ class NfoScraperService {
               nfoContent = await _readFileAsString(fileSystem, file.path);
               logger.d('NfoScraperService: 找到通用 NFO 文件 ${file.name}');
               break;
-            } catch (e) {
+            } on Exception catch (e) {
               logger.w('NfoScraperService: 读取通用 NFO 文件失败', e);
             }
           }
@@ -199,7 +197,7 @@ class NfoScraperService {
         episodeTitle: nfoMetadata.episodeTitle,
         aired: nfoMetadata.aired,
       );
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('NfoScraperService: 刮削失败', e);
       return null;
     }
@@ -278,7 +276,7 @@ class NfoScraperService {
         episodeTitle: isEpisode ? _getElementText(root, 'title') : null,
         aired: _getElementText(root, 'aired') ?? _getElementText(root, 'premiered'),
       );
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('NfoScraperService: 解析 NFO XML 失败', e);
       return NfoMetadata();
     }
@@ -292,7 +290,7 @@ class NfoScraperService {
         final text = element.innerText.trim();
         return text.isNotEmpty ? text : null;
       }
-    } catch (_) {}
+    } on Exception catch (_) {}
     return null;
   }
 
@@ -335,7 +333,7 @@ class NfoScraperService {
           }
         }
       }
-    } catch (_) {}
+    } on Exception catch (_) {}
 
     return null;
   }
@@ -345,7 +343,7 @@ class NfoScraperService {
     try {
       final genres = root.findElements('genre').map((e) => e.innerText.trim()).toList();
       return genres.isNotEmpty ? genres : null;
-    } catch (_) {
+    } on Exception catch (_) {
       return null;
     }
   }
@@ -361,7 +359,7 @@ class NfoScraperService {
         }
       }
       return actors.isNotEmpty ? actors : null;
-    } catch (_) {
+    } on Exception catch (_) {
       return null;
     }
   }
@@ -382,7 +380,7 @@ class NfoScraperService {
           return int.tryParse(uniqueid.innerText.trim());
         }
       }
-    } catch (_) {}
+    } on Exception catch (_) {}
 
     return null;
   }

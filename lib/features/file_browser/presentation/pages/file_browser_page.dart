@@ -1286,7 +1286,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
           backgroundColor: isDark ? AppColors.darkSurfaceElevated : null,
         ),
       );
-    } catch (e) {
+    } on Exception catch (e) {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1333,7 +1333,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
                 ),
               ),
             ),
-            Container(
+            DecoratedBox(
               decoration: BoxDecoration(
                 gradient: AppColors.primaryGradient,
                 borderRadius: BorderRadius.circular(12),
@@ -1363,7 +1363,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
                           ),
                         );
                       }
-                    } catch (e) {
+                    } on Exception catch (e) {
                       if (!mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
@@ -1473,8 +1473,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
     required String title,
     required bool isSelected,
     required VoidCallback onTap,
-  }) {
-    return Material(
+  }) => Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
@@ -1532,7 +1531,6 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
         ),
       ),
     );
-  }
 
   Widget _buildSwitchTile(
     BuildContext context,
@@ -1540,8 +1538,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
     required String title,
     required bool value,
     required ValueChanged<bool> onChanged,
-  }) {
-    return Padding(
+  }) => Padding(
       padding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.lg,
         vertical: AppSpacing.sm,
@@ -1579,7 +1576,6 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
         ],
       ),
     );
-  }
 
   Widget _buildActionTile(
     BuildContext context,
@@ -1683,7 +1679,7 @@ class _DestinationBrowserState extends ConsumerState<_DestinationBrowser> {
       });
 
       widget.onPathChanged(_currentPath);
-    } catch (e) {
+    } on Exception catch (e) {
       setState(() {
         _error = e.toString();
         _isLoading = false;
@@ -1705,8 +1701,7 @@ class _DestinationBrowserState extends ConsumerState<_DestinationBrowser> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Column(
+  Widget build(BuildContext context) => Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // 当前路径和返回按钮
@@ -1799,5 +1794,4 @@ class _DestinationBrowserState extends ConsumerState<_DestinationBrowser> {
         ),
       ],
     );
-  }
 }

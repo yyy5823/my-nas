@@ -29,9 +29,9 @@ class NasStreamAudioSource extends StreamAudioSource {
   Future<StreamAudioResponse> request([int? start, int? end]) async {
     try {
       final requestStart = start ?? 0;
-      logger.i('NasStreamAudioSource: ===== 请求音频流 =====');
-      logger.i('NasStreamAudioSource: path=$path');
-      logger.i('NasStreamAudioSource: range=$requestStart-$end');
+      logger..i('NasStreamAudioSource: ===== 请求音频流 =====')
+      ..i('NasStreamAudioSource: path=$path')
+      ..i('NasStreamAudioSource: range=$requestStart-$end');
 
       // 获取文件大小（使用缓存避免重复请求）
       if (_cachedSourceLength == null) {
@@ -78,9 +78,9 @@ class NasStreamAudioSource extends StreamAudioSource {
           ? (effectiveEnd - requestStart + 1)
           : (sourceLength - requestStart);
 
-      logger.i('NasStreamAudioSource: 返回 StreamAudioResponse');
-      logger.i('NasStreamAudioSource: offset=$requestStart, contentLength=$contentLength, sourceLength=$sourceLength');
-      logger.i('NasStreamAudioSource: contentType=${_getContentType(path)}');
+      logger..i('NasStreamAudioSource: 返回 StreamAudioResponse')
+      ..i('NasStreamAudioSource: offset=$requestStart, contentLength=$contentLength, sourceLength=$sourceLength')
+      ..i('NasStreamAudioSource: contentType=${_getContentType(path)}');
 
       // 包装流以添加错误处理和日志
       int bytesReceived = 0;

@@ -260,8 +260,7 @@ class BookListNotifier extends StateNotifier<BookListState> {
       if (cache != null) {
         state = BookListLoading(fromCache: true, currentFolder: '加载缓存...');
 
-        final books = cache.books.map((entry) {
-          return BookFileWithSource(
+        final books = cache.books.map((entry) => BookFileWithSource(
             file: FileItem(
               name: entry.fileName,
               path: entry.filePath,
@@ -270,8 +269,7 @@ class BookListNotifier extends StateNotifier<BookListState> {
               modifiedTime: entry.modifiedTime,
             ),
             sourceId: entry.sourceId,
-          );
-        }).toList();
+          )).toList();
 
         state = BookListLoaded(books: books, fromCache: true);
         logger.i('从缓存加载了 ${books.length} 本图书');
@@ -455,7 +453,7 @@ class _BookListPageState extends ConsumerState<BookListPage> {
     WidgetRef ref,
     bool isDark,
     BookListState state,
-  ) => Container(
+  ) => DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -1303,7 +1301,7 @@ class _BookGridItem extends ConsumerWidget {
 
     return GestureDetector(
       onTap: () => _openBook(context, ref),
-      child: Container(
+      child: DecoratedBox(
         decoration: BoxDecoration(
           color: isDark ? AppColors.darkSurfaceVariant : context.colorScheme.surface,
           borderRadius: BorderRadius.circular(16),
@@ -1325,7 +1323,7 @@ class _BookGridItem extends ConsumerWidget {
           children: [
             Expanded(
               flex: 3,
-              child: Container(
+              child: DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: _getFormatGradient(format),
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),

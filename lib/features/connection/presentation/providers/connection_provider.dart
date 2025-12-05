@@ -11,15 +11,11 @@ import 'package:my_nas/nas_adapters/synology/synology_adapter.dart';
 final activeAdapterProvider = StateProvider<NasAdapter?>((ref) => null);
 
 /// 认证存储服务
-final authStorageProvider = Provider<AuthStorageService>((ref) {
-  return AuthStorageService();
-});
+final authStorageProvider = Provider<AuthStorageService>((ref) => AuthStorageService());
 
 /// 当前连接状态
 final connectionStateProvider =
-    StateNotifierProvider<ConnectionStateNotifier, NasConnectionState>((ref) {
-  return ConnectionStateNotifier(ref);
-});
+    StateNotifierProvider<ConnectionStateNotifier, NasConnectionState>((ref) => ConnectionStateNotifier(ref));
 
 /// 保存的连接列表
 final savedConnectionsProvider =
@@ -150,7 +146,7 @@ class ConnectionStateNotifier extends StateNotifier<NasConnectionState> {
           ),
       };
     } on Exception catch (e) {
-      adapter?.dispose();
+      await adapter?.dispose();
       state = ConnectionError(message: '连接失败: ${_getErrorMessage(e)}');
     }
   }

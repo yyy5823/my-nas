@@ -142,8 +142,7 @@ class VideoMetadata {
   String get uniqueKey => '${sourceId}_$filePath';
 
   /// 转为 Map
-  Map<String, dynamic> toMap() {
-    return {
+  Map<String, dynamic> toMap() => {
       'filePath': filePath,
       'sourceId': sourceId,
       'fileName': fileName,
@@ -167,11 +166,9 @@ class VideoMetadata {
       'thumbnailUrl': thumbnailUrl,
       'generatedThumbnailUrl': generatedThumbnailUrl,
     };
-  }
 
   /// 从 Map 创建
-  factory VideoMetadata.fromMap(Map<dynamic, dynamic> map) {
-    return VideoMetadata(
+  factory VideoMetadata.fromMap(Map<dynamic, dynamic> map) => VideoMetadata(
       filePath: map['filePath'] as String,
       sourceId: map['sourceId'] as String,
       fileName: map['fileName'] as String,
@@ -197,7 +194,6 @@ class VideoMetadata {
       thumbnailUrl: map['thumbnailUrl'] as String?,
       generatedThumbnailUrl: map['generatedThumbnailUrl'] as String?,
     );
-  }
 
   /// 复制
   VideoMetadata copyWith({
@@ -223,8 +219,7 @@ class VideoMetadata {
     DateTime? lastUpdated,
     String? thumbnailUrl,
     String? generatedThumbnailUrl,
-  }) {
-    return VideoMetadata(
+  }) => VideoMetadata(
       filePath: filePath ?? this.filePath,
       sourceId: sourceId ?? this.sourceId,
       fileName: fileName ?? this.fileName,
@@ -248,7 +243,6 @@ class VideoMetadata {
       thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
       generatedThumbnailUrl: generatedThumbnailUrl ?? this.generatedThumbnailUrl,
     );
-  }
 }
 
 /// 视频文件名解析结果

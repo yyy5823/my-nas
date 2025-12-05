@@ -1188,7 +1188,7 @@ class _PhotoPageState extends State<_PhotoPage> {
           _loadedUrl = url;
         });
       }
-    } catch (e) {
+    } on Exception catch (e) {
       if (mounted) {
         setState(() {
           _hasError = true;

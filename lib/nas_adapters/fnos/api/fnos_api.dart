@@ -237,7 +237,7 @@ class FnOSApi {
         '/api/v1/auth/logout',
         options: _authOptions(),
       );
-    } catch (e) {
+    } on Exception catch (e) {
       logger.w('FnOSApi: 登出请求失败', e);
     } finally {
       _token = null;
@@ -263,7 +263,7 @@ class FnOSApi {
           serial: info['serial']?.toString(),
         );
       }
-    } catch (e) {
+    } on Exception catch (e) {
       logger.w('FnOSApi: 获取设备信息失败', e);
     }
 
@@ -343,7 +343,7 @@ class FnOSApi {
             }
           }
         }
-      } catch (e) {
+      } on Exception catch (e) {
         logger.w('FnOSApi: 端点尝试失败', e);
       }
     }
@@ -408,7 +408,7 @@ class FnOSApi {
             }
           }
         }
-      } catch (e) {
+      } on Exception catch (e) {
         logger.w('FnOSApi: 端点 $endpoint 失败', e);
       }
     }
@@ -494,8 +494,7 @@ class FnOSApi {
     Map<String, dynamic>? params,
     Map<String, dynamic>? data,
     String method = 'GET',
-  }) async {
-    return dio.request(
+  }) async => dio.request(
       path,
       queryParameters: params,
       data: data,
@@ -506,15 +505,12 @@ class FnOSApi {
             : null,
       ),
     );
-  }
 
-  Options _authOptions() {
-    return Options(
+  Options _authOptions() => Options(
       headers: _token != null
           ? {'Authorization': 'Bearer $_token'}
           : null,
     );
-  }
 
   FnOSFileInfo _parseFileInfo(Map<dynamic, dynamic> file, String parentPath) {
     final name = file['name']?.toString() ?? file['filename']?.toString() ?? '';

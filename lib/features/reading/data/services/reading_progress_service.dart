@@ -167,7 +167,7 @@ class ReadingProgressService {
       _bookmarksBox = await Hive.openBox(_bookmarksBoxName);
       _recentBox = await Hive.openBox(_recentBoxName);
       logger.i('ReadingProgressService: 初始化完成');
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('ReadingProgressService: 初始化失败', e);
       // 删除损坏的数据并重新创建
       await Hive.deleteBoxFromDisk(_progressBoxName);
@@ -190,7 +190,7 @@ class ReadingProgressService {
     if (data == null) return null;
     try {
       return ReadingProgress.fromMap(data as Map<dynamic, dynamic>);
-    } catch (e) {
+    } on Exception catch (e) {
       logger.w('ReadingProgressService: 解析进度数据失败', e);
       return null;
     }
@@ -218,7 +218,7 @@ class ReadingProgressService {
       if (data != null) {
         try {
           results.add(ReadingProgress.fromMap(data as Map<dynamic, dynamic>));
-        } catch (e) {
+        } on Exception catch (e) {
           // 跳过无效数据
         }
       }
@@ -235,7 +235,7 @@ class ReadingProgressService {
     try {
       final list = jsonDecode(data as String) as List;
       return list.map((e) => Bookmark.fromMap(e as Map<dynamic, dynamic>)).toList();
-    } catch (e) {
+    } on Exception catch (e) {
       logger.w('ReadingProgressService: 解析书签数据失败', e);
       return [];
     }
@@ -294,7 +294,7 @@ class ReadingProgressService {
             itemType: map['itemType'] as String,
             timestamp: DateTime.parse(map['timestamp'] as String),
           ));
-        } catch (e) {
+        } on Exception catch (e) {
           // 跳过无效数据
         }
       }

@@ -1345,8 +1345,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
     );
   }
 
-  Widget _buildModeToggle(NotePageLoaded state, bool isDark) {
-    return Row(
+  Widget _buildModeToggle(NotePageLoaded state, bool isDark) => Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         // 模式切换按钮组
@@ -1386,11 +1385,9 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
         ],
       ],
     );
-  }
 
   /// 实时预览切换按钮
-  Widget _buildLivePreviewToggle(NotePageLoaded state, bool isDark) {
-    return Material(
+  Widget _buildLivePreviewToggle(NotePageLoaded state, bool isDark) => Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: () => ref.read(notePageProvider.notifier).toggleLivePreview(),
@@ -1432,7 +1429,6 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
         ),
       ),
     );
-  }
 
   Widget _buildModeButton({
     required IconData icon,
@@ -1440,8 +1436,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
     required bool isSelected,
     required VoidCallback onTap,
     required bool isDark,
-  }) {
-    return Material(
+  }) => Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
@@ -1478,7 +1473,6 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
         ),
       ),
     );
-  }
 
   Widget _buildPreview(BuildContext context, NotePageLoaded state, bool isDark) {
     // 如果是任务文件，显示任务列表视图
@@ -1504,8 +1498,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
   }
 
   Widget _buildTaskFilePreview(
-      BuildContext context, NotePageLoaded state, bool isDark) {
-    return Column(
+      BuildContext context, NotePageLoaded state, bool isDark) => Column(
       children: [
         // 任务列表
         Expanded(
@@ -1518,7 +1511,6 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
         ),
       ],
     );
-  }
 
   /// 分屏视图：左边编辑器，右边实时预览
   Widget _buildSplitView(
@@ -1576,7 +1568,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
               ),
               // 右侧：实时预览
               Expanded(
-                child: Container(
+                child: ColoredBox(
                   color: isDark
                       ? AppColors.darkBackground
                       : Colors.grey.withValues(alpha: 0.05),
@@ -1692,8 +1684,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
     );
   }
 
-  Widget _buildEditorToolbar(BuildContext context, bool isDark) {
-    return Container(
+  Widget _buildEditorToolbar(BuildContext context, bool isDark) => Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: isDark
@@ -1754,20 +1745,17 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
         ],
       ),
     );
-  }
 
   Widget _buildToolButton({
     required IconData icon,
     required String tooltip,
     required VoidCallback onTap,
-  }) {
-    return IconButton(
+  }) => IconButton(
       onPressed: onTap,
       icon: Icon(icon, size: 20),
       tooltip: tooltip,
       splashRadius: 20,
     );
-  }
 
   void _insertMarkdown(String prefix, String suffix) {
     final text = _editController.text;
@@ -1806,8 +1794,7 @@ class _MarkdownPreview extends StatelessWidget {
   final bool isDark;
 
   @override
-  Widget build(BuildContext context) {
-    return MarkdownBody(
+  Widget build(BuildContext context) => MarkdownBody(
       data: content,
       selectable: true,
       onTapLink: (text, href, title) {
@@ -1912,7 +1899,6 @@ class _MarkdownPreview extends StatelessWidget {
         ),
       ),
     );
-  }
 }
 
 /// 笔记列表内容组件（供阅读页面复用）
@@ -2007,8 +1993,7 @@ class _NoteListContentState extends ConsumerState<NoteListContent> {
   }
 
   Widget _buildMainLayout(
-      BuildContext context, NotePageLoaded state, bool isDark) {
-    return Row(
+      BuildContext context, NotePageLoaded state, bool isDark) => Row(
       children: [
         // 左侧目录树（可收起）
         if (!_isSidebarCollapsed) ...[
@@ -2025,11 +2010,9 @@ class _NoteListContentState extends ConsumerState<NoteListContent> {
         ),
       ],
     );
-  }
 
   Widget _buildSidebar(
-      BuildContext context, NotePageLoaded state, bool isDark) {
-    return Container(
+      BuildContext context, NotePageLoaded state, bool isDark) => Container(
       width: _sidebarWidth,
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
@@ -2062,10 +2045,8 @@ class _NoteListContentState extends ConsumerState<NoteListContent> {
         ],
       ),
     );
-  }
 
-  Widget _buildSidebarHeader(BuildContext context, bool isDark) {
-    return Container(
+  Widget _buildSidebarHeader(BuildContext context, bool isDark) => Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         border: Border(
@@ -2107,10 +2088,8 @@ class _NoteListContentState extends ConsumerState<NoteListContent> {
         ],
       ),
     );
-  }
 
-  Widget _buildExpandButton(bool isDark) {
-    return Container(
+  Widget _buildExpandButton(bool isDark) => Container(
       width: 40,
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
@@ -2137,10 +2116,8 @@ class _NoteListContentState extends ConsumerState<NoteListContent> {
         ],
       ),
     );
-  }
 
-  Widget _buildResizeHandle(bool isDark) {
-    return GestureDetector(
+  Widget _buildResizeHandle(bool isDark) => GestureDetector(
       onHorizontalDragUpdate: (details) {
         _setSidebarWidth(_sidebarWidth + details.delta.dx);
       },
@@ -2154,7 +2131,6 @@ class _NoteListContentState extends ConsumerState<NoteListContent> {
         ),
       ),
     );
-  }
 
   Widget _buildContentArea(
       BuildContext context, NotePageLoaded state, bool isDark) {

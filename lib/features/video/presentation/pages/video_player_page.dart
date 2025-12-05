@@ -78,7 +78,7 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
       _fileSystem = connectedEntry.value.adapter.fileSystem;
       // 缓存视频 URL，用于后续缩略图生成
       _videoUrl = await _fileSystem?.getFileUrl(widget.video.path);
-    } catch (e) {
+    } on Exception catch (e) {
       logger.w('VideoPlayerPage: 缓存源信息失败', e);
     }
   }
@@ -107,7 +107,7 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
         await ref.read(videoPlayerControllerProvider.notifier).setSubtitle(subtitles.first);
         logger.i('VideoPlayerPage: 自动加载字幕 ${subtitles.first.name}');
       }
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('VideoPlayerPage: 加载字幕失败', e);
     }
   }
@@ -144,7 +144,7 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
           videoUrl: _videoUrl!,
           fileSystem: _fileSystem,
         );
-      } catch (e) {
+      } on Exception catch (e) {
         logger.w('VideoPlayerPage: 后台更新缩略图失败', e);
       }
     });

@@ -247,8 +247,7 @@ class MinePage extends ConsumerWidget {
     BuildContext context,
     bool isDark, {
     required List<Widget> children,
-  }) {
-    return Container(
+  }) => DecoratedBox(
       decoration: BoxDecoration(
         color: isDark
             ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
@@ -276,7 +275,6 @@ class MinePage extends ConsumerWidget {
         ),
       ),
     );
-  }
 
   Widget _buildSettingsTile(
     BuildContext context,
@@ -500,7 +498,7 @@ class MinePage extends ConsumerWidget {
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-          child: Container(
+          child: DecoratedBox(
             decoration: BoxDecoration(
               color: isDark
                   ? AppColors.darkSurface.withValues(alpha: 0.95)
@@ -1036,7 +1034,7 @@ class _TransferCard extends ConsumerWidget {
     final completed = tasks.where((t) => t.status == DownloadStatus.completed).toList();
     final hasActiveTasks = downloading.isNotEmpty;
 
-    return Container(
+    return DecoratedBox(
       decoration: BoxDecoration(
         color: isDark
             ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
