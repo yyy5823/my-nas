@@ -2643,64 +2643,56 @@ class _AllSongsView extends ConsumerWidget {
   Widget _buildControlBar(BuildContext context, WidgetRef ref, MusicSortState sortState) {
     final trackCount = tracks.length;
 
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: isDark
-            ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
-            : Colors.grey[100],
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.05)
-              : Colors.black.withValues(alpha: 0.05),
-        ),
-      ),
-      child: Row(
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          // 播放全部按钮
-          Expanded(
-            flex: 3,
-            child: _ModernActionButton(
-              onPressed: () => _playAll(context, ref),
-              icon: Icons.play_arrow_rounded,
-              label: '播放全部',
-              subtitle: '$trackCount 首',
-              isPrimary: true,
-              isDark: isDark,
-            ),
-          ),
-          const SizedBox(width: 4),
-          // 随机播放按钮
-          Expanded(
-            flex: 2,
-            child: _ModernActionButton(
-              onPressed: () => _shufflePlay(context, ref),
-              icon: Icons.shuffle_rounded,
-              label: '随机',
-              isPrimary: false,
-              isDark: isDark,
-            ),
-          ),
-          const SizedBox(width: 4),
-          // 排序按钮
-          Expanded(
-            flex: 2,
-            child: _ModernActionButton(
-              onPressed: () => _showSortOptions(context, ref, sortState),
-              icon: sortState.option.icon,
-              label: sortState.option.label,
-              trailing: Icon(
-                sortState.direction == SortDirection.ascending
-                    ? Icons.arrow_upward_rounded
-                    : Icons.arrow_downward_rounded,
-                size: 14,
-                color: isDark ? Colors.white54 : Colors.black45,
+          // 顶部信息行：歌曲数量 + 排序按钮
+          Row(
+            children: [
+              // 歌曲数量
+              Text(
+                '共 $trackCount 首歌曲',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: isDark ? Colors.white60 : Colors.black54,
+                ),
               ),
-              isPrimary: false,
-              isDark: isDark,
-            ),
+              const Spacer(),
+              // 排序按钮
+              _SpotifyIconButton(
+                icon: Icons.swap_vert_rounded,
+                label: sortState.option.label,
+                isDark: isDark,
+                onTap: () => _showSortOptions(context, ref, sortState),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // 播放按钮行
+          Row(
+            children: [
+              // 播放全部按钮
+              Expanded(
+                child: _SpotifyPlayButton(
+                  onPressed: () => _playAll(context, ref),
+                  icon: Icons.play_arrow_rounded,
+                  label: '播放全部',
+                ),
+              ),
+              const SizedBox(width: 12),
+              // 随机播放按钮
+              Expanded(
+                child: _SpotifyPlayButton(
+                  onPressed: () => _shufflePlay(context, ref),
+                  icon: Icons.shuffle_rounded,
+                  label: '随机播放',
+                  isPrimary: false,
+                  isDark: isDark,
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -4883,17 +4875,21 @@ class _SortOptionTile extends StatelessWidget {
     );
 }
 
-/// 渐变播放按钮
-class _GradientPlayButton extends StatelessWidget {
-  const _GradientPlayButton({
+/// Spotify 风格播放按钮
+class _SpotifyPlayButton extends StatelessWidget {
+  const _SpotifyPlayButton({
     required this.onPressed,
     required this.icon,
     required this.label,
+    this.isPrimary = true,
+    this.isDark = false,
   });
 
   final VoidCallback onPressed;
   final IconData icon;
   final String label;
+  final bool isPrimary;
+  final bool isDark;
 
   @override
   Widget build(BuildContext context) => Material(
@@ -4903,22 +4899,39 @@ class _GradientPlayButton extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
         child: Ink(
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [AppColors.primary, AppColors.secondary],
-            ),
+            gradient: isPrimary
+                ? LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [AppColors.primary, AppColors.secondary],
+                  )
+                : null,
+            color: isPrimary
+                ? null
+                : (isDark
+                    ? Colors.white.withValues(alpha: 0.1)
+                    : Colors.grey[200]),
             borderRadius: BorderRadius.circular(24),
           ),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            padding: const EdgeInsets.symmetric(vertical: 12),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(icon, color: Colors.white, size: 22),
+                Icon(
+                  icon,
+                  color: isPrimary
+                      ? Colors.white
+                      : (isDark ? Colors.white : Colors.black87),
+                  size: 20,
+                ),
                 const SizedBox(width: 8),
                 Text(
                   label,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: isPrimary
+                        ? Colors.white
+                        : (isDark ? Colors.white : Colors.black87),
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                   ),
@@ -4931,106 +4944,55 @@ class _GradientPlayButton extends StatelessWidget {
     );
 }
 
-/// 现代风格操作按钮 - 用于控制栏
-class _ModernActionButton extends StatelessWidget {
-  const _ModernActionButton({
-    required this.onPressed,
+/// Spotify 风格图标按钮（带文字）
+class _SpotifyIconButton extends StatelessWidget {
+  const _SpotifyIconButton({
     required this.icon,
     required this.label,
     required this.isDark,
-    this.subtitle,
-    this.trailing,
-    this.isPrimary = false,
+    required this.onTap,
   });
 
-  final VoidCallback onPressed;
   final IconData icon;
   final String label;
-  final String? subtitle;
-  final Widget? trailing;
-  final bool isPrimary;
   final bool isDark;
+  final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
-    final primaryGradient = LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: [AppColors.primary, AppColors.secondary],
-    );
-
-    final secondaryColor = isDark
-        ? Colors.white.withValues(alpha: 0.08)
-        : Colors.black.withValues(alpha: 0.04);
-
-    return Material(
+  Widget build(BuildContext context) => Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(12),
-        child: Ink(
-          decoration: BoxDecoration(
-            gradient: isPrimary ? primaryGradient : null,
-            color: isPrimary ? null : secondaryColor,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  icon,
-                  size: 18,
-                  color: isPrimary
-                      ? Colors.white
-                      : (isDark ? Colors.white70 : Colors.black87),
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 18,
+                color: isDark ? Colors.white60 : Colors.black54,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: isDark ? Colors.white60 : Colors.black54,
                 ),
-                const SizedBox(width: 6),
-                Flexible(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        label,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: isPrimary
-                              ? Colors.white
-                              : (isDark ? Colors.white : Colors.black87),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      if (subtitle != null)
-                        Text(
-                          subtitle!,
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: isPrimary
-                                ? Colors.white70
-                                : (isDark ? Colors.white54 : Colors.black45),
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                    ],
-                  ),
-                ),
-                if (trailing != null) ...[
-                  const SizedBox(width: 4),
-                  trailing!,
-                ],
-              ],
-            ),
+              ),
+              const SizedBox(width: 2),
+              Icon(
+                Icons.arrow_drop_down_rounded,
+                size: 18,
+                color: isDark ? Colors.white60 : Colors.black54,
+              ),
+            ],
           ),
         ),
       ),
     );
-  }
 }
 
 /// 现代风格音乐列表项

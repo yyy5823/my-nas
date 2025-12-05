@@ -116,7 +116,6 @@ class PosterCard extends StatefulWidget {
 }
 
 class _PosterCardState extends State<PosterCard> with SingleTickerProviderStateMixin {
-  bool _isHovered = false;
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
 
@@ -144,167 +143,167 @@ class _PosterCardState extends State<PosterCard> with SingleTickerProviderStateM
     final displayPoster = widget.metadata.displayPosterUrl;
     final hasPoster = displayPoster != null && displayPoster.isNotEmpty;
 
+    // 预先构建海报内容，避免 hover 时重建
+    final posterContent = hasPoster
+        ? AdaptiveImage(
+            imageUrl: displayPoster,
+            placeholder: (_) => _buildPlaceholder(isDark),
+            errorWidget: (_, _) => _buildPlaceholder(isDark),
+          )
+        : _buildPlaceholder(isDark);
+
     return MouseRegion(
-      onEnter: (_) {
-        setState(() => _isHovered = true);
-        _controller.forward();
-      },
-      onExit: (_) {
-        setState(() => _isHovered = false);
-        _controller.reverse();
-      },
+      onEnter: (_) => _controller.forward(),
+      onExit: (_) => _controller.reverse(),
       child: AnimatedBuilder(
-        animation: _scaleAnimation,
+        animation: _controller,
         builder: (context, child) => Transform.scale(
           scale: _scaleAnimation.value,
-          child: child,
-        ),
-        child: GestureDetector(
-          onTap: widget.onTap,
-          onLongPress: widget.onLongPress,
           child: DecoratedBox(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: _isHovered ? 0.3 : 0.2),
-                  blurRadius: _isHovered ? 16 : 8,
-                  offset: Offset(0, _isHovered ? 8 : 4),
+                  color: Colors.black.withValues(alpha: 0.2 + _controller.value * 0.1),
+                  blurRadius: 8 + _controller.value * 8,
+                  offset: Offset(0, 4 + _controller.value * 4),
                 ),
               ],
             ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  // 海报图片或占位符（优先使用 TMDB 海报，没有则使用内置缩略图或生成的缩略图）
-                  if (hasPoster)
-                    AdaptiveImage(
-                      imageUrl: displayPoster,
-                      placeholder: (_) => _buildPlaceholder(isDark),
-                      errorWidget: (_, _) => _buildPlaceholder(isDark),
-                    )
-                  else
-                    _buildPlaceholder(isDark),
+            child: child,
+          ),
+        ),
+        child: GestureDetector(
+          onTap: widget.onTap,
+          onLongPress: widget.onLongPress,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // 海报图片或占位符
+                posterContent,
 
-                  // 渐变遮罩和信息
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.transparent,
-                            Colors.black.withValues(alpha: 0.8),
+                // 渐变遮罩和信息
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          Colors.black.withValues(alpha: 0.8),
+                        ],
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // 标题
+                        Text(
+                          widget.metadata.displayTitle,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            height: 1.2,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        // 年份和评分
+                        Row(
+                          children: [
+                            if (widget.metadata.year != null) ...[
+                              Text(
+                                '${widget.metadata.year}',
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.7),
+                                  fontSize: 10,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                            ],
+                            if (widget.metadata.rating != null && widget.metadata.rating! > 0)
+                              _buildRatingBadge(),
                           ],
                         ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // 电视剧标记
+                if (widget.metadata.category == MediaCategory.tvShow)
+                  Positioned(
+                    top: 8,
+                    left: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppColors.accent.withValues(alpha: 0.9),
+                        borderRadius: BorderRadius.circular(4),
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // 标题
-                          Text(
-                            widget.metadata.displayTitle,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              height: 1.2,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          // 年份和评分
-                          Row(
-                            children: [
-                              if (widget.metadata.year != null) ...[
-                                Text(
-                                  '${widget.metadata.year}',
-                                  style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.7),
-                                    fontSize: 10,
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                              ],
-                              if (widget.metadata.rating != null && widget.metadata.rating! > 0)
-                                _buildRatingBadge(),
-                            ],
-                          ),
-                        ],
+                      child: Text(
+                        widget.metadata.seasonNumber != null
+                            ? 'S${widget.metadata.seasonNumber}'
+                            : '剧集',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ),
 
-                  // 电视剧标记
-                  if (widget.metadata.category == MediaCategory.tvShow)
-                    Positioned(
-                      top: 8,
-                      left: 8,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: AppColors.accent.withValues(alpha: 0.9),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          widget.metadata.seasonNumber != null
-                              ? 'S${widget.metadata.seasonNumber}'
-                              : '剧集',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold,
-                          ),
+                // 观看进度条
+                if (widget.watchProgress != null && widget.watchProgress! > 0)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: ClipRRect(
+                      borderRadius: const BorderRadius.only(
+                        bottomLeft: Radius.circular(12),
+                        bottomRight: Radius.circular(12),
+                      ),
+                      child: LinearProgressIndicator(
+                        value: widget.watchProgress!.clamp(0.0, 1.0),
+                        minHeight: 3,
+                        backgroundColor: Colors.black.withValues(alpha: 0.5),
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          widget.watchProgress! >= 0.9
+                              ? Colors.green
+                              : AppColors.primary,
                         ),
                       ),
                     ),
+                  ),
 
-                  // 观看进度条
-                  if (widget.watchProgress != null && widget.watchProgress! > 0)
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      child: ClipRRect(
-                        borderRadius: const BorderRadius.only(
-                          bottomLeft: Radius.circular(12),
-                          bottomRight: Radius.circular(12),
-                        ),
-                        child: LinearProgressIndicator(
-                          value: widget.watchProgress!.clamp(0.0, 1.0),
-                          minHeight: 3,
-                          backgroundColor: Colors.black.withValues(alpha: 0.5),
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            widget.watchProgress! >= 0.9
-                                ? Colors.green
-                                : AppColors.primary,
+                // 悬停边框效果
+                AnimatedBuilder(
+                  animation: _controller,
+                  builder: (context, _) => _controller.value > 0
+                      ? Container(
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: AppColors.primary.withValues(alpha: 0.8 * _controller.value),
+                              width: 2,
+                            ),
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                        ),
-                      ),
-                    ),
-
-                  // 悬停效果
-                  if (_isHovered)
-                    Container(
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                          color: AppColors.primary.withValues(alpha: 0.8),
-                          width: 2,
-                        ),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                ],
-              ),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+              ],
             ),
           ),
         ),
