@@ -162,7 +162,7 @@ class _TrackCard extends StatelessWidget {
       coverImage = Image.file(
         File(track.coverPath!),
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => _buildDefaultCover(),
+        errorBuilder: (_, _, _) => _buildDefaultCover(),
       );
     } else {
       coverImage = _buildDefaultCover();
@@ -218,7 +218,7 @@ class _TrackCard extends StatelessWidget {
     );
   }
 
-  Widget _buildDefaultCover() => Container(
+  Widget _buildDefaultCover() => ColoredBox(
       color: isDark
           ? Colors.white.withValues(alpha: 0.1)
           : Colors.black.withValues(alpha: 0.05),
@@ -422,7 +422,7 @@ class _PopularTrackItem extends StatelessWidget {
       coverImage = Image.file(
         File(track.coverPath!),
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => _buildDefaultCover(),
+        errorBuilder: (_, _, _) => _buildDefaultCover(),
       );
     } else {
       coverImage = _buildDefaultCover();
@@ -441,7 +441,7 @@ class _PopularTrackItem extends StatelessWidget {
     );
   }
 
-  Widget _buildDefaultCover() => Container(
+  Widget _buildDefaultCover() => ColoredBox(
       color: isDark
           ? Colors.white.withValues(alpha: 0.1)
           : Colors.black.withValues(alpha: 0.05),

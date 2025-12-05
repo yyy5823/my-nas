@@ -62,10 +62,10 @@ class MusicHomeContent extends ConsumerWidget {
           const SizedBox(height: 16),
           // Hero 播放卡片
           HeroPlayerCard(isDark: isDark),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
           // 快捷访问
           _buildSectionTitle('快捷访问', isDark),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           QuickAccessGrid(
             isDark: isDark,
             favoritesCount: favoriteTracks.length,
@@ -76,7 +76,7 @@ class MusicHomeContent extends ConsumerWidget {
             onAllTap: () => onCategoryTap(MusicCategory.all),
             onShuffleTap: () => _onShuffleTap(context),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
           // 最近播放
           if (recentTracks.isNotEmpty) ...[
             RecentTracksSection(
@@ -85,17 +85,17 @@ class MusicHomeContent extends ConsumerWidget {
               onTrackTap: (track) => onTrackTap(track, tracks),
               onMoreTap: () => onCategoryTap(MusicCategory.recent),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
           ],
           // 分类浏览
           _buildSectionTitle('浏览音乐库', isDark),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           BrowseCategoryGrid(
             isDark: isDark,
             counts: _getCategoryCounts(),
             onCategoryTap: _onBrowseCategoryTap,
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
           // 热门歌曲（随机推荐）
           if (tracks.isNotEmpty) ...[
             PopularTracksSection(
@@ -105,7 +105,7 @@ class MusicHomeContent extends ConsumerWidget {
               onTrackTap: (track) => onTrackTap(track, tracks),
               onMoreTap: () => onCategoryTap(MusicCategory.all),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
           ],
         ],
       ),

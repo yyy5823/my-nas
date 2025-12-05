@@ -1,13 +1,21 @@
 import 'package:uuid/uuid.dart';
 
 /// 源类型
+///
+/// 排列顺序按以下规则：
+/// 1. NAS 设备类型（按品牌知名度排序）
+/// 2. 通用协议类型
+/// 3. 本地存储
 enum SourceType {
+  // NAS 设备
   synology('Synology NAS', 'synology'),
+  qnap('QNAP NAS', 'qnap'),
   ugreen('绿联 NAS', 'ugreen'),
   fnos('飞牛 fnOS', 'fnos'),
-  qnap('QNAP NAS', 'qnap'),
+  // 通用协议
   webdav('WebDAV', 'webdav'),
   smb('SMB/CIFS', 'smb'),
+  // 本地存储
   local('本地存储', 'local');
 
   const SourceType(this.displayName, this.id);

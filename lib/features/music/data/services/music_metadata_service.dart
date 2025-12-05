@@ -191,17 +191,21 @@ class MusicMetadataService {
       await tempFile.writeAsBytes(Uint8List.fromList(chunks));
 
       final metadata = readMetadata(tempFile, getImage: true);
-      // 如果只读取了部分文件，duration 是不准确的（基于截断数据计算），需要跳过
+      // 判断是否需要跳过 duration
+      // - FLAC：duration 存储在文件头的 STREAMINFO 块中，即使部分读取也是精确的
+      // - 其他格式（如 MP3 CBR）：duration 基于文件大小计算，部分读取会导致不准确
       final isPartialRead = bytesToRead < actualFileSize;
+      final isFlac = ext == '.flac';
+      final skipDuration = isPartialRead && !isFlac;
       final result = _convertMetadata(
         metadata,
         path,
         skipLyrics: skipLyrics,
-        skipDuration: isPartialRead, // 部分读取时跳过不准确的 duration
+        skipDuration: skipDuration,
       );
       _metadataCache[cacheKey] = result;
 
-      logger.d('MusicMetadataService: 成功提取元数据 (读取 $bytesToRead 字节, 跳过时长=$isPartialRead): $path');
+      logger.d('MusicMetadataService: 成功提取元数据 (读取 $bytesToRead 字节, 跳过时长=$skipDuration, isFlac=$isFlac): $path');
       return result;
     } on MetadataParserException catch (e) {
       // 解析异常，可能需要更多数据

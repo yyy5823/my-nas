@@ -445,41 +445,97 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
   StreamSubscription<VideoScanProgress>? _progressSubscription;
   StreamSubscription<ScrapeStats>? _scrapeStatsSubscription;
 
+  // 各媒体类型的数据库统计
+  int? _musicCount;
+  int? _photoCount;
+  int? _bookCount;
+  int? _comicCount;
+
   @override
   void initState() {
     super.initState();
-    // 监听视频扫描进度
-    if (widget.mediaType == MediaType.video) {
-      _progressSubscription = VideoScannerService().progressStream
-          .listen((progress) {
-            if (mounted) {
-              setState(() => _videoScanProgress = progress);
-            }
-          });
-
-      // 监听刮削统计
-      _scrapeStatsSubscription = VideoScannerService().scrapeStatsStream
-          .listen((stats) {
-            if (mounted) {
-              setState(() => _scrapeStats = stats);
-            }
-          });
-
-      // 初始加载刮削统计
-      _loadScrapeStats();
+    // 根据媒体类型初始化
+    switch (widget.mediaType) {
+      case MediaType.video:
+        _progressSubscription = VideoScannerService().progressStream
+            .listen((progress) {
+              if (mounted) {
+                setState(() => _videoScanProgress = progress);
+              }
+            });
+        _scrapeStatsSubscription = VideoScannerService().scrapeStatsStream
+            .listen((stats) {
+              if (mounted) {
+                setState(() => _scrapeStats = stats);
+              }
+            });
+        _loadScrapeStats();
+      case MediaType.music:
+        _loadMusicStats();
+      case MediaType.photo:
+        _loadPhotoStats();
+      case MediaType.book:
+        _loadBookStats();
+      case MediaType.comic:
+        _loadComicStats();
+      case MediaType.note:
+        break;
     }
   }
 
   Future<void> _loadScrapeStats() async {
-    if (widget.mediaType == MediaType.video) {
-      try {
-        final stats = await VideoScannerService().getScrapeStats();
-        if (mounted) {
-          setState(() => _scrapeStats = stats);
-        }
-      } on Exception {
-        // 数据库未初始化时忽略错误
+    try {
+      final stats = await VideoScannerService().getScrapeStats();
+      if (mounted) {
+        setState(() => _scrapeStats = stats);
       }
+    } on Exception {
+      // 数据库未初始化时忽略错误
+    }
+  }
+
+  Future<void> _loadMusicStats() async {
+    try {
+      final count = await MusicDatabaseService().getCount();
+      if (mounted) {
+        setState(() => _musicCount = count);
+      }
+    } on Exception {
+      // 忽略错误
+    }
+  }
+
+  Future<void> _loadPhotoStats() async {
+    try {
+      final count = await PhotoDatabaseService().getCount();
+      if (mounted) {
+        setState(() => _photoCount = count);
+      }
+    } on Exception {
+      // 忽略错误
+    }
+  }
+
+  Future<void> _loadBookStats() async {
+    try {
+      final count = await BookDatabaseService().getCount();
+      if (mounted) {
+        setState(() => _bookCount = count);
+      }
+    } on Exception {
+      // 忽略错误
+    }
+  }
+
+  Future<void> _loadComicStats() async {
+    try {
+      await ComicLibraryCacheService().init();
+      final cache = ComicLibraryCacheService().getCache();
+      if (mounted) {
+        setState(() => _comicCount = cache?.comics.length ?? 0);
+      }
+    } on Exception {
+      // 忽略错误
     }
   }
 
@@ -510,7 +566,7 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
     return _buildGenericScanSection(context, theme, isDark, hasConnectedSource);
   }
 
-  /// 构建视频扫描区域（分区展示：文件扫描 + 刮削进度）
+  /// 构建视频扫描区域（紧凑布局）
   Widget _buildVideoScanSection(
     BuildContext context,
     ThemeData theme,
@@ -531,9 +587,11 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
     final isScrapingMeta = isScraping ||
         (progress?.phase == VideoScanPhase.scraping);
 
-    // 文件统计信息
-    final cacheInfo = VideoLibraryCacheService().getCacheInfo();
+    // 统计信息
     final totalVideos = stats?.total ?? 0;
+    final completedScrape = stats?.completed ?? 0;
+    final failedScrape = stats?.failed ?? 0;
+    final pendingScrape = stats?.pending ?? 0;
 
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -548,108 +606,147 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 文件扫描统计区
-          _buildSectionHeader(
-            theme: theme,
-            icon: Icons.folder_open_rounded,
-            title: '文件扫描',
-            subtitle: cacheInfo,
-          ),
-          const SizedBox(height: 12),
-
-          // 文件扫描进度
-          if (isScanningFiles) ...[
-            _buildProgressRow(
-              theme: theme,
-              isDark: isDark,
-              progress: progress?.progress ?? 0.0,
-              description: progress?.description ?? '正在扫描...',
-            ),
-            const SizedBox(height: 12),
-          ],
-
-          // 扫描按钮
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: isLoading || !hasConnectedSource
-                  ? null
-                  : _scanFilesOnly,
-              icon: Icon(
-                isScanning ? Icons.hourglass_empty : Icons.folder_open_rounded,
-              ),
-              label: Text(isScanning ? '扫描中...' : '扫描文件'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                disabledBackgroundColor: isDark
-                    ? Colors.grey[800]
-                    : Colors.grey[300],
-              ),
-            ),
-          ),
-
-          const Divider(height: 32),
-
-          // 刮削进度区
-          _buildSectionHeader(
-            theme: theme,
-            icon: Icons.auto_fix_high_rounded,
-            title: '元数据刮削',
-            subtitle: stats != null
-                ? '已刮削 ${stats.completed}/${stats.total}，失败 ${stats.failed}'
-                : '暂无刮削信息',
-          ),
-          const SizedBox(height: 12),
-
-          // 刮削统计卡片
-          if (stats != null && stats.total > 0) ...[
-            _buildScrapeStatsCard(theme, isDark, stats),
-            const SizedBox(height: 12),
-          ],
-
-          // 刮削进度
-          if (isScrapingMeta) ...[
-            _buildProgressRow(
-              theme: theme,
-              isDark: isDark,
-              progress: stats != null && stats.total > 0
-                  ? stats.processed / stats.total
-                  : 0.0,
-              description: progress?.currentFile != null
-                  ? '正在刮削: ${progress!.currentFile}'
-                  : '正在刮削元数据...',
-            ),
-            const SizedBox(height: 12),
-          ],
-
-          // 刮削按钮
+          // 标题行：视频库统计
           Row(
             children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.video_library_rounded,
+                  size: 20,
+                  color: AppColors.primary,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '视频库',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      totalVideos > 0
+                          ? '共 $totalVideos 个视频'
+                          : '暂无数据',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          // 刮削统计（简洁版）
+          if (stats != null && stats.total > 0) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                _buildMiniStat(theme, '待刮削', pendingScrape, Colors.grey),
+                const SizedBox(width: 16),
+                _buildMiniStat(theme, '已完成', completedScrape, Colors.green),
+                const SizedBox(width: 16),
+                _buildMiniStat(theme, '失败', failedScrape, Colors.red),
+              ],
+            ),
+          ],
+
+          // 扫描/刮削进度
+          if (isScanningFiles || isScrapingMeta) ...[
+            const SizedBox(height: 12),
+            _buildProgressRow(
+              theme: theme,
+              isDark: isDark,
+              progress: isScanningFiles
+                  ? (progress?.progress ?? 0.0)
+                  : (stats != null && stats.total > 0
+                      ? stats.processed / stats.total
+                      : 0.0),
+              description: isScanningFiles
+                  ? (progress?.description ?? '正在扫描...')
+                  : (progress?.currentFile != null
+                      ? '正在刮削: ${progress!.currentFile}'
+                      : '正在刮削元数据...'),
+            ),
+          ],
+
+          const SizedBox(height: 12),
+
+          // 操作按钮行
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: isLoading || !hasConnectedSource
+                      ? null
+                      : _scanFilesOnly,
+                  icon: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: isScanning
+                        ? const CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          )
+                        : const Icon(Icons.folder_open_rounded, size: 18),
+                  ),
+                  label: Text(isScanning ? '扫描中' : '扫描'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: isDark
+                        ? Colors.grey[800]
+                        : Colors.grey[300],
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
               Expanded(
                 child: ElevatedButton.icon(
                   onPressed: isLoading || !hasConnectedSource || totalVideos == 0
                       ? null
                       : _startScraping,
-                  icon: Icon(
-                    isScraping ? Icons.hourglass_empty : Icons.auto_fix_high_rounded,
+                  icon: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: isScraping
+                        ? const CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          )
+                        : const Icon(Icons.auto_fix_high_rounded, size: 18),
                   ),
-                  label: Text(isScraping ? '刮削中...' : '开始刮削'),
+                  label: Text(isScraping ? '刮削中' : '刮削'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.orange,
                     foregroundColor: Colors.white,
                     disabledBackgroundColor: isDark
                         ? Colors.grey[800]
                         : Colors.grey[300],
+                    padding: const EdgeInsets.symmetric(vertical: 10),
                   ),
                 ),
               ),
               if (isScraping) ...[
-                const SizedBox(width: 12),
-                OutlinedButton(
+                const SizedBox(width: 8),
+                IconButton(
                   onPressed: _stopScraping,
-                  style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
-                  child: const Text('停止'),
+                  icon: const Icon(Icons.stop_rounded),
+                  style: IconButton.styleFrom(
+                    foregroundColor: Colors.red,
+                    backgroundColor: Colors.red.withValues(alpha: 0.1),
+                  ),
+                  tooltip: '停止刮削',
                 ),
               ],
             ],
@@ -669,7 +766,7 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      '请先连接至少一个源才能扫描${widget.mediaType.displayName}',
+                      '请先连接至少一个源才能扫描',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: Colors.orange[700],
                       ),
@@ -683,44 +780,29 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
     );
   }
 
-  /// 构建区域标题
-  Widget _buildSectionHeader({
-    required ThemeData theme,
-    required IconData icon,
-    required String title,
-    required String subtitle,
-  }) => Row(
-    children: [
-      Container(
-        padding: const EdgeInsets.all(6),
-        decoration: BoxDecoration(
-          color: AppColors.primary.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(6),
+  /// 构建迷你统计项
+  Widget _buildMiniStat(ThemeData theme, String label, int value, Color color) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+          ),
         ),
-        child: Icon(icon, size: 16, color: AppColors.primary),
-      ),
-      const SizedBox(width: 10),
-      Expanded(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            Text(
-              subtitle,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
+        const SizedBox(width: 4),
+        Text(
+          '$label $value',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
         ),
-      ),
-    ],
-  );
+      ],
+    );
+  }
 
   /// 构建进度行
   Widget _buildProgressRow({
@@ -770,87 +852,6 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
         ),
       ],
     ],
-  );
-
-  /// 构建刮削统计卡片
-  Widget _buildScrapeStatsCard(ThemeData theme, bool isDark, ScrapeStats stats) {
-    final completedPercent = stats.total > 0
-        ? (stats.completed / stats.total * 100).toStringAsFixed(0)
-        : '0';
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: isDark ? Colors.grey[850] : Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: isDark ? Colors.grey[700]! : Colors.grey[300]!,
-        ),
-      ),
-      child: Row(
-        children: [
-          _buildStatItem(
-            theme: theme,
-            label: '待刮削',
-            value: stats.pending.toString(),
-            color: Colors.grey,
-          ),
-          _buildStatDivider(isDark),
-          _buildStatItem(
-            theme: theme,
-            label: '已完成',
-            value: stats.completed.toString(),
-            color: Colors.green,
-          ),
-          _buildStatDivider(isDark),
-          _buildStatItem(
-            theme: theme,
-            label: '失败',
-            value: stats.failed.toString(),
-            color: Colors.red,
-          ),
-          _buildStatDivider(isDark),
-          _buildStatItem(
-            theme: theme,
-            label: '完成率',
-            value: '$completedPercent%',
-            color: AppColors.primary,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatItem({
-    required ThemeData theme,
-    required String label,
-    required String value,
-    required Color color,
-  }) => Expanded(
-    child: Column(
-      children: [
-        Text(
-          value,
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.bold,
-            color: color,
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          label,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ],
-    ),
-  );
-
-  Widget _buildStatDivider(bool isDark) => Container(
-    width: 1,
-    height: 30,
-    color: isDark ? Colors.grey[700] : Colors.grey[300],
   );
 
   /// 构建通用扫描区域（非视频类型）
@@ -1015,8 +1016,9 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
                 progress.phase != VideoScanPhase.error);
         final scanProgress = progress?.progress ?? 0.0;
         final folder = progress?.description;
-        final cacheInfo = VideoLibraryCacheService().getCacheInfo();
-        return (isLoading, scanProgress, folder, cacheInfo);
+        final total = _scrapeStats?.total ?? 0;
+        final statsInfo = total > 0 ? '共 $total 个视频' : '暂无数据';
+        return (isLoading, scanProgress, folder, statsInfo);
 
       case MediaType.music:
         final state = ref.watch(musicListProvider);
@@ -1028,35 +1030,39 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
                   : state.progress)
             : 0.0;
         final folder = state is MusicListLoading ? state.currentFolder : null;
-        final cacheInfo = MusicLibraryCacheService().getCacheInfo();
-        return (isLoading, progress, folder, cacheInfo);
+        final count = _musicCount ?? 0;
+        final statsInfo = count > 0 ? '共 $count 首音乐' : '暂无数据';
+        return (isLoading, progress, folder, statsInfo);
 
       case MediaType.photo:
         final state = ref.watch(photoListProvider);
         final isLoading = state is PhotoListLoading;
         final progress = state is PhotoListLoading ? state.progress : 0.0;
         final folder = state is PhotoListLoading ? state.currentFolder : null;
-        final cacheInfo = PhotoLibraryCacheService().getCacheInfo();
-        return (isLoading, progress, folder, cacheInfo);
+        final count = _photoCount ?? 0;
+        final statsInfo = count > 0 ? '共 $count 张照片' : '暂无数据';
+        return (isLoading, progress, folder, statsInfo);
 
       case MediaType.comic:
         final state = ref.watch(comicListProvider);
         final isLoading = state is ComicListLoading;
         final progress = state is ComicListLoading ? state.progress : 0.0;
         final folder = state is ComicListLoading ? state.currentFolder : null;
-        final cacheInfo = ComicLibraryCacheService().getCacheInfo();
-        return (isLoading, progress, folder, cacheInfo);
+        final count = _comicCount ?? 0;
+        final statsInfo = count > 0 ? '共 $count 本漫画' : '暂无数据';
+        return (isLoading, progress, folder, statsInfo);
 
       case MediaType.book:
         final state = ref.watch(bookListProvider);
         final isLoading = state is BookListLoading;
         final progress = state is BookListLoading ? state.progress : 0.0;
         final folder = state is BookListLoading ? state.currentFolder : null;
-        final cacheInfo = BookLibraryCacheService().getCacheInfo();
-        return (isLoading, progress, folder, cacheInfo);
+        final count = _bookCount ?? 0;
+        final statsInfo = count > 0 ? '共 $count 本图书' : '暂无数据';
+        return (isLoading, progress, folder, statsInfo);
 
       case MediaType.note:
-        return (false, 0.0, null, '暂无缓存');
+        return (false, 0.0, null, '暂无数据');
     }
   }
 
@@ -1064,17 +1070,17 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
   (IconData, String, String) _getMediaInfo() {
     switch (widget.mediaType) {
       case MediaType.video:
-        return (Icons.video_library_rounded, '视频库缓存', '扫描视频');
+        return (Icons.video_library_rounded, '视频库', '扫描视频');
       case MediaType.music:
-        return (Icons.library_music_rounded, '音乐库缓存', '扫描音乐');
+        return (Icons.library_music_rounded, '音乐库', '扫描音乐');
       case MediaType.photo:
-        return (Icons.photo_library_rounded, '照片库缓存', '扫描照片');
+        return (Icons.photo_library_rounded, '照片库', '扫描照片');
       case MediaType.comic:
-        return (Icons.collections_bookmark_rounded, '漫画库缓存', '扫描漫画');
+        return (Icons.collections_bookmark_rounded, '漫画库', '扫描漫画');
       case MediaType.book:
-        return (Icons.library_books_rounded, '图书库缓存', '扫描图书');
+        return (Icons.library_books_rounded, '图书库', '扫描图书');
       case MediaType.note:
-        return (Icons.note_rounded, '笔记库缓存', '扫描笔记');
+        return (Icons.note_rounded, '笔记库', '扫描笔记');
     }
   }
 
@@ -1151,22 +1157,27 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
           );
           // 扫描完成后，通知 VideoListNotifier 重新加载缓存
           await ref.read(videoListProvider.notifier).reloadFromCache();
+          await _loadScrapeStats();
         case MediaType.music:
           await ref
               .read(musicListProvider.notifier)
               .loadMusic(forceRefresh: true);
+          await _loadMusicStats();
         case MediaType.photo:
           await ref
               .read(photoListProvider.notifier)
               .loadPhotos(forceRefresh: true);
+          await _loadPhotoStats();
         case MediaType.comic:
           await ref
               .read(comicListProvider.notifier)
               .loadComics(forceRefresh: true);
+          await _loadComicStats();
         case MediaType.book:
           await ref
               .read(bookListProvider.notifier)
               .loadBooks(forceRefresh: true);
+          await _loadBookStats();
         case MediaType.note:
           break;
       }

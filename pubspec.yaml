@@ -94,6 +94,9 @@ dependencies:
   flutter_native_splash: ^2.4.4
   sqflite_common_ffi: ^2.4.0
 
+  # Live Activities (Dynamic Island)
+  live_activities: ^2.0.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

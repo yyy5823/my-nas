@@ -66,289 +66,288 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
   }
 
   @override
-  Widget build(BuildContext context) => Container(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.9,
+      decoration: BoxDecoration(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      child: DraggableScrollableSheet(
-        initialChildSize: 0.9,
-        minChildSize: 0.5,
-        maxChildSize: 0.95,
-        expand: false,
-        builder: (context, scrollController) => Column(
-          children: [
-            // 拖动条
-            Container(
-              margin: const EdgeInsets.only(top: 12),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey[400],
-                borderRadius: BorderRadius.circular(2),
-              ),
+      child: Column(
+        children: [
+          // 拖动条（固定）
+          Container(
+            margin: const EdgeInsets.only(top: 12),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey[400],
+              borderRadius: BorderRadius.circular(2),
             ),
+          ),
 
-            // 标题栏
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Text(
-                    _isEditing ? '编辑源' : '添加源',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
-              ),
+          // 标题栏（固定）
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Text(
+                  _isEditing ? '编辑源' : '添加源',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const Spacer(),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close),
+                ),
+              ],
             ),
+          ),
 
-            const Divider(height: 1),
+          const Divider(height: 1),
 
-            // 表单
-            Expanded(
-              child: SingleChildScrollView(
-                controller: scrollController,
-                padding: const EdgeInsets.all(16),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // 源类型选择
-                      Text(
-                        '源类型',
-                        style: Theme.of(context).textTheme.titleSmall,
+          // 表单（可滚动区域）
+          Expanded(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + bottomInset),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 源类型选择
+                    Text(
+                      '源类型',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    const SizedBox(height: 8),
+                    _buildSourceTypeSelector(),
+                    const SizedBox(height: 24),
+
+                    // 名称
+                    TextFormField(
+                      controller: _nameController,
+                      decoration: InputDecoration(
+                        labelText: '名称（可选）',
+                        hintText: _sourceType == SourceType.local
+                            ? '例如：本地文件'
+                            : '给这个源起个名字',
+                        prefixIcon: const Icon(Icons.label_outline),
                       ),
-                      const SizedBox(height: 8),
-                      _buildSourceTypeSelector(),
-                      const SizedBox(height: 24),
+                    ),
 
-                      // 名称
-                      TextFormField(
-                        controller: _nameController,
-                        decoration: InputDecoration(
-                          labelText: '名称（可选）',
-                          hintText: _sourceType == SourceType.local
-                              ? '例如：本地文件'
-                              : '给这个源起个名字',
-                          prefixIcon: const Icon(Icons.label_outline),
+                    // 本地存储提示
+                    if (_sourceType == SourceType.local) ...[
+                      const SizedBox(height: 16),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                      ),
-
-                      // 本地存储提示
-                      if (_sourceType == SourceType.local) ...[
-                        const SizedBox(height: 16),
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.blue.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Row(
-                            children: [
-                              Icon(Icons.info_outline, color: Colors.blue),
-                              SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  '本地存储无需配置连接信息，将直接访问设备上的文件',
-                                  style: TextStyle(color: Colors.blue),
-                                ),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.info_outline, color: Colors.blue),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '本地存储无需配置连接信息，将直接访问设备上的文件',
+                                style: TextStyle(color: Colors.blue),
                               ),
-                            ],
-                          ),
-                        ),
-                      ],
-
-                      // 远程源需要的字段
-                      if (_sourceType != SourceType.local) ...[
-                        const SizedBox(height: 16),
-
-                        // 主机地址
-                        TextFormField(
-                          controller: _hostController,
-                          decoration: InputDecoration(
-                            labelText: '主机地址',
-                            hintText: _sourceType == SourceType.smb
-                                ? '192.168.1.100（仅 IP 地址，无需端口）'
-                                : '192.168.1.100 或 nas.example.com',
-                            helperText: _sourceType == SourceType.smb
-                                ? 'SMB 使用端口 445，无需指定协议前缀'
-                                : null,
-                            prefixIcon: const Icon(Icons.dns_outlined),
-                          ),
-                          keyboardType: TextInputType.url,
-                          validator: (value) {
-                            if (_sourceType != SourceType.local &&
-                                (value == null || value.isEmpty)) {
-                              return '请输入主机地址';
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 16),
-
-                        // 端口和 SSL (不适用于 SMB)
-                        if (_sourceType != SourceType.smb)
-                          Row(
-                            children: [
-                              Expanded(
-                                child: TextFormField(
-                                  controller: _portController,
-                                  decoration: const InputDecoration(
-                                    labelText: '端口',
-                                    prefixIcon: Icon(Icons.numbers),
-                                  ),
-                                  keyboardType: TextInputType.number,
-                                  validator: (value) {
-                                    if (_sourceType != SourceType.local) {
-                                      if (value == null || value.isEmpty) {
-                                        return '请输入端口';
-                                      }
-                                      final port = int.tryParse(value);
-                                      if (port == null || port < 1 || port > 65535) {
-                                        return '无效端口';
-                                      }
-                                    }
-                                    return null;
-                                  },
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              Column(
-                                children: [
-                                  const Text('SSL'),
-                                  Switch(
-                                    value: _useSsl,
-                                    onChanged: (v) => setState(() => _useSsl = v),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        if (_sourceType != SourceType.smb)
-                          const SizedBox(height: 16),
-
-                        // 用户名
-                        TextFormField(
-                          controller: _usernameController,
-                          decoration: const InputDecoration(
-                            labelText: '用户名',
-                            prefixIcon: Icon(Icons.person_outline),
-                          ),
-                          validator: (value) {
-                            if (_sourceType != SourceType.local &&
-                                (value == null || value.isEmpty)) {
-                              return '请输入用户名';
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 16),
-
-                        // 密码
-                        TextFormField(
-                          controller: _passwordController,
-                          obscureText: _obscurePassword,
-                          decoration: InputDecoration(
-                            labelText: _isEditing ? '密码（留空保持不变）' : '密码',
-                            prefixIcon: const Icon(Icons.lock_outline),
-                            suffixIcon: IconButton(
-                              icon: Icon(
-                                _obscurePassword
-                                    ? Icons.visibility_outlined
-                                    : Icons.visibility_off_outlined,
-                              ),
-                              onPressed: () {
-                                setState(() => _obscurePassword = !_obscurePassword);
-                              },
                             ),
-                          ),
-                          validator: (value) {
-                            if (_sourceType != SourceType.local &&
-                                !_isEditing &&
-                                (value == null || value.isEmpty)) {
-                              return '请输入密码';
-                            }
-                            return null;
-                          },
-                        ),
-                      ],
-                      const SizedBox(height: 24),
-
-                      // 选项
-                      if (_sourceType != SourceType.local)
-                        SwitchListTile(
-                          title: const Text('自动连接'),
-                          subtitle: const Text('启动时自动连接此源'),
-                          value: _autoConnect,
-                          onChanged: (v) => setState(() => _autoConnect = v),
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                      if (_sourceType != SourceType.local)
-                        SwitchListTile(
-                          title: const Text('记住设备'),
-                          subtitle: const Text('跳过二次验证（如果支持）'),
-                          value: _rememberDevice,
-                          onChanged: (v) => setState(() => _rememberDevice = v),
-                          contentPadding: EdgeInsets.zero,
-                        ),
-
-                      // 错误信息
-                      if (_errorMessage != null) ...[
-                        const SizedBox(height: 16),
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.red.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.error_outline, color: Colors.red),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  _errorMessage!,
-                                  style: const TextStyle(color: Colors.red),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-
-                      const SizedBox(height: 24),
-
-                      // 提交按钮
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton(
-                          onPressed: _isLoading ? null : _submit,
-                          child: _isLoading
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : Text(_isEditing ? '保存' : '添加并连接'),
+                          ],
                         ),
                       ),
                     ],
-                  ),
+
+                    // 远程源需要的字段
+                    if (_sourceType != SourceType.local) ...[
+                      const SizedBox(height: 16),
+
+                      // 主机地址
+                      TextFormField(
+                        controller: _hostController,
+                        decoration: InputDecoration(
+                          labelText: '主机地址',
+                          hintText: _sourceType == SourceType.smb
+                              ? '192.168.1.100（仅 IP 地址，无需端口）'
+                              : '192.168.1.100 或 nas.example.com',
+                          helperText: _sourceType == SourceType.smb
+                              ? 'SMB 使用端口 445，无需指定协议前缀'
+                              : null,
+                          prefixIcon: const Icon(Icons.dns_outlined),
+                        ),
+                        keyboardType: TextInputType.url,
+                        validator: (value) {
+                          if (_sourceType != SourceType.local &&
+                              (value == null || value.isEmpty)) {
+                            return '请输入主机地址';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+
+                      // 端口和 SSL (不适用于 SMB)
+                      if (_sourceType != SourceType.smb)
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextFormField(
+                                controller: _portController,
+                                decoration: const InputDecoration(
+                                  labelText: '端口',
+                                  prefixIcon: Icon(Icons.numbers),
+                                ),
+                                keyboardType: TextInputType.number,
+                                validator: (value) {
+                                  if (_sourceType != SourceType.local) {
+                                    if (value == null || value.isEmpty) {
+                                      return '请输入端口';
+                                    }
+                                    final port = int.tryParse(value);
+                                    if (port == null || port < 1 || port > 65535) {
+                                      return '无效端口';
+                                    }
+                                  }
+                                  return null;
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Column(
+                              children: [
+                                const Text('SSL'),
+                                Switch(
+                                  value: _useSsl,
+                                  onChanged: (v) => setState(() => _useSsl = v),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      if (_sourceType != SourceType.smb)
+                        const SizedBox(height: 16),
+
+                      // 用户名
+                      TextFormField(
+                        controller: _usernameController,
+                        decoration: const InputDecoration(
+                          labelText: '用户名',
+                          prefixIcon: Icon(Icons.person_outline),
+                        ),
+                        validator: (value) {
+                          if (_sourceType != SourceType.local &&
+                              (value == null || value.isEmpty)) {
+                            return '请输入用户名';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+
+                      // 密码
+                      TextFormField(
+                        controller: _passwordController,
+                        obscureText: _obscurePassword,
+                        decoration: InputDecoration(
+                          labelText: _isEditing ? '密码（留空保持不变）' : '密码',
+                          prefixIcon: const Icon(Icons.lock_outline),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscurePassword
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                            ),
+                            onPressed: () {
+                              setState(() => _obscurePassword = !_obscurePassword);
+                            },
+                          ),
+                        ),
+                        validator: (value) {
+                          if (_sourceType != SourceType.local &&
+                              !_isEditing &&
+                              (value == null || value.isEmpty)) {
+                            return '请输入密码';
+                          }
+                          return null;
+                        },
+                      ),
+                    ],
+                    const SizedBox(height: 24),
+
+                    // 选项
+                    if (_sourceType != SourceType.local)
+                      SwitchListTile(
+                        title: const Text('自动连接'),
+                        subtitle: const Text('启动时自动连接此源'),
+                        value: _autoConnect,
+                        onChanged: (v) => setState(() => _autoConnect = v),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    if (_sourceType != SourceType.local)
+                      SwitchListTile(
+                        title: const Text('记住设备'),
+                        subtitle: const Text('跳过二次验证（如果支持）'),
+                        value: _rememberDevice,
+                        onChanged: (v) => setState(() => _rememberDevice = v),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+
+                    // 错误信息
+                    if (_errorMessage != null) ...[
+                      const SizedBox(height: 16),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.red.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.error_outline, color: Colors.red),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _errorMessage!,
+                                style: const TextStyle(color: Colors.red),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+
+                    const SizedBox(height: 24),
+
+                    // 提交按钮
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        onPressed: _isLoading ? null : _submit,
+                        child: _isLoading
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : Text(_isEditing ? '保存' : '添加并连接'),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
+  }
 
   Widget _buildSourceTypeSelector() {
     // 只显示已支持的源类型

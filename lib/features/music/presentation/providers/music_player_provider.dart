@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/data/audio_sources/stream_audio_source.dart';
+import 'package:my_nas/features/music/data/services/live_activity_service.dart';
 import 'package:my_nas/features/music/data/services/music_metadata_service.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/presentation/providers/music_favorites_provider.dart';
@@ -132,6 +134,7 @@ class PlayQueueNotifier extends StateNotifier<List<MusicItem>> {
 class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   MusicPlayerNotifier(this._ref) : super(const MusicPlayerState()) {
     _initPlayer();
+    _initLiveActivity();
   }
 
   final Ref _ref;
@@ -142,6 +145,10 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   DateTime? _playStartTime;
   Duration _playStartPosition = Duration.zero;
   bool _useEstimatedPosition = false;
+
+  // Live Activity 服务
+  final LiveActivityService _liveActivityService = LiveActivityService();
+  Timer? _liveActivityUpdateTimer;
 
   AudioPlayer get player => _player;
 
@@ -300,6 +307,92 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     );
   }
 
+  /// 初始化 Live Activity 服务
+  Future<void> _initLiveActivity() async {
+    if (!_liveActivityService.isSupported) return;
+
+    await _liveActivityService.init();
+
+    // 设置控制命令回调
+    _liveActivityService.onControlAction = (action) {
+      logger.i('MusicPlayer: 收到 Live Activity 控制命令: $action');
+      switch (action) {
+        case 'play':
+          resume();
+        case 'pause':
+          pause();
+        case 'previous':
+          playPrevious();
+        case 'next':
+          playNext();
+        default:
+          logger.w('MusicPlayer: 未知的控制命令: $action');
+      }
+    };
+
+    logger.i('MusicPlayer: Live Activity 服务已初始化');
+  }
+
+  /// 启动 Live Activity 并开始定时更新
+  Future<void> _startLiveActivity(MusicItem music) async {
+    if (!_liveActivityService.isSupported) return;
+
+    // 获取封面数据
+    Uint8List? coverData;
+    if (music.coverData != null && music.coverData!.isNotEmpty) {
+      coverData = Uint8List.fromList(music.coverData!);
+    }
+
+    await _liveActivityService.startMusicActivity(
+      music: music,
+      isPlaying: state.isPlaying,
+      position: state.position,
+      duration: state.duration,
+      coverData: coverData,
+    );
+
+    // 启动定时更新
+    _startLiveActivityUpdateTimer();
+  }
+
+  /// 启动 Live Activity 定时更新
+  void _startLiveActivityUpdateTimer() {
+    _stopLiveActivityUpdateTimer();
+
+    // 每秒更新一次 Live Activity
+    _liveActivityUpdateTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => _updateLiveActivity(),
+    );
+  }
+
+  /// 停止 Live Activity 定时更新
+  void _stopLiveActivityUpdateTimer() {
+    _liveActivityUpdateTimer?.cancel();
+    _liveActivityUpdateTimer = null;
+  }
+
+  /// 更新 Live Activity 状态
+  Future<void> _updateLiveActivity() async {
+    if (!_liveActivityService.isActivityRunning) return;
+
+    final currentMusic = _ref.read(currentMusicProvider);
+    if (currentMusic == null) return;
+
+    await _liveActivityService.updateActivity(
+      music: currentMusic,
+      isPlaying: state.isPlaying,
+      position: state.position,
+      duration: state.duration,
+    );
+  }
+
+  /// 结束 Live Activity
+  Future<void> _endLiveActivity() async {
+    _stopLiveActivityUpdateTimer();
+    await _liveActivityService.endActivity();
+  }
+
   void _onTrackCompleted() {
     switch (state.playMode) {
       case PlayMode.repeatOne:
@@ -452,7 +545,10 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
         state = state.copyWith(duration: effectiveDuration);
         logger.i('MusicPlayer: 最终时长 => $effectiveDuration');
       } else {
-        logger.w('MusicPlayer: 无法获取音频时长');
+        logger.w('MusicPlayer: 无法立即获取音频时长，将在播放过程中尝试获取');
+        // 对于某些流式音频源，duration 可能需要在播放过程中才能获取
+        // 延迟检查播放器是否获取到了 duration
+        unawaited(_tryGetDurationLater(music));
       }
 
       if (startPosition != null && startPosition > Duration.zero) {
@@ -482,9 +578,48 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       // 在后台提取元数据
       logger.i('MusicPlayer: 开始后台提取元数据...');
       unawaited(_extractMetadataInBackground(music));
+
+      // 启动 Live Activity（iOS 灵动岛）
+      unawaited(_startLiveActivity(music));
     } on Exception catch (e, stackTrace) {
       logger.e('MusicPlayer: 播放失败', e, stackTrace);
       state = state.copyWith(errorMessage: '播放失败: $e', isBuffering: false);
+    }
+  }
+
+  /// 延迟尝试获取音频时长
+  /// 对于某些流式音频源，duration 可能需要在播放过程中才能获取
+  Future<void> _tryGetDurationLater(MusicItem music) async {
+    // 等待播放器开始播放后再检查
+    await Future<void>.delayed(const Duration(seconds: 2));
+
+    // 检查是否仍在播放同一首歌
+    final currentMusic = _ref.read(currentMusicProvider);
+    if (currentMusic?.id != music.id) {
+      return;
+    }
+
+    // 检查播放器是否获取到了 duration
+    final playerDuration = _player.duration;
+    if (playerDuration != null && playerDuration > Duration.zero && state.duration == Duration.zero) {
+      state = state.copyWith(duration: playerDuration);
+      logger.i('MusicPlayer: 延迟获取到播放器时长 => $playerDuration');
+      return;
+    }
+
+    // 如果仍然没有 duration，再等待一段时间后重试一次
+    await Future<void>.delayed(const Duration(seconds: 3));
+
+    // 再次检查是否仍在播放同一首歌
+    final currentMusic2 = _ref.read(currentMusicProvider);
+    if (currentMusic2?.id != music.id) {
+      return;
+    }
+
+    final playerDuration2 = _player.duration;
+    if (playerDuration2 != null && playerDuration2 > Duration.zero && state.duration == Duration.zero) {
+      state = state.copyWith(duration: playerDuration2);
+      logger.i('MusicPlayer: 延迟获取到播放器时长 (第二次尝试) => $playerDuration2');
     }
   }
 
@@ -550,7 +685,23 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
         if (currentMusic?.id == music.id) {
           _ref.read(currentMusicProvider.notifier).state = updatedMusic;
-          logger.i('MusicPlayer: 元数据已更新 - artist=${metadata.artist}, album=${metadata.album}, hasCover=${metadata.coverData != null}, hasLyrics=${metadata.lyrics != null}');
+          logger.i('MusicPlayer: 元数据已更新 - artist=${metadata.artist}, album=${metadata.album}, hasCover=${metadata.coverData != null}, hasLyrics=${metadata.lyrics != null}, duration=${metadata.duration}');
+
+          // 如果提取到了 duration 且播放器当前没有 duration，更新播放器状态
+          if (metadata.duration != null &&
+              metadata.duration! > Duration.zero &&
+              state.duration == Duration.zero) {
+            state = state.copyWith(duration: metadata.duration);
+            logger.i('MusicPlayer: 从元数据更新播放器时长 => ${metadata.duration}');
+          }
+
+          // 更新 Live Activity 封面图片
+          if (metadata.coverData != null && metadata.coverData!.isNotEmpty) {
+            unawaited(_liveActivityService.updateCoverImage(
+              updatedMusic,
+              Uint8List.fromList(metadata.coverData!),
+            ));
+          }
         } else {
           logger.w('MusicPlayer: 当前播放的音乐已变更，跳过更新');
         }
@@ -608,6 +759,8 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     _playStartPosition = Duration.zero;
     state = state.copyWith(position: Duration.zero, duration: Duration.zero);
     _ref.read(currentMusicProvider.notifier).state = null;
+    // 结束 Live Activity
+    unawaited(_endLiveActivity());
   }
 
   /// 下一曲
@@ -700,6 +853,8 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   @override
   void dispose() {
     _stopPositionUpdateTimer();
+    _stopLiveActivityUpdateTimer();
+    _liveActivityService.dispose();
     _player.dispose();
     super.dispose();
   }

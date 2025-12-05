@@ -150,7 +150,7 @@ class HeroPlayerCard extends ConsumerWidget {
         child: Image.memory(
           Uint8List.fromList(coverData),
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _buildDefaultBackground(),
+          errorBuilder: (_, _, _) => _buildDefaultBackground(),
         ),
       );
     }
@@ -257,7 +257,7 @@ class HeroPlayerCard extends ConsumerWidget {
       coverImage = Image.memory(
         Uint8List.fromList(coverData),
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => _buildDefaultCover(),
+        errorBuilder: (_, _, _) => _buildDefaultCover(),
       );
     } else {
       coverImage = _buildDefaultCover();
