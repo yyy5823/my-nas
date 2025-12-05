@@ -61,17 +61,23 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final connectedSources = ref.watch(connectedSourcesProvider);
     final selectedSourceId = ref.watch(selectedSourceIdProvider);
+    final isMultiSelectMode = ref.watch(multiSelectModeProvider);
+    final selectedFiles = ref.watch(selectedFilesProvider);
 
     return Scaffold(
       backgroundColor: isDark ? AppColors.darkBackground : null,
       body: Column(
         children: [
-          // 自定义 AppBar
-          _buildAppBar(context, currentPath, isGridView, isDark),
-          // 源选择器（只有多个已连接源时显示）
-          if (connectedSources.length > 1) _buildSourceSelector(connectedSources, selectedSourceId, isDark),
-          // 面包屑导航
-          _buildBreadcrumb(currentPath, isDark),
+          // 自定义 AppBar（多选模式下显示不同的工具栏）
+          if (isMultiSelectMode)
+            _buildMultiSelectAppBar(context, selectedFiles, isDark)
+          else
+            _buildAppBar(context, currentPath, isGridView, isDark),
+          // 源选择器（只有多个已连接源时显示，多选模式下隐藏）
+          if (connectedSources.length > 1 && !isMultiSelectMode)
+            _buildSourceSelector(connectedSources, selectedSourceId, isDark),
+          // 面包屑导航（多选模式下隐藏）
+          if (!isMultiSelectMode) _buildBreadcrumb(currentPath, isDark),
           // 文件列表
           Expanded(
             child: RefreshIndicator(
@@ -83,7 +89,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
           ),
         ],
       ),
-      floatingActionButton: _buildFab(isDark),
+      floatingActionButton: isMultiSelectMode ? null : _buildFab(isDark),
     );
   }
 
@@ -171,6 +177,114 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
         ),
       ),
     );
+  }
+
+  Widget _buildMultiSelectAppBar(BuildContext context, Set<String> selectedFiles, bool isDark) {
+    final fileState = ref.watch(fileListProvider);
+    final allFiles = fileState is FileListLoaded ? fileState.files : <FileItem>[];
+    final selectedCount = selectedFiles.length;
+    final allSelected = allFiles.isNotEmpty && selectedFiles.length == allFiles.length;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
+        border: Border(
+          bottom: BorderSide(
+            color: isDark
+                ? AppColors.darkOutline.withValues(alpha: 0.2)
+                : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
+          ),
+        ),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: AppSpacing.appBarContentPadding,
+          child: Row(
+            children: [
+              // 取消按钮
+              _buildIconButton(
+                icon: Icons.close_rounded,
+                onTap: _exitMultiSelectMode,
+                isDark: isDark,
+                tooltip: '取消',
+              ),
+              const SizedBox(width: 8),
+              // 已选数量
+              Expanded(
+                child: Text(
+                  '已选择 $selectedCount 项',
+                  style: context.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? AppColors.darkOnSurface : null,
+                  ),
+                ),
+              ),
+              // 全选/取消全选
+              _buildIconButton(
+                icon: allSelected ? Icons.deselect_rounded : Icons.select_all_rounded,
+                onTap: () => _toggleSelectAll(allFiles),
+                isDark: isDark,
+                tooltip: allSelected ? '取消全选' : '全选',
+              ),
+              // 删除按钮
+              if (selectedCount > 0)
+                _buildIconButton(
+                  icon: Icons.delete_rounded,
+                  onTap: () => _showBatchDeleteConfirm(selectedFiles, isDark),
+                  isDark: isDark,
+                  tooltip: '删除',
+                ),
+              // 更多操作
+              if (selectedCount > 0)
+                _buildIconButton(
+                  icon: Icons.more_vert_rounded,
+                  onTap: () => _showBatchOperations(context, selectedFiles, isDark),
+                  isDark: isDark,
+                  tooltip: '更多操作',
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _enterMultiSelectMode() {
+    ref.read(multiSelectModeProvider.notifier).state = true;
+  }
+
+  void _exitMultiSelectMode() {
+    ref.read(multiSelectModeProvider.notifier).state = false;
+    ref.read(selectedFilesProvider.notifier).state = {};
+  }
+
+  void _toggleFileSelection(String path) {
+    final selectedFiles = ref.read(selectedFilesProvider);
+    final newSelection = Set<String>.from(selectedFiles);
+    if (newSelection.contains(path)) {
+      newSelection.remove(path);
+    } else {
+      newSelection.add(path);
+    }
+    ref.read(selectedFilesProvider.notifier).state = newSelection;
+
+    // 如果没有选中任何文件，自动退出多选模式
+    if (newSelection.isEmpty) {
+      ref.read(multiSelectModeProvider.notifier).state = false;
+    }
+  }
+
+  void _toggleSelectAll(List<FileItem> allFiles) {
+    final selectedFiles = ref.read(selectedFilesProvider);
+    if (selectedFiles.length == allFiles.length) {
+      // 取消全选
+      ref.read(selectedFilesProvider.notifier).state = {};
+    } else {
+      // 全选
+      ref.read(selectedFilesProvider.notifier).state =
+          allFiles.map((f) => f.path).toSet();
+    }
   }
 
   Widget _buildIconButton({
@@ -593,38 +707,72 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
       ),
     );
 
-  Widget _buildList(List<FileItem> files, bool isDark) => ListView.builder(
-        padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-        itemCount: files.length,
-        itemBuilder: (context, index) => AnimatedListItem(
-          index: index,
-          child: FileItemWidget(
-            file: files[index],
-            onTap: () => _handleFileTap(files[index]),
-            onLongPress: () => _showFileOptions(context, files[index], isDark),
-          ),
-        ),
-      );
+  Widget _buildList(List<FileItem> files, bool isDark) {
+    final isMultiSelectMode = ref.watch(multiSelectModeProvider);
+    final selectedFiles = ref.watch(selectedFilesProvider);
 
-  Widget _buildGrid(List<FileItem> files, bool isDark) => GridView.builder(
-        padding: AppSpacing.paddingMd,
-        gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-          maxCrossAxisExtent: context.isDesktop ? 160 : 120,
-          mainAxisSpacing: AppSpacing.sm,
-          crossAxisSpacing: AppSpacing.sm,
-          childAspectRatio: 0.85,
-        ),
-        itemCount: files.length,
-        itemBuilder: (context, index) => AnimatedGridItem(
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+      itemCount: files.length,
+      itemBuilder: (context, index) {
+        final file = files[index];
+        return AnimatedListItem(
           index: index,
           child: FileItemWidget(
-            file: files[index],
-            isGridView: true,
-            onTap: () => _handleFileTap(files[index]),
-            onLongPress: () => _showFileOptions(context, files[index], isDark),
+            file: file,
+            isMultiSelectMode: isMultiSelectMode,
+            isSelected: selectedFiles.contains(file.path),
+            onTap: () => _handleFileTap(file),
+            onLongPress: () {
+              if (isMultiSelectMode) {
+                _toggleFileSelection(file.path);
+              } else {
+                _enterMultiSelectMode();
+                _toggleFileSelection(file.path);
+              }
+            },
           ),
-        ),
-      );
+        );
+      },
+    );
+  }
+
+  Widget _buildGrid(List<FileItem> files, bool isDark) {
+    final isMultiSelectMode = ref.watch(multiSelectModeProvider);
+    final selectedFiles = ref.watch(selectedFilesProvider);
+
+    return GridView.builder(
+      padding: AppSpacing.paddingMd,
+      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: context.isDesktop ? 160 : 120,
+        mainAxisSpacing: AppSpacing.sm,
+        crossAxisSpacing: AppSpacing.sm,
+        childAspectRatio: 0.85,
+      ),
+      itemCount: files.length,
+      itemBuilder: (context, index) {
+        final file = files[index];
+        return AnimatedGridItem(
+          index: index,
+          child: FileItemWidget(
+            file: file,
+            isGridView: true,
+            isMultiSelectMode: isMultiSelectMode,
+            isSelected: selectedFiles.contains(file.path),
+            onTap: () => _handleFileTap(file),
+            onLongPress: () {
+              if (isMultiSelectMode) {
+                _toggleFileSelection(file.path);
+              } else {
+                _enterMultiSelectMode();
+                _toggleFileSelection(file.path);
+              }
+            },
+          ),
+        );
+      },
+    );
+  }
 
   Widget _buildFab(bool isDark) => DecoratedBox(
       decoration: BoxDecoration(
@@ -657,11 +805,19 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
     );
 
   void _handleFileTap(FileItem file) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    if (file.isDirectory) {
-      ref.read(fileListProvider.notifier).loadDirectory(file.path);
+    final isMultiSelectMode = ref.read(multiSelectModeProvider);
+
+    if (isMultiSelectMode) {
+      // 多选模式下，点击切换选中状态
+      _toggleFileSelection(file.path);
     } else {
-      _showFileOptions(context, file, isDark);
+      // 正常模式
+      final isDark = Theme.of(context).brightness == Brightness.dark;
+      if (file.isDirectory) {
+        ref.read(fileListProvider.notifier).loadDirectory(file.path);
+      } else {
+        _showFileOptions(context, file, isDark);
+      }
     }
   }
 
@@ -757,7 +913,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
             title: '多选',
             onTap: () {
               Navigator.pop(context);
-              // TODO: 实现多选模式
+              _enterMultiSelectMode();
             },
           ),
         ],
@@ -1201,6 +1357,382 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
         ],
       ),
     );
+  }
+
+  void _showBatchDeleteConfirm(Set<String> selectedFiles, bool isDark) {
+    final count = selectedFiles.length;
+
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: isDark ? AppColors.darkSurface : null,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          '确认删除',
+          style: TextStyle(
+            color: isDark ? AppColors.darkOnSurface : null,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: Text(
+          '确定要删除选中的 $count 个项目吗？此操作无法撤销。',
+          style: TextStyle(
+            color: isDark ? AppColors.darkOnSurfaceVariant : null,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              '取消',
+              style: TextStyle(
+                color: isDark ? AppColors.darkOnSurfaceVariant : null,
+              ),
+            ),
+          ),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [AppColors.error, AppColors.errorDark],
+              ),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _batchDelete(selectedFiles);
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  child: Text(
+                    '删除',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _batchDelete(Set<String> paths) async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final fileNotifier = ref.read(fileListProvider.notifier);
+
+    var successCount = 0;
+    var failCount = 0;
+
+    for (final path in paths) {
+      try {
+        await fileNotifier.delete(path);
+        successCount++;
+      } on Exception {
+        failCount++;
+      }
+    }
+
+    _exitMultiSelectMode();
+    await fileNotifier.refresh();
+
+    if (!mounted) return;
+
+    if (failCount == 0) {
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text('已删除 $successCount 个项目'),
+          backgroundColor: isDark ? AppColors.darkSurfaceElevated : null,
+        ),
+      );
+    } else {
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text('删除完成：成功 $successCount 个，失败 $failCount 个'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+    }
+  }
+
+  void _showBatchOperations(BuildContext context, Set<String> selectedFiles, bool isDark) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => _buildBottomSheet(
+        context,
+        isDark,
+        title: '批量操作',
+        children: [
+          _buildActionTile(
+            context,
+            isDark,
+            icon: Icons.content_copy_rounded,
+            iconColor: AppColors.info,
+            title: '复制到...',
+            onTap: () {
+              Navigator.pop(context);
+              _showBatchDestinationPicker(selectedFiles, isDark, isCopy: true);
+            },
+          ),
+          _buildActionTile(
+            context,
+            isDark,
+            icon: Icons.drive_file_move_rounded,
+            iconColor: AppColors.accent,
+            title: '移动到...',
+            onTap: () {
+              Navigator.pop(context);
+              _showBatchDestinationPicker(selectedFiles, isDark, isCopy: false);
+            },
+          ),
+          _buildActionTile(
+            context,
+            isDark,
+            icon: Icons.download_rounded,
+            iconColor: AppColors.primary,
+            title: '下载',
+            onTap: () {
+              Navigator.pop(context);
+              _batchDownload(selectedFiles);
+            },
+          ),
+          _buildActionTile(
+            context,
+            isDark,
+            icon: Icons.delete_rounded,
+            iconColor: AppColors.error,
+            title: '删除',
+            titleColor: AppColors.error,
+            onTap: () {
+              Navigator.pop(context);
+              _showBatchDeleteConfirm(selectedFiles, isDark);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showBatchDestinationPicker(Set<String> selectedFiles, bool isDark, {required bool isCopy}) {
+    var selectedPath = '/';
+
+    showDialog<void>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          backgroundColor: isDark ? AppColors.darkSurface : null,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text(
+            isCopy ? '复制到' : '移动到',
+            style: TextStyle(
+              color: isDark ? AppColors.darkOnSurface : null,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            height: 400,
+            child: _DestinationBrowser(
+              initialPath: selectedPath,
+              isDark: isDark,
+              onPathChanged: (path) => setState(() => selectedPath = path),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(
+                '取消',
+                style: TextStyle(
+                  color: isDark ? AppColors.darkOnSurfaceVariant : null,
+                ),
+              ),
+            ),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: AppColors.primaryGradient,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () async {
+                    Navigator.pop(context);
+                    if (isCopy) {
+                      await _batchCopy(selectedFiles, selectedPath);
+                    } else {
+                      await _batchMove(selectedFiles, selectedPath);
+                    }
+                  },
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                    child: Text(
+                      isCopy ? '复制到此处' : '移动到此处',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _batchCopy(Set<String> paths, String destPath) async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final fileNotifier = ref.read(fileListProvider.notifier);
+
+    var successCount = 0;
+    var failCount = 0;
+
+    for (final path in paths) {
+      try {
+        await fileNotifier.copyTo(path, destPath);
+        successCount++;
+      } on Exception {
+        failCount++;
+      }
+    }
+
+    _exitMultiSelectMode();
+    await fileNotifier.refresh();
+
+    if (!mounted) return;
+
+    if (failCount == 0) {
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text('已复制 $successCount 个项目到 $destPath'),
+          backgroundColor: isDark ? AppColors.darkSurfaceElevated : null,
+        ),
+      );
+    } else {
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text('复制完成：成功 $successCount 个，失败 $failCount 个'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+    }
+  }
+
+  Future<void> _batchMove(Set<String> paths, String destPath) async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final fileNotifier = ref.read(fileListProvider.notifier);
+
+    var successCount = 0;
+    var failCount = 0;
+
+    for (final path in paths) {
+      try {
+        await fileNotifier.moveTo(path, destPath);
+        successCount++;
+      } on Exception {
+        failCount++;
+      }
+    }
+
+    _exitMultiSelectMode();
+    await fileNotifier.refresh();
+
+    if (!mounted) return;
+
+    if (failCount == 0) {
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text('已移动 $successCount 个项目到 $destPath'),
+          backgroundColor: isDark ? AppColors.darkSurfaceElevated : null,
+        ),
+      );
+    } else {
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text('移动完成：成功 $successCount 个，失败 $failCount 个'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+    }
+  }
+
+  Future<void> _batchDownload(Set<String> paths) async {
+    final connection = ref.read(selectedSourceConnectionProvider);
+    if (connection == null || !connection.adapter.isConnected) return;
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final fileState = ref.read(fileListProvider);
+
+    if (fileState is! FileListLoaded) return;
+
+    // 获取选中的文件（排除文件夹）
+    final files = fileState.files.where((f) => paths.contains(f.path) && !f.isDirectory).toList();
+
+    if (files.isEmpty) {
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: const Text('没有可下载的文件（文件夹不支持直接下载）'),
+          backgroundColor: isDark ? AppColors.darkSurfaceElevated : null,
+        ),
+      );
+      return;
+    }
+
+    var successCount = 0;
+    var failCount = 0;
+
+    for (final file in files) {
+      try {
+        final url = await connection.adapter.fileSystem.getFileUrl(file.path);
+        final service = ref.read(downloadServiceProvider);
+        final task = await service.addTask(url: url, fileName: file.name);
+        await service.startDownload(task.id);
+        successCount++;
+      } on Exception {
+        failCount++;
+      }
+    }
+
+    _exitMultiSelectMode();
+
+    if (!mounted) return;
+
+    if (failCount == 0) {
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text('已添加 $successCount 个下载任务'),
+          backgroundColor: isDark ? AppColors.darkSurfaceElevated : null,
+          action: SnackBarAction(
+            label: '查看',
+            textColor: AppColors.primary,
+            onPressed: () => showDownloadManager(context),
+          ),
+        ),
+      );
+    } else {
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text('下载任务添加完成：成功 $successCount 个，失败 $failCount 个'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+    }
   }
 
   Future<void> _downloadFile(FileItem file) async {

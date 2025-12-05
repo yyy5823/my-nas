@@ -33,7 +33,8 @@ class MediaLibraryPage extends ConsumerWidget {
     final isMobile = !kIsWeb && (Platform.isIOS || Platform.isAndroid);
 
     // 移动端始终使用固定Tab（平均分割），桌面端根据屏幕宽度决定
-    final useScrollableTab = !isMobile && MediaQuery.of(context).size.width < 500;
+    final useScrollableTab =
+        !isMobile && MediaQuery.of(context).size.width < 500;
 
     return DefaultTabController(
       length: MediaType.values.length,
@@ -42,13 +43,19 @@ class MediaLibraryPage extends ConsumerWidget {
           title: const Text('媒体库'),
           bottom: TabBar(
             isScrollable: useScrollableTab,
-            tabAlignment: useScrollableTab ? TabAlignment.start : TabAlignment.fill,
-            padding: useScrollableTab ? const EdgeInsets.symmetric(horizontal: 8) : EdgeInsets.zero,
+            tabAlignment: useScrollableTab
+                ? TabAlignment.start
+                : TabAlignment.fill,
+            padding: useScrollableTab
+                ? const EdgeInsets.symmetric(horizontal: 8)
+                : EdgeInsets.zero,
             labelPadding: useScrollableTab
                 ? const EdgeInsets.symmetric(horizontal: 12)
                 : const EdgeInsets.symmetric(horizontal: 4),
             indicatorSize: TabBarIndicatorSize.label,
-            dividerColor: isDark ? AppColors.darkOutline.withValues(alpha: 0.3) : null,
+            dividerColor: isDark
+                ? AppColors.darkOutline.withValues(alpha: 0.3)
+                : null,
             labelStyle: const TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
@@ -57,28 +64,34 @@ class MediaLibraryPage extends ConsumerWidget {
               fontSize: 12,
               fontWeight: FontWeight.normal,
             ),
-            tabs: MediaType.values.map((type) => Tab(
-                iconMargin: const EdgeInsets.only(bottom: 4),
-                icon: Icon(_getMediaTypeIcon(type), size: 20),
-                text: type.displayName,
-              )).toList(),
+            tabs: MediaType.values
+                .map(
+                  (type) => Tab(
+                    iconMargin: const EdgeInsets.only(bottom: 4),
+                    icon: Icon(_getMediaTypeIcon(type), size: 20),
+                    text: type.displayName,
+                  ),
+                )
+                .toList(),
           ),
         ),
         body: TabBarView(
-          children: MediaType.values.map((type) => _MediaTypeTab(mediaType: type)).toList(),
+          children: MediaType.values
+              .map((type) => _MediaTypeTab(mediaType: type))
+              .toList(),
         ),
       ),
     );
   }
 
   IconData _getMediaTypeIcon(MediaType type) => switch (type) {
-      MediaType.video => Icons.movie_outlined,
-      MediaType.music => Icons.music_note_outlined,
-      MediaType.photo => Icons.photo_library_outlined,
-      MediaType.comic => Icons.collections_outlined,
-      MediaType.book => Icons.book_outlined,
-      MediaType.note => Icons.note_outlined,
-    };
+    MediaType.video => Icons.movie_outlined,
+    MediaType.music => Icons.music_note_outlined,
+    MediaType.photo => Icons.photo_library_outlined,
+    MediaType.comic => Icons.collections_outlined,
+    MediaType.book => Icons.book_outlined,
+    MediaType.note => Icons.note_outlined,
+  };
 }
 
 class _MediaTypeTab extends ConsumerWidget {
@@ -122,7 +135,8 @@ class _MediaTypeTab extends ConsumerWidget {
                   child: SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
-                      onPressed: () => _addPath(context, ref, sources, connections),
+                      onPressed: () =>
+                          _addPath(context, ref, sources, connections),
                       icon: const Icon(Icons.add),
                       label: Text('添加${mediaType.displayName}目录'),
                     ),
@@ -168,69 +182,66 @@ class _MediaTypeTab extends ConsumerWidget {
   }
 
   Widget _buildNoSourcesState(BuildContext context) => Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.cloud_off_outlined,
-              size: 48,
+    child: Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.cloud_off_outlined,
+            size: 48,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(height: 16),
+          Text('尚未添加任何源', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          Text(
+            '请先在设置中添加 NAS 或其他源',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
-            const SizedBox(height: 16),
-            Text(
-              '尚未添加任何源',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '请先在设置中添加 NAS 或其他源',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
-    );
+    ),
+  );
 
   Widget _buildEmptyState(BuildContext context) => Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              _getEmptyIcon(),
-              size: 48,
+    child: Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            _getEmptyIcon(),
+            size: 48,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            '未配置${mediaType.displayName}目录',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '点击上方按钮添加目录',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
-            const SizedBox(height: 16),
-            Text(
-              '未配置${mediaType.displayName}目录',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '点击上方按钮添加目录',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
-    );
+    ),
+  );
 
   IconData _getEmptyIcon() => switch (mediaType) {
-      MediaType.video => Icons.video_library_outlined,
-      MediaType.music => Icons.library_music_outlined,
-      MediaType.photo => Icons.photo_library_outlined,
-      MediaType.comic => Icons.collections_bookmark_outlined,
-      MediaType.book => Icons.library_books_outlined,
-      MediaType.note => Icons.sticky_note_2_outlined,
-    };
+    MediaType.video => Icons.video_library_outlined,
+    MediaType.music => Icons.library_music_outlined,
+    MediaType.photo => Icons.photo_library_outlined,
+    MediaType.comic => Icons.collections_bookmark_outlined,
+    MediaType.book => Icons.library_books_outlined,
+    MediaType.note => Icons.sticky_note_2_outlined,
+  };
 
   void _addPath(
     BuildContext context,
@@ -245,11 +256,9 @@ class _MediaTypeTab extends ConsumerWidget {
     }).toList();
 
     if (connectedSources.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('没有已连接的源，请先连接一个源'),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('没有已连接的源，请先连接一个源')));
       return;
     }
 
@@ -271,9 +280,9 @@ class _MediaTypeTab extends ConsumerWidget {
               .addPath(mediaType, newPath);
           if (context.mounted) {
             Navigator.pop(context);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('已添加目录: $path')),
-            );
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text('已添加目录: $path')));
           }
         },
       ),
@@ -317,9 +326,7 @@ class _PathCard extends ConsumerWidget {
         ),
         title: Text(
           path.displayName,
-          style: TextStyle(
-            color: path.isEnabled ? null : Colors.grey,
-          ),
+          style: TextStyle(color: path.isEnabled ? null : Colors.grey),
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -356,7 +363,7 @@ class _PathCard extends ConsumerWidget {
               case 'toggle':
                 await ref
                     .read(mediaLibraryConfigProvider.notifier)
-                    .togglePath(mediaType, path.id, !path.isEnabled);
+                    .togglePath(mediaType, path.id, enabled: !path.isEnabled);
               case 'delete':
                 final confirm = await showDialog<bool>(
                   context: context,
@@ -387,7 +394,9 @@ class _PathCard extends ConsumerWidget {
               value: 'toggle',
               child: Row(
                 children: [
-                  Icon(path.isEnabled ? Icons.visibility_off : Icons.visibility),
+                  Icon(
+                    path.isEnabled ? Icons.visibility_off : Icons.visibility,
+                  ),
                   const SizedBox(width: 12),
                   Text(path.isEnabled ? '停用' : '启用'),
                 ],
@@ -435,11 +444,12 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
     super.initState();
     // 监听视频扫描进度
     if (widget.mediaType == MediaType.video) {
-      _progressSubscription = VideoScannerService.instance.progressStream.listen((progress) {
-        if (mounted) {
-          setState(() => _videoScanProgress = progress);
-        }
-      });
+      _progressSubscription = VideoScannerService.instance.progressStream
+          .listen((progress) {
+            if (mounted) {
+              setState(() => _videoScanProgress = progress);
+            }
+          });
     }
   }
 
@@ -461,7 +471,8 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
     });
 
     // 根据媒体类型获取状态和缓存信息
-    final (isLoading, scanProgress, currentFolder, cacheInfo) = _getMediaState();
+    final (isLoading, scanProgress, currentFolder, cacheInfo) =
+        _getMediaState();
 
     // 获取图标和标题
     final (icon, title, scanButtonText) = _getMediaInfo();
@@ -488,11 +499,7 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
                   color: AppColors.primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Icon(
-                  icon,
-                  size: 20,
-                  color: AppColors.primary,
-                ),
+                child: Icon(icon, size: 20, color: AppColors.primary),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -570,20 +577,18 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
                     foregroundColor: Colors.white,
-                    disabledBackgroundColor: isDark ? Colors.grey[800] : Colors.grey[300],
+                    disabledBackgroundColor: isDark
+                        ? Colors.grey[800]
+                        : Colors.grey[300],
                   ),
                 ),
               ),
               const SizedBox(width: 12),
               OutlinedButton.icon(
-                onPressed: isLoading
-                    ? null
-                    : _clearCache,
+                onPressed: isLoading ? null : _clearCache,
                 icon: const Icon(Icons.delete_outline),
                 label: const Text('清除缓存'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.red,
-                ),
+                style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
               ),
             ],
           ),
@@ -623,7 +628,11 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
         // 使用 VideoScannerService 的进度
         final scannerIsScanning = VideoScannerService.instance.isScanning;
         final progress = _videoScanProgress;
-        final isLoading = scannerIsScanning || (progress != null && progress.phase != VideoScanPhase.completed && progress.phase != VideoScanPhase.error);
+        final isLoading =
+            scannerIsScanning ||
+            (progress != null &&
+                progress.phase != VideoScanPhase.completed &&
+                progress.phase != VideoScanPhase.error);
         final scanProgress = progress?.progress ?? 0.0;
         final folder = progress?.description;
         final cacheInfo = VideoLibraryCacheService.instance.getCacheInfo();
@@ -635,8 +644,8 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
         // 使用元数据提取进度（如果在提取元数据阶段）
         final progress = state is MusicListLoading
             ? (state.phase == MusicScanPhase.metadata
-                ? state.metadataProgress
-                : state.progress)
+                  ? state.metadataProgress
+                  : state.progress)
             : 0.0;
         final folder = state is MusicListLoading ? state.currentFolder : null;
         final cacheInfo = MusicLibraryCacheService.instance.getCacheInfo();
@@ -701,13 +710,21 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
           // 扫描完成后，通知 VideoListNotifier 重新加载缓存
           await ref.read(videoListProvider.notifier).reloadFromCache();
         case MediaType.music:
-          await ref.read(musicListProvider.notifier).loadMusic(forceRefresh: true);
+          await ref
+              .read(musicListProvider.notifier)
+              .loadMusic(forceRefresh: true);
         case MediaType.photo:
-          await ref.read(photoListProvider.notifier).loadPhotos(forceRefresh: true);
+          await ref
+              .read(photoListProvider.notifier)
+              .loadPhotos(forceRefresh: true);
         case MediaType.comic:
-          await ref.read(comicListProvider.notifier).loadComics(forceRefresh: true);
+          await ref
+              .read(comicListProvider.notifier)
+              .loadComics(forceRefresh: true);
         case MediaType.book:
-          await ref.read(bookListProvider.notifier).loadBooks(forceRefresh: true);
+          await ref
+              .read(bookListProvider.notifier)
+              .loadBooks(forceRefresh: true);
         case MediaType.note:
           break;
       }
@@ -717,8 +734,7 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
         );
       }
     } finally {
-      if (mounted) {
-      }
+      if (mounted) {}
     }
   }
 
@@ -735,9 +751,7 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.red,
-            ),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('清除'),
           ),
         ],

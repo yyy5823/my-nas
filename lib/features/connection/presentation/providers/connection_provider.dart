@@ -164,13 +164,13 @@ class ConnectionStateNotifier extends StateNotifier<NasConnectionState> {
         username: username,
         password: password,
       );
-      await authStorage.setRememberLogin(true);
+      await authStorage.setRememberLogin(value: true);
     }
 
     // 保存设备ID
     if (_rememberDevice && deviceId != null) {
       await authStorage.saveDeviceId(connectionId, deviceId);
-      await authStorage.setRememberDevice(true);
+      await authStorage.setRememberDevice(value: true);
     }
   }
 
@@ -222,7 +222,7 @@ class ConnectionStateNotifier extends StateNotifier<NasConnectionState> {
                 deviceId != null &&
                 _currentConnectionId != null) {
               authStorage..saveDeviceId(_currentConnectionId!, deviceId)
-              ..setRememberDevice(true);
+              ..setRememberDevice(value: true);
             }
 
             // 如果记住登录，也需要在 2FA 成功后保存凭证
@@ -232,7 +232,7 @@ class ConnectionStateNotifier extends StateNotifier<NasConnectionState> {
                 username: adapter.connection!.username,
                 password: adapter.connection!.password,
               )
-              ..setRememberLogin(true);
+              ..setRememberLogin(value: true);
             }
 
             return ConnectionConnected(

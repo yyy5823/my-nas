@@ -93,7 +93,9 @@ class PlaybackSettingsSheet extends ConsumerWidget {
                     title: const Text('自动播放下一个'),
                     subtitle: const Text('播放完成后自动播放列表中的下一个视频'),
                     value: settings.autoPlayNext,
-                    onChanged: notifier.setAutoPlayNext,
+                    onChanged: (value) {
+                      notifier.setAutoPlayNext(enabled: value);
+                    },
                     contentPadding: EdgeInsets.zero,
                   ),
 
@@ -104,7 +106,9 @@ class PlaybackSettingsSheet extends ConsumerWidget {
                     title: const Text('记住播放位置'),
                     subtitle: const Text('下次打开时从上次位置继续播放'),
                     value: settings.rememberPosition,
-                    onChanged: notifier.setRememberPosition,
+                    onChanged: (value) {
+                      notifier.setRememberPosition(enabled: value); // 这里的名字要和你定义的一样
+                    },
                     contentPadding: EdgeInsets.zero,
                   ),
 

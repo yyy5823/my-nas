@@ -14,6 +14,15 @@ class MusicSettings {
     this.gaplessPlayback = true,
   });
 
+  factory MusicSettings.fromMap(Map<dynamic, dynamic> map) => MusicSettings(
+        volume: (map['volume'] as num?)?.toDouble() ?? 1.0,
+        playMode: PlayMode.values[map['playMode'] as int? ?? 0],
+        crossfadeDuration: map['crossfadeDuration'] as int? ?? 0,
+        autoPlayOnConnect: map['autoPlayOnConnect'] as bool? ?? false,
+        showLyrics: map['showLyrics'] as bool? ?? true,
+        gaplessPlayback: map['gaplessPlayback'] as bool? ?? true,
+      );
+
   final double volume;
   final PlayMode playMode;
   final int crossfadeDuration; // 淡入淡出秒数 (0 表示关闭)
@@ -46,15 +55,6 @@ class MusicSettings {
         'showLyrics': showLyrics,
         'gaplessPlayback': gaplessPlayback,
       };
-
-  factory MusicSettings.fromMap(Map<dynamic, dynamic> map) => MusicSettings(
-        volume: (map['volume'] as num?)?.toDouble() ?? 1.0,
-        playMode: PlayMode.values[map['playMode'] as int? ?? 0],
-        crossfadeDuration: map['crossfadeDuration'] as int? ?? 0,
-        autoPlayOnConnect: map['autoPlayOnConnect'] as bool? ?? false,
-        showLyrics: map['showLyrics'] as bool? ?? true,
-        gaplessPlayback: map['gaplessPlayback'] as bool? ?? true,
-      );
 }
 
 /// 音乐设置管理
@@ -117,19 +117,19 @@ class MusicSettingsNotifier extends StateNotifier<MusicSettings> {
   }
 
   /// 设置连接后自动播放
-  Future<void> setAutoPlayOnConnect(bool enabled) async {
+  Future<void> setAutoPlayOnConnect({required bool enabled}) async {
     state = state.copyWith(autoPlayOnConnect: enabled);
     await _save();
   }
 
   /// 设置显示歌词
-  Future<void> setShowLyrics(bool enabled) async {
+  Future<void> setShowLyrics({required bool enabled}) async {
     state = state.copyWith(showLyrics: enabled);
     await _save();
   }
 
   /// 设置无缝播放
-  Future<void> setGaplessPlayback(bool enabled) async {
+  Future<void> setGaplessPlayback({required bool enabled}) async {
     state = state.copyWith(gaplessPlayback: enabled);
     await _save();
   }

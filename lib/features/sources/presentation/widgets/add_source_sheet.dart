@@ -417,7 +417,7 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
         host: isLocal ? 'localhost' : _hostController.text.trim(),
         port: isLocal ? 0 : int.parse(_portController.text.trim()),
         username: isLocal ? 'local' : _usernameController.text.trim(),
-        useSsl: isLocal ? false : _useSsl,
+        useSsl: !isLocal && _useSsl,
         autoConnect: _autoConnect,
         rememberDevice: _rememberDevice,
       );

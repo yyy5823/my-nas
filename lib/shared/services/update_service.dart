@@ -327,10 +327,11 @@ class UpdateService extends ChangeNotifier {
     final platformPatterns = _getPlatformPatterns();
 
     for (final asset in assets) {
+      if (asset is! Map<String, dynamic>) continue;
       final name = (asset['name'] as String).toLowerCase();
       for (final pattern in platformPatterns) {
         if (name.contains(pattern)) {
-          return asset as Map<String, dynamic>;
+          return asset;
         }
       }
     }

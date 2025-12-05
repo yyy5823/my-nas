@@ -27,14 +27,15 @@ import 'package:my_nas/shared/widgets/media_setup_widget.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// 笔记页面状态
-final notePageProvider =
-    StateNotifierProvider<NotePageNotifier, NotePageState>(
-        NotePageNotifier.new);
+final notePageProvider = StateNotifierProvider<NotePageNotifier, NotePageState>(
+  NotePageNotifier.new,
+);
 
 sealed class NotePageState {}
 
 class NotePageLoading extends NotePageState {
   NotePageLoading({this.message});
+
   final String? message;
 }
 
@@ -75,19 +76,20 @@ class NotePageLoaded extends NotePageState {
     bool? livePreview,
     bool clearSelection = false,
   }) => NotePageLoaded(
-      treeNodes: treeNodes ?? this.treeNodes,
-      selectedNode: clearSelection ? null : (selectedNode ?? this.selectedNode),
-      content: clearSelection ? null : (content ?? this.content),
-      tasks: tasks ?? this.tasks,
-      isEditing: isEditing ?? this.isEditing,
-      hasChanges: hasChanges ?? this.hasChanges,
-      isLoadingContent: isLoadingContent ?? this.isLoadingContent,
-      livePreview: livePreview ?? this.livePreview,
-    );
+    treeNodes: treeNodes ?? this.treeNodes,
+    selectedNode: clearSelection ? null : (selectedNode ?? this.selectedNode),
+    content: clearSelection ? null : (content ?? this.content),
+    tasks: tasks ?? this.tasks,
+    isEditing: isEditing ?? this.isEditing,
+    hasChanges: hasChanges ?? this.hasChanges,
+    isLoadingContent: isLoadingContent ?? this.isLoadingContent,
+    livePreview: livePreview ?? this.livePreview,
+  );
 }
 
 class NotePageError extends NotePageState {
   NotePageError(this.message);
+
   final String message;
 }
 
@@ -96,14 +98,18 @@ class NotePageNotifier extends StateNotifier<NotePageState> {
     loadTree();
 
     // 监听连接状态变化，自动刷新
-    _ref.listen<Map<String, SourceConnection>>(activeConnectionsProvider,
-        (previous, next) {
-      final prevConnected = previous?.values
+    _ref.listen<Map<String, SourceConnection>>(activeConnectionsProvider, (
+      previous,
+      next,
+    ) {
+      final prevConnected =
+          previous?.values
               .where((c) => c.status == SourceStatus.connected)
               .length ??
           0;
-      final nextConnected =
-          next.values.where((c) => c.status == SourceStatus.connected).length;
+      final nextConnected = next.values
+          .where((c) => c.status == SourceStatus.connected)
+          .length;
 
       if (nextConnected > prevConnected && state is NotePageNotConnected) {
         loadTree();
@@ -205,8 +211,9 @@ class NotePageNotifier extends StateNotifier<NotePageState> {
       // 先排序：文件夹在前，文件在后，各自按名称排序
       final folders = items.where((i) => i.isDirectory).toList()
         ..sort((a, b) => a.name.compareTo(b.name));
-      final files = items.where((i) => !i.isDirectory && _isNoteFile(i.name)).toList()
-        ..sort((a, b) => a.name.compareTo(b.name));
+      final files =
+          items.where((i) => !i.isDirectory && _isNoteFile(i.name)).toList()
+            ..sort((a, b) => a.name.compareTo(b.name));
 
       for (final item in folders) {
         // 跳过隐藏文件夹
@@ -216,12 +223,14 @@ class NotePageNotifier extends StateNotifier<NotePageState> {
           continue;
         }
 
-        nodes.add(NoteTreeNode(
-          name: item.name,
-          path: item.path,
-          type: NoteTreeNodeType.folder,
-          sourceId: sourceId,
-        ));
+        nodes.add(
+          NoteTreeNode(
+            name: item.name,
+            path: item.path,
+            type: NoteTreeNodeType.folder,
+            sourceId: sourceId,
+          ),
+        );
       }
 
       for (final item in files) {
@@ -229,13 +238,15 @@ class NotePageNotifier extends StateNotifier<NotePageState> {
         if (item.name.startsWith('.')) continue;
 
         // 不在此处获取URL，等用户点击时再获取
-        nodes.add(NoteTreeNode(
-          name: item.name,
-          path: item.path,
-          type: NoteTreeNodeType.file,
-          sourceId: sourceId,
-          fileItem: item,
-        ));
+        nodes.add(
+          NoteTreeNode(
+            name: item.name,
+            path: item.path,
+            type: NoteTreeNodeType.file,
+            sourceId: sourceId,
+            fileItem: item,
+          ),
+        );
       }
 
       return nodes;
@@ -258,20 +269,25 @@ class NotePageNotifier extends StateNotifier<NotePageState> {
     if (current is! NotePageLoaded) return;
 
     // 递归更新节点的展开状态
-    List<NoteTreeNode> updateNode(List<NoteTreeNode> nodes, String targetPath, bool expanded, List<NoteTreeNode>? newChildren) => nodes.map((n) {
-        if (n.path == targetPath) {
-          return n.copyWith(
-            isExpanded: expanded,
-            children: newChildren ?? n.children,
-          );
-        }
-        if (n.children.isNotEmpty) {
-          return n.copyWith(
-            children: updateNode(n.children, targetPath, expanded, newChildren),
-          );
-        }
-        return n;
-      }).toList();
+    List<NoteTreeNode> updateNode(
+      List<NoteTreeNode> nodes,
+      String targetPath,
+      bool expanded,
+      List<NoteTreeNode>? newChildren,
+    ) => nodes.map((n) {
+      if (n.path == targetPath) {
+        return n.copyWith(
+          isExpanded: expanded,
+          children: newChildren ?? n.children,
+        );
+      }
+      if (n.children.isNotEmpty) {
+        return n.copyWith(
+          children: updateNode(n.children, targetPath, expanded, newChildren),
+        );
+      }
+      return n;
+    }).toList();
 
     if (!node.isExpanded && node.children.isEmpty) {
       // 需要加载子节点
@@ -288,7 +304,12 @@ class NotePageNotifier extends StateNotifier<NotePageState> {
       state = current.copyWith(treeNodes: newTree);
     } else {
       // 只切换展开状态
-      final newTree = updateNode(current.treeNodes, node.path, !node.isExpanded, null);
+      final newTree = updateNode(
+        current.treeNodes,
+        node.path,
+        !node.isExpanded,
+        null,
+      );
       state = current.copyWith(treeNodes: newTree);
     }
   }
@@ -352,7 +373,9 @@ class NotePageNotifier extends StateNotifier<NotePageState> {
       }
 
       // 只有任务文件才解析任务
-      final tasks = node.isTaskFile ? MarkdownParser.parseTasks(content) : <TaskItem>[];
+      final tasks = node.isTaskFile
+          ? MarkdownParser.parseTasks(content)
+          : <TaskItem>[];
 
       state = (state as NotePageLoaded).copyWith(
         content: content,
@@ -368,7 +391,7 @@ class NotePageNotifier extends StateNotifier<NotePageState> {
   }
 
   /// 进入编辑模式
-  void setEditing(bool editing) {
+  void setEditing({required bool editing}) {
     final current = state;
     if (current is NotePageLoaded) {
       state = current.copyWith(isEditing: editing);
@@ -405,14 +428,18 @@ class NotePageNotifier extends StateNotifier<NotePageState> {
     if (index >= current.tasks.length) return;
 
     final task = current.tasks[index];
-    final newStatus =
-        task.isCompleted ? TaskStatus.pending : TaskStatus.completed;
+    final newStatus = task.isCompleted
+        ? TaskStatus.pending
+        : TaskStatus.completed;
     final newTasks = [...current.tasks];
     newTasks[index] = task.copyWith(status: newStatus);
 
     // 更新 Markdown 内容中对应的任务状态
-    final newContent =
-        _updateTaskInContent(current.content ?? '', index, newStatus);
+    final newContent = _updateTaskInContent(
+      current.content ?? '',
+      index,
+      newStatus,
+    );
 
     state = current.copyWith(
       tasks: newTasks,
@@ -422,7 +449,10 @@ class NotePageNotifier extends StateNotifier<NotePageState> {
   }
 
   String _updateTaskInContent(
-      String content, int taskIndex, TaskStatus newStatus) {
+    String content,
+    int taskIndex,
+    TaskStatus newStatus,
+  ) {
     final lines = content.split('\n');
     var currentTaskIndex = 0;
 
@@ -476,7 +506,8 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
   final _layoutService = NoteLayoutService.instance;
 
   /// 判断是否为移动端布局
-  bool _isMobileLayout(BuildContext context) => MediaQuery.of(context).size.width < _mobileBreakpoint;
+  bool _isMobileLayout(BuildContext context) =>
+      MediaQuery.of(context).size.width < _mobileBreakpoint;
 
   @override
   void initState() {
@@ -488,13 +519,16 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
     await _layoutService.init();
     setState(() {
       _isSidebarCollapsed = _layoutService.isSidebarCollapsed;
-      _sidebarWidth = _layoutService.sidebarWidth.clamp(_minSidebarWidth, _maxSidebarWidth);
+      _sidebarWidth = _layoutService.sidebarWidth.clamp(
+        _minSidebarWidth,
+        _maxSidebarWidth,
+      );
     });
   }
 
   void _setSidebarCollapsed(bool collapsed) {
     setState(() => _isSidebarCollapsed = collapsed);
-    _layoutService.setSidebarCollapsed(collapsed);
+    _layoutService.setSidebarCollapsed(collapsed: collapsed);
   }
 
   void _setSidebarWidth(double width) {
@@ -526,25 +560,25 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
           Expanded(
             child: switch (state) {
               NotePageLoading(:final message) => Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      CircularProgressIndicator(color: AppColors.primary),
-                      if (message != null) ...[
-                        const SizedBox(height: 16),
-                        Text(message),
-                      ],
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(color: AppColors.primary),
+                    if (message != null) ...[
+                      const SizedBox(height: 16),
+                      Text(message),
                     ],
-                  ),
+                  ],
                 ),
+              ),
               NotePageNotConnected() => const MediaSetupWidget(
-                  mediaType: MediaType.note,
-                  icon: Icons.note_outlined,
-                ),
+                mediaType: MediaType.note,
+                icon: Icons.note_outlined,
+              ),
               NotePageError(:final message) => AppErrorWidget(
-                  message: message,
-                  onRetry: () => ref.read(notePageProvider.notifier).loadTree(),
-                ),
+                message: message,
+                onRetry: () => ref.read(notePageProvider.notifier).loadTree(),
+              ),
               NotePageLoaded(:final treeNodes) when treeNodes.isEmpty =>
                 _buildEmptyState(context, ref, isDark),
               NotePageLoaded() => _buildMainLayout(context, state, isDark),
@@ -555,71 +589,73 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
     );
   }
 
-  Widget _buildEmptyState(BuildContext context, WidgetRef ref, bool isDark) => Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 100,
-              height: 100,
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.12),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.note_alt_rounded,
-                size: 50,
-                color: AppColors.primary,
-              ),
+  Widget _buildEmptyState(
+    BuildContext context,
+    WidgetRef ref,
+    bool isDark,
+  ) => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 100,
+            height: 100,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
             ),
-            const SizedBox(height: 24),
-            Text(
-              '笔记库为空',
-              style: context.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: isDark ? Colors.white : null,
-              ),
+            child: Icon(
+              Icons.note_alt_rounded,
+              size: 50,
+              color: AppColors.primary,
             ),
-            const SizedBox(height: 12),
-            Text(
-              '请在媒体库设置中配置笔记目录并扫描',
-              style: context.textTheme.bodyMedium?.copyWith(
-                color: isDark ? Colors.grey[400] : Colors.grey,
-              ),
-              textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 24),
+          Text(
+            '笔记库为空',
+            style: context.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: isDark ? Colors.white : null,
             ),
-            const SizedBox(height: 32),
-            ElevatedButton.icon(
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute<void>(builder: (_) => const MediaLibraryPage()),
-              ),
-              icon: const Icon(Icons.folder_open_rounded),
-              label: const Text('媒体库设置'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
-              ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            '请在媒体库设置中配置笔记目录并扫描',
+            style: context.textTheme.bodyMedium?.copyWith(
+              color: isDark ? Colors.grey[400] : Colors.grey,
             ),
-            const SizedBox(height: 16),
-            TextButton.icon(
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute<void>(builder: (_) => const SourcesPage()),
-              ),
-              icon: const Icon(Icons.cloud_rounded),
-              label: const Text('连接管理'),
-              style: TextButton.styleFrom(
-                foregroundColor: AppColors.primary,
-              ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 32),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(builder: (_) => const MediaLibraryPage()),
             ),
-          ],
-        ),
+            icon: const Icon(Icons.folder_open_rounded),
+            label: const Text('媒体库设置'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextButton.icon(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(builder: (_) => const SourcesPage()),
+            ),
+            icon: const Icon(Icons.cloud_rounded),
+            label: const Text('连接管理'),
+            style: TextButton.styleFrom(foregroundColor: AppColors.primary),
+          ),
+        ],
       ),
-    );
+    ),
+  );
 
   Widget _buildAppBar(
     BuildContext context,
@@ -660,7 +696,10 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
               if (noteCount > 0)
                 Container(
                   margin: const EdgeInsets.only(left: 8),
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.primary.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(10),
@@ -708,30 +747,31 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
     required bool isDark,
     String? tooltip,
   }) => Tooltip(
-      message: tooltip ?? '',
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(8),
-          child: Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(
-              icon,
-              color: isDark ? AppColors.darkOnSurfaceVariant : null,
-              size: 22,
-            ),
+    message: tooltip ?? '',
+    child: Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(8)),
+          child: Icon(
+            icon,
+            color: isDark ? AppColors.darkOnSurfaceVariant : null,
+            size: 22,
           ),
         ),
       ),
-    );
+    ),
+  );
 
   Widget _buildMainLayout(
-      BuildContext context, NotePageLoaded state, bool isDark) {
+    BuildContext context,
+    NotePageLoaded state,
+    bool isDark,
+  ) {
     // 移动端布局：使用堆叠式导航
     if (_isMobileLayout(context)) {
       return _buildMobileLayout(context, state, isDark);
@@ -747,19 +787,19 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
           _buildResizeHandle(isDark),
         ],
         // 展开按钮（当侧边栏收起时显示）
-        if (_isSidebarCollapsed)
-          _buildExpandButton(isDark),
+        if (_isSidebarCollapsed) _buildExpandButton(isDark),
         // 右侧内容区
-        Expanded(
-          child: _buildContentArea(context, state, isDark),
-        ),
+        Expanded(child: _buildContentArea(context, state, isDark)),
       ],
     );
   }
 
   /// 移动端布局：堆叠式导航
   Widget _buildMobileLayout(
-      BuildContext context, NotePageLoaded state, bool isDark) {
+    BuildContext context,
+    NotePageLoaded state,
+    bool isDark,
+  ) {
     // 如果已选中笔记，显示内容页面
     if (state.selectedNode != null) {
       return _buildMobileContentView(context, state, isDark);
@@ -771,42 +811,49 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
 
   /// 移动端目录树视图
   Widget _buildMobileTreeView(
-      BuildContext context, NotePageLoaded state, bool isDark) => NoteTreeWidget(
-      nodes: state.treeNodes,
-      selectedPath: state.selectedNode?.path,
-      onNodeSelected: (node) =>
-          ref.read(notePageProvider.notifier).selectFile(node),
-      onFolderToggle: (node) =>
-          ref.read(notePageProvider.notifier).toggleFolder(node),
-      onFolderLoad: (node) =>
-          ref.read(notePageProvider.notifier).toggleFolder(node),
-      isDark: isDark,
-    );
+    BuildContext context,
+    NotePageLoaded state,
+    bool isDark,
+  ) => NoteTreeWidget(
+    nodes: state.treeNodes,
+    selectedPath: state.selectedNode?.path,
+    onNodeSelected: (node) =>
+        ref.read(notePageProvider.notifier).selectFile(node),
+    onFolderToggle: (node) =>
+        ref.read(notePageProvider.notifier).toggleFolder(node),
+    onFolderLoad: (node) =>
+        ref.read(notePageProvider.notifier).toggleFolder(node),
+    isDark: isDark,
+  );
 
   /// 移动端内容视图（带返回按钮）
   Widget _buildMobileContentView(
-      BuildContext context, NotePageLoaded state, bool isDark) => Column(
-      children: [
-        // 移动端顶部工具栏（带返回按钮）
-        _buildMobileContentHeader(context, state, isDark),
-        // 内容区
-        Expanded(
-          child: state.isLoadingContent
-              ? Center(
-                  child: CircularProgressIndicator(color: AppColors.primary),
-                )
-              : state.isEditing
-                  ? (state.livePreview
-                      ? _buildMobileEditorWithPreview(context, state, isDark)
-                      : _buildEditorOnly(context, state, isDark))
-                  : _buildPreview(context, state, isDark),
-        ),
-      ],
-    );
+    BuildContext context,
+    NotePageLoaded state,
+    bool isDark,
+  ) => Column(
+    children: [
+      // 移动端顶部工具栏（带返回按钮）
+      _buildMobileContentHeader(context, state, isDark),
+      // 内容区
+      Expanded(
+        child: state.isLoadingContent
+            ? Center(child: CircularProgressIndicator(color: AppColors.primary))
+            : state.isEditing
+            ? (state.livePreview
+                  ? _buildMobileEditorWithPreview(context, state, isDark)
+                  : _buildEditorOnly(context, state, isDark))
+            : _buildPreview(context, state, isDark),
+      ),
+    ],
+  );
 
   /// 移动端内容头部（带返回按钮）
   Widget _buildMobileContentHeader(
-      BuildContext context, NotePageLoaded state, bool isDark) {
+    BuildContext context,
+    NotePageLoaded state,
+    bool isDark,
+  ) {
     final node = state.selectedNode!;
 
     return Container(
@@ -829,7 +876,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
             IconButton(
               onPressed: () {
                 // 清除选中状态，返回目录
-                ref.read(notePageProvider.notifier).setEditing(false);
+                ref.read(notePageProvider.notifier).setEditing(editing: false);
                 // 重新加载树来清除选中
                 ref.read(notePageProvider.notifier).loadTree();
               },
@@ -842,7 +889,9 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
             const SizedBox(width: 4),
             // 文件图标
             Icon(
-              node.isTaskFile ? Icons.checklist_rounded : Icons.article_outlined,
+              node.isTaskFile
+                  ? Icons.checklist_rounded
+                  : Icons.article_outlined,
               size: 20,
               color: node.isTaskFile ? Colors.orange : AppColors.primary,
             ),
@@ -873,31 +922,33 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
   }
 
   /// 移动端模式切换（简化版）
-  Widget _buildMobileModeTabs(NotePageLoaded state, bool isDark) => DecoratedBox(
-      decoration: BoxDecoration(
-        color: isDark
-            ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
-            : Colors.grey.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _buildMobileModeButton(
-            icon: Icons.visibility_rounded,
-            isSelected: !state.isEditing,
-            onTap: () => ref.read(notePageProvider.notifier).setEditing(false),
-            isDark: isDark,
-          ),
-          _buildMobileModeButton(
-            icon: Icons.edit_rounded,
-            isSelected: state.isEditing,
-            onTap: () => ref.read(notePageProvider.notifier).setEditing(true),
-            isDark: isDark,
-          ),
-        ],
-      ),
-    );
+  Widget _buildMobileModeTabs(NotePageLoaded state, bool isDark) =>
+      DecoratedBox(
+        decoration: BoxDecoration(
+          color: isDark
+              ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
+              : Colors.grey.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildMobileModeButton(
+              icon: Icons.visibility_rounded,
+              isSelected: !state.isEditing,
+              onTap: () =>
+                  ref.read(notePageProvider.notifier).setEditing(editing: false),
+              isDark: isDark,
+            ),
+            _buildMobileModeButton(
+              icon: Icons.edit_rounded,
+              isSelected: state.isEditing,
+              onTap: () => ref.read(notePageProvider.notifier).setEditing(editing: true),
+              isDark: isDark,
+            ),
+          ],
+        ),
+      );
 
   Widget _buildMobileModeButton({
     required IconData icon,
@@ -905,30 +956,33 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
     required VoidCallback onTap,
     required bool isDark,
   }) => Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: isSelected ? AppColors.primary.withValues(alpha: 0.15) : null,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(
-            icon,
-            size: 18,
-            color: isSelected
-                ? AppColors.primary
-                : (isDark ? AppColors.darkOnSurfaceVariant : Colors.grey),
-          ),
+    color: Colors.transparent,
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.primary.withValues(alpha: 0.15) : null,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(
+          icon,
+          size: 18,
+          color: isSelected
+              ? AppColors.primary
+              : (isDark ? AppColors.darkOnSurfaceVariant : Colors.grey),
         ),
       ),
-    );
+    ),
+  );
 
   /// 移动端编辑器带预览（上下布局）
   Widget _buildMobileEditorWithPreview(
-      BuildContext context, NotePageLoaded state, bool isDark) {
+    BuildContext context,
+    NotePageLoaded state,
+    bool isDark,
+  ) {
     // 初始化编辑器内容
     if (_editController.text != state.content && !state.hasChanges) {
       _editController.text = state.content ?? '';
@@ -987,8 +1041,10 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
               children: [
                 // 预览标题栏
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: isDark
                         ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
@@ -1042,146 +1098,150 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
   }
 
   Widget _buildSidebar(
-      BuildContext context, NotePageLoaded state, bool isDark) => Container(
-      width: _sidebarWidth,
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
-        border: Border(
-          right: BorderSide(
-            color: isDark
-                ? AppColors.darkOutline.withValues(alpha: 0.2)
-                : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
-          ),
+    BuildContext context,
+    NotePageLoaded state,
+    bool isDark,
+  ) => Container(
+    width: _sidebarWidth,
+    decoration: BoxDecoration(
+      color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
+      border: Border(
+        right: BorderSide(
+          color: isDark
+              ? AppColors.darkOutline.withValues(alpha: 0.2)
+              : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
         ),
       ),
-      child: Column(
-        children: [
-          // 标题栏
-          _buildSidebarHeader(context, isDark),
-          // 目录树
-          Expanded(
-            child: NoteTreeWidget(
-              nodes: state.treeNodes,
-              selectedPath: state.selectedNode?.path,
-              onNodeSelected: (node) =>
-                  ref.read(notePageProvider.notifier).selectFile(node),
-              onFolderToggle: (node) =>
-                  ref.read(notePageProvider.notifier).toggleFolder(node),
-              onFolderLoad: (node) =>
-                  ref.read(notePageProvider.notifier).toggleFolder(node),
-              isDark: isDark,
-            ),
+    ),
+    child: Column(
+      children: [
+        // 标题栏
+        _buildSidebarHeader(context, isDark),
+        // 目录树
+        Expanded(
+          child: NoteTreeWidget(
+            nodes: state.treeNodes,
+            selectedPath: state.selectedNode?.path,
+            onNodeSelected: (node) =>
+                ref.read(notePageProvider.notifier).selectFile(node),
+            onFolderToggle: (node) =>
+                ref.read(notePageProvider.notifier).toggleFolder(node),
+            onFolderLoad: (node) =>
+                ref.read(notePageProvider.notifier).toggleFolder(node),
+            isDark: isDark,
           ),
-        ],
-      ),
-    );
+        ),
+      ],
+    ),
+  );
 
   Widget _buildSidebarHeader(BuildContext context, bool isDark) => Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(
-            color: isDark
-                ? AppColors.darkOutline.withValues(alpha: 0.2)
-                : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
-          ),
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+    decoration: BoxDecoration(
+      border: Border(
+        bottom: BorderSide(
+          color: isDark
+              ? AppColors.darkOutline.withValues(alpha: 0.2)
+              : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
         ),
       ),
-      child: SafeArea(
-        bottom: false,
-        child: Row(
-          children: [
-            Icon(
-              Icons.folder_rounded,
+    ),
+    child: SafeArea(
+      bottom: false,
+      child: Row(
+        children: [
+          Icon(
+            Icons.folder_rounded,
+            size: 20,
+            color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '笔记',
+            style: context.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: isDark ? AppColors.darkOnSurface : null,
+            ),
+          ),
+          const Spacer(),
+          // 收起按钮
+          IconButton(
+            onPressed: () => _setSidebarCollapsed(true),
+            icon: Icon(
+              Icons.chevron_left_rounded,
               size: 20,
               color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey,
             ),
-            const SizedBox(width: 8),
-            Text(
-              '笔记',
-              style: context.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: isDark ? AppColors.darkOnSurface : null,
-              ),
-            ),
-            const Spacer(),
-            // 收起按钮
-            IconButton(
-              onPressed: () => _setSidebarCollapsed(true),
-              icon: Icon(
-                Icons.chevron_left_rounded,
-                size: 20,
-                color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey,
-              ),
-              tooltip: '收起侧边栏',
-            ),
-            IconButton(
-              onPressed: () => ref.read(notePageProvider.notifier).loadTree(),
-              icon: Icon(
-                Icons.refresh_rounded,
-                size: 20,
-                color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey,
-              ),
-              tooltip: '刷新',
-              splashRadius: 18,
-            ),
-          ],
-        ),
-      ),
-    );
-
-  Widget _buildExpandButton(bool isDark) => Container(
-      width: 48,
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : Colors.grey[100],
-        border: Border(
-          right: BorderSide(
-            color: isDark
-                ? AppColors.darkOutline.withValues(alpha: 0.2)
-                : Colors.grey.withValues(alpha: 0.3),
+            tooltip: '收起侧边栏',
           ),
-        ),
-      ),
-      child: Column(
-        children: [
-          const SizedBox(height: 8),
           IconButton(
-            onPressed: () => _setSidebarCollapsed(false),
+            onPressed: () => ref.read(notePageProvider.notifier).loadTree(),
             icon: Icon(
-              Icons.chevron_right_rounded,
-              color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[700],
+              Icons.refresh_rounded,
+              size: 20,
+              color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey,
             ),
-            tooltip: '展开侧边栏',
+            tooltip: '刷新',
+            splashRadius: 18,
           ),
         ],
       ),
-    );
+    ),
+  );
 
-  Widget _buildResizeHandle(bool isDark) => GestureDetector(
-      onHorizontalDragUpdate: (details) {
-        _setSidebarWidth(_sidebarWidth + details.delta.dx);
-      },
-      child: MouseRegion(
-        cursor: SystemMouseCursors.resizeColumn,
-        child: Container(
-          width: 4,
+  Widget _buildExpandButton(bool isDark) => Container(
+    width: 48,
+    decoration: BoxDecoration(
+      color: isDark ? AppColors.darkSurface : Colors.grey[100],
+      border: Border(
+        right: BorderSide(
           color: isDark
-              ? AppColors.darkOutline.withValues(alpha: 0.1)
-              : Colors.grey.withValues(alpha: 0.1),
+              ? AppColors.darkOutline.withValues(alpha: 0.2)
+              : Colors.grey.withValues(alpha: 0.3),
         ),
       ),
-    );
+    ),
+    child: Column(
+      children: [
+        const SizedBox(height: 8),
+        IconButton(
+          onPressed: () => _setSidebarCollapsed(false),
+          icon: Icon(
+            Icons.chevron_right_rounded,
+            color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[700],
+          ),
+          tooltip: '展开侧边栏',
+        ),
+      ],
+    ),
+  );
+
+  Widget _buildResizeHandle(bool isDark) => GestureDetector(
+    onHorizontalDragUpdate: (details) {
+      _setSidebarWidth(_sidebarWidth + details.delta.dx);
+    },
+    child: MouseRegion(
+      cursor: SystemMouseCursors.resizeColumn,
+      child: Container(
+        width: 4,
+        color: isDark
+            ? AppColors.darkOutline.withValues(alpha: 0.1)
+            : Colors.grey.withValues(alpha: 0.1),
+      ),
+    ),
+  );
 
   Widget _buildContentArea(
-      BuildContext context, NotePageLoaded state, bool isDark) {
+    BuildContext context,
+    NotePageLoaded state,
+    bool isDark,
+  ) {
     if (state.selectedNode == null) {
       return _buildEmptyContent(context, isDark);
     }
 
     if (state.isLoadingContent) {
-      return Center(
-        child: CircularProgressIndicator(color: AppColors.primary),
-      );
+      return Center(child: CircularProgressIndicator(color: AppColors.primary));
     }
 
     return Column(
@@ -1192,8 +1252,8 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
         Expanded(
           child: state.isEditing
               ? (state.livePreview
-                  ? _buildSplitView(context, state, isDark)
-                  : _buildEditorOnly(context, state, isDark))
+                    ? _buildSplitView(context, state, isDark)
+                    : _buildEditorOnly(context, state, isDark))
               : _buildPreview(context, state, isDark),
         ),
       ],
@@ -1201,31 +1261,34 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
   }
 
   Widget _buildEmptyContent(BuildContext context, bool isDark) => Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.article_outlined,
-            size: 64,
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          Icons.article_outlined,
+          size: 64,
+          color: isDark
+              ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.3)
+              : Colors.grey.withValues(alpha: 0.3),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          '选择一个笔记开始阅读',
+          style: context.textTheme.bodyLarge?.copyWith(
             color: isDark
-                ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.3)
-                : Colors.grey.withValues(alpha: 0.3),
+                ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.5)
+                : Colors.grey,
           ),
-          const SizedBox(height: 16),
-          Text(
-            '选择一个笔记开始阅读',
-            style: context.textTheme.bodyLarge?.copyWith(
-              color: isDark
-                  ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.5)
-                  : Colors.grey,
-            ),
-          ),
-        ],
-      ),
-    );
+        ),
+      ],
+    ),
+  );
 
   Widget _buildContentHeader(
-      BuildContext context, NotePageLoaded state, bool isDark) {
+    BuildContext context,
+    NotePageLoaded state,
+    bool isDark,
+  ) {
     final node = state.selectedNode!;
 
     return Container(
@@ -1246,7 +1309,9 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
           children: [
             // 文件图标
             Icon(
-              node.isTaskFile ? Icons.checklist_rounded : Icons.article_outlined,
+              node.isTaskFile
+                  ? Icons.checklist_rounded
+                  : Icons.article_outlined,
               size: 20,
               color: node.isTaskFile ? Colors.orange : AppColors.primary,
             ),
@@ -1317,89 +1382,89 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
   }
 
   Widget _buildModeToggle(NotePageLoaded state, bool isDark) => Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // 模式切换按钮组
-        DecoratedBox(
-          decoration: BoxDecoration(
-            color: isDark
-                ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
-                : Colors.grey.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildModeButton(
-                icon: Icons.visibility_rounded,
-                label: '预览',
-                isSelected: !state.isEditing,
-                onTap: () =>
-                    ref.read(notePageProvider.notifier).setEditing(false),
-                isDark: isDark,
-              ),
-              _buildModeButton(
-                icon: Icons.edit_rounded,
-                label: '编辑',
-                isSelected: state.isEditing,
-                onTap: () =>
-                    ref.read(notePageProvider.notifier).setEditing(true),
-                isDark: isDark,
-              ),
-            ],
-          ),
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      // 模式切换按钮组
+      DecoratedBox(
+        decoration: BoxDecoration(
+          color: isDark
+              ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
+              : Colors.grey.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(8),
         ),
-        // 实时预览切换（仅在编辑模式显示）
-        if (state.isEditing) ...[
-          const SizedBox(width: 8),
-          _buildLivePreviewToggle(state, isDark),
-        ],
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildModeButton(
+              icon: Icons.visibility_rounded,
+              label: '预览',
+              isSelected: !state.isEditing,
+              onTap: () =>
+                  ref.read(notePageProvider.notifier).setEditing(editing: false),
+              isDark: isDark,
+            ),
+            _buildModeButton(
+              icon: Icons.edit_rounded,
+              label: '编辑',
+              isSelected: state.isEditing,
+              onTap: () => ref.read(notePageProvider.notifier).setEditing(editing: true),
+              isDark: isDark,
+            ),
+          ],
+        ),
+      ),
+      // 实时预览切换（仅在编辑模式显示）
+      if (state.isEditing) ...[
+        const SizedBox(width: 8),
+        _buildLivePreviewToggle(state, isDark),
       ],
-    );
+    ],
+  );
 
   /// 实时预览切换按钮
   Widget _buildLivePreviewToggle(NotePageLoaded state, bool isDark) => Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () => ref.read(notePageProvider.notifier).toggleLivePreview(),
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: state.livePreview
-                ? AppColors.primary.withValues(alpha: 0.15)
-                : (isDark
+    color: Colors.transparent,
+    child: InkWell(
+      onTap: () => ref.read(notePageProvider.notifier).toggleLivePreview(),
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: state.livePreview
+              ? AppColors.primary.withValues(alpha: 0.15)
+              : (isDark
                     ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
                     : Colors.grey.withValues(alpha: 0.1)),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.vertical_split_rounded,
-                size: 16,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.vertical_split_rounded,
+              size: 16,
+              color: state.livePreview
+                  ? AppColors.primary
+                  : (isDark ? AppColors.darkOnSurfaceVariant : Colors.grey),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              '分屏',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: state.livePreview
+                    ? FontWeight.w600
+                    : FontWeight.normal,
                 color: state.livePreview
                     ? AppColors.primary
                     : (isDark ? AppColors.darkOnSurfaceVariant : Colors.grey),
               ),
-              const SizedBox(width: 4),
-              Text(
-                '分屏',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight:
-                      state.livePreview ? FontWeight.w600 : FontWeight.normal,
-                  color: state.livePreview
-                      ? AppColors.primary
-                      : (isDark ? AppColors.darkOnSurfaceVariant : Colors.grey),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
-    );
+    ),
+  );
 
   Widget _buildModeButton({
     required IconData icon,
@@ -1408,44 +1473,48 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
     required VoidCallback onTap,
     required bool isDark,
   }) => Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: isSelected ? AppColors.primary.withValues(alpha: 0.15) : null,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                size: 16,
+    color: Colors.transparent,
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.primary.withValues(alpha: 0.15) : null,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: isSelected
+                  ? AppColors.primary
+                  : (isDark ? AppColors.darkOnSurfaceVariant : Colors.grey),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                 color: isSelected
                     ? AppColors.primary
                     : (isDark ? AppColors.darkOnSurfaceVariant : Colors.grey),
               ),
-              const SizedBox(width: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                  color: isSelected
-                      ? AppColors.primary
-                      : (isDark ? AppColors.darkOnSurfaceVariant : Colors.grey),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
-    );
+    ),
+  );
 
-  Widget _buildPreview(BuildContext context, NotePageLoaded state, bool isDark) {
+  Widget _buildPreview(
+    BuildContext context,
+    NotePageLoaded state,
+    bool isDark,
+  ) {
     // 如果是任务文件，显示任务列表视图
     if (state.isTaskFile && state.tasks.isNotEmpty) {
       return _buildTaskFilePreview(context, state, isDark);
@@ -1459,33 +1528,36 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
         padding: const EdgeInsets.all(AppSpacing.lg),
         child: SizedBox(
           width: double.infinity,
-          child: _MarkdownPreview(
-            content: state.content ?? '',
-            isDark: isDark,
-          ),
+          child: _MarkdownPreview(content: state.content ?? '', isDark: isDark),
         ),
       ),
     );
   }
 
   Widget _buildTaskFilePreview(
-      BuildContext context, NotePageLoaded state, bool isDark) => Column(
-      children: [
-        // 任务列表
-        Expanded(
-          child: TaskListWidget(
-            tasks: state.tasks,
-            onToggle: (index) =>
-                ref.read(notePageProvider.notifier).toggleTask(index),
-            isDark: isDark,
-          ),
+    BuildContext context,
+    NotePageLoaded state,
+    bool isDark,
+  ) => Column(
+    children: [
+      // 任务列表
+      Expanded(
+        child: TaskListWidget(
+          tasks: state.tasks,
+          onToggle: (index) =>
+              ref.read(notePageProvider.notifier).toggleTask(index),
+          isDark: isDark,
         ),
-      ],
-    );
+      ),
+    ],
+  );
 
   /// 分屏视图：左边编辑器，右边实时预览
   Widget _buildSplitView(
-      BuildContext context, NotePageLoaded state, bool isDark) {
+    BuildContext context,
+    NotePageLoaded state,
+    bool isDark,
+  ) {
     // 初始化编辑器内容
     if (_editController.text != state.content && !state.hasChanges) {
       _editController.text = state.content ?? '';
@@ -1528,12 +1600,15 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
                       hintText: '开始编写 Markdown...',
                       hintStyle: TextStyle(
                         color: isDark
-                            ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.5)
+                            ? AppColors.darkOnSurfaceVariant.withValues(
+                                alpha: 0.5,
+                              )
                             : null,
                       ),
                     ),
-                    onChanged: (value) =>
-                        ref.read(notePageProvider.notifier).updateContent(value),
+                    onChanged: (value) => ref
+                        .read(notePageProvider.notifier)
+                        .updateContent(value),
                   ),
                 ),
               ),
@@ -1549,10 +1624,14 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
                       // 预览标题栏
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 8),
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
                         decoration: BoxDecoration(
                           color: isDark
-                              ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
+                              ? AppColors.darkSurfaceVariant.withValues(
+                                  alpha: 0.5,
+                                )
                               : Colors.grey.withValues(alpha: 0.1),
                           border: Border(
                             bottom: BorderSide(
@@ -1614,7 +1693,10 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
 
   /// 纯编辑视图（无预览）
   Widget _buildEditorOnly(
-      BuildContext context, NotePageLoaded state, bool isDark) {
+    BuildContext context,
+    NotePageLoaded state,
+    bool isDark,
+  ) {
     // 初始化编辑器内容
     if (_editController.text != state.content && !state.hasChanges) {
       _editController.text = state.content ?? '';
@@ -1656,77 +1738,77 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
   }
 
   Widget _buildEditorToolbar(BuildContext context, bool isDark) => Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: isDark
-            ? AppColors.darkSurfaceVariant
-            : context.colorScheme.surfaceContainerHighest,
-        border: Border(
-          bottom: BorderSide(
-            color: isDark
-                ? AppColors.darkOutline.withValues(alpha: 0.2)
-                : context.colorScheme.outlineVariant,
-          ),
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    decoration: BoxDecoration(
+      color: isDark
+          ? AppColors.darkSurfaceVariant
+          : context.colorScheme.surfaceContainerHighest,
+      border: Border(
+        bottom: BorderSide(
+          color: isDark
+              ? AppColors.darkOutline.withValues(alpha: 0.2)
+              : context.colorScheme.outlineVariant,
         ),
       ),
-      child: Row(
-        children: [
-          _buildToolButton(
-            icon: Icons.format_bold_rounded,
-            tooltip: '粗体',
-            onTap: () => _insertMarkdown('**', '**'),
-          ),
-          _buildToolButton(
-            icon: Icons.format_italic_rounded,
-            tooltip: '斜体',
-            onTap: () => _insertMarkdown('*', '*'),
-          ),
-          _buildToolButton(
-            icon: Icons.strikethrough_s_rounded,
-            tooltip: '删除线',
-            onTap: () => _insertMarkdown('~~', '~~'),
-          ),
-          const VerticalDivider(width: 16),
-          _buildToolButton(
-            icon: Icons.title_rounded,
-            tooltip: '标题',
-            onTap: () => _insertMarkdown('## ', ''),
-          ),
-          _buildToolButton(
-            icon: Icons.format_list_bulleted_rounded,
-            tooltip: '列表',
-            onTap: () => _insertMarkdown('- ', ''),
-          ),
-          _buildToolButton(
-            icon: Icons.check_box_outlined,
-            tooltip: '任务',
-            onTap: () => _insertMarkdown('- [ ] ', ''),
-          ),
-          const VerticalDivider(width: 16),
-          _buildToolButton(
-            icon: Icons.code_rounded,
-            tooltip: '代码',
-            onTap: () => _insertMarkdown('`', '`'),
-          ),
-          _buildToolButton(
-            icon: Icons.link_rounded,
-            tooltip: '链接',
-            onTap: () => _insertMarkdown('[', '](url)'),
-          ),
-        ],
-      ),
-    );
+    ),
+    child: Row(
+      children: [
+        _buildToolButton(
+          icon: Icons.format_bold_rounded,
+          tooltip: '粗体',
+          onTap: () => _insertMarkdown('**', '**'),
+        ),
+        _buildToolButton(
+          icon: Icons.format_italic_rounded,
+          tooltip: '斜体',
+          onTap: () => _insertMarkdown('*', '*'),
+        ),
+        _buildToolButton(
+          icon: Icons.strikethrough_s_rounded,
+          tooltip: '删除线',
+          onTap: () => _insertMarkdown('~~', '~~'),
+        ),
+        const VerticalDivider(width: 16),
+        _buildToolButton(
+          icon: Icons.title_rounded,
+          tooltip: '标题',
+          onTap: () => _insertMarkdown('## ', ''),
+        ),
+        _buildToolButton(
+          icon: Icons.format_list_bulleted_rounded,
+          tooltip: '列表',
+          onTap: () => _insertMarkdown('- ', ''),
+        ),
+        _buildToolButton(
+          icon: Icons.check_box_outlined,
+          tooltip: '任务',
+          onTap: () => _insertMarkdown('- [ ] ', ''),
+        ),
+        const VerticalDivider(width: 16),
+        _buildToolButton(
+          icon: Icons.code_rounded,
+          tooltip: '代码',
+          onTap: () => _insertMarkdown('`', '`'),
+        ),
+        _buildToolButton(
+          icon: Icons.link_rounded,
+          tooltip: '链接',
+          onTap: () => _insertMarkdown('[', '](url)'),
+        ),
+      ],
+    ),
+  );
 
   Widget _buildToolButton({
     required IconData icon,
     required String tooltip,
     required VoidCallback onTap,
   }) => IconButton(
-      onPressed: onTap,
-      icon: Icon(icon, size: 20),
-      tooltip: tooltip,
-      splashRadius: 20,
-    );
+    onPressed: onTap,
+    icon: Icon(icon, size: 20),
+    tooltip: tooltip,
+    splashRadius: 20,
+  );
 
   void _insertMarkdown(String prefix, String suffix) {
     final text = _editController.text;
@@ -1745,7 +1827,10 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
       final offset = _editController.selection.baseOffset;
       _editController.value = TextEditingValue(
         text:
-            text.substring(0, offset) + prefix + suffix + text.substring(offset),
+            text.substring(0, offset) +
+            prefix +
+            suffix +
+            text.substring(offset),
         selection: TextSelection.collapsed(offset: offset + prefix.length),
       );
     }
@@ -1756,119 +1841,111 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
 
 /// Markdown 预览组件（使用 flutter_markdown）
 class _MarkdownPreview extends StatelessWidget {
-  const _MarkdownPreview({
-    required this.content,
-    required this.isDark,
-  });
+  const _MarkdownPreview({required this.content, required this.isDark});
 
   final String content;
   final bool isDark;
 
   @override
   Widget build(BuildContext context) => MarkdownBody(
-      data: content,
-      selectable: true,
-      onTapLink: (text, href, title) {
-        if (href != null) {
-          launchUrl(Uri.parse(href), mode: LaunchMode.externalApplication);
-        }
-      },
-      styleSheet: MarkdownStyleSheet(
-        // 文本样式
-        p: context.textTheme.bodyMedium?.copyWith(
-          color: isDark ? AppColors.darkOnSurface : null,
-          height: 1.6,
-        ),
-        // 标题样式
-        h1: context.textTheme.headlineMedium?.copyWith(
-          fontWeight: FontWeight.bold,
-          color: isDark ? AppColors.darkOnSurface : null,
-        ),
-        h2: context.textTheme.headlineSmall?.copyWith(
-          fontWeight: FontWeight.bold,
-          color: isDark ? AppColors.darkOnSurface : null,
-        ),
-        h3: context.textTheme.titleLarge?.copyWith(
-          fontWeight: FontWeight.bold,
-          color: isDark ? AppColors.darkOnSurface : null,
-        ),
-        h4: context.textTheme.titleMedium?.copyWith(
-          fontWeight: FontWeight.bold,
-          color: isDark ? AppColors.darkOnSurface : null,
-        ),
-        h5: context.textTheme.titleSmall?.copyWith(
-          fontWeight: FontWeight.bold,
-          color: isDark ? AppColors.darkOnSurface : null,
-        ),
-        h6: context.textTheme.bodyLarge?.copyWith(
-          fontWeight: FontWeight.bold,
-          color: isDark ? AppColors.darkOnSurface : null,
-        ),
-        // 代码样式
-        code: TextStyle(
-          fontFamily: 'monospace',
-          fontSize: 13,
-          color: isDark ? AppColors.darkOnSurface : Colors.black87,
-          backgroundColor: isDark
-              ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
-              : Colors.grey.shade100,
-        ),
-        codeblockDecoration: BoxDecoration(
-          color: isDark ? AppColors.darkSurfaceVariant : Colors.grey.shade100,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        codeblockPadding: const EdgeInsets.all(12),
-        // 引用样式
-        blockquote: context.textTheme.bodyMedium?.copyWith(
-          fontStyle: FontStyle.italic,
-          color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[700],
-        ),
-        blockquoteDecoration: BoxDecoration(
-          border: Border(
-            left: BorderSide(
-              color: AppColors.primary,
-              width: 4,
-            ),
-          ),
-          color: isDark
-              ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
-              : Colors.grey.shade50,
-        ),
-        blockquotePadding: const EdgeInsets.all(12),
-        // 链接样式
-        a: TextStyle(
-          color: AppColors.primary,
-          decoration: TextDecoration.underline,
-        ),
-        // 列表样式
-        listBullet: context.textTheme.bodyMedium?.copyWith(
-          color: isDark ? AppColors.darkOnSurface : null,
-        ),
-        // 表格样式
-        tableHead: context.textTheme.bodyMedium?.copyWith(
-          fontWeight: FontWeight.bold,
-          color: isDark ? AppColors.darkOnSurface : null,
-        ),
-        tableBody: context.textTheme.bodyMedium?.copyWith(
-          color: isDark ? AppColors.darkOnSurface : null,
-        ),
-        tableBorder: TableBorder.all(
-          color: isDark
-              ? AppColors.darkOutline.withValues(alpha: 0.3)
-              : Colors.grey.shade300,
-        ),
-        // 水平线
-        horizontalRuleDecoration: BoxDecoration(
-          border: Border(
-            top: BorderSide(
-              color: isDark
-                  ? AppColors.darkOutline.withValues(alpha: 0.3)
-                  : Colors.grey.shade300,
-            ),
+    data: content,
+    selectable: true,
+    onTapLink: (text, href, title) {
+      if (href != null) {
+        launchUrl(Uri.parse(href), mode: LaunchMode.externalApplication);
+      }
+    },
+    styleSheet: MarkdownStyleSheet(
+      // 文本样式
+      p: context.textTheme.bodyMedium?.copyWith(
+        color: isDark ? AppColors.darkOnSurface : null,
+        height: 1.6,
+      ),
+      // 标题样式
+      h1: context.textTheme.headlineMedium?.copyWith(
+        fontWeight: FontWeight.bold,
+        color: isDark ? AppColors.darkOnSurface : null,
+      ),
+      h2: context.textTheme.headlineSmall?.copyWith(
+        fontWeight: FontWeight.bold,
+        color: isDark ? AppColors.darkOnSurface : null,
+      ),
+      h3: context.textTheme.titleLarge?.copyWith(
+        fontWeight: FontWeight.bold,
+        color: isDark ? AppColors.darkOnSurface : null,
+      ),
+      h4: context.textTheme.titleMedium?.copyWith(
+        fontWeight: FontWeight.bold,
+        color: isDark ? AppColors.darkOnSurface : null,
+      ),
+      h5: context.textTheme.titleSmall?.copyWith(
+        fontWeight: FontWeight.bold,
+        color: isDark ? AppColors.darkOnSurface : null,
+      ),
+      h6: context.textTheme.bodyLarge?.copyWith(
+        fontWeight: FontWeight.bold,
+        color: isDark ? AppColors.darkOnSurface : null,
+      ),
+      // 代码样式
+      code: TextStyle(
+        fontFamily: 'monospace',
+        fontSize: 13,
+        color: isDark ? AppColors.darkOnSurface : Colors.black87,
+        backgroundColor: isDark
+            ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
+            : Colors.grey.shade100,
+      ),
+      codeblockDecoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurfaceVariant : Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      codeblockPadding: const EdgeInsets.all(12),
+      // 引用样式
+      blockquote: context.textTheme.bodyMedium?.copyWith(
+        fontStyle: FontStyle.italic,
+        color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[700],
+      ),
+      blockquoteDecoration: BoxDecoration(
+        border: Border(left: BorderSide(color: AppColors.primary, width: 4)),
+        color: isDark
+            ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
+            : Colors.grey.shade50,
+      ),
+      blockquotePadding: const EdgeInsets.all(12),
+      // 链接样式
+      a: TextStyle(
+        color: AppColors.primary,
+        decoration: TextDecoration.underline,
+      ),
+      // 列表样式
+      listBullet: context.textTheme.bodyMedium?.copyWith(
+        color: isDark ? AppColors.darkOnSurface : null,
+      ),
+      // 表格样式
+      tableHead: context.textTheme.bodyMedium?.copyWith(
+        fontWeight: FontWeight.bold,
+        color: isDark ? AppColors.darkOnSurface : null,
+      ),
+      tableBody: context.textTheme.bodyMedium?.copyWith(
+        color: isDark ? AppColors.darkOnSurface : null,
+      ),
+      tableBorder: TableBorder.all(
+        color: isDark
+            ? AppColors.darkOutline.withValues(alpha: 0.3)
+            : Colors.grey.shade300,
+      ),
+      // 水平线
+      horizontalRuleDecoration: BoxDecoration(
+        border: Border(
+          top: BorderSide(
+            color: isDark
+                ? AppColors.darkOutline.withValues(alpha: 0.3)
+                : Colors.grey.shade300,
           ),
         ),
       ),
-    );
+    ),
+  );
 }
 
 /// 笔记列表内容组件（供阅读页面复用）
@@ -1903,13 +1980,16 @@ class _NoteListContentState extends ConsumerState<NoteListContent> {
     await _layoutService.init();
     setState(() {
       _isSidebarCollapsed = _layoutService.isSidebarCollapsed;
-      _sidebarWidth = _layoutService.sidebarWidth.clamp(_minSidebarWidth, _maxSidebarWidth);
+      _sidebarWidth = _layoutService.sidebarWidth.clamp(
+        _minSidebarWidth,
+        _maxSidebarWidth,
+      );
     });
   }
 
   void _setSidebarCollapsed(bool collapsed) {
     setState(() => _isSidebarCollapsed = collapsed);
-    _layoutService.setSidebarCollapsed(collapsed);
+    _layoutService.setSidebarCollapsed(collapsed: collapsed);
   }
 
   void _setSidebarWidth(double width) {
@@ -1933,25 +2013,22 @@ class _NoteListContentState extends ConsumerState<NoteListContent> {
 
     return switch (state) {
       NotePageLoading(:final message) => Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircularProgressIndicator(color: AppColors.primary),
-              if (message != null) ...[
-                const SizedBox(height: 16),
-                Text(message),
-              ],
-            ],
-          ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: AppColors.primary),
+            if (message != null) ...[const SizedBox(height: 16), Text(message)],
+          ],
         ),
+      ),
       NotePageNotConnected() => const MediaSetupWidget(
-          mediaType: MediaType.note,
-          icon: Icons.note_outlined,
-        ),
+        mediaType: MediaType.note,
+        icon: Icons.note_outlined,
+      ),
       NotePageError(:final message) => AppErrorWidget(
-          message: message,
-          onRetry: () => ref.read(notePageProvider.notifier).loadTree(),
-        ),
+        message: message,
+        onRetry: () => ref.read(notePageProvider.notifier).loadTree(),
+      ),
       NotePageLoaded(:final treeNodes) when treeNodes.isEmpty =>
         const EmptyWidget(
           icon: Icons.note_outlined,
@@ -1963,147 +2040,153 @@ class _NoteListContentState extends ConsumerState<NoteListContent> {
   }
 
   Widget _buildMainLayout(
-      BuildContext context, NotePageLoaded state, bool isDark) => Row(
-      children: [
-        // 左侧目录树（可收起）
-        if (!_isSidebarCollapsed) ...[
-          _buildSidebar(context, state, isDark),
-          // 可拖动分隔线
-          _buildResizeHandle(isDark),
-        ],
-        // 展开按钮（当侧边栏收起时显示）
-        if (_isSidebarCollapsed)
-          _buildExpandButton(isDark),
-        // 右侧内容区
-        Expanded(
-          child: _buildContentArea(context, state, isDark),
-        ),
+    BuildContext context,
+    NotePageLoaded state,
+    bool isDark,
+  ) => Row(
+    children: [
+      // 左侧目录树（可收起）
+      if (!_isSidebarCollapsed) ...[
+        _buildSidebar(context, state, isDark),
+        // 可拖动分隔线
+        _buildResizeHandle(isDark),
       ],
-    );
+      // 展开按钮（当侧边栏收起时显示）
+      if (_isSidebarCollapsed) _buildExpandButton(isDark),
+      // 右侧内容区
+      Expanded(child: _buildContentArea(context, state, isDark)),
+    ],
+  );
 
   Widget _buildSidebar(
-      BuildContext context, NotePageLoaded state, bool isDark) => Container(
-      width: _sidebarWidth,
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
-        border: Border(
-          right: BorderSide(
-            color: isDark
-                ? AppColors.darkOutline.withValues(alpha: 0.2)
-                : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
-          ),
+    BuildContext context,
+    NotePageLoaded state,
+    bool isDark,
+  ) => Container(
+    width: _sidebarWidth,
+    decoration: BoxDecoration(
+      color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
+      border: Border(
+        right: BorderSide(
+          color: isDark
+              ? AppColors.darkOutline.withValues(alpha: 0.2)
+              : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
         ),
       ),
-      child: Column(
-        children: [
-          // 标题栏
-          _buildSidebarHeader(context, isDark),
-          // 目录树
-          Expanded(
-            child: NoteTreeWidget(
-              nodes: state.treeNodes,
-              selectedPath: state.selectedNode?.path,
-              onNodeSelected: (node) =>
-                  ref.read(notePageProvider.notifier).selectFile(node),
-              onFolderToggle: (node) =>
-                  ref.read(notePageProvider.notifier).toggleFolder(node),
-              onFolderLoad: (node) =>
-                  ref.read(notePageProvider.notifier).toggleFolder(node),
-              isDark: isDark,
-            ),
+    ),
+    child: Column(
+      children: [
+        // 标题栏
+        _buildSidebarHeader(context, isDark),
+        // 目录树
+        Expanded(
+          child: NoteTreeWidget(
+            nodes: state.treeNodes,
+            selectedPath: state.selectedNode?.path,
+            onNodeSelected: (node) =>
+                ref.read(notePageProvider.notifier).selectFile(node),
+            onFolderToggle: (node) =>
+                ref.read(notePageProvider.notifier).toggleFolder(node),
+            onFolderLoad: (node) =>
+                ref.read(notePageProvider.notifier).toggleFolder(node),
+            isDark: isDark,
           ),
-        ],
-      ),
-    );
+        ),
+      ],
+    ),
+  );
 
   Widget _buildSidebarHeader(BuildContext context, bool isDark) => Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(
-            color: isDark
-                ? AppColors.darkOutline.withValues(alpha: 0.2)
-                : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
-          ),
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+    decoration: BoxDecoration(
+      border: Border(
+        bottom: BorderSide(
+          color: isDark
+              ? AppColors.darkOutline.withValues(alpha: 0.2)
+              : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
         ),
       ),
-      child: Row(
-        children: [
-          Icon(
-            Icons.folder_outlined,
-            size: 20,
+    ),
+    child: Row(
+      children: [
+        Icon(
+          Icons.folder_outlined,
+          size: 20,
+          color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[600],
+        ),
+        const SizedBox(width: 8),
+        Text(
+          '笔记目录',
+          style: context.textTheme.titleSmall?.copyWith(
+            color: isDark ? AppColors.darkOnSurface : null,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const Spacer(),
+        // 收起按钮
+        IconButton(
+          onPressed: () => _setSidebarCollapsed(true),
+          icon: Icon(
+            Icons.chevron_left_rounded,
             color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[600],
           ),
-          const SizedBox(width: 8),
-          Text(
-            '笔记目录',
-            style: context.textTheme.titleSmall?.copyWith(
-              color: isDark ? AppColors.darkOnSurface : null,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const Spacer(),
-          // 收起按钮
-          IconButton(
-            onPressed: () => _setSidebarCollapsed(true),
-            icon: Icon(
-              Icons.chevron_left_rounded,
-              color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[600],
-            ),
-            iconSize: 20,
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-            tooltip: '收起侧边栏',
-          ),
-        ],
-      ),
-    );
+          iconSize: 20,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+          tooltip: '收起侧边栏',
+        ),
+      ],
+    ),
+  );
 
   Widget _buildExpandButton(bool isDark) => Container(
-      width: 40,
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
-        border: Border(
-          right: BorderSide(
-            color: isDark
-                ? AppColors.darkOutline.withValues(alpha: 0.2)
-                : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
-          ),
+    width: 40,
+    decoration: BoxDecoration(
+      color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
+      border: Border(
+        right: BorderSide(
+          color: isDark
+              ? AppColors.darkOutline.withValues(alpha: 0.2)
+              : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
         ),
       ),
-      child: Column(
-        children: [
-          const SizedBox(height: 8),
-          IconButton(
-            onPressed: () => _setSidebarCollapsed(false),
-            icon: Icon(
-              Icons.chevron_right_rounded,
-              color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[600],
-            ),
-            iconSize: 20,
-            tooltip: '展开侧边栏',
+    ),
+    child: Column(
+      children: [
+        const SizedBox(height: 8),
+        IconButton(
+          onPressed: () => _setSidebarCollapsed(false),
+          icon: Icon(
+            Icons.chevron_right_rounded,
+            color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[600],
           ),
-        ],
-      ),
-    );
+          iconSize: 20,
+          tooltip: '展开侧边栏',
+        ),
+      ],
+    ),
+  );
 
   Widget _buildResizeHandle(bool isDark) => GestureDetector(
-      onHorizontalDragUpdate: (details) {
-        _setSidebarWidth(_sidebarWidth + details.delta.dx);
-      },
-      child: MouseRegion(
-        cursor: SystemMouseCursors.resizeColumn,
-        child: Container(
-          width: 4,
-          color: isDark
-              ? AppColors.darkOutline.withValues(alpha: 0.1)
-              : Colors.grey.withValues(alpha: 0.1),
-        ),
+    onHorizontalDragUpdate: (details) {
+      _setSidebarWidth(_sidebarWidth + details.delta.dx);
+    },
+    child: MouseRegion(
+      cursor: SystemMouseCursors.resizeColumn,
+      child: Container(
+        width: 4,
+        color: isDark
+            ? AppColors.darkOutline.withValues(alpha: 0.1)
+            : Colors.grey.withValues(alpha: 0.1),
       ),
-    );
+    ),
+  );
 
   Widget _buildContentArea(
-      BuildContext context, NotePageLoaded state, bool isDark) {
+    BuildContext context,
+    NotePageLoaded state,
+    bool isDark,
+  ) {
     if (state.selectedNode == null) {
       return Center(
         child: Column(
@@ -2131,9 +2214,7 @@ class _NoteListContentState extends ConsumerState<NoteListContent> {
     }
 
     if (state.isLoadingContent) {
-      return Center(
-        child: CircularProgressIndicator(color: AppColors.primary),
-      );
+      return Center(child: CircularProgressIndicator(color: AppColors.primary));
     }
 
     // 显示内容 - 确保内容从顶部开始
@@ -2144,10 +2225,7 @@ class _NoteListContentState extends ConsumerState<NoteListContent> {
         padding: const EdgeInsets.all(AppSpacing.lg),
         child: SizedBox(
           width: double.infinity,
-          child: _MarkdownPreview(
-            content: state.content ?? '',
-            isDark: isDark,
-          ),
+          child: _MarkdownPreview(content: state.content ?? '', isDark: isDark),
         ),
       ),
     );

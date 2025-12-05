@@ -47,6 +47,12 @@ final sortModeProvider = StateProvider<SortMode>((ref) => SortMode.name);
 /// 排序方向
 final sortAscendingProvider = StateProvider<bool>((ref) => true);
 
+/// 多选模式
+final multiSelectModeProvider = StateProvider<bool>((ref) => false);
+
+/// 选中的文件路径集合
+final selectedFilesProvider = StateProvider<Set<String>>((ref) => {});
+
 enum ViewMode { list, grid }
 
 enum SortMode { name, size, date, type }

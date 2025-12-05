@@ -19,21 +19,6 @@ class PhotoItem {
     this.cameraModel,
   });
 
-  final String name;
-  final String path;
-  final String url;
-  final String sourceId; // 数据源ID
-  final String? thumbnailUrl;
-  final int size;
-  final int? width;
-  final int? height;
-  final DateTime? takenAt;
-  final DateTime? modifiedAt;
-  final double? latitude;
-  final double? longitude;
-  final String? cameraMake;
-  final String? cameraModel;
-
   /// 从文件项创建照片项
   factory PhotoItem.fromFileItem(
     FileItem file,
@@ -50,6 +35,21 @@ class PhotoItem {
         size: file.size,
         modifiedAt: file.modifiedTime,
       );
+
+  final String name;
+  final String path;
+  final String url;
+  final String sourceId; // 数据源ID
+  final String? thumbnailUrl;
+  final int size;
+  final int? width;
+  final int? height;
+  final DateTime? takenAt;
+  final DateTime? modifiedAt;
+  final double? latitude;
+  final double? longitude;
+  final String? cameraMake;
+  final String? cameraModel;
 
   /// 显示的文件大小
   String get displaySize {

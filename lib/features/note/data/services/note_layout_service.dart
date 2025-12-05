@@ -33,7 +33,7 @@ class NoteLayoutService {
   bool get isSidebarCollapsed => _box?.get(_keySidebarCollapsed, defaultValue: false) as bool? ?? false;
 
   /// 设置侧边栏是否收起
-  Future<void> setSidebarCollapsed(bool collapsed) async {
+  Future<void> setSidebarCollapsed({required bool collapsed}) async {
     await _box?.put(_keySidebarCollapsed, collapsed);
   }
 

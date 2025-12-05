@@ -22,9 +22,9 @@ class EpisodeSelector extends ConsumerStatefulWidget {
   final List<TmdbSeason> seasons;
   final void Function(TmdbEpisode episode, VideoMetadata? localFile) onEpisodePlay;
   final int? initialSeason;
-  /// 本地可用的剧集文件 Map<seasonNumber, Map<episodeNumber, VideoMetadata>>
+  /// 本地可用的剧集文件 `Map<seasonNumber, Map<episodeNumber, VideoMetadata>>`
   final Map<int, Map<int, VideoMetadata>> localEpisodes;
-  /// 剧集播放进度 Map<filePath, progress 0.0-1.0>
+  /// 剧集播放进度 `Map<filePath, progress 0.0-1.0>`
   final Map<String, double> episodeProgress;
 
   @override

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/video/domain/entities/video_item.dart';
@@ -9,7 +10,7 @@ import 'package:my_nas/features/video/presentation/widgets/playback_settings_she
 import 'package:my_nas/features/video/presentation/widgets/playlist_sheet.dart';
 import 'package:my_nas/features/video/presentation/widgets/subtitle_selector.dart';
 
-class VideoControls extends StatelessWidget {
+class VideoControls extends ConsumerWidget {
   const VideoControls({
     required this.video,
     required this.state,
@@ -50,7 +51,7 @@ class VideoControls extends StatelessWidget {
   final VoidCallback? onShowBookmarks;
 
   @override
-  Widget build(BuildContext context) => DecoratedBox(
+  Widget build(BuildContext context, WidgetRef ref) => DecoratedBox(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
@@ -68,7 +69,7 @@ class VideoControls extends StatelessWidget {
           child: Column(
             children: [
               // 顶部栏
-              _buildTopBar(context),
+              _buildTopBar(context, ref),
 
               // 中间区域
               const Spacer(),
@@ -82,7 +83,11 @@ class VideoControls extends StatelessWidget {
         ),
       );
 
-  Widget _buildTopBar(BuildContext context) => Padding(
+  Widget _buildTopBar(BuildContext context, WidgetRef ref) {
+    final subtitleEnabled = state.subtitleEnabled;
+    final playerNotifier = ref.read(videoPlayerControllerProvider.notifier);
+
+    return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         child: Row(
           children: [
@@ -100,14 +105,24 @@ class VideoControls extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            // 字幕按钮
-            IconButton(
-              onPressed: () => showSubtitleSelector(context),
-              icon: Icon(
-                hasSubtitles ? Icons.closed_caption : Icons.closed_caption_off,
-                color: Colors.white,
+            // 字幕按钮：单击切换开关，长按打开选择器
+            GestureDetector(
+              onTap: hasSubtitles ? playerNotifier.toggleSubtitle : null,
+              onLongPress: () => showSubtitleSelector(context),
+              child: Tooltip(
+                message: hasSubtitles
+                    ? (subtitleEnabled ? '点击关闭字幕 / 长按选择字幕' : '点击开启字幕 / 长按选择字幕')
+                    : '长按选择字幕',
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Icon(
+                    hasSubtitles && subtitleEnabled
+                        ? Icons.closed_caption
+                        : Icons.closed_caption_off,
+                    color: hasSubtitles ? Colors.white : Colors.white54,
+                  ),
+                ),
               ),
-              tooltip: '字幕',
             ),
             // 更多选项
             PopupMenuButton<String>(
@@ -184,6 +199,7 @@ class VideoControls extends StatelessWidget {
           ],
         ),
       );
+  }
 
   Widget _buildCenterControls(BuildContext context) => Row(
         mainAxisAlignment: MainAxisAlignment.center,

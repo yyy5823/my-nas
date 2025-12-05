@@ -101,10 +101,7 @@ class SubtitleStyleSheet extends ConsumerWidget {
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.grey[800]!,
-                          Colors.grey[900]!,
-                        ],
+                        colors: [Colors.grey[800]!, Colors.grey[900]!],
                       ),
                     ),
                     child: Center(
@@ -120,7 +117,9 @@ class SubtitleStyleSheet extends ConsumerWidget {
                     left: 0,
                     right: 0,
                     top: style.position == SubtitlePosition.top ? 8 : null,
-                    bottom: style.position == SubtitlePosition.bottom ? 8 : null,
+                    bottom: style.position == SubtitlePosition.bottom
+                        ? 8
+                        : null,
                     child: style.position == SubtitlePosition.center
                         ? Positioned.fill(
                             child: Center(child: _buildSubtitlePreview(style)),
@@ -183,8 +182,8 @@ class SubtitleStyleSheet extends ConsumerWidget {
                       spacing: 8,
                       runSpacing: 8,
                       children: subtitleColors.map((color) {
-                        final isSelected = color.toARGB32() ==
-                            style.fontColor.toARGB32();
+                        final isSelected =
+                            color.toARGB32() == style.fontColor.toARGB32();
                         return _ColorButton(
                           color: color,
                           isSelected: isSelected,
@@ -202,7 +201,8 @@ class SubtitleStyleSheet extends ConsumerWidget {
                       spacing: 8,
                       runSpacing: 8,
                       children: subtitleBackgrounds.map((color) {
-                        final isSelected = color.toARGB32() ==
+                        final isSelected =
+                            color.toARGB32() ==
                             style.backgroundColor.toARGB32();
                         return _ColorButton(
                           color: color,
@@ -278,16 +278,15 @@ class SubtitleStyleSheet extends ConsumerWidget {
                         SwitchListTile(
                           title: const Text('启用描边'),
                           value: style.hasOutline,
-                          onChanged: notifier.setHasOutline,
+                          onChanged: (value) {
+                            notifier.setHasOutline(hasOutline: value);
+                          },
                           contentPadding: EdgeInsets.zero,
                         ),
                         if (style.hasOutline) ...[
                           Row(
                             children: [
-                              Text(
-                                '描边宽度',
-                                style: context.textTheme.bodyMedium,
-                              ),
+                              Text('描边宽度', style: context.textTheme.bodyMedium),
                               Expanded(
                                 child: Slider(
                                   value: style.outlineWidth,
@@ -323,58 +322,57 @@ class SubtitleStyleSheet extends ConsumerWidget {
   }
 
   Widget _buildSubtitlePreview(SubtitleStyle style) => Center(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: style.backgroundColor,
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: Text(
-            '这是字幕预览效果',
-            style: TextStyle(
-              fontSize: style.fontSize * 0.6, // 预览区域缩小显示
-              color: style.fontColor,
-              fontWeight: style.fontWeight,
-              shadows: style.hasOutline
-                  ? [
-                      Shadow(
-                        color: style.outlineColor,
-                        blurRadius: style.outlineWidth,
-                        offset: const Offset(1, 1),
-                      ),
-                      Shadow(
-                        color: style.outlineColor,
-                        blurRadius: style.outlineWidth,
-                        offset: const Offset(-1, -1),
-                      ),
-                    ]
-                  : null,
-            ),
-          ),
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: style.backgroundColor,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        '这是字幕预览效果',
+        style: TextStyle(
+          fontSize: style.fontSize * 0.6, // 预览区域缩小显示
+          color: style.fontColor,
+          fontWeight: style.fontWeight,
+          shadows: style.hasOutline
+              ? [
+                  Shadow(
+                    color: style.outlineColor,
+                    blurRadius: style.outlineWidth,
+                    offset: const Offset(1, 1),
+                  ),
+                  Shadow(
+                    color: style.outlineColor,
+                    blurRadius: style.outlineWidth,
+                    offset: const Offset(-1, -1),
+                  ),
+                ]
+              : null,
         ),
-      );
+      ),
+    ),
+  );
 
   Widget _buildSection(
     BuildContext context, {
     required String title,
     required Widget child,
-  }) =>
-      Padding(
-        padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: context.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 8),
-            child,
-          ],
+  }) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: context.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
         ),
-      );
+        const SizedBox(height: 8),
+        child,
+      ],
+    ),
+  );
 }
 
 class _ColorButton extends StatelessWidget {
@@ -392,35 +390,33 @@ class _ColorButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: isSelected
-                  ? AppColors.primary
-                  : Colors.grey.withValues(alpha: 0.3),
-              width: isSelected ? 3 : 1,
-            ),
-          ),
-          child: showTransparent
-              ? CustomPaint(
-                  painter: _TransparentPainter(),
-                )
-              : isSelected
-                  ? Icon(
-                      Icons.check_rounded,
-                      color: color.computeLuminance() > 0.5
-                          ? Colors.black
-                          : Colors.white,
-                      size: 20,
-                    )
-                  : null,
+    onTap: onTap,
+    child: Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: isSelected
+              ? AppColors.primary
+              : Colors.grey.withValues(alpha: 0.3),
+          width: isSelected ? 3 : 1,
         ),
-      );
+      ),
+      child: showTransparent
+          ? CustomPaint(painter: _TransparentPainter())
+          : isSelected
+          ? Icon(
+              Icons.check_rounded,
+              color: color.computeLuminance() > 0.5
+                  ? Colors.black
+                  : Colors.white,
+              size: 20,
+            )
+          : null,
+    ),
+  );
 }
 
 class _TransparentPainter extends CustomPainter {

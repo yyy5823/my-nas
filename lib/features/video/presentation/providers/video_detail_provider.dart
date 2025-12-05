@@ -58,7 +58,7 @@ final similarTvShowsProvider = FutureProvider.autoDispose.family<List<TmdbMediaI
 
 /// 本地剧集文件 Provider（autoDispose + SQLite 索引优化）
 /// 根据 TMDB ID 查找本地所有匹配的剧集文件
-/// 返回: Map<seasonNumber, Map<episodeNumber, VideoMetadata>>
+/// 返回: `Map<seasonNumber, Map<episodeNumber, VideoMetadata>>`
 final localEpisodeFilesProvider = FutureProvider.autoDispose.family<Map<int, Map<int, VideoMetadata>>, int>((ref, tmdbId) async {
   final metadataService = ref.watch(videoMetadataServiceProvider);
   await metadataService.init();

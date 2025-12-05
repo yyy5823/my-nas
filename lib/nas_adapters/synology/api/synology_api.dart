@@ -81,7 +81,8 @@ class SynologyApi {
       logger.d('SynologyApi: 登录响应 => success=${response['success']}');
 
       if (response['success'] != true) {
-        final errorCode = response['error']?['code'] as int?;
+        final error = response['error'];
+        final errorCode = error is Map<String, dynamic> ? error['code'] as int? : null;
         logger.w('SynologyApi: 登录失败, 错误码 => $errorCode');
         return _handleAuthError(errorCode);
       }
@@ -424,7 +425,8 @@ class SynologyApi {
 
     final data = response.data;
     if (data == null || data['success'] != true) {
-      final errorCode = data?['error']?['code'] as int?;
+      final error = data?['error'];
+      final errorCode = error is Map<String, dynamic> ? error['code'] as int? : null;
       throw ServerException(
         message: _getErrorMessage(errorCode),
         statusCode: errorCode,
@@ -587,7 +589,8 @@ class SynologyApi {
       }
 
       if (data['success'] != true) {
-        final errorCode = data['error']?['code'] as int?;
+        final error = data['error'];
+        final errorCode = error is Map<String, dynamic> ? error['code'] as int? : null;
         final errorMsg = _getErrorMessage(errorCode);
         logger.e('SynologyApi: API 错误 => $errorMsg (code: $errorCode)');
         throw ServerException(

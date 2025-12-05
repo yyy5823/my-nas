@@ -29,7 +29,7 @@ class VideoPlayerPage extends ConsumerStatefulWidget {
   ConsumerState<VideoPlayerPage> createState() => _VideoPlayerPageState();
 }
 
-class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
+class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsBindingObserver {
   bool _showControls = true;
   bool _isLocked = false;
   Timer? _hideControlsTimer;
@@ -46,9 +46,14 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
   NasFileSystem? _fileSystem;
   String? _videoUrl;
 
+  // 记录上一次的横竖屏状态，避免重复设置
+  Orientation? _lastOrientation;
+
   @override
   void initState() {
     super.initState();
+    // 注册生命周期观察者
+    WidgetsBinding.instance.addObserver(this);
     // 缓存 notifier 引用
     _playerNotifier = ref.read(videoPlayerControllerProvider.notifier);
 
@@ -64,6 +69,30 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
       await _loadSubtitles();
     });
     _startHideControlsTimer();
+  }
+
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    // 检测屏幕方向变化，自动切换全屏状态
+    _checkOrientationAndSetFullscreen();
+  }
+
+  /// 根据屏幕方向自动设置全屏状态
+  void _checkOrientationAndSetFullscreen() {
+    if (!mounted) return;
+
+    final size = WidgetsBinding.instance.platformDispatcher.views.first.physicalSize;
+    final orientation = size.width > size.height ? Orientation.landscape : Orientation.portrait;
+
+    // 避免重复设置
+    if (orientation == _lastOrientation) return;
+    _lastOrientation = orientation;
+
+    // 横屏时自动进入全屏，竖屏时自动退出全屏
+    final isLandscape = orientation == Orientation.landscape;
+    _playerNotifier?.setFullscreen(fullscreen: isLandscape);
+    logger.d('VideoPlayerPage: 屏幕方向变化 => ${isLandscape ? "横屏(全屏)" : "竖屏(非全屏)"}');
   }
 
   /// 缓存源信息，用于 dispose 时更新缩略图
@@ -114,6 +143,8 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
 
   @override
   void dispose() {
+    // 移除生命周期观察者
+    WidgetsBinding.instance.removeObserver(this);
     _hideControlsTimer?.cancel();
     // 同步停止播放 - 使用缓存的 notifier 引用，避免在 dispose 后使用 ref
     _playerNotifier?.stopSync();

@@ -26,7 +26,7 @@ class DioClient {
     ]);
 
     if (allowSelfSigned) {
-      setAllowSelfSignedCert(true);
+      setAllowSelfSignedCert(allow: true);
     }
   }
 
@@ -48,7 +48,7 @@ class DioClient {
   }
 
   /// 设置是否允许自签名证书
-  void setAllowSelfSignedCert(bool allow) {
+  void setAllowSelfSignedCert({required bool allow}) {
     if (allow) {
       logger.i('DioClient: 允许自签名 SSL 证书');
       (_dio.httpClientAdapter as IOHttpClientAdapter).createHttpClient = () {

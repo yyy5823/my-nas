@@ -140,13 +140,13 @@ class PlaybackSettingsNotifier extends StateNotifier<PlaybackSettings> {
   }
 
   /// 设置是否自动播放下一个
-  Future<void> setAutoPlayNext(bool enabled) async {
+  Future<void> setAutoPlayNext({required bool enabled}) async {
     state = state.copyWith(autoPlayNext: enabled);
     await _save();
   }
 
   /// 设置是否记住播放位置
-  Future<void> setRememberPosition(bool enabled) async {
+  Future<void> setRememberPosition({required bool enabled}) async {
     state = state.copyWith(rememberPosition: enabled);
     await _save();
   }

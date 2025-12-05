@@ -11,12 +11,16 @@ class FileItemWidget extends StatelessWidget {
     super.key,
     this.onLongPress,
     this.isGridView = false,
+    this.isSelected = false,
+    this.isMultiSelectMode = false,
   });
 
   final FileItem file;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
   final bool isGridView;
+  final bool isSelected;
+  final bool isMultiSelectMode;
 
   @override
   Widget build(BuildContext context) =>
@@ -31,14 +35,21 @@ class FileItemWidget extends StatelessWidget {
         vertical: AppSpacing.xs,
       ),
       decoration: BoxDecoration(
-        color: isDark
-            ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
-            : context.colorScheme.surface,
+        color: isSelected
+            ? (isDark
+                ? AppColors.primary.withValues(alpha: 0.2)
+                : AppColors.primary.withValues(alpha: 0.1))
+            : (isDark
+                ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
+                : context.colorScheme.surface),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isDark
-              ? AppColors.darkOutline.withValues(alpha: 0.2)
-              : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
+          color: isSelected
+              ? AppColors.primary
+              : (isDark
+                  ? AppColors.darkOutline.withValues(alpha: 0.2)
+                  : context.colorScheme.outlineVariant.withValues(alpha: 0.5)),
+          width: isSelected ? 2 : 1,
         ),
       ),
       child: Material(
@@ -51,6 +62,11 @@ class FileItemWidget extends StatelessWidget {
             padding: const EdgeInsets.all(AppSpacing.md),
             child: Row(
               children: [
+                // 多选模式下显示复选框
+                if (isMultiSelectMode) ...[
+                  _buildCheckbox(isDark),
+                  const SizedBox(width: AppSpacing.sm),
+                ],
                 // 文件图标
                 _buildIconContainer(context, size: 48),
                 const SizedBox(width: AppSpacing.md),
@@ -84,35 +100,37 @@ class FileItemWidget extends StatelessWidget {
                   ),
                 ),
                 // 右侧信息
-                if (file.isDirectory)
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: isDark
-                        ? AppColors.darkOnSurfaceVariant
-                        : context.colorScheme.onSurfaceVariant,
-                  )
-                else
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
+                if (!isMultiSelectMode) ...[
+                  if (file.isDirectory)
+                    Icon(
+                      Icons.chevron_right_rounded,
                       color: isDark
-                          ? AppColors.darkSurfaceElevated
-                          : context.colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      file.displaySize,
-                      style: context.textTheme.labelSmall?.copyWith(
+                          ? AppColors.darkOnSurfaceVariant
+                          : context.colorScheme.onSurfaceVariant,
+                    )
+                  else
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
                         color: isDark
-                            ? AppColors.darkOnSurfaceVariant
-                            : context.colorScheme.onSurfaceVariant,
-                        fontWeight: FontWeight.w500,
+                            ? AppColors.darkSurfaceElevated
+                            : context.colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        file.displaySize,
+                        style: context.textTheme.labelSmall?.copyWith(
+                          color: isDark
+                              ? AppColors.darkOnSurfaceVariant
+                              : context.colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ),
-                  ),
+                ],
               ],
             ),
           ),
@@ -126,14 +144,21 @@ class FileItemWidget extends StatelessWidget {
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: isDark
-            ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
-            : context.colorScheme.surface,
+        color: isSelected
+            ? (isDark
+                ? AppColors.primary.withValues(alpha: 0.2)
+                : AppColors.primary.withValues(alpha: 0.1))
+            : (isDark
+                ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
+                : context.colorScheme.surface),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: isDark
-              ? AppColors.darkOutline.withValues(alpha: 0.2)
-              : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
+          color: isSelected
+              ? AppColors.primary
+              : (isDark
+                  ? AppColors.darkOutline.withValues(alpha: 0.2)
+                  : context.colorScheme.outlineVariant.withValues(alpha: 0.5)),
+          width: isSelected ? 2 : 1,
         ),
       ),
       child: Material(
@@ -142,47 +167,78 @@ class FileItemWidget extends StatelessWidget {
           onTap: onTap,
           onLongPress: onLongPress,
           borderRadius: BorderRadius.circular(20),
-          child: Padding(
-            padding: const EdgeInsets.all(AppSpacing.md),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Expanded(
-                  child: Center(
-                    child: _buildIconContainer(context, size: 56),
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                Text(
-                  file.name,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: context.textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w500,
-                    color: isDark
-                        ? AppColors.darkOnSurface
-                        : context.colorScheme.onSurface,
-                  ),
-                ),
-                if (!file.isDirectory) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    file.displaySize,
-                    style: context.textTheme.labelSmall?.copyWith(
-                      color: isDark
-                          ? AppColors.darkOnSurfaceVariant
-                          : context.colorScheme.onSurfaceVariant,
+          child: Stack(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: Center(
+                        child: _buildIconContainer(context, size: 56),
+                      ),
                     ),
-                  ),
-                ],
-              ],
-            ),
+                    const SizedBox(height: AppSpacing.sm),
+                    Text(
+                      file.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: context.textTheme.bodySmall?.copyWith(
+                        fontWeight: FontWeight.w500,
+                        color: isDark
+                            ? AppColors.darkOnSurface
+                            : context.colorScheme.onSurface,
+                      ),
+                    ),
+                    if (!file.isDirectory) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        file.displaySize,
+                        style: context.textTheme.labelSmall?.copyWith(
+                          color: isDark
+                              ? AppColors.darkOnSurfaceVariant
+                              : context.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              // 多选模式下在右上角显示复选框
+              if (isMultiSelectMode)
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: _buildCheckbox(isDark),
+                ),
+            ],
           ),
         ),
       ),
     );
   }
+
+  Widget _buildCheckbox(bool isDark) => Container(
+    width: 24,
+    height: 24,
+    decoration: BoxDecoration(
+      color: isSelected
+          ? AppColors.primary
+          : (isDark ? AppColors.darkSurface : Colors.white),
+      shape: BoxShape.circle,
+      border: Border.all(
+        color: isSelected
+            ? AppColors.primary
+            : (isDark ? AppColors.darkOutline : Colors.grey),
+        width: 2,
+      ),
+    ),
+    child: isSelected
+        ? const Icon(Icons.check, size: 16, color: Colors.white)
+        : null,
+  );
 
   Widget _buildIconContainer(BuildContext context, {required double size}) {
     final iconData = _getIconData();

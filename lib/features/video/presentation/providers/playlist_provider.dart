@@ -15,14 +15,16 @@ class PlaylistState {
   final RepeatMode repeatMode;
   final bool shuffleEnabled;
 
-  VideoItem? get currentItem =>
-      currentIndex >= 0 && currentIndex < items.length
-          ? items[currentIndex]
-          : null;
+  VideoItem? get currentItem => currentIndex >= 0 && currentIndex < items.length
+      ? items[currentIndex]
+      : null;
 
   bool get hasNext => currentIndex < items.length - 1;
+
   bool get hasPrevious => currentIndex > 0;
+
   bool get isEmpty => items.isEmpty;
+
   int get length => items.length;
 
   PlaylistState copyWith({
@@ -30,13 +32,12 @@ class PlaylistState {
     int? currentIndex,
     RepeatMode? repeatMode,
     bool? shuffleEnabled,
-  }) =>
-      PlaylistState(
-        items: items ?? this.items,
-        currentIndex: currentIndex ?? this.currentIndex,
-        repeatMode: repeatMode ?? this.repeatMode,
-        shuffleEnabled: shuffleEnabled ?? this.shuffleEnabled,
-      );
+  }) => PlaylistState(
+    items: items ?? this.items,
+    currentIndex: currentIndex ?? this.currentIndex,
+    repeatMode: repeatMode ?? this.repeatMode,
+    shuffleEnabled: shuffleEnabled ?? this.shuffleEnabled,
+  );
 }
 
 /// 重复模式
@@ -67,16 +68,12 @@ class PlaylistNotifier extends StateNotifier<PlaylistState> {
 
   /// 添加到播放列表
   void addToPlaylist(VideoItem item) {
-    state = state.copyWith(
-      items: [...state.items, item],
-    );
+    state = state.copyWith(items: [...state.items, item]);
   }
 
   /// 批量添加到播放列表
   void addAllToPlaylist(List<VideoItem> items) {
-    state = state.copyWith(
-      items: [...state.items, ...items],
-    );
+    state = state.copyWith(items: [...state.items, ...items]);
   }
 
   /// 从播放列表移除
@@ -229,7 +226,7 @@ class PlaylistNotifier extends StateNotifier<PlaylistState> {
   }
 
   /// 设置随机播放
-  void setShuffle(bool enabled) {
+  void setShuffle({required bool enabled}) {
     state = state.copyWith(shuffleEnabled: enabled);
     if (enabled) {
       _generateShuffleOrder();
@@ -264,13 +261,13 @@ class PlaylistNotifier extends StateNotifier<PlaylistState> {
   }
 
   void _generateShuffleOrder() {
-    final indices = List.generate(state.items.length, (i) => i)
-    ..shuffle();
+    final indices = List.generate(state.items.length, (i) => i)..shuffle();
 
     // 确保当前播放的在第一位
     if (state.currentIndex >= 0) {
-      indices..remove(state.currentIndex)
-      ..insert(0, state.currentIndex);
+      indices
+        ..remove(state.currentIndex)
+        ..insert(0, state.currentIndex);
     }
 
     _shuffleOrder = indices;
@@ -278,5 +275,6 @@ class PlaylistNotifier extends StateNotifier<PlaylistState> {
 }
 
 /// 播放列表 provider
-final playlistProvider =
-    StateNotifierProvider<PlaylistNotifier, PlaylistState>((ref) => PlaylistNotifier());
+final playlistProvider = StateNotifierProvider<PlaylistNotifier, PlaylistState>(
+  (ref) => PlaylistNotifier(),
+);

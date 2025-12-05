@@ -218,7 +218,7 @@ class MediaLibraryConfigNotifier
     await _save(newConfig);
   }
 
-  Future<void> togglePath(MediaType type, String pathId, bool enabled) async {
+  Future<void> togglePath(MediaType type, String pathId, {required bool enabled}) async {
     final current = state.valueOrNull ?? const MediaLibraryConfig();
     final paths = current.getPathsForType(type);
     final updatedPaths = paths.map((p) {

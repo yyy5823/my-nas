@@ -35,17 +35,15 @@ class SecureStorageException implements Exception {
 /// 使用安全存储来保存用户凭证和设备信息
 class AuthStorageService {
   AuthStorageService()
-      : _storage = const FlutterSecureStorage(
-          aOptions: AndroidOptions(
-            encryptedSharedPreferences: true,
-          ),
-          iOptions: IOSOptions(
-            accessibility: KeychainAccessibility.first_unlock_this_device,
-          ),
-          mOptions: MacOsOptions(
-            accessibility: KeychainAccessibility.first_unlock_this_device,
-          ),
-        );
+    : _storage = const FlutterSecureStorage(
+        aOptions: AndroidOptions(encryptedSharedPreferences: true),
+        iOptions: IOSOptions(
+          accessibility: KeychainAccessibility.first_unlock_this_device,
+        ),
+        mOptions: MacOsOptions(
+          accessibility: KeychainAccessibility.first_unlock_this_device,
+        ),
+      );
 
   final FlutterSecureStorage _storage;
 
@@ -221,7 +219,7 @@ class AuthStorageService {
   }
 
   /// 设置记住登录状态
-  Future<void> setRememberLogin(bool value) async {
+  Future<void> setRememberLogin({required bool value}) async {
     await _safeWrite(_keyRememberLogin, value.toString());
 
     // 如果关闭记住登录，清除凭证
@@ -237,7 +235,7 @@ class AuthStorageService {
   }
 
   /// 设置记住设备状态
-  Future<void> setRememberDevice(bool value) async {
+  Future<void> setRememberDevice({required bool value}) async {
     await _safeWrite(_keyRememberDevice, value.toString());
   }
 
@@ -248,7 +246,8 @@ class AuthStorageService {
   }
 
   /// 获取最后连接的ID
-  Future<String?> getLastConnectionId() async => _safeRead(_keyLastConnectionId);
+  Future<String?> getLastConnectionId() async =>
+      _safeRead(_keyLastConnectionId);
 
   /// 清除所有认证数据
   Future<void> clearAll() async {

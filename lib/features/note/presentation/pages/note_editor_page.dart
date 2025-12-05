@@ -101,7 +101,7 @@ class NoteEditorNotifier extends StateNotifier<NoteEditorState> {
     }
   }
 
-  void setEditing(bool editing) {
+  void setEditing({required bool editing}) {
     final current = state;
     if (current is NoteEditorLoaded) {
       state = current.copyWith(isEditing: editing);

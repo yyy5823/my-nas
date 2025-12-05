@@ -138,7 +138,7 @@ class SubtitleStyleNotifier extends StateNotifier<SubtitleStyle> {
   }
 
   /// 设置是否显示描边
-  void setHasOutline(bool hasOutline) {
+  void setHasOutline({required bool hasOutline}) {
     state = state.copyWith(hasOutline: hasOutline);
     _saveToStorage();
   }

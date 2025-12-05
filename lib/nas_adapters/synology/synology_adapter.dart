@@ -53,7 +53,7 @@ class SynologyAdapter implements NasAdapter {
     // 如果不验证 SSL，添加相应配置
     if (!config.verifySSL) {
       logger.i('SynologyAdapter: 跳过 SSL 证书验证');
-      _dioClient.setAllowSelfSignedCert(true);
+      _dioClient.setAllowSelfSignedCert(allow: true);
     }
 
     // 尝试登录

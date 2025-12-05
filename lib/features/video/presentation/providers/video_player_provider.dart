@@ -553,7 +553,7 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
   }
 
   /// 设置全屏状态
-  void setFullscreen(bool fullscreen) {
+  void setFullscreen({required bool fullscreen}) {
     state = state.copyWith(isFullscreen: fullscreen);
   }
 

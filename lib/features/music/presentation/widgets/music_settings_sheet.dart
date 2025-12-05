@@ -135,8 +135,8 @@ class MusicSettingsSheet extends ConsumerWidget {
                           settings.volume == 0
                               ? Icons.volume_off_rounded
                               : settings.volume < 0.5
-                                  ? Icons.volume_down_rounded
-                                  : Icons.volume_up_rounded,
+                              ? Icons.volume_down_rounded
+                              : Icons.volume_up_rounded,
                           color: isDark
                               ? AppColors.darkOnSurfaceVariant
                               : AppColors.lightOnSurfaceVariant,
@@ -170,11 +170,13 @@ class MusicSettingsSheet extends ConsumerWidget {
                       spacing: 8,
                       runSpacing: 8,
                       children: availableCrossfadeDurations.map((duration) {
-                        final isSelected = duration == settings.crossfadeDuration;
+                        final isSelected =
+                            duration == settings.crossfadeDuration;
                         return ChoiceChip(
                           label: Text(duration == 0 ? '关闭' : '$duration秒'),
                           selected: isSelected,
-                          onSelected: (_) => notifier.setCrossfadeDuration(duration),
+                          onSelected: (_) =>
+                              notifier.setCrossfadeDuration(duration),
                         );
                       }).toList(),
                     ),
@@ -187,7 +189,9 @@ class MusicSettingsSheet extends ConsumerWidget {
                     title: const Text('无缝播放'),
                     subtitle: const Text('播放列表歌曲之间无间隙'),
                     value: settings.gaplessPlayback,
-                    onChanged: notifier.setGaplessPlayback,
+                    onChanged: (value) {
+                      notifier.setGaplessPlayback(enabled: value);
+                    },
                     contentPadding: EdgeInsets.zero,
                   ),
 
@@ -198,7 +202,9 @@ class MusicSettingsSheet extends ConsumerWidget {
                     title: const Text('显示歌词'),
                     subtitle: const Text('在播放页面显示歌词（如果可用）'),
                     value: settings.showLyrics,
-                    onChanged: notifier.setShowLyrics,
+                    onChanged: (value) {
+                      notifier.setShowLyrics(enabled: value);
+                    },
                     contentPadding: EdgeInsets.zero,
                   ),
 
@@ -209,7 +215,9 @@ class MusicSettingsSheet extends ConsumerWidget {
                     title: const Text('连接后自动播放'),
                     subtitle: const Text('连接到 NAS 后自动继续上次播放'),
                     value: settings.autoPlayOnConnect,
-                    onChanged: notifier.setAutoPlayOnConnect,
+                    onChanged: (value) {
+                      notifier.setAutoPlayOnConnect(enabled: value);
+                    },
                     contentPadding: EdgeInsets.zero,
                   ),
 
@@ -226,33 +234,33 @@ class MusicSettingsSheet extends ConsumerWidget {
   Widget _buildSection(
     BuildContext context, {
     required String title,
-    required Widget child, String? subtitle,
-  }) =>
-      Padding(
-        padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: context.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            if (subtitle != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                subtitle,
-                style: context.textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).brightness == Brightness.dark
-                      ? AppColors.darkOnSurfaceVariant
-                      : AppColors.lightOnSurfaceVariant,
-                ),
-              ),
-            ],
-            const SizedBox(height: 12),
-            child,
-          ],
+    required Widget child,
+    String? subtitle,
+  }) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: context.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
         ),
-      );
+        if (subtitle != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: context.textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? AppColors.darkOnSurfaceVariant
+                  : AppColors.lightOnSurfaceVariant,
+            ),
+          ),
+        ],
+        const SizedBox(height: 12),
+        child,
+      ],
+    ),
+  );
 }
