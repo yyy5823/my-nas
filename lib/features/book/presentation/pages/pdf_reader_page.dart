@@ -428,12 +428,12 @@ class _PdfReaderPageState extends ConsumerState<PdfReaderPage> {
                   _buildBottomButton(
                     icon: Icons.zoom_out_rounded,
                     label: '缩小',
-                    onTap: () => _controller.zoomDown(),
+                    onTap: _controller.zoomDown,
                   ),
                   _buildBottomButton(
                     icon: Icons.zoom_in_rounded,
                     label: '放大',
-                    onTap: () => _controller.zoomUp(),
+                    onTap: _controller.zoomUp,
                   ),
                   _buildBottomButton(
                     icon: Icons.last_page_rounded,

@@ -43,7 +43,6 @@ class WebDavAdapter implements NasAdapter {
         config.baseUrl,
         user: config.username,
         password: config.password,
-        debug: false,
       );
 
       // 设置超时和自签名证书支持

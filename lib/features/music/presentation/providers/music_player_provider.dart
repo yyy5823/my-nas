@@ -340,7 +340,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
       // 获取文件扩展名来确定 MIME 类型
       final ext = p.extension(music.name).toLowerCase();
-      String mimeType = 'audio/mpeg'; // 默认
+      var mimeType = 'audio/mpeg'; // 默认
       if (ext == '.flac') {
         mimeType = 'audio/flac';
       } else if (ext == '.wav') {
@@ -464,8 +464,8 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       final currentVolume = _player.volume;
       logger.d('MusicPlayer: 当前音量 => $currentVolume');
       if (currentVolume == 0) {
-        await _player.setVolume(1.0);
-        state = state.copyWith(volume: 1.0);
+        await _player.setVolume(1);
+        state = state.copyWith(volume: 1);
         logger.d('MusicPlayer: 音量已重置为 1.0');
       }
 
@@ -477,7 +477,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       ..d('MusicPlayer: 播放状态 - playing: ${_player.playing}, processingState: ${_player.processingState}');
 
       // 添加到播放历史
-      _ref.read(musicHistoryProvider.notifier).addToHistory(music);
+      await _ref.read(musicHistoryProvider.notifier).addToHistory(music);
 
       // 在后台提取元数据
       logger.i('MusicPlayer: 开始后台提取元数据...');
@@ -672,7 +672,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     await _player.setVolume(volume);
     state = state.copyWith(volume: volume);
     // 同步保存到设置
-    _ref.read(musicSettingsProvider.notifier).setVolume(volume);
+    await _ref.read(musicSettingsProvider.notifier).setVolume(volume);
   }
 
   /// 切换播放模式

@@ -10,7 +10,7 @@ enum AspectRatioMode {
   r16x9('16:9', 16 / 9),
   r4x3('4:3', 4 / 3),
   r21x9('21:9', 21 / 9),
-  r1x1('1:1', 1.0);
+  r1x1('1:1', 1);
 
   const AspectRatioMode(this.label, this.ratio);
 

@@ -48,7 +48,7 @@ class PhotoFileWithSource {
 
 /// 照片列表状态
 final photoListProvider =
-    StateNotifierProvider<PhotoListNotifier, PhotoListState>((ref) => PhotoListNotifier(ref));
+    StateNotifierProvider<PhotoListNotifier, PhotoListState>(PhotoListNotifier.new);
 
 /// 照片排序方式
 enum PhotoSortType { date, name, size }
@@ -362,9 +362,9 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
     final connections = _ref.read(activeConnectionsProvider);
     final configAsync = _ref.read(mediaLibraryConfigProvider);
 
-    MediaLibraryConfig? config = configAsync.valueOrNull;
+    var config = configAsync.valueOrNull;
     if (config == null) {
-      state = PhotoListLoading(progress: 0, currentFolder: '正在加载配置...');
+      state = PhotoListLoading(currentFolder: '正在加载配置...');
 
       for (var i = 0; i < 10; i++) {
         await Future<void>.delayed(const Duration(milliseconds: 500));
@@ -470,7 +470,7 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
 
     // 保存到 SQLite
     state = PhotoListLoading(
-      progress: 1.0,
+      progress: 1,
       currentFolder: '保存数据...',
       partialPhotos: photos,
       scannedCount: photos.length,
@@ -990,7 +990,6 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
                       url: photo.thumbnailUrl,
                       path: photo.path,
                       fileSystem: fileSystem,
-                      fit: BoxFit.cover,
                       placeholder: Container(
                         color: isDark ? Colors.grey[800] : Colors.grey[200],
                         child: Icon(
@@ -1444,7 +1443,6 @@ class _PhotoGridItem extends ConsumerWidget {
           url: photo.thumbnailUrl,
           path: photo.path,
           fileSystem: fileSystem,
-          fit: BoxFit.cover,
           placeholder: _buildPlaceholder(),
           errorWidget: _buildPlaceholder(),
           cacheKey: photo.path,

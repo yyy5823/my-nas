@@ -52,6 +52,12 @@ class SourceCredential {
     this.deviceId,
   });
 
+  factory SourceCredential.fromJson(Map<String, dynamic> json) =>
+      SourceCredential(
+        password: json['password'] as String,
+        deviceId: json['deviceId'] as String?,
+      );
+
   final String password;
   final String? deviceId;
 
@@ -59,12 +65,6 @@ class SourceCredential {
         'password': password,
         'deviceId': deviceId,
       };
-
-  factory SourceCredential.fromJson(Map<String, dynamic> json) =>
-      SourceCredential(
-        password: json['password'] as String,
-        deviceId: json['deviceId'] as String?,
-      );
 }
 
 /// 源管理服务
@@ -468,7 +468,6 @@ class SourceManagerService {
 
             return connection.copyWith(
               status: SourceStatus.connected,
-              errorMessage: null,
             );
           }(),
         ConnectionFailure(:final error) => connection.copyWith(
@@ -520,7 +519,7 @@ class SourceManagerService {
     logger.i('SourceManagerService: 开始自动连接 ${autoConnectSources.length} 个源');
 
     // 并行连接所有源，每个连接有独立的超时
-    final futures = autoConnectSources.map((source) => _autoConnectSource(source));
+    final futures = autoConnectSources.map(_autoConnectSource);
     await Future.wait(futures);
 
     logger.i('SourceManagerService: 自动连接完成');

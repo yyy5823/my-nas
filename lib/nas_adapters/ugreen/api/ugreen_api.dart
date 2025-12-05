@@ -256,7 +256,7 @@ class UGreenApi {
       final firstElement = topLevelSeq.elements![0];
       if (firstElement is ASN1Integer) {
         // PKCS#1 格式
-        final modulus = (firstElement).integer;
+        final modulus = firstElement.integer;
         final exponent = (topLevelSeq.elements![1] as ASN1Integer).integer;
         return RSAPublicKey(modulus!, exponent!);
       } else {
@@ -547,8 +547,8 @@ class UGreenApi {
 
     for (final attempt in attempts) {
       try {
-        final endpoint = attempt['endpoint'] as String;
-        final data = attempt['data'] as Map<String, dynamic>;
+        final endpoint = attempt['endpoint']! as String;
+        final data = attempt['data']! as Map<String, dynamic>;
         final method = attempt['method'] as String? ?? 'POST';
         logger.d('UGreenApi: 尝试共享端点 => $endpoint ($method)');
 

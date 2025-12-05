@@ -216,14 +216,11 @@ class _RecommendationCardState extends State<_RecommendationCard> {
                         fit: StackFit.expand,
                         children: [
                           // 图片
-                          hasPoster
-                              ? AdaptiveImage(
+                          if (hasPoster) AdaptiveImage(
                                   imageUrl: widget.item.posterUrl,
-                                  fit: BoxFit.cover,
                                   placeholder: (_) => _buildPlaceholder(isDark),
                                   errorWidget: (_, _) => _buildPlaceholder(isDark),
-                                )
-                              : _buildPlaceholder(isDark),
+                                ) else _buildPlaceholder(isDark),
                           // 渐变遮罩
                           Positioned(
                             left: 0,

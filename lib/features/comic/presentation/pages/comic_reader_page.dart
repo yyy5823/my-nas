@@ -123,7 +123,7 @@ class ComicReaderNotifier extends StateNotifier<ComicReaderState> {
     final imageFiles = items.where((item) {
       if (item.isDirectory) return false;
       final ext = item.name.toLowerCase();
-      return _imageExtensions.any((e) => ext.endsWith(e));
+      return _imageExtensions.any(ext.endsWith);
     }).toList()
 
     ..sort((a, b) => a.name.compareTo(b.name));
@@ -656,7 +656,6 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
                   Expanded(
                     child: Slider(
                       value: state.currentPage.toDouble(),
-                      min: 0,
                       max: (state.pages.length - 1).toDouble(),
                       onChanged: (value) {
                         notifier.goToPage(value.round());

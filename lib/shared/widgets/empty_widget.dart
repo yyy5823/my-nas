@@ -37,8 +37,8 @@ class EmptyWidget extends StatelessWidget {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    (isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant),
-                    (isDark ? AppColors.darkSurfaceElevated : AppColors.lightSurface),
+                    if (isDark) AppColors.darkSurfaceVariant else AppColors.lightSurfaceVariant,
+                    if (isDark) AppColors.darkSurfaceElevated else AppColors.lightSurface,
                   ],
                 ),
                 border: Border.all(

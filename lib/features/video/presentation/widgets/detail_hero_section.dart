@@ -45,7 +45,6 @@ class DetailHeroSection extends StatelessWidget {
           if (hasBackdrop)
             AdaptiveImage(
               imageUrl: displayBackdrop,
-              fit: BoxFit.cover,
               placeholder: (_) => _buildBackdropPlaceholder(isDark),
               errorWidget: (_, _) => _buildBackdropPlaceholder(isDark),
             )
@@ -61,10 +60,8 @@ class DetailHeroSection extends StatelessWidget {
                 colors: [
                   Colors.transparent,
                   Colors.black.withValues(alpha: 0.3),
-                  isDark
-                      ? AppColors.darkBackground.withValues(alpha: 0.9)
-                      : Colors.black.withValues(alpha: 0.7),
-                  isDark ? AppColors.darkBackground : Colors.black,
+                  if (isDark) AppColors.darkBackground.withValues(alpha: 0.9) else Colors.black.withValues(alpha: 0.7),
+                  if (isDark) AppColors.darkBackground else Colors.black,
                 ],
                 stops: const [0.0, 0.4, 0.7, 1.0],
               ),
@@ -76,12 +73,8 @@ class DetailHeroSection extends StatelessWidget {
             Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
                   colors: [
-                    isDark
-                        ? AppColors.darkBackground.withValues(alpha: 0.8)
-                        : Colors.black.withValues(alpha: 0.6),
+                    if (isDark) AppColors.darkBackground.withValues(alpha: 0.8) else Colors.black.withValues(alpha: 0.6),
                     Colors.transparent,
                   ],
                   stops: const [0.0, 0.5],
@@ -129,7 +122,6 @@ class DetailHeroSection extends StatelessWidget {
               borderRadius: BorderRadius.circular(12),
               child: AdaptiveImage(
                 imageUrl: displayPoster!,
-                fit: BoxFit.cover,
                 placeholder: (_) => _buildPosterPlaceholder(isDark),
                 errorWidget: (_, _) => _buildPosterPlaceholder(isDark),
               ),
@@ -185,7 +177,6 @@ class DetailHeroSection extends StatelessWidget {
                   borderRadius: BorderRadius.circular(8),
                   child: AdaptiveImage(
                     imageUrl: displayPoster!,
-                    fit: BoxFit.cover,
                     placeholder: (_) => _buildPosterPlaceholder(isDark),
                     errorWidget: (_, _) => _buildPosterPlaceholder(isDark),
                   ),
@@ -198,7 +189,7 @@ class DetailHeroSection extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  _buildTitleSection(isDark, large: false),
+                  _buildTitleSection(isDark),
                   const SizedBox(height: 6),
                   _buildMetadataRow(isDark),
                 ],

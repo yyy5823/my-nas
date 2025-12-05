@@ -16,6 +16,23 @@ class ConnectionEntity {
     this.rememberDevice = false,
   });
 
+  factory ConnectionEntity.fromJson(Map<String, dynamic> json) =>
+      ConnectionEntity(
+        id: json['id'] as String,
+        name: json['name'] as String,
+        type: NasAdapterType.values.byName(json['type'] as String),
+        host: json['host'] as String,
+        port: json['port'] as int,
+        username: json['username'] as String,
+        useSsl: json['useSsl'] as bool? ?? true,
+        quickConnectId: json['quickConnectId'] as String?,
+        lastConnected: json['lastConnected'] != null
+            ? DateTime.parse(json['lastConnected'] as String)
+            : null,
+        rememberLogin: json['rememberLogin'] as bool? ?? false,
+        rememberDevice: json['rememberDevice'] as bool? ?? false,
+      );
+
   final String id;
   final String name;
   final NasAdapterType type;
@@ -79,21 +96,4 @@ class ConnectionEntity {
         'rememberLogin': rememberLogin,
         'rememberDevice': rememberDevice,
       };
-
-  factory ConnectionEntity.fromJson(Map<String, dynamic> json) =>
-      ConnectionEntity(
-        id: json['id'] as String,
-        name: json['name'] as String,
-        type: NasAdapterType.values.byName(json['type'] as String),
-        host: json['host'] as String,
-        port: json['port'] as int,
-        username: json['username'] as String,
-        useSsl: json['useSsl'] as bool? ?? true,
-        quickConnectId: json['quickConnectId'] as String?,
-        lastConnected: json['lastConnected'] != null
-            ? DateTime.parse(json['lastConnected'] as String)
-            : null,
-        rememberLogin: json['rememberLogin'] as bool? ?? false,
-        rememberDevice: json['rememberDevice'] as bool? ?? false,
-      );
 }

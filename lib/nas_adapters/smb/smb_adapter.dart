@@ -112,11 +112,6 @@ class SmbAdapter implements NasAdapter {
       logger.e('SmbAdapter: 连接失败', e, stackTrace);
       _connected = false;
       return ConnectionFailure(error: _parseError(e));
-    } on Exception catch (e, stackTrace) {
-      // 捕获非 Exception 类型的错误（如 String）
-      logger.e('SmbAdapter: 连接失败 (非异常)', e, stackTrace);
-      _connected = false;
-      return ConnectionFailure(error: _parseErrorAny(e));
     }
   }
 

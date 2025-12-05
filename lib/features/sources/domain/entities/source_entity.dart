@@ -49,18 +49,33 @@ enum SourceStatus {
 /// 连接源实体
 class SourceEntity {
   SourceEntity({
-    String? id,
-    required this.name,
-    required this.type,
-    required this.host,
+    required this.name, required this.type, required this.host, required this.username, String? id,
     this.port = 5001,
-    required this.username,
     this.useSsl = true,
     this.quickConnectId,
     this.lastConnected,
     this.autoConnect = true,
     this.rememberDevice = false,
   }) : id = id ?? const Uuid().v4();
+
+  factory SourceEntity.fromJson(Map<String, dynamic> json) => SourceEntity(
+        id: json['id'] as String,
+        name: json['name'] as String,
+        type: SourceType.values.firstWhere(
+          (t) => t.id == json['type'],
+          orElse: () => SourceType.synology,
+        ),
+        host: json['host'] as String,
+        port: json['port'] as int? ?? 5001,
+        username: json['username'] as String,
+        useSsl: json['useSsl'] as bool? ?? true,
+        quickConnectId: json['quickConnectId'] as String?,
+        lastConnected: json['lastConnected'] != null
+            ? DateTime.parse(json['lastConnected'] as String)
+            : null,
+        autoConnect: json['autoConnect'] as bool? ?? true,
+        rememberDevice: json['rememberDevice'] as bool? ?? false,
+      );
 
   final String id;
   final String name;
@@ -128,23 +143,4 @@ class SourceEntity {
         'autoConnect': autoConnect,
         'rememberDevice': rememberDevice,
       };
-
-  factory SourceEntity.fromJson(Map<String, dynamic> json) => SourceEntity(
-        id: json['id'] as String,
-        name: json['name'] as String,
-        type: SourceType.values.firstWhere(
-          (t) => t.id == json['type'],
-          orElse: () => SourceType.synology,
-        ),
-        host: json['host'] as String,
-        port: json['port'] as int? ?? 5001,
-        username: json['username'] as String,
-        useSsl: json['useSsl'] as bool? ?? true,
-        quickConnectId: json['quickConnectId'] as String?,
-        lastConnected: json['lastConnected'] != null
-            ? DateTime.parse(json['lastConnected'] as String)
-            : null,
-        autoConnect: json['autoConnect'] as bool? ?? true,
-        rememberDevice: json['rememberDevice'] as bool? ?? false,
-      );
 }

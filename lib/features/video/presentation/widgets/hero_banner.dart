@@ -81,7 +81,7 @@ class _HeroBannerState extends State<HeroBanner> {
     return GestureDetector(
       onPanDown: (_) => _pauseAutoPlay(),
       onPanEnd: (_) => _resumeAutoPlay(),
-      onPanCancel: () => _resumeAutoPlay(),
+      onPanCancel: _resumeAutoPlay,
       child: SizedBox(
         height: widget.height,
         child: Stack(
@@ -487,7 +487,7 @@ class _CompactHeroBannerState extends State<CompactHeroBanner> {
               itemBuilder: (context, index) => AnimatedBuilder(
                   animation: _pageController,
                   builder: (context, child) {
-                    double value = 1.0;
+                    double value = 1;
                     if (_pageController.position.haveDimensions) {
                       value = (_pageController.page! - index).abs();
                       value = (1 - (value * 0.2)).clamp(0.8, 1.0);

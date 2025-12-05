@@ -165,7 +165,7 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
                     gradient: RadialGradient(
                       colors: [
                         AppColors.primary.withValues(alpha: 0.3),
-                        AppColors.primary.withValues(alpha: 0.0),
+                        AppColors.primary.withValues(alpha: 0),
                       ],
                     ),
                   ),
@@ -182,7 +182,7 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
                     gradient: RadialGradient(
                       colors: [
                         AppColors.secondary.withValues(alpha: 0.25),
-                        AppColors.secondary.withValues(alpha: 0.0),
+                        AppColors.secondary.withValues(alpha: 0),
                       ],
                     ),
                   ),
@@ -199,7 +199,7 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
                     gradient: RadialGradient(
                       colors: [
                         AppColors.accent.withValues(alpha: 0.15),
-                        AppColors.accent.withValues(alpha: 0.0),
+                        AppColors.accent.withValues(alpha: 0),
                       ],
                     ),
                   ),
@@ -758,7 +758,6 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
             borderRadius: BorderRadius.circular(24),
             border: Border.all(
               color: AppColors.glassStroke,
-              width: 1,
             ),
           ),
           child: Column(

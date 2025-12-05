@@ -165,8 +165,7 @@ class MusicMetadataService {
     String path,
     int bytesToRead,
     String cacheKey, {
-    bool skipLyrics = false,
-    required int actualFileSize,
+    required int actualFileSize, bool skipLyrics = false,
   }) async {
     File? tempFile;
     try {

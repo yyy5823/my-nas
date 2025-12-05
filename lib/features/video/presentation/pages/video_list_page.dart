@@ -201,7 +201,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       await _loadCategorizedData();
     } on Exception catch (e) {
       logger.e('VideoListNotifier: 初始化失败', e);
-      state = VideoListLoaded(totalCount: 0, fromCache: false);
+      state = VideoListLoaded(totalCount: 0);
     }
   }
 
@@ -212,7 +212,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     // 并行查询各分类数据（使用 SQLite 索引，O(log N) 复杂度）
     final results = await Future.wait([
       _db.getStats(),
-      _db.getTopRated(minRating: 7, limit: 20),
+      _db.getTopRated(limit: 20),
       _db.getRecentlyUpdated(limit: 20),
       _db.getByCategory(MediaCategory.movie, limit: 100),
       _db.getByCategory(MediaCategory.tvShow, limit: 200),
@@ -872,7 +872,6 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
                   )
                 : CompactHeroBanner(
                     items: topRated.take(5).toList(),
-                    height: 220,
                     onItemTap: (item) => _openVideoDetail(context, ref, item),
                   ),
           ),
@@ -890,7 +889,6 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               isDark: isDark,
               icon: Icons.schedule_rounded,
               iconColor: Colors.blue,
-              maxCount: 10,
               onViewAll: allRecentVideos.length > 10
                   ? () => _showCategoryPage(context, '最近添加', allRecentVideos)
                   : null,
@@ -907,7 +905,6 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               isDark: isDark,
               icon: Icons.movie_rounded,
               iconColor: AppColors.primary,
-              maxCount: 10,
               onViewAll: movies.length > 10
                   ? () => _showCategoryPage(context, '电影', movies)
                   : null,
@@ -924,7 +921,6 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               isDark: isDark,
               icon: Icons.live_tv_rounded,
               iconColor: AppColors.accent,
-              maxCount: 10,
               onViewAll: tvShows.length > 10
                   ? () => _showCategoryPage(context, '剧集', tvShows)
                   : null,
@@ -941,7 +937,6 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               isDark: isDark,
               icon: Icons.star_rounded,
               iconColor: Colors.amber,
-              maxCount: 10,
               onViewAll: topRated.length > 15
                   ? () => _showCategoryPage(context, '高分推荐', topRated.skip(5).toList())
                   : null,
@@ -1056,7 +1051,6 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
         path: metadata.filePath,
         url: url,
         sourceId: metadata.sourceId,
-        size: 0,
         thumbnailUrl: metadata.displayPosterUrl,
       );
 
@@ -1209,7 +1203,6 @@ class _ContinueWatchingCard extends ConsumerWidget {
                         child: posterUrl != null
                             ? AdaptiveImage(
                                 imageUrl: posterUrl,
-                                fit: BoxFit.cover,
                                 placeholder: (_) => _buildThumbnailPlaceholder(),
                                 errorWidget: (_, _) => _buildThumbnailPlaceholder(),
                               )
@@ -1351,7 +1344,6 @@ class _PartialVideoCard extends StatelessWidget {
                       AdaptiveImage.isSupportedUrl(video.thumbnailUrl!))
                     AdaptiveImage(
                       imageUrl: video.thumbnailUrl!,
-                      fit: BoxFit.cover,
                       placeholder: (_) => _buildPlaceholder(),
                       errorWidget: (_, _) => _buildPlaceholder(),
                     )
@@ -1426,8 +1418,7 @@ class _PosterCard extends ConsumerStatefulWidget {
   const _PosterCard({
     required this.metadata,
     required this.onTap,
-    required this.isDark,
-    this.width,
+    required this.isDark, this.width,
   });
 
   final VideoMetadata metadata;
@@ -1462,7 +1453,7 @@ class _PosterCardState extends ConsumerState<_PosterCard> {
           onTap: widget.onTap,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
-            transform: Matrix4.identity()..scaleByDouble(_isHovered ? 1.05 : 1.0, _isHovered ? 1.05 : 1.0, 1.0, 1.0),
+            transform: Matrix4.identity()..scaleByDouble(_isHovered ? 1.05 : 1.0, _isHovered ? 1.05 : 1.0, 1, 1),
             transformAlignment: Alignment.center,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1489,7 +1480,6 @@ class _PosterCardState extends ConsumerState<_PosterCard> {
                           if (hasPoster)
                             AdaptiveImage(
                               imageUrl: displayPoster,
-                              fit: BoxFit.cover,
                               placeholder: (_) => _buildPlaceholder(),
                               errorWidget: (_, _) => _buildPlaceholder(),
                             )
@@ -1920,8 +1910,8 @@ class _ViewMoreCardState extends State<_ViewMoreCard> {
                                 AppColors.primary.withValues(alpha: 0.1),
                               ]
                             : [
-                                widget.isDark ? Colors.grey[850]! : Colors.grey[200]!,
-                                widget.isDark ? Colors.grey[900]! : Colors.grey[100]!,
+                                if (widget.isDark) Colors.grey[850]! else Colors.grey[200]!,
+                                if (widget.isDark) Colors.grey[900]! else Colors.grey[100]!,
                               ],
                       ),
                       borderRadius: BorderRadius.circular(8),
@@ -2039,8 +2029,8 @@ class _ViewMoreCardState extends State<_ViewMoreCard> {
                           AppColors.primary.withValues(alpha: 0.1),
                         ]
                       : [
-                          widget.isDark ? Colors.grey[850]! : Colors.grey[200]!,
-                          widget.isDark ? Colors.grey[900]! : Colors.grey[100]!,
+                          if (widget.isDark) Colors.grey[850]! else Colors.grey[200]!,
+                          if (widget.isDark) Colors.grey[900]! else Colors.grey[100]!,
                         ],
                 ),
                 borderRadius: BorderRadius.circular(8),
@@ -2126,10 +2116,7 @@ class _ViewMoreCardState extends State<_ViewMoreCard> {
 /// 滚动回来时不需要重新加载图片
 class _LazyPosterCard extends ConsumerStatefulWidget {
   const _LazyPosterCard({
-    super.key,
-    required this.metadata,
-    required this.onTap,
-    required this.isDark,
+    required this.metadata, required this.onTap, required this.isDark, super.key,
     this.width = 130,
   });
 
@@ -2241,7 +2228,6 @@ class _VerticalPosterCardState extends ConsumerState<_VerticalPosterCard> {
                               ? AdaptiveImage(
                                   key: ValueKey(_posterUrl),
                                   imageUrl: _posterUrl!,
-                                  fit: BoxFit.cover,
                                   placeholder: (_) => _buildPlaceholder(),
                                   errorWidget: (_, _) => _buildPlaceholder(),
                                 )
@@ -2507,7 +2493,7 @@ class _HorizontalVideoCardState extends ConsumerState<_HorizontalVideoCard> {
           onTap: widget.onTap,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
-            transform: Matrix4.identity()..scaleByDouble(_isHovered ? 1.03 : 1.0, _isHovered ? 1.03 : 1.0, 1.0, 1.0),
+            transform: Matrix4.identity()..scaleByDouble(_isHovered ? 1.03 : 1.0, _isHovered ? 1.03 : 1.0, 1, 1),
             transformAlignment: Alignment.center,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

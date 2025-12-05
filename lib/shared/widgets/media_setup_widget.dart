@@ -73,8 +73,7 @@ final mediaSetupStateProvider =
 /// 智能媒体模块空状态组件
 class MediaSetupWidget extends ConsumerWidget {
   const MediaSetupWidget({
-    super.key,
-    required this.mediaType,
+    required this.mediaType, super.key,
     this.icon,
     this.emptyTitle,
     this.emptyMessage,

@@ -12,6 +12,15 @@ class PlaybackSettings {
     this.seekInterval = 10,
   });
 
+  factory PlaybackSettings.fromMap(Map<dynamic, dynamic> map) =>
+      PlaybackSettings(
+        volume: (map['volume'] as num?)?.toDouble() ?? 1.0,
+        speed: (map['speed'] as num?)?.toDouble() ?? 1.0,
+        autoPlayNext: map['autoPlayNext'] as bool? ?? true,
+        rememberPosition: map['rememberPosition'] as bool? ?? true,
+        seekInterval: map['seekInterval'] as int? ?? 10,
+      );
+
   final double volume;
   final double speed;
   final bool autoPlayNext;
@@ -40,15 +49,6 @@ class PlaybackSettings {
         'rememberPosition': rememberPosition,
         'seekInterval': seekInterval,
       };
-
-  factory PlaybackSettings.fromMap(Map<dynamic, dynamic> map) =>
-      PlaybackSettings(
-        volume: (map['volume'] as num?)?.toDouble() ?? 1.0,
-        speed: (map['speed'] as num?)?.toDouble() ?? 1.0,
-        autoPlayNext: map['autoPlayNext'] as bool? ?? true,
-        rememberPosition: map['rememberPosition'] as bool? ?? true,
-        seekInterval: map['seekInterval'] as int? ?? 10,
-      );
 }
 
 /// 视频播放位置记录
@@ -59,6 +59,13 @@ class VideoPosition {
     required this.duration,
     required this.updatedAt,
   });
+
+  factory VideoPosition.fromMap(Map<dynamic, dynamic> map) => VideoPosition(
+        videoPath: map['videoPath'] as String,
+        position: Duration(milliseconds: map['position'] as int),
+        duration: Duration(milliseconds: map['duration'] as int),
+        updatedAt: DateTime.fromMillisecondsSinceEpoch(map['updatedAt'] as int),
+      );
 
   final String videoPath;
   final Duration position;
@@ -74,13 +81,6 @@ class VideoPosition {
         'duration': duration.inMilliseconds,
         'updatedAt': updatedAt.millisecondsSinceEpoch,
       };
-
-  factory VideoPosition.fromMap(Map<dynamic, dynamic> map) => VideoPosition(
-        videoPath: map['videoPath'] as String,
-        position: Duration(milliseconds: map['position'] as int),
-        duration: Duration(milliseconds: map['duration'] as int),
-        updatedAt: DateTime.fromMillisecondsSinceEpoch(map['updatedAt'] as int),
-      );
 }
 
 /// 播放设置管理

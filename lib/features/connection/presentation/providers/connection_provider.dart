@@ -15,7 +15,7 @@ final authStorageProvider = Provider<AuthStorageService>((ref) => AuthStorageSer
 
 /// 当前连接状态
 final connectionStateProvider =
-    StateNotifierProvider<ConnectionStateNotifier, NasConnectionState>((ref) => ConnectionStateNotifier(ref));
+    StateNotifierProvider<ConnectionStateNotifier, NasConnectionState>(ConnectionStateNotifier.new);
 
 /// 保存的连接列表
 final savedConnectionsProvider =

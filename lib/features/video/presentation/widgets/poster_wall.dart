@@ -127,7 +127,7 @@ class _PosterCardState extends State<PosterCard> with SingleTickerProviderStateM
       duration: const Duration(milliseconds: 150),
       vsync: this,
     );
-    _scaleAnimation = Tween<double>(begin: 1.0, end: 1.05).animate(
+    _scaleAnimation = Tween<double>(begin: 1, end: 1.05).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeOut),
     );
   }
@@ -470,7 +470,6 @@ class PosterRow extends StatelessWidget {
                               child: hasPoster
                                   ? AdaptiveImage(
                                       imageUrl: displayPoster,
-                                      fit: BoxFit.cover,
                                       width: itemWidth,
                                       placeholder: (_) => _buildMiniPlaceholder(isDark, metadata),
                                       errorWidget: (_, _) => _buildMiniPlaceholder(isDark, metadata),

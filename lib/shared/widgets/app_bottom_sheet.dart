@@ -349,4 +349,3 @@ class _OptionTile<T> extends StatelessWidget {
     );
   }
 }
-

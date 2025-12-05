@@ -15,6 +15,18 @@ class SubtitleStyle {
     this.outlineWidth = 2.0,
   });
 
+  /// 从 Map 创建
+  factory SubtitleStyle.fromMap(Map<dynamic, dynamic> map) => SubtitleStyle(
+        fontSize: (map['fontSize'] as num?)?.toDouble() ?? 24.0,
+        fontColor: Color(map['fontColor'] as int? ?? 0xFFFFFFFF),
+        backgroundColor: Color(map['backgroundColor'] as int? ?? 0x8A000000),
+        position: SubtitlePosition.values[map['position'] as int? ?? 0],
+        fontWeight: FontWeight.values[map['fontWeight'] as int? ?? 3],
+        hasOutline: map['hasOutline'] as bool? ?? true,
+        outlineColor: Color(map['outlineColor'] as int? ?? 0xFF000000),
+        outlineWidth: (map['outlineWidth'] as num?)?.toDouble() ?? 2.0,
+      );
+
   final double fontSize;
   final Color fontColor;
   final Color backgroundColor;
@@ -43,18 +55,6 @@ class SubtitleStyle {
         hasOutline: hasOutline ?? this.hasOutline,
         outlineColor: outlineColor ?? this.outlineColor,
         outlineWidth: outlineWidth ?? this.outlineWidth,
-      );
-
-  /// 从 Map 创建
-  factory SubtitleStyle.fromMap(Map<dynamic, dynamic> map) => SubtitleStyle(
-        fontSize: (map['fontSize'] as num?)?.toDouble() ?? 24.0,
-        fontColor: Color(map['fontColor'] as int? ?? 0xFFFFFFFF),
-        backgroundColor: Color(map['backgroundColor'] as int? ?? 0x8A000000),
-        position: SubtitlePosition.values[map['position'] as int? ?? 0],
-        fontWeight: FontWeight.values[map['fontWeight'] as int? ?? 3],
-        hasOutline: map['hasOutline'] as bool? ?? true,
-        outlineColor: Color(map['outlineColor'] as int? ?? 0xFF000000),
-        outlineWidth: (map['outlineWidth'] as num?)?.toDouble() ?? 2.0,
       );
 
   /// 转换为 Map

@@ -6,8 +6,8 @@ import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/comic/data/services/comic_library_cache_service.dart';
+import 'package:my_nas/features/comic/presentation/pages/comic_reader_page.dart';
 import 'package:my_nas/features/connection/presentation/providers/connection_provider.dart';
-import 'package:my_nas/features/reading/presentation/pages/reading_page.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
@@ -15,7 +15,6 @@ import 'package:my_nas/features/sources/presentation/pages/media_library_page.da
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
-import 'package:my_nas/features/comic/presentation/pages/comic_reader_page.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
 import 'package:my_nas/shared/widgets/media_setup_widget.dart';
 
@@ -39,6 +38,20 @@ class ComicItem {
     this.type = ComicType.folder,
     this.fileSize,
   });
+
+  factory ComicItem.fromCacheEntry(ComicLibraryCacheEntry entry) => ComicItem(
+      folderPath: entry.folderPath,
+      folderName: entry.folderName,
+      sourceId: entry.sourceId,
+      coverPath: entry.coverPath,
+      pageCount: entry.pageCount,
+      modifiedTime: entry.modifiedTime,
+      type: ComicType.values.firstWhere(
+        (t) => t.name == entry.comicType,
+        orElse: () => ComicType.folder,
+      ),
+      fileSize: entry.fileSize,
+    );
 
   final String folderPath;
   final String folderName;
@@ -90,26 +103,12 @@ class ComicItem {
         comicType: type.name,
         fileSize: fileSize,
       );
-
-  factory ComicItem.fromCacheEntry(ComicLibraryCacheEntry entry) => ComicItem(
-      folderPath: entry.folderPath,
-      folderName: entry.folderName,
-      sourceId: entry.sourceId,
-      coverPath: entry.coverPath,
-      pageCount: entry.pageCount,
-      modifiedTime: entry.modifiedTime,
-      type: ComicType.values.firstWhere(
-        (t) => t.name == entry.comicType,
-        orElse: () => ComicType.folder,
-      ),
-      fileSize: entry.fileSize,
-    );
 }
 
 /// 漫画列表状态
 final comicListProvider =
     StateNotifierProvider<ComicListNotifier, ComicListState>(
-        (ref) => ComicListNotifier(ref));
+        ComicListNotifier.new);
 
 sealed class ComicListState {}
 
@@ -324,7 +323,6 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
               coverPath: comicInfo.coverPath,
               pageCount: comicInfo.pageCount,
               modifiedTime: item.modifiedTime,
-              type: ComicType.folder,
             ));
           }
         } else {
@@ -367,7 +365,7 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
       final imageFiles = items.where((item) {
         if (item.isDirectory) return false;
         final ext = item.name.toLowerCase();
-        return _imageExtensions.any((e) => ext.endsWith(e));
+        return _imageExtensions.any(ext.endsWith);
       }).toList();
 
       if (imageFiles.isEmpty) return null;

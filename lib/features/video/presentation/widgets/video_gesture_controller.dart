@@ -75,7 +75,7 @@ class VideoGestureController extends StatefulWidget {
 class _VideoGestureControllerState extends State<VideoGestureController> {
   GestureControllerState _state = const GestureControllerState();
   Offset? _startPosition;
-  double _startVolume = 1.0;
+  double _startVolume = 1;
   double _startBrightness = 0.5;
   Duration _startSeekPosition = Duration.zero;
 
@@ -83,7 +83,7 @@ class _VideoGestureControllerState extends State<VideoGestureController> {
 
   // 手势灵敏度
   static const double _verticalSensitivity = 0.01;
-  static const double _horizontalSensitivity = 1.0; // 每像素对应的秒数
+  static const double _horizontalSensitivity = 1; // 每像素对应的秒数
 
   @override
   void initState() {
@@ -485,7 +485,7 @@ class _DoubleTapSeekOverlayState extends State<DoubleTapSeekOverlay>
       CurvedAnimation(parent: _controller, curve: Curves.easeOut),
     );
 
-    _opacityAnimation = Tween<double>(begin: 1.0, end: 0.0).animate(
+    _opacityAnimation = Tween<double>(begin: 1, end: 0).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeIn),
     );
 

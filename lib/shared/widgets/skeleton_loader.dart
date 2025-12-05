@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:my_nas/app/theme/app_colors.dart';
 
 /// 骨架屏加载效果
 class SkeletonLoader extends StatefulWidget {

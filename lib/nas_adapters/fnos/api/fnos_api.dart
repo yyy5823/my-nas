@@ -77,8 +77,6 @@ class FnOSApi {
 
   final Dio dio;
   String? _token;
-  String? _username;
-  String? _password;
 
   /// 是否已认证
   bool get isAuthenticated => _token != null;
@@ -101,8 +99,6 @@ class FnOSApi {
     logger..i('FnOSApi: 开始登录认证')
     ..i('FnOSApi: 用户名 => $username');
 
-    _username = username;
-    _password = password;
 
     // 尝试多种登录端点
     final loginAttempts = [
@@ -149,8 +145,8 @@ class FnOSApi {
 
     for (final attempt in loginAttempts) {
       try {
-        final endpoint = attempt['endpoint'] as String;
-        final data = attempt['data'] as Map<String, dynamic>;
+        final endpoint = attempt['endpoint']! as String;
+        final data = attempt['data']! as Map<String, dynamic>;
 
         logger.d('FnOSApi: 尝试登录端点 => $endpoint');
 
@@ -244,8 +240,6 @@ class FnOSApi {
       logger.w('FnOSApi: 登出请求失败', e);
     } finally {
       _token = null;
-      _username = null;
-      _password = null;
     }
   }
 

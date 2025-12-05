@@ -11,8 +11,7 @@ import 'package:my_nas/core/utils/logger.dart';
 /// - http/https 协议：使用 CachedNetworkImage 加载网络图片
 class AdaptiveImage extends StatelessWidget {
   const AdaptiveImage({
-    super.key,
-    required this.imageUrl,
+    required this.imageUrl, super.key,
     this.fit = BoxFit.cover,
     this.width,
     this.height,

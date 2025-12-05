@@ -49,7 +49,7 @@ class BookFileWithSource {
 /// 图书列表状态
 final bookListProvider =
     StateNotifierProvider<BookListNotifier, BookListState>(
-        (ref) => BookListNotifier(ref));
+        BookListNotifier.new);
 
 /// 图书排序方式
 enum BookSortType { name, date, size, format }
@@ -307,7 +307,7 @@ class BookListNotifier extends StateNotifier<BookListState> {
 
     var config = configAsync.valueOrNull;
     if (config == null) {
-      state = BookListLoading(progress: 0, currentFolder: '正在加载配置...');
+      state = BookListLoading(currentFolder: '正在加载配置...');
 
       for (var i = 0; i < 10; i++) {
         await Future<void>.delayed(const Duration(milliseconds: 500));
@@ -391,7 +391,7 @@ class BookListNotifier extends StateNotifier<BookListState> {
 
     // 保存到 SQLite
     state = BookListLoading(
-      progress: 1.0,
+      progress: 1,
       currentFolder: '保存数据...',
     );
 
@@ -453,7 +453,7 @@ class BookListNotifier extends StateNotifier<BookListState> {
 
   bool _isBookFile(String filename) {
     final lower = filename.toLowerCase();
-    return _supportedExtensions.any((ext) => lower.endsWith(ext));
+    return _supportedExtensions.any(lower.endsWith);
   }
 
   void setSearchQuery(String query) {
@@ -1101,7 +1101,6 @@ class _BookCacheInfoBar extends ConsumerWidget {
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: isDark ? Colors.grey[800]! : Colors.grey[300]!,
-            width: 1,
           ),
         ),
         child: Row(

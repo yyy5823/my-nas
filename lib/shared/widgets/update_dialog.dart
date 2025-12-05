@@ -478,15 +478,17 @@ class _CheckUpdateTileState extends ConsumerState<CheckUpdateTile> {
         onTap: status == UpdateStatus.checking
             ? null
             : () async {
+                final scaffoldMessenger = ScaffoldMessenger.of(context);
                 await _service.checkForUpdates();
-                if (_service.hasUpdate && _service.updateInfo != null && mounted) {
+                if (!context.mounted) return;
+                if (_service.hasUpdate && _service.updateInfo != null) {
                   await showUpdateDialog(context, _service.updateInfo!);
-                } else if (_service.status == UpdateStatus.notAvailable && mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
+                } else if (_service.status == UpdateStatus.notAvailable) {
+                  scaffoldMessenger.showSnackBar(
                     const SnackBar(content: Text('当前已是最新版本')),
                   );
-                } else if (_service.status == UpdateStatus.error && mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
+                } else if (_service.status == UpdateStatus.error) {
+                  scaffoldMessenger.showSnackBar(
                     SnackBar(content: Text('检查更新失败: ${_service.errorMessage}')),
                   );
                 }

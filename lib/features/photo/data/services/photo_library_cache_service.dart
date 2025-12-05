@@ -5,6 +5,14 @@ import 'package:my_nas/core/utils/logger.dart';
 
 /// 照片库缓存条目
 class PhotoLibraryCacheEntry {
+  PhotoLibraryCacheEntry({
+    required this.sourceId,
+    required this.filePath,
+    required this.fileName,
+    this.thumbnailUrl,
+    this.size = 0,
+    this.modifiedTime,
+  });
 
   factory PhotoLibraryCacheEntry.fromMap(Map<dynamic, dynamic> map) => PhotoLibraryCacheEntry(
       sourceId: map['sourceId'] as String,
@@ -16,14 +24,6 @@ class PhotoLibraryCacheEntry {
           ? DateTime.fromMillisecondsSinceEpoch(map['modifiedTime'] as int)
           : null,
     );
-  PhotoLibraryCacheEntry({
-    required this.sourceId,
-    required this.filePath,
-    required this.fileName,
-    this.thumbnailUrl,
-    this.size = 0,
-    this.modifiedTime,
-  });
 
   final String sourceId;
   final String filePath;
@@ -46,6 +46,11 @@ class PhotoLibraryCacheEntry {
 
 /// 照片库缓存
 class PhotoLibraryCache {
+  PhotoLibraryCache({
+    required this.photos,
+    required this.lastUpdated,
+    this.sourceIds = const [],
+  });
 
   factory PhotoLibraryCache.fromMap(Map<dynamic, dynamic> map) {
     final photosList = (map['photos'] as List<dynamic>?)
@@ -62,11 +67,6 @@ class PhotoLibraryCache {
           [],
     );
   }
-  PhotoLibraryCache({
-    required this.photos,
-    required this.lastUpdated,
-    this.sourceIds = const [],
-  });
 
   final List<PhotoLibraryCacheEntry> photos;
   final DateTime lastUpdated;

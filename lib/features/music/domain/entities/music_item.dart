@@ -21,26 +21,7 @@ class MusicItem {
     this.genre,
     this.lyrics,
     this.coverData,
-  });
-
-  final String id;
-  final String name;
-  final String path;
-  final String url;
-  final String? sourceId;
-  final String? title; // 元数据中的标题
-  final String? artist;
-  final String? album;
-  final Duration? duration;
-  final String? coverUrl;
-  final int? size;
-  final Duration lastPosition;
-  final String? folder;
-  final int? trackNumber;
-  final int? year;
-  final String? genre;
-  final String? lyrics;
-  final List<int>? coverData; // 嵌入的封面图片数据
+  }); // 嵌入的封面图片数据
 
   /// 从文件项创建音乐项
   factory MusicItem.fromFileItem(
@@ -79,6 +60,25 @@ class MusicItem {
       folder: folderName,
     );
   }
+
+  final String id;
+  final String name;
+  final String path;
+  final String url;
+  final String? sourceId;
+  final String? title; // 元数据中的标题
+  final String? artist;
+  final String? album;
+  final Duration? duration;
+  final String? coverUrl;
+  final int? size;
+  final Duration lastPosition;
+  final String? folder;
+  final int? trackNumber;
+  final int? year;
+  final String? genre;
+  final String? lyrics;
+  final List<int>? coverData;
 
   /// 显示的艺术家名称
   String get displayArtist => artist?.isNotEmpty ?? false ? artist! : '未知艺术家';

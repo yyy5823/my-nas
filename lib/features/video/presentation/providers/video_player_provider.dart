@@ -16,7 +16,7 @@ final currentVideoProvider = StateProvider.autoDispose<VideoItem?>((ref) => null
 
 /// 视频播放器控制器（autoDispose: 离开播放器页面后自动清理资源）
 final videoPlayerControllerProvider =
-    StateNotifierProvider.autoDispose<VideoPlayerNotifier, VideoPlayerState>((ref) => VideoPlayerNotifier(ref));
+    StateNotifierProvider.autoDispose<VideoPlayerNotifier, VideoPlayerState>(VideoPlayerNotifier.new);
 
 /// 可用字幕列表（autoDispose）
 final availableSubtitlesProvider = StateProvider.autoDispose<List<SubtitleItem>>((ref) => []);
@@ -354,7 +354,7 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
     }
 
     // 确定起始位置
-    Duration? resumePosition = startPosition;
+    var resumePosition = startPosition;
 
     // 如果没有指定起始位置，尝试从历史中恢复
     if (resumePosition == null) {

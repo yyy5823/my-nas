@@ -72,7 +72,6 @@ class _EpisodeCardState extends State<EpisodeCard> {
                         child: hasStill
                             ? AdaptiveImage(
                                 imageUrl: widget.episode.stillUrl,
-                                fit: BoxFit.cover,
                                 placeholder: (_) => _buildPlaceholder(isDark),
                                 errorWidget: (_, _) => _buildPlaceholder(isDark),
                               )
@@ -311,7 +310,6 @@ class CompactEpisodeCard extends StatelessWidget {
                       child: hasStill
                           ? AdaptiveImage(
                               imageUrl: episode.stillUrl,
-                              fit: BoxFit.cover,
                               placeholder: (_) => _buildMiniPlaceholder(isDark),
                               errorWidget: (_, _) => _buildMiniPlaceholder(isDark),
                             )

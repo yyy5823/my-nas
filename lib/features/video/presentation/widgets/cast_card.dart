@@ -47,7 +47,6 @@ class CastCard extends StatelessWidget {
                 child: hasProfile
                     ? AdaptiveImage(
                         imageUrl: cast.profileUrl,
-                        fit: BoxFit.cover,
                         width: size,
                         height: size,
                         placeholder: (_) => _buildPlaceholder(isDark),
@@ -143,7 +142,6 @@ class CrewCard extends StatelessWidget {
                 child: hasProfile
                     ? AdaptiveImage(
                         imageUrl: crew.profileUrl,
-                        fit: BoxFit.cover,
                         width: size,
                         height: size,
                         placeholder: (_) => _buildPlaceholder(isDark),

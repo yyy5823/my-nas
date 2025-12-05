@@ -16,6 +16,11 @@ enum MediaType {
 
 /// 媒体库目录
 class MediaLibraryPath {
+  MediaLibraryPath({
+    required this.sourceId, required this.path, String? id,
+    this.name,
+    this.isEnabled = true,
+  }) : id = id ?? const Uuid().v4();
 
   factory MediaLibraryPath.fromJson(Map<String, dynamic> json) =>
       MediaLibraryPath(
@@ -25,13 +30,6 @@ class MediaLibraryPath {
         name: json['name'] as String?,
         isEnabled: json['isEnabled'] as bool? ?? true,
       );
-  MediaLibraryPath({
-    String? id,
-    required this.sourceId,
-    required this.path,
-    this.name,
-    this.isEnabled = true,
-  }) : id = id ?? const Uuid().v4();
 
   final String id;
 
@@ -75,6 +73,14 @@ class MediaLibraryPath {
 
 /// 媒体库配置
 class MediaLibraryConfig {
+  const MediaLibraryConfig({
+    this.videoPaths = const [],
+    this.musicPaths = const [],
+    this.photoPaths = const [],
+    this.comicPaths = const [],
+    this.bookPaths = const [],
+    this.notePaths = const [],
+  });
 
   factory MediaLibraryConfig.fromJson(Map<String, dynamic> json) {
     List<MediaLibraryPath> parsePaths(dynamic data) {
@@ -93,14 +99,6 @@ class MediaLibraryConfig {
       notePaths: parsePaths(json['notePaths']),
     );
   }
-  const MediaLibraryConfig({
-    this.videoPaths = const [],
-    this.musicPaths = const [],
-    this.photoPaths = const [],
-    this.comicPaths = const [],
-    this.bookPaths = const [],
-    this.notePaths = const [],
-  });
 
   final List<MediaLibraryPath> videoPaths;
   final List<MediaLibraryPath> musicPaths;

@@ -111,7 +111,7 @@ Platform: ${Platform.operatingSystem}
       _isWriting = false;
       // 如果在写入期间有新日志加入，继续刷新
       if (_logBuffer.isNotEmpty) {
-        Future.microtask(_flushBuffer);
+        await Future.microtask(_flushBuffer);
       }
     }
   }

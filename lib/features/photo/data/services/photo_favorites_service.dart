@@ -8,13 +8,39 @@ class PhotoFavoriteItem {
     required this.photoPath,
     required this.photoName,
     required this.sourceId,
-    this.thumbnailUrl,
+    required this.addedAt, this.thumbnailUrl,
     this.size,
     this.width,
     this.height,
     this.modifiedAt,
-    required this.addedAt,
   });
+
+  factory PhotoFavoriteItem.fromPhotoItem(PhotoItem item) => PhotoFavoriteItem(
+        photoPath: item.path,
+        photoName: item.name,
+        sourceId: item.sourceId,
+        thumbnailUrl: item.thumbnailUrl,
+        size: item.size,
+        width: item.width,
+        height: item.height,
+        modifiedAt: item.modifiedAt,
+        addedAt: DateTime.now(),
+      );
+
+  factory PhotoFavoriteItem.fromMap(Map<dynamic, dynamic> map) =>
+      PhotoFavoriteItem(
+        photoPath: map['photoPath'] as String,
+        photoName: map['photoName'] as String,
+        sourceId: map['sourceId'] as String? ?? '',
+        thumbnailUrl: map['thumbnailUrl'] as String?,
+        size: map['size'] as int?,
+        width: map['width'] as int?,
+        height: map['height'] as int?,
+        modifiedAt: map['modifiedAt'] != null
+            ? DateTime.fromMillisecondsSinceEpoch(map['modifiedAt'] as int)
+            : null,
+        addedAt: DateTime.fromMillisecondsSinceEpoch(map['addedAt'] as int),
+      );
 
   final String photoPath;
   final String photoName;
@@ -40,33 +66,6 @@ class PhotoFavoriteItem {
         'modifiedAt': modifiedAt?.millisecondsSinceEpoch,
         'addedAt': addedAt.millisecondsSinceEpoch,
       };
-
-  factory PhotoFavoriteItem.fromMap(Map<dynamic, dynamic> map) =>
-      PhotoFavoriteItem(
-        photoPath: map['photoPath'] as String,
-        photoName: map['photoName'] as String,
-        sourceId: map['sourceId'] as String? ?? '',
-        thumbnailUrl: map['thumbnailUrl'] as String?,
-        size: map['size'] as int?,
-        width: map['width'] as int?,
-        height: map['height'] as int?,
-        modifiedAt: map['modifiedAt'] != null
-            ? DateTime.fromMillisecondsSinceEpoch(map['modifiedAt'] as int)
-            : null,
-        addedAt: DateTime.fromMillisecondsSinceEpoch(map['addedAt'] as int),
-      );
-
-  factory PhotoFavoriteItem.fromPhotoItem(PhotoItem item) => PhotoFavoriteItem(
-        photoPath: item.path,
-        photoName: item.name,
-        sourceId: item.sourceId,
-        thumbnailUrl: item.thumbnailUrl,
-        size: item.size,
-        width: item.width,
-        height: item.height,
-        modifiedAt: item.modifiedAt,
-        addedAt: DateTime.now(),
-      );
 
   PhotoItem toPhotoItem({String url = ''}) => PhotoItem(
         name: photoName,

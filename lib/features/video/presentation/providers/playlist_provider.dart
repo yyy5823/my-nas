@@ -243,7 +243,9 @@ class PlaylistNotifier extends StateNotifier<PlaylistState> {
     if (oldIndex < 0 ||
         oldIndex >= state.items.length ||
         newIndex < 0 ||
-        newIndex >= state.items.length) return;
+        newIndex >= state.items.length) {
+      return;
+    }
 
     final items = [...state.items];
     final item = items.removeAt(oldIndex);

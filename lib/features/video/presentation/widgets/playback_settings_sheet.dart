@@ -225,8 +225,7 @@ class PlaybackSettingsSheet extends ConsumerWidget {
   Widget _buildSection(
     BuildContext context, {
     required String title,
-    String? subtitle,
-    required Widget child,
+    required Widget child, String? subtitle,
   }) =>
       Padding(
         padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),

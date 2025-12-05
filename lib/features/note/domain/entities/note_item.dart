@@ -61,16 +61,6 @@ class TaskItem {
 
 /// 笔记实体
 class NoteItem {
-
-  /// 从 FileItem 创建
-  factory NoteItem.fromFileItem(FileItem file, String url) => NoteItem(
-      id: file.path,
-      name: file.name,
-      path: file.path,
-      url: url,
-      size: file.size,
-      modifiedAt: file.modifiedTime,
-    );
   const NoteItem({
     required this.id,
     required this.name,
@@ -84,6 +74,16 @@ class NoteItem {
     this.modifiedAt,
     this.createdAt,
   });
+
+  /// 从 FileItem 创建
+  factory NoteItem.fromFileItem(FileItem file, String url) => NoteItem(
+      id: file.path,
+      name: file.name,
+      path: file.path,
+      url: url,
+      size: file.size,
+      modifiedAt: file.modifiedTime,
+    );
 
   final String id;
   final String name;

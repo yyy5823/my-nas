@@ -427,7 +427,6 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
             children: [
               // 上一章
               Expanded(
-                flex: 1,
                 child: GestureDetector(
                   onTap: () {
                     ref.read(epubReaderProvider(widget.book).notifier).previousChapter();
@@ -440,7 +439,6 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
               Expanded(flex: 2, child: Container()),
               // 下一章
               Expanded(
-                flex: 1,
                 child: GestureDetector(
                   onTap: () {
                     ref.read(epubReaderProvider(widget.book).notifier).nextChapter();
@@ -572,7 +570,6 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
                   Expanded(
                     child: Slider(
                       value: state.currentChapter.toDouble(),
-                      min: 0,
                       max: (state.totalChapters - 1).toDouble(),
                       divisions: state.totalChapters > 1 ? state.totalChapters - 1 : null,
                       onChanged: (value) {

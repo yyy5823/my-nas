@@ -22,10 +22,10 @@ import 'package:my_nas/features/music/presentation/widgets/mini_player.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
-import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
-import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/features/sources/presentation/pages/media_library_page.dart';
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
+import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
+import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/animated_list_item.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
 import 'package:my_nas/shared/widgets/media_setup_widget.dart';
@@ -124,6 +124,7 @@ class MusicFileWithSource {
     try {
       return base64Decode(coverBase64!);
     } on Exception catch (e) {
+      logger.e('解码封面数据失败: $e');
       return null;
     }
   }
@@ -554,7 +555,7 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
     final connections = _ref.read(activeConnectionsProvider);
     final configAsync = _ref.read(mediaLibraryConfigProvider);
 
-    MediaLibraryConfig? config = configAsync.valueOrNull;
+    var config = configAsync.valueOrNull;
     if (config == null) {
       state = MusicListLoading(currentFolder: '正在加载配置...');
       for (var i = 0; i < 10; i++) {
@@ -602,7 +603,7 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
     }
 
     // 第一阶段：扫描文件系统
-    state = MusicListLoading(phase: MusicScanPhase.scanning);
+    state = MusicListLoading();
     final tracks = <MusicFileWithSource>[];
     var scannedFolders = 0;
     final totalFolders = connectedPaths.length;
@@ -613,7 +614,6 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
       if (connection == null) continue;
 
       state = MusicListLoading(
-        phase: MusicScanPhase.scanning,
         progress: scannedFolders / totalFolders,
         currentFolder: mediaPath.displayName,
         partialTracks: List.from(tracks),
@@ -632,7 +632,6 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
             if (tracks.length - lastUpdateCount >= 20) {
               lastUpdateCount = tracks.length;
               state = MusicListLoading(
-                phase: MusicScanPhase.scanning,
                 progress: scannedFolders / totalFolders,
                 currentFolder: mediaPath.displayName,
                 partialTracks: List.from(tracks),
@@ -674,7 +673,6 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
     state = MusicListLoading(
       phase: MusicScanPhase.metadata,
       currentFolder: '正在提取元数据...',
-      metadataProgress: 0,
       scannedCount: totalTracks,
     );
 
@@ -2339,7 +2337,6 @@ class _EmptyPlaylistHint extends StatelessWidget {
         borderRadius: BorderRadius.circular(isDesktop ? 16 : 12),
         border: Border.all(
           color: isDark ? Colors.grey[800]! : Colors.grey[300]!,
-          style: BorderStyle.solid,
         ),
       ),
       child: isDesktop
@@ -3223,6 +3220,7 @@ class _MusicListTile extends ConsumerWidget {
 
     await ref.read(musicPlayerControllerProvider.notifier).play(musicItem);
 
+    if (!context.mounted) return;
     await MusicPlayerPage.open(context);
   }
 
@@ -4763,6 +4761,7 @@ class _PlaylistTrackTile extends ConsumerWidget {
 
     await ref.read(musicPlayerControllerProvider.notifier).play(musicItem);
 
+    if (!context.mounted) return;
     Navigator.of(context).pop();
     await MusicPlayerPage.open(context);
   }
@@ -5076,7 +5075,7 @@ class _ModernMusicTile extends ConsumerWidget {
 
   Widget _buildCover(File? coverFile, List<int>? coverData, String title, bool isPlaying, bool isConnected) {
     final size = 52.0;
-    final hasCover = coverFile != null || coverData != null;
+    final _ = coverFile != null || coverData != null;
 
     return Container(
       width: size,
@@ -5604,6 +5603,7 @@ class _CompactMusicTile extends ConsumerWidget {
       logger.i('_CompactMusicTile._playTrack: 播放成功，跳转到播放页');
 
       // 导航到播放器页面
+      if (!context.mounted) return;
       unawaited(MusicPlayerPage.open(context));
 
       // 在后台构建完整播放队列

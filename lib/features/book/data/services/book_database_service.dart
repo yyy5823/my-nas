@@ -245,8 +245,8 @@ class BookDatabaseService {
 
     final formatStats = <String, int>{};
     for (final row in formatResults) {
-      final format = row[_colFormat] as String;
-      final count = row['count'] as int;
+      final format = row[_colFormat]! as String;
+      final count = row['count']! as int;
       formatStats[format] = count;
     }
 

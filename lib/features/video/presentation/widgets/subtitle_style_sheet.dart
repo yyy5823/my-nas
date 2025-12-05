@@ -278,7 +278,7 @@ class SubtitleStyleSheet extends ConsumerWidget {
                         SwitchListTile(
                           title: const Text('启用描边'),
                           value: style.hasOutline,
-                          onChanged: (value) => notifier.setHasOutline(value),
+                          onChanged: notifier.setHasOutline,
                           contentPadding: EdgeInsets.zero,
                         ),
                         if (style.hasOutline) ...[
@@ -292,7 +292,7 @@ class SubtitleStyleSheet extends ConsumerWidget {
                                 child: Slider(
                                   value: style.outlineWidth,
                                   min: 0.5,
-                                  max: 5.0,
+                                  max: 5,
                                   divisions: 9,
                                   label: style.outlineWidth.toStringAsFixed(1),
                                   onChanged: notifier.setOutlineWidth,

@@ -24,9 +24,7 @@ typedef PhotoDeleteCallback = void Function(PhotoItem photo);
 /// 照片查看器页面
 class PhotoViewerPage extends StatefulWidget {
   const PhotoViewerPage({
-    super.key,
-    required this.photos,
-    required this.initialIndex,
+    required this.photos, required this.initialIndex, super.key,
     this.getPhotoUrl,
     this.getFileSystem,
     this.onPhotoDeleted,
@@ -76,7 +74,7 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
     _overlayController = AnimationController(
       duration: const Duration(milliseconds: 200),
       vsync: this,
-      value: 1.0,
+      value: 1,
     );
     _overlayAnimation = CurvedAnimation(
       parent: _overlayController,
@@ -1002,7 +1000,7 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
     NasFileSystem fileSystem,
   ) async {
     // 显示删除进度
-    showDialog<void>(
+    await showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => PopScope(
@@ -1064,7 +1062,7 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
       });
 
       // 重新加载收藏状态
-      _loadFavoriteStatus();
+      await _loadFavoriteStatus();
     } on Exception catch (e) {
       logger.e('PhotoViewerPage: 删除照片失败', e);
 
@@ -1209,7 +1207,7 @@ class _PhotoPageState extends State<_PhotoPage> {
     return InteractiveViewer(
       transformationController: _transformController,
       minScale: 0.5,
-      maxScale: 4.0,
+      maxScale: 4,
       child: Center(
         child: _buildImageContent(displayUrl, hasDisplayUrl, hasThumbnail, hasOriginalImage),
       ),

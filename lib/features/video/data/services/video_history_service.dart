@@ -204,6 +204,13 @@ class VideoProgress {
     required this.updatedAt,
   });
 
+  factory VideoProgress.fromJson(Map<dynamic, dynamic> json) => VideoProgress(
+        videoPath: json['videoPath'] as String,
+        position: Duration(milliseconds: json['positionMs'] as int),
+        duration: Duration(milliseconds: json['durationMs'] as int),
+        updatedAt: DateTime.parse(json['updatedAt'] as String),
+      );
+
   final String videoPath;
   final Duration position;
   final Duration duration;
@@ -218,13 +225,6 @@ class VideoProgress {
         'durationMs': duration.inMilliseconds,
         'updatedAt': updatedAt.toIso8601String(),
       };
-
-  factory VideoProgress.fromJson(Map<dynamic, dynamic> json) => VideoProgress(
-        videoPath: json['videoPath'] as String,
-        position: Duration(milliseconds: json['positionMs'] as int),
-        duration: Duration(milliseconds: json['durationMs'] as int),
-        updatedAt: DateTime.parse(json['updatedAt'] as String),
-      );
 }
 
 /// 视频历史记录项
@@ -239,6 +239,22 @@ class VideoHistoryItem {
     this.lastPosition,
     this.duration,
   });
+
+  factory VideoHistoryItem.fromJson(Map<dynamic, dynamic> json) => VideoHistoryItem(
+        videoPath: json['videoPath'] as String,
+        videoName: json['videoName'] as String,
+        videoUrl: json['videoUrl'] as String,
+        sourceId: json['sourceId'] as String?,
+        thumbnailUrl: json['thumbnailUrl'] as String?,
+        size: json['size'] as int? ?? 0,
+        lastPosition: json['lastPositionMs'] != null
+            ? Duration(milliseconds: json['lastPositionMs'] as int)
+            : null,
+        duration: json['durationMs'] != null
+            ? Duration(milliseconds: json['durationMs'] as int)
+            : null,
+        watchedAt: DateTime.parse(json['watchedAt'] as String),
+      );
 
   final String videoPath;
   final String videoName;
@@ -291,20 +307,4 @@ class VideoHistoryItem {
         'durationMs': duration?.inMilliseconds,
         'watchedAt': watchedAt.toIso8601String(),
       };
-
-  factory VideoHistoryItem.fromJson(Map<dynamic, dynamic> json) => VideoHistoryItem(
-        videoPath: json['videoPath'] as String,
-        videoName: json['videoName'] as String,
-        videoUrl: json['videoUrl'] as String,
-        sourceId: json['sourceId'] as String?,
-        thumbnailUrl: json['thumbnailUrl'] as String?,
-        size: json['size'] as int? ?? 0,
-        lastPosition: json['lastPositionMs'] != null
-            ? Duration(milliseconds: json['lastPositionMs'] as int)
-            : null,
-        duration: json['durationMs'] != null
-            ? Duration(milliseconds: json['durationMs'] as int)
-            : null,
-        watchedAt: DateTime.parse(json['watchedAt'] as String),
-      );
 }

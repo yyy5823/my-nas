@@ -484,9 +484,9 @@ class MusicDatabaseService {
 
     return results
         .map((r) => (
-              album: r['album'] as String,
+              album: r['album']! as String,
               artist: r['artist'] as String?,
-              count: r['count'] as int,
+              count: r['count']! as int,
               coverPath: r['cover_path'] as String?,
             ))
         .toList();
@@ -541,8 +541,8 @@ class MusicDatabaseService {
     ''');
 
     return results
-        .where((r) => r['folder'] != null && (r['folder'] as String).isNotEmpty)
-        .map((r) => (folder: r['folder'] as String, count: r['count'] as int))
+        .where((r) => r['folder'] != null && (r['folder']! as String).isNotEmpty)
+        .map((r) => (folder: r['folder']! as String, count: r['count']! as int))
         .toList();
   }
 

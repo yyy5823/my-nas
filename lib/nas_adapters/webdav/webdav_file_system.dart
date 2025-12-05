@@ -15,7 +15,6 @@ class WebDavFileSystem implements NasFileSystem {
     required String username,
     required String password,
   })  : _client = client,
-        _baseUrl = baseUrl,
         _authHeader = 'Basic ${base64Encode(utf8.encode('$username:$password'))}' {
     _dio = Dio(BaseOptions(
       baseUrl: baseUrl,
@@ -28,7 +27,6 @@ class WebDavFileSystem implements NasFileSystem {
   }
 
   final webdav.Client _client;
-  final String _baseUrl;
   final String _authHeader;
   late final Dio _dio;
 

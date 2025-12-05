@@ -36,7 +36,7 @@ final connectedSourcesProvider = Provider<List<(SourceEntity, SourceConnection)>
 
 /// 文件列表状态
 final fileListProvider =
-    StateNotifierProvider<FileListNotifier, FileListState>((ref) => FileListNotifier(ref));
+    StateNotifierProvider<FileListNotifier, FileListState>(FileListNotifier.new);
 
 /// 视图模式
 final viewModeProvider = StateProvider<ViewMode>((ref) => ViewMode.grid);

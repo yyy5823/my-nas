@@ -8,32 +8,11 @@ class MusicFavoriteItem {
     required this.musicPath,
     required this.musicName,
     required this.musicUrl,
-    this.artist,
+    required this.addedAt, this.artist,
     this.album,
     this.coverUrl,
     this.duration,
-    required this.addedAt,
   });
-
-  final String musicPath;
-  final String musicName;
-  final String musicUrl;
-  final String? artist;
-  final String? album;
-  final String? coverUrl;
-  final Duration? duration;
-  final DateTime addedAt;
-
-  Map<String, dynamic> toMap() => {
-        'musicPath': musicPath,
-        'musicName': musicName,
-        'musicUrl': musicUrl,
-        'artist': artist,
-        'album': album,
-        'coverUrl': coverUrl,
-        'duration': duration?.inMilliseconds,
-        'addedAt': addedAt.millisecondsSinceEpoch,
-      };
 
   factory MusicFavoriteItem.fromMap(Map<dynamic, dynamic> map) =>
       MusicFavoriteItem(
@@ -60,6 +39,26 @@ class MusicFavoriteItem {
         addedAt: DateTime.now(),
       );
 
+  final String musicPath;
+  final String musicName;
+  final String musicUrl;
+  final String? artist;
+  final String? album;
+  final String? coverUrl;
+  final Duration? duration;
+  final DateTime addedAt;
+
+  Map<String, dynamic> toMap() => {
+        'musicPath': musicPath,
+        'musicName': musicName,
+        'musicUrl': musicUrl,
+        'artist': artist,
+        'album': album,
+        'coverUrl': coverUrl,
+        'duration': duration?.inMilliseconds,
+        'addedAt': addedAt.millisecondsSinceEpoch,
+      };
+
   MusicItem toMusicItem() => MusicItem(
         id: musicPath,
         name: musicName,
@@ -78,13 +77,41 @@ class MusicHistoryItem {
     required this.musicPath,
     required this.musicName,
     required this.musicUrl,
-    this.artist,
+    required this.playedAt, this.artist,
     this.album,
     this.coverUrl,
     this.duration,
-    required this.playedAt,
     this.lastPosition,
   });
+
+  factory MusicHistoryItem.fromMusicItem(MusicItem item) => MusicHistoryItem(
+        musicPath: item.path,
+        musicName: item.name,
+        musicUrl: item.url,
+        artist: item.artist,
+        album: item.album,
+        coverUrl: item.coverUrl,
+        duration: item.duration,
+        playedAt: DateTime.now(),
+        lastPosition: item.lastPosition,
+      );
+
+  factory MusicHistoryItem.fromMap(Map<dynamic, dynamic> map) =>
+      MusicHistoryItem(
+        musicPath: map['musicPath'] as String,
+        musicName: map['musicName'] as String,
+        musicUrl: map['musicUrl'] as String,
+        artist: map['artist'] as String?,
+        album: map['album'] as String?,
+        coverUrl: map['coverUrl'] as String?,
+        duration: map['duration'] != null
+            ? Duration(milliseconds: map['duration'] as int)
+            : null,
+        playedAt: DateTime.fromMillisecondsSinceEpoch(map['playedAt'] as int),
+        lastPosition: map['lastPosition'] != null
+            ? Duration(milliseconds: map['lastPosition'] as int)
+            : null,
+      );
 
   final String musicPath;
   final String musicName;
@@ -107,35 +134,6 @@ class MusicHistoryItem {
         'playedAt': playedAt.millisecondsSinceEpoch,
         'lastPosition': lastPosition?.inMilliseconds,
       };
-
-  factory MusicHistoryItem.fromMap(Map<dynamic, dynamic> map) =>
-      MusicHistoryItem(
-        musicPath: map['musicPath'] as String,
-        musicName: map['musicName'] as String,
-        musicUrl: map['musicUrl'] as String,
-        artist: map['artist'] as String?,
-        album: map['album'] as String?,
-        coverUrl: map['coverUrl'] as String?,
-        duration: map['duration'] != null
-            ? Duration(milliseconds: map['duration'] as int)
-            : null,
-        playedAt: DateTime.fromMillisecondsSinceEpoch(map['playedAt'] as int),
-        lastPosition: map['lastPosition'] != null
-            ? Duration(milliseconds: map['lastPosition'] as int)
-            : null,
-      );
-
-  factory MusicHistoryItem.fromMusicItem(MusicItem item) => MusicHistoryItem(
-        musicPath: item.path,
-        musicName: item.name,
-        musicUrl: item.url,
-        artist: item.artist,
-        album: item.album,
-        coverUrl: item.coverUrl,
-        duration: item.duration,
-        playedAt: DateTime.now(),
-        lastPosition: item.lastPosition,
-      );
 
   MusicItem toMusicItem() => MusicItem(
         id: musicPath,

@@ -28,6 +28,16 @@ class BookItem {
     this.currentPage,
   });
 
+  /// 从 FileItem 创建
+  factory BookItem.fromFileItem(FileItem file, String url) => BookItem(
+      id: file.path,
+      name: file.name,
+      path: file.path,
+      url: url,
+      format: formatFromExtension(file.name),
+      size: file.size,
+    );
+
   final String id;
   final String name;
   final String path;
@@ -76,16 +86,6 @@ class BookItem {
       _ => BookFormat.unknown,
     };
   }
-
-  /// 从 FileItem 创建
-  factory BookItem.fromFileItem(FileItem file, String url) => BookItem(
-      id: file.path,
-      name: file.name,
-      path: file.path,
-      url: url,
-      format: formatFromExtension(file.name),
-      size: file.size,
-    );
 
   BookItem copyWith({
     String? id,

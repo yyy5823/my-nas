@@ -248,7 +248,7 @@ class VideoDatabaseService {
       distinct: true,
     );
 
-    return results.map((r) => r[_colTmdbId] as int).toSet();
+    return results.map((r) => r[_colTmdbId]! as int).toSet();
   }
 
   /// 根据 TMDB ID 获取第一个匹配的元数据

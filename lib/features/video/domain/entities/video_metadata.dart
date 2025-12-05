@@ -34,6 +34,34 @@ class VideoMetadata {
     this.generatedThumbnailUrl,
   });
 
+  /// 从 Map 创建
+  factory VideoMetadata.fromMap(Map<dynamic, dynamic> map) => VideoMetadata(
+      filePath: map['filePath'] as String,
+      sourceId: map['sourceId'] as String,
+      fileName: map['fileName'] as String,
+      category: MediaCategory.values[map['category'] as int? ?? 2],
+      tmdbId: map['tmdbId'] as int?,
+      title: map['title'] as String?,
+      originalTitle: map['originalTitle'] as String?,
+      year: map['year'] as int?,
+      overview: map['overview'] as String?,
+      posterUrl: map['posterUrl'] as String?,
+      backdropUrl: map['backdropUrl'] as String?,
+      rating: (map['rating'] as num?)?.toDouble(),
+      runtime: map['runtime'] as int?,
+      genres: map['genres'] as String?,
+      director: map['director'] as String?,
+      cast: map['cast'] as String?,
+      seasonNumber: map['seasonNumber'] as int?,
+      episodeNumber: map['episodeNumber'] as int?,
+      episodeTitle: map['episodeTitle'] as String?,
+      lastUpdated: map['lastUpdated'] != null
+          ? DateTime.fromMillisecondsSinceEpoch(map['lastUpdated'] as int)
+          : null,
+      thumbnailUrl: map['thumbnailUrl'] as String?,
+      generatedThumbnailUrl: map['generatedThumbnailUrl'] as String?,
+    );
+
   final String filePath;
   final String sourceId;
   final String fileName;
@@ -166,34 +194,6 @@ class VideoMetadata {
       'thumbnailUrl': thumbnailUrl,
       'generatedThumbnailUrl': generatedThumbnailUrl,
     };
-
-  /// 从 Map 创建
-  factory VideoMetadata.fromMap(Map<dynamic, dynamic> map) => VideoMetadata(
-      filePath: map['filePath'] as String,
-      sourceId: map['sourceId'] as String,
-      fileName: map['fileName'] as String,
-      category: MediaCategory.values[map['category'] as int? ?? 2],
-      tmdbId: map['tmdbId'] as int?,
-      title: map['title'] as String?,
-      originalTitle: map['originalTitle'] as String?,
-      year: map['year'] as int?,
-      overview: map['overview'] as String?,
-      posterUrl: map['posterUrl'] as String?,
-      backdropUrl: map['backdropUrl'] as String?,
-      rating: (map['rating'] as num?)?.toDouble(),
-      runtime: map['runtime'] as int?,
-      genres: map['genres'] as String?,
-      director: map['director'] as String?,
-      cast: map['cast'] as String?,
-      seasonNumber: map['seasonNumber'] as int?,
-      episodeNumber: map['episodeNumber'] as int?,
-      episodeTitle: map['episodeTitle'] as String?,
-      lastUpdated: map['lastUpdated'] != null
-          ? DateTime.fromMillisecondsSinceEpoch(map['lastUpdated'] as int)
-          : null,
-      thumbnailUrl: map['thumbnailUrl'] as String?,
-      generatedThumbnailUrl: map['generatedThumbnailUrl'] as String?,
-    );
 
   /// 复制
   VideoMetadata copyWith({

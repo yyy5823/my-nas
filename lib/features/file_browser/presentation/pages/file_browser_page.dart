@@ -7,14 +7,14 @@ import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/file_browser/presentation/providers/file_browser_provider.dart';
+import 'package:my_nas/features/file_browser/presentation/widgets/file_item_widget.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
-import 'package:my_nas/features/file_browser/presentation/widgets/file_item_widget.dart';
+import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/providers/download_provider.dart';
-import 'package:my_nas/shared/widgets/download_manager_sheet.dart';
-import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/shared/widgets/animated_list_item.dart';
+import 'package:my_nas/shared/widgets/download_manager_sheet.dart';
 import 'package:my_nas/shared/widgets/empty_widget.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
 import 'package:my_nas/shared/widgets/skeleton_loader.dart';
@@ -1333,12 +1333,12 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
                 color: Colors.transparent,
                 child: InkWell(
                   onTap: () async {
+                    final scaffoldMessenger = ScaffoldMessenger.of(context);
                     Navigator.pop(context);
                     try {
                       if (isCopy) {
                         await ref.read(fileListProvider.notifier).copyTo(file.path, selectedPath);
-                        if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        scaffoldMessenger.showSnackBar(
                           SnackBar(
                             content: Text('已复制到 $selectedPath'),
                             backgroundColor: isDark ? AppColors.darkSurfaceElevated : null,
@@ -1346,8 +1346,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
                         );
                       } else {
                         await ref.read(fileListProvider.notifier).moveTo(file.path, selectedPath);
-                        if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        scaffoldMessenger.showSnackBar(
                           SnackBar(
                             content: Text('已移动到 $selectedPath'),
                             backgroundColor: isDark ? AppColors.darkSurfaceElevated : null,
@@ -1355,8 +1354,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
                         );
                       }
                     } on Exception catch (e) {
-                      if (!mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      scaffoldMessenger.showSnackBar(
                         SnackBar(
                           content: Text('操作失败: $e'),
                           backgroundColor: AppColors.error,
@@ -1574,8 +1572,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
     required IconData icon,
     required Color iconColor,
     required String title,
-    Color? titleColor,
-    required VoidCallback onTap,
+    required VoidCallback onTap, Color? titleColor,
   }) => Material(
       color: Colors.transparent,
       child: InkWell(

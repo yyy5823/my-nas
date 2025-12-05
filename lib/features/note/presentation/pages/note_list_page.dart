@@ -5,9 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
-import 'package:my_nas/core/network/http_client.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/core/network/http_client.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/note/data/services/markdown_parser.dart';
 import 'package:my_nas/features/note/data/services/note_layout_service.dart';
@@ -29,7 +29,7 @@ import 'package:url_launcher/url_launcher.dart';
 /// 笔记页面状态
 final notePageProvider =
     StateNotifierProvider<NotePageNotifier, NotePageState>(
-        (ref) => NotePageNotifier(ref));
+        NotePageNotifier.new);
 
 sealed class NotePageState {}
 
@@ -121,7 +121,7 @@ class NotePageNotifier extends StateNotifier<NotePageState> {
     final configAsync = _ref.read(mediaLibraryConfigProvider);
 
     // 等待配置加载完成
-    MediaLibraryConfig? config = configAsync.valueOrNull;
+    var config = configAsync.valueOrNull;
     if (config == null) {
       for (var i = 0; i < 10; i++) {
         await Future<void>.delayed(const Duration(milliseconds: 500));
@@ -311,7 +311,7 @@ class NotePageNotifier extends StateNotifier<NotePageState> {
     // 加载文件内容
     try {
       // 获取文件URL（懒加载）
-      String? url = node.url;
+      var url = node.url;
       if (url == null) {
         // URL未缓存，需要获取
         final connections = _ref.read(activeConnectionsProvider);
@@ -628,7 +628,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
     NotePageState state,
   ) {
     // 统计笔记数量
-    int noteCount = 0;
+    var noteCount = 0;
     if (state is NotePageLoaded) {
       noteCount = _countNotes(state.treeNodes);
     }
@@ -690,7 +690,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
 
   /// 递归统计笔记文件数量
   int _countNotes(List<NoteTreeNode> nodes) {
-    int count = 0;
+    var count = 0;
     for (final node in nodes) {
       if (node.type == NoteTreeNodeType.file) {
         count++;
@@ -1864,7 +1864,6 @@ class _MarkdownPreview extends StatelessWidget {
               color: isDark
                   ? AppColors.darkOutline.withValues(alpha: 0.3)
                   : Colors.grey.shade300,
-              width: 1,
             ),
           ),
         ),

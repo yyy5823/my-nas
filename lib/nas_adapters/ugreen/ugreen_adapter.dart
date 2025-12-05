@@ -185,7 +185,6 @@ class UGreenAdapter implements NasAdapter {
           webdavUrl,
           user: config.username,
           password: config.password,
-          debug: false,
         );
 
         // 验证 WebDAV 连接

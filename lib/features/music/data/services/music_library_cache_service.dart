@@ -24,6 +24,26 @@ class MusicLibraryCacheEntry {
     this.metadataExtracted = false,
   });
 
+  factory MusicLibraryCacheEntry.fromMap(Map<dynamic, dynamic> map) => MusicLibraryCacheEntry(
+      sourceId: map['sourceId'] as String,
+      filePath: map['filePath'] as String,
+      fileName: map['fileName'] as String,
+      thumbnailUrl: map['thumbnailUrl'] as String?,
+      size: map['size'] as int? ?? 0,
+      modifiedTime: map['modifiedTime'] != null
+          ? DateTime.fromMillisecondsSinceEpoch(map['modifiedTime'] as int)
+          : null,
+      title: map['title'] as String?,
+      artist: map['artist'] as String?,
+      album: map['album'] as String?,
+      duration: map['duration'] as int?,
+      trackNumber: map['trackNumber'] as int?,
+      year: map['year'] as int?,
+      genre: map['genre'] as String?,
+      coverBase64: map['coverBase64'] as String?,
+      metadataExtracted: map['metadataExtracted'] as bool? ?? false,
+    );
+
   final String sourceId;
   final String filePath;
   final String fileName;
@@ -114,26 +134,6 @@ class MusicLibraryCacheEntry {
         'coverBase64': coverBase64,
         'metadataExtracted': metadataExtracted,
       };
-
-  factory MusicLibraryCacheEntry.fromMap(Map<dynamic, dynamic> map) => MusicLibraryCacheEntry(
-      sourceId: map['sourceId'] as String,
-      filePath: map['filePath'] as String,
-      fileName: map['fileName'] as String,
-      thumbnailUrl: map['thumbnailUrl'] as String?,
-      size: map['size'] as int? ?? 0,
-      modifiedTime: map['modifiedTime'] != null
-          ? DateTime.fromMillisecondsSinceEpoch(map['modifiedTime'] as int)
-          : null,
-      title: map['title'] as String?,
-      artist: map['artist'] as String?,
-      album: map['album'] as String?,
-      duration: map['duration'] as int?,
-      trackNumber: map['trackNumber'] as int?,
-      year: map['year'] as int?,
-      genre: map['genre'] as String?,
-      coverBase64: map['coverBase64'] as String?,
-      metadataExtracted: map['metadataExtracted'] as bool? ?? false,
-    );
 }
 
 /// 音乐库缓存
@@ -143,19 +143,6 @@ class MusicLibraryCache {
     required this.lastUpdated,
     this.sourceIds = const [],
   });
-
-  final List<MusicLibraryCacheEntry> tracks;
-  final DateTime lastUpdated;
-  final List<String> sourceIds;
-
-  /// 缓存是否过期（默认24小时）
-  bool get isExpired => DateTime.now().difference(lastUpdated).inHours > 24;
-
-  Map<String, dynamic> toMap() => {
-        'tracks': tracks.map((t) => t.toMap()).toList(),
-        'lastUpdated': lastUpdated.millisecondsSinceEpoch,
-        'sourceIds': sourceIds,
-      };
 
   factory MusicLibraryCache.fromMap(Map<dynamic, dynamic> map) {
     final tracksList = (map['tracks'] as List<dynamic>?)
@@ -172,6 +159,19 @@ class MusicLibraryCache {
           [],
     );
   }
+
+  final List<MusicLibraryCacheEntry> tracks;
+  final DateTime lastUpdated;
+  final List<String> sourceIds;
+
+  /// 缓存是否过期（默认24小时）
+  bool get isExpired => DateTime.now().difference(lastUpdated).inHours > 24;
+
+  Map<String, dynamic> toMap() => {
+        'tracks': tracks.map((t) => t.toMap()).toList(),
+        'lastUpdated': lastUpdated.millisecondsSinceEpoch,
+        'sourceIds': sourceIds,
+      };
 }
 
 /// 音乐库缓存服务
@@ -246,6 +246,7 @@ class MusicLibraryCacheService {
       final jsonStr = jsonEncode(data);
       return jsonStr.length;
     } on Exception catch (e) {
+      logger.e('MusicLibraryCacheService: 获取缓存大小失败', e);
       return 0;
     }
   }

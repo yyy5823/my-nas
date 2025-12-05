@@ -13,6 +13,16 @@ class BookLibraryCacheEntry {
     this.modifiedTime,
   });
 
+  factory BookLibraryCacheEntry.fromMap(Map<dynamic, dynamic> map) => BookLibraryCacheEntry(
+      sourceId: map['sourceId'] as String,
+      filePath: map['filePath'] as String,
+      fileName: map['fileName'] as String,
+      size: map['size'] as int? ?? 0,
+      modifiedTime: map['modifiedTime'] != null
+          ? DateTime.fromMillisecondsSinceEpoch(map['modifiedTime'] as int)
+          : null,
+    );
+
   final String sourceId;
   final String filePath;
   final String fileName;
@@ -28,16 +38,6 @@ class BookLibraryCacheEntry {
         'size': size,
         'modifiedTime': modifiedTime?.millisecondsSinceEpoch,
       };
-
-  factory BookLibraryCacheEntry.fromMap(Map<dynamic, dynamic> map) => BookLibraryCacheEntry(
-      sourceId: map['sourceId'] as String,
-      filePath: map['filePath'] as String,
-      fileName: map['fileName'] as String,
-      size: map['size'] as int? ?? 0,
-      modifiedTime: map['modifiedTime'] != null
-          ? DateTime.fromMillisecondsSinceEpoch(map['modifiedTime'] as int)
-          : null,
-    );
 }
 
 /// 图书库缓存
@@ -47,19 +47,6 @@ class BookLibraryCache {
     required this.lastUpdated,
     this.sourceIds = const [],
   });
-
-  final List<BookLibraryCacheEntry> books;
-  final DateTime lastUpdated;
-  final List<String> sourceIds;
-
-  /// 缓存是否过期（默认24小时）
-  bool get isExpired => DateTime.now().difference(lastUpdated).inHours > 24;
-
-  Map<String, dynamic> toMap() => {
-        'books': books.map((b) => b.toMap()).toList(),
-        'lastUpdated': lastUpdated.millisecondsSinceEpoch,
-        'sourceIds': sourceIds,
-      };
 
   factory BookLibraryCache.fromMap(Map<dynamic, dynamic> map) {
     final booksList = (map['books'] as List<dynamic>?)
@@ -76,6 +63,19 @@ class BookLibraryCache {
           [],
     );
   }
+
+  final List<BookLibraryCacheEntry> books;
+  final DateTime lastUpdated;
+  final List<String> sourceIds;
+
+  /// 缓存是否过期（默认24小时）
+  bool get isExpired => DateTime.now().difference(lastUpdated).inHours > 24;
+
+  Map<String, dynamic> toMap() => {
+        'books': books.map((b) => b.toMap()).toList(),
+        'lastUpdated': lastUpdated.millisecondsSinceEpoch,
+        'sourceIds': sourceIds,
+      };
 }
 
 /// 图书库缓存服务

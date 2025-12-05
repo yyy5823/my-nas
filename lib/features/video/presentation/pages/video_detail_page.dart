@@ -4,11 +4,11 @@ import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/features/video/data/services/tmdb_service.dart';
+import 'package:my_nas/features/video/data/services/video_favorites_service.dart';
 import 'package:my_nas/features/video/domain/entities/video_item.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
 import 'package:my_nas/features/video/presentation/pages/video_player_page.dart';
 import 'package:my_nas/features/video/presentation/providers/video_detail_provider.dart';
-import 'package:my_nas/features/video/data/services/video_favorites_service.dart';
 import 'package:my_nas/features/video/presentation/providers/video_favorites_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/video_history_provider.dart';
 import 'package:my_nas/features/video/presentation/widgets/cast_section.dart';
@@ -91,7 +91,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
 
     if (_hasTmdbId) {
       if (_isTvShow) {
-        final tvDetailAsync = ref.watch(tvDetailProvider(widget.metadata.tmdbId!))
+        final _ = ref.watch(tvDetailProvider(widget.metadata.tmdbId!))
         ..whenData((detail) {
           if (detail != null) {
             tagline = detail.tagline;
@@ -99,7 +99,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
           }
         });
       } else {
-        final movieDetailAsync = ref.watch(movieDetailProvider(widget.metadata.tmdbId!))
+        final _ = ref.watch(movieDetailProvider(widget.metadata.tmdbId!))
         ..whenData((detail) {
           if (detail != null) {
             tagline = detail.tagline;
@@ -296,7 +296,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     // 从 TMDB 获取更多信息
     if (_hasTmdbId) {
       if (_isTvShow) {
-        final tvDetailAsync = ref.watch(tvDetailProvider(widget.metadata.tmdbId!))
+        final _ = ref.watch(tvDetailProvider(widget.metadata.tmdbId!))
         ..whenData((detail) {
           if (detail != null) {
             if (detail.networks.isNotEmpty) {

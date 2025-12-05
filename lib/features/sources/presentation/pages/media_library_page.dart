@@ -429,7 +429,6 @@ class _MediaScanSection extends ConsumerStatefulWidget {
 class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
   VideoScanProgress? _videoScanProgress;
   StreamSubscription<VideoScanProgress>? _progressSubscription;
-  bool _isScanning = false;
 
   @override
   void initState() {
@@ -691,7 +690,6 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
   }
 
   Future<void> _scanMedia() async {
-    setState(() => _isScanning = true);
     try {
       switch (widget.mediaType) {
         case MediaType.video:
@@ -701,7 +699,7 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
             connections: widget.connections,
           );
           // 扫描完成后，通知 VideoListNotifier 重新加载缓存
-          ref.read(videoListProvider.notifier).reloadFromCache();
+          await ref.read(videoListProvider.notifier).reloadFromCache();
         case MediaType.music:
           await ref.read(musicListProvider.notifier).loadMusic(forceRefresh: true);
         case MediaType.photo:
@@ -720,7 +718,6 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
       }
     } finally {
       if (mounted) {
-        setState(() => _isScanning = false);
       }
     }
   }

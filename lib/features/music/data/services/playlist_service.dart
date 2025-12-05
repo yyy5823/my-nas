@@ -6,12 +6,19 @@ class PlaylistEntry {
   const PlaylistEntry({
     required this.id,
     required this.name,
-    this.description,
+    required this.trackPaths, required this.createdAt, required this.updatedAt, this.description,
     this.coverUrl,
-    required this.trackPaths,
-    required this.createdAt,
-    required this.updatedAt,
   });
+
+  factory PlaylistEntry.fromMap(Map<dynamic, dynamic> map) => PlaylistEntry(
+        id: map['id'] as String,
+        name: map['name'] as String,
+        description: map['description'] as String?,
+        coverUrl: map['coverUrl'] as String?,
+        trackPaths: (map['trackPaths'] as List).cast<String>(),
+        createdAt: DateTime.fromMillisecondsSinceEpoch(map['createdAt'] as int),
+        updatedAt: DateTime.fromMillisecondsSinceEpoch(map['updatedAt'] as int),
+      );
 
   final String id;
   final String name;
@@ -32,16 +39,6 @@ class PlaylistEntry {
         'createdAt': createdAt.millisecondsSinceEpoch,
         'updatedAt': updatedAt.millisecondsSinceEpoch,
       };
-
-  factory PlaylistEntry.fromMap(Map<dynamic, dynamic> map) => PlaylistEntry(
-        id: map['id'] as String,
-        name: map['name'] as String,
-        description: map['description'] as String?,
-        coverUrl: map['coverUrl'] as String?,
-        trackPaths: (map['trackPaths'] as List).cast<String>(),
-        createdAt: DateTime.fromMillisecondsSinceEpoch(map['createdAt'] as int),
-        updatedAt: DateTime.fromMillisecondsSinceEpoch(map['updatedAt'] as int),
-      );
 
   PlaylistEntry copyWith({
     String? id,

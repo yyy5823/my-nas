@@ -31,7 +31,7 @@ class SmbFileSystem implements NasFileSystem {
       final folder = await client.file(path);
       final files = await client.listFiles(folder);
 
-      return files.map((file) => _toFileItem(file)).toList();
+      return files.map(_toFileItem).toList();
     } on Exception catch (e) {
       logger.e('SmbFileSystem: 列出目录失败 $path', e);
       rethrow;
@@ -44,7 +44,7 @@ class SmbFileSystem implements NasFileSystem {
 
     // 使用缓存
     if (_cachedShares != null && _cachedShares!.isNotEmpty) {
-      return _cachedShares!.map((s) => _toFileItem(s)).toList();
+      return _cachedShares!.map(_toFileItem).toList();
     }
 
     final shares = await client.listShares();
@@ -52,7 +52,7 @@ class SmbFileSystem implements NasFileSystem {
 
     logger.i('SmbFileSystem: 获取到 ${shares.length} 个共享');
 
-    return shares.map((s) => _toFileItem(s)).toList();
+    return shares.map(_toFileItem).toList();
   }
 
   /// 清除共享缓存

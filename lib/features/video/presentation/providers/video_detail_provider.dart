@@ -127,14 +127,14 @@ final localVideosByYearProvider = FutureProvider.autoDispose.family<List<VideoMe
 final localVideosByCategoryProvider = FutureProvider.autoDispose.family<List<VideoMetadata>, MediaCategory>((ref, category) async {
   final metadataService = ref.watch(videoMetadataServiceProvider);
   await metadataService.init();
-  return metadataService.getByCategory(category, limit: 50);
+  return metadataService.getByCategory(category);
 });
 
 /// 搜索本地内容 Provider（autoDispose + SQLite）
 final searchLocalVideosProvider = FutureProvider.autoDispose.family<List<VideoMetadata>, String>((ref, query) async {
   final metadataService = ref.watch(videoMetadataServiceProvider);
   await metadataService.init();
-  return metadataService.search(query, limit: 50);
+  return metadataService.search(query);
 });
 
 /// 视频库统计 Provider

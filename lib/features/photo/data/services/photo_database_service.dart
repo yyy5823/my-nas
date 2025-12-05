@@ -310,8 +310,9 @@ class PhotoDatabaseService {
       if (dateStr != null && dateStr.isNotEmpty) {
         try {
           final date = DateTime.parse(dateStr);
-          groups.add((date: date, count: row['count'] as int));
-        } on Exception catch (_) {
+          groups.add((date: date, count: row['count']! as int));
+        } on Exception catch (e) {
+          logger.e('PhotoDatabaseService: 日期解析失败', e);
           // 忽略解析失败的日期
         }
       }

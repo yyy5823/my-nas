@@ -233,7 +233,7 @@ class LyricService {
         final minutes = int.parse(match.group(1)!);
         final seconds = int.parse(match.group(2)!);
         final millisStr = match.group(3);
-        int millis = 0;
+        var millis = 0;
         if (millisStr != null) {
           // 补齐到3位
           final padded = millisStr.padRight(3, '0');

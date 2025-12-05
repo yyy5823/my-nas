@@ -7,10 +7,19 @@ class VideoFavoriteItem {
     required this.videoPath,
     required this.videoName,
     required this.videoUrl,
-    this.thumbnailUrl,
+    required this.addedAt, this.thumbnailUrl,
     this.size = 0,
-    required this.addedAt,
   });
+
+  factory VideoFavoriteItem.fromMap(Map<dynamic, dynamic> map) =>
+      VideoFavoriteItem(
+        videoPath: map['videoPath'] as String,
+        videoName: map['videoName'] as String,
+        videoUrl: map['videoUrl'] as String,
+        thumbnailUrl: map['thumbnailUrl'] as String?,
+        size: map['size'] as int? ?? 0,
+        addedAt: DateTime.fromMillisecondsSinceEpoch(map['addedAt'] as int),
+      );
 
   final String videoPath;
   final String videoName;
@@ -27,16 +36,6 @@ class VideoFavoriteItem {
         'size': size,
         'addedAt': addedAt.millisecondsSinceEpoch,
       };
-
-  factory VideoFavoriteItem.fromMap(Map<dynamic, dynamic> map) =>
-      VideoFavoriteItem(
-        videoPath: map['videoPath'] as String,
-        videoName: map['videoName'] as String,
-        videoUrl: map['videoUrl'] as String,
-        thumbnailUrl: map['thumbnailUrl'] as String?,
-        size: map['size'] as int? ?? 0,
-        addedAt: DateTime.fromMillisecondsSinceEpoch(map['addedAt'] as int),
-      );
 }
 
 /// 视频书签项
@@ -46,9 +45,18 @@ class VideoBookmarkItem {
     required this.videoPath,
     required this.videoName,
     required this.position,
-    this.note,
-    required this.createdAt,
+    required this.createdAt, this.note,
   });
+
+  factory VideoBookmarkItem.fromMap(Map<dynamic, dynamic> map) =>
+      VideoBookmarkItem(
+        id: map['id'] as String,
+        videoPath: map['videoPath'] as String,
+        videoName: map['videoName'] as String,
+        position: Duration(milliseconds: map['position'] as int),
+        note: map['note'] as String?,
+        createdAt: DateTime.fromMillisecondsSinceEpoch(map['createdAt'] as int),
+      );
 
   final String id;
   final String videoPath;
@@ -65,16 +73,6 @@ class VideoBookmarkItem {
         'note': note,
         'createdAt': createdAt.millisecondsSinceEpoch,
       };
-
-  factory VideoBookmarkItem.fromMap(Map<dynamic, dynamic> map) =>
-      VideoBookmarkItem(
-        id: map['id'] as String,
-        videoPath: map['videoPath'] as String,
-        videoName: map['videoName'] as String,
-        position: Duration(milliseconds: map['position'] as int),
-        note: map['note'] as String?,
-        createdAt: DateTime.fromMillisecondsSinceEpoch(map['createdAt'] as int),
-      );
 
   String get formattedPosition {
     final hours = position.inHours;

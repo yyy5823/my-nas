@@ -266,7 +266,7 @@ class VideoMetadataService {
         return;
       }
 
-      int timeMs = 5000;
+      var timeMs = 5000;
       final progress = await _historyService.getProgress(metadata.filePath);
       if (progress != null && progress.position.inMilliseconds > 0) {
         timeMs = progress.position.inMilliseconds;

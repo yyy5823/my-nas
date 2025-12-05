@@ -15,6 +15,17 @@ class VideoLibraryCacheEntry {
     this.modifiedTime,
   });
 
+  factory VideoLibraryCacheEntry.fromMap(Map<dynamic, dynamic> map) => VideoLibraryCacheEntry(
+      sourceId: map['sourceId'] as String,
+      filePath: map['filePath'] as String,
+      fileName: map['fileName'] as String,
+      thumbnailUrl: map['thumbnailUrl'] as String?,
+      size: map['size'] as int? ?? 0,
+      modifiedTime: map['modifiedTime'] != null
+          ? DateTime.fromMillisecondsSinceEpoch(map['modifiedTime'] as int)
+          : null,
+    );
+
   final String sourceId;
   final String filePath;
   final String fileName;
@@ -32,17 +43,6 @@ class VideoLibraryCacheEntry {
         'size': size,
         'modifiedTime': modifiedTime?.millisecondsSinceEpoch,
       };
-
-  factory VideoLibraryCacheEntry.fromMap(Map<dynamic, dynamic> map) => VideoLibraryCacheEntry(
-      sourceId: map['sourceId'] as String,
-      filePath: map['filePath'] as String,
-      fileName: map['fileName'] as String,
-      thumbnailUrl: map['thumbnailUrl'] as String?,
-      size: map['size'] as int? ?? 0,
-      modifiedTime: map['modifiedTime'] != null
-          ? DateTime.fromMillisecondsSinceEpoch(map['modifiedTime'] as int)
-          : null,
-    );
 }
 
 /// 视频库缓存
@@ -52,20 +52,6 @@ class VideoLibraryCache {
     required this.lastUpdated,
     this.sourceIds = const [],
   });
-
-  final List<VideoLibraryCacheEntry> videos;
-  final DateTime lastUpdated;
-  final List<String> sourceIds;
-
-  /// 缓存是否过期（默认24小时）
-  bool get isExpired =>
-      DateTime.now().difference(lastUpdated).inHours > 24;
-
-  Map<String, dynamic> toMap() => {
-        'videos': videos.map((v) => v.toMap()).toList(),
-        'lastUpdated': lastUpdated.millisecondsSinceEpoch,
-        'sourceIds': sourceIds,
-      };
 
   factory VideoLibraryCache.fromMap(Map<dynamic, dynamic> map) {
     final videosList = (map['videos'] as List<dynamic>?)
@@ -82,6 +68,20 @@ class VideoLibraryCache {
           [],
     );
   }
+
+  final List<VideoLibraryCacheEntry> videos;
+  final DateTime lastUpdated;
+  final List<String> sourceIds;
+
+  /// 缓存是否过期（默认24小时）
+  bool get isExpired =>
+      DateTime.now().difference(lastUpdated).inHours > 24;
+
+  Map<String, dynamic> toMap() => {
+        'videos': videos.map((v) => v.toMap()).toList(),
+        'lastUpdated': lastUpdated.millisecondsSinceEpoch,
+        'sourceIds': sourceIds,
+      };
 }
 
 /// 视频库缓存服务
