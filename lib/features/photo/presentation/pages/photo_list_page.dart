@@ -203,7 +203,7 @@ class PhotoListLoaded extends PhotoListState {
 
   /// 获取路径到索引的 Map（惰性构建）
   Map<String, int> get pathToIndex {
-    if (_pathToIndex != null) return _pathToIndex!;
+    if (_pathToIndex != null) return _pathToIndex;
     // 如果没有预构建，则动态构建
     final map = <String, int>{};
     final photos = displayPhotos;

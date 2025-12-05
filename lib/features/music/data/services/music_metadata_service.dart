@@ -230,6 +230,7 @@ class MusicMetadataService {
         await tempFile.delete();
       }
     } on Exception catch (e) {
+      logger.d('MusicMetadataService: 临时文件删除失败，将稍后清理: ${tempFile.path} - $e');
       // 文件可能仍被占用，稍后重试一次
       await Future<void>.delayed(const Duration(milliseconds: 100));
       try {
