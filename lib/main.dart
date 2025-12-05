@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +11,7 @@ import 'package:my_nas/app/app.dart';
 import 'package:my_nas/core/di/injection.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/video/data/services/tmdb_service.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 Future<void> main() async {
   final widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
@@ -32,6 +36,13 @@ Future<void> _initApp() async {
   await logger.initFileLogging();
 
   logger.i('Initializing MyNAS...');
+
+  // Initialize sqflite_common_ffi for desktop platforms (Windows, macOS, Linux)
+  if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+    logger.i('SQLite FFI initialized for desktop platform');
+  }
 
   // Initialize MediaKit for video playback
   MediaKit.ensureInitialized();
