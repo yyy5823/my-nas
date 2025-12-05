@@ -159,13 +159,13 @@ class UGreenApi {
       logger.d('UGreenApi: login 响应 => ${loginResponse.data}');
 
       final data = loginResponse.data;
-      if (data is Map) {
+      if (data is Map<String, dynamic>) {
         final code = data['code'];
 
         // 成功
         if (code == 200) {
           final tokenData = data['data'];
-          if (tokenData is Map && tokenData['token'] != null) {
+          if (tokenData is Map<String, dynamic> && tokenData['token'] != null) {
             _token = tokenData['token'] as String;
             logger.i('UGreenApi: 登录成功');
             return UGreenAuthSuccess(
@@ -297,8 +297,8 @@ class UGreenApi {
     final response = await _request('/ugreen/v1/system/info');
 
     final data = response.data;
-    if (data is Map && data['code'] == 200) {
-      final info = data['data'] ?? {};
+    if (data is Map<String, dynamic> && data['code'] == 200) {
+      final info = data['data'] as Map<String, dynamic>? ?? <String, dynamic>{};
       return UGreenDeviceInfo(
         hostname: info['hostname']?.toString() ??
                   info['device_name']?.toString() ??
@@ -411,11 +411,11 @@ class UGreenApi {
                           dataMap?['items'] ??
                           dataMap?['children'] ??
                           data ??
-                          [];
+                          <dynamic>[];
 
             if (files is List) {
               for (final file in files) {
-                if (file is Map) {
+                if (file is Map<String, dynamic>) {
                   items.add(_parseFileInfo(file, path));
                 }
               }
@@ -569,11 +569,11 @@ class UGreenApi {
                          dataMap?['items'] ??
                          dataMap?['folders'] ??
                          (data is List ? data : null) ??
-                         [];
+                         <dynamic>[];
 
           if (shares is List) {
             for (final share in shares) {
-              if (share is Map) {
+              if (share is Map<String, dynamic>) {
                 final name = share['name']?.toString() ??
                              share['share_name']?.toString() ??
                              share['volume_name']?.toString() ??
@@ -762,7 +762,8 @@ class UGreenApi {
     );
 
     // 检查 token 是否过期 (code 1024)
-    if (response.data is Map && response.data['code'] == 1024) {
+    final responseData = response.data;
+    if (responseData is Map<String, dynamic> && responseData['code'] == 1024) {
       logger.i('UGreenApi: Token 过期，重新登录');
       if (_username != null && _password != null) {
         final result = await login(username: _username!, password: _password!);

@@ -196,7 +196,10 @@ class FnOSApi {
     final code = data['code'] ?? data['status'] ?? data['error_code'];
     if (code == 200 || code == 0 || data['success'] == true) {
       // 尝试提取 token
-      final tokenData = data['data'] ?? data['result'] ?? data;
+      final rawTokenData = data['data'] ?? data['result'] ?? data;
+      final tokenData = rawTokenData is Map<String, dynamic>
+          ? rawTokenData
+          : <String, dynamic>{};
       final token = tokenData['token']?.toString() ??
           tokenData['access_token']?.toString() ??
           tokenData['session_id']?.toString() ??
@@ -252,8 +255,8 @@ class FnOSApi {
       final response = await _request('/api/v1/system/info');
       final data = response.data;
 
-      if (data is Map) {
-        final info = data['data'] ?? data;
+      if (data is Map<String, dynamic>) {
+        final info = data['data'] as Map<String, dynamic>? ?? data;
         return FnOSDeviceInfo(
           hostname: info['hostname']?.toString() ??
               info['device_name']?.toString() ??
@@ -305,7 +308,7 @@ class FnOSApi {
     for (final attempt in attempts) {
       try {
         final endpoint = attempt['endpoint']! as String;
-        Response response;
+        Response<dynamic> response;
 
         if (attempt['method'] == 'POST') {
           response = await _request(endpoint, data: attempt['data'] as Map<String, dynamic>?);
@@ -331,7 +334,7 @@ class FnOSApi {
 
             if (files is List) {
               for (final file in files) {
-                if (file is Map) {
+                if (file is Map<String, dynamic>) {
                   items.add(_parseFileInfo(file, path));
                 }
               }
@@ -383,7 +386,7 @@ class FnOSApi {
 
             if (shares is List) {
               for (final share in shares) {
-                if (share is Map) {
+                if (share is Map<String, dynamic>) {
                   final name = share['name']?.toString() ??
                       share['share_name']?.toString() ??
                       '';
