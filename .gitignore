@@ -200,7 +200,7 @@ key.properties
 **/macos/Runner.xcodeproj/project.pbxproj
 
 # Injectable 自动生成的配置文件
-
+lib/core/di/injection.config.dart
 # Claude Code 配置
 CLAUDE.md
 

@@ -179,6 +179,9 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
+      - name: Generate code
+        run: dart run build_runner build --delete-conflicting-outputs
+
       # 构建分架构 APK
       - name: Build APK (split per ABI)
         run: flutter build apk --release --split-per-abi
@@ -220,6 +223,9 @@ jobs:
 
       - name: Get dependencies
         run: flutter pub get
+
+      - name: Generate code
+        run: dart run build_runner build --delete-conflicting-outputs
 
       - name: Build iOS (no codesign)
         run: flutter build ios --release --no-codesign
@@ -294,6 +300,9 @@ jobs:
 
       - name: Get dependencies
         run: flutter pub get
+
+      - name: Generate code
+        run: dart run build_runner build --delete-conflicting-outputs
 
       # 验证 Flutter 可以识别 macOS 项目
       - name: Verify Flutter recognizes macOS
@@ -373,6 +382,10 @@ jobs:
       - name: Get dependencies
         if: steps.check_windows.outputs.supported == 'true'
         run: flutter pub get
+
+      - name: Generate code
+        if: steps.check_windows.outputs.supported == 'true'
+        run: dart run build_runner build --delete-conflicting-outputs
 
       - name: Build Windows x64
         if: steps.check_windows.outputs.supported == 'true'
@@ -471,6 +484,9 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
+      - name: Generate code
+        run: dart run build_runner build --delete-conflicting-outputs
+
       - name: Build Linux
         run: flutter build linux --release
 
@@ -514,6 +530,11 @@ jobs:
         run: |
           export PATH="$HOME/flutter/bin:$PATH"
           flutter pub get
+
+      - name: Generate code
+        run: |
+          export PATH="$HOME/flutter/bin:$PATH"
+          dart run build_runner build --delete-conflicting-outputs
 
       - name: Build Linux ARM64
         run: |
