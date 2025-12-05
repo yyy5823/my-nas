@@ -29,7 +29,7 @@ class PlaylistNotifier extends StateNotifier<PlaylistState> {
     _load();
   }
 
-  final _service = PlaylistService.instance;
+  final _service = PlaylistService();
 
   Future<void> _load() async {
     state = state.copyWith(isLoading: true);
@@ -115,5 +115,5 @@ final playlistByIdProvider =
     FutureProvider.family<PlaylistEntry?, String>((ref, id) async {
   // 监听列表变化
   ref.watch(playlistProvider);
-  return PlaylistService.instance.getPlaylist(id);
+  return PlaylistService().getPlaylist(id);
 });

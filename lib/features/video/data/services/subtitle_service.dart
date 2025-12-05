@@ -35,10 +35,10 @@ class SubtitleItem {
 
 /// 字幕服务 - 用于查找和管理视频字幕
 class SubtitleService {
+  factory SubtitleService() => _instance ??= SubtitleService._();
   SubtitleService._();
 
   static SubtitleService? _instance;
-  static SubtitleService get instance => _instance ??= SubtitleService._();
 
   /// 查找视频对应的字幕文件
   ///

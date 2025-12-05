@@ -63,7 +63,7 @@ class LyricNotifier extends StateNotifier<LyricState> {
     try {
       // 首先检查是否有已提取的嵌入歌词
       if (music.lyrics != null && music.lyrics!.isNotEmpty) {
-        final lyricData = LyricService.instance.parseLyrics(music.lyrics!);
+        final lyricData = LyricService().parseLyrics(music.lyrics!);
         state = state.copyWith(
           lyricData: lyricData,
           isLoading: false,
@@ -84,7 +84,7 @@ class LyricNotifier extends StateNotifier<LyricState> {
       }
 
       // 尝试从同目录的 .lrc 文件加载
-      var lyricData = await LyricService.instance.loadLyrics(
+      var lyricData = await LyricService().loadLyrics(
         musicPath: music.path,
         musicName: music.name,
         fileSystem: connection.adapter.fileSystem,
@@ -114,14 +114,14 @@ class LyricNotifier extends StateNotifier<LyricState> {
   Future<LyricData> _extractEmbeddedLyrics(MusicItem music, SourceConnection connection) async {
     try {
       // 从 NAS 提取元数据（不跳过歌词）
-      final metadata = await MusicMetadataService.instance.extractFromNasFile(
+      final metadata = await MusicMetadataService().extractFromNasFile(
         connection.adapter.fileSystem,
         music.path,
       );
 
       if (metadata != null && metadata.hasLyrics) {
         logger.i('LyricNotifier: 从音频文件提取到嵌入歌词');
-        return LyricService.instance.parseLyrics(metadata.lyrics!);
+        return LyricService().parseLyrics(metadata.lyrics!);
       }
     } on Exception catch (e) {
       logger.w('LyricNotifier: 从音频提取嵌入歌词失败', e);

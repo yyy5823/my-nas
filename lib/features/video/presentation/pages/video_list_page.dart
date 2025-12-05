@@ -181,9 +181,9 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     });
   }
 
-  final VideoMetadataService _metadataService = VideoMetadataService.instance;
-  final VideoLibraryCacheService _cacheService = VideoLibraryCacheService.instance;
-  final VideoDatabaseService _db = VideoDatabaseService.instance;
+  final VideoMetadataService _metadataService = VideoMetadataService();
+  final VideoLibraryCacheService _cacheService = VideoLibraryCacheService();
+  final VideoDatabaseService _db = VideoDatabaseService();
 
   Future<void> _init() async {
     try {
@@ -726,7 +726,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     bool isDark,
   ) {
     // 获取缓存信息
-    final cacheService = VideoLibraryCacheService.instance;
+    final cacheService = VideoLibraryCacheService();
     final cacheInfo = cacheService.getCacheInfo();
 
     return Center(

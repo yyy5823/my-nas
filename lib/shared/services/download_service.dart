@@ -79,11 +79,13 @@ class DownloadTask {
 
 /// 下载服务
 class DownloadService {
+  factory DownloadService() => _instance ??= DownloadService._();
   DownloadService._() {
     // 立即发送初始状态，避免 StreamProvider 一直显示 loading
     _notifyListeners();
   }
-  static final instance = DownloadService._();
+
+  static DownloadService? _instance;
 
   final Dio _dio = Dio();
   final Map<String, DownloadTask> _tasks = {};
@@ -308,4 +310,4 @@ class DownloadService {
 }
 
 /// 全局下载服务实例
-final downloadService = DownloadService.instance;
+final downloadService = DownloadService();

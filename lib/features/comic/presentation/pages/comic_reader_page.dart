@@ -83,7 +83,7 @@ class ComicReaderNotifier extends StateNotifier<ComicReaderState> {
 
   final Ref _ref;
   final ComicItem _comic;
-  final ReadingProgressService _progressService = ReadingProgressService.instance;
+  final ReadingProgressService _progressService = ReadingProgressService();
 
   // 支持的图片格式
   static const _imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];

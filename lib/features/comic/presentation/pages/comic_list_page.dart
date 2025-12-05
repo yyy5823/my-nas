@@ -161,7 +161,7 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
   }
 
   final Ref _ref;
-  final ComicLibraryCacheService _cacheService = ComicLibraryCacheService.instance;
+  final ComicLibraryCacheService _cacheService = ComicLibraryCacheService();
 
   // 支持的图片格式
   static const _imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
@@ -436,7 +436,7 @@ class _ComicListContentState extends ConsumerState<ComicListContent> {
   }
 
   Widget _buildEmptyState(BuildContext context, WidgetRef ref, bool isDark) {
-    final cacheService = ComicLibraryCacheService.instance;
+    final cacheService = ComicLibraryCacheService();
     final cacheInfo = cacheService.getCacheInfo();
 
     return Center(

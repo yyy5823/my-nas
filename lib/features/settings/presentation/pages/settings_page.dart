@@ -691,7 +691,7 @@ class _TmdbApiKeyTile extends StatefulWidget {
 }
 
 class _TmdbApiKeyTileState extends State<_TmdbApiKeyTile> {
-  final _tmdbService = TmdbService.instance;
+  final _tmdbService = TmdbService();
   bool _hasApiKey = false;
 
   @override

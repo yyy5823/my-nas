@@ -40,7 +40,7 @@ class _MainScaffoldState extends State<MainScaffold> {
     // 延迟一点时间，确保应用完全启动
     await Future<void>.delayed(const Duration(seconds: 2));
 
-    final updateService = UpdateService.instance;
+    final updateService = UpdateService();
     await updateService.checkForUpdates(silent: true);
 
     // 如果有更新，显示更新对话框

@@ -85,10 +85,10 @@ class NfoMetadata {
 /// NFO 刮削服务
 /// 用于解析视频同级目录下的 NFO 刮削文件和本地图片
 class NfoScraperService {
+  factory NfoScraperService() => _instance ??= NfoScraperService._();
   NfoScraperService._();
 
   static NfoScraperService? _instance;
-  static NfoScraperService get instance => _instance ??= NfoScraperService._();
 
   /// 支持的 NFO 文件扩展名
   static const _nfoExtensions = ['.nfo'];

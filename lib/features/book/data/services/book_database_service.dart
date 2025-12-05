@@ -67,11 +67,10 @@ class BookEntity {
 
 /// 图书数据库服务 - 使用 SQLite 支持大规模数据和索引查询
 class BookDatabaseService {
+  factory BookDatabaseService() => _instance ??= BookDatabaseService._();
   BookDatabaseService._();
 
   static BookDatabaseService? _instance;
-  static BookDatabaseService get instance =>
-      _instance ??= BookDatabaseService._();
 
   Database? _db;
   bool _initialized = false;

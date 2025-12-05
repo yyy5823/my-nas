@@ -104,7 +104,7 @@ class EpubReaderNotifier extends StateNotifier<EpubReaderState> {
   }
 
   final BookItem book;
-  final ReadingProgressService _progressService = ReadingProgressService.instance;
+  final ReadingProgressService _progressService = ReadingProgressService();
 
   Future<void> _loadEpub() async {
     try {

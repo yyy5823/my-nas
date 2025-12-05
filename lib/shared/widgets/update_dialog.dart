@@ -25,7 +25,7 @@ class UpdateDialog extends ConsumerStatefulWidget {
 }
 
 class _UpdateDialogState extends ConsumerState<UpdateDialog> {
-  final _service = UpdateService.instance;
+  final _service = UpdateService();
 
   @override
   void initState() {
@@ -449,7 +449,7 @@ class CheckUpdateTile extends ConsumerStatefulWidget {
 }
 
 class _CheckUpdateTileState extends ConsumerState<CheckUpdateTile> {
-  final _service = UpdateService.instance;
+  final _service = UpdateService();
 
   @override
   void initState() {

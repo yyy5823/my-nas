@@ -5,10 +5,10 @@ import 'package:my_nas/core/utils/logger.dart';
 
 /// TMDB API 服务
 class TmdbService {
+  factory TmdbService() => _instance ??= TmdbService._();
   TmdbService._();
 
   static TmdbService? _instance;
-  static TmdbService get instance => _instance ??= TmdbService._();
 
   // TMDB API Key - 可以在设置中配置
   static const String _defaultApiKey = ''; // 用户需要自己申请

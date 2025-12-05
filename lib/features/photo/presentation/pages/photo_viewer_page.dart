@@ -57,7 +57,7 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
   final Map<String, String> _loadedUrls = {};
 
   /// 收藏服务
-  final _favoritesService = PhotoFavoritesService.instance;
+  final _favoritesService = PhotoFavoritesService();
 
   /// 当前照片是否已收藏
   bool _isFavorite = false;
@@ -606,7 +606,7 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
     final fileSystem = widget.getFileSystem?.call(photo.sourceId);
 
     // 移动端需要先请求权限
-    final saveService = PhotoSaveService.instance;
+    final saveService = PhotoSaveService();
     if (saveService.canSaveToGallery) {
       final hasPermission = await saveService.requestGalleryPermission();
       if (!hasPermission) {
@@ -717,7 +717,7 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
     final fileSystem = widget.getFileSystem?.call(photo.sourceId);
 
     // 检查分享功能是否可用
-    final saveService = PhotoSaveService.instance;
+    final saveService = PhotoSaveService();
     if (!saveService.canShare) {
       _showErrorSnackBar(context, '当前平台不支持分享功能');
       return;
@@ -740,7 +740,7 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
     String url,
     NasFileSystem? fileSystem,
   ) async {
-    final saveService = PhotoSaveService.instance;
+    final saveService = PhotoSaveService();
     final cancelToken = CancelToken();
     final progressNotifier = ValueNotifier<double>(0);
     final dialogCompleter = Completer<void>();

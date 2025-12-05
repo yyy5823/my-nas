@@ -80,15 +80,14 @@ enum VideoScanPhase {
 /// 2. 获取刮削信息（NFO > TMDB > 生成缩略图）
 /// 3. 保存到本地缓存
 class VideoScannerService {
+  factory VideoScannerService() => _instance ??= VideoScannerService._();
   VideoScannerService._();
 
   static VideoScannerService? _instance;
-  static VideoScannerService get instance =>
-      _instance ??= VideoScannerService._();
 
   final VideoLibraryCacheService _cacheService =
-      VideoLibraryCacheService.instance;
-  final VideoMetadataService _metadataService = VideoMetadataService.instance;
+      VideoLibraryCacheService();
+  final VideoMetadataService _metadataService = VideoMetadataService();
 
   bool _isScanning = false;
   bool get isScanning => _isScanning;

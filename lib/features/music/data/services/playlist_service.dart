@@ -62,8 +62,10 @@ class PlaylistEntry {
 
 /// 播放列表服务
 class PlaylistService {
+  factory PlaylistService() => _instance ??= PlaylistService._();
   PlaylistService._();
-  static final instance = PlaylistService._();
+
+  static PlaylistService? _instance;
 
   static const _boxName = 'music_playlists';
 

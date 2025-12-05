@@ -177,11 +177,10 @@ class MusicLibraryCache {
 /// 音乐库缓存服务
 /// 缓存音乐文件列表，避免每次启动都扫描 NAS
 class MusicLibraryCacheService {
+  factory MusicLibraryCacheService() => _instance ??= MusicLibraryCacheService._();
   MusicLibraryCacheService._();
 
   static MusicLibraryCacheService? _instance;
-  static MusicLibraryCacheService get instance =>
-      _instance ??= MusicLibraryCacheService._();
 
   static const String _boxName = 'music_library_cache';
   static const String _cacheKey = 'library_cache';

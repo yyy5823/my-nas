@@ -81,11 +81,10 @@ class BookLibraryCache {
 /// 图书库缓存服务
 /// 缓存图书文件列表，避免每次启动都扫描 NAS
 class BookLibraryCacheService {
+  factory BookLibraryCacheService() => _instance ??= BookLibraryCacheService._();
   BookLibraryCacheService._();
 
   static BookLibraryCacheService? _instance;
-  static BookLibraryCacheService get instance =>
-      _instance ??= BookLibraryCacheService._();
 
   static const String _boxName = 'book_library_cache';
   static const String _cacheKey = 'library_cache';

@@ -150,8 +150,10 @@ class MusicHistoryItem {
 
 /// 音乐收藏和历史服务
 class MusicFavoritesService {
+  factory MusicFavoritesService() => _instance ??= MusicFavoritesService._();
   MusicFavoritesService._();
-  static final instance = MusicFavoritesService._();
+
+  static MusicFavoritesService? _instance;
 
   static const _favoritesBoxName = 'music_favorites';
   static const _historyBoxName = 'music_history';

@@ -12,8 +12,10 @@ import 'package:path_provider/path_provider.dart';
 /// 音乐元数据服务
 /// 用于从音频文件中提取 ID3 标签等元数据
 class MusicMetadataService {
+  factory MusicMetadataService() => _instance ??= MusicMetadataService._();
   MusicMetadataService._();
-  static final MusicMetadataService instance = MusicMetadataService._();
+
+  static MusicMetadataService? _instance;
 
   late Directory _cacheDir;
   bool _initialized = false;

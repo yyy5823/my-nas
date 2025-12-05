@@ -69,11 +69,10 @@ class SourceCredential {
 
 /// 源管理服务
 class SourceManagerService {
+  factory SourceManagerService() => _instance ??= SourceManagerService._();
   SourceManagerService._();
 
   static SourceManagerService? _instance;
-  static SourceManagerService get instance =>
-      _instance ??= SourceManagerService._();
 
   late Box<dynamic> _sourcesBox;
   late Box<dynamic> _libraryBox;

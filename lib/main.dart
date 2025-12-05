@@ -59,7 +59,7 @@ Future<void> _loadTmdbApiKey() async {
     final box = await Hive.openBox<String>('settings');
     final apiKey = box.get('tmdb_api_key', defaultValue: '');
     if (apiKey != null && apiKey.isNotEmpty) {
-      TmdbService.instance.setApiKey(apiKey);
+      TmdbService().setApiKey(apiKey);
       logger.i('TMDB API key loaded');
     }
   } on Exception catch (e) {

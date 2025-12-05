@@ -81,8 +81,10 @@ class ComicLibraryCache {
 
 /// 漫画库缓存服务
 class ComicLibraryCacheService {
+  factory ComicLibraryCacheService() => _instance ??= ComicLibraryCacheService._();
   ComicLibraryCacheService._();
-  static final instance = ComicLibraryCacheService._();
+
+  static ComicLibraryCacheService? _instance;
 
   static const _cacheKey = 'comic_library_cache';
   static const _cacheDuration = Duration(hours: 24);

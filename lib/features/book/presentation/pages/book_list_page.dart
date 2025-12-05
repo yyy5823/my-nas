@@ -189,8 +189,8 @@ class BookListNotifier extends StateNotifier<BookListState> {
   }
 
   final Ref _ref;
-  final BookLibraryCacheService _cacheService = BookLibraryCacheService.instance;
-  final BookDatabaseService _db = BookDatabaseService.instance;
+  final BookLibraryCacheService _cacheService = BookLibraryCacheService();
+  final BookDatabaseService _db = BookDatabaseService();
 
   /// 支持的电子书扩展名
   static const _supportedExtensions = [
@@ -931,7 +931,7 @@ class _BookListPageState extends ConsumerState<BookListPage> {
     bool isDark,
   ) {
     // 获取缓存信息
-    final cacheService = BookLibraryCacheService.instance;
+    final cacheService = BookLibraryCacheService();
     final cacheInfo = cacheService.getCacheInfo();
 
     return Center(
@@ -1076,7 +1076,7 @@ class _BookCacheInfoBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final cacheService = BookLibraryCacheService.instance;
+    final cacheService = BookLibraryCacheService();
     final cache = cacheService.getCache();
 
     if (cache == null) {
@@ -1229,7 +1229,7 @@ class _BookListContentState extends ConsumerState<BookListContent> {
 
   Widget _buildEmptyState(BuildContext context, bool isDark) {
     // 获取缓存信息
-    final cacheService = BookLibraryCacheService.instance;
+    final cacheService = BookLibraryCacheService();
     final cacheInfo = cacheService.getCacheInfo();
 
     return Center(

@@ -76,7 +76,7 @@ class ConnectionConfig {
         'quickConnectId': quickConnectId,
       };
 
-  static ConnectionConfig fromJson(
+  factory ConnectionConfig.fromJson(
     Map<String, dynamic> json, {
     required String password,
   }) =>

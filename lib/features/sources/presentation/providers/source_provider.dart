@@ -4,7 +4,7 @@ import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 
 /// 源管理服务 Provider
-final sourceManagerProvider = Provider<SourceManagerService>((ref) => SourceManagerService.instance);
+final sourceManagerProvider = Provider<SourceManagerService>((ref) => SourceManagerService());
 
 /// 所有源列表 Provider
 final sourcesProvider =

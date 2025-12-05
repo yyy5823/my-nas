@@ -4,10 +4,10 @@ import 'package:my_nas/features/video/data/services/video_metadata_service.dart'
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
 
 /// TMDB 服务 Provider
-final tmdbServiceProvider = Provider<TmdbService>((ref) => TmdbService.instance);
+final tmdbServiceProvider = Provider<TmdbService>((ref) => TmdbService());
 
 /// 视频元数据服务 Provider
-final videoMetadataServiceProvider = Provider<VideoMetadataService>((ref) => VideoMetadataService.instance);
+final videoMetadataServiceProvider = Provider<VideoMetadataService>((ref) => VideoMetadataService());
 
 /// 电影详情 Provider（autoDispose: 离开详情页后自动清理）
 final movieDetailProvider = FutureProvider.autoDispose.family<TmdbMovieDetail?, int>((ref, movieId) async {

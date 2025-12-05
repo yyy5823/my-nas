@@ -65,7 +65,7 @@ class PdfReaderNotifier extends StateNotifier<PdfReaderState> {
   }
 
   final BookItem book;
-  final ReadingProgressService _progressService = ReadingProgressService.instance;
+  final ReadingProgressService _progressService = ReadingProgressService();
 
   Future<void> _loadPdf() async {
     try {

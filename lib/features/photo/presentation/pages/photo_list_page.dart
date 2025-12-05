@@ -262,8 +262,8 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
   }
 
   final Ref _ref;
-  final PhotoLibraryCacheService _cacheService = PhotoLibraryCacheService.instance;
-  final PhotoDatabaseService _db = PhotoDatabaseService.instance;
+  final PhotoLibraryCacheService _cacheService = PhotoLibraryCacheService();
+  final PhotoDatabaseService _db = PhotoDatabaseService();
 
   Future<void> _init() async {
     try {
@@ -1086,7 +1086,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
     bool isDark,
   ) {
     // 获取缓存信息
-    final cacheService = PhotoLibraryCacheService.instance;
+    final cacheService = PhotoLibraryCacheService();
     final cacheInfo = cacheService.getCacheInfo();
 
     return Center(

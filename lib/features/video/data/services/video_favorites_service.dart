@@ -88,8 +88,10 @@ class VideoBookmarkItem {
 
 /// 视频收藏和书签服务
 class VideoFavoritesService {
+  factory VideoFavoritesService() => _instance ??= VideoFavoritesService._();
   VideoFavoritesService._();
-  static final instance = VideoFavoritesService._();
+
+  static VideoFavoritesService? _instance;
 
   static const _favoritesBoxName = 'video_favorites';
   static const _bookmarksBoxName = 'video_bookmarks';

@@ -51,8 +51,10 @@ enum UpdateStatus {
 
 /// 更新服务
 class UpdateService extends ChangeNotifier {
+  factory UpdateService() => _instance ??= UpdateService._();
   UpdateService._();
-  static final instance = UpdateService._();
+
+  static UpdateService? _instance;
 
   // GitHub 仓库信息
   static const _owner = 'chenqi92';

@@ -98,7 +98,7 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
   final Ref _ref;
   late final Player _player;
   late final VideoController _videoController;
-  final VideoHistoryService _historyService = VideoHistoryService.instance;
+  final VideoHistoryService _historyService = VideoHistoryService();
 
   Timer? _progressSaveTimer;
   VideoItem? _currentVideo;
@@ -340,7 +340,7 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
         return;
       }
       try {
-        playUrl = await MediaProxyServer.instance.registerFile(
+        playUrl = await MediaProxyServer().registerFile(
           sourceId: video.sourceId!,
           filePath: video.path,
           fileSize: video.size,

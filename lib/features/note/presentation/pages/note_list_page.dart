@@ -503,7 +503,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
   bool _isSidebarCollapsed = false;
 
   // 布局服务
-  final _layoutService = NoteLayoutService.instance;
+  final _layoutService = NoteLayoutService();
 
   /// 判断是否为移动端布局
   bool _isMobileLayout(BuildContext context) =>
@@ -1968,7 +1968,7 @@ class _NoteListContentState extends ConsumerState<NoteListContent> {
   bool _isSidebarCollapsed = false;
 
   // 布局服务
-  final _layoutService = NoteLayoutService.instance;
+  final _layoutService = NoteLayoutService();
 
   @override
   void initState() {

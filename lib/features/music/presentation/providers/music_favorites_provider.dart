@@ -28,7 +28,7 @@ class MusicFavoritesNotifier extends StateNotifier<MusicFavoritesState> {
     _load();
   }
 
-  final _service = MusicFavoritesService.instance;
+  final _service = MusicFavoritesService();
 
   Future<void> _load() async {
     state = state.copyWith(isLoading: true);
@@ -76,7 +76,7 @@ final isMusicFavoriteProvider =
     FutureProvider.family<bool, String>((ref, musicPath) async {
   // 监听 favorites 变化
   ref.watch(musicFavoritesProvider);
-  return MusicFavoritesService.instance.isFavorite(musicPath);
+  return MusicFavoritesService().isFavorite(musicPath);
 });
 
 // ==================== 播放历史相关 ====================
@@ -107,7 +107,7 @@ class MusicHistoryNotifier extends StateNotifier<MusicHistoryState> {
     _load();
   }
 
-  final _service = MusicFavoritesService.instance;
+  final _service = MusicFavoritesService();
 
   Future<void> _load() async {
     state = state.copyWith(isLoading: true);
@@ -153,7 +153,7 @@ final recentMusicProvider =
     FutureProvider<List<MusicHistoryItem>>((ref) async {
   // 监听 history 变化
   ref.watch(musicHistoryProvider);
-  return MusicFavoritesService.instance.getRecentHistory();
+  return MusicFavoritesService().getRecentHistory();
 });
 
 /// 最近播放 - 返回 MusicItem 列表

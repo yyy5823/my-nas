@@ -120,11 +120,10 @@ class MusicTrackEntity {
 
 /// 音乐数据库服务 - 使用 SQLite 支持大规模数据和索引查询
 class MusicDatabaseService {
+  factory MusicDatabaseService() => _instance ??= MusicDatabaseService._();
   MusicDatabaseService._();
 
   static MusicDatabaseService? _instance;
-  static MusicDatabaseService get instance =>
-      _instance ??= MusicDatabaseService._();
 
   Database? _db;
   bool _initialized = false;

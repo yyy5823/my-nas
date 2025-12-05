@@ -20,8 +20,10 @@ import 'package:share_plus/share_plus.dart';
 /// - 文件流（SMB、WebDAV等）
 /// - 本地文件（file:// URL）
 class PhotoSaveService {
+  factory PhotoSaveService() => _instance ??= PhotoSaveService._();
   PhotoSaveService._();
-  static final instance = PhotoSaveService._();
+
+  static PhotoSaveService? _instance;
 
   final Dio _dio = Dio(BaseOptions(
     connectTimeout: const Duration(seconds: 30),

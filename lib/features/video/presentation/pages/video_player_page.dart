@@ -123,7 +123,7 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
     final adapter = connectedEntry.value.adapter;
 
     try {
-      final subtitles = await SubtitleService.instance.findSubtitles(
+      final subtitles = await SubtitleService().findSubtitles(
         videoPath: widget.video.path,
         videoName: widget.video.name,
         fileSystem: adapter.fileSystem,
@@ -169,7 +169,7 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
     // 使用 Future.microtask 在后台执行，不阻塞 dispose
     Future.microtask(() async {
       try {
-        await VideoMetadataService.instance.refreshThumbnailOnProgressUpdate(
+        await VideoMetadataService().refreshThumbnailOnProgressUpdate(
           sourceId: _sourceId!,
           filePath: widget.video.path,
           videoUrl: _videoUrl!,

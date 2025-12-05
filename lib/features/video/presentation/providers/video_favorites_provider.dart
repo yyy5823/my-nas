@@ -28,7 +28,7 @@ class FavoritesNotifier extends StateNotifier<FavoritesState> {
     _load();
   }
 
-  final _service = VideoFavoritesService.instance;
+  final _service = VideoFavoritesService();
 
   Future<void> _load() async {
     state = state.copyWith(isLoading: true);
@@ -79,7 +79,7 @@ final isFavoriteProvider =
     FutureProvider.family<bool, String>((ref, videoPath) async {
   // 监听 favorites 变化
   ref.watch(favoritesProvider);
-  return VideoFavoritesService.instance.isFavorite(videoPath);
+  return VideoFavoritesService().isFavorite(videoPath);
 });
 
 // ==================== 书签相关 ====================
@@ -110,7 +110,7 @@ class BookmarksNotifier extends StateNotifier<BookmarksState> {
     _load();
   }
 
-  final _service = VideoFavoritesService.instance;
+  final _service = VideoFavoritesService();
   final _uuid = const Uuid();
 
   Future<void> _load() async {
@@ -177,5 +177,5 @@ final videoBookmarksProvider =
     FutureProvider.family<List<VideoBookmarkItem>, String>((ref, videoPath) async {
   // 监听 bookmarks 变化
   ref.watch(bookmarksProvider);
-  return VideoFavoritesService.instance.getBookmarksForVideo(videoPath);
+  return VideoFavoritesService().getBookmarksForVideo(videoPath);
 });

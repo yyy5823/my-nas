@@ -499,7 +499,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     }
 
     try {
-      final metadataService = MusicMetadataService.instance;
+      final metadataService = MusicMetadataService();
       await metadataService.init();
 
       MusicMetadata? metadata;

@@ -138,11 +138,10 @@ class Bookmark {
 
 /// 阅读进度服务
 class ReadingProgressService {
+  factory ReadingProgressService() => _instance ??= ReadingProgressService._();
   ReadingProgressService._();
 
   static ReadingProgressService? _instance;
-  static ReadingProgressService get instance =>
-      _instance ??= ReadingProgressService._();
 
   static const String _progressBoxName = 'reading_progress';
   static const String _bookmarksBoxName = 'reading_bookmarks';

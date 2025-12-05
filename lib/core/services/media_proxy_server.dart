@@ -11,10 +11,10 @@ import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 /// 为不支持直接 URL 访问的协议（如 SMB）提供 HTTP 代理
 /// 将 SMB 等协议的文件流转换为 HTTP 流供播放器使用
 class MediaProxyServer {
+  factory MediaProxyServer() => _instance ??= MediaProxyServer._();
   MediaProxyServer._();
 
   static MediaProxyServer? _instance;
-  static MediaProxyServer get instance => _instance ??= MediaProxyServer._();
 
   HttpServer? _server;
   int _port = 0;
@@ -136,7 +136,7 @@ class MediaProxyServer {
   /// 流式传输文件
   Future<void> _streamFile(HttpRequest request, _ProxyFileInfo fileInfo) async {
     // 获取文件系统
-    final conn = SourceManagerService.instance.getConnection(fileInfo.sourceId);
+    final conn = SourceManagerService().getConnection(fileInfo.sourceId);
 
     if (conn == null || conn.status != SourceStatus.connected) {
       logger.w('MediaProxyServer: 源未连接 ${fileInfo.sourceId}');

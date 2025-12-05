@@ -87,11 +87,10 @@ class VideoLibraryCache {
 /// 视频库缓存服务
 /// 缓存视频文件列表，避免每次启动都扫描 NAS
 class VideoLibraryCacheService {
+  factory VideoLibraryCacheService() => _instance ??= VideoLibraryCacheService._();
   VideoLibraryCacheService._();
 
   static VideoLibraryCacheService? _instance;
-  static VideoLibraryCacheService get instance =>
-      _instance ??= VideoLibraryCacheService._();
 
   static const String _boxName = 'video_library_cache';
   static const String _cacheKey = 'library_cache';

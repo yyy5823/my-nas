@@ -77,11 +77,10 @@ class PhotoEntity {
 
 /// 照片数据库服务 - 使用 SQLite 支持大规模数据和索引查询
 class PhotoDatabaseService {
+  factory PhotoDatabaseService() => _instance ??= PhotoDatabaseService._();
   PhotoDatabaseService._();
 
   static PhotoDatabaseService? _instance;
-  static PhotoDatabaseService get instance =>
-      _instance ??= PhotoDatabaseService._();
 
   Database? _db;
   bool _initialized = false;

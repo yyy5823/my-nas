@@ -6,11 +6,10 @@ import 'package:sqflite/sqflite.dart';
 
 /// 视频数据库服务 - 使用 SQLite 支持大规模数据和索引查询
 class VideoDatabaseService {
+  factory VideoDatabaseService() => _instance ??= VideoDatabaseService._();
   VideoDatabaseService._();
 
   static VideoDatabaseService? _instance;
-  static VideoDatabaseService get instance =>
-      _instance ??= VideoDatabaseService._();
 
   Database? _db;
   bool _initialized = false;

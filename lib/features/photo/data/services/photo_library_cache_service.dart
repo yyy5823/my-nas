@@ -85,11 +85,10 @@ class PhotoLibraryCache {
 /// 照片库缓存服务
 /// 缓存照片文件列表，避免每次启动都扫描 NAS
 class PhotoLibraryCacheService {
+  factory PhotoLibraryCacheService() => _instance ??= PhotoLibraryCacheService._();
   PhotoLibraryCacheService._();
 
   static PhotoLibraryCacheService? _instance;
-  static PhotoLibraryCacheService get instance =>
-      _instance ??= PhotoLibraryCacheService._();
 
   static const String _boxName = 'photo_library_cache';
   static const String _cacheKey = 'library_cache';

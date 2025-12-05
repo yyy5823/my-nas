@@ -82,8 +82,10 @@ class PhotoFavoriteItem {
 
 /// 照片收藏服务
 class PhotoFavoritesService {
+  factory PhotoFavoritesService() => _instance ??= PhotoFavoritesService._();
   PhotoFavoritesService._();
-  static final instance = PhotoFavoritesService._();
+
+  static PhotoFavoritesService? _instance;
 
   static const _favoritesBoxName = 'photo_favorites';
 

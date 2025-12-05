@@ -444,7 +444,7 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
     super.initState();
     // 监听视频扫描进度
     if (widget.mediaType == MediaType.video) {
-      _progressSubscription = VideoScannerService.instance.progressStream
+      _progressSubscription = VideoScannerService().progressStream
           .listen((progress) {
             if (mounted) {
               setState(() => _videoScanProgress = progress);
@@ -626,7 +626,7 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
     switch (widget.mediaType) {
       case MediaType.video:
         // 使用 VideoScannerService 的进度
-        final scannerIsScanning = VideoScannerService.instance.isScanning;
+        final scannerIsScanning = VideoScannerService().isScanning;
         final progress = _videoScanProgress;
         final isLoading =
             scannerIsScanning ||
@@ -635,7 +635,7 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
                 progress.phase != VideoScanPhase.error);
         final scanProgress = progress?.progress ?? 0.0;
         final folder = progress?.description;
-        final cacheInfo = VideoLibraryCacheService.instance.getCacheInfo();
+        final cacheInfo = VideoLibraryCacheService().getCacheInfo();
         return (isLoading, scanProgress, folder, cacheInfo);
 
       case MediaType.music:
@@ -648,7 +648,7 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
                   : state.progress)
             : 0.0;
         final folder = state is MusicListLoading ? state.currentFolder : null;
-        final cacheInfo = MusicLibraryCacheService.instance.getCacheInfo();
+        final cacheInfo = MusicLibraryCacheService().getCacheInfo();
         return (isLoading, progress, folder, cacheInfo);
 
       case MediaType.photo:
@@ -656,7 +656,7 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
         final isLoading = state is PhotoListLoading;
         final progress = state is PhotoListLoading ? state.progress : 0.0;
         final folder = state is PhotoListLoading ? state.currentFolder : null;
-        final cacheInfo = PhotoLibraryCacheService.instance.getCacheInfo();
+        final cacheInfo = PhotoLibraryCacheService().getCacheInfo();
         return (isLoading, progress, folder, cacheInfo);
 
       case MediaType.comic:
@@ -664,7 +664,7 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
         final isLoading = state is ComicListLoading;
         final progress = state is ComicListLoading ? state.progress : 0.0;
         final folder = state is ComicListLoading ? state.currentFolder : null;
-        final cacheInfo = ComicLibraryCacheService.instance.getCacheInfo();
+        final cacheInfo = ComicLibraryCacheService().getCacheInfo();
         return (isLoading, progress, folder, cacheInfo);
 
       case MediaType.book:
@@ -672,7 +672,7 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
         final isLoading = state is BookListLoading;
         final progress = state is BookListLoading ? state.progress : 0.0;
         final folder = state is BookListLoading ? state.currentFolder : null;
-        final cacheInfo = BookLibraryCacheService.instance.getCacheInfo();
+        final cacheInfo = BookLibraryCacheService().getCacheInfo();
         return (isLoading, progress, folder, cacheInfo);
 
       case MediaType.note:
@@ -703,7 +703,7 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
       switch (widget.mediaType) {
         case MediaType.video:
           // 使用新的 VideoScannerService
-          await VideoScannerService.instance.scan(
+          await VideoScannerService().scan(
             paths: widget.paths,
             connections: widget.connections,
           );
@@ -761,19 +761,19 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
     if (confirm ?? false) {
       switch (widget.mediaType) {
         case MediaType.video:
-          await VideoLibraryCacheService.instance.clearCache();
+          await VideoLibraryCacheService().clearCache();
           ref.invalidate(videoListProvider);
         case MediaType.music:
-          await MusicLibraryCacheService.instance.clearCache();
+          await MusicLibraryCacheService().clearCache();
           ref.invalidate(musicListProvider);
         case MediaType.photo:
-          await PhotoLibraryCacheService.instance.clearCache();
+          await PhotoLibraryCacheService().clearCache();
           ref.invalidate(photoListProvider);
         case MediaType.comic:
-          await ComicLibraryCacheService.instance.clearCache();
+          await ComicLibraryCacheService().clearCache();
           ref.invalidate(comicListProvider);
         case MediaType.book:
-          await BookLibraryCacheService.instance.clearCache();
+          await BookLibraryCacheService().clearCache();
           ref.invalidate(bookListProvider);
         case MediaType.note:
           break;

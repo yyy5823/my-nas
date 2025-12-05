@@ -426,10 +426,10 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
   }
 
   final Ref _ref;
-  final MusicLibraryCacheService _cacheService = MusicLibraryCacheService.instance;
-  final MusicMetadataService _metadataService = MusicMetadataService.instance;
-  final MusicDatabaseService _db = MusicDatabaseService.instance;
-  final MusicCoverCacheService _coverCache = MusicCoverCacheService.instance;
+  final MusicLibraryCacheService _cacheService = MusicLibraryCacheService();
+  final MusicMetadataService _metadataService = MusicMetadataService();
+  final MusicDatabaseService _db = MusicDatabaseService();
+  final MusicCoverCacheService _coverCache = MusicCoverCacheService();
 
   Future<void> _init() async {
     try {
@@ -1842,7 +1842,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
     bool isDark,
   ) {
     // 获取缓存信息
-    final cacheService = MusicLibraryCacheService.instance;
+    final cacheService = MusicLibraryCacheService();
     final cacheInfo = cacheService.getCacheInfo();
 
     return Center(

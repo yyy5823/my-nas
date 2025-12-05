@@ -99,11 +99,10 @@ class VideoPathUtils {
 /// 使用 media_kit 提取视频帧生成缩略图，无需依赖系统 FFmpeg
 /// 支持所有平台：Windows/macOS/iOS/Android/Linux
 class VideoThumbnailService {
+  factory VideoThumbnailService() => _instance ??= VideoThumbnailService._();
   VideoThumbnailService._();
 
   static VideoThumbnailService? _instance;
-  static VideoThumbnailService get instance =>
-      _instance ??= VideoThumbnailService._();
 
   Directory? _cacheDir;
   final _generatingTasks = <String, Future<String?>>{};

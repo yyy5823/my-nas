@@ -3,10 +3,10 @@ import 'package:my_nas/core/utils/logger.dart';
 
 /// 视频播放历史服务
 class VideoHistoryService {
+  factory VideoHistoryService() => _instance ??= VideoHistoryService._();
   VideoHistoryService._();
 
   static VideoHistoryService? _instance;
-  static VideoHistoryService get instance => _instance ??= VideoHistoryService._();
 
   late Box<dynamic> _historyBox;
   late Box<dynamic> _progressBox;

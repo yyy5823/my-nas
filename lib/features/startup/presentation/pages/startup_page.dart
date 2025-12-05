@@ -42,8 +42,8 @@ class _StartupPageState extends ConsumerState<StartupPage> {
         // 初始化源管理服务
         ref.read(sourceManagerProvider).init(),
         // 预初始化视频相关服务，避免首次进入视频页面时的延迟
-        VideoLibraryCacheService.instance.init(),
-        VideoMetadataService.instance.init(),
+        VideoLibraryCacheService().init(),
+        VideoMetadataService().init(),
       ]);
 
       logger.i('StartupPage: 初始化完成，进入主界面');

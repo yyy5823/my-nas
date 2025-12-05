@@ -4,10 +4,10 @@ import 'package:my_nas/core/utils/logger.dart';
 /// 笔记布局偏好设置服务
 /// 用于持久化保存用户的笔记界面布局设置
 class NoteLayoutService {
+  factory NoteLayoutService() => _instance ??= NoteLayoutService._();
   NoteLayoutService._();
 
   static NoteLayoutService? _instance;
-  static NoteLayoutService get instance => _instance ??= NoteLayoutService._();
 
   static const String _boxName = 'note_layout_prefs';
   static const String _keySidebarCollapsed = 'sidebar_collapsed';

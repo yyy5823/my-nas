@@ -9,17 +9,16 @@ import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 
 /// 视频元数据服务 - 使用 SQLite 后端，支持大规模数据
 class VideoMetadataService {
+  factory VideoMetadataService() => _instance ??= VideoMetadataService._();
   VideoMetadataService._();
 
   static VideoMetadataService? _instance;
-  static VideoMetadataService get instance =>
-      _instance ??= VideoMetadataService._();
 
-  final VideoDatabaseService _db = VideoDatabaseService.instance;
-  final TmdbService _tmdbService = TmdbService.instance;
-  final NfoScraperService _nfoService = NfoScraperService.instance;
-  final VideoThumbnailService _thumbnailService = VideoThumbnailService.instance;
-  final VideoHistoryService _historyService = VideoHistoryService.instance;
+  final VideoDatabaseService _db = VideoDatabaseService();
+  final TmdbService _tmdbService = TmdbService();
+  final NfoScraperService _nfoService = NfoScraperService();
+  final VideoThumbnailService _thumbnailService = VideoThumbnailService();
+  final VideoHistoryService _historyService = VideoHistoryService();
 
   bool _initialized = false;
 

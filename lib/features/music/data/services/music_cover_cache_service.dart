@@ -9,11 +9,10 @@ import 'package:path_provider/path_provider.dart';
 
 /// 音乐封面缓存服务 - 将封面存储在磁盘而非内存
 class MusicCoverCacheService {
+  factory MusicCoverCacheService() => _instance ??= MusicCoverCacheService._();
   MusicCoverCacheService._();
 
   static MusicCoverCacheService? _instance;
-  static MusicCoverCacheService get instance =>
-      _instance ??= MusicCoverCacheService._();
 
   String? _cacheDir;
   bool _initialized = false;

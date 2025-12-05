@@ -73,8 +73,10 @@ class LyricData {
 
 /// 歌词服务
 class LyricService {
+  factory LyricService() => _instance ??= LyricService._();
   LyricService._();
-  static final instance = LyricService._();
+
+  static LyricService? _instance;
 
   /// 从文件系统查找并加载歌词
   Future<LyricData> loadLyrics({
