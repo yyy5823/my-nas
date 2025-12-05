@@ -135,11 +135,9 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
     );
   }
 
-  Widget _buildAnimatedBackground() {
-    return AnimatedBuilder(
+  Widget _buildAnimatedBackground() => AnimatedBuilder(
       animation: _animationController,
-      builder: (context, child) {
-        return Container(
+      builder: (context, child) => DecoratedBox(
           decoration: const BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topLeft,
@@ -209,13 +207,10 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
               ),
             ],
           ),
-        );
-      },
+        ),
     );
-  }
 
-  Widget _buildLogo() {
-    return Column(
+  Widget _buildLogo() => Column(
       children: [
         // 品牌图标
         Container(
@@ -265,7 +260,6 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
         ),
       ],
     );
-  }
 
   Widget _buildLoginCard(NasConnectionState state) {
     final isLoading = state is ConnectionLoading;

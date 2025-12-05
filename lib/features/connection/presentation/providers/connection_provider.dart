@@ -221,18 +221,18 @@ class ConnectionStateNotifier extends StateNotifier<NasConnectionState> {
             if (shouldRememberDevice &&
                 deviceId != null &&
                 _currentConnectionId != null) {
-              authStorage.saveDeviceId(_currentConnectionId!, deviceId);
-              authStorage.setRememberDevice(true);
+              authStorage..saveDeviceId(_currentConnectionId!, deviceId)
+              ..setRememberDevice(true);
             }
 
             // 如果记住登录，也需要在 2FA 成功后保存凭证
             if (_rememberLogin && adapter.connection != null) {
-              authStorage.saveCredentials(
+              authStorage..saveCredentials(
                 connectionId: _currentConnectionId!,
                 username: adapter.connection!.username,
                 password: adapter.connection!.password,
-              );
-              authStorage.setRememberLogin(true);
+              )
+              ..setRememberLogin(true);
             }
 
             return ConnectionConnected(

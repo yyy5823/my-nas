@@ -48,9 +48,7 @@ class PhotoFileWithSource {
 
 /// 照片列表状态
 final photoListProvider =
-    StateNotifierProvider<PhotoListNotifier, PhotoListState>((ref) {
-  return PhotoListNotifier(ref);
-});
+    StateNotifierProvider<PhotoListNotifier, PhotoListState>((ref) => PhotoListNotifier(ref));
 
 /// 照片排序方式
 enum PhotoSortType { date, name, size }
@@ -703,8 +701,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
     WidgetRef ref,
     bool isDark,
     PhotoListState state,
-  ) {
-    return Container(
+  ) => DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -729,7 +726,6 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
         ),
       ),
     );
-  }
 
   /// 问候语头部
   Widget _buildGreetingHeader(
@@ -808,8 +804,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
   }
 
   /// 搜索栏
-  Widget _buildSearchBar(BuildContext context, WidgetRef ref, bool isDark) {
-    return Row(
+  Widget _buildSearchBar(BuildContext context, WidgetRef ref, bool isDark) => Row(
       children: [
         IconButton(
           onPressed: () {
@@ -857,7 +852,6 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
           ),
       ],
     );
-  }
 
   /// 设置菜单
   void _showSettingsMenu(BuildContext context) {
@@ -1190,8 +1184,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
     );
   }
 
-  Widget _buildNotConnectedPrompt(BuildContext context, bool isDark) {
-    return Center(
+  Widget _buildNotConnectedPrompt(BuildContext context, bool isDark) => Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
@@ -1274,15 +1267,13 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
         ),
       ),
     );
-  }
 
   Widget _buildPhotoContent(
     BuildContext context,
     WidgetRef ref,
     PhotoListLoaded state,
     bool isDark,
-  ) {
-    return RefreshIndicator(
+  ) => RefreshIndicator(
       onRefresh: () => ref.read(photoListProvider.notifier).forceRefresh(),
       child: CustomScrollView(
         slivers: [
@@ -1294,7 +1285,6 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
         ],
       ),
     );
-  }
 
   Widget _buildGridView(
     BuildContext context,
@@ -1341,7 +1331,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
     final slivers = <Widget>[];
 
     for (final group in groups) {
-      slivers.add(
+      slivers..add(
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -1380,8 +1370,8 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
             ),
           ),
         ),
-      );
-      slivers.add(
+      )
+      ..add(
         SliverPadding(
           padding: const EdgeInsets.symmetric(horizontal: 4),
           sliver: SliverGrid(
@@ -1463,15 +1453,13 @@ class _PhotoGridItem extends ConsumerWidget {
     );
   }
 
-  Widget _buildPlaceholder() {
-    return Center(
+  Widget _buildPlaceholder() => Center(
       child: Icon(
         Icons.image_outlined,
         size: 32,
         color: AppColors.fileImage.withValues(alpha: 0.5),
       ),
     );
-  }
 
   Future<void> _openPhotoViewer(BuildContext context, WidgetRef ref) async {
     debugPrint('PhotoViewer: _openPhotoViewer called');

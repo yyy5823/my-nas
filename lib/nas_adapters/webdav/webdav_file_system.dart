@@ -98,10 +98,10 @@ class WebDavFileSystem implements NasFileSystem {
 
       return stream;
     } on DioException catch (e) {
-      logger.e('WebDavFileSystem: getFileStream 失败', e);
+      logger..e('WebDavFileSystem: getFileStream 失败', e)
 
       // 降级到原有方式：一次性读取
-      logger.w('WebDavFileSystem: 降级到一次性读取模式');
+      ..w('WebDavFileSystem: 降级到一次性读取模式');
       final bytes = await _client.read(path);
       if (range != null) {
         final end = range.end ?? bytes.length;

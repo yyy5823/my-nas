@@ -1043,8 +1043,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
   }
 
   Widget _buildSidebar(
-      BuildContext context, NotePageLoaded state, bool isDark) {
-    return Container(
+      BuildContext context, NotePageLoaded state, bool isDark) => Container(
       width: _sidebarWidth,
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
@@ -1077,10 +1076,8 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
         ],
       ),
     );
-  }
 
-  Widget _buildSidebarHeader(BuildContext context, bool isDark) {
-    return Container(
+  Widget _buildSidebarHeader(BuildContext context, bool isDark) => Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         border: Border(
@@ -1133,10 +1130,8 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
         ),
       ),
     );
-  }
 
-  Widget _buildExpandButton(bool isDark) {
-    return Container(
+  Widget _buildExpandButton(bool isDark) => Container(
       width: 48,
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurface : Colors.grey[100],
@@ -1162,10 +1157,8 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
         ],
       ),
     );
-  }
 
-  Widget _buildResizeHandle(bool isDark) {
-    return GestureDetector(
+  Widget _buildResizeHandle(bool isDark) => GestureDetector(
       onHorizontalDragUpdate: (details) {
         _setSidebarWidth(_sidebarWidth + details.delta.dx);
       },
@@ -1179,7 +1172,6 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
         ),
       ),
     );
-  }
 
   Widget _buildContentArea(
       BuildContext context, NotePageLoaded state, bool isDark) {
@@ -1209,8 +1201,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
     );
   }
 
-  Widget _buildEmptyContent(BuildContext context, bool isDark) {
-    return Center(
+  Widget _buildEmptyContent(BuildContext context, bool isDark) => Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -1233,7 +1224,6 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
         ],
       ),
     );
-  }
 
   Widget _buildContentHeader(
       BuildContext context, NotePageLoaded state, bool isDark) {

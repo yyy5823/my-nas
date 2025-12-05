@@ -27,8 +27,8 @@ class QnapApi {
     String? otpCode,
     bool rememberMe = false,
   }) async {
-    logger.i('QnapApi: 开始登录认证');
-    logger.d('QnapApi: 账号 => $account, OTP => ${otpCode != null ? "有" : "无"}');
+    logger..i('QnapApi: 开始登录认证')
+    ..d('QnapApi: 账号 => $account, OTP => ${otpCode != null ? "有" : "无"}');
 
     try {
       final response = await _dio.post<Map<String, dynamic>>(
@@ -422,10 +422,7 @@ class QnapApi {
   }
 
   /// 编码密码 (Base64)
-  String _encodePassword(String password) {
-    // QNAP 使用 Base64 编码密码
-    return Uri.encodeComponent(password);
-  }
+  String _encodePassword(String password) => Uri.encodeComponent(password);
 
   /// 获取认证错误消息
   String _getAuthErrorMessage(int errorCode) => switch (errorCode) {

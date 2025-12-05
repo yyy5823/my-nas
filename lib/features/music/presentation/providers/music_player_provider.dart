@@ -107,8 +107,8 @@ class PlayQueueNotifier extends StateNotifier<List<MusicItem>> {
 
   void removeFromQueue(int index) {
     if (index >= 0 && index < state.length) {
-      final newList = [...state];
-      newList.removeAt(index);
+      final newList = [...state]
+      ..removeAt(index);
       state = newList;
     }
   }
@@ -471,10 +471,10 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
       logger.d('MusicPlayer: 调用 play()...');
       await _player.play();
-      logger.i('MusicPlayer: play() 调用完成');
+      logger..i('MusicPlayer: play() 调用完成')
 
       // 验证播放状态
-      logger.d('MusicPlayer: 播放状态 - playing: ${_player.playing}, processingState: ${_player.processingState}');
+      ..d('MusicPlayer: 播放状态 - playing: ${_player.playing}, processingState: ${_player.processingState}');
 
       // 添加到播放历史
       _ref.read(musicHistoryProvider.notifier).addToHistory(music);

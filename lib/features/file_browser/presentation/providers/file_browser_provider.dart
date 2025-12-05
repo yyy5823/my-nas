@@ -154,7 +154,7 @@ class FileListNotifier extends StateNotifier<FileListState> {
     // 检测是否是 Windows 路径（包含驱动器字母如 C: 或 D:）
     final isWindowsPath = currentPath.length >= 2 &&
         currentPath[1] == ':' &&
-        RegExp(r'^[A-Za-z]').hasMatch(currentPath);
+        RegExp('^[A-Za-z]').hasMatch(currentPath);
 
     if (isWindowsPath) {
       // Windows 路径处理
@@ -211,7 +211,7 @@ class FileListNotifier extends StateNotifier<FileListState> {
     // 检测是否是 Windows 路径
     final isWindowsPath = oldPath.length >= 2 &&
         oldPath[1] == ':' &&
-        RegExp(r'^[A-Za-z]').hasMatch(oldPath);
+        RegExp('^[A-Za-z]').hasMatch(oldPath);
 
     String newPath;
     if (isWindowsPath) {

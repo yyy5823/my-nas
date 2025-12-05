@@ -150,8 +150,8 @@ class MediaProxyServer {
 
     // 解析 Range 头
     FileRange? range;
-    int contentLength = fileSize;
-    int statusCode = HttpStatus.ok;
+    var contentLength = fileSize;
+    var statusCode = HttpStatus.ok;
 
     final rangeHeader = request.headers.value(HttpHeaders.rangeHeader);
     if (rangeHeader != null) {

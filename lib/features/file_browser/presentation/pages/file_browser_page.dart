@@ -397,7 +397,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
     // 检测是否是 Windows 路径（包含驱动器字母如 C: 或 D:）
     final isWindowsPath = currentPath.length >= 2 &&
         currentPath[1] == ':' &&
-        RegExp(r'^[A-Za-z]').hasMatch(currentPath);
+        RegExp('^[A-Za-z]').hasMatch(currentPath);
 
     if (isWindowsPath) {
       // Windows 路径处理：C:\Users\Documents -> [(C:, C:\), (Users, C:\Users), ...]

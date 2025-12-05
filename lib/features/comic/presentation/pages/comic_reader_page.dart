@@ -124,9 +124,9 @@ class ComicReaderNotifier extends StateNotifier<ComicReaderState> {
       if (item.isDirectory) return false;
       final ext = item.name.toLowerCase();
       return _imageExtensions.any((e) => ext.endsWith(e));
-    }).toList();
+    }).toList()
 
-    imageFiles.sort((a, b) => a.name.compareTo(b.name));
+    ..sort((a, b) => a.name.compareTo(b.name));
 
     final pages = <ComicPage>[];
     for (var i = 0; i < imageFiles.length; i++) {
@@ -492,11 +492,9 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
     return _buildErrorPlaceholder();
   }
 
-  Widget _buildErrorPlaceholder() {
-    return const Center(
+  Widget _buildErrorPlaceholder() => const Center(
       child: Icon(Icons.broken_image, size: 48, color: Colors.white24),
     );
-  }
 
   ImageProvider _getImageProvider(ComicPage page) {
     if (page.bytes != null) {

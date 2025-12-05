@@ -121,7 +121,7 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
     _applySettings();
 
     // 监听播放状态
-    _subscriptions.add(_player.stream.playing.listen((playing) {
+    _subscriptions..add(_player.stream.playing.listen((playing) {
       if (_isDisposed) return;
       state = state.copyWith(isPlaying: playing);
 
@@ -133,48 +133,48 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
         // 暂停时保存一次进度
         _saveCurrentProgress();
       }
-    }));
+    }))
 
     // 监听缓冲状态
-    _subscriptions.add(_player.stream.buffering.listen((buffering) {
+    ..add(_player.stream.buffering.listen((buffering) {
       if (_isDisposed) return;
       state = state.copyWith(isBuffering: buffering);
-    }));
+    }))
 
     // 监听播放位置
-    _subscriptions.add(_player.stream.position.listen((position) {
+    ..add(_player.stream.position.listen((position) {
       if (_isDisposed) return;
       state = state.copyWith(position: position);
-    }));
+    }))
 
     // 监听总时长
-    _subscriptions.add(_player.stream.duration.listen((duration) {
+    ..add(_player.stream.duration.listen((duration) {
       if (_isDisposed) return;
       state = state.copyWith(duration: duration);
-    }));
+    }))
 
     // 监听音量
-    _subscriptions.add(_player.stream.volume.listen((volume) {
+    ..add(_player.stream.volume.listen((volume) {
       if (_isDisposed) return;
       state = state.copyWith(volume: volume / 100);
-    }));
+    }))
 
     // 监听倍速
-    _subscriptions.add(_player.stream.rate.listen((rate) {
+    ..add(_player.stream.rate.listen((rate) {
       if (_isDisposed) return;
       state = state.copyWith(speed: rate);
-    }));
+    }))
 
     // 监听错误
-    _subscriptions.add(_player.stream.error.listen((error) {
+    ..add(_player.stream.error.listen((error) {
       if (_isDisposed) return;
       if (error.isNotEmpty) {
         state = state.copyWith(errorMessage: error);
       }
-    }));
+    }))
 
     // 监听播放完成
-    _subscriptions.add(_player.stream.completed.listen((completed) {
+    ..add(_player.stream.completed.listen((completed) {
       if (_isDisposed) return;
       if (completed && _currentVideo != null) {
         // 播放完成，清除进度
@@ -327,12 +327,12 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
     _ref.read(currentVideoProvider.notifier).state = video;
     state = state.copyWith(errorMessage: null);
 
-    logger.i('VideoPlayer: 开始播放 ${video.name}');
-    logger.d('VideoPlayer: URL => ${video.url}');
-    logger.d('VideoPlayer: size=${video.size}, path=${video.path}');
+    logger..i('VideoPlayer: 开始播放 ${video.name}')
+    ..d('VideoPlayer: URL => ${video.url}')
+    ..d('VideoPlayer: size=${video.size}, path=${video.path}');
 
     // 确定播放 URL（SMB 等协议需要通过代理）
-    String playUrl = video.url;
+    var playUrl = video.url;
     if (video.needsProxy) {
       if (video.sourceId == null) {
         logger.e('VideoPlayer: SMB 视频缺少 sourceId，无法使用代理');
@@ -468,8 +468,8 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
     final durationToSave = state.duration;
 
     // 直接停止播放器
-    _player.pause();
-    _player.stop();
+    _player..pause()
+    ..stop();
     _currentVideo = null;
 
     // 延迟修改 provider 状态，避免在 dispose 期间修改

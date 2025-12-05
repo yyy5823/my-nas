@@ -177,8 +177,7 @@ class SettingsPage extends ConsumerWidget {
     );
   }
 
-  Widget _buildSectionHeader(BuildContext context, String title, IconData icon, bool isDark) {
-    return Row(
+  Widget _buildSectionHeader(BuildContext context, String title, IconData icon, bool isDark) => Row(
       children: [
         Container(
           padding: const EdgeInsets.all(6),
@@ -203,14 +202,12 @@ class SettingsPage extends ConsumerWidget {
         ),
       ],
     );
-  }
 
   Widget _buildSettingsCard(
     BuildContext context,
     bool isDark, {
     required List<Widget> children,
-  }) {
-    return Container(
+  }) => DecoratedBox(
       decoration: BoxDecoration(
         color: isDark
             ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
@@ -238,7 +235,6 @@ class SettingsPage extends ConsumerWidget {
         ),
       ),
     );
-  }
 
   Widget _buildSettingsTile(
     BuildContext context,
@@ -250,8 +246,7 @@ class SettingsPage extends ConsumerWidget {
     Color? titleColor,
     bool showChevron = true,
     VoidCallback? onTap,
-  }) {
-    return Material(
+  }) => Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
@@ -317,10 +312,8 @@ class SettingsPage extends ConsumerWidget {
         ),
       ),
     );
-  }
 
-  Widget _buildDivider(bool isDark) {
-    return Padding(
+  Widget _buildDivider(bool isDark) => Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
       child: Divider(
         height: 1,
@@ -329,7 +322,6 @@ class SettingsPage extends ConsumerWidget {
             : AppColors.lightOutline.withValues(alpha: 0.3),
       ),
     );
-  }
 
   Widget _buildConnectionStatusTile(BuildContext context, WidgetRef ref, bool isDark) {
     final connections = ref.watch(activeConnectionsProvider);
@@ -404,8 +396,7 @@ class SettingsPage extends ConsumerWidget {
     bool isDark, {
     required String title,
     required List<Widget> children,
-  }) {
-    return ClipRRect(
+  }) => ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
@@ -455,7 +446,6 @@ class SettingsPage extends ConsumerWidget {
         ),
       ),
     );
-  }
 
   Widget _buildOptionTile(
     BuildContext context,
@@ -464,8 +454,7 @@ class SettingsPage extends ConsumerWidget {
     required String title,
     required bool isSelected,
     required VoidCallback onTap,
-  }) {
-    return Material(
+  }) => Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
@@ -523,7 +512,6 @@ class SettingsPage extends ConsumerWidget {
         ),
       ),
     );
-  }
 
 }
 
@@ -558,8 +546,7 @@ class _VersionTileState extends State<_VersionTile> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Material(
+  Widget build(BuildContext context) => Material(
       color: Colors.transparent,
       child: Padding(
         padding: const EdgeInsets.symmetric(
@@ -609,7 +596,6 @@ class _VersionTileState extends State<_VersionTile> {
         ),
       ),
     );
-  }
 }
 
 /// 开源许可组件
@@ -641,8 +627,7 @@ class _LicenseTileState extends State<_LicenseTile> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Material(
+  Widget build(BuildContext context) => Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: () {
@@ -694,7 +679,6 @@ class _LicenseTileState extends State<_LicenseTile> {
         ),
       ),
     );
-  }
 }
 
 /// TMDB API Key 设置项
@@ -841,8 +825,7 @@ class _TmdbApiKeyTileState extends State<_TmdbApiKeyTile> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Material(
+  Widget build(BuildContext context) => Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: _showApiKeyDialog,
@@ -928,5 +911,4 @@ class _TmdbApiKeyTileState extends State<_TmdbApiKeyTile> {
         ),
       ),
     );
-  }
 }

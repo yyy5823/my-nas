@@ -348,8 +348,7 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
     );
   }
 
-  Widget _buildTopBar(BuildContext context, PhotoItem photo) {
-    return Container(
+  Widget _buildTopBar(BuildContext context, PhotoItem photo) => Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -409,10 +408,8 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
         ),
       ),
     );
-  }
 
-  Widget _buildBottomBar(BuildContext context, PhotoItem photo) {
-    return Container(
+  Widget _buildBottomBar(BuildContext context, PhotoItem photo) => Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.bottomCenter,
@@ -532,7 +529,6 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
         ),
       ),
     );
-  }
 
   void _showPhotoInfo(BuildContext context, PhotoItem photo) {
     showModalBottomSheet<void>(
@@ -1116,10 +1112,7 @@ class _PhotoPageState extends State<_PhotoPage> {
     required BoxFit fit,
     Widget Function(BuildContext, Widget, ImageChunkEvent?)? loadingBuilder,
     Widget Function(BuildContext, Object, StackTrace?)? errorBuilder,
-  }) {
-    // 使用 StreamImage 统一处理
-    // StreamImage 会自动处理 HTTP、file:// URL，以及在 iOS/macOS 上的流式加载
-    return StreamImage(
+  }) => StreamImage(
       url: url,
       path: widget.photo.path,
       fileSystem: widget.fileSystem,
@@ -1144,7 +1137,6 @@ class _PhotoPageState extends State<_PhotoPage> {
           : null,
       cacheKey: widget.photo.path,
     );
-  }
 
   @override
   void initState() {
@@ -1331,8 +1323,7 @@ class _PhotoPageState extends State<_PhotoPage> {
     return _buildErrorWidget('没有可用的图片');
   }
 
-  Widget _buildErrorWidget(String errorMessage) {
-    return Column(
+  Widget _buildErrorWidget(String errorMessage) => Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(
@@ -1370,7 +1361,6 @@ class _PhotoPageState extends State<_PhotoPage> {
         ),
       ],
     );
-  }
 }
 
 class _ActionButton extends StatelessWidget {
@@ -1425,8 +1415,7 @@ class _NavButton extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
-    return Material(
+  Widget build(BuildContext context) => Material(
       color: Colors.black45,
       borderRadius: BorderRadius.circular(30),
       child: InkWell(
@@ -1444,7 +1433,6 @@ class _NavButton extends StatelessWidget {
         ),
       ),
     );
-  }
 }
 
 class _InfoRow extends StatelessWidget {
@@ -1457,8 +1445,7 @@ class _InfoRow extends StatelessWidget {
   final String value;
 
   @override
-  Widget build(BuildContext context) {
-    return Padding(
+  Widget build(BuildContext context) => Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1485,7 +1472,6 @@ class _InfoRow extends StatelessWidget {
         ],
       ),
     );
-  }
 }
 
 /// 分享选项瓦片（桌面端分享对话框使用）
@@ -1503,8 +1489,7 @@ class _ShareOptionTile extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
-    return InkWell(
+  Widget build(BuildContext context) => InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: Padding(
@@ -1552,5 +1537,4 @@ class _ShareOptionTile extends StatelessWidget {
         ),
       ),
     );
-  }
 }

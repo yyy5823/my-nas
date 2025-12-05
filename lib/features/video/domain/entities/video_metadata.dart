@@ -277,11 +277,11 @@ class VideoFileNameParser {
     caseSensitive: false,
   );
   static final _resolutionPattern = RegExp(
-    r'(4K|2160[pP]|1080[pP]|720[pP]|480[pP])',
+    '(4K|2160[pP]|1080[pP]|720[pP]|480[pP])',
     caseSensitive: false,
   );
   static final _sourcePattern = RegExp(
-    r'(BluRay|BDRip|WEB-?DL|WEBRip|HDRip|DVDRip|HDTV)',
+    '(BluRay|BDRip|WEB-?DL|WEBRip|HDRip|DVDRip|HDTV)',
     caseSensitive: false,
   );
   static final _codecPattern = RegExp(
@@ -290,12 +290,12 @@ class VideoFileNameParser {
   );
   static final _cleanupPattern = RegExp(
     r'[\[\]\(\)\{\}]|\.(?=\S)|_|-(?=\s)|'
-    r'(?:BluRay|BDRip|WEB-?DL|WEBRip|HDRip|DVDRip|HDTV|'
+    '(?:BluRay|BDRip|WEB-?DL|WEBRip|HDRip|DVDRip|HDTV|'
     r'x264|x265|HEVC|H\.?264|H\.?265|AVC|AAC|AC3|DTS|'
-    r'4K|2160p|1080p|720p|480p|'
+    '4K|2160p|1080p|720p|480p|'
     r'PROPER|REPACK|EXTENDED|UNRATED|DIRECTORS\.CUT|'
-    r'中英字幕|中文字幕|双语字幕|简体|繁体|'
-    r'RARBG|YTS|YIFY|FGT|EVO|SPARKS)',
+    '中英字幕|中文字幕|双语字幕|简体|繁体|'
+    'RARBG|YTS|YIFY|FGT|EVO|SPARKS)',
     caseSensitive: false,
   );
 

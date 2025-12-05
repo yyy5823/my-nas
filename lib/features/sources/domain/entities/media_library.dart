@@ -110,8 +110,7 @@ class MediaLibraryConfig {
   final List<MediaLibraryPath> notePaths;
 
   /// 获取指定类型的路径列表
-  List<MediaLibraryPath> getPathsForType(MediaType type) {
-    return switch (type) {
+  List<MediaLibraryPath> getPathsForType(MediaType type) => switch (type) {
       MediaType.video => videoPaths,
       MediaType.music => musicPaths,
       MediaType.photo => photoPaths,
@@ -119,12 +118,9 @@ class MediaLibraryConfig {
       MediaType.book => bookPaths,
       MediaType.note => notePaths,
     };
-  }
 
   /// 获取指定类型的启用路径列表
-  List<MediaLibraryPath> getEnabledPathsForType(MediaType type) {
-    return getPathsForType(type).where((p) => p.isEnabled).toList();
-  }
+  List<MediaLibraryPath> getEnabledPathsForType(MediaType type) => getPathsForType(type).where((p) => p.isEnabled).toList();
 
   MediaLibraryConfig copyWith({
     List<MediaLibraryPath>? videoPaths,

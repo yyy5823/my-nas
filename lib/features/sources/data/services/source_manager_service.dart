@@ -619,8 +619,7 @@ class SourceManagerService {
     }
   }
 
-  NasAdapter _createAdapter(SourceType type) {
-    return switch (type) {
+  NasAdapter _createAdapter(SourceType type) => switch (type) {
       SourceType.synology => SynologyAdapter(),
       SourceType.ugreen => UGreenAdapter(),
       SourceType.fnos => FnOSAdapter(),
@@ -629,10 +628,8 @@ class SourceManagerService {
       SourceType.smb => SmbAdapter(),
       SourceType.local => LocalAdapter(),
     };
-  }
 
-  NasAdapterType _getAdapterType(SourceType type) {
-    return switch (type) {
+  NasAdapterType _getAdapterType(SourceType type) => switch (type) {
       SourceType.synology => NasAdapterType.synology,
       SourceType.ugreen => NasAdapterType.ugreen,
       SourceType.fnos => NasAdapterType.fnos,
@@ -641,7 +638,6 @@ class SourceManagerService {
       SourceType.smb => NasAdapterType.smb,
       SourceType.local => NasAdapterType.local,
     };
-  }
 
   // ============ 媒体库配置 ============
 

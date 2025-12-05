@@ -35,7 +35,7 @@ final allVideoProgressProvider = FutureProvider<Map<String, VideoProgress>>((ref
 
 /// 刷新播放历史
 Future<void> refreshVideoHistory(WidgetRef ref) async {
-  ref.invalidate(videoHistoryProvider);
-  ref.invalidate(continueWatchingProvider);
-  ref.invalidate(allVideoProgressProvider);
+  ref..invalidate(videoHistoryProvider)
+  ..invalidate(continueWatchingProvider)
+  ..invalidate(allVideoProgressProvider);
 }

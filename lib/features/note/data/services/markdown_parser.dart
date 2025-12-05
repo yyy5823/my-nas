@@ -102,17 +102,17 @@ class MarkdownParser {
 
   /// 将单个任务转换为 Markdown 行
   static String _taskToMarkdownLine(TaskItem task) {
-    final buffer = StringBuffer('- [');
+    final buffer = StringBuffer('- [')
 
     // 状态
-    buffer.write(switch (task.status) {
+    ..write(switch (task.status) {
       TaskStatus.completed => 'x',
       TaskStatus.inProgress => '/',
       TaskStatus.cancelled => '-',
       TaskStatus.pending => ' ',
-    });
+    })
 
-    buffer.write('] ');
+    ..write('] ');
 
     // 优先级
     if (task.priority == 2) {
@@ -199,7 +199,7 @@ class MarkdownParser {
         .replaceAll(RegExp(r'^#+\s*', multiLine: true), '') // 标题
         .replaceAll(RegExp(r'\*\*(.+?)\*\*'), r'$1') // 粗体
         .replaceAll(RegExp(r'\*(.+?)\*'), r'$1') // 斜体
-        .replaceAll(RegExp(r'`(.+?)`'), r'$1') // 代码
+        .replaceAll(RegExp('`(.+?)`'), r'$1') // 代码
         .replaceAll(RegExp(r'\[(.+?)\]\(.+?\)'), r'$1') // 链接
         .replaceAll(RegExp(r'^[-*+]\s*\[.\]\s*', multiLine: true), '') // 任务
         .replaceAll(RegExp(r'\n+'), ' ') // 换行

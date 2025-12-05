@@ -42,9 +42,9 @@ class FnOSAdapter implements NasAdapter {
 
   @override
   Future<ConnectionResult> connect(ConnectionConfig config) async {
-    logger.i('FnOSAdapter: 开始连接');
-    logger.i('FnOSAdapter: 目标地址 => ${config.baseUrl}');
-    logger.i('FnOSAdapter: 用户名 => ${config.username}');
+    logger..i('FnOSAdapter: 开始连接')
+    ..i('FnOSAdapter: 目标地址 => ${config.baseUrl}')
+    ..i('FnOSAdapter: 用户名 => ${config.username}');
 
     _config = config;
 
@@ -60,8 +60,8 @@ class FnOSAdapter implements NasAdapter {
       // 自签名证书支持
       if (!config.verifySSL) {
         (_dio!.httpClientAdapter as IOHttpClientAdapter).createHttpClient = () {
-          final client = HttpClient();
-          client.badCertificateCallback = (cert, host, port) => true;
+          final client = HttpClient()
+          ..badCertificateCallback = (cert, host, port) => true;
           return client;
         };
       }

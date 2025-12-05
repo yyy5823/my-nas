@@ -315,8 +315,7 @@ class MusicMetadataService {
   }
 
   /// 将元数据应用到 MusicItem
-  MusicItem applyMetadataToItem(MusicItem item, MusicMetadata metadata) {
-    return item.copyWith(
+  MusicItem applyMetadataToItem(MusicItem item, MusicMetadata metadata) => item.copyWith(
       artist: metadata.artist ?? item.artist,
       album: metadata.album ?? item.album,
       trackNumber: metadata.trackNumber,
@@ -326,7 +325,6 @@ class MusicMetadataService {
       coverData: metadata.coverData,
       duration: metadata.duration ?? item.duration,
     );
-  }
 
   /// 清除缓存
   void clearCache() {

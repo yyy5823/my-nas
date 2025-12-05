@@ -5,6 +5,17 @@ import 'package:my_nas/core/utils/logger.dart';
 
 /// 照片库缓存条目
 class PhotoLibraryCacheEntry {
+
+  factory PhotoLibraryCacheEntry.fromMap(Map<dynamic, dynamic> map) => PhotoLibraryCacheEntry(
+      sourceId: map['sourceId'] as String,
+      filePath: map['filePath'] as String,
+      fileName: map['fileName'] as String,
+      thumbnailUrl: map['thumbnailUrl'] as String?,
+      size: map['size'] as int? ?? 0,
+      modifiedTime: map['modifiedTime'] != null
+          ? DateTime.fromMillisecondsSinceEpoch(map['modifiedTime'] as int)
+          : null,
+    );
   PhotoLibraryCacheEntry({
     required this.sourceId,
     required this.filePath,
@@ -31,23 +42,26 @@ class PhotoLibraryCacheEntry {
         'size': size,
         'modifiedTime': modifiedTime?.millisecondsSinceEpoch,
       };
-
-  factory PhotoLibraryCacheEntry.fromMap(Map<dynamic, dynamic> map) {
-    return PhotoLibraryCacheEntry(
-      sourceId: map['sourceId'] as String,
-      filePath: map['filePath'] as String,
-      fileName: map['fileName'] as String,
-      thumbnailUrl: map['thumbnailUrl'] as String?,
-      size: map['size'] as int? ?? 0,
-      modifiedTime: map['modifiedTime'] != null
-          ? DateTime.fromMillisecondsSinceEpoch(map['modifiedTime'] as int)
-          : null,
-    );
-  }
 }
 
 /// 照片库缓存
 class PhotoLibraryCache {
+
+  factory PhotoLibraryCache.fromMap(Map<dynamic, dynamic> map) {
+    final photosList = (map['photos'] as List<dynamic>?)
+            ?.map((p) => PhotoLibraryCacheEntry.fromMap(p as Map<dynamic, dynamic>))
+            .toList() ??
+        [];
+    return PhotoLibraryCache(
+      photos: photosList,
+      lastUpdated:
+          DateTime.fromMillisecondsSinceEpoch(map['lastUpdated'] as int),
+      sourceIds: (map['sourceIds'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          [],
+    );
+  }
   PhotoLibraryCache({
     required this.photos,
     required this.lastUpdated,
@@ -66,22 +80,6 @@ class PhotoLibraryCache {
         'lastUpdated': lastUpdated.millisecondsSinceEpoch,
         'sourceIds': sourceIds,
       };
-
-  factory PhotoLibraryCache.fromMap(Map<dynamic, dynamic> map) {
-    final photosList = (map['photos'] as List<dynamic>?)
-            ?.map((p) => PhotoLibraryCacheEntry.fromMap(p as Map<dynamic, dynamic>))
-            .toList() ??
-        [];
-    return PhotoLibraryCache(
-      photos: photosList,
-      lastUpdated:
-          DateTime.fromMillisecondsSinceEpoch(map['lastUpdated'] as int),
-      sourceIds: (map['sourceIds'] as List<dynamic>?)
-              ?.map((e) => e as String)
-              .toList() ??
-          [],
-    );
-  }
 }
 
 /// 照片库缓存服务

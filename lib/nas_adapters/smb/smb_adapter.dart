@@ -37,9 +37,9 @@ class SmbAdapter implements NasAdapter {
 
   @override
   Future<ConnectionResult> connect(ConnectionConfig config) async {
-    logger.i('SmbAdapter: 开始连接');
-    logger.i('SmbAdapter: 目标地址 => ${config.host}:${config.port}');
-    logger.i('SmbAdapter: 用户名 => ${config.username}');
+    logger..i('SmbAdapter: 开始连接')
+    ..i('SmbAdapter: 目标地址 => ${config.host}:${config.port}')
+    ..i('SmbAdapter: 用户名 => ${config.username}');
 
     _config = config;
 
@@ -122,9 +122,7 @@ class SmbAdapter implements NasAdapter {
     }
   }
 
-  String _parseError(Exception e) {
-    return _parseErrorAny(e);
-  }
+  String _parseError(Exception e) => _parseErrorAny(e);
 
   String _parseErrorAny(dynamic e) {
     final msg = e.toString().toLowerCase();

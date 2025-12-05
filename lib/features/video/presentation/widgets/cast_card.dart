@@ -89,8 +89,7 @@ class CastCard extends StatelessWidget {
     );
   }
 
-  Widget _buildPlaceholder(bool isDark) {
-    return Container(
+  Widget _buildPlaceholder(bool isDark) => Container(
       color: isDark ? AppColors.darkSurfaceVariant : Colors.grey[300],
       child: Icon(
         Icons.person_rounded,
@@ -98,7 +97,6 @@ class CastCard extends StatelessWidget {
         color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[500],
       ),
     );
-  }
 }
 
 /// 剧组人员卡片组件 (导演、编剧等)
@@ -186,8 +184,7 @@ class CrewCard extends StatelessWidget {
     );
   }
 
-  Widget _buildPlaceholder(bool isDark) {
-    return Container(
+  Widget _buildPlaceholder(bool isDark) => Container(
       color: isDark ? AppColors.darkSurfaceVariant : Colors.grey[300],
       child: Icon(
         Icons.person_rounded,
@@ -195,5 +192,4 @@ class CrewCard extends StatelessWidget {
         color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[500],
       ),
     );
-  }
 }

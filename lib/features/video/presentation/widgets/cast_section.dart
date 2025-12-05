@@ -50,8 +50,7 @@ class CastSection extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
             itemCount: displayCast.length,
-            itemBuilder: (context, index) {
-              return Padding(
+            itemBuilder: (context, index) => Padding(
                 padding: EdgeInsets.only(
                   right: index < displayCast.length - 1 ? 16 : 0,
                 ),
@@ -62,8 +61,7 @@ class CastSection extends StatelessWidget {
                       ? () => onCastTap!(displayCast[index])
                       : null,
                 ),
-              );
-            },
+              ),
           ),
         ),
       ],
@@ -119,8 +117,7 @@ class CrewSection extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
             itemCount: filteredCrew.length,
-            itemBuilder: (context, index) {
-              return Padding(
+            itemBuilder: (context, index) => Padding(
                 padding: EdgeInsets.only(
                   right: index < filteredCrew.length - 1 ? 16 : 0,
                 ),
@@ -131,8 +128,7 @@ class CrewSection extends StatelessWidget {
                       ? () => onCrewTap!(filteredCrew[index])
                       : null,
                 ),
-              );
-            },
+              ),
           ),
         ),
       ],

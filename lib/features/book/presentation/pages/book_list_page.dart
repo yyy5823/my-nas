@@ -305,7 +305,7 @@ class BookListNotifier extends StateNotifier<BookListState> {
     final connections = _ref.read(activeConnectionsProvider);
     final configAsync = _ref.read(mediaLibraryConfigProvider);
 
-    MediaLibraryConfig? config = configAsync.valueOrNull;
+    var config = configAsync.valueOrNull;
     if (config == null) {
       state = BookListLoading(progress: 0, currentFolder: '正在加载配置...');
 

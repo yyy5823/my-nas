@@ -423,9 +423,7 @@ class StreamImageWithThumbnail extends StatelessWidget {
   final double? height;
 
   @override
-  Widget build(BuildContext context) {
-    // 使用缩略图 URL 或原图 URL 或流式加载
-    return StreamImage(
+  Widget build(BuildContext context) => StreamImage(
       url: thumbnailUrl ?? fullUrl,
       path: path,
       fileSystem: fileSystem,
@@ -436,5 +434,4 @@ class StreamImageWithThumbnail extends StatelessWidget {
       height: height,
       cacheKey: path,
     );
-  }
 }

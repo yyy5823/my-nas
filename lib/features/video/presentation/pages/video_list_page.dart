@@ -2785,7 +2785,7 @@ class _CategoryFullPageState extends ConsumerState<_CategoryFullPage> {
     for (final item in widget.items) {
       if (item.genres != null && item.genres!.isNotEmpty) {
         // 分割类型字符串（可能是 "动作 / 科幻" 格式）
-        final genres = item.genres!.split(RegExp(r'[/,、]'))
+        final genres = item.genres!.split(RegExp('[/,、]'))
             .map((g) => g.trim())
             .where((g) => g.isNotEmpty);
         genreSet.addAll(genres);

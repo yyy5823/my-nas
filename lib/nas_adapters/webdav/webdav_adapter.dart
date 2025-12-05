@@ -34,9 +34,9 @@ class WebDavAdapter implements NasAdapter {
 
   @override
   Future<ConnectionResult> connect(ConnectionConfig config) async {
-    logger.i('WebDavAdapter: 开始连接');
-    logger.i('WebDavAdapter: 目标地址 => ${config.baseUrl}');
-    logger.i('WebDavAdapter: 用户名 => ${config.username}');
+    logger..i('WebDavAdapter: 开始连接')
+    ..i('WebDavAdapter: 目标地址 => ${config.baseUrl}')
+    ..i('WebDavAdapter: 用户名 => ${config.username}');
 
     _config = config;
 

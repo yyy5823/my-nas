@@ -16,6 +16,19 @@ class ReadingProgress {
     this.scrollOffset = 0,
   });
 
+  factory ReadingProgress.fromMap(Map<dynamic, dynamic> map) => ReadingProgress(
+      itemId: map['itemId'] as String,
+      itemType: map['itemType'] as String,
+      position: (map['position'] as num?)?.toDouble() ?? 0,
+      totalPositions: (map['totalPositions'] as num?)?.toInt() ?? 0,
+      chapter: map['chapter'] as int?,
+      chapterTitle: map['chapterTitle'] as String?,
+      lastReadAt: map['lastReadAt'] != null
+          ? DateTime.tryParse(map['lastReadAt'] as String)
+          : null,
+      scrollOffset: (map['scrollOffset'] as num?)?.toDouble() ?? 0,
+    );
+
   /// 唯一标识（路径+sourceId）
   final String itemId;
 
@@ -63,21 +76,6 @@ class ReadingProgress {
         'scrollOffset': scrollOffset,
       };
 
-  factory ReadingProgress.fromMap(Map<dynamic, dynamic> map) {
-    return ReadingProgress(
-      itemId: map['itemId'] as String,
-      itemType: map['itemType'] as String,
-      position: (map['position'] as num?)?.toDouble() ?? 0,
-      totalPositions: (map['totalPositions'] as num?)?.toInt() ?? 0,
-      chapter: map['chapter'] as int?,
-      chapterTitle: map['chapterTitle'] as String?,
-      lastReadAt: map['lastReadAt'] != null
-          ? DateTime.tryParse(map['lastReadAt'] as String)
-          : null,
-      scrollOffset: (map['scrollOffset'] as num?)?.toDouble() ?? 0,
-    );
-  }
-
   ReadingProgress copyWith({
     String? itemId,
     String? itemType,
@@ -87,8 +85,7 @@ class ReadingProgress {
     String? chapterTitle,
     DateTime? lastReadAt,
     double? scrollOffset,
-  }) {
-    return ReadingProgress(
+  }) => ReadingProgress(
       itemId: itemId ?? this.itemId,
       itemType: itemType ?? this.itemType,
       position: position ?? this.position,
@@ -98,7 +95,6 @@ class ReadingProgress {
       lastReadAt: lastReadAt ?? this.lastReadAt,
       scrollOffset: scrollOffset ?? this.scrollOffset,
     );
-  }
 }
 
 /// 书签
@@ -111,6 +107,17 @@ class Bookmark {
     this.note,
     this.createdAt,
   });
+
+  factory Bookmark.fromMap(Map<dynamic, dynamic> map) => Bookmark(
+      id: map['id'] as String,
+      itemId: map['itemId'] as String,
+      title: map['title'] as String,
+      position: (map['position'] as num).toDouble(),
+      note: map['note'] as String?,
+      createdAt: map['createdAt'] != null
+          ? DateTime.tryParse(map['createdAt'] as String)
+          : null,
+    );
 
   final String id;
   final String itemId;
@@ -127,19 +134,6 @@ class Bookmark {
         'note': note,
         'createdAt': createdAt?.toIso8601String(),
       };
-
-  factory Bookmark.fromMap(Map<dynamic, dynamic> map) {
-    return Bookmark(
-      id: map['id'] as String,
-      itemId: map['itemId'] as String,
-      title: map['title'] as String,
-      position: (map['position'] as num).toDouble(),
-      note: map['note'] as String?,
-      createdAt: map['createdAt'] != null
-          ? DateTime.tryParse(map['createdAt'] as String)
-          : null,
-    );
-  }
 }
 
 /// 阅读进度服务
@@ -244,8 +238,8 @@ class ReadingProgressService {
 
   /// 添加书签
   Future<void> addBookmark(Bookmark bookmark) async {
-    final bookmarks = getBookmarks(bookmark.itemId);
-    bookmarks.add(bookmark);
+    final bookmarks = getBookmarks(bookmark.itemId)
+    ..add(bookmark);
     await _bookmarksBox?.put(
       bookmark.itemId,
       jsonEncode(bookmarks.map((e) => e.toMap()).toList()),
@@ -254,8 +248,8 @@ class ReadingProgressService {
 
   /// 删除书签
   Future<void> deleteBookmark(String itemId, String bookmarkId) async {
-    final bookmarks = getBookmarks(itemId);
-    bookmarks.removeWhere((b) => b.id == bookmarkId);
+    final bookmarks = getBookmarks(itemId)
+    ..removeWhere((b) => b.id == bookmarkId);
     if (bookmarks.isEmpty) {
       await _bookmarksBox?.delete(itemId);
     } else {

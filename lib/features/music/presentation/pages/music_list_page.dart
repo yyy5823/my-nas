@@ -450,7 +450,7 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
           loadMusic();
         }
       });
-    } on Exception on Exception catch (e) {
+    } on Exception catch (e) {
       logger.e('MusicListNotifier: 初始化失败', e);
       state = MusicListLoaded(totalCount: 0, fromCache: false);
     }
@@ -2616,9 +2616,9 @@ class _AllSongsView extends ConsumerWidget {
     List<MusicFileWithSource> tracks,
     MusicSortState sortState,
   ) {
-    final sorted = List<MusicFileWithSource>.from(tracks);
+    final sorted = List<MusicFileWithSource>.from(tracks)
 
-    sorted.sort((a, b) {
+    ..sort((a, b) {
       int result;
       switch (sortState.option) {
         case MusicSortOption.name:

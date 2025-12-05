@@ -262,13 +262,13 @@ class PlaylistNotifier extends StateNotifier<PlaylistState> {
   }
 
   void _generateShuffleOrder() {
-    final indices = List.generate(state.items.length, (i) => i);
-    indices.shuffle();
+    final indices = List.generate(state.items.length, (i) => i)
+    ..shuffle();
 
     // 确保当前播放的在第一位
     if (state.currentIndex >= 0) {
-      indices.remove(state.currentIndex);
-      indices.insert(0, state.currentIndex);
+      indices..remove(state.currentIndex)
+      ..insert(0, state.currentIndex);
     }
 
     _shuffleOrder = indices;

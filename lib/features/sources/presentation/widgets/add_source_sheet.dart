@@ -528,7 +528,7 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
 
   Future<_TwoFAResult?> _show2FADialog() async {
     final controller = TextEditingController();
-    bool rememberDevice = _rememberDevice;
+    var rememberDevice = _rememberDevice;
 
     return showDialog<_TwoFAResult>(
       context: context,

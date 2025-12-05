@@ -98,8 +98,8 @@ class FnOSApi {
     required String password,
     String? otpCode,
   }) async {
-    logger.i('FnOSApi: 开始登录认证');
-    logger.i('FnOSApi: 用户名 => $username');
+    logger..i('FnOSApi: 开始登录认证')
+    ..i('FnOSApi: 用户名 => $username');
 
     _username = username;
     _password = password;
@@ -218,7 +218,7 @@ class FnOSApi {
     if (data['require_2fa'] == true ||
         data['need_otp'] == true ||
         code == 1001 ||
-        code == 401 && data['message']?.toString().contains('2fa') == true) {
+        code == 401 && (data['message']?.toString().contains('2fa') ?? false)) {
       return FnOSAuthRequires2FA();
     }
 

@@ -44,9 +44,9 @@ class SynologyApi {
     String? deviceId,
     bool enableDeviceToken = false,
   }) async {
-    logger.i('SynologyApi: 开始登录认证');
-    logger.d('SynologyApi: 账号 => $account, OTP => ${otpCode != null ? "有" : "无"}');
-    logger.d('SynologyApi: 设备名 => $deviceName, 设备ID => ${deviceId != null ? "有" : "无"}');
+    logger..i('SynologyApi: 开始登录认证')
+    ..d('SynologyApi: 账号 => $account, OTP => ${otpCode != null ? "有" : "无"}')
+    ..d('SynologyApi: 设备名 => $deviceName, 设备ID => ${deviceId != null ? "有" : "无"}');
 
     final params = <String, dynamic>{
       'account': account,
@@ -540,9 +540,9 @@ class SynologyApi {
 
       return data;
     } on DioException catch (e) {
-      logger.e('SynologyApi: Dio 异常 => ${e.type}', e, e.stackTrace);
-      logger.e('SynologyApi: 原始错误 => ${e.error}');
-      logger.e('SynologyApi: 消息 => ${e.message}');
+      logger..e('SynologyApi: Dio 异常 => ${e.type}', e, e.stackTrace)
+      ..e('SynologyApi: 原始错误 => ${e.error}')
+      ..e('SynologyApi: 消息 => ${e.message}');
       rethrow;
     }
   }
@@ -562,8 +562,8 @@ class SynologyApi {
       ...?params,
     };
 
-    logger.d('SynologyApi: 请求 => $api.$method (v$version)');
-    logger.d('SynologyApi: 请求参数 => $queryParams');
+    logger..d('SynologyApi: 请求 => $api.$method (v$version)')
+    ..d('SynologyApi: 请求参数 => $queryParams');
 
     try {
       final response = await _dio.get<Map<String, dynamic>>(
@@ -599,9 +599,9 @@ class SynologyApi {
       logger.d('SynologyApi: 请求成功');
       return data;
     } on DioException catch (e) {
-      logger.e('SynologyApi: Dio 异常 => ${e.type}', e, e.stackTrace);
-      logger.e('SynologyApi: 原始错误 => ${e.error}');
-      logger.e('SynologyApi: 消息 => ${e.message}');
+      logger..e('SynologyApi: Dio 异常 => ${e.type}', e, e.stackTrace)
+      ..e('SynologyApi: 原始错误 => ${e.error}')
+      ..e('SynologyApi: 消息 => ${e.message}');
       rethrow;
     }
   }

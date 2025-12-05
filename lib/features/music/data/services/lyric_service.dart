@@ -123,9 +123,9 @@ class LyricService {
   /// 下载并解析歌词
   Future<LyricData> _downloadAndParseLyrics(String url) async {
     try {
-      final client = HttpClient();
+      final client = HttpClient()
       // 允许自签名证书
-      client.badCertificateCallback = (_, __, ___) => true;
+      ..badCertificateCallback = (_, __, ___) => true;
 
       final request = await client.getUrl(Uri.parse(url));
       final response = await request.close();

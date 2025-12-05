@@ -33,8 +33,7 @@ class VideoLibraryCacheEntry {
         'modifiedTime': modifiedTime?.millisecondsSinceEpoch,
       };
 
-  factory VideoLibraryCacheEntry.fromMap(Map<dynamic, dynamic> map) {
-    return VideoLibraryCacheEntry(
+  factory VideoLibraryCacheEntry.fromMap(Map<dynamic, dynamic> map) => VideoLibraryCacheEntry(
       sourceId: map['sourceId'] as String,
       filePath: map['filePath'] as String,
       fileName: map['fileName'] as String,
@@ -44,7 +43,6 @@ class VideoLibraryCacheEntry {
           ? DateTime.fromMillisecondsSinceEpoch(map['modifiedTime'] as int)
           : null,
     );
-  }
 }
 
 /// 视频库缓存
@@ -202,6 +200,4 @@ class VideoLibraryCacheService {
 }
 
 /// 在 isolate 中解析缓存数据（顶级函数，供 compute 使用）
-VideoLibraryCache _parseCacheFromMap(Map<String, dynamic> data) {
-  return VideoLibraryCache.fromMap(data);
-}
+VideoLibraryCache _parseCacheFromMap(Map<String, dynamic> data) => VideoLibraryCache.fromMap(data);

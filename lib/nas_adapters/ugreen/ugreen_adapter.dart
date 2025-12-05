@@ -49,10 +49,10 @@ class UGreenAdapter implements NasAdapter {
 
   @override
   Future<ConnectionResult> connect(ConnectionConfig config) async {
-    logger.i('UGreenAdapter: 开始连接');
-    logger.i('UGreenAdapter: 目标地址 => ${config.baseUrl}');
-    logger.i('UGreenAdapter: 用户名 => ${config.username}');
-    logger.i('UGreenAdapter: 使用 SSL => ${config.useSsl}');
+    logger..i('UGreenAdapter: 开始连接')
+    ..i('UGreenAdapter: 目标地址 => ${config.baseUrl}')
+    ..i('UGreenAdapter: 用户名 => ${config.username}')
+    ..i('UGreenAdapter: 使用 SSL => ${config.useSsl}');
 
     _config = config;
     _dioClient.updateBaseUrl(config.baseUrl);

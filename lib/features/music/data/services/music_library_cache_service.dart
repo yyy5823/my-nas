@@ -63,7 +63,7 @@ class MusicLibraryCacheEntry {
   }
 
   /// 显示的专辑
-  String get displayAlbum => album?.isNotEmpty == true ? album! : '未知专辑';
+  String get displayAlbum => album?.isNotEmpty ?? false ? album! : '未知专辑';
 
   /// 是否有封面
   bool get hasCover => coverBase64 != null && coverBase64!.isNotEmpty;
@@ -79,8 +79,7 @@ class MusicLibraryCacheEntry {
     String? genre,
     String? coverBase64,
     bool? metadataExtracted,
-  }) {
-    return MusicLibraryCacheEntry(
+  }) => MusicLibraryCacheEntry(
       sourceId: sourceId,
       filePath: filePath,
       fileName: fileName,
@@ -97,7 +96,6 @@ class MusicLibraryCacheEntry {
       coverBase64: coverBase64 ?? this.coverBase64,
       metadataExtracted: metadataExtracted ?? this.metadataExtracted,
     );
-  }
 
   Map<String, dynamic> toMap() => {
         'sourceId': sourceId,
@@ -117,8 +115,7 @@ class MusicLibraryCacheEntry {
         'metadataExtracted': metadataExtracted,
       };
 
-  factory MusicLibraryCacheEntry.fromMap(Map<dynamic, dynamic> map) {
-    return MusicLibraryCacheEntry(
+  factory MusicLibraryCacheEntry.fromMap(Map<dynamic, dynamic> map) => MusicLibraryCacheEntry(
       sourceId: map['sourceId'] as String,
       filePath: map['filePath'] as String,
       fileName: map['fileName'] as String,
@@ -137,7 +134,6 @@ class MusicLibraryCacheEntry {
       coverBase64: map['coverBase64'] as String?,
       metadataExtracted: map['metadataExtracted'] as bool? ?? false,
     );
-  }
 }
 
 /// 音乐库缓存

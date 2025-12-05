@@ -83,7 +83,7 @@ class NasStreamAudioSource extends StreamAudioSource {
       ..i('NasStreamAudioSource: contentType=${_getContentType(path)}');
 
       // 包装流以添加错误处理和日志
-      int bytesReceived = 0;
+      var bytesReceived = 0;
       final wrappedStream = stream.map((chunk) {
         bytesReceived += chunk.length;
         if (bytesReceived % (1024 * 1024) < chunk.length) {

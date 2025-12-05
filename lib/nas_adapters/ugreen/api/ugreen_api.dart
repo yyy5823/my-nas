@@ -105,8 +105,8 @@ class UGreenApi {
     required String password,
     String? otpCode,
   }) async {
-    logger.i('UGreenApi: 开始登录认证 (UGOS API)');
-    logger.i('UGreenApi: 用户名 => $username');
+    logger..i('UGreenApi: 开始登录认证 (UGOS API)')
+    ..i('UGreenApi: 用户名 => $username');
 
     _username = username;
     _password = password;
@@ -123,8 +123,8 @@ class UGreenApi {
         ),
       );
 
-      logger.d('UGreenApi: check 响应状态码 => ${checkResponse.statusCode}');
-      logger.d('UGreenApi: check 响应头 => ${checkResponse.headers.map}');
+      logger..d('UGreenApi: check 响应状态码 => ${checkResponse.statusCode}')
+      ..d('UGreenApi: check 响应头 => ${checkResponse.headers.map}');
 
       // 从响应头获取 RSA 公钥
       final rsaTokenHeader = checkResponse.headers.value('x-rsa-token');
@@ -133,10 +133,10 @@ class UGreenApi {
         return UGreenAuthFailure(error: '服务器未返回加密密钥');
       }
 
-      logger.i('UGreenApi: 获取到 RSA 公钥');
+      logger..i('UGreenApi: 获取到 RSA 公钥')
 
       // Step 2: 使用 RSA 加密密码并登录
-      logger.i('UGreenApi: Step 2 - 加密密码并登录');
+      ..i('UGreenApi: Step 2 - 加密密码并登录');
       final encryptedPassword = _encryptPassword(password, rsaTokenHeader);
       logger.d('UGreenApi: 密码加密完成');
 
@@ -155,8 +155,8 @@ class UGreenApi {
         ),
       );
 
-      logger.i('UGreenApi: login 响应状态码 => ${loginResponse.statusCode}');
-      logger.d('UGreenApi: login 响应 => ${loginResponse.data}');
+      logger..i('UGreenApi: login 响应状态码 => ${loginResponse.statusCode}')
+      ..d('UGreenApi: login 响应 => ${loginResponse.data}');
 
       final data = loginResponse.data;
       if (data is Map<String, dynamic>) {
@@ -634,8 +634,8 @@ class UGreenApi {
 
     // 如果所有尝试都失败，返回空列表而不是硬编码的默认值
     // 这样用户可以知道实际上没有获取到共享文件夹
-    logger.e('UGreenApi: 无法获取共享列表！请检查 API 连接和权限');
-    logger.e('UGreenApi: 你可能需要在 NAS 上创建共享文件夹或检查用户权限');
+    logger..e('UGreenApi: 无法获取共享列表！请检查 API 连接和权限')
+    ..e('UGreenApi: 你可能需要在 NAS 上创建共享文件夹或检查用户权限');
     return [];
   }
 

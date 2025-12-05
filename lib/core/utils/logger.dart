@@ -81,8 +81,8 @@ Platform: ${Platform.operatingSystem}
         '${now.second.toString().padLeft(2, '0')}.'
         '${now.millisecond.toString().padLeft(3, '0')}';
 
-    final buffer = StringBuffer();
-    buffer.writeln('[$timestamp] [$level] $message');
+    final buffer = StringBuffer()
+    ..writeln('[$timestamp] [$level] $message');
 
     if (error != null) {
       buffer.writeln('  Error: $error');

@@ -42,11 +42,11 @@ class SynologyAdapter implements NasAdapter {
 
   @override
   Future<ConnectionResult> connect(ConnectionConfig config) async {
-    logger.i('SynologyAdapter: 开始连接');
-    logger.i('SynologyAdapter: 目标地址 => ${config.baseUrl}');
-    logger.i('SynologyAdapter: 用户名 => ${config.username}');
-    logger.i('SynologyAdapter: 使用 SSL => ${config.useSsl}');
-    logger.i('SynologyAdapter: 验证 SSL => ${config.verifySSL}');
+    logger..i('SynologyAdapter: 开始连接')
+    ..i('SynologyAdapter: 目标地址 => ${config.baseUrl}')
+    ..i('SynologyAdapter: 用户名 => ${config.username}')
+    ..i('SynologyAdapter: 使用 SSL => ${config.useSsl}')
+    ..i('SynologyAdapter: 验证 SSL => ${config.verifySSL}');
 
     _config = config;
     _dioClient.updateBaseUrl(config.baseUrl);

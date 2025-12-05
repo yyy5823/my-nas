@@ -108,10 +108,10 @@ class VideoHistoryService {
     final history = await getHistory();
 
     // 移除已存在的相同视频
-    history.removeWhere((h) => h.videoPath == item.videoPath);
+    history..removeWhere((h) => h.videoPath == item.videoPath)
 
     // 添加到最前面
-    history.insert(0, item);
+    ..insert(0, item);
 
     // 限制历史记录数量（最多100条）
     if (history.length > 100) {

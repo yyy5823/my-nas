@@ -204,7 +204,7 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
     final connections = _ref.read(activeConnectionsProvider);
     final configAsync = _ref.read(mediaLibraryConfigProvider);
 
-    MediaLibraryConfig? config = configAsync.valueOrNull;
+    var config = configAsync.valueOrNull;
     if (config == null) {
       state = ComicListLoading(currentFolder: '正在加载配置...');
       for (var i = 0; i < 10; i++) {

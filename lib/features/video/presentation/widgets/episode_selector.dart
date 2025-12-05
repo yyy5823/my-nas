@@ -82,8 +82,7 @@ class _EpisodeSelectorState extends ConsumerState<EpisodeSelector> {
     );
   }
 
-  Widget _buildSeasonDropdown(List<TmdbSeason> seasons, bool isDark) {
-    return Container(
+  Widget _buildSeasonDropdown(List<TmdbSeason> seasons, bool isDark) => Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurfaceVariant : Colors.grey[100],
@@ -140,7 +139,6 @@ class _EpisodeSelectorState extends ConsumerState<EpisodeSelector> {
         ),
       ),
     );
-  }
 
   Widget _buildEpisodeList(bool isDark) {
     // 获取当前季的剧集详情

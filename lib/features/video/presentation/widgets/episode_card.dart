@@ -249,8 +249,7 @@ class _EpisodeCardState extends State<EpisodeCard> {
     );
   }
 
-  Widget _buildPlaceholder(bool isDark) {
-    return Container(
+  Widget _buildPlaceholder(bool isDark) => Container(
       color: isDark ? AppColors.darkSurfaceElevated : Colors.grey[200],
       child: Center(
         child: Icon(
@@ -260,7 +259,6 @@ class _EpisodeCardState extends State<EpisodeCard> {
         ),
       ),
     );
-  }
 
   String _formatRuntime(int minutes) {
     if (minutes < 60) {
@@ -456,8 +454,7 @@ class CompactEpisodeCard extends StatelessWidget {
     );
   }
 
-  Widget _buildMiniPlaceholder(bool isDark) {
-    return Container(
+  Widget _buildMiniPlaceholder(bool isDark) => Container(
       color: isDark ? AppColors.darkSurfaceElevated : Colors.grey[200],
       child: Center(
         child: Icon(
@@ -467,5 +464,4 @@ class CompactEpisodeCard extends StatelessWidget {
         ),
       ),
     );
-  }
 }

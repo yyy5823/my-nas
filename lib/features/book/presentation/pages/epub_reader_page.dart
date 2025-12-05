@@ -188,13 +188,13 @@ class EpubReaderNotifier extends StateNotifier<EpubReaderState> {
   String? _extractTitle(String htmlContent) {
     // 尝试从 HTML 中提取标题
     // 简单的标题提取
-    final h1Match = RegExp(r'<h1[^>]*>([^<]+)</h1>', caseSensitive: false).firstMatch(htmlContent);
+    final h1Match = RegExp('<h1[^>]*>([^<]+)</h1>', caseSensitive: false).firstMatch(htmlContent);
     if (h1Match != null) return h1Match.group(1)?.trim();
 
-    final h2Match = RegExp(r'<h2[^>]*>([^<]+)</h2>', caseSensitive: false).firstMatch(htmlContent);
+    final h2Match = RegExp('<h2[^>]*>([^<]+)</h2>', caseSensitive: false).firstMatch(htmlContent);
     if (h2Match != null) return h2Match.group(1)?.trim();
 
-    final titleMatch = RegExp(r'<title[^>]*>([^<]+)</title>', caseSensitive: false).firstMatch(htmlContent);
+    final titleMatch = RegExp('<title[^>]*>([^<]+)</title>', caseSensitive: false).firstMatch(htmlContent);
     if (titleMatch != null) return titleMatch.group(1)?.trim();
 
     return null;

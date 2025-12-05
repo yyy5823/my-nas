@@ -53,8 +53,7 @@ class RecommendationsSection extends ConsumerWidget {
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
               itemCount: displayItems.length,
-              itemBuilder: (context, index) {
-                return Padding(
+              itemBuilder: (context, index) => Padding(
                   padding: EdgeInsets.only(
                     right: index < displayItems.length - 1 ? 12 : 0,
                   ),
@@ -62,8 +61,7 @@ class RecommendationsSection extends ConsumerWidget {
                     item: displayItems[index],
                     onTap: () => onItemTap(displayItems[index]),
                   ),
-                );
-              },
+                ),
             ),
           ),
         );
@@ -71,8 +69,7 @@ class RecommendationsSection extends ConsumerWidget {
     );
   }
 
-  Widget _buildSection(bool isDark, {required Widget child}) {
-    return Column(
+  Widget _buildSection(bool isDark, {required Widget child}) => Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
@@ -90,7 +87,6 @@ class RecommendationsSection extends ConsumerWidget {
         child,
       ],
     );
-  }
 }
 
 /// 相似内容区域组件
@@ -147,8 +143,7 @@ class SimilarContentSection extends ConsumerWidget {
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 itemCount: displayItems.length,
-                itemBuilder: (context, index) {
-                  return Padding(
+                itemBuilder: (context, index) => Padding(
                     padding: EdgeInsets.only(
                       right: index < displayItems.length - 1 ? 12 : 0,
                     ),
@@ -156,8 +151,7 @@ class SimilarContentSection extends ConsumerWidget {
                       item: displayItems[index],
                       onTap: () => onItemTap(displayItems[index]),
                     ),
-                  );
-                },
+                  ),
               ),
             ),
           ],
@@ -355,8 +349,7 @@ class _RecommendationCardState extends State<_RecommendationCard> {
     );
   }
 
-  Widget _buildPlaceholder(bool isDark) {
-    return Container(
+  Widget _buildPlaceholder(bool isDark) => Container(
       color: isDark ? AppColors.darkSurfaceVariant : Colors.grey[200],
       child: Center(
         child: Icon(
@@ -366,7 +359,6 @@ class _RecommendationCardState extends State<_RecommendationCard> {
         ),
       ),
     );
-  }
 
   Color _getRatingColor(double rating) {
     if (rating >= 8) return Colors.green;
@@ -389,23 +381,19 @@ class CombinedRecommendationsSection extends ConsumerWidget {
   final void Function(TmdbMediaItem item) onItemTap;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Column(
+  Widget build(BuildContext context, WidgetRef ref) => Column(
       children: [
         RecommendationsSection(
           tmdbId: tmdbId,
           isMovie: isMovie,
           onItemTap: onItemTap,
-          title: '推荐内容',
         ),
         const SizedBox(height: 24),
         SimilarContentSection(
           tmdbId: tmdbId,
           isMovie: isMovie,
           onItemTap: onItemTap,
-          title: '相似内容',
         ),
       ],
     );
-  }
 }

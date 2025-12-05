@@ -91,16 +91,16 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
 
     if (_hasTmdbId) {
       if (_isTvShow) {
-        final tvDetailAsync = ref.watch(tvDetailProvider(widget.metadata.tmdbId!));
-        tvDetailAsync.whenData((detail) {
+        final tvDetailAsync = ref.watch(tvDetailProvider(widget.metadata.tmdbId!))
+        ..whenData((detail) {
           if (detail != null) {
             tagline = detail.tagline;
             backdropUrl ??= detail.backdropUrl;
           }
         });
       } else {
-        final movieDetailAsync = ref.watch(movieDetailProvider(widget.metadata.tmdbId!));
-        movieDetailAsync.whenData((detail) {
+        final movieDetailAsync = ref.watch(movieDetailProvider(widget.metadata.tmdbId!))
+        ..whenData((detail) {
           if (detail != null) {
             tagline = detail.tagline;
             backdropUrl ??= detail.backdropUrl;
@@ -296,8 +296,8 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     // 从 TMDB 获取更多信息
     if (_hasTmdbId) {
       if (_isTvShow) {
-        final tvDetailAsync = ref.watch(tvDetailProvider(widget.metadata.tmdbId!));
-        tvDetailAsync.whenData((detail) {
+        final tvDetailAsync = ref.watch(tvDetailProvider(widget.metadata.tmdbId!))
+        ..whenData((detail) {
           if (detail != null) {
             if (detail.networks.isNotEmpty) {
               items.add(_buildInfoRow(
@@ -312,8 +312,8 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
           }
         });
       } else {
-        final movieDetailAsync = ref.watch(movieDetailProvider(widget.metadata.tmdbId!));
-        movieDetailAsync.whenData((detail) {
+        final _ = ref.watch(movieDetailProvider(widget.metadata.tmdbId!))
+        ..whenData((detail) {
           if (detail != null) {
             if (detail.productionCompanies.isNotEmpty) {
               items.add(_buildInfoRow(
@@ -500,8 +500,8 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       );
 
       // 刷新播放历史
-      ref.invalidate(continueWatchingProvider);
-      ref.invalidate(videoProgressProvider(widget.metadata.filePath));
+      ref..invalidate(continueWatchingProvider)
+      ..invalidate(videoProgressProvider(widget.metadata.filePath));
     } finally {
       if (mounted) {
         setState(() => _isPlaying = false);
@@ -536,8 +536,8 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       );
 
       // 刷新播放历史
-      ref.invalidate(continueWatchingProvider);
-      ref.invalidate(allVideoProgressProvider);
+      ref..invalidate(continueWatchingProvider)
+      ..invalidate(allVideoProgressProvider);
     } finally {
       if (mounted) {
         setState(() => _isPlaying = false);

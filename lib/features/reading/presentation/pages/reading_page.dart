@@ -157,8 +157,7 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
     return '夜深了';
   }
 
-  Widget _buildTypeSwitcher(BuildContext context, bool isDark, int currentTab) {
-    return PopupMenuButton<int>(
+  Widget _buildTypeSwitcher(BuildContext context, bool isDark, int currentTab) => PopupMenuButton<int>(
       offset: const Offset(0, 40),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       padding: EdgeInsets.zero,
@@ -231,5 +230,4 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
         ),
       ),
     );
-  }
 }

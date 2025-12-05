@@ -42,11 +42,11 @@ class QnapAdapter implements NasAdapter {
 
   @override
   Future<ConnectionResult> connect(ConnectionConfig config) async {
-    logger.i('QnapAdapter: 开始连接');
-    logger.i('QnapAdapter: 目标地址 => ${config.baseUrl}');
-    logger.i('QnapAdapter: 用户名 => ${config.username}');
-    logger.i('QnapAdapter: 使用 SSL => ${config.useSsl}');
-    logger.i('QnapAdapter: 验证 SSL => ${config.verifySSL}');
+    logger..i('QnapAdapter: 开始连接')
+    ..i('QnapAdapter: 目标地址 => ${config.baseUrl}')
+    ..i('QnapAdapter: 用户名 => ${config.username}')
+    ..i('QnapAdapter: 使用 SSL => ${config.useSsl}')
+    ..i('QnapAdapter: 验证 SSL => ${config.verifySSL}');
 
     _config = config;
     _dioClient.updateBaseUrl(config.baseUrl);

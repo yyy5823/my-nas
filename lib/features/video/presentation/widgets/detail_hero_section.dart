@@ -277,7 +277,7 @@ class DetailHeroSection extends StatelessWidget {
 
     // 类型
     if (metadata.genres != null && metadata.genres!.isNotEmpty) {
-      items.add(_buildMetadataChip(text: metadata.genres!));
+      items.add(_buildMetadataChip(text: metadata.genres));
     }
 
     // 剧集信息

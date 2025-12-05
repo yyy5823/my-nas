@@ -233,8 +233,7 @@ class Playlist {
     String? coverUrl,
     DateTime? createdAt,
     DateTime? updatedAt,
-  }) {
-    return Playlist(
+  }) => Playlist(
       id: id ?? this.id,
       name: name ?? this.name,
       tracks: tracks ?? this.tracks,
@@ -242,7 +241,6 @@ class Playlist {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
-  }
 }
 
 /// 艺术家
