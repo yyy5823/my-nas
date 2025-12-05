@@ -2640,57 +2640,72 @@ class _AllSongsView extends ConsumerWidget {
     return sorted;
   }
 
-  Widget _buildControlBar(BuildContext context, WidgetRef ref, MusicSortState sortState) => Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+  Widget _buildControlBar(BuildContext context, WidgetRef ref, MusicSortState sortState) {
+    final trackCount = tracks.length;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: isDark
+            ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
+            : Colors.grey[100],
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.05)
+              : Colors.black.withValues(alpha: 0.05),
+        ),
+      ),
       child: Row(
         children: [
           // 播放全部按钮
           Expanded(
-            child: _GradientPlayButton(
+            flex: 3,
+            child: _ModernActionButton(
               onPressed: () => _playAll(context, ref),
               icon: Icons.play_arrow_rounded,
               label: '播放全部',
+              subtitle: '$trackCount 首',
+              isPrimary: true,
+              isDark: isDark,
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 4),
           // 随机播放按钮
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: isDark
-                  ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
-                  : Colors.grey[100],
-              borderRadius: BorderRadius.circular(24),
-            ),
-            child: IconButton(
+          Expanded(
+            flex: 2,
+            child: _ModernActionButton(
               onPressed: () => _shufflePlay(context, ref),
-              icon: Icon(
-                Icons.shuffle_rounded,
-                color: isDark ? Colors.white70 : Colors.black87,
-              ),
-              tooltip: '随机播放',
+              icon: Icons.shuffle_rounded,
+              label: '随机',
+              isPrimary: false,
+              isDark: isDark,
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 4),
           // 排序按钮
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: isDark
-                  ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
-                  : Colors.grey[100],
-              borderRadius: BorderRadius.circular(24),
-            ),
-            child: IconButton(
+          Expanded(
+            flex: 2,
+            child: _ModernActionButton(
               onPressed: () => _showSortOptions(context, ref, sortState),
-              icon: Icon(
-                Icons.sort_rounded,
-                color: isDark ? Colors.white70 : Colors.black87,
+              icon: sortState.option.icon,
+              label: sortState.option.label,
+              trailing: Icon(
+                sortState.direction == SortDirection.ascending
+                    ? Icons.arrow_upward_rounded
+                    : Icons.arrow_downward_rounded,
+                size: 14,
+                color: isDark ? Colors.white54 : Colors.black45,
               ),
-              tooltip: '排序',
+              isPrimary: false,
+              isDark: isDark,
             ),
           ),
         ],
       ),
     );
+  }
 
   void _showSortOptions(BuildContext context, WidgetRef ref, MusicSortState currentSort) {
     showModalBottomSheet<void>(
@@ -4914,6 +4929,108 @@ class _GradientPlayButton extends StatelessWidget {
         ),
       ),
     );
+}
+
+/// 现代风格操作按钮 - 用于控制栏
+class _ModernActionButton extends StatelessWidget {
+  const _ModernActionButton({
+    required this.onPressed,
+    required this.icon,
+    required this.label,
+    required this.isDark,
+    this.subtitle,
+    this.trailing,
+    this.isPrimary = false,
+  });
+
+  final VoidCallback onPressed;
+  final IconData icon;
+  final String label;
+  final String? subtitle;
+  final Widget? trailing;
+  final bool isPrimary;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    final primaryGradient = LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [AppColors.primary, AppColors.secondary],
+    );
+
+    final secondaryColor = isDark
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.black.withValues(alpha: 0.04);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(12),
+        child: Ink(
+          decoration: BoxDecoration(
+            gradient: isPrimary ? primaryGradient : null,
+            color: isPrimary ? null : secondaryColor,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  icon,
+                  size: 18,
+                  color: isPrimary
+                      ? Colors.white
+                      : (isDark ? Colors.white70 : Colors.black87),
+                ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: isPrimary
+                              ? Colors.white
+                              : (isDark ? Colors.white : Colors.black87),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (subtitle != null)
+                        Text(
+                          subtitle!,
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: isPrimary
+                                ? Colors.white70
+                                : (isDark ? Colors.white54 : Colors.black45),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                    ],
+                  ),
+                ),
+                if (trailing != null) ...[
+                  const SizedBox(width: 4),
+                  trailing!,
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// 现代风格音乐列表项
