@@ -114,7 +114,7 @@ class UGreenApi {
     try {
       // Step 1: 获取 RSA 公钥
       logger.i('UGreenApi: Step 1 - 获取 RSA 公钥');
-      final checkResponse = await dio.post(
+      final checkResponse = await dio.post<dynamic>(
         '/ugreen/v1/verify/check',
         queryParameters: {'token': ''},
         data: {'username': username},
@@ -140,7 +140,7 @@ class UGreenApi {
       final encryptedPassword = _encryptPassword(password, rsaTokenHeader);
       logger.d('UGreenApi: 密码加密完成');
 
-      final loginResponse = await dio.post(
+      final loginResponse = await dio.post<dynamic>(
         '/ugreen/v1/verify/login',
         data: {
           'is_simple': true,
@@ -279,7 +279,7 @@ class UGreenApi {
     if (_token == null) return;
 
     try {
-      await dio.post(
+      await dio.post<dynamic>(
         '/ugreen/v1/verify/logout',
         queryParameters: {'token': _token},
       );
@@ -754,7 +754,7 @@ class UGreenApi {
     Map<String, dynamic>? data,
     String method = 'POST',
   }) async {
-    final response = await dio.request(
+    final response = await dio.request<dynamic>(
       path,
       queryParameters: {'token': _token ?? ''},
       data: data,
@@ -768,7 +768,7 @@ class UGreenApi {
         final result = await login(username: _username!, password: _password!);
         if (result is UGreenAuthSuccess) {
           // 重试请求
-          return dio.request(
+          return dio.request<dynamic>(
             path,
             queryParameters: {'token': _token ?? ''},
             data: data,
@@ -857,7 +857,7 @@ class UGreenApi {
           final second = parts.length > 5 ? int.tryParse(parts[5]) ?? 0 : 0;
           return DateTime(year, month, day, hour, minute, second);
         } on Exception catch (e) {
-          logger.d('UGreenApi: 无法解析日期 $value');
+          logger.d('UGreenApi: 无法解析日期 $value (${e.runtimeType})');
         }
       }
     }

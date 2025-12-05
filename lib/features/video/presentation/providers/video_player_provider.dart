@@ -478,6 +478,7 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
         _ref.read(currentVideoProvider.notifier).state = null;
       } on Exception catch (e) {
         // 忽略错误，可能 provider 已经被销毁
+        logger.e('VideoPlayerNotifier: 修改 provider 状态失败', e);
       }
     });
 

@@ -575,7 +575,7 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
           Switch.adaptive(
             value: _useSsl,
             onChanged: isLoading ? null : (v) => setState(() => _useSsl = v),
-            activeColor: AppColors.primary,
+            activeTrackColor: AppColors.primary,
           ),
         ],
       ),
@@ -628,7 +628,7 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
                 onChanged: isLoading
                     ? null
                     : (v) => setState(() => _rememberLogin = v),
-                activeColor: AppColors.primary,
+                activeTrackColor: AppColors.primary,
               ),
             ],
           ),
@@ -683,7 +683,7 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
                 onChanged: isLoading
                     ? null
                     : (v) => setState(() => _rememberDevice = v),
-                activeColor: AppColors.accent,
+                activeTrackColor: AppColors.accent,
               ),
             ],
           ),
@@ -861,7 +861,7 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
                     Switch.adaptive(
                       value: _rememberDevice,
                       onChanged: (v) => setState(() => _rememberDevice = v),
-                      activeColor: AppColors.accent,
+                      activeTrackColor: AppColors.accent,
                     ),
                   ],
                 ),

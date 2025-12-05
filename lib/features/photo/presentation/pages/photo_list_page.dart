@@ -5,6 +5,7 @@ import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/photo/data/services/photo_database_service.dart';
 import 'package:my_nas/features/photo/data/services/photo_library_cache_service.dart';
 import 'package:my_nas/features/photo/domain/entities/photo_item.dart';
 import 'package:my_nas/features/photo/presentation/pages/photo_viewer_page.dart';
@@ -74,98 +75,180 @@ class PhotoListLoading extends PhotoListState {
   final int scannedCount;
 }
 
+/// 优化后的照片列表状态 - 使用预计算数据
 class PhotoListLoaded extends PhotoListState {
   PhotoListLoaded({
-    required this.photos,
+    required this.totalCount,
+    this.dateGroupCount = 0,
+    this.folderCount = 0,
+    this.totalSize = 0,
     this.sortType = PhotoSortType.date,
     this.viewMode = PhotoViewMode.grid,
     this.searchQuery = '',
     this.fromCache = false,
-  });
+    // 分类数据 - 从 SQLite 预加载
+    this.allPhotos = const [],
+    this.searchResults = const [],
+    this.dateGroups = const [],
+    // 用于 O(1) 查找的 Map
+    this.photoByPath = const {},
+    // 用于 O(1) 索引查找的 Map
+    Map<String, int>? pathToIndex,
+  }) : _pathToIndex = pathToIndex;
 
-  final List<PhotoFileWithSource> photos;
+  final int totalCount;
+  final int dateGroupCount;
+  final int folderCount;
+  final int totalSize;
   final PhotoSortType sortType;
   final PhotoViewMode viewMode;
   final String searchQuery;
   final bool fromCache;
 
-  List<PhotoFileWithSource> get filteredPhotos {
-    var result = List<PhotoFileWithSource>.from(photos);
+  // 分类数据 - 已从 SQLite 预加载
+  final List<PhotoEntity> allPhotos;
+  final List<PhotoEntity> searchResults;
+  final List<({DateTime date, int count})> dateGroups;
 
-    // 搜索过滤
-    if (searchQuery.isNotEmpty) {
-      result = result
-          .where((p) => p.name.toLowerCase().contains(searchQuery.toLowerCase()))
-          .toList();
+  // 用于 O(1) 查找的 Map
+  final Map<String, PhotoEntity> photoByPath;
+
+  // 用于 O(1) 索引查找
+  final Map<String, int>? _pathToIndex;
+
+  /// 当前显示的照片（搜索时返回搜索结果）
+  List<PhotoEntity> get displayPhotos =>
+      searchQuery.isNotEmpty ? searchResults : allPhotos;
+
+  /// 兼容旧代码：返回 PhotoFileWithSource 列表
+  List<PhotoFileWithSource> get photos => allPhotos
+      .map((p) => PhotoFileWithSource(
+            file: FileItem(
+              name: p.fileName,
+              path: p.filePath,
+              size: p.size,
+              isDirectory: false,
+              modifiedTime: p.modifiedTime,
+              thumbnailUrl: p.thumbnailUrl,
+            ),
+            sourceId: p.sourceId,
+          ))
+      .toList();
+
+  /// 兼容旧代码：过滤后的照片
+  List<PhotoFileWithSource> get filteredPhotos => displayPhotos
+      .map((p) => PhotoFileWithSource(
+            file: FileItem(
+              name: p.fileName,
+              path: p.filePath,
+              size: p.size,
+              isDirectory: false,
+              modifiedTime: p.modifiedTime,
+              thumbnailUrl: p.thumbnailUrl,
+            ),
+            sourceId: p.sourceId,
+          ))
+      .toList();
+
+  /// 通过路径获取照片 - O(1) 查找
+  PhotoFileWithSource? getPhotoByPath(String path) {
+    final p = photoByPath[path];
+    if (p == null) return null;
+    return PhotoFileWithSource(
+      file: FileItem(
+        name: p.fileName,
+        path: p.filePath,
+        size: p.size,
+        isDirectory: false,
+        modifiedTime: p.modifiedTime,
+        thumbnailUrl: p.thumbnailUrl,
+      ),
+      sourceId: p.sourceId,
+    );
+  }
+
+  /// 按日期分组的照片（预计算，不再每次重新生成）
+  List<PhotoGroup> get groupedPhotos {
+    final result = <PhotoGroup>[];
+    final photosByDate = <DateTime, List<PhotoItem>>{};
+
+    for (final photo in displayPhotos) {
+      final dateKey = photo.dateKey;
+      photosByDate.putIfAbsent(dateKey, () => []);
+      photosByDate[dateKey]!.add(PhotoItem(
+        name: photo.fileName,
+        path: photo.filePath,
+        url: '',
+        sourceId: photo.sourceId,
+        thumbnailUrl: photo.thumbnailUrl,
+        size: photo.size,
+        modifiedAt: photo.modifiedTime,
+      ));
     }
 
-    // 排序
-    switch (sortType) {
-      case PhotoSortType.date:
-        result.sort((a, b) => (b.modifiedTime ?? DateTime(1970))
-            .compareTo(a.modifiedTime ?? DateTime(1970)));
-      case PhotoSortType.name:
-        result.sort((a, b) => a.name.compareTo(b.name));
-      case PhotoSortType.size:
-        result.sort((a, b) => b.size.compareTo(a.size));
+    // 按日期排序，未知日期放最后
+    final sortedDates = photosByDate.keys.toList()
+      ..sort((a, b) {
+        if (a.year <= 1970) return 1;
+        if (b.year <= 1970) return -1;
+        return b.compareTo(a);
+      });
+
+    for (final date in sortedDates) {
+      result.add(PhotoGroup(date: date, photos: photosByDate[date]!));
     }
 
     return result;
   }
 
-  /// 按日期分组的照片
-  List<PhotoGroup> get groupedPhotos {
-    final filtered = filteredPhotos;
-    final groups = <DateTime, List<PhotoItem>>{};
-    final unknownDateKey = DateTime(1970); // 用于没有时间信息的照片
-
-    for (final photo in filtered) {
-      // 如果照片有有效的修改时间（不是空或1970年之前的日期）
-      final hasValidTime = photo.modifiedTime != null &&
-          photo.modifiedTime!.year > 1970;
-
-      final dateKey = hasValidTime
-          ? DateTime(photo.modifiedTime!.year, photo.modifiedTime!.month, photo.modifiedTime!.day)
-          : unknownDateKey;
-
-      groups.putIfAbsent(dateKey, () => []);
-      groups[dateKey]!.add(PhotoItem(
-        name: photo.name,
-        path: photo.path,
-        url: '',
-        thumbnailUrl: photo.thumbnailUrl,
-        size: photo.size,
-        modifiedAt: hasValidTime ? photo.modifiedTime : null,
-      ));
+  /// 获取路径到索引的 Map（惰性构建）
+  Map<String, int> get pathToIndex {
+    if (_pathToIndex != null) return _pathToIndex!;
+    // 如果没有预构建，则动态构建
+    final map = <String, int>{};
+    final photos = displayPhotos;
+    for (var i = 0; i < photos.length; i++) {
+      map[photos[i].filePath] = i;
     }
-
-    // 排序时将未知日期放到最后
-    final sortedKeys = groups.keys.toList()
-      ..sort((a, b) {
-        if (a == unknownDateKey) return 1;
-        if (b == unknownDateKey) return -1;
-        return b.compareTo(a);
-      });
-
-    return sortedKeys
-        .map((date) => PhotoGroup(date: date, photos: groups[date]!))
-        .toList();
+    return map;
   }
 
+  /// 获取全局索引 - O(1) 查找
+  int getGlobalIndex(String path) => pathToIndex[path] ?? -1;
+
   PhotoListLoaded copyWith({
-    List<PhotoFileWithSource>? photos,
+    int? totalCount,
+    int? dateGroupCount,
+    int? folderCount,
+    int? totalSize,
     PhotoSortType? sortType,
     PhotoViewMode? viewMode,
     String? searchQuery,
     bool? fromCache,
-  }) =>
-      PhotoListLoaded(
-        photos: photos ?? this.photos,
-        sortType: sortType ?? this.sortType,
-        viewMode: viewMode ?? this.viewMode,
-        searchQuery: searchQuery ?? this.searchQuery,
-        fromCache: fromCache ?? this.fromCache,
-      );
+    List<PhotoEntity>? allPhotos,
+    List<PhotoEntity>? searchResults,
+    List<({DateTime date, int count})>? dateGroups,
+    Map<String, PhotoEntity>? photoByPath,
+    Map<String, int>? pathToIndex,
+  }) {
+    // 如果照片列表或搜索结果变化，需要重建索引
+    final needsNewIndex = allPhotos != null || searchResults != null || searchQuery != null;
+    return PhotoListLoaded(
+      totalCount: totalCount ?? this.totalCount,
+      dateGroupCount: dateGroupCount ?? this.dateGroupCount,
+      folderCount: folderCount ?? this.folderCount,
+      totalSize: totalSize ?? this.totalSize,
+      sortType: sortType ?? this.sortType,
+      viewMode: viewMode ?? this.viewMode,
+      searchQuery: searchQuery ?? this.searchQuery,
+      fromCache: fromCache ?? this.fromCache,
+      allPhotos: allPhotos ?? this.allPhotos,
+      searchResults: searchResults ?? this.searchResults,
+      dateGroups: dateGroups ?? this.dateGroups,
+      photoByPath: photoByPath ?? this.photoByPath,
+      pathToIndex: needsNewIndex ? null : (pathToIndex ?? _pathToIndex),
+    );
+  }
 }
 
 class PhotoListError extends PhotoListState {
@@ -182,11 +265,13 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
 
   final Ref _ref;
   final PhotoLibraryCacheService _cacheService = PhotoLibraryCacheService.instance;
+  final PhotoDatabaseService _db = PhotoDatabaseService.instance;
 
   Future<void> _init() async {
     try {
+      await _db.init();
       await _cacheService.init();
-      await _loadFromCacheImmediately();
+      await _loadFromSqlite();
 
       // 监听连接状态变化
       _ref.listen<Map<String, SourceConnection>>(activeConnectionsProvider, (previous, next) {
@@ -199,35 +284,80 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
       });
     } on Exception catch (e) {
       logger.e('PhotoListNotifier: 初始化失败', e);
-      state = PhotoListLoaded(photos: [], fromCache: false);
+      state = PhotoListLoaded(totalCount: 0, fromCache: false);
     }
   }
 
-  /// 立即从缓存加载
-  Future<void> _loadFromCacheImmediately() async {
-    final cache = _cacheService.getCache();
-    if (cache != null && cache.photos.isNotEmpty) {
-      state = PhotoListLoading(fromCache: true, currentFolder: '加载缓存...');
-
-      final photos = cache.photos.map((entry) {
-        return PhotoFileWithSource(
-          file: FileItem(
-            name: entry.fileName,
-            path: entry.filePath,
-            size: entry.size,
-            isDirectory: false,
-            modifiedTime: entry.modifiedTime,
-            thumbnailUrl: entry.thumbnailUrl,
-          ),
-          sourceId: entry.sourceId,
-        );
-      }).toList();
-
-      state = PhotoListLoaded(photos: photos, fromCache: true);
-      logger.i('从缓存加载了 ${photos.length} 张照片');
-    } else {
-      state = PhotoListLoaded(photos: [], fromCache: true);
+  /// 从 SQLite 加载数据
+  Future<void> _loadFromSqlite() async {
+    final count = await _db.getCount();
+    if (count == 0) {
+      // SQLite 为空，尝试从旧缓存迁移
+      await _migrateFromOldCache();
+      return;
     }
+
+    state = PhotoListLoading(fromCache: true, currentFolder: '加载数据...');
+
+    // 并行加载统计和数据
+    final results = await Future.wait([
+      _db.getStats(),
+      _db.getAll(),
+      _db.getDateGroups(),
+    ]);
+
+    final stats = results[0] as Map<String, dynamic>;
+    final allPhotos = results[1] as List<PhotoEntity>;
+    final dateGroups = results[2] as List<({DateTime date, int count})>;
+
+    // 构建快速查找 Map
+    final photoByPath = <String, PhotoEntity>{};
+    for (final p in allPhotos) {
+      photoByPath[p.uniqueKey] = p;
+    }
+
+    state = PhotoListLoaded(
+      totalCount: stats['total'] as int? ?? 0,
+      dateGroupCount: stats['dateGroups'] as int? ?? 0,
+      folderCount: stats['folders'] as int? ?? 0,
+      totalSize: stats['totalSize'] as int? ?? 0,
+      allPhotos: allPhotos,
+      dateGroups: dateGroups,
+      photoByPath: photoByPath,
+      fromCache: true,
+    );
+
+    logger.i('PhotoListNotifier: 从 SQLite 加载了 ${allPhotos.length} 张照片');
+  }
+
+  /// 从旧缓存迁移到 SQLite
+  Future<void> _migrateFromOldCache() async {
+    final cache = _cacheService.getCache();
+    if (cache == null || cache.photos.isEmpty) {
+      state = PhotoListLoaded(totalCount: 0, fromCache: true);
+      return;
+    }
+
+    logger.i('PhotoListNotifier: 开始从 Hive 迁移 ${cache.photos.length} 张照片');
+    state = PhotoListLoading(currentFolder: '正在迁移数据...', fromCache: true);
+
+    final entities = cache.photos
+        .map((entry) => PhotoEntity(
+              sourceId: entry.sourceId,
+              filePath: entry.filePath,
+              fileName: entry.fileName,
+              thumbnailUrl: entry.thumbnailUrl,
+              size: entry.size,
+              modifiedTime: entry.modifiedTime,
+              lastUpdated: DateTime.now(),
+            ))
+        .toList();
+
+    await _db.upsertBatch(entities);
+    logger.i('PhotoListNotifier: 迁移完成');
+
+    // 重新加载
+    await _loadFromSqlite();
   }
 
   Future<void> loadPhotos({bool forceRefresh = false, int maxDepth = 3}) async {
@@ -251,7 +381,7 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
       }
 
       if (config == null) {
-        state = PhotoListLoaded(photos: []);
+        state = PhotoListLoaded(totalCount: 0);
         return;
       }
     }
@@ -259,7 +389,7 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
     final photoPaths = config.getEnabledPathsForType(MediaType.photo);
 
     if (photoPaths.isEmpty) {
-      state = PhotoListLoaded(photos: []);
+      state = PhotoListLoaded(totalCount: 0);
       return;
     }
 
@@ -269,36 +399,18 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
     }).toList();
 
     if (connectedPaths.isEmpty) {
-      if (state is! PhotoListLoaded || (state as PhotoListLoaded).photos.isEmpty) {
+      final current = state;
+      if (current is! PhotoListLoaded || current.totalCount == 0) {
         state = PhotoListNotConnected();
       }
       return;
     }
 
-    final sourceIds = connectedPaths.map((p) => p.sourceId).toList();
-
-    // 尝试使用缓存
-    if (!forceRefresh && _cacheService.isCacheValid(sourceIds)) {
-      final cache = _cacheService.getCache();
-      if (cache != null) {
-        state = PhotoListLoading(fromCache: true, currentFolder: '加载缓存...');
-
-        final photos = cache.photos.map((entry) {
-          return PhotoFileWithSource(
-            file: FileItem(
-              name: entry.fileName,
-              path: entry.filePath,
-              size: entry.size,
-              isDirectory: false,
-              modifiedTime: entry.modifiedTime,
-              thumbnailUrl: entry.thumbnailUrl,
-            ),
-            sourceId: entry.sourceId,
-          );
-        }).toList();
-
-        state = PhotoListLoaded(photos: photos, fromCache: true);
-        logger.i('从缓存加载了 ${photos.length} 张照片');
+    // 如果不是强制刷新且 SQLite 有数据，直接使用
+    if (!forceRefresh) {
+      final count = await _db.getCount();
+      if (count > 0) {
+        await _loadFromSqlite();
         return;
       }
     }
@@ -358,15 +470,31 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
 
     logger.i('照片扫描完成，共找到 ${photos.length} 张照片');
 
-    // 保存到缓存
-    final cacheEntries = photos.map((p) => p.toCacheEntry()).toList();
-    await _cacheService.saveCache(PhotoLibraryCache(
-      photos: cacheEntries,
-      lastUpdated: DateTime.now(),
-      sourceIds: sourceIds,
-    ));
+    // 保存到 SQLite
+    state = PhotoListLoading(
+      progress: 1.0,
+      currentFolder: '保存数据...',
+      partialPhotos: photos,
+      scannedCount: photos.length,
+    );
 
-    state = PhotoListLoaded(photos: photos);
+    final entities = photos
+        .map((p) => PhotoEntity(
+              sourceId: p.sourceId,
+              filePath: p.path,
+              fileName: p.name,
+              thumbnailUrl: p.thumbnailUrl,
+              size: p.size,
+              modifiedTime: p.modifiedTime,
+              lastUpdated: DateTime.now(),
+            ))
+        .toList();
+
+    await _db.clear(); // 清空旧数据
+    await _db.upsertBatch(entities);
+
+    // 重新从 SQLite 加载（确保状态一致）
+    await _loadFromSqlite();
   }
 
   Future<void> _scanFolderRecursively(
@@ -456,7 +584,21 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
   void setSearchQuery(String query) {
     final current = state;
     if (current is PhotoListLoaded) {
-      state = current.copyWith(searchQuery: query);
+      if (query.isEmpty) {
+        state = current.copyWith(searchQuery: '', searchResults: []);
+      } else {
+        // 使用 SQLite 搜索
+        _db.search(query).then((results) {
+          if (state is PhotoListLoaded) {
+            state = (state as PhotoListLoaded).copyWith(
+              searchQuery: query,
+              searchResults: results,
+            );
+          }
+        });
+        // 先更新搜索词，结果异步返回
+        state = current.copyWith(searchQuery: query);
+      }
     }
   }
 
@@ -479,6 +621,7 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
 
   /// 强制刷新
   Future<void> forceRefresh() async {
+    await _db.clear();
     await _cacheService.clearCache();
     await loadPhotos(forceRefresh: true);
   }
@@ -1251,9 +1394,9 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
               (context, index) {
                 final photo = group.photos[index];
                 final allPhotos = state.filteredPhotos;
-                final globalIndex = allPhotos.indexWhere(
-                  (p) => p.path == photo.path,
-                );
+                // 使用 O(1) 查找替代 O(n) indexWhere
+                final globalIndex = state.getGlobalIndex(photo.path);
+                if (globalIndex < 0) return const SizedBox.shrink();
 
                 return AnimatedGridItem(
                   index: index,

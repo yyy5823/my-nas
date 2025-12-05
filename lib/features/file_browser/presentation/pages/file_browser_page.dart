@@ -1571,7 +1571,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
           Switch.adaptive(
             value: value,
             onChanged: onChanged,
-            activeColor: AppColors.primary,
+            activeTrackColor: AppColors.primary,
           ),
         ],
       ),

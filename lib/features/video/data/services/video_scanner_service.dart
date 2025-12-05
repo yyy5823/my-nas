@@ -278,7 +278,7 @@ class VideoScannerService {
           try {
             videoUrl = await fileSystem.getFileUrl(video.file.path);
           } on Exception catch (e) {
-            logger.w('VideoScannerService: 获取视频URL失败 ${video.file.path}');
+            logger.w('VideoScannerService: 获取视频URL失败 ${video.file.path}，错误原因 $e');
           }
         }
 

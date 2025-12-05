@@ -156,6 +156,7 @@ class PhotoLibraryCacheService {
       final jsonStr = jsonEncode(data);
       return jsonStr.length;
     } on Exception catch (e) {
+      logger.w('PhotoLibraryCacheService: 计算缓存大小失败', e);
       return 0;
     }
   }

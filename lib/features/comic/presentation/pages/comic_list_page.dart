@@ -407,7 +407,6 @@ class ComicListContent extends ConsumerStatefulWidget {
 
 class _ComicListContentState extends ConsumerState<ComicListContent> {
   final _searchController = TextEditingController();
-  bool _showSearch = false;
 
   @override
   void dispose() {

@@ -173,7 +173,7 @@ class VideoLibraryCacheService {
     try {
       final jsonStr = jsonEncode(data);
       return jsonStr.length;
-    } on Exception catch (e) {
+    } on Exception {
       return 0;
     }
   }

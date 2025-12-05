@@ -220,6 +220,7 @@ class ReadingProgressService {
           results.add(ReadingProgress.fromMap(data as Map<dynamic, dynamic>));
         } on Exception catch (e) {
           // 跳过无效数据
+          logger.w('ReadingProgressService: 解析进度数据失败', e);
         }
       }
     }
@@ -296,6 +297,7 @@ class ReadingProgressService {
           ));
         } on Exception catch (e) {
           // 跳过无效数据
+          logger.w('ReadingProgressService: 解析最近阅读数据失败', e);
         }
       }
     }

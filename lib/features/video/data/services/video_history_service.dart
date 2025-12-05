@@ -68,7 +68,7 @@ class VideoHistoryService {
       if (data != null) {
         try {
           result[path] = VideoProgress.fromJson(data as Map<dynamic, dynamic>);
-        } on Exception catch (e) {
+        } on Exception {
           logger.w('VideoHistoryService: 解析进度失败 $path');
         }
       }
@@ -86,7 +86,7 @@ class VideoHistoryService {
       if (data != null) {
         try {
           result[key as String] = VideoProgress.fromJson(data as Map<dynamic, dynamic>);
-        } on Exception catch (e) {
+        } on Exception {
           logger.w('VideoHistoryService: 解析进度失败 $key');
         }
       }

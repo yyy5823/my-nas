@@ -154,7 +154,7 @@ class FnOSApi {
 
         logger.d('FnOSApi: 尝试登录端点 => $endpoint');
 
-        final response = await dio.post(
+        final response = await dio.post<dynamic>(
           endpoint,
           data: data,
           options: Options(
@@ -233,7 +233,7 @@ class FnOSApi {
     if (_token == null) return;
 
     try {
-      await dio.post(
+      await dio.post<dynamic>(
         '/api/v1/auth/logout',
         options: _authOptions(),
       );
@@ -494,7 +494,7 @@ class FnOSApi {
     Map<String, dynamic>? params,
     Map<String, dynamic>? data,
     String method = 'GET',
-  }) async => dio.request(
+  }) async => dio.request<dynamic>(
       path,
       queryParameters: params,
       data: data,
