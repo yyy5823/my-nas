@@ -600,8 +600,8 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
     // Keychain/安全存储错误
     if (e is PlatformException) {
       if (e.code == 'Unexpected security result code' ||
-          e.message?.contains('-34018') == true ||
-          e.message?.contains('entitlement') == true) {
+          (e.message?.contains('-34018') ?? false) ||
+          (e.message?.contains('entitlement') ?? false)) {
         return '安全存储不可用，无法保存登录信息。连接仍然成功，但下次需要重新输入密码。';
       }
     }

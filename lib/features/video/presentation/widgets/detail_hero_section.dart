@@ -47,7 +47,7 @@ class DetailHeroSection extends StatelessWidget {
               imageUrl: displayBackdrop,
               fit: BoxFit.cover,
               placeholder: (_) => _buildBackdropPlaceholder(isDark),
-              errorWidget: (_, __) => _buildBackdropPlaceholder(isDark),
+              errorWidget: (_, _) => _buildBackdropPlaceholder(isDark),
             )
           else
             _buildBackdropPlaceholder(isDark),
@@ -131,7 +131,7 @@ class DetailHeroSection extends StatelessWidget {
                 imageUrl: displayPoster!,
                 fit: BoxFit.cover,
                 placeholder: (_) => _buildPosterPlaceholder(isDark),
-                errorWidget: (_, __) => _buildPosterPlaceholder(isDark),
+                errorWidget: (_, _) => _buildPosterPlaceholder(isDark),
               ),
             ),
           ),
@@ -187,7 +187,7 @@ class DetailHeroSection extends StatelessWidget {
                     imageUrl: displayPoster!,
                     fit: BoxFit.cover,
                     placeholder: (_) => _buildPosterPlaceholder(isDark),
-                    errorWidget: (_, __) => _buildPosterPlaceholder(isDark),
+                    errorWidget: (_, _) => _buildPosterPlaceholder(isDark),
                   ),
                 ),
               ),
@@ -211,7 +211,7 @@ class DetailHeroSection extends StatelessWidget {
           _buildTagline(isDark),
         ],
         const SizedBox(height: 16),
-        _buildActionButtons(isDark, large: false),
+        _buildActionButtons(isDark),
       ],
     );
 
@@ -439,7 +439,7 @@ class DetailHeroSection extends StatelessWidget {
 
   String _formatRuntime(int minutes) {
     if (minutes < 60) {
-      return '${minutes}分钟';
+      return '$minutes分钟';
     }
     final hours = minutes ~/ 60;
     final mins = minutes % 60;

@@ -29,7 +29,7 @@ class PlaylistSheet extends ConsumerWidget {
       initialChildSize: 0.6,
       minChildSize: 0.3,
       maxChildSize: 0.9,
-      builder: (context, scrollController) => Container(
+      builder: (context, scrollController) => DecoratedBox(
         decoration: BoxDecoration(
           color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
@@ -130,7 +130,7 @@ class PlaylistSheet extends ConsumerWidget {
                             ],
                           ),
                         ).then((confirmed) {
-                          if (confirmed == true) {
+                          if (confirmed ?? false) {
                             playlistNotifier.clearPlaylist();
                           }
                         });

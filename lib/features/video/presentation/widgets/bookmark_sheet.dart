@@ -60,10 +60,9 @@ class _BookmarkSheetState extends ConsumerState<BookmarkSheet> {
     final bookmarksAsync = ref.watch(videoBookmarksProvider(widget.videoPath));
 
     return DraggableScrollableSheet(
-      initialChildSize: 0.5,
       minChildSize: 0.3,
       maxChildSize: 0.8,
-      builder: (context, scrollController) => Container(
+      builder: (context, scrollController) => DecoratedBox(
         decoration: BoxDecoration(
           color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
@@ -168,7 +167,7 @@ class _BookmarkSheetState extends ConsumerState<BookmarkSheet> {
                 loading: () => const Center(
                   child: CircularProgressIndicator(),
                 ),
-                error: (_, __) => Center(
+                error: (_, _) => Center(
                   child: Text(
                     '加载失败',
                     style: TextStyle(

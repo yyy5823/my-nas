@@ -349,7 +349,7 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
         height: size,
         fit: BoxFit.cover,
         gaplessPlayback: true,
-        errorBuilder: (_, __, ___) => _buildMiniCoverPlaceholder(isDark),
+        errorBuilder: (_, _, _) => _buildMiniCoverPlaceholder(isDark),
       );
     }
 
@@ -362,7 +362,7 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
         height: size,
         fit: BoxFit.cover,
         gaplessPlayback: true,
-        errorBuilder: (_, __, ___) => _buildMiniCoverPlaceholder(isDark),
+        errorBuilder: (_, _, _) => _buildMiniCoverPlaceholder(isDark),
       );
     }
 
@@ -443,7 +443,7 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
               ),
             ),
           ),
-          error: (_, __) => IconButton(
+          error: (_, _) => IconButton(
             onPressed: null,
             icon: Icon(
               Icons.favorite_border_rounded,
@@ -582,7 +582,7 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
         height: size,
         fit: BoxFit.cover,
         gaplessPlayback: true, // 防止动画时闪烁
-        errorBuilder: (_, __, ___) => _buildCoverPlaceholder(size, isDark),
+        errorBuilder: (_, _, _) => _buildCoverPlaceholder(size, isDark),
       );
     }
 
@@ -595,7 +595,7 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
         height: size,
         fit: BoxFit.cover,
         gaplessPlayback: true,
-        errorBuilder: (_, __, ___) => _buildCoverPlaceholder(size, isDark),
+        errorBuilder: (_, _, _) => _buildCoverPlaceholder(size, isDark),
       );
     }
 

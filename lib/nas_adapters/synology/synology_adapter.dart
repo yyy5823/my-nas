@@ -29,7 +29,6 @@ class SynologyAdapter implements NasAdapter {
         name: '群晖 Synology',
         version: AppConstants.appVersion,
         supportsMediaService: true,
-        supportsToolsService: false,
       );
 
   @override

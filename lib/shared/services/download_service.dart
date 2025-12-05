@@ -150,7 +150,7 @@ class DownloadService {
 
     try {
       // 检查是否支持断点续传
-      int startBytes = 0;
+      var startBytes = 0;
       final file = File(task.savePath);
       if (await file.exists()) {
         startBytes = await file.length();

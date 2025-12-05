@@ -352,7 +352,7 @@ class VideoDatabaseService {
   }) async {
     if (!_initialized) await init();
 
-    String where = '$_colRating >= ?';
+    var where = '$_colRating >= ?';
     final whereArgs = <Object>[minRating];
 
     if (category != null) {
@@ -451,7 +451,7 @@ class VideoDatabaseService {
   Future<int> getCount({MediaCategory? category}) async {
     if (!_initialized) await init();
 
-    String sql = 'SELECT COUNT(*) FROM $_tableMetadata';
+    var sql = 'SELECT COUNT(*) FROM $_tableMetadata';
     List<Object>? args;
 
     if (category != null) {
@@ -477,7 +477,7 @@ class VideoDatabaseService {
   Future<int> deleteBySourceId(String sourceId) async {
     if (!_initialized) await init();
 
-    return await _db!.delete(
+    return _db!.delete(
       _tableMetadata,
       where: '$_colSourceId = ?',
       whereArgs: [sourceId],

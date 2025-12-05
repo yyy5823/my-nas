@@ -69,7 +69,7 @@ class PdfReaderNotifier extends StateNotifier<PdfReaderState> {
 
   Future<void> _loadPdf() async {
     try {
-      state = PdfReaderLoading(message: '加载中...');
+      state = PdfReaderLoading();
 
       final uri = Uri.parse(book.url);
       final tempDir = await getTemporaryDirectory();

@@ -315,7 +315,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   /// 播放指定音乐
   Future<void> play(MusicItem music, {Duration? startPosition}) async {
     _ref.read(currentMusicProvider.notifier).state = music;
-    state = state.copyWith(errorMessage: null, isBuffering: true);
+    state = state.copyWith(isBuffering: true);
 
     logger..i('MusicPlayer: 开始播放 ${music.name}')
     ..d('MusicPlayer: URL => ${music.url}')

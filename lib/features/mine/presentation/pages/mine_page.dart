@@ -1006,7 +1006,7 @@ class _TransferCard extends ConsumerWidget {
     return tasksAsync.when(
       data: (tasks) => _buildContent(context, tasks),
       loading: () => _buildContent(context, []),
-      error: (_, __) => _buildContent(context, []),
+      error: (_, _) => _buildContent(context, []),
     );
   }
 

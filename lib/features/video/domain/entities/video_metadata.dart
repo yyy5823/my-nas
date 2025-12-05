@@ -302,7 +302,7 @@ class VideoFileNameParser {
   /// 解析视频文件名
   static VideoFileNameInfo parse(String fileName) {
     // 移除扩展名
-    var name = fileName.replaceAll(RegExp(r'\.[^.]+$'), '');
+    final name = fileName.replaceAll(RegExp(r'\.[^.]+$'), '');
 
     // 提取年份
     int? year;

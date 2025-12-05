@@ -231,7 +231,7 @@ class NfoScraperService {
   String _getParentPath(String path) {
     // 处理 Windows 和 Unix 路径分隔符
     final lastSeparator = path.lastIndexOf('/');
-    final lastBackslash = path.lastIndexOf('\\');
+    final lastBackslash = path.lastIndexOf(r'\');
     final separator = lastSeparator > lastBackslash ? lastSeparator : lastBackslash;
 
     if (separator > 0) {
@@ -297,7 +297,7 @@ class NfoScraperService {
   /// 解析年份
   int? _parseYear(XmlElement root) {
     // 尝试从 year 元素获取
-    var yearStr = _getElementText(root, 'year');
+    final yearStr = _getElementText(root, 'year');
     if (yearStr != null) {
       return int.tryParse(yearStr);
     }
@@ -316,7 +316,7 @@ class NfoScraperService {
   /// 解析评分
   double? _parseRating(XmlElement root) {
     // 尝试从 rating 元素获取
-    var ratingStr = _getElementText(root, 'rating');
+    final ratingStr = _getElementText(root, 'rating');
     if (ratingStr != null) {
       return double.tryParse(ratingStr);
     }
@@ -367,7 +367,7 @@ class NfoScraperService {
   /// 解析 TMDB ID
   int? _parseTmdbId(XmlElement root) {
     // 从 tmdbid 元素获取
-    var tmdbStr = _getElementText(root, 'tmdbid');
+    final tmdbStr = _getElementText(root, 'tmdbid');
     if (tmdbStr != null) {
       return int.tryParse(tmdbStr);
     }
@@ -408,7 +408,7 @@ class NfoScraperService {
       final baseName = _getBaseName(fileName);
 
       // 检查是否是图片文件
-      bool isImage = false;
+      var isImage = false;
       for (final ext in _imageExtensions) {
         if (fileName.endsWith(ext)) {
           isImage = true;

@@ -151,7 +151,7 @@ class _EpisodeSelectorState extends ConsumerState<EpisodeSelector> {
         height: 200,
         child: Center(child: CircularProgressIndicator()),
       ),
-      error: (error, _) => SizedBox(
+      error: (_, _) => SizedBox(
         height: 100,
         child: Center(
           child: Text(
@@ -343,7 +343,7 @@ class _CompactEpisodeSelectorState extends ConsumerState<CompactEpisodeSelector>
         padding: EdgeInsets.all(32),
         child: Center(child: CircularProgressIndicator()),
       ),
-      error: (error, _) => Padding(
+      error: (_, _) => Padding(
         padding: const EdgeInsets.all(16),
         child: Center(
           child: Text(
@@ -381,7 +381,7 @@ class _CompactEpisodeSelectorState extends ConsumerState<CompactEpisodeSelector>
               physics: const NeverScrollableScrollPhysics(),
               padding: const EdgeInsets.symmetric(horizontal: 12),
               itemCount: displayCount,
-              separatorBuilder: (_, __) => Divider(
+              separatorBuilder: (_, _) => Divider(
                 height: 1,
                 color: isDark ? AppColors.darkOutline : Colors.grey[200],
               ),

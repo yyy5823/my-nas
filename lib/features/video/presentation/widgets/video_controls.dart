@@ -50,7 +50,7 @@ class VideoControls extends StatelessWidget {
   final VoidCallback? onShowBookmarks;
 
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) => DecoratedBox(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
@@ -116,13 +116,10 @@ class VideoControls extends StatelessWidget {
                 switch (value) {
                   case 'subtitle':
                     showSubtitleSelector(context);
-                    break;
                   case 'aspect':
                     showAspectRatioSelector(context);
-                    break;
                   case 'audio':
                     showAudioTrackSelector(context);
-                    break;
                   case 'bookmark':
                     onShowBookmarks?.call();
                   case 'settings':

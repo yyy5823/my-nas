@@ -351,7 +351,7 @@ class LocalFileApi {
   Future<void> _copyDirectory(Directory source, Directory destination) async {
     await destination.create(recursive: true);
 
-    await for (final entity in source.list(recursive: false)) {
+    await for (final entity in source.list()) {
       final newPath = p.join(destination.path, p.basename(entity.path));
 
       if (entity is File) {

@@ -163,7 +163,7 @@ class UpdateService extends ChangeNotifier {
       final file = File('${dir.path}/${_updateInfo!.fileName}');
       final sink = file.openWrite();
 
-      int received = 0;
+      var received = 0;
       await for (final chunk in response.stream) {
         sink.add(chunk);
         received += chunk.length;
@@ -362,7 +362,7 @@ class UpdateService extends ChangeNotifier {
       final dir = await getExternalStorageDirectory();
       return dir ?? await getApplicationDocumentsDirectory();
     } else if (Platform.isIOS) {
-      return await getApplicationDocumentsDirectory();
+      return getApplicationDocumentsDirectory();
     } else {
       // 桌面平台使用下载文件夹
       final dir = await getDownloadsDirectory();

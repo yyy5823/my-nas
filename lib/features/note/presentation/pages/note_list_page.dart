@@ -302,7 +302,6 @@ class NotePageNotifier extends StateNotifier<NotePageState> {
     // 先更新选中状态，显示加载中
     state = current.copyWith(
       selectedNode: node,
-      content: null,
       tasks: [],
       isLoadingContent: true,
       hasChanges: false,
@@ -634,7 +633,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
       noteCount = _countNotes(state.treeNodes);
     }
 
-    return Container(
+    return DecoratedBox(
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
         border: Border(
@@ -874,7 +873,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
   }
 
   /// 移动端模式切换（简化版）
-  Widget _buildMobileModeTabs(NotePageLoaded state, bool isDark) => Container(
+  Widget _buildMobileModeTabs(NotePageLoaded state, bool isDark) => DecoratedBox(
       decoration: BoxDecoration(
         color: isDark
             ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
@@ -941,7 +940,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
         _buildEditorToolbar(context, isDark),
         // 上半部分：编辑区域
         Expanded(
-          child: Container(
+          child: DecoratedBox(
             decoration: BoxDecoration(
               border: Border(
                 bottom: BorderSide(
@@ -979,7 +978,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
         ),
         // 下半部分：预览
         Expanded(
-          child: Container(
+          child: ColoredBox(
             color: isDark
                 ? AppColors.darkBackground
                 : Colors.grey.withValues(alpha: 0.05),
@@ -1321,7 +1320,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
       mainAxisSize: MainAxisSize.min,
       children: [
         // 模式切换按钮组
-        Container(
+        DecoratedBox(
           decoration: BoxDecoration(
             color: isDark
                 ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
@@ -1502,7 +1501,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
             children: [
               // 左侧：编辑区域
               Expanded(
-                child: Container(
+                child: DecoratedBox(
                   decoration: BoxDecoration(
                     border: Border(
                       right: BorderSide(

@@ -88,7 +88,7 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
   }
 
   Widget _buildAppBar(BuildContext context, bool isDark, int currentTab) =>
-      Container(
+      DecoratedBox(
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,

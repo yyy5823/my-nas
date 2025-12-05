@@ -14,6 +14,6 @@ final activeDownloadsCountProvider = Provider<int>((ref) {
   return tasksAsync.when(
     data: (tasks) => tasks.where((t) => t.status == DownloadStatus.downloading).length,
     loading: () => 0,
-    error: (_, __) => 0,
+    error: (_, _) => 0,
   );
 });

@@ -51,7 +51,7 @@ class CastCard extends StatelessWidget {
                         width: size,
                         height: size,
                         placeholder: (_) => _buildPlaceholder(isDark),
-                        errorWidget: (_, __) => _buildPlaceholder(isDark),
+                        errorWidget: (_, _) => _buildPlaceholder(isDark),
                       )
                     : _buildPlaceholder(isDark),
               ),
@@ -147,7 +147,7 @@ class CrewCard extends StatelessWidget {
                         width: size,
                         height: size,
                         placeholder: (_) => _buildPlaceholder(isDark),
-                        errorWidget: (_, __) => _buildPlaceholder(isDark),
+                        errorWidget: (_, _) => _buildPlaceholder(isDark),
                       )
                     : _buildPlaceholder(isDark),
               ),

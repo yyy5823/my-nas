@@ -113,14 +113,14 @@ final localVideosByGenreProvider = FutureProvider.autoDispose.family<List<VideoM
   final metadataService = ref.watch(videoMetadataServiceProvider);
   await metadataService.init();
   // 使用 SQLite 分页查询
-  return metadataService.getByGenre(genre, limit: 50);
+  return metadataService.getByGenre(genre);
 });
 
 /// 按年份获取本地内容 Provider（autoDispose + SQLite 分页）
 final localVideosByYearProvider = FutureProvider.autoDispose.family<List<VideoMetadata>, int>((ref, year) async {
   final metadataService = ref.watch(videoMetadataServiceProvider);
   await metadataService.init();
-  return metadataService.getByYear(year, limit: 50);
+  return metadataService.getByYear(year);
 });
 
 /// 按分类获取本地内容 Provider（autoDispose + SQLite 分页）

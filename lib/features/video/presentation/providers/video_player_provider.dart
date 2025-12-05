@@ -325,7 +325,7 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
 
     _currentVideo = video;
     _ref.read(currentVideoProvider.notifier).state = video;
-    state = state.copyWith(errorMessage: null);
+    state = state.copyWith();
 
     logger..i('VideoPlayer: 开始播放 ${video.name}')
     ..d('VideoPlayer: URL => ${video.url}')

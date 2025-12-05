@@ -18,6 +18,12 @@ class MusicCoverCacheService {
   String? _cacheDir;
   bool _initialized = false;
 
+  /// 单个封面最大大小（5MB）
+  static const int maxCoverSize = 5 * 1024 * 1024;
+
+  /// 缓存目录最大总大小（500MB）
+  static const int maxTotalCacheSize = 500 * 1024 * 1024;
+
   /// 初始化缓存目录
   Future<void> init() async {
     if (_initialized) return;
@@ -51,7 +57,20 @@ class MusicCoverCacheService {
     if (!_initialized) await init();
     if (coverData.isEmpty) return null;
 
+    // 检查单个封面大小限制
+    if (coverData.length > maxCoverSize) {
+      logger.w(
+        'MusicCoverCacheService: 封面大小超过限制 '
+        '${(coverData.length / 1024 / 1024).toStringAsFixed(2)}MB > '
+        '${maxCoverSize ~/ 1024 ~/ 1024}MB',
+      );
+      return null;
+    }
+
     try {
+      // 检查缓存总大小，如果超过限制则清理旧文件
+      await _ensureCacheQuota(coverData.length);
+
       final path = _getCoverPath(uniqueKey);
       final file = File(path);
       await file.writeAsBytes(coverData);
@@ -59,6 +78,54 @@ class MusicCoverCacheService {
     } on Exception catch (e) {
       logger.w('MusicCoverCacheService: 保存封面失败 $uniqueKey', e);
       return null;
+    }
+  }
+
+  /// 确保缓存不超过配额，必要时清理最旧的文件
+  Future<void> _ensureCacheQuota(int newFileSize) async {
+    final currentSize = await getCacheSize();
+    if (currentSize + newFileSize <= maxTotalCacheSize) return;
+
+    try {
+      final dir = Directory(_cacheDir!);
+      if (!await dir.exists()) return;
+
+      // 获取所有缓存文件及其修改时间
+      final files = <MapEntry<File, DateTime>>[];
+      await for (final entity in dir.list()) {
+        if (entity is File) {
+          final stat = await entity.stat();
+          files.add(MapEntry(entity, stat.modified));
+        }
+      }
+
+      // 按修改时间排序（最旧的在前）
+      files.sort((a, b) => a.value.compareTo(b.value));
+
+      // 删除最旧的文件直到有足够空间
+      var freedSize = 0;
+      final targetFreeSize = (currentSize + newFileSize) - maxTotalCacheSize;
+      for (final entry in files) {
+        if (freedSize >= targetFreeSize) break;
+
+        try {
+          final fileSize = await entry.key.length();
+          await entry.key.delete();
+          freedSize += fileSize;
+          logger.d('MusicCoverCacheService: 清理旧封面 ${entry.key.path}');
+        } on Exception catch (_) {
+          // 忽略单个文件删除失败
+        }
+      }
+
+      if (freedSize > 0) {
+        logger.i(
+          'MusicCoverCacheService: 已清理 '
+          '${(freedSize / 1024 / 1024).toStringAsFixed(2)}MB 缓存空间',
+        );
+      }
+    } on Exception catch (e) {
+      logger.w('MusicCoverCacheService: 清理缓存配额失败', e);
     }
   }
 

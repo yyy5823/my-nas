@@ -218,7 +218,7 @@ class BookListNotifier extends StateNotifier<BookListState> {
       });
     } on Exception catch (e) {
       logger.e('BookListNotifier: 初始化失败', e);
-      state = BookListLoaded(totalCount: 0, fromCache: false);
+      state = BookListLoaded(totalCount: 0);
     }
   }
 
@@ -548,7 +548,7 @@ class _BookListPageState extends ConsumerState<BookListPage> {
                 ),
               BookListLoaded(:final filteredBooks) when filteredBooks.isEmpty =>
                 _buildEmptyState(context, ref, isDark),
-              BookListLoaded loaded => _buildBookContent(context, ref, loaded, isDark),
+              final BookListLoaded loaded => _buildBookContent(context, ref, loaded, isDark),
             },
           ),
         ],
@@ -1224,7 +1224,7 @@ class _BookListContentState extends ConsumerState<BookListContent> {
         ),
       BookListLoaded(:final filteredBooks) when filteredBooks.isEmpty =>
         _buildEmptyState(context, isDark),
-      BookListLoaded loaded => _buildBookGrid(context, ref, loaded, isDark),
+      final BookListLoaded loaded => _buildBookGrid(context, ref, loaded, isDark),
     };
   }
 

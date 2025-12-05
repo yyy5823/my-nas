@@ -153,7 +153,7 @@ final recentMusicProvider =
     FutureProvider<List<MusicHistoryItem>>((ref) async {
   // 监听 history 变化
   ref.watch(musicHistoryProvider);
-  return MusicFavoritesService.instance.getRecentHistory(limit: 20);
+  return MusicFavoritesService.instance.getRecentHistory();
 });
 
 /// 最近播放 - 返回 MusicItem 列表

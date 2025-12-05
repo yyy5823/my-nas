@@ -242,7 +242,7 @@ class UGreenApi {
             !line.startsWith('-----BEGIN') &&
             !line.startsWith('-----END') &&
             line.trim().isNotEmpty)
-        .join('');
+        .join();
 
     final keyBytes = base64Decode(base64String);
 
@@ -707,7 +707,7 @@ class UGreenApi {
             final name = folder['name']?.toString() ?? '';
             if (name.isEmpty) continue;
 
-            var path = folder['path']?.toString() ?? '/$name';
+            final path = folder['path']?.toString() ?? '/$name';
 
             logger.d('UGreenApi: 发现共享文件夹: $name => $path');
             items.add(UGreenFileInfo(

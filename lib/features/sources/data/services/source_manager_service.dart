@@ -102,7 +102,7 @@ class SourceManagerService {
     if (error is PlatformException) {
       // Keychain entitlement 错误 (-34018)
       if (error.code == 'Unexpected security result code' ||
-          error.message?.contains('-34018') == true) {
+          (error.message?.contains('-34018') ?? false)) {
         logger.w(
           'SourceManagerService: 安全存储不可用 ($operation) - '
           '可能缺少 Keychain entitlement 权限，凭证保存功能已禁用',
@@ -580,7 +580,6 @@ class SourceManagerService {
           connection = await connect(
             source,
             password: credential.password,
-            saveCredential: true,
           ).timeout(timeout, onTimeout: () {
             logger.w('SourceManagerService: ${source.name} 连接超时 (第 $attempt 次)');
             return SourceConnection(

@@ -46,7 +46,6 @@ abstract final class AppTheme {
   // Color Schemes
   static const ColorScheme _lightColorScheme = ColorScheme.light(
     primary: AppColors.primary,
-    onPrimary: Colors.white,
     primaryContainer: AppColors.primaryLight,
     onPrimaryContainer: AppColors.primaryDark,
     secondary: AppColors.secondary,
@@ -58,8 +57,6 @@ abstract final class AppTheme {
     tertiaryContainer: AppColors.tertiaryLight,
     onTertiaryContainer: AppColors.tertiaryDark,
     error: AppColors.error,
-    onError: Colors.white,
-    surface: AppColors.lightSurface,
     onSurface: AppColors.lightOnSurface,
     surfaceContainerHighest: AppColors.lightSurfaceVariant,
     onSurfaceVariant: AppColors.lightOnSurfaceVariant,

@@ -25,7 +25,7 @@ class AudioTrackSelector extends ConsumerWidget {
     final audioTracks = playerNotifier.audioTracks;
     final currentTrack = playerNotifier.currentAudioTrack;
 
-    return Container(
+    return DecoratedBox(
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
@@ -183,7 +183,7 @@ class AudioTrackSelector extends ConsumerWidget {
   }
 
   _TrackInfo _getTrackInfo(AudioTrack track) {
-    String title = track.title ?? '音轨 ${track.id}';
+    final title = track.title ?? '音轨 ${track.id}';
     String? subtitle;
 
     // 解析语言

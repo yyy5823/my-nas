@@ -368,7 +368,6 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
             await ref.read(activeConnectionsProvider.notifier).connect(
                   widget.source,
                   password: password,
-                  saveCredential: true,
                 );
           }
         } else {
@@ -376,7 +375,6 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
           await ref.read(activeConnectionsProvider.notifier).connect(
                 widget.source,
                 password: credential.password,
-                saveCredential: true,
               );
         }
       }
@@ -414,7 +412,7 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
 
   Future<_TwoFAResult?> _show2FADialog() async {
     final controller = TextEditingController();
-    bool rememberDevice = widget.source.rememberDevice;
+    var rememberDevice = widget.source.rememberDevice;
 
     return showDialog<_TwoFAResult>(
       context: context,
@@ -545,7 +543,7 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
       ),
     );
 
-    if (confirm == true && mounted) {
+    if ((confirm ?? false) && mounted) {
       try {
         await ref.read(sourcesProvider.notifier).removeSource(widget.source.id);
         if (mounted) {

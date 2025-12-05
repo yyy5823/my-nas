@@ -39,7 +39,7 @@ class RecommendationsSection extends ConsumerWidget {
           child: Center(child: CircularProgressIndicator()),
         ),
       ),
-      error: (_, __) => const SizedBox.shrink(),
+      error: (_, _) => const SizedBox.shrink(),
       data: (recommendations) {
         if (recommendations.isEmpty) return const SizedBox.shrink();
 
@@ -116,7 +116,7 @@ class SimilarContentSection extends ConsumerWidget {
 
     return similarAsync.when(
       loading: () => const SizedBox.shrink(),
-      error: (_, __) => const SizedBox.shrink(),
+      error: (_, _) => const SizedBox.shrink(),
       data: (similar) {
         if (similar.isEmpty) return const SizedBox.shrink();
 
@@ -199,7 +199,7 @@ class _RecommendationCardState extends State<_RecommendationCard> {
               children: [
                 // 海报
                 Expanded(
-                  child: Container(
+                  child: DecoratedBox(
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(8),
                       boxShadow: [
@@ -221,7 +221,7 @@ class _RecommendationCardState extends State<_RecommendationCard> {
                                   imageUrl: widget.item.posterUrl,
                                   fit: BoxFit.cover,
                                   placeholder: (_) => _buildPlaceholder(isDark),
-                                  errorWidget: (_, __) => _buildPlaceholder(isDark),
+                                  errorWidget: (_, _) => _buildPlaceholder(isDark),
                                 )
                               : _buildPlaceholder(isDark),
                           // 渐变遮罩

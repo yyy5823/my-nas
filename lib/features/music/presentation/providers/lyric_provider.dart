@@ -58,7 +58,7 @@ class LyricNotifier extends StateNotifier<LyricState> {
   /// 加载歌词
   /// 优先从 .lrc 文件加载，如果没有则尝试从音频文件提取嵌入歌词
   Future<void> loadLyrics(MusicItem music) async {
-    state = state.copyWith(isLoading: true, error: null);
+    state = state.copyWith(isLoading: true);
 
     try {
       // 首先检查是否有已提取的嵌入歌词
@@ -117,7 +117,6 @@ class LyricNotifier extends StateNotifier<LyricState> {
       final metadata = await MusicMetadataService.instance.extractFromNasFile(
         connection.adapter.fileSystem,
         music.path,
-        skipLyrics: false,
       );
 
       if (metadata != null && metadata.hasLyrics) {

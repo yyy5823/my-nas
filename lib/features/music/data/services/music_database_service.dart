@@ -385,7 +385,7 @@ class MusicDatabaseService {
       _tableMetadata,
       where: '$_colFilePath LIKE ?',
       whereArgs: ['$folderPath/%'],
-      orderBy: '$_colFileName',
+      orderBy: _colFileName,
       limit: limit,
       offset: offset,
     );
@@ -463,7 +463,7 @@ class MusicDatabaseService {
     ''');
 
     return results
-        .map((r) => (artist: r['artist'] as String, count: r['count'] as int))
+        .map((r) => (artist: r['artist']! as String, count: r['count']! as int))
         .toList();
   }
 
@@ -505,7 +505,7 @@ class MusicDatabaseService {
     ''');
 
     return results
-        .map((r) => (year: r['year'] as int, count: r['count'] as int))
+        .map((r) => (year: r['year']! as int, count: r['count']! as int))
         .toList();
   }
 
@@ -609,7 +609,7 @@ class MusicDatabaseService {
   Future<int> deleteBySourceId(String sourceId) async {
     if (!_initialized) await init();
 
-    return await _db!.delete(
+    return _db!.delete(
       _tableMetadata,
       where: '$_colSourceId = ?',
       whereArgs: [sourceId],

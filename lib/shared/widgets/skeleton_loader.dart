@@ -54,8 +54,6 @@ class _SkeletonLoaderState extends State<SkeletonLoader>
       animation: _animation,
       builder: (context, child) => ShaderMask(
           shaderCallback: (bounds) => LinearGradient(
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight,
               colors: [
                 baseColor,
                 highlightColor,

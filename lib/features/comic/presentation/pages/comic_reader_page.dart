@@ -474,7 +474,7 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
       return Image.memory(
         page.bytes!,
         fit: fit,
-        errorBuilder: (_, __, ___) => _buildErrorPlaceholder(),
+        errorBuilder: (_, _, _) => _buildErrorPlaceholder(),
       );
     } else if (page.url != null) {
       return Image.network(
@@ -486,7 +486,7 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
             child: CircularProgressIndicator(color: Colors.white54),
           );
         },
-        errorBuilder: (_, __, ___) => _buildErrorPlaceholder(),
+        errorBuilder: (_, _, _) => _buildErrorPlaceholder(),
       );
     }
     return _buildErrorPlaceholder();

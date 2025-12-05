@@ -163,7 +163,6 @@ class _VideoGestureControllerState extends State<VideoGestureController> {
           _state = _state.copyWith(brightness: newBrightness);
         });
         widget.onBrightnessChange?.call(newBrightness);
-        break;
 
       case GestureType.volume:
         final newVolume = (_startVolume - dy * _verticalSensitivity).clamp(0.0, 1.0);
@@ -171,7 +170,6 @@ class _VideoGestureControllerState extends State<VideoGestureController> {
           _state = _state.copyWith(volume: newVolume);
         });
         widget.onVolumeChange(newVolume);
-        break;
 
       case GestureType.seek:
         final seekSeconds = (dx * _horizontalSensitivity / 10).round();
@@ -189,7 +187,6 @@ class _VideoGestureControllerState extends State<VideoGestureController> {
             seekDelta: seekDelta,
           );
         });
-        break;
 
       case GestureType.none:
         break;

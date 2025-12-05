@@ -282,7 +282,7 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
       });
     } on Exception catch (e) {
       logger.e('PhotoListNotifier: 初始化失败', e);
-      state = PhotoListLoaded(totalCount: 0, fromCache: false);
+      state = PhotoListLoaded(totalCount: 0);
     }
   }
 
@@ -685,7 +685,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
                   message: message,
                   onRetry: () => ref.read(photoListProvider.notifier).loadPhotos(),
                 ),
-              PhotoListLoaded loaded => loaded.filteredPhotos.isEmpty
+              final PhotoListLoaded loaded => loaded.filteredPhotos.isEmpty
                   ? _buildEmptyState(context, ref, isDark)
                   : _buildPhotoContent(context, ref, loaded, isDark),
             },
@@ -1222,7 +1222,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 32),
-            Container(
+            DecoratedBox(
               decoration: BoxDecoration(
                 gradient: AppColors.primaryGradient,
                 borderRadius: BorderRadius.circular(16),

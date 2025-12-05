@@ -348,7 +348,7 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
     );
   }
 
-  Widget _buildTopBar(BuildContext context, PhotoItem photo) => Container(
+  Widget _buildTopBar(BuildContext context, PhotoItem photo) => DecoratedBox(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -409,7 +409,7 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
       ),
     );
 
-  Widget _buildBottomBar(BuildContext context, PhotoItem photo) => Container(
+  Widget _buildBottomBar(BuildContext context, PhotoItem photo) => DecoratedBox(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.bottomCenter,
@@ -627,7 +627,7 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
     // 显示下载进度对话框
     final dialogCompleter = Completer<void>();
 
-    showDialog<void>(
+    await showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => PopScope(
@@ -639,7 +639,7 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
             children: [
               ValueListenableBuilder<double>(
                 valueListenable: progressNotifier,
-                builder: (_, progress, __) => Column(
+                builder: (_, progress, _) => Column(
                   children: [
                     CircularProgressIndicator(
                       value: progress > 0 ? progress : null,
@@ -751,7 +751,7 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
     final isLocalFile = url.startsWith('file://');
 
     if (!isLocalFile) {
-      showDialog<void>(
+      await showDialog<void>(
         context: context,
         barrierDismissible: false,
         builder: (dialogContext) => PopScope(
@@ -763,7 +763,7 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
               children: [
                 ValueListenableBuilder<double>(
                   valueListenable: progressNotifier,
-                  builder: (_, progress, __) => Column(
+                  builder: (_, progress, _) => Column(
                     children: [
                       CircularProgressIndicator(
                         value: progress > 0 ? progress : null,
@@ -1272,7 +1272,7 @@ class _PhotoPageState extends State<_PhotoPage> {
             return _buildImageFromUrl(
               url: widget.photo.thumbnailUrl!,
               fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) => _buildErrorWidget('图片加载失败'),
+              errorBuilder: (_, _, _) => _buildErrorWidget('图片加载失败'),
             );
           }
           return _buildErrorWidget(error.toString());
@@ -1288,7 +1288,7 @@ class _PhotoPageState extends State<_PhotoPage> {
           _buildImageFromUrl(
             url: widget.photo.thumbnailUrl!,
             fit: BoxFit.contain,
-            errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+            errorBuilder: (_, _, _) => const SizedBox.shrink(),
           ),
           Container(
             padding: const EdgeInsets.all(12),
@@ -1316,7 +1316,7 @@ class _PhotoPageState extends State<_PhotoPage> {
             child: CircularProgressIndicator(color: Colors.white),
           );
         },
-        errorBuilder: (_, error, __) => _buildErrorWidget(error.toString()),
+        errorBuilder: (_, error, _) => _buildErrorWidget(error.toString()),
       );
     }
 

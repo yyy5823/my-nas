@@ -181,8 +181,8 @@ class _HeroBannerItem extends StatelessWidget {
             CachedNetworkImage(
               imageUrl: imageUrl,
               fit: BoxFit.cover,
-              placeholder: (_, __) => _buildPlaceholder(),
-              errorWidget: (_, __, ___) => _buildPlaceholder(),
+              placeholder: (_, _) => _buildPlaceholder(),
+              errorWidget: (_, _, _) => _buildPlaceholder(),
             )
           else
             _buildPlaceholder(),
@@ -207,8 +207,6 @@ class _HeroBannerItem extends StatelessWidget {
           Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
                 colors: [
                   Colors.black.withValues(alpha: 0.7),
                   Colors.transparent,

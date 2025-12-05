@@ -30,8 +30,6 @@ class FnOSAdapter implements NasAdapter {
         type: NasAdapterType.fnos,
         name: '飞牛 fnOS',
         version: AppConstants.appVersion,
-        supportsMediaService: false,
-        supportsToolsService: false,
       );
 
   @override

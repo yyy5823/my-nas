@@ -150,7 +150,6 @@ class _ElegantSegmentControlState extends State<ElegantSegmentControl>
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
                             Icon(
                               item.icon,

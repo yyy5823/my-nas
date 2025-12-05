@@ -81,10 +81,10 @@ class MusicItem {
   }
 
   /// 显示的艺术家名称
-  String get displayArtist => artist?.isNotEmpty == true ? artist! : '未知艺术家';
+  String get displayArtist => artist?.isNotEmpty ?? false ? artist! : '未知艺术家';
 
   /// 显示的专辑名称
-  String get displayAlbum => album?.isNotEmpty == true ? album! : '未知专辑';
+  String get displayAlbum => album?.isNotEmpty ?? false ? album! : '未知专辑';
 
   /// 显示标题（优先使用元数据标题，否则从文件名解析）
   String get displayTitle {

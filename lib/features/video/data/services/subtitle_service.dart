@@ -180,7 +180,7 @@ class SubtitleService {
 
     // 移除视频基础名后剩余的部分
     final subtitleBaseName = _getBaseName(subtitleName);
-    String remaining = subtitleBaseName;
+    var remaining = subtitleBaseName;
 
     if (subtitleBaseName.startsWith(videoBaseName)) {
       remaining = subtitleBaseName.substring(videoBaseName.length);

@@ -334,10 +334,6 @@ class VideoThumbnailService {
       // screenshot() 需要有渲染输出才能工作
       controller = VideoController(
         player,
-        configuration: const VideoControllerConfiguration(
-          // 启用硬件加速
-          enableHardwareAcceleration: true,
-        ),
       );
 
       // 打开视频但不播放
@@ -386,7 +382,7 @@ class VideoThumbnailService {
       await Future<void>.delayed(const Duration(milliseconds: 300));
 
       // 截取当前帧（JPEG 格式）
-      final screenshot = await player.screenshot(format: 'image/jpeg');
+      final screenshot = await player.screenshot();
 
       if (screenshot == null || screenshot.isEmpty) {
         logger.w('VideoThumbnailService: screenshot 返回空数据');
@@ -549,7 +545,7 @@ class VideoThumbnailService {
   /// 获取缓存大小（字节）
   Future<int> getCacheSize() async {
     if (_cacheDir == null || !await _cacheDir!.exists()) return 0;
-    int totalSize = 0;
+    var totalSize = 0;
     try {
       await for (final entity in _cacheDir!.list()) {
         if (entity is File) {

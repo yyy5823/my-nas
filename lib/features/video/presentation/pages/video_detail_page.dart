@@ -87,7 +87,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
   }) {
     // 获取 TMDB 详情以获取 tagline
     String? tagline;
-    String? backdropUrl = widget.metadata.backdropUrl;
+    var backdropUrl = widget.metadata.backdropUrl;
 
     if (_hasTmdbId) {
       if (_isTvShow) {
@@ -177,7 +177,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         height: 200,
         child: Center(child: CircularProgressIndicator()),
       ),
-      error: (_, __) => const SizedBox.shrink(),
+      error: (_, _) => const SizedBox.shrink(),
       data: (tvDetail) {
         if (tvDetail == null || tvDetail.seasons.isEmpty) {
           return const SizedBox.shrink();
@@ -237,7 +237,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       final tvDetailAsync = ref.watch(tvDetailProvider(widget.metadata.tmdbId!));
       return tvDetailAsync.when(
         loading: () => const SizedBox.shrink(),
-        error: (_, __) => const SizedBox.shrink(),
+        error: (_, _) => const SizedBox.shrink(),
         data: (tvDetail) {
           if (tvDetail == null || tvDetail.cast.isEmpty) {
             return const SizedBox.shrink();
@@ -252,7 +252,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       final movieDetailAsync = ref.watch(movieDetailProvider(widget.metadata.tmdbId!));
       return movieDetailAsync.when(
         loading: () => const SizedBox.shrink(),
-        error: (_, __) => const SizedBox.shrink(),
+        error: (_, _) => const SizedBox.shrink(),
         data: (movieDetail) {
           if (movieDetail == null || movieDetail.cast.isEmpty) {
             return const SizedBox.shrink();

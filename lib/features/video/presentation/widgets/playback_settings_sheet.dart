@@ -28,7 +28,7 @@ class PlaybackSettingsSheet extends ConsumerWidget {
       initialChildSize: 0.6,
       minChildSize: 0.4,
       maxChildSize: 0.8,
-      builder: (context, scrollController) => Container(
+      builder: (context, scrollController) => DecoratedBox(
         decoration: BoxDecoration(
           color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
@@ -120,7 +120,7 @@ class PlaybackSettingsSheet extends ConsumerWidget {
                           .map(
                             (s) => ButtonSegment(
                               value: s,
-                              label: Text('${s}秒'),
+                              label: Text('$s秒'),
                             ),
                           )
                           .toList(),

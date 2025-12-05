@@ -29,7 +29,6 @@ class QnapAdapter implements NasAdapter {
         name: 'QNAP NAS',
         version: AppConstants.appVersion,
         supportsMediaService: true,
-        supportsToolsService: false,
       );
 
   @override

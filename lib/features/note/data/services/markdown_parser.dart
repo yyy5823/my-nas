@@ -195,7 +195,7 @@ class MarkdownParser {
   /// 提取笔记摘要（前 N 个字符）
   static String extractSummary(String content, {int maxLength = 100}) {
     // 移除 Markdown 标记
-    var text = content
+    final text = content
         .replaceAll(RegExp(r'^#+\s*', multiLine: true), '') // 标题
         .replaceAll(RegExp(r'\*\*(.+?)\*\*'), r'$1') // 粗体
         .replaceAll(RegExp(r'\*(.+?)\*'), r'$1') // 斜体

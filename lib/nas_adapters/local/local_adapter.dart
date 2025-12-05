@@ -34,8 +34,6 @@ class LocalAdapter implements NasAdapter {
         type: NasAdapterType.local,
         name: '本地存储',
         version: AppConstants.appVersion,
-        supportsMediaService: false,
-        supportsToolsService: false,
       );
 
   @override

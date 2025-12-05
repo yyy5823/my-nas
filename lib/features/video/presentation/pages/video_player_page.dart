@@ -57,11 +57,11 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
       // 缓存源信息（用于 dispose 时更新缩略图）
       await _cacheSourceInfo();
       // 开始播放
-      _playerNotifier?.play(
+      await _playerNotifier?.play(
             widget.video,
             startPosition: widget.video.lastPosition,
           );
-      _loadSubtitles();
+      await _loadSubtitles();
     });
     _startHideControlsTimer();
   }

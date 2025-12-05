@@ -25,8 +25,6 @@ class SmbAdapter implements NasAdapter {
         type: NasAdapterType.smb,
         name: 'SMB/CIFS',
         version: AppConstants.appVersion,
-        supportsMediaService: false,
-        supportsToolsService: false,
       );
 
   @override

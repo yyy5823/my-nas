@@ -182,7 +182,7 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
       });
     } on Exception catch (e) {
       logger.e('ComicListNotifier: 初始化失败', e);
-      state = ComicListLoaded(comics: [], fromCache: false);
+      state = ComicListLoaded(comics: []);
     }
   }
 
@@ -433,7 +433,7 @@ class _ComicListContentState extends ConsumerState<ComicListContent> {
         ),
       ComicListLoaded(:final filteredComics) when filteredComics.isEmpty =>
         _buildEmptyState(context, ref, isDark),
-      ComicListLoaded loaded => _buildComicGrid(context, loaded, isDark),
+      final ComicListLoaded loaded => _buildComicGrid(context, loaded, isDark),
     };
   }
 
@@ -693,7 +693,7 @@ class _ComicCard extends ConsumerWidget {
           return Image.network(
             snapshot.data!,
             fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => _buildPlaceholder(),
+            errorBuilder: (_, _, _) => _buildPlaceholder(),
           );
         }
         return _buildPlaceholder();

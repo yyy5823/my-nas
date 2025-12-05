@@ -148,7 +148,7 @@ class VideoHistoryService {
 
   /// 获取继续观看列表（有进度且未看完的视频）- 优化：批量获取进度
   Future<List<VideoHistoryItem>> getContinueWatching({int limit = 10}) async {
-    final history = await getHistory(limit: 50);
+    final history = await getHistory();
     if (history.isEmpty) return [];
 
     logger.d('VideoHistoryService: 获取继续观看, 历史记录数: ${history.length}');
@@ -233,12 +233,11 @@ class VideoHistoryItem {
     required this.videoPath,
     required this.videoName,
     required this.videoUrl,
-    this.sourceId,
+    required this.watchedAt, this.sourceId,
     this.thumbnailUrl,
     this.size = 0,
     this.lastPosition,
     this.duration,
-    required this.watchedAt,
   });
 
   final String videoPath;

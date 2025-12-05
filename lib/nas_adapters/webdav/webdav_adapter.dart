@@ -22,8 +22,6 @@ class WebDavAdapter implements NasAdapter {
         type: NasAdapterType.webdav,
         name: 'WebDAV',
         version: AppConstants.appVersion,
-        supportsMediaService: false,
-        supportsToolsService: false,
       );
 
   @override

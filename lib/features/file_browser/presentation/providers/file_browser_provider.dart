@@ -158,9 +158,9 @@ class FileListNotifier extends StateNotifier<FileListState> {
 
     if (isWindowsPath) {
       // Windows 路径处理
-      final normalized = currentPath.replaceAll('/', '\\');
+      final normalized = currentPath.replaceAll('/', r'\');
       // 移除末尾的 \
-      final trimmed = normalized.endsWith('\\')
+      final trimmed = normalized.endsWith(r'\')
           ? normalized.substring(0, normalized.length - 1)
           : normalized;
 
@@ -169,7 +169,7 @@ class FileListNotifier extends StateNotifier<FileListState> {
         return '/';
       }
 
-      final lastSep = trimmed.lastIndexOf('\\');
+      final lastSep = trimmed.lastIndexOf(r'\');
       if (lastSep <= 2) {
         // 返回驱动器根目录
         return '${trimmed.substring(0, 2)}\\';
@@ -215,8 +215,8 @@ class FileListNotifier extends StateNotifier<FileListState> {
 
     String newPath;
     if (isWindowsPath) {
-      final normalized = oldPath.replaceAll('/', '\\');
-      final lastSep = normalized.lastIndexOf('\\');
+      final normalized = oldPath.replaceAll('/', r'\');
+      final lastSep = normalized.lastIndexOf(r'\');
       final parentPath = lastSep > 0 ? normalized.substring(0, lastSep) : normalized;
       newPath = '$parentPath\\$newName';
     } else {

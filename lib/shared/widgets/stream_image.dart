@@ -328,8 +328,8 @@ class _StreamImageState extends State<StreamImage> {
         fit: widget.fit,
         width: widget.width,
         height: widget.height,
-        placeholder: (_, __) => widget.placeholder ?? _buildPlaceholder(),
-        errorWidget: (_, __, ___) => widget.errorWidget ?? _buildError(),
+        placeholder: (_, _) => widget.placeholder ?? _buildPlaceholder(),
+        errorWidget: (_, _, _) => widget.errorWidget ?? _buildError(),
       );
     }
 
@@ -343,7 +343,7 @@ class _StreamImageState extends State<StreamImage> {
           fit: widget.fit,
           width: widget.width,
           height: widget.height,
-          errorBuilder: (_, __, ___) => widget.errorWidget ?? _buildError(),
+          errorBuilder: (_, _, _) => widget.errorWidget ?? _buildError(),
         );
       }
     }
@@ -370,7 +370,7 @@ class _StreamImageState extends State<StreamImage> {
       fit: widget.fit,
       width: widget.width,
       height: widget.height,
-      errorBuilder: (_, __, ___) => widget.errorWidget ?? _buildError(),
+      errorBuilder: (_, _, _) => widget.errorWidget ?? _buildError(),
     );
   }
 

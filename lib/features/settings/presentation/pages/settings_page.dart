@@ -31,7 +31,6 @@ class SettingsPage extends ConsumerWidget {
           // 自定义 AppBar
           SliverAppBar(
             expandedHeight: 80,
-            floating: false,
             pinned: true,
             backgroundColor: isDark ? AppColors.darkSurface : null,
             flexibleSpace: FlexibleSpaceBar(
@@ -400,7 +399,7 @@ class SettingsPage extends ConsumerWidget {
       borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: Container(
+        child: DecoratedBox(
           decoration: BoxDecoration(
             color: isDark
                 ? AppColors.darkSurface.withValues(alpha: 0.95)

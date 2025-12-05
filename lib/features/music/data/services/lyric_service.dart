@@ -125,7 +125,7 @@ class LyricService {
     try {
       final client = HttpClient()
       // 允许自签名证书
-      ..badCertificateCallback = (_, __, ___) => true;
+      ..badCertificateCallback = (_, _, _) => true;
 
       final request = await client.getUrl(Uri.parse(url));
       final response = await request.close();
@@ -171,7 +171,7 @@ class LyricService {
 
     // 为纯文本歌词生成等间距时间点（假设每行 4 秒）
     const secondsPerLine = 4;
-    for (int i = 0; i < textLines.length; i++) {
+    for (var i = 0; i < textLines.length; i++) {
       lines.add(LyricLine(
         time: Duration(seconds: i * secondsPerLine),
         text: textLines[i].trim(),
@@ -219,7 +219,7 @@ class LyricService {
       if (timeMatches.isEmpty) continue;
 
       // 获取歌词文本（去除所有时间标签）
-      String text = trimmed;
+      var text = trimmed;
       for (final match in timeMatches.reversed) {
         text = text.replaceRange(match.start, match.end, '');
       }

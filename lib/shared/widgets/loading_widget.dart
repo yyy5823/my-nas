@@ -51,7 +51,6 @@ class _LoadingWidgetState extends State<LoadingWidget>
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: SweepGradient(
-                    startAngle: 0,
                     endAngle: 3.14 * 2,
                     transform: GradientRotation(_controller.value * 3.14 * 2),
                     colors: [

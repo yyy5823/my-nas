@@ -275,7 +275,6 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
             borderRadius: BorderRadius.circular(24),
             border: Border.all(
               color: AppColors.glassStroke,
-              width: 1,
             ),
           ),
           child: Form(
@@ -387,8 +386,7 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
   Widget _buildTextField({
     required TextEditingController controller,
     required String label,
-    String? hint,
-    required IconData icon,
+    required IconData icon, String? hint,
     bool enabled = true,
     bool obscureText = false,
     Widget? suffixIcon,

@@ -232,7 +232,7 @@ class VideoMetadataService {
     );
 
     // 优先尝试从 NFO 文件获取信息
-    bool hasNfoData = false;
+    var hasNfoData = false;
     if (fileSystem != null) {
       hasNfoData = await _fetchFromNfo(metadata, fileSystem);
     }
@@ -529,7 +529,6 @@ class VideoMetadataService {
       final thumbnailPath = await _thumbnailService.generateThumbnail(
         videoUrl: videoUrl,
         videoPath: videoPath,
-        timeMs: 5000,
       );
 
       if (thumbnailPath != null) {

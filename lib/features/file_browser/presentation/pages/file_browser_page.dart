@@ -402,8 +402,8 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
     if (isWindowsPath) {
       // Windows 路径处理：C:\Users\Documents -> [(C:, C:\), (Users, C:\Users), ...]
       // 标准化分隔符为 \
-      final normalized = currentPath.replaceAll('/', '\\');
-      final parts = normalized.split('\\').where((s) => s.isNotEmpty).toList();
+      final normalized = currentPath.replaceAll('/', r'\');
+      final parts = normalized.split(r'\').where((s) => s.isNotEmpty).toList();
 
       for (var i = 0; i < parts.length; i++) {
         String path;
@@ -411,7 +411,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
           // 驱动器根目录
           path = '${parts[0]}\\';
         } else {
-          path = '${parts[0]}\\${parts.sublist(1, i + 1).join('\\')}';
+          path = '${parts[0]}\\${parts.sublist(1, i + 1).join(r'\')}';
         }
         result.add((parts[i], path));
       }
@@ -547,7 +547,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 32),
-            Container(
+            DecoratedBox(
               decoration: BoxDecoration(
                 gradient: AppColors.primaryGradient,
                 borderRadius: BorderRadius.circular(16),
@@ -626,7 +626,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
         ),
       );
 
-  Widget _buildFab(bool isDark) => Container(
+  Widget _buildFab(bool isDark) => DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
         gradient: AppColors.primaryGradient,
@@ -850,7 +850,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
               ),
             ),
           ),
-          Container(
+          DecoratedBox(
             decoration: BoxDecoration(
               gradient: AppColors.primaryGradient,
               borderRadius: BorderRadius.circular(12),
@@ -1108,7 +1108,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
               ),
             ),
           ),
-          Container(
+          DecoratedBox(
             decoration: BoxDecoration(
               gradient: AppColors.primaryGradient,
               borderRadius: BorderRadius.circular(12),
@@ -1170,7 +1170,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
               ),
             ),
           ),
-          Container(
+          DecoratedBox(
             decoration: BoxDecoration(
               gradient: const LinearGradient(
                 colors: [AppColors.error, AppColors.errorDark],
@@ -1246,7 +1246,6 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
     try {
       final result = await fp.FilePicker.platform.pickFiles(
         allowMultiple: true,
-        type: fp.FileType.any,
       );
 
       if (result == null || result.files.isEmpty) return;
@@ -1663,7 +1662,7 @@ class _DestinationBrowserState extends ConsumerState<_DestinationBrowser> {
       }
 
       final files = await connection.adapter.fileSystem.listDirectory(_currentPath);
-      final dirs = files.where((FileItem f) => f.isDirectory).toList();
+      final dirs = files.where((f) => f.isDirectory).toList();
 
       setState(() {
         _directories = dirs;

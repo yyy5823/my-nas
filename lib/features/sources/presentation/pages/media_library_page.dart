@@ -357,7 +357,6 @@ class _PathCard extends ConsumerWidget {
                 await ref
                     .read(mediaLibraryConfigProvider.notifier)
                     .togglePath(mediaType, path.id, !path.isEnabled);
-                break;
               case 'delete':
                 final confirm = await showDialog<bool>(
                   context: context,
@@ -381,7 +380,6 @@ class _PathCard extends ConsumerWidget {
                       .read(mediaLibraryConfigProvider.notifier)
                       .removePath(mediaType, path.id);
                 }
-                break;
             }
           },
           itemBuilder: (context) => [

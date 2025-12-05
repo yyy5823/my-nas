@@ -35,8 +35,6 @@ class UGreenAdapter implements NasAdapter {
         type: NasAdapterType.ugreen,
         name: '绿联 UGREEN',
         version: AppConstants.appVersion,
-        supportsMediaService: false,
-        supportsToolsService: false,
       );
 
   @override

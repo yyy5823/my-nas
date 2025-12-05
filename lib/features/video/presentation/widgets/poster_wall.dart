@@ -162,7 +162,7 @@ class _PosterCardState extends State<PosterCard> with SingleTickerProviderStateM
         child: GestureDetector(
           onTap: widget.onTap,
           onLongPress: widget.onLongPress,
-          child: Container(
+          child: DecoratedBox(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
               boxShadow: [
@@ -182,9 +182,8 @@ class _PosterCardState extends State<PosterCard> with SingleTickerProviderStateM
                   if (hasPoster)
                     AdaptiveImage(
                       imageUrl: displayPoster,
-                      fit: BoxFit.cover,
                       placeholder: (_) => _buildPlaceholder(isDark),
-                      errorWidget: (_, __) => _buildPlaceholder(isDark),
+                      errorWidget: (_, _) => _buildPlaceholder(isDark),
                     )
                   else
                     _buildPlaceholder(isDark),
@@ -455,7 +454,7 @@ class PosterRow extends StatelessWidget {
                       children: [
                         // 海报
                         Expanded(
-                          child: Container(
+                          child: DecoratedBox(
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(8),
                               boxShadow: [
@@ -474,7 +473,7 @@ class PosterRow extends StatelessWidget {
                                       fit: BoxFit.cover,
                                       width: itemWidth,
                                       placeholder: (_) => _buildMiniPlaceholder(isDark, metadata),
-                                      errorWidget: (_, __) => _buildMiniPlaceholder(isDark, metadata),
+                                      errorWidget: (_, _) => _buildMiniPlaceholder(isDark, metadata),
                                     )
                                   : _buildMiniPlaceholder(isDark, metadata),
                             ),

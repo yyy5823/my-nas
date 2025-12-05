@@ -751,7 +751,7 @@ class TmdbEpisode {
   final int runtime;
   final double voteAverage;
 
-  String get stillUrl => TmdbService.getImageUrl(stillPath, size: ImageSize.w500);
+  String get stillUrl => TmdbService.getImageUrl(stillPath);
 }
 
 /// 类型

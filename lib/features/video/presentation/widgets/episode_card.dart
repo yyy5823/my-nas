@@ -74,7 +74,7 @@ class _EpisodeCardState extends State<EpisodeCard> {
                                 imageUrl: widget.episode.stillUrl,
                                 fit: BoxFit.cover,
                                 placeholder: (_) => _buildPlaceholder(isDark),
-                                errorWidget: (_, __) => _buildPlaceholder(isDark),
+                                errorWidget: (_, _) => _buildPlaceholder(isDark),
                               )
                             : _buildPlaceholder(isDark),
                       ),
@@ -82,7 +82,7 @@ class _EpisodeCardState extends State<EpisodeCard> {
                     // 播放图标 (悬停或可播放时显示)
                     if (widget.isAvailable && _isHovered)
                       Positioned.fill(
-                        child: Container(
+                        child: DecoratedBox(
                           decoration: BoxDecoration(
                             borderRadius: const BorderRadius.vertical(
                               top: Radius.circular(12),
@@ -262,11 +262,11 @@ class _EpisodeCardState extends State<EpisodeCard> {
 
   String _formatRuntime(int minutes) {
     if (minutes < 60) {
-      return '${minutes}分钟';
+      return '$minutes分钟';
     }
     final hours = minutes ~/ 60;
     final mins = minutes % 60;
-    return mins > 0 ? '${hours}小时${mins}分钟' : '${hours}小时';
+    return mins > 0 ? '$hours小时$mins分钟' : '$hours小时';
   }
 }
 
@@ -313,7 +313,7 @@ class CompactEpisodeCard extends StatelessWidget {
                               imageUrl: episode.stillUrl,
                               fit: BoxFit.cover,
                               placeholder: (_) => _buildMiniPlaceholder(isDark),
-                              errorWidget: (_, __) => _buildMiniPlaceholder(isDark),
+                              errorWidget: (_, _) => _buildMiniPlaceholder(isDark),
                             )
                           : _buildMiniPlaceholder(isDark),
                     ),

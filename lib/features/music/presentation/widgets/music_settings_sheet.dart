@@ -172,7 +172,7 @@ class MusicSettingsSheet extends ConsumerWidget {
                       children: availableCrossfadeDurations.map((duration) {
                         final isSelected = duration == settings.crossfadeDuration;
                         return ChoiceChip(
-                          label: Text(duration == 0 ? '关闭' : '${duration}秒'),
+                          label: Text(duration == 0 ? '关闭' : '$duration秒'),
                           selected: isSelected,
                           onSelected: (_) => notifier.setCrossfadeDuration(duration),
                         );

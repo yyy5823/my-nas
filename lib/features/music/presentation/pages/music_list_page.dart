@@ -129,10 +129,11 @@ class MusicFileWithSource {
   }
 
   /// 获取封面文件（用于 Image.file）
+  /// 注意：不进行同步文件存在检查，避免阻塞 UI 线程
+  /// 使用时需配合 Image.file 的 errorBuilder 处理文件不存在的情况
   File? get coverFile {
     if (coverPath == null || coverPath!.isEmpty) return null;
-    final file = File(coverPath!);
-    return file.existsSync() ? file : null;
+    return File(coverPath!);
   }
 
   /// 格式化时长
@@ -175,6 +176,7 @@ class MusicFileWithSource {
     int? year,
     String? genre,
     String? coverBase64,
+    String? coverPath,
     bool? metadataExtracted,
   }) => MusicFileWithSource(
       file: file,
@@ -187,6 +189,7 @@ class MusicFileWithSource {
       year: year ?? this.year,
       genre: genre ?? this.genre,
       coverBase64: coverBase64 ?? this.coverBase64,
+      coverPath: coverPath ?? this.coverPath,
       metadataExtracted: metadataExtracted ?? this.metadataExtracted,
     );
 }
@@ -452,7 +455,7 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
       });
     } on Exception catch (e) {
       logger.e('MusicListNotifier: 初始化失败', e);
-      state = MusicListLoaded(totalCount: 0, fromCache: false);
+      state = MusicListLoaded(totalCount: 0);
     }
   }
 
@@ -911,7 +914,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
                 ),
               MusicListLoaded(:final filteredTracks) when filteredTracks.isEmpty =>
                 _buildEmptyState(context, ref, isDark),
-              MusicListLoaded loaded => _buildHomeContent(context, ref, loaded, isDark),
+              final MusicListLoaded loaded => _buildHomeContent(context, ref, loaded, isDark),
             },
           ),
           const MiniPlayer(),
@@ -2654,7 +2657,7 @@ class _AllSongsView extends ConsumerWidget {
           ),
           const SizedBox(width: 12),
           // 随机播放按钮
-          Container(
+          DecoratedBox(
             decoration: BoxDecoration(
               color: isDark
                   ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
@@ -2672,7 +2675,7 @@ class _AllSongsView extends ConsumerWidget {
           ),
           const SizedBox(width: 8),
           // 排序按钮
-          Container(
+          DecoratedBox(
             decoration: BoxDecoration(
               color: isDark
                   ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
@@ -3637,7 +3640,7 @@ class _AlbumCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) => GestureDetector(
       onTap: () => _showAlbumTracks(context, ref),
-      child: Container(
+      child: DecoratedBox(
         decoration: BoxDecoration(
           color: isDark ? AppColors.darkSurfaceVariant : Colors.white,
           borderRadius: BorderRadius.circular(16),
@@ -3654,7 +3657,7 @@ class _AlbumCard extends ConsumerWidget {
           children: [
             Expanded(
               flex: 3,
-              child: Container(
+              child: DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
@@ -4425,7 +4428,7 @@ class _RecentTrackTile extends ConsumerWidget {
             Uint8List.fromList(item.coverData!),
             fit: BoxFit.cover,
             gaplessPlayback: true,
-            errorBuilder: (_, __, ___) => _buildPlaceholder(isPlaying),
+            errorBuilder: (_, _, _) => _buildPlaceholder(isPlaying),
           ),
           if (isPlaying) _buildPlayingOverlay(),
         ],
@@ -4441,7 +4444,7 @@ class _RecentTrackTile extends ConsumerWidget {
             item.coverUrl!,
             fit: BoxFit.cover,
             gaplessPlayback: true,
-            errorBuilder: (_, __, ___) => _buildPlaceholder(isPlaying),
+            errorBuilder: (_, _, _) => _buildPlaceholder(isPlaying),
           ),
           if (isPlaying) _buildPlayingOverlay(),
         ],
@@ -4460,7 +4463,7 @@ class _RecentTrackTile extends ConsumerWidget {
         ),
       );
 
-  Widget _buildPlayingOverlay() => Container(
+  Widget _buildPlayingOverlay() => ColoredBox(
         color: Colors.black.withValues(alpha: 0.3),
         child: const Center(
           child: Icon(
@@ -5097,14 +5100,14 @@ class _ModernMusicTile extends ConsumerWidget {
               coverFile,
               fit: BoxFit.cover,
               gaplessPlayback: true,
-              errorBuilder: (_, __, ___) => _buildFallbackCover(title, isConnected),
+              errorBuilder: (_, _, _) => _buildFallbackCover(title, isConnected),
             )
           : coverData != null
               ? Image.memory(
                   Uint8List.fromList(coverData),
                   fit: BoxFit.cover,
                   gaplessPlayback: true,
-                  errorBuilder: (_, __, ___) => _buildFallbackCover(title, isConnected),
+                  errorBuilder: (_, _, _) => _buildFallbackCover(title, isConnected),
             )
           : _buildFallbackCover(title, isConnected),
     );
@@ -5254,11 +5257,19 @@ class _ModernMusicTile extends ConsumerWidget {
                         ? Image.file(
                             track.coverFile!,
                             fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) => Icon(
+                              Icons.music_note_rounded,
+                              color: isDark ? Colors.grey[600] : Colors.grey[400],
+                            ),
                           )
                         : track.coverData != null
                             ? Image.memory(
                                 Uint8List.fromList(track.coverData!),
                                 fit: BoxFit.cover,
+                                errorBuilder: (_, _, _) => Icon(
+                                  Icons.music_note_rounded,
+                                  color: isDark ? Colors.grey[600] : Colors.grey[400],
+                                ),
                               )
                             : Icon(
                                 Icons.music_note_rounded,

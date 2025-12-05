@@ -13,11 +13,6 @@ class AppLogger {
 
   final _logger = pkg_logger.Logger(
     printer: pkg_logger.PrettyPrinter(
-      methodCount: 2,
-      errorMethodCount: 8,
-      lineLength: 120,
-      colors: true,
-      printEmojis: true,
       dateTimeFormat: pkg_logger.DateTimeFormat.onlyTimeAndSinceStart,
     ),
   );

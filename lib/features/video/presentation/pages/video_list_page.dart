@@ -364,7 +364,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
                   message: message,
                   onRetry: () => ref.read(videoListProvider.notifier).reloadFromCache(),
                 ),
-              VideoListLoaded loaded => loaded.totalCount == 0
+              final VideoListLoaded loaded => loaded.totalCount == 0
                   ? _buildEmptyState(context, ref, loaded, isDark)
                   : _buildVideoContent(context, ref, loaded, isDark),
             },
@@ -380,7 +380,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     WidgetRef ref,
     bool isDark,
     VideoListState state,
-  ) => Container(
+  ) => DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -1151,7 +1151,7 @@ class _ContinueWatchingSection extends ConsumerWidget {
         );
       },
       loading: () => const SliverToBoxAdapter(child: SizedBox.shrink()),
-      error: (_, __) => const SliverToBoxAdapter(child: SizedBox.shrink()),
+      error: (_, _) => const SliverToBoxAdapter(child: SizedBox.shrink()),
     );
   }
 }
@@ -1211,7 +1211,7 @@ class _ContinueWatchingCard extends ConsumerWidget {
                                 imageUrl: posterUrl,
                                 fit: BoxFit.cover,
                                 placeholder: (_) => _buildThumbnailPlaceholder(),
-                                errorWidget: (_, __) => _buildThumbnailPlaceholder(),
+                                errorWidget: (_, _) => _buildThumbnailPlaceholder(),
                               )
                             : _buildThumbnailPlaceholder(),
                       ),
@@ -1353,7 +1353,7 @@ class _PartialVideoCard extends StatelessWidget {
                       imageUrl: video.thumbnailUrl!,
                       fit: BoxFit.cover,
                       placeholder: (_) => _buildPlaceholder(),
-                      errorWidget: (_, __) => _buildPlaceholder(),
+                      errorWidget: (_, _) => _buildPlaceholder(),
                     )
                   else
                     _buildPlaceholder(),
@@ -1491,7 +1491,7 @@ class _PosterCardState extends ConsumerState<_PosterCard> {
                               imageUrl: displayPoster,
                               fit: BoxFit.cover,
                               placeholder: (_) => _buildPlaceholder(),
-                              errorWidget: (_, __) => _buildPlaceholder(),
+                              errorWidget: (_, _) => _buildPlaceholder(),
                             )
                           else
                             _buildPlaceholder(),
@@ -2243,7 +2243,7 @@ class _VerticalPosterCardState extends ConsumerState<_VerticalPosterCard> {
                                   imageUrl: _posterUrl!,
                                   fit: BoxFit.cover,
                                   placeholder: (_) => _buildPlaceholder(),
-                                  errorWidget: (_, __) => _buildPlaceholder(),
+                                  errorWidget: (_, _) => _buildPlaceholder(),
                                 )
                               : _buildPlaceholder(),
                         ),
@@ -2514,7 +2514,7 @@ class _HorizontalVideoCardState extends ConsumerState<_HorizontalVideoCard> {
               children: [
                 // 视频缩略图（16:9 比例）
                 Expanded(
-                  child: Container(
+                  child: DecoratedBox(
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(10),
                       boxShadow: [
@@ -2536,9 +2536,8 @@ class _HorizontalVideoCardState extends ConsumerState<_HorizontalVideoCard> {
                                 ? AdaptiveImage(
                                     key: ValueKey(_posterUrl),
                                     imageUrl: _posterUrl!,
-                                    fit: BoxFit.cover,
                                     placeholder: (_) => _buildPlaceholder(),
-                                    errorWidget: (_, __) => _buildPlaceholder(),
+                                    errorWidget: (_, _) => _buildPlaceholder(),
                                   )
                                 : _buildPlaceholder(),
                           ),
@@ -3190,7 +3189,6 @@ class _CategoryFullPageState extends ConsumerState<_CategoryFullPage> {
       ),
       isScrollControlled: true,
       builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.5,
         minChildSize: 0.3,
         maxChildSize: 0.8,
         expand: false,

@@ -108,7 +108,7 @@ class EpubReaderNotifier extends StateNotifier<EpubReaderState> {
 
   Future<void> _loadEpub() async {
     try {
-      state = EpubReaderLoading(message: '加载中...');
+      state = EpubReaderLoading();
 
       final uri = Uri.parse(book.url);
       final tempDir = await getTemporaryDirectory();

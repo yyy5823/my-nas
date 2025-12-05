@@ -108,11 +108,14 @@ class QnapApi {
       },
     );
 
+    final data = response is Map<String, dynamic>
+        ? response
+        : <String, dynamic>{};
     return QnapSystemInfo(
-      hostname: response['hostname'] as String? ?? 'QNAP',
-      model: response['model'] as String?,
-      version: response['version'] as String?,
-      serial: response['serialNumber'] as String?,
+      hostname: data['hostname'] as String? ?? 'QNAP',
+      model: data['model'] as String?,
+      version: data['version'] as String?,
+      serial: data['serialNumber'] as String?,
     );
   }
 
