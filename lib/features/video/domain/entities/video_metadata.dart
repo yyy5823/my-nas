@@ -7,6 +7,24 @@ enum MediaCategory {
   unknown,
 }
 
+/// 刮削状态
+enum ScrapeStatus {
+  /// 未刮削（新扫描到的文件）
+  pending,
+
+  /// 刮削中
+  scraping,
+
+  /// 已刮削成功（成功获取TMDB数据）
+  completed,
+
+  /// 刮削失败（无匹配或API错误）
+  failed,
+
+  /// 已跳过（用户手动标记或不需要刮削）
+  skipped,
+}
+
 /// 视频元数据
 class VideoMetadata {
   VideoMetadata({
@@ -14,6 +32,7 @@ class VideoMetadata {
     required this.sourceId,
     required this.fileName,
     this.category = MediaCategory.unknown,
+    this.scrapeStatus = ScrapeStatus.pending,
     this.tmdbId,
     this.title,
     this.originalTitle,
@@ -32,6 +51,8 @@ class VideoMetadata {
     this.lastUpdated,
     this.thumbnailUrl,
     this.generatedThumbnailUrl,
+    this.fileSize,
+    this.fileModifiedTime,
   });
 
   /// 从 Map 创建
@@ -40,6 +61,7 @@ class VideoMetadata {
       sourceId: map['sourceId'] as String,
       fileName: map['fileName'] as String,
       category: MediaCategory.values[map['category'] as int? ?? 2],
+      scrapeStatus: ScrapeStatus.values[map['scrapeStatus'] as int? ?? 0],
       tmdbId: map['tmdbId'] as int?,
       title: map['title'] as String?,
       originalTitle: map['originalTitle'] as String?,
@@ -60,12 +82,17 @@ class VideoMetadata {
           : null,
       thumbnailUrl: map['thumbnailUrl'] as String?,
       generatedThumbnailUrl: map['generatedThumbnailUrl'] as String?,
+      fileSize: map['fileSize'] as int?,
+      fileModifiedTime: map['fileModifiedTime'] != null
+          ? DateTime.fromMillisecondsSinceEpoch(map['fileModifiedTime'] as int)
+          : null,
     );
 
   final String filePath;
   final String sourceId;
   final String fileName;
   MediaCategory category;
+  ScrapeStatus scrapeStatus;
   int? tmdbId;
   String? title;
   String? originalTitle;
@@ -84,12 +111,42 @@ class VideoMetadata {
   DateTime? lastUpdated;
   String? thumbnailUrl; // 内置缩略图 URL（来自 NAS）
   String? generatedThumbnailUrl; // 生成的缩略图 URL（本地 file://）
+  int? fileSize; // 文件大小（字节）
+  DateTime? fileModifiedTime; // 文件修改时间
 
   /// 优先使用 TMDB 海报，其次使用内置缩略图，最后使用生成的缩略图
   String? get displayPosterUrl => posterUrl ?? thumbnailUrl ?? generatedThumbnailUrl;
 
-  /// 是否有元数据
+  /// 是否有元数据（已成功刮削TMDB数据）
   bool get hasMetadata => tmdbId != null;
+
+  /// 是否已完成刮削（成功或失败都算完成）
+  bool get isScrapeDone =>
+      scrapeStatus == ScrapeStatus.completed ||
+      scrapeStatus == ScrapeStatus.failed ||
+      scrapeStatus == ScrapeStatus.skipped;
+
+  /// 是否正在刮削
+  bool get isScraping => scrapeStatus == ScrapeStatus.scraping;
+
+  /// 是否待刮削
+  bool get isPendingScrape => scrapeStatus == ScrapeStatus.pending;
+
+  /// 文件大小显示文本
+  String get fileSizeText {
+    if (fileSize == null || fileSize == 0) return '';
+    const kb = 1024;
+    const mb = kb * 1024;
+    const gb = mb * 1024;
+    if (fileSize! >= gb) {
+      return '${(fileSize! / gb).toStringAsFixed(2)} GB';
+    } else if (fileSize! >= mb) {
+      return '${(fileSize! / mb).toStringAsFixed(1)} MB';
+    } else if (fileSize! >= kb) {
+      return '${(fileSize! / kb).toStringAsFixed(0)} KB';
+    }
+    return '$fileSize B';
+  }
 
   /// 显示标题
   String get displayTitle => title ?? fileName;
@@ -175,6 +232,7 @@ class VideoMetadata {
       'sourceId': sourceId,
       'fileName': fileName,
       'category': category.index,
+      'scrapeStatus': scrapeStatus.index,
       'tmdbId': tmdbId,
       'title': title,
       'originalTitle': originalTitle,
@@ -193,6 +251,8 @@ class VideoMetadata {
       'lastUpdated': lastUpdated?.millisecondsSinceEpoch,
       'thumbnailUrl': thumbnailUrl,
       'generatedThumbnailUrl': generatedThumbnailUrl,
+      'fileSize': fileSize,
+      'fileModifiedTime': fileModifiedTime?.millisecondsSinceEpoch,
     };
 
   /// 复制
@@ -201,6 +261,7 @@ class VideoMetadata {
     String? sourceId,
     String? fileName,
     MediaCategory? category,
+    ScrapeStatus? scrapeStatus,
     int? tmdbId,
     String? title,
     String? originalTitle,
@@ -219,11 +280,14 @@ class VideoMetadata {
     DateTime? lastUpdated,
     String? thumbnailUrl,
     String? generatedThumbnailUrl,
+    int? fileSize,
+    DateTime? fileModifiedTime,
   }) => VideoMetadata(
       filePath: filePath ?? this.filePath,
       sourceId: sourceId ?? this.sourceId,
       fileName: fileName ?? this.fileName,
       category: category ?? this.category,
+      scrapeStatus: scrapeStatus ?? this.scrapeStatus,
       tmdbId: tmdbId ?? this.tmdbId,
       title: title ?? this.title,
       originalTitle: originalTitle ?? this.originalTitle,
@@ -242,6 +306,8 @@ class VideoMetadata {
       lastUpdated: lastUpdated ?? this.lastUpdated,
       thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
       generatedThumbnailUrl: generatedThumbnailUrl ?? this.generatedThumbnailUrl,
+      fileSize: fileSize ?? this.fileSize,
+      fileModifiedTime: fileModifiedTime ?? this.fileModifiedTime,
     );
 }
 

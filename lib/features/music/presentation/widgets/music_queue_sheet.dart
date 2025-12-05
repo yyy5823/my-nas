@@ -1,10 +1,9 @@
 import 'dart:typed_data';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
-import 'package:my_nas/app/theme/app_spacing.dart';
-import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
 
@@ -29,172 +28,316 @@ class MusicQueueSheet extends ConsumerWidget {
     final currentMusic = ref.watch(currentMusicProvider);
 
     return DraggableScrollableSheet(
-      initialChildSize: 0.6,
+      initialChildSize: 0.7,
       minChildSize: 0.4,
-      maxChildSize: 0.9,
-      builder: (context, scrollController) => DecoratedBox(
-        decoration: BoxDecoration(
-          color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          children: [
-            // 拖拽指示器
-            Container(
-              margin: const EdgeInsets.only(top: 12),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: isDark
-                    ? AppColors.darkOutline.withValues(alpha: 0.3)
-                    : AppColors.lightOutline.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(2),
+      maxChildSize: 0.95,
+      builder: (context, scrollController) => ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+          child: Container(
+            decoration: BoxDecoration(
+              color: isDark
+                  ? Colors.grey[900]!.withValues(alpha: 0.9)
+                  : Colors.white.withValues(alpha: 0.95),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              border: Border(
+                top: BorderSide(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.1)
+                      : Colors.black.withValues(alpha: 0.05),
+                ),
               ),
             ),
-
-            // 标题栏
-            Padding(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              child: Row(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: AppColors.fileAudio.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(
-                      Icons.queue_music_rounded,
-                      color: AppColors.fileAudio,
-                      size: 22,
-                    ),
+            child: Column(
+              children: [
+                // 拖拽指示器
+                Container(
+                  margin: const EdgeInsets.only(top: 12),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.3)
+                        : Colors.black.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(2),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '播放队列',
-                          style: context.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Text(
-                          '${queue.length} 首歌曲',
-                          style: context.textTheme.bodySmall?.copyWith(
-                            color: isDark
-                                ? AppColors.darkOnSurfaceVariant
-                                : AppColors.lightOnSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
+                ),
+                // 标题栏
+                _buildHeader(context, ref, queue, isDark),
+                // 当前播放提示
+                if (currentMusic != null)
+                  _buildNowPlaying(currentMusic, isDark),
+                // 分隔线
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Divider(
+                    height: 1,
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.1)
+                        : Colors.black.withValues(alpha: 0.05),
                   ),
-                  // 清空队列
-                  if (queue.isNotEmpty)
-                    TextButton.icon(
-                      onPressed: () {
-                        ref.read(playQueueProvider.notifier).clear();
-                        Navigator.pop(context);
-                      },
-                      icon: const Icon(Icons.clear_all_rounded, size: 18),
-                      label: const Text('清空'),
-                    ),
-                ],
-              ),
+                ),
+                // 队列列表
+                Expanded(
+                  child: queue.isEmpty
+                      ? _buildEmptyState(isDark)
+                      : _buildQueueList(
+                          context,
+                          ref,
+                          queue,
+                          playerState,
+                          currentMusic,
+                          scrollController,
+                          isDark,
+                        ),
+                ),
+              ],
             ),
-
-            const Divider(height: 1),
-
-            // 队列列表
-            Expanded(
-              child: queue.isEmpty
-                  ? _buildEmptyState(context, isDark)
-                  : ReorderableListView.builder(
-                      scrollController: scrollController,
-                      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-                      itemCount: queue.length,
-                      onReorder: (oldIndex, newIndex) {
-                        if (newIndex > oldIndex) newIndex--;
-                        ref.read(playQueueProvider.notifier).reorder(oldIndex, newIndex);
-                        // 更新当前索引
-                        if (oldIndex == playerState.currentIndex) {
-                          ref.read(musicPlayerControllerProvider.notifier)
-                              .updateCurrentIndex(newIndex);
-                        } else if (oldIndex < playerState.currentIndex &&
-                            newIndex >= playerState.currentIndex) {
-                          ref.read(musicPlayerControllerProvider.notifier)
-                              .updateCurrentIndex(playerState.currentIndex - 1);
-                        } else if (oldIndex > playerState.currentIndex &&
-                            newIndex <= playerState.currentIndex) {
-                          ref.read(musicPlayerControllerProvider.notifier)
-                              .updateCurrentIndex(playerState.currentIndex + 1);
-                        }
-                      },
-                      itemBuilder: (context, index) {
-                        final track = queue[index];
-                        final isPlaying = currentMusic?.path == track.path;
-                        return _QueueItem(
-                          key: ValueKey(track.path),
-                          track: track,
-                          index: index,
-                          isPlaying: isPlaying,
-                          isDark: isDark,
-                          onTap: () {
-                            ref.read(musicPlayerControllerProvider.notifier).playAt(index);
-                          },
-                          onRemove: () {
-                            ref.read(playQueueProvider.notifier).removeFromQueue(index);
-                            // 更新当前索引
-                            if (index < playerState.currentIndex) {
-                              ref.read(musicPlayerControllerProvider.notifier)
-                                  .updateCurrentIndex(playerState.currentIndex - 1);
-                            }
-                          },
-                        );
-                      },
-                    ),
-            ),
-          ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildEmptyState(BuildContext context, bool isDark) => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.queue_music_outlined,
-              size: 64,
-              color: isDark
-                  ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.5)
-                  : AppColors.lightOnSurfaceVariant.withValues(alpha: 0.5),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '播放队列为空',
-              style: context.textTheme.titleMedium?.copyWith(
-                color: isDark
-                    ? AppColors.darkOnSurfaceVariant
-                    : AppColors.lightOnSurfaceVariant,
+  Widget _buildHeader(
+    BuildContext context,
+    WidgetRef ref,
+    List<MusicItem> queue,
+    bool isDark,
+  ) => Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
+      child: Row(
+        children: [
+          // 图标
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  AppColors.primary,
+                  AppColors.secondary,
+                ],
               ),
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.primary.withValues(alpha: 0.3),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
-            Text(
-              '从音乐列表中添加歌曲',
-              style: context.textTheme.bodyMedium?.copyWith(
-                color: isDark
-                    ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.7)
-                    : AppColors.lightOnSurfaceVariant.withValues(alpha: 0.7),
+            child: const Icon(
+              Icons.queue_music_rounded,
+              color: Colors.white,
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: 14),
+          // 标题和数量
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '播放队列',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${queue.length} 首歌曲',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark ? Colors.white54 : Colors.black45,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // 清空按钮
+          if (queue.isNotEmpty)
+            TextButton.icon(
+              onPressed: () {
+                ref.read(playQueueProvider.notifier).clear();
+                Navigator.pop(context);
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.red[400],
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               ),
+              icon: const Icon(Icons.clear_all_rounded, size: 18),
+              label: const Text('清空'),
             ),
-          ],
+        ],
+      ),
+    );
+
+  Widget _buildNowPlaying(MusicItem currentMusic, bool isDark) => Container(
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AppColors.primary.withValues(alpha: 0.2),
         ),
-      );
+      ),
+      child: Row(
+        children: [
+          // 动态图标
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(
+              Icons.equalizer_rounded,
+              color: AppColors.primary,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 12),
+          // 当前播放信息
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '正在播放',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.primary,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  currentMusic.displayTitle,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+
+  Widget _buildEmptyState(bool isDark) => Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 80,
+            height: 80,
+            decoration: BoxDecoration(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.05)
+                  : Colors.black.withValues(alpha: 0.03),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.queue_music_outlined,
+              size: 40,
+              color: isDark ? Colors.white30 : Colors.black26,
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            '播放队列为空',
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w600,
+              color: isDark ? Colors.white70 : Colors.black54,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '从音乐列表中添加歌曲开始播放',
+            style: TextStyle(
+              fontSize: 14,
+              color: isDark ? Colors.white38 : Colors.black38,
+            ),
+          ),
+        ],
+      ),
+    );
+
+  Widget _buildQueueList(
+    BuildContext context,
+    WidgetRef ref,
+    List<MusicItem> queue,
+    MusicPlayerState playerState,
+    MusicItem? currentMusic,
+    ScrollController scrollController,
+    bool isDark,
+  ) => ReorderableListView.builder(
+      scrollController: scrollController,
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+      itemCount: queue.length,
+      proxyDecorator: (child, index, animation) => AnimatedBuilder(
+        animation: animation,
+        builder: (context, child) => Material(
+          color: Colors.transparent,
+          elevation: 8,
+          shadowColor: AppColors.primary.withValues(alpha: 0.3),
+          borderRadius: BorderRadius.circular(16),
+          child: child,
+        ),
+        child: child,
+      ),
+      onReorder: (oldIndex, newIndex) {
+        if (newIndex > oldIndex) newIndex--;
+        ref.read(playQueueProvider.notifier).reorder(oldIndex, newIndex);
+        // 更新当前索引
+        if (oldIndex == playerState.currentIndex) {
+          ref.read(musicPlayerControllerProvider.notifier).updateCurrentIndex(newIndex);
+        } else if (oldIndex < playerState.currentIndex &&
+            newIndex >= playerState.currentIndex) {
+          ref.read(musicPlayerControllerProvider.notifier)
+              .updateCurrentIndex(playerState.currentIndex - 1);
+        } else if (oldIndex > playerState.currentIndex &&
+            newIndex <= playerState.currentIndex) {
+          ref.read(musicPlayerControllerProvider.notifier)
+              .updateCurrentIndex(playerState.currentIndex + 1);
+        }
+      },
+      itemBuilder: (context, index) {
+        final track = queue[index];
+        final isPlaying = currentMusic?.path == track.path;
+        return _QueueItem(
+          key: ValueKey(track.path),
+          track: track,
+          index: index,
+          isPlaying: isPlaying,
+          isDark: isDark,
+          onTap: () => ref.read(musicPlayerControllerProvider.notifier).playAt(index),
+          onRemove: () {
+            ref.read(playQueueProvider.notifier).removeFromQueue(index);
+            if (index < playerState.currentIndex) {
+              ref.read(musicPlayerControllerProvider.notifier)
+                  .updateCurrentIndex(playerState.currentIndex - 1);
+            }
+          },
+        );
+      },
+    );
 }
 
 class _QueueItem extends StatelessWidget {
@@ -217,128 +360,167 @@ class _QueueItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Dismissible(
-        key: ValueKey('dismiss_${track.path}'),
-        direction: DismissDirection.endToStart,
-        onDismissed: (_) => onRemove(),
-        background: Container(
-          alignment: Alignment.centerRight,
-          padding: const EdgeInsets.only(right: 20),
-          color: Colors.red,
-          child: const Icon(Icons.delete_rounded, color: Colors.white),
+      key: ValueKey('dismiss_${track.path}'),
+      direction: DismissDirection.endToStart,
+      onDismissed: (_) => onRemove(),
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 24),
+        margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+        decoration: BoxDecoration(
+          color: Colors.red[400],
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: const Icon(Icons.delete_rounded, color: Colors.white, size: 24),
+      ),
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+        decoration: BoxDecoration(
+          color: isPlaying
+              ? AppColors.primary.withValues(alpha: 0.15)
+              : (isDark
+                  ? Colors.white.withValues(alpha: 0.05)
+                  : Colors.black.withValues(alpha: 0.03)),
+          borderRadius: BorderRadius.circular(16),
+          border: isPlaying
+              ? Border.all(
+                  color: AppColors.primary.withValues(alpha: 0.3),
+                  width: 1.5,
+                )
+              : null,
         ),
         child: Material(
           color: Colors.transparent,
-          child: ListTile(
+          child: InkWell(
             onTap: onTap,
-            leading: Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
-                gradient: isPlaying
-                    ? const LinearGradient(
-                        colors: [AppColors.fileAudio, AppColors.secondary],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      )
-                    : null,
-                color: isPlaying
-                    ? null
-                    : (isDark
-                        ? AppColors.darkSurfaceElevated
-                        : AppColors.lightSurfaceVariant),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: _buildCoverOrIcon(),
-            ),
-            title: Text(
-              track.displayTitle,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontWeight: isPlaying ? FontWeight.w600 : FontWeight.w500,
-                color: isPlaying
-                    ? AppColors.fileAudio
-                    : (isDark ? AppColors.darkOnSurface : null),
-              ),
-            ),
-            subtitle: Text(
-              track.displayArtist,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 12,
-                color: isDark
-                    ? AppColors.darkOnSurfaceVariant
-                    : AppColors.lightOnSurfaceVariant,
-              ),
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  track.durationText,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isDark
-                        ? AppColors.darkOnSurfaceVariant
-                        : AppColors.lightOnSurfaceVariant,
+            borderRadius: BorderRadius.circular(16),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Row(
+                children: [
+                  // 封面
+                  _buildCover(),
+                  const SizedBox(width: 12),
+                  // 信息
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          track.displayTitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: isPlaying ? FontWeight.w600 : FontWeight.w500,
+                            color: isPlaying
+                                ? AppColors.primary
+                                : (isDark ? Colors.white : Colors.black87),
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          track.displayArtist,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: isDark ? Colors.white54 : Colors.black45,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                ReorderableDragStartListener(
-                  index: index,
-                  child: Icon(
-                    Icons.drag_handle_rounded,
-                    color: isDark
-                        ? AppColors.darkOnSurfaceVariant
-                        : AppColors.lightOnSurfaceVariant,
+                  // 时长
+                  Text(
+                    track.durationText,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: isDark ? Colors.white38 : Colors.black38,
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 8),
+                  // 拖动手柄
+                  ReorderableDragStartListener(
+                    index: index,
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      child: Icon(
+                        Icons.drag_handle_rounded,
+                        color: isDark ? Colors.white30 : Colors.black26,
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
-      );
+      ),
+    );
 
-  Widget _buildCoverOrIcon() {
-    // 优先使用嵌入的封面图片
+  Widget _buildCover() {
     final coverData = track.coverData;
+    Widget coverImage;
+
     if (coverData != null && coverData.isNotEmpty) {
-      return Stack(
-        fit: StackFit.expand,
-        children: [
-          Image.memory(
-            Uint8List.fromList(coverData),
-            fit: BoxFit.cover,
-            errorBuilder: (_, _, _) => _buildIconWidget(),
-          ),
-          if (isPlaying)
-            ColoredBox(
-              color: Colors.black.withValues(alpha: 0.4),
-              child: const Center(
-                child: Icon(
-                  Icons.equalizer_rounded,
-                  color: Colors.white,
-                  size: 20,
+      coverImage = Image.memory(
+        Uint8List.fromList(coverData),
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _buildDefaultCover(),
+      );
+    } else {
+      coverImage = _buildDefaultCover();
+    }
+
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: isPlaying
+            ? [
+                BoxShadow(
+                  color: AppColors.primary.withValues(alpha: 0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ]
+            : null,
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            coverImage,
+            if (isPlaying)
+              Container(
+                color: Colors.black.withValues(alpha: 0.4),
+                child: const Center(
+                  child: Icon(
+                    Icons.equalizer_rounded,
+                    color: Colors.white,
+                    size: 22,
+                  ),
                 ),
               ),
-            ),
-        ],
-      );
-    }
-    return _buildIconWidget();
+          ],
+        ),
+      ),
+    );
   }
 
-  Widget _buildIconWidget() => Center(
-        child: Icon(
-          isPlaying ? Icons.equalizer_rounded : Icons.music_note_rounded,
-          color: isPlaying
-              ? Colors.white
-              : (isDark
-                  ? AppColors.darkOnSurfaceVariant
-                  : AppColors.lightOnSurfaceVariant),
-          size: 20,
-        ),
-      );
+  Widget _buildDefaultCover() => Container(
+      color: isDark
+          ? Colors.white.withValues(alpha: 0.1)
+          : Colors.black.withValues(alpha: 0.05),
+      child: Icon(
+        Icons.music_note_rounded,
+        color: isDark ? Colors.white30 : Colors.black26,
+        size: 24,
+      ),
+    );
 }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,6 +7,7 @@ import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/presentation/pages/media_library_page.dart';
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
@@ -12,6 +15,7 @@ import 'package:my_nas/features/video/data/services/video_database_service.dart'
 import 'package:my_nas/features/video/data/services/video_history_service.dart';
 import 'package:my_nas/features/video/data/services/video_library_cache_service.dart';
 import 'package:my_nas/features/video/data/services/video_metadata_service.dart';
+import 'package:my_nas/features/video/data/services/video_scanner_service.dart';
 import 'package:my_nas/features/video/domain/entities/video_item.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
 import 'package:my_nas/features/video/presentation/pages/video_detail_page.dart';
@@ -174,16 +178,56 @@ class VideoListError extends VideoListState {
 }
 
 class VideoListNotifier extends StateNotifier<VideoListState> {
-  VideoListNotifier(Ref ref) : super(VideoListLoading()) {
+  VideoListNotifier(this._ref) : super(VideoListLoading()) {
     // 使用 addPostFrameCallback 推迟初始化，确保导航动画不被阻塞
     SchedulerBinding.instance.addPostFrameCallback((_) {
       _init();
     });
+
+    // 监听刮削统计变化，实现渐进式更新
+    _scrapeStatsSubscription = VideoScannerService().scrapeStatsStream.listen(
+      _onScrapeStatsChanged,
+    );
   }
 
+  final Ref _ref;
   final VideoMetadataService _metadataService = VideoMetadataService();
   final VideoLibraryCacheService _cacheService = VideoLibraryCacheService();
   final VideoDatabaseService _db = VideoDatabaseService();
+
+  StreamSubscription<ScrapeStats>? _scrapeStatsSubscription;
+  int _lastCompletedCount = 0;
+
+  /// 获取启用的路径列表（用于 SQLite 过滤）
+  List<({String sourceId, String path})>? _getEnabledPaths() {
+    final config = _ref.read(mediaLibraryConfigProvider).valueOrNull;
+    if (config == null) return null;
+
+    final enabledPaths = config.getEnabledPathsForType(MediaType.video);
+    if (enabledPaths.isEmpty) return null;
+
+    return enabledPaths
+        .map((p) => (sourceId: p.sourceId, path: p.path))
+        .toList();
+  }
+
+  @override
+  void dispose() {
+    _scrapeStatsSubscription?.cancel();
+    super.dispose();
+  }
+
+  /// 刮削统计变化时刷新数据
+  void _onScrapeStatsChanged(ScrapeStats stats) {
+    // 只有当有新的刮削完成时才刷新
+    if (stats.completed > _lastCompletedCount) {
+      _lastCompletedCount = stats.completed;
+      // 每刮削完成 5 个视频刷新一次，避免频繁刷新
+      if (stats.completed % 5 == 0 || stats.pending == 0) {
+        _loadCategorizedData();
+      }
+    }
+  }
 
   Future<void> _init() async {
     try {
@@ -209,13 +253,16 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
   Future<void> _loadCategorizedData() async {
     state = VideoListLoading(fromCache: true);
 
+    // 获取启用的路径（用于过滤停用文件夹的视频）
+    final enabledPaths = _getEnabledPaths();
+
     // 并行查询各分类数据（使用 SQLite 索引，O(log N) 复杂度）
     final results = await Future.wait([
-      _db.getStats(),
-      _db.getTopRated(limit: 20),
-      _db.getRecentlyUpdated(limit: 20),
-      _db.getByCategory(MediaCategory.movie, limit: 100),
-      _db.getByCategory(MediaCategory.tvShow, limit: 200),
+      _db.getStats(enabledPaths: enabledPaths),
+      _db.getTopRated(limit: 20, enabledPaths: enabledPaths),
+      _db.getRecentlyUpdated(limit: 20, enabledPaths: enabledPaths),
+      _db.getByCategory(MediaCategory.movie, limit: 100, enabledPaths: enabledPaths),
+      _db.getByCategory(MediaCategory.tvShow, limit: 200, enabledPaths: enabledPaths),
     ]);
 
     final stats = results[0] as Map<String, dynamic>;
@@ -1599,6 +1646,55 @@ class _PosterCardState extends ConsumerState<_PosterCard> {
                                     fontSize: 9,
                                     fontWeight: FontWeight.bold,
                                   ),
+                                ),
+                              ),
+                            ),
+
+                          // 刮削状态指示器
+                          if (widget.metadata.isPendingScrape ||
+                              widget.metadata.isScraping)
+                            Positioned(
+                              top: 8,
+                              left: widget.metadata.category ==
+                                      MediaCategory.tvShow
+                                  ? 50
+                                  : 8,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 5,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[800]!.withValues(alpha: 0.9),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    SizedBox(
+                                      width: 8,
+                                      height: 8,
+                                      child: widget.metadata.isScraping
+                                          ? const CircularProgressIndicator(
+                                              strokeWidth: 1.5,
+                                              color: Colors.white,
+                                            )
+                                          : Icon(
+                                              Icons.hourglass_empty,
+                                              size: 8,
+                                              color: Colors.grey[400],
+                                            ),
+                                    ),
+                                    const SizedBox(width: 3),
+                                    Text(
+                                      widget.metadata.isScraping ? '刮削中' : '待刮削',
+                                      style: TextStyle(
+                                        color: Colors.grey[300],
+                                        fontSize: 8,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),

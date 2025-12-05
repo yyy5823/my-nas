@@ -283,14 +283,29 @@ class BookDatabaseService {
   }
 
   /// 按来源ID删除
-  Future<void> deleteBySource(String sourceId) async {
+  Future<int> deleteBySourceId(String sourceId) async {
     if (!_initialized) await init();
 
-    await _db!.delete(
+    final count = await _db!.delete(
       _tableBooks,
       where: '$_colSourceId = ?',
       whereArgs: [sourceId],
     );
+    logger.i('BookDatabaseService: 已删除 $count 本图书 (sourceId: $sourceId)');
+    return count;
+  }
+
+  /// 根据 sourceId 和路径前缀删除（用于移除文件夹）
+  Future<int> deleteByPath(String sourceId, String pathPrefix) async {
+    if (!_initialized) await init();
+
+    final count = await _db!.delete(
+      _tableBooks,
+      where: '$_colSourceId = ? AND $_colFilePath LIKE ?',
+      whereArgs: [sourceId, '$pathPrefix%'],
+    );
+    logger.i('BookDatabaseService: 已删除 $count 本图书 (sourceId: $sourceId, path: $pathPrefix)');
+    return count;
   }
 
   /// 关闭数据库

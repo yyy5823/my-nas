@@ -48,14 +48,12 @@ class _StartupPageState extends ConsumerState<StartupPage> {
 
       logger.i('StartupPage: 初始化完成，进入主界面');
 
-      // 先进入主界面，不等待连接完成
+      // 进入主界面
+      // 注意：自动连接由 ActiveConnectionsNotifier 在监听到 sourcesProvider 数据后自动触发
+      // 无需在此处手动调用 autoConnectAll
       if (mounted) {
         context.go(Routes.video);
       }
-
-      // 后台异步进行自动连接（不阻塞主界面）
-      // 使用 unawaited 明确表示不等待完成
-      _autoConnectInBackground();
     } on Exception catch (e) {
       logger.e('StartupPage: 初始化异常', e);
       if (mounted) {
@@ -63,23 +61,6 @@ class _StartupPageState extends ConsumerState<StartupPage> {
         context.go(Routes.video);
       }
     }
-  }
-
-  /// 后台自动连接所有源
-  void _autoConnectInBackground() {
-    // 使用 Future.microtask 确保在当前帧之后执行，避免阻塞导航
-    Future.microtask(() async {
-      try {
-        // 等待网络栈完全初始化（iOS 启动后网络可能需要一点时间就绪）
-        await Future<void>.delayed(const Duration(seconds: 2));
-
-        logger.i('StartupPage: 开始后台自动连接...');
-        await ref.read(activeConnectionsProvider.notifier).autoConnectAll();
-        logger.i('StartupPage: 后台自动连接完成');
-      } on Exception catch (e) {
-        logger.e('StartupPage: 后台自动连接异常', e);
-      }
-    });
   }
 
   @override

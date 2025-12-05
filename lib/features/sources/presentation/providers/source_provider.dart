@@ -1,7 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:my_nas/features/book/data/services/book_database_service.dart';
+import 'package:my_nas/features/comic/data/services/comic_library_cache_service.dart';
+import 'package:my_nas/features/music/data/services/music_database_service.dart';
+import 'package:my_nas/features/photo/data/services/photo_database_service.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
+import 'package:my_nas/features/video/data/services/video_database_service.dart';
 
 /// 源管理服务 Provider
 final sourceManagerProvider = Provider<SourceManagerService>((ref) => SourceManagerService());
@@ -60,6 +65,16 @@ class SourcesNotifier extends StateNotifier<AsyncValue<List<SourceEntity>>> {
   Future<void> removeSource(String sourceId) async {
     final manager = _ref.read(sourceManagerProvider);
     await manager.removeSource(sourceId);
+
+    // 删除该源的所有媒体数据
+    await Future.wait([
+      VideoDatabaseService().deleteBySourceId(sourceId),
+      MusicDatabaseService().deleteBySourceId(sourceId),
+      PhotoDatabaseService().deleteBySourceId(sourceId),
+      BookDatabaseService().deleteBySourceId(sourceId),
+      ComicLibraryCacheService().deleteBySourceId(sourceId),
+    ]);
+
     // 同时刷新连接状态
     _ref.read(activeConnectionsProvider.notifier).refresh();
     await _load();
@@ -90,7 +105,8 @@ class ActiveConnectionsNotifier
     // 通过监听源列表变化来触发自动连接
     _ref.listen<AsyncValue<List<SourceEntity>>>(sourcesProvider, (previous, next) {
       if (next.hasValue && !_isAutoConnecting) {
-        autoConnectAll();
+        // 延迟执行，确保网络栈完全初始化（iOS 启动后网络可能需要时间就绪）
+        Future.delayed(const Duration(seconds: 2), autoConnectAll);
       }
     }, fireImmediately: true);
   }
@@ -214,6 +230,33 @@ class MediaLibraryConfigNotifier
 
   Future<void> removePath(MediaType type, String pathId) async {
     final current = state.valueOrNull ?? const MediaLibraryConfig();
+
+    // 获取要删除的路径信息（用于清理数据）
+    final paths = current.getPathsForType(type);
+    final pathToRemove = paths.where((p) => p.id == pathId).firstOrNull;
+
+    // 根据媒体类型删除对应的数据
+    if (pathToRemove != null) {
+      final sourceId = pathToRemove.sourceId;
+      final path = pathToRemove.path;
+
+      switch (type) {
+        case MediaType.video:
+          await VideoDatabaseService().deleteByPath(sourceId, path);
+        case MediaType.music:
+          await MusicDatabaseService().deleteByPath(sourceId, path);
+        case MediaType.photo:
+          await PhotoDatabaseService().deleteByPath(sourceId, path);
+        case MediaType.book:
+          await BookDatabaseService().deleteByPath(sourceId, path);
+        case MediaType.comic:
+          await ComicLibraryCacheService().deleteByPath(sourceId, path);
+        case MediaType.note:
+          // 笔记暂不处理
+          break;
+      }
+    }
+
     final newConfig = current.removePath(type, pathId);
     await _save(newConfig);
   }

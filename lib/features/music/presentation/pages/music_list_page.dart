@@ -14,6 +14,7 @@ import 'package:my_nas/features/music/data/services/music_database_service.dart'
 import 'package:my_nas/features/music/data/services/music_library_cache_service.dart';
 import 'package:my_nas/features/music/data/services/music_metadata_service.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
+import 'package:my_nas/features/music/presentation/pages/music_home_page.dart';
 import 'package:my_nas/features/music/presentation/pages/music_player_page.dart';
 import 'package:my_nas/features/music/presentation/providers/music_favorites_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
@@ -1071,45 +1072,81 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
     );
   }
 
-  /// 构建首页内容（仿 Spotify 风格）
+  /// 构建首页内容（现代化设计）
   Widget _buildHomeContent(BuildContext context, WidgetRef ref, MusicListLoaded state, bool isDark) {
     // 如果正在搜索，显示搜索结果
     if (state.searchQuery.isNotEmpty) {
       return _buildSearchResults(context, ref, state, isDark);
     }
 
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isDesktop = screenWidth > 800;
-    final isWideDesktop = screenWidth > 1200;
+    // 获取收藏和历史状态
+    final favoritesState = ref.watch(musicFavoritesProvider);
+    final historyState = ref.watch(musicHistoryProvider);
 
-    return SingleChildScrollView(
-      padding: EdgeInsets.only(
-        bottom: 16,
-        left: isWideDesktop ? 32 : 0,
-        right: isWideDesktop ? 32 : 0,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 快捷入口网格
-          _buildQuickAccessGrid(context, ref, state, isDark, isDesktop),
+    // 转换收藏为 MusicFileWithSource
+    final favoriteTracks = favoritesState.favorites
+        .where((fav) => state.trackByPath.containsKey(fav.musicPath))
+        .map((fav) {
+          final m = state.trackByPath[fav.musicPath]!;
+          return MusicFileWithSource(
+            file: FileItem(
+              name: m.fileName,
+              path: m.filePath,
+              size: m.size ?? 0,
+              isDirectory: false,
+              modifiedTime: m.modifiedTime,
+            ),
+            sourceId: m.sourceId,
+            title: m.title,
+            artist: m.artist,
+            album: m.album,
+            duration: m.duration,
+            year: m.year,
+            genre: m.genre,
+            coverPath: m.coverPath,
+            metadataExtracted: true,
+          );
+        })
+        .toList();
 
-          const SizedBox(height: 24),
+    // 转换历史为 MusicFileWithSource
+    final recentTracks = historyState.history
+        .take(20)
+        .where((h) => state.trackByPath.containsKey(h.musicPath))
+        .map((h) {
+          final m = state.trackByPath[h.musicPath]!;
+          return MusicFileWithSource(
+            file: FileItem(
+              name: m.fileName,
+              path: m.filePath,
+              size: m.size ?? 0,
+              isDirectory: false,
+              modifiedTime: m.modifiedTime,
+            ),
+            sourceId: m.sourceId,
+            title: m.title,
+            artist: m.artist,
+            album: m.album,
+            duration: m.duration,
+            year: m.year,
+            genre: m.genre,
+            coverPath: m.coverPath,
+            metadataExtracted: true,
+          );
+        })
+        .toList();
 
-          // 最近播放
-          _buildRecentSection(context, ref, state, isDark, isDesktop),
-
-          const SizedBox(height: 24),
-
-          // 我的歌单
-          _buildPlaylistSection(context, ref, state, isDark, isDesktop),
-
-          const SizedBox(height: 24),
-
-          // 浏览音乐库
-          _buildBrowseSection(context, ref, state, isDark, isDesktop),
-        ],
-      ),
+    return MusicHomeContent(
+      tracks: state.tracks,
+      recentTracks: recentTracks,
+      favoriteTracks: favoriteTracks,
+      artistCount: state.artistCount,
+      albumCount: state.albumCount,
+      genreCount: state.genreCount,
+      yearCount: state.yearCount,
+      folderCount: state.folderCount,
+      onTrackTap: (track, allTracks) => _playTrack(context, ref, track, allTracks),
+      onCategoryTap: (category) => _navigateToCategory(context, category, state),
     );
   }
 
@@ -1451,10 +1488,12 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
   void _navigateToCategory(BuildContext context, MusicCategory category, MusicListLoaded state) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (context) => _MusicCategoryPage(
-          category: category,
-          tracks: state.tracks,
-        ),
+        builder: (context) => category == MusicCategory.all
+            ? AllSongsPage(tracks: state.tracks)
+            : _MusicCategoryPage(
+                category: category,
+                tracks: state.tracks,
+              ),
       ),
     );
   }
@@ -2524,7 +2563,7 @@ class _MusicCategoryPage extends ConsumerWidget {
   }
 
   Widget _buildContent(BuildContext context, WidgetRef ref, bool isDark) => switch (category) {
-      MusicCategory.all => _AllSongsView(tracks: tracks, isDark: isDark),
+      MusicCategory.all => _AllSongsContent(tracks: tracks, isDark: isDark),
       MusicCategory.artists => _ArtistsView(tracks: tracks, isDark: isDark),
       MusicCategory.albums => _AlbumsView(tracks: tracks, isDark: isDark),
       MusicCategory.folders => _FoldersView(tracks: tracks, isDark: isDark),
@@ -2535,9 +2574,459 @@ class _MusicCategoryPage extends ConsumerWidget {
     };
 }
 
-/// 全部歌曲视图
-class _AllSongsView extends ConsumerWidget {
-  const _AllSongsView({
+/// 全部歌曲页面 - 独立的页面，支持更丰富的 AppBar
+class AllSongsPage extends ConsumerWidget {
+  const AllSongsPage({
+    required this.tracks,
+    super.key,
+  });
+
+  final List<MusicFileWithSource> tracks;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final sortState = ref.watch(musicSortProvider);
+    final sortedTracks = _applySorting(tracks, sortState);
+
+    return Scaffold(
+      backgroundColor: isDark ? AppColors.darkBackground : Colors.grey[50],
+      body: Column(
+        children: [
+          // 自定义顶栏
+          _buildAppBar(context, ref, isDark, sortState),
+          // 播放控制栏
+          _buildPlayControls(context, ref, isDark, sortedTracks),
+          // 歌曲列表
+          Expanded(
+            child: tracks.isEmpty
+                ? _buildEmptyState(isDark)
+                : ListView.builder(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    itemCount: sortedTracks.length,
+                    itemBuilder: (context, index) => _ModernMusicTile(
+                      track: sortedTracks[index],
+                      index: index,
+                      isDark: isDark,
+                      allTracks: sortedTracks,
+                    ),
+                  ),
+          ),
+          const MiniPlayer(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAppBar(BuildContext context, WidgetRef ref, bool isDark, MusicSortState sortState) {
+    final trackCount = tracks.length;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            4,
+            AppSpacing.appBarVerticalPadding,
+            AppSpacing.appBarHorizontalPadding,
+            12,
+          ),
+          child: Row(
+            children: [
+              // 返回按钮
+              IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: Icon(
+                  Icons.arrow_back_rounded,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+              ),
+              // 标题和歌曲数量
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '所有歌曲',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? Colors.white : Colors.black87,
+                      ),
+                    ),
+                    Text(
+                      '共 $trackCount 首',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark ? Colors.grey[400] : Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // 排序按钮
+              _SortButton(
+                sortState: sortState,
+                isDark: isDark,
+                onTap: () => _showSortOptions(context, ref, sortState, isDark),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPlayControls(BuildContext context, WidgetRef ref, bool isDark, List<MusicFileWithSource> sortedTracks) {
+    if (tracks.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: Row(
+        children: [
+          // 播放全部按钮
+          Expanded(
+            child: _SpotifyPlayButton(
+              onPressed: () => _playAll(context, ref, sortedTracks),
+              icon: Icons.play_arrow_rounded,
+              label: '播放全部',
+            ),
+          ),
+          const SizedBox(width: 12),
+          // 随机播放按钮
+          Expanded(
+            child: _SpotifyPlayButton(
+              onPressed: () => _shufflePlay(context, ref, sortedTracks),
+              icon: Icons.shuffle_rounded,
+              label: '随机播放',
+              isPrimary: false,
+              isDark: isDark,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(bool isDark) => Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 80,
+            height: 80,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  AppColors.primary.withValues(alpha: 0.2),
+                  AppColors.secondary.withValues(alpha: 0.2),
+                ],
+              ),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.music_off_rounded, size: 40, color: AppColors.primary),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            '暂无歌曲',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+              color: isDark ? Colors.grey[400] : Colors.grey[600],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '扫描音乐库以添加歌曲',
+            style: TextStyle(
+              fontSize: 13,
+              color: isDark ? Colors.grey[600] : Colors.grey[500],
+            ),
+          ),
+        ],
+      ),
+    );
+
+  List<MusicFileWithSource> _applySorting(
+    List<MusicFileWithSource> tracks,
+    MusicSortState sortState,
+  ) {
+    final sorted = List<MusicFileWithSource>.from(tracks)
+      ..sort((a, b) {
+        int result;
+        switch (sortState.option) {
+          case MusicSortOption.name:
+            result = a.displayTitle.toLowerCase().compareTo(b.displayTitle.toLowerCase());
+          case MusicSortOption.artist:
+            result = a.displayArtist.toLowerCase().compareTo(b.displayArtist.toLowerCase());
+          case MusicSortOption.album:
+            result = a.displayAlbum.toLowerCase().compareTo(b.displayAlbum.toLowerCase());
+          case MusicSortOption.dateAdded:
+            final aTime = a.modifiedTime ?? DateTime(1970);
+            final bTime = b.modifiedTime ?? DateTime(1970);
+            result = aTime.compareTo(bTime);
+          case MusicSortOption.duration:
+            result = (a.duration ?? 0).compareTo(b.duration ?? 0);
+        }
+        return sortState.direction == SortDirection.ascending ? result : -result;
+      });
+
+    return sorted;
+  }
+
+  void _showSortOptions(BuildContext context, WidgetRef ref, MusicSortState currentSort, bool isDark) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 拖动指示器
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: isDark ? Colors.grey[700] : Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            // 标题
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.sort_rounded,
+                    color: isDark ? Colors.white70 : Colors.black87,
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    '排序方式',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                  const Spacer(),
+                  // 排序方向切换
+                  _SortDirectionButton(
+                    direction: currentSort.direction,
+                    isDark: isDark,
+                    onTap: () {
+                      final newDirection = currentSort.direction == SortDirection.ascending
+                          ? SortDirection.descending
+                          : SortDirection.ascending;
+                      ref.read(musicSortProvider.notifier).state = currentSort.copyWith(
+                        direction: newDirection,
+                      );
+                      Navigator.pop(context);
+                    },
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            // 排序选项列表
+            ...MusicSortOption.values.map((option) => _SortOptionTile(
+              option: option,
+              isSelected: currentSort.option == option,
+              isDark: isDark,
+              onTap: () {
+                ref.read(musicSortProvider.notifier).state = currentSort.copyWith(
+                  option: option,
+                );
+                Navigator.pop(context);
+              },
+            )),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _playAll(BuildContext context, WidgetRef ref, List<MusicFileWithSource> sortedTracks) async {
+    logger.i('AllSongsPage._playAll: 开始播放全部 (${sortedTracks.length} 首)');
+
+    if (sortedTracks.isEmpty) {
+      logger.w('AllSongsPage._playAll: 没有歌曲可播放');
+      return;
+    }
+
+    final connections = ref.read(activeConnectionsProvider);
+
+    try {
+      final first = sortedTracks.first;
+      final firstConnection = connections[first.sourceId];
+      if (firstConnection == null || firstConnection.status != SourceStatus.connected) {
+        logger.e('AllSongsPage._playAll: 第一首歌曲的源未连接');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('源未连接，请先连接到 NAS')),
+          );
+        }
+        return;
+      }
+
+      logger.d('AllSongsPage._playAll: 获取第一首歌曲 URL: ${first.path}');
+      final url = await firstConnection.adapter.fileSystem.getFileUrl(first.path);
+      final musicItem = MusicItem.fromFileItem(first.file, url, sourceId: first.sourceId);
+
+      final queue = <MusicItem>[];
+      for (final track in sortedTracks.take(100)) {
+        final conn = connections[track.sourceId];
+        if (conn == null || conn.status != SourceStatus.connected) continue;
+        final trackUrl = await conn.adapter.fileSystem.getFileUrl(track.path);
+        queue.add(MusicItem.fromFileItem(track.file, trackUrl, sourceId: track.sourceId));
+      }
+      logger.d('AllSongsPage._playAll: 创建队列完成 (${queue.length} 首)');
+
+      ref.read(playQueueProvider.notifier).setQueue(queue);
+      await ref.read(musicPlayerControllerProvider.notifier).play(musicItem);
+      logger.i('AllSongsPage._playAll: 播放成功');
+
+      if (context.mounted) {
+        await MusicPlayerPage.open(context);
+      }
+    } on Exception catch (e, stackTrace) {
+      logger.e('AllSongsPage._playAll: 播放失败', e, stackTrace);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('播放失败: $e')));
+      }
+    }
+  }
+
+  Future<void> _shufflePlay(BuildContext context, WidgetRef ref, List<MusicFileWithSource> sortedTracks) async {
+    logger.i('AllSongsPage._shufflePlay: 开始随机播放 (${sortedTracks.length} 首)');
+
+    if (sortedTracks.isEmpty) {
+      logger.w('AllSongsPage._shufflePlay: 没有歌曲可播放');
+      return;
+    }
+
+    final connections = ref.read(activeConnectionsProvider);
+    final shuffled = List<MusicFileWithSource>.from(sortedTracks)..shuffle();
+    final first = shuffled.first;
+
+    try {
+      final firstConnection = connections[first.sourceId];
+      if (firstConnection == null || firstConnection.status != SourceStatus.connected) {
+        logger.e('AllSongsPage._shufflePlay: 第一首歌曲的源未连接');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('源未连接，请先连接到 NAS')),
+          );
+        }
+        return;
+      }
+
+      logger.d('AllSongsPage._shufflePlay: 获取第一首歌曲 URL: ${first.path}');
+      final url = await firstConnection.adapter.fileSystem.getFileUrl(first.path);
+      final musicItem = MusicItem.fromFileItem(first.file, url, sourceId: first.sourceId);
+
+      final queue = <MusicItem>[];
+      for (final track in shuffled.take(100)) {
+        final conn = connections[track.sourceId];
+        if (conn == null || conn.status != SourceStatus.connected) continue;
+        final trackUrl = await conn.adapter.fileSystem.getFileUrl(track.path);
+        queue.add(MusicItem.fromFileItem(track.file, trackUrl, sourceId: track.sourceId));
+      }
+      logger.d('AllSongsPage._shufflePlay: 创建队列完成 (${queue.length} 首)');
+
+      ref.read(playQueueProvider.notifier).setQueue(queue);
+      await ref.read(musicPlayerControllerProvider.notifier).play(musicItem);
+      logger.i('AllSongsPage._shufflePlay: 播放成功');
+
+      if (context.mounted) {
+        await MusicPlayerPage.open(context);
+      }
+    } on Exception catch (e, stackTrace) {
+      logger.e('AllSongsPage._shufflePlay: 播放失败', e, stackTrace);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('播放失败: $e')));
+      }
+    }
+  }
+}
+
+/// 排序按钮组件
+class _SortButton extends StatelessWidget {
+  const _SortButton({
+    required this.sortState,
+    required this.isDark,
+    required this.onTap,
+  });
+
+  final MusicSortState sortState;
+  final bool isDark;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.1)
+                : Colors.black.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                sortState.direction == SortDirection.ascending
+                    ? Icons.arrow_upward_rounded
+                    : Icons.arrow_downward_rounded,
+                size: 16,
+                color: AppColors.primary,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                sortState.option.label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Icon(
+                Icons.expand_more_rounded,
+                size: 18,
+                color: isDark ? Colors.grey[400] : Colors.grey[600],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+}
+
+/// 全部歌曲内容（用于嵌入到通用分类页面中）
+class _AllSongsContent extends ConsumerWidget {
+  const _AllSongsContent({
     required this.tracks,
     required this.isDark,
   });
@@ -2617,25 +3106,24 @@ class _AllSongsView extends ConsumerWidget {
     MusicSortState sortState,
   ) {
     final sorted = List<MusicFileWithSource>.from(tracks)
-
-    ..sort((a, b) {
-      int result;
-      switch (sortState.option) {
-        case MusicSortOption.name:
-          result = a.displayTitle.toLowerCase().compareTo(b.displayTitle.toLowerCase());
-        case MusicSortOption.artist:
-          result = a.displayArtist.toLowerCase().compareTo(b.displayArtist.toLowerCase());
-        case MusicSortOption.album:
-          result = a.displayAlbum.toLowerCase().compareTo(b.displayAlbum.toLowerCase());
-        case MusicSortOption.dateAdded:
-          final aTime = a.modifiedTime ?? DateTime(1970);
-          final bTime = b.modifiedTime ?? DateTime(1970);
-          result = aTime.compareTo(bTime);
-        case MusicSortOption.duration:
-          result = (a.duration ?? 0).compareTo(b.duration ?? 0);
-      }
-      return sortState.direction == SortDirection.ascending ? result : -result;
-    });
+      ..sort((a, b) {
+        int result;
+        switch (sortState.option) {
+          case MusicSortOption.name:
+            result = a.displayTitle.toLowerCase().compareTo(b.displayTitle.toLowerCase());
+          case MusicSortOption.artist:
+            result = a.displayArtist.toLowerCase().compareTo(b.displayArtist.toLowerCase());
+          case MusicSortOption.album:
+            result = a.displayAlbum.toLowerCase().compareTo(b.displayAlbum.toLowerCase());
+          case MusicSortOption.dateAdded:
+            final aTime = a.modifiedTime ?? DateTime(1970);
+            final bTime = b.modifiedTime ?? DateTime(1970);
+            result = aTime.compareTo(bTime);
+          case MusicSortOption.duration:
+            result = (a.duration ?? 0).compareTo(b.duration ?? 0);
+        }
+        return sortState.direction == SortDirection.ascending ? result : -result;
+      });
 
     return sorted;
   }

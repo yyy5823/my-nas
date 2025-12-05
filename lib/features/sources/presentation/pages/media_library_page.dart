@@ -1,16 +1,19 @@
-import 'dart:async';
+import 'dart:async' show StreamSubscription, unawaited;
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/features/book/data/services/book_database_service.dart';
 import 'package:my_nas/features/book/data/services/book_library_cache_service.dart';
 import 'package:my_nas/features/book/presentation/pages/book_list_page.dart';
 import 'package:my_nas/features/comic/data/services/comic_library_cache_service.dart';
 import 'package:my_nas/features/comic/presentation/pages/comic_list_page.dart';
+import 'package:my_nas/features/music/data/services/music_database_service.dart';
 import 'package:my_nas/features/music/data/services/music_library_cache_service.dart';
 import 'package:my_nas/features/music/presentation/pages/music_list_page.dart';
+import 'package:my_nas/features/photo/data/services/photo_database_service.dart';
 import 'package:my_nas/features/photo/data/services/photo_library_cache_service.dart';
 import 'package:my_nas/features/photo/presentation/pages/photo_list_page.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
@@ -18,6 +21,7 @@ import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/features/sources/presentation/widgets/folder_picker_sheet.dart';
+import 'package:my_nas/features/video/data/services/video_database_service.dart';
 import 'package:my_nas/features/video/data/services/video_library_cache_service.dart';
 import 'package:my_nas/features/video/data/services/video_scanner_service.dart';
 import 'package:my_nas/features/video/presentation/pages/video_list_page.dart';
@@ -437,7 +441,9 @@ class _MediaScanSection extends ConsumerStatefulWidget {
 
 class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
   VideoScanProgress? _videoScanProgress;
+  ScrapeStats? _scrapeStats;
   StreamSubscription<VideoScanProgress>? _progressSubscription;
+  StreamSubscription<ScrapeStats>? _scrapeStatsSubscription;
 
   @override
   void initState() {
@@ -450,12 +456,37 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
               setState(() => _videoScanProgress = progress);
             }
           });
+
+      // 监听刮削统计
+      _scrapeStatsSubscription = VideoScannerService().scrapeStatsStream
+          .listen((stats) {
+            if (mounted) {
+              setState(() => _scrapeStats = stats);
+            }
+          });
+
+      // 初始加载刮削统计
+      _loadScrapeStats();
+    }
+  }
+
+  Future<void> _loadScrapeStats() async {
+    if (widget.mediaType == MediaType.video) {
+      try {
+        final stats = await VideoScannerService().getScrapeStats();
+        if (mounted) {
+          setState(() => _scrapeStats = stats);
+        }
+      } on Exception {
+        // 数据库未初始化时忽略错误
+      }
     }
   }
 
   @override
   void dispose() {
     _progressSubscription?.cancel();
+    _scrapeStatsSubscription?.cancel();
     super.dispose();
   }
 
@@ -470,6 +501,365 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
       return conn?.status == SourceStatus.connected;
     });
 
+    // 视频类型使用新的分区布局
+    if (widget.mediaType == MediaType.video) {
+      return _buildVideoScanSection(context, theme, isDark, hasConnectedSource);
+    }
+
+    // 其他媒体类型使用原有布局
+    return _buildGenericScanSection(context, theme, isDark, hasConnectedSource);
+  }
+
+  /// 构建视频扫描区域（分区展示：文件扫描 + 刮削进度）
+  Widget _buildVideoScanSection(
+    BuildContext context,
+    ThemeData theme,
+    bool isDark,
+    bool hasConnectedSource,
+  ) {
+    final progress = _videoScanProgress;
+    final stats = _scrapeStats;
+
+    final isScanning = VideoScannerService().isScanning;
+    final isScraping = VideoScannerService().isScraping;
+    final isLoading = isScanning || isScraping;
+
+    // 判断当前阶段
+    final isScanningFiles = isScanning &&
+        (progress?.phase == VideoScanPhase.scanning ||
+            progress?.phase == VideoScanPhase.savingToDb);
+    final isScrapingMeta = isScraping ||
+        (progress?.phase == VideoScanPhase.scraping);
+
+    // 文件统计信息
+    final cacheInfo = VideoLibraryCacheService().getCacheInfo();
+    final totalVideos = stats?.total ?? 0;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.grey[900] : Colors.grey[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark ? Colors.grey[800]! : Colors.grey[200]!,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 文件扫描统计区
+          _buildSectionHeader(
+            theme: theme,
+            icon: Icons.folder_open_rounded,
+            title: '文件扫描',
+            subtitle: cacheInfo,
+          ),
+          const SizedBox(height: 12),
+
+          // 文件扫描进度
+          if (isScanningFiles) ...[
+            _buildProgressRow(
+              theme: theme,
+              isDark: isDark,
+              progress: progress?.progress ?? 0.0,
+              description: progress?.description ?? '正在扫描...',
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // 扫描按钮
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: isLoading || !hasConnectedSource
+                  ? null
+                  : _scanFilesOnly,
+              icon: Icon(
+                isScanning ? Icons.hourglass_empty : Icons.folder_open_rounded,
+              ),
+              label: Text(isScanning ? '扫描中...' : '扫描文件'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: isDark
+                    ? Colors.grey[800]
+                    : Colors.grey[300],
+              ),
+            ),
+          ),
+
+          const Divider(height: 32),
+
+          // 刮削进度区
+          _buildSectionHeader(
+            theme: theme,
+            icon: Icons.auto_fix_high_rounded,
+            title: '元数据刮削',
+            subtitle: stats != null
+                ? '已刮削 ${stats.completed}/${stats.total}，失败 ${stats.failed}'
+                : '暂无刮削信息',
+          ),
+          const SizedBox(height: 12),
+
+          // 刮削统计卡片
+          if (stats != null && stats.total > 0) ...[
+            _buildScrapeStatsCard(theme, isDark, stats),
+            const SizedBox(height: 12),
+          ],
+
+          // 刮削进度
+          if (isScrapingMeta) ...[
+            _buildProgressRow(
+              theme: theme,
+              isDark: isDark,
+              progress: stats != null && stats.total > 0
+                  ? stats.processed / stats.total
+                  : 0.0,
+              description: progress?.currentFile != null
+                  ? '正在刮削: ${progress!.currentFile}'
+                  : '正在刮削元数据...',
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // 刮削按钮
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: isLoading || !hasConnectedSource || totalVideos == 0
+                      ? null
+                      : _startScraping,
+                  icon: Icon(
+                    isScraping ? Icons.hourglass_empty : Icons.auto_fix_high_rounded,
+                  ),
+                  label: Text(isScraping ? '刮削中...' : '开始刮削'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: isDark
+                        ? Colors.grey[800]
+                        : Colors.grey[300],
+                  ),
+                ),
+              ),
+              if (isScraping) ...[
+                const SizedBox(width: 12),
+                OutlinedButton(
+                  onPressed: _stopScraping,
+                  style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+                  child: const Text('停止'),
+                ),
+              ],
+            ],
+          ),
+
+          // 未连接提示
+          if (!hasConnectedSource && widget.paths.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.warning_amber_rounded,
+                    size: 16,
+                    color: Colors.orange[700],
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '请先连接至少一个源才能扫描${widget.mediaType.displayName}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: Colors.orange[700],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// 构建区域标题
+  Widget _buildSectionHeader({
+    required ThemeData theme,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+  }) => Row(
+    children: [
+      Container(
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: AppColors.primary.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Icon(icon, size: 16, color: AppColors.primary),
+      ),
+      const SizedBox(width: 10),
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            Text(
+              subtitle,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ],
+  );
+
+  /// 构建进度行
+  Widget _buildProgressRow({
+    required ThemeData theme,
+    required bool isDark,
+    required double progress,
+    required String description,
+  }) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
+        children: [
+          SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              value: progress > 0 ? progress : null,
+              color: AppColors.primary,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              description,
+              style: theme.textTheme.bodySmall,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (progress > 0)
+            Text(
+              '${(progress * 100).toStringAsFixed(0)}%',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: AppColors.primary,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+        ],
+      ),
+      if (progress > 0) ...[
+        const SizedBox(height: 6),
+        LinearProgressIndicator(
+          value: progress,
+          backgroundColor: isDark ? Colors.grey[800] : Colors.grey[200],
+          color: AppColors.primary,
+        ),
+      ],
+    ],
+  );
+
+  /// 构建刮削统计卡片
+  Widget _buildScrapeStatsCard(ThemeData theme, bool isDark, ScrapeStats stats) {
+    final completedPercent = stats.total > 0
+        ? (stats.completed / stats.total * 100).toStringAsFixed(0)
+        : '0';
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.grey[850] : Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isDark ? Colors.grey[700]! : Colors.grey[300]!,
+        ),
+      ),
+      child: Row(
+        children: [
+          _buildStatItem(
+            theme: theme,
+            label: '待刮削',
+            value: stats.pending.toString(),
+            color: Colors.grey,
+          ),
+          _buildStatDivider(isDark),
+          _buildStatItem(
+            theme: theme,
+            label: '已完成',
+            value: stats.completed.toString(),
+            color: Colors.green,
+          ),
+          _buildStatDivider(isDark),
+          _buildStatItem(
+            theme: theme,
+            label: '失败',
+            value: stats.failed.toString(),
+            color: Colors.red,
+          ),
+          _buildStatDivider(isDark),
+          _buildStatItem(
+            theme: theme,
+            label: '完成率',
+            value: '$completedPercent%',
+            color: AppColors.primary,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatItem({
+    required ThemeData theme,
+    required String label,
+    required String value,
+    required Color color,
+  }) => Expanded(
+    child: Column(
+      children: [
+        Text(
+          value,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    ),
+  );
+
+  Widget _buildStatDivider(bool isDark) => Container(
+    width: 1,
+    height: 30,
+    color: isDark ? Colors.grey[700] : Colors.grey[300],
+  );
+
+  /// 构建通用扫描区域（非视频类型）
+  Widget _buildGenericScanSection(
+    BuildContext context,
+    ThemeData theme,
+    bool isDark,
+    bool hasConnectedSource,
+  ) {
     // 根据媒体类型获取状态和缓存信息
     final (isLoading, scanProgress, currentFolder, cacheInfo) =
         _getMediaState();
@@ -563,34 +953,24 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
           ],
 
           // 扫描按钮
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: isLoading || !hasConnectedSource
-                      ? null
-                      : _scanMedia,
-                  icon: Icon(
-                    isLoading ? Icons.hourglass_empty : Icons.refresh_rounded,
-                  ),
-                  label: Text(isLoading ? '扫描中...' : scanButtonText),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
-                    disabledBackgroundColor: isDark
-                        ? Colors.grey[800]
-                        : Colors.grey[300],
-                  ),
-                ),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: isLoading || !hasConnectedSource
+                  ? null
+                  : _scanMedia,
+              icon: Icon(
+                isLoading ? Icons.hourglass_empty : Icons.refresh_rounded,
               ),
-              const SizedBox(width: 12),
-              OutlinedButton.icon(
-                onPressed: isLoading ? null : _clearCache,
-                icon: const Icon(Icons.delete_outline),
-                label: const Text('清除缓存'),
-                style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+              label: Text(isLoading ? '扫描中...' : scanButtonText),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: isDark
+                    ? Colors.grey[800]
+                    : Colors.grey[300],
               ),
-            ],
+            ),
           ),
 
           // 未连接提示
@@ -698,6 +1078,68 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
     }
   }
 
+  /// 仅扫描文件（视频专用）
+  Future<void> _scanFilesOnly() async {
+    try {
+      final count = await VideoScannerService().scanFilesOnly(
+        paths: widget.paths,
+        connections: widget.connections,
+      );
+      // 扫描完成后，通知 VideoListNotifier 重新加载
+      await ref.read(videoListProvider.notifier).reloadFromCache();
+      // 刷新刮削统计
+      await _loadScrapeStats();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('文件扫描完成，共 $count 个视频')),
+        );
+      }
+    } on Exception catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('扫描失败: $e')),
+        );
+      }
+    }
+  }
+
+  /// 开始刮削元数据（视频专用）
+  Future<void> _startScraping() async {
+    try {
+      // 异步开始刮削，不阻塞 UI
+      unawaited(VideoScannerService().scrapeMetadata(
+        connections: widget.connections,
+      ).then((_) async {
+        // 刮削完成后刷新统计
+        await _loadScrapeStats();
+        // 通知 VideoListNotifier 重新加载
+        await ref.read(videoListProvider.notifier).reloadFromCache();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('元数据刮削完成')),
+          );
+        }
+      }));
+      // 立即刷新状态
+      setState(() {});
+    } on Exception catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('刮削失败: $e')),
+        );
+      }
+    }
+  }
+
+  /// 停止刮削（视频专用）
+  void _stopScraping() {
+    VideoScannerService().stopScraping();
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('正在停止刮削...')),
+    );
+  }
+
   Future<void> _scanMedia() async {
     try {
       switch (widget.mediaType) {
@@ -738,6 +1180,8 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
     }
   }
 
+  /// 清除缓存（保留方法以备将来使用）
+  // ignore: unused_element
   Future<void> _clearCache() async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -761,19 +1205,28 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
     if (confirm ?? false) {
       switch (widget.mediaType) {
         case MediaType.video:
+          // 同时清除 Hive 缓存和 SQLite 数据
           await VideoLibraryCacheService().clearCache();
+          await VideoDatabaseService().clearAll();
           ref.invalidate(videoListProvider);
         case MediaType.music:
+          // 同时清除 Hive 缓存和 SQLite 数据
           await MusicLibraryCacheService().clearCache();
+          await MusicDatabaseService().clearAll();
           ref.invalidate(musicListProvider);
         case MediaType.photo:
+          // 同时清除 Hive 缓存和 SQLite 数据
           await PhotoLibraryCacheService().clearCache();
+          await PhotoDatabaseService().clear();
           ref.invalidate(photoListProvider);
         case MediaType.comic:
+          // 漫画仅使用 FlutterSecureStorage
           await ComicLibraryCacheService().clearCache();
           ref.invalidate(comicListProvider);
         case MediaType.book:
+          // 同时清除 Hive 缓存和 SQLite 数据
           await BookLibraryCacheService().clearCache();
+          await BookDatabaseService().clear();
           ref.invalidate(bookListProvider);
         case MediaType.note:
           break;

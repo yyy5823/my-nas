@@ -5,7 +5,7 @@ import 'package:my_nas/features/music/data/services/lyric_service.dart';
 import 'package:my_nas/features/music/presentation/providers/lyric_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
 
-/// Spotify 风格的歌词视图
+/// Spotify 风格的歌词视图 - 现代化设计
 class LyricView extends ConsumerStatefulWidget {
   const LyricView({
     super.key,
@@ -23,14 +23,26 @@ class LyricView extends ConsumerStatefulWidget {
   ConsumerState<LyricView> createState() => _LyricViewState();
 }
 
-class _LyricViewState extends ConsumerState<LyricView> {
+class _LyricViewState extends ConsumerState<LyricView>
+    with SingleTickerProviderStateMixin {
   final ScrollController _scrollController = ScrollController();
   int _lastLineIndex = -1;
   bool _userScrolling = false;
+  late AnimationController _pulseController;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..repeat(reverse: true);
+  }
 
   @override
   void dispose() {
     _scrollController.dispose();
+    _pulseController.dispose();
     super.dispose();
   }
 
@@ -39,13 +51,13 @@ class _LyricViewState extends ConsumerState<LyricView> {
     if (index < 0 || index >= totalLines) return;
 
     // 计算目标位置，使当前行居中
-    final itemHeight = widget.showFullScreen ? 60.0 : 50.0;
+    final itemHeight = widget.showFullScreen ? 72.0 : 56.0;
     final viewportHeight = _scrollController.position.viewportDimension;
     final targetOffset = (index * itemHeight) - (viewportHeight / 2) + (itemHeight / 2);
 
     _scrollController.animateTo(
       targetOffset.clamp(0.0, _scrollController.position.maxScrollExtent),
-      duration: const Duration(milliseconds: 300),
+      duration: const Duration(milliseconds: 400),
       curve: Curves.easeOutCubic,
     );
   }
@@ -57,25 +69,7 @@ class _LyricViewState extends ConsumerState<LyricView> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     if (lyricState.isLoading) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(
-              color: AppColors.primary.withValues(alpha: 0.5),
-              strokeWidth: 2,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '正在加载歌词...',
-              style: TextStyle(
-                color: isDark ? Colors.grey[500] : Colors.grey[600],
-                fontSize: 14,
-              ),
-            ),
-          ],
-        ),
-      );
+      return _buildLoadingState(isDark);
     }
 
     if (lyricState.lyricData.isEmpty) {
@@ -109,51 +103,130 @@ class _LyricViewState extends ConsumerState<LyricView> {
           }
           return false;
         },
-        child: ListView.builder(
-          controller: _scrollController,
-          padding: EdgeInsets.symmetric(
-            vertical: widget.showFullScreen ? 200 : 100,
-            horizontal: 24,
-          ),
-          itemCount: lyrics.lines.length,
-          itemBuilder: (context, index) {
-            final line = lyrics.lines[index];
-            final isCurrent = index == currentIndex;
-            final isPast = index < currentIndex;
+        child: ShaderMask(
+          shaderCallback: (Rect bounds) => LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.transparent,
+              Colors.white,
+              Colors.white,
+              Colors.transparent,
+            ],
+            stops: const [0.0, 0.1, 0.9, 1.0],
+          ).createShader(bounds),
+          blendMode: BlendMode.dstIn,
+          child: ListView.builder(
+            controller: _scrollController,
+            physics: const BouncingScrollPhysics(),
+            padding: EdgeInsets.symmetric(
+              vertical: widget.showFullScreen ? 200 : 100,
+              horizontal: widget.showFullScreen ? 32 : 24,
+            ),
+            itemCount: lyrics.lines.length,
+            itemBuilder: (context, index) {
+              final line = lyrics.lines[index];
+              final isCurrent = index == currentIndex;
+              final isPast = index < currentIndex;
 
-            return _LyricLineWidget(
-              line: line,
-              isCurrent: isCurrent,
-              isPast: isPast,
-              isDark: isDark,
-              showFullScreen: widget.showFullScreen,
-              onTap: () {
-                // 点击歌词跳转到对应位置
-                ref.read(musicPlayerControllerProvider.notifier).seek(line.time);
-              },
-            );
-          },
+              return _LyricLineWidget(
+                line: line,
+                isCurrent: isCurrent,
+                isPast: isPast,
+                isDark: isDark,
+                showFullScreen: widget.showFullScreen,
+                onTap: () {
+                  // 点击歌词跳转到对应位置
+                  ref.read(musicPlayerControllerProvider.notifier).seek(line.time);
+                },
+              );
+            },
+          ),
         ),
       ),
     );
   }
 
+  Widget _buildLoadingState(bool isDark) => Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 脉冲动画
+          AnimatedBuilder(
+            animation: _pulseController,
+            builder: (context, child) => Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.primary.withValues(
+                  alpha: 0.1 + (_pulseController.value * 0.1),
+                ),
+              ),
+              child: Center(
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppColors.primary.withValues(
+                      alpha: 0.2 + (_pulseController.value * 0.1),
+                    ),
+                  ),
+                  child: Icon(
+                    Icons.lyrics_rounded,
+                    color: AppColors.primary,
+                    size: 22,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            '正在加载歌词...',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+              color: isDark ? Colors.white60 : Colors.black45,
+            ),
+          ),
+        ],
+      ),
+    );
+
   Widget _buildNoLyric(bool isDark) => Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            Icons.music_note_rounded,
-            size: 64,
-            color: isDark ? Colors.grey[700] : Colors.grey[400],
+          // 装饰性音符
+          Container(
+            width: 100,
+            height: 100,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  AppColors.primary.withValues(alpha: 0.15),
+                  AppColors.secondary.withValues(alpha: 0.1),
+                ],
+              ),
+            ),
+            child: Icon(
+              Icons.music_note_rounded,
+              size: 48,
+              color: AppColors.primary.withValues(alpha: 0.6),
+            ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 24),
           Text(
             '暂无歌词',
             style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w500,
-              color: isDark ? Colors.grey[500] : Colors.grey[600],
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: isDark ? Colors.white70 : Colors.black54,
             ),
           ),
           const SizedBox(height: 8),
@@ -161,7 +234,7 @@ class _LyricViewState extends ConsumerState<LyricView> {
             '尽情享受音乐吧',
             style: TextStyle(
               fontSize: 14,
-              color: isDark ? Colors.grey[600] : Colors.grey[500],
+              color: isDark ? Colors.white38 : Colors.black38,
             ),
           ),
         ],
@@ -187,37 +260,86 @@ class _LyricLineWidget extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
+  Widget build(BuildContext context) {
+    // 根据状态确定颜色和大小
+    Color textColor;
+    double fontSize;
+    FontWeight fontWeight;
+
+    if (isCurrent) {
+      textColor = isDark ? Colors.white : Colors.black87;
+      fontSize = showFullScreen ? 26 : 20;
+      fontWeight = FontWeight.bold;
+    } else if (isPast) {
+      textColor = isDark
+          ? Colors.white.withValues(alpha: 0.35)
+          : Colors.black.withValues(alpha: 0.3);
+      fontSize = showFullScreen ? 18 : 16;
+      fontWeight = FontWeight.normal;
+    } else {
+      textColor = isDark
+          ? Colors.white.withValues(alpha: 0.5)
+          : Colors.black.withValues(alpha: 0.4);
+      fontSize = showFullScreen ? 18 : 16;
+      fontWeight = FontWeight.normal;
+    }
+
+    return GestureDetector(
       onTap: onTap,
+      behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOutCubic,
         padding: EdgeInsets.symmetric(
-          vertical: showFullScreen ? 12 : 8,
+          vertical: showFullScreen ? 14 : 10,
         ),
-        child: AnimatedDefaultTextStyle(
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOutCubic,
-          style: TextStyle(
-            fontSize: isCurrent
-                ? (showFullScreen ? 24 : 20)
-                : (showFullScreen ? 18 : 16),
-            fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
-            color: isCurrent
-                ? (isDark ? Colors.white : Colors.black87)
-                : isPast
-                    ? (isDark ? Colors.grey[600] : Colors.grey[500])
-                    : (isDark ? Colors.grey[500] : Colors.grey[400]),
-            height: 1.5,
-          ),
-          textAlign: TextAlign.center,
-          child: Text(line.text),
+        child: Row(
+          children: [
+            // 当前行指示器
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              width: isCurrent ? 4 : 0,
+              height: showFullScreen ? 28 : 22,
+              margin: EdgeInsets.only(right: isCurrent ? 12 : 0),
+              decoration: BoxDecoration(
+                color: AppColors.primary,
+                borderRadius: BorderRadius.circular(2),
+                boxShadow: isCurrent
+                    ? [
+                        BoxShadow(
+                          color: AppColors.primary.withValues(alpha: 0.5),
+                          blurRadius: 8,
+                          offset: const Offset(0, 0),
+                        ),
+                      ]
+                    : null,
+              ),
+            ),
+            // 歌词文本
+            Expanded(
+              child: AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOutCubic,
+                style: TextStyle(
+                  fontSize: fontSize,
+                  fontWeight: fontWeight,
+                  color: textColor,
+                  height: 1.4,
+                ),
+                child: Text(
+                  line.text,
+                  textAlign: TextAlign.left,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
+  }
 }
 
-/// 紧凑型歌词显示（用于播放页底部）
+/// 紧凑型歌词显示（用于播放页底部）- 现代化设计
 class CompactLyricView extends ConsumerWidget {
   const CompactLyricView({
     super.key,
@@ -237,25 +359,105 @@ class CompactLyricView extends ConsumerWidget {
     }
 
     final currentLine = lyricState.lyricData.getCurrentLine(playerState.position);
+    final nextLineIndex = lyricState.lyricData.getCurrentLineIndex(playerState.position) + 1;
+    final nextLine = nextLineIndex < lyricState.lyricData.lines.length
+        ? lyricState.lyricData.lines[nextLineIndex]
+        : null;
 
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 300),
-          child: Text(
-            currentLine?.text ?? '',
-            key: ValueKey(currentLine?.time.inMilliseconds ?? 0),
-            style: TextStyle(
-              fontSize: 14,
-              color: isDark ? Colors.grey[400] : Colors.grey[600],
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 当前歌词
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              transitionBuilder: (child, animation) => FadeTransition(
+                opacity: animation,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0, 0.3),
+                    end: Offset.zero,
+                  ).animate(CurvedAnimation(
+                    parent: animation,
+                    curve: Curves.easeOutCubic,
+                  )),
+                  child: child,
+                ),
+              ),
+              child: Text(
+                currentLine?.text ?? '',
+                key: ValueKey(currentLine?.time.inMilliseconds ?? 0),
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? Colors.white : Colors.black87,
+                  height: 1.4,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
-            textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
+            // 下一句歌词预览
+            if (nextLine != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                nextLine.text,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.4)
+                      : Colors.black.withValues(alpha: 0.35),
+                  height: 1.3,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ],
         ),
+      ),
+    );
+  }
+}
+
+/// 迷你歌词显示（用于迷你播放器等小空间）
+class MiniLyricView extends ConsumerWidget {
+  const MiniLyricView({
+    super.key,
+    this.style,
+  });
+
+  final TextStyle? style;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final lyricState = ref.watch(currentLyricProvider);
+    final playerState = ref.watch(musicPlayerControllerProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    if (lyricState.lyricData.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final currentLine = lyricState.lyricData.getCurrentLine(playerState.position);
+
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 200),
+      child: Text(
+        currentLine?.text ?? '',
+        key: ValueKey(currentLine?.time.inMilliseconds ?? 0),
+        style: style ??
+            TextStyle(
+              fontSize: 12,
+              color: isDark ? Colors.white60 : Colors.black45,
+            ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
       ),
     );
   }

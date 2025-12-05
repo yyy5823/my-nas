@@ -146,6 +146,52 @@ class ComicLibraryCacheService {
     }
   }
 
+  /// 根据 sourceId 删除所有漫画
+  Future<int> deleteBySourceId(String sourceId) async {
+    if (_cache == null) await init();
+    if (_cache == null) return 0;
+
+    final originalCount = _cache!.comics.length;
+    final filteredComics = _cache!.comics
+        .where((c) => c.sourceId != sourceId)
+        .toList();
+    final deletedCount = originalCount - filteredComics.length;
+
+    if (deletedCount > 0) {
+      final newCache = ComicLibraryCache(
+        comics: filteredComics,
+        lastUpdated: _cache!.lastUpdated,
+        sourceIds: _cache!.sourceIds.where((id) => id != sourceId).toList(),
+      );
+      await saveCache(newCache);
+      logger.i('ComicLibraryCacheService: 已删除 $deletedCount 本漫画 (sourceId: $sourceId)');
+    }
+    return deletedCount;
+  }
+
+  /// 根据 sourceId 和路径前缀删除（用于移除文件夹）
+  Future<int> deleteByPath(String sourceId, String pathPrefix) async {
+    if (_cache == null) await init();
+    if (_cache == null) return 0;
+
+    final originalCount = _cache!.comics.length;
+    final filteredComics = _cache!.comics
+        .where((c) => !(c.sourceId == sourceId && c.folderPath.startsWith(pathPrefix)))
+        .toList();
+    final deletedCount = originalCount - filteredComics.length;
+
+    if (deletedCount > 0) {
+      final newCache = ComicLibraryCache(
+        comics: filteredComics,
+        lastUpdated: _cache!.lastUpdated,
+        sourceIds: _cache!.sourceIds,
+      );
+      await saveCache(newCache);
+      logger.i('ComicLibraryCacheService: 已删除 $deletedCount 本漫画 (sourceId: $sourceId, path: $pathPrefix)');
+    }
+    return deletedCount;
+  }
+
   /// 获取缓存大小（字节）
   int getCacheSize() {
     if (_cache == null) return 0;

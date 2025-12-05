@@ -608,11 +608,26 @@ class MusicDatabaseService {
   Future<int> deleteBySourceId(String sourceId) async {
     if (!_initialized) await init();
 
-    return _db!.delete(
+    final count = await _db!.delete(
       _tableMetadata,
       where: '$_colSourceId = ?',
       whereArgs: [sourceId],
     );
+    logger.i('MusicDatabaseService: 已删除 $count 首音乐 (sourceId: $sourceId)');
+    return count;
+  }
+
+  /// 根据 sourceId 和路径前缀删除（用于移除文件夹）
+  Future<int> deleteByPath(String sourceId, String pathPrefix) async {
+    if (!_initialized) await init();
+
+    final count = await _db!.delete(
+      _tableMetadata,
+      where: '$_colSourceId = ? AND $_colFilePath LIKE ?',
+      whereArgs: [sourceId, '$pathPrefix%'],
+    );
+    logger.i('MusicDatabaseService: 已删除 $count 首音乐 (sourceId: $sourceId, path: $pathPrefix)');
+    return count;
   }
 
   /// 清空所有数据
