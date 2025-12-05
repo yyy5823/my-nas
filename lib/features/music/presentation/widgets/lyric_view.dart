@@ -104,7 +104,7 @@ class _LyricViewState extends ConsumerState<LyricView>
           return false;
         },
         child: ShaderMask(
-          shaderCallback: (Rect bounds) => LinearGradient(
+          shaderCallback: (bounds) => LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
@@ -309,7 +309,6 @@ class _LyricLineWidget extends StatelessWidget {
                         BoxShadow(
                           color: AppColors.primary.withValues(alpha: 0.5),
                           blurRadius: 8,
-                          offset: const Offset(0, 0),
                         ),
                       ]
                     : null,

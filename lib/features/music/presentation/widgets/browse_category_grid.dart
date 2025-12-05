@@ -100,7 +100,7 @@ class _CategoryCard extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
-        child: Container(
+        child: DecoratedBox(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             gradient: LinearGradient(
@@ -113,7 +113,6 @@ class _CategoryCard extends StatelessWidget {
             ),
             border: Border.all(
               color: category.color.withValues(alpha: isDark ? 0.3 : 0.2),
-              width: 1,
             ),
           ),
           child: Stack(

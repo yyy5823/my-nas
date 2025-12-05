@@ -35,7 +35,7 @@ class MusicQueueSheet extends ConsumerWidget {
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-          child: Container(
+          child: DecoratedBox(
             decoration: BoxDecoration(
               color: isDark
                   ? Colors.grey[900]!.withValues(alpha: 0.9)
@@ -469,7 +469,7 @@ class _QueueItem extends StatelessWidget {
       coverImage = Image.memory(
         Uint8List.fromList(coverData),
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => _buildDefaultCover(),
+        errorBuilder: (_, _, _) => _buildDefaultCover(),
       );
     } else {
       coverImage = _buildDefaultCover();
@@ -497,7 +497,7 @@ class _QueueItem extends StatelessWidget {
           children: [
             coverImage,
             if (isPlaying)
-              Container(
+              ColoredBox(
                 color: Colors.black.withValues(alpha: 0.4),
                 child: const Center(
                   child: Icon(
@@ -513,7 +513,7 @@ class _QueueItem extends StatelessWidget {
     );
   }
 
-  Widget _buildDefaultCover() => Container(
+  Widget _buildDefaultCover() => ColoredBox(
       color: isDark
           ? Colors.white.withValues(alpha: 0.1)
           : Colors.black.withValues(alpha: 0.05),

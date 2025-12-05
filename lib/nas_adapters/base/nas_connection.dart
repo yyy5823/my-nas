@@ -16,6 +16,21 @@ class ConnectionConfig {
     this.enableDeviceToken = false,
   });
 
+  factory ConnectionConfig.fromJson(
+    Map<String, dynamic> json, {
+    required String password,
+  }) =>
+      ConnectionConfig(
+        type: NasAdapterType.values.byName(json['type'] as String),
+        host: json['host'] as String,
+        port: json['port'] as int,
+        username: json['username'] as String,
+        password: password,
+        useSsl: json['useSsl'] as bool? ?? true,
+        verifySSL: json['verifySSL'] as bool? ?? true,
+        quickConnectId: json['quickConnectId'] as String?,
+      );
+
   final NasAdapterType type;
   final String host;
   final int port;
@@ -75,21 +90,6 @@ class ConnectionConfig {
         'verifySSL': verifySSL,
         'quickConnectId': quickConnectId,
       };
-
-  factory ConnectionConfig.fromJson(
-    Map<String, dynamic> json, {
-    required String password,
-  }) =>
-      ConnectionConfig(
-        type: NasAdapterType.values.byName(json['type'] as String),
-        host: json['host'] as String,
-        port: json['port'] as int,
-        username: json['username'] as String,
-        password: password,
-        useSsl: json['useSsl'] as bool? ?? true,
-        verifySSL: json['verifySSL'] as bool? ?? true,
-        quickConnectId: json['quickConnectId'] as String?,
-      );
 }
 
 /// 连接结果

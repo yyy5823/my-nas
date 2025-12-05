@@ -183,7 +183,6 @@ class VideoScannerService {
       // 阶段2：保存基础记录到 SQLite
       _emitProgress(VideoScanProgress(
         phase: VideoScanPhase.savingToDb,
-        scannedCount: 0,
         totalCount: allVideos.length,
       ));
 
@@ -227,7 +226,6 @@ class VideoScannerService {
           sourceId: video.sourceId,
           filePath: video.file.path,
           fileName: video.file.name,
-          scrapeStatus: ScrapeStatus.pending,
           thumbnailUrl: video.file.thumbnailUrl,
           fileSize: video.file.size,
           fileModifiedTime: video.file.modifiedTime,
@@ -333,7 +331,7 @@ class VideoScannerService {
         phase: VideoScanPhase.completed,
         scannedCount: (await _dbService.getScrapeStats()).total,
       ));
-    } catch (e, st) {
+    } on Exception catch (e, st) {
       logger.e('VideoScannerService: 刮削失败', e, st);
       _emitProgress(const VideoScanProgress(phase: VideoScanPhase.error));
     } finally {
@@ -384,8 +382,8 @@ class VideoScannerService {
       }
 
       // 保留文件信息
-      metadata.fileSize = video.fileSize;
-      metadata.fileModifiedTime = video.fileModifiedTime;
+      metadata..fileSize = video.fileSize
+      ..fileModifiedTime = video.fileModifiedTime;
 
       await _metadataService.save(metadata);
     } on Exception catch (e) {

@@ -131,14 +131,14 @@ class MiniPlayer extends ConsumerWidget {
         Uint8List.fromList(coverData),
         fit: BoxFit.cover,
         gaplessPlayback: true,
-        errorBuilder: (_, __, ___) => _buildCoverPlaceholder(isDark),
+        errorBuilder: (_, _, _) => _buildCoverPlaceholder(isDark),
       );
     } else if (coverUrl != null) {
       coverImage = Image.network(
         coverUrl,
         fit: BoxFit.cover,
         gaplessPlayback: true,
-        errorBuilder: (_, __, ___) => _buildCoverPlaceholder(isDark),
+        errorBuilder: (_, _, _) => _buildCoverPlaceholder(isDark),
       );
     } else {
       coverImage = _buildCoverPlaceholder(isDark);

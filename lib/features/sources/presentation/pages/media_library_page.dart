@@ -781,8 +781,7 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
   }
 
   /// 构建迷你统计项
-  Widget _buildMiniStat(ThemeData theme, String label, int value, Color color) {
-    return Row(
+  Widget _buildMiniStat(ThemeData theme, String label, int value, Color color) => Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
@@ -802,7 +801,6 @@ class _MediaScanSectionState extends ConsumerState<_MediaScanSection> {
         ),
       ],
     );
-  }
 
   /// 构建进度行
   Widget _buildProgressRow({
