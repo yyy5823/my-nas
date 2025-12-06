@@ -16,6 +16,7 @@ import 'package:my_nas/features/video/data/services/video_history_service.dart';
 import 'package:my_nas/features/video/data/services/video_library_cache_service.dart';
 import 'package:my_nas/features/video/data/services/video_metadata_service.dart';
 import 'package:my_nas/features/video/data/services/video_scanner_service.dart';
+import 'package:my_nas/features/video/domain/entities/tv_show_group.dart';
 import 'package:my_nas/features/video/domain/entities/video_item.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
 import 'package:my_nas/features/video/presentation/pages/video_detail_page.dart';
@@ -110,7 +111,8 @@ class VideoListLoaded extends VideoListState {
   final List<VideoMetadata> topRatedMovies;
   final List<VideoMetadata> recentVideos;
   final List<VideoMetadata> movies;
-  final Map<String, List<VideoMetadata>> tvShowGroups;
+  /// 剧集分组（使用 TvShowGroup 按季组织）
+  final Map<String, TvShowGroup> tvShowGroups;
 
   // 搜索结果
   final List<VideoMetadata> searchResults;
@@ -124,21 +126,25 @@ class VideoListLoaded extends VideoListState {
 
     switch (currentTab) {
       case VideoTab.all:
-        // 返回所有视频（合并电影和剧集）
+        // 返回所有视频（合并电影和剧集代表）
         final allVideos = <VideoMetadata>[...movies];
-        for (final episodes in tvShowGroups.values) {
-          if (episodes.isNotEmpty) allVideos.add(episodes.first);
+        for (final group in tvShowGroups.values) {
+          allVideos.add(group.representative);
         }
         allVideos.sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
         return allVideos;
       case VideoTab.movies:
         return movies;
       case VideoTab.tvShows:
-        return tvShowGroups.values.map((e) => e.first).toList();
+        // 返回每个剧集的代表（第一季第一集）
+        return tvShowGroups.values.map((g) => g.representative).toList();
       case VideoTab.recent:
         return recentVideos;
     }
   }
+
+  /// 获取剧集分组列表（用于展示剧集卡片）
+  List<TvShowGroup> get tvShowGroupList => tvShowGroups.values.toList();
 
   VideoListLoaded copyWith({
     int? totalCount,
@@ -151,7 +157,7 @@ class VideoListLoaded extends VideoListState {
     List<VideoMetadata>? topRatedMovies,
     List<VideoMetadata>? recentVideos,
     List<VideoMetadata>? movies,
-    Map<String, List<VideoMetadata>>? tvShowGroups,
+    Map<String, TvShowGroup>? tvShowGroups,
     List<VideoMetadata>? searchResults,
     Map<String, VideoMetadata>? videoByKey,
   }) =>
@@ -271,21 +277,8 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     final moviesList = results[3] as List<VideoMetadata>;
     final tvShowsList = results[4] as List<VideoMetadata>;
 
-    // 构建剧集分组（按剧名分组，使用 Map 避免重复遍历）
-    final tvShowGroups = <String, List<VideoMetadata>>{};
-    for (final metadata in tvShowsList) {
-      final showTitle = metadata.title ?? metadata.fileName;
-      tvShowGroups.putIfAbsent(showTitle, () => []).add(metadata);
-    }
-    // 每个剧集组内按季集排序
-    for (final episodes in tvShowGroups.values) {
-      episodes.sort((a, b) {
-        final seasonA = a.seasonNumber ?? 0;
-        final seasonB = b.seasonNumber ?? 0;
-        if (seasonA != seasonB) return seasonA.compareTo(seasonB);
-        return (a.episodeNumber ?? 0).compareTo(b.episodeNumber ?? 0);
-      });
-    }
+    // 构建剧集分组（使用 TvShowGroup，优先用 tmdbId 分组）
+    final tvShowGroups = TvShowGroup.fromMetadataList(tvShowsList);
 
     // 构建快速查找 Map
     final videoByKey = <String, VideoMetadata>{};
@@ -897,10 +890,8 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     // 获取电影列表
     final movies = state.movies;
 
-    // 获取剧集列表（每个剧集只取一个代表）
-    final tvShows = state.tvShowGroups.entries
-        .map((e) => e.value.first)
-        .toList();
+    // 获取剧集分组列表
+    final tvShowGroups = state.tvShowGroupList;
 
     // 高分推荐
     final topRated = state.topRatedMovies;
@@ -958,18 +949,18 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
             ),
           ),
 
-        // 剧集（纵向海报）
-        if (tvShows.isNotEmpty)
+        // 剧集（纵向海报，显示季集统计）
+        if (tvShowGroups.isNotEmpty)
           SliverToBoxAdapter(
-            child: _CategoryRow(
+            child: _TvShowRow(
               title: '剧集',
-              items: tvShows,
-              onItemTap: (m) => _openVideoDetail(context, ref, m),
+              groups: tvShowGroups,
+              onGroupTap: (group) => _openVideoDetail(context, ref, group.representative),
               isDark: isDark,
               icon: Icons.live_tv_rounded,
               iconColor: AppColors.accent,
-              onViewAll: tvShows.length > 10
-                  ? () => _showCategoryPage(context, '剧集', tvShows)
+              onViewAll: tvShowGroups.length > 10
+                  ? () => _showTvShowsPage(context, '剧集', tvShowGroups)
                   : null,
             ),
           ),
@@ -1009,6 +1000,18 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
         builder: (context) => _CategoryFullPage(
           title: title,
           items: items,
+        ),
+      ),
+    );
+  }
+
+  /// 显示剧集列表页面
+  void _showTvShowsPage(BuildContext context, String title, List<TvShowGroup> groups) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => _TvShowsFullPage(
+          title: title,
+          groups: groups,
         ),
       ),
     );
@@ -3388,5 +3391,435 @@ class _CategoryFullPageState extends ConsumerState<_CategoryFullPage> {
       ),
     );
     ref.invalidate(continueWatchingProvider);
+  }
+}
+
+/// 剧集行组件（显示季集统计）
+class _TvShowRow extends StatelessWidget {
+  const _TvShowRow({
+    required this.title,
+    required this.groups,
+    required this.onGroupTap,
+    required this.isDark,
+    this.icon,
+    this.iconColor,
+    this.maxCount = 10,
+    this.onViewAll,
+  });
+
+  final String title;
+  final List<TvShowGroup> groups;
+  final void Function(TvShowGroup) onGroupTap;
+  final bool isDark;
+  final IconData? icon;
+  final Color? iconColor;
+  final int maxCount;
+  final VoidCallback? onViewAll;
+
+  @override
+  Widget build(BuildContext context) {
+    if (groups.isEmpty) return const SizedBox.shrink();
+
+    final displayGroups = groups.take(maxCount).toList();
+    final showViewMore = onViewAll != null;
+    final remainingCount = groups.length > maxCount ? groups.length - maxCount : 0;
+    final effectiveIconColor = iconColor ?? AppColors.primary;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 标题栏
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
+          child: Row(
+            children: [
+              if (icon != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: effectiveIconColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(icon, size: 18, color: effectiveIconColor),
+                ),
+                const SizedBox(width: 10),
+              ],
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
+                ),
+              ),
+              if (showViewMore)
+                TextButton(
+                  onPressed: onViewAll,
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '查看全部 (${groups.length})',
+                        style: TextStyle(
+                          color: AppColors.primary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(
+                        Icons.arrow_forward_ios_rounded,
+                        size: 12,
+                        color: AppColors.primary,
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+        // 内容滚动区域
+        SizedBox(
+          height: 240,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: displayGroups.length + (showViewMore ? 1 : 0),
+            itemBuilder: (context, index) {
+              if (showViewMore && index == displayGroups.length) {
+                return _ViewMoreCard(
+                  onTap: onViewAll,
+                  isDark: isDark,
+                  remainingCount: remainingCount,
+                  totalCount: groups.length,
+                );
+              }
+
+              final group = displayGroups[index];
+              return _TvShowPosterCard(
+                group: group,
+                onTap: () => onGroupTap(group),
+                isDark: isDark,
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 剧集海报卡片（显示季数和集数）
+class _TvShowPosterCard extends StatefulWidget {
+  const _TvShowPosterCard({
+    required this.group,
+    required this.onTap,
+    required this.isDark,
+    this.width = 130,
+  });
+
+  final TvShowGroup group;
+  final VoidCallback onTap;
+  final bool isDark;
+  final double width;
+
+  @override
+  State<_TvShowPosterCard> createState() => _TvShowPosterCardState();
+}
+
+class _TvShowPosterCardState extends State<_TvShowPosterCard> {
+  bool _isHovered = false;
+
+  late final String? _posterUrl;
+  late final bool _hasPoster;
+
+  @override
+  void initState() {
+    super.initState();
+    _posterUrl = widget.group.displayPosterUrl;
+    _hasPoster = _posterUrl != null && _posterUrl.isNotEmpty;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final posterHeight = widget.width * 1.5;
+
+    return Container(
+      width: widget.width,
+      margin: const EdgeInsets.only(right: 12),
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _isHovered = true),
+        onExit: (_) => setState(() => _isHovered = false),
+        child: GestureDetector(
+          onTap: widget.onTap,
+          child: AnimatedScale(
+            scale: _isHovered ? 1.05 : 1.0,
+            duration: const Duration(milliseconds: 150),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 海报图片容器
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  width: widget.width,
+                  height: posterHeight,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: _isHovered ? 0.4 : 0.2),
+                        blurRadius: _isHovered ? 16 : 8,
+                        offset: Offset(0, _isHovered ? 8 : 4),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        // 海报图片
+                        RepaintBoundary(
+                          child: _hasPoster
+                              ? AdaptiveImage(
+                                  key: ValueKey(_posterUrl),
+                                  imageUrl: _posterUrl!,
+                                  placeholder: (_) => _buildPlaceholder(),
+                                  errorWidget: (_, _) => _buildPlaceholder(),
+                                )
+                              : _buildPlaceholder(),
+                        ),
+
+                        // 渐变遮罩
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          child: IgnorePointer(
+                            child: Container(
+                              height: 60,
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Colors.transparent,
+                                    Colors.black.withValues(alpha: 0.7),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        // 评分徽章
+                        if (widget.group.rating != null && widget.group.rating! > 0)
+                          Positioned(
+                            top: 6,
+                            right: 6,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: _getRatingColor(),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.star_rounded, size: 10, color: Colors.white),
+                                  const SizedBox(width: 2),
+                                  Text(
+                                    widget.group.rating!.toStringAsFixed(1),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+
+                        // 季集统计徽章（左上角）
+                        Positioned(
+                          top: 6,
+                          left: 6,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: AppColors.accent.withValues(alpha: 0.9),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              _getSeasonEpisodeText(),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        // 悬停边框
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            child: AnimatedOpacity(
+                              opacity: _isHovered ? 1.0 : 0.0,
+                              duration: const Duration(milliseconds: 150),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  border: Border.all(
+                                    color: AppColors.primary,
+                                    width: 2,
+                                  ),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                // 标题
+                const SizedBox(height: 8),
+                Text(
+                  widget.group.displayTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: widget.isDark ? Colors.white : Colors.black87,
+                  ),
+                ),
+                // 年份和季集信息
+                Text(
+                  _getSubtitleText(),
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: widget.isDark ? Colors.grey[500] : Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _getSeasonEpisodeText() {
+    final seasonCount = widget.group.seasonCount;
+    final episodeCount = widget.group.episodeCount;
+
+    if (seasonCount > 1) {
+      return '$seasonCount季 $episodeCount集';
+    } else if (seasonCount == 1) {
+      return '$episodeCount集';
+    } else {
+      return '$episodeCount集';
+    }
+  }
+
+  String _getSubtitleText() {
+    final parts = <String>[];
+    if (widget.group.year != null) {
+      parts.add('${widget.group.year}');
+    }
+
+    final seasonCount = widget.group.seasonCount;
+    final episodeCount = widget.group.episodeCount;
+    if (seasonCount > 1) {
+      parts.add('$seasonCount季');
+    }
+    parts.add('$episodeCount集');
+
+    return parts.join(' · ');
+  }
+
+  Widget _buildPlaceholder() => Container(
+      color: widget.isDark ? Colors.grey[850] : Colors.grey[200],
+      child: Center(
+        child: Icon(
+          Icons.live_tv_rounded,
+          size: 40,
+          color: widget.isDark ? Colors.grey[600] : Colors.grey[400],
+        ),
+      ),
+    );
+
+  Color _getRatingColor() {
+    final rating = widget.group.rating ?? 0;
+    if (rating >= 8) return Colors.green;
+    if (rating >= 6) return Colors.orange;
+    return Colors.red;
+  }
+}
+
+/// 剧集列表全页面
+class _TvShowsFullPage extends ConsumerStatefulWidget {
+  const _TvShowsFullPage({
+    required this.title,
+    required this.groups,
+  });
+
+  final String title;
+  final List<TvShowGroup> groups;
+
+  @override
+  ConsumerState<_TvShowsFullPage> createState() => _TvShowsFullPageState();
+}
+
+class _TvShowsFullPageState extends ConsumerState<_TvShowsFullPage> {
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Scaffold(
+      backgroundColor: isDark ? const Color(0xFF0D0D0D) : Colors.grey[50],
+      appBar: AppBar(
+        title: Text(widget.title),
+        backgroundColor: isDark ? const Color(0xFF0D0D0D) : Colors.grey[50],
+        elevation: 0,
+      ),
+      body: GridView.builder(
+        padding: const EdgeInsets.all(16),
+        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: 150,
+          childAspectRatio: 0.55,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 16,
+        ),
+        itemCount: widget.groups.length,
+        itemBuilder: (context, index) {
+          final group = widget.groups[index];
+          return _TvShowPosterCard(
+            group: group,
+            onTap: () => _openVideoDetail(context, group.representative),
+            isDark: isDark,
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _openVideoDetail(BuildContext context, VideoMetadata metadata) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => VideoDetailPage(
+          metadata: metadata,
+          sourceId: metadata.sourceId,
+        ),
+      ),
+    );
   }
 }
