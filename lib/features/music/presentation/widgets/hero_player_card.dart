@@ -14,11 +14,15 @@ class HeroPlayerCard extends ConsumerWidget {
   const HeroPlayerCard({
     required this.isDark,
     this.isDesktop = false,
+    this.onShuffleTap,
+    this.onQueueTap,
     super.key,
   });
 
   final bool isDark;
   final bool isDesktop;
+  final VoidCallback? onShuffleTap;
+  final VoidCallback? onQueueTap;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -112,32 +116,78 @@ class HeroPlayerCard extends ConsumerWidget {
           // 内容
           Padding(
             padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
+            child: Row(
               children: [
-                const Icon(
-                  Icons.play_circle_filled_rounded,
-                  color: Colors.white,
-                  size: 48,
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  '开始探索你的音乐',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
+                // 左侧文字内容
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.play_circle_filled_rounded,
+                        color: Colors.white,
+                        size: 48,
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        '开始探索你的音乐',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '选择一首歌曲开始播放',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.8),
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  '选择一首歌曲开始播放',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.8),
-                    fontSize: 14,
+                // 右侧随机播放按钮
+                if (onShuffleTap != null)
+                  GestureDetector(
+                    onTap: onShuffleTap,
+                    child: Container(
+                      width: 64,
+                      height: 64,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.2),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: const Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.shuffle_rounded,
+                            color: AppColors.primary,
+                            size: 28,
+                          ),
+                          SizedBox(height: 2),
+                          Text(
+                            '随机',
+                            style: TextStyle(
+                              color: AppColors.primary,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
               ],
             ),
           ),
@@ -274,9 +324,31 @@ class HeroPlayerCard extends ConsumerWidget {
               ],
             ),
           ),
+          // 队列按钮
+          if (onQueueTap != null) ...[
+            _buildQueueButton(),
+            const SizedBox(width: 12),
+          ],
           // 播放按钮
           _buildPlayButton(context, ref, isPlaying),
         ],
+      ),
+    );
+
+  Widget _buildQueueButton() => GestureDetector(
+      onTap: onQueueTap,
+      child: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.2),
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(
+          Icons.queue_music_rounded,
+          color: Colors.white,
+          size: 22,
+        ),
       ),
     );
 

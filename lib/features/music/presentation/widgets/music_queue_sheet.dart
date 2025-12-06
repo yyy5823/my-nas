@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui';
 
@@ -463,14 +464,34 @@ class _QueueItem extends StatelessWidget {
 
   Widget _buildCover() {
     final coverData = track.coverData;
+    final coverUrl = track.coverUrl;
     Widget coverImage;
 
     if (coverData != null && coverData.isNotEmpty) {
       coverImage = Image.memory(
         Uint8List.fromList(coverData),
         fit: BoxFit.cover,
+        gaplessPlayback: true,
         errorBuilder: (_, _, _) => _buildDefaultCover(),
       );
+    } else if (coverUrl != null && coverUrl.isNotEmpty) {
+      // 支持 file:// URL 和网络 URL
+      if (coverUrl.startsWith('file://')) {
+        final filePath = coverUrl.substring(7); // 移除 'file://' 前缀
+        coverImage = Image.file(
+          File(filePath),
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+          errorBuilder: (_, _, _) => _buildDefaultCover(),
+        );
+      } else {
+        coverImage = Image.network(
+          coverUrl,
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+          errorBuilder: (_, _, _) => _buildDefaultCover(),
+        );
+      }
     } else {
       coverImage = _buildDefaultCover();
     }

@@ -4,6 +4,7 @@ import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/music/presentation/pages/music_list_page.dart';
 import 'package:my_nas/features/music/presentation/widgets/browse_category_grid.dart';
 import 'package:my_nas/features/music/presentation/widgets/hero_player_card.dart';
+import 'package:my_nas/features/music/presentation/widgets/music_queue_sheet.dart';
 import 'package:my_nas/features/music/presentation/widgets/music_stats_card.dart';
 import 'package:my_nas/features/music/presentation/widgets/recent_tracks_section.dart';
 
@@ -65,7 +66,11 @@ class MusicHomeContent extends ConsumerWidget {
         children: [
           const SizedBox(height: 12),
           // Hero 播放卡片
-          HeroPlayerCard(isDark: isDark),
+          HeroPlayerCard(
+            isDark: isDark,
+            onShuffleTap: () => _onShuffleTap(context),
+            onQueueTap: () => _showQueueSheet(context),
+          ),
           const SizedBox(height: 16),
           // 快捷访问
           _buildSectionTitle('快捷访问', isDark),
@@ -79,7 +84,6 @@ class MusicHomeContent extends ConsumerWidget {
             onFavoritesTap: () => onCategoryTap(MusicCategory.favorites),
             onRecentTap: () => onCategoryTap(MusicCategory.recent),
             onAllTap: () => onCategoryTap(MusicCategory.all),
-            onShuffleTap: () => _onShuffleTap(context),
             onPlaylistTap: () => onCategoryTap(MusicCategory.playlists),
           ),
           const SizedBox(height: 16),
@@ -339,7 +343,12 @@ class MusicHomeContent extends ConsumerWidget {
                 ),
                 const SizedBox(height: 24),
                 // Hero 播放卡片
-                HeroPlayerCard(isDark: isDark, isDesktop: true),
+                HeroPlayerCard(
+                  isDark: isDark,
+                  isDesktop: true,
+                  onShuffleTap: () => _onShuffleTap(context),
+                  onQueueTap: () => _showQueueSheet(context),
+                ),
               ],
             ),
           ),
@@ -370,7 +379,6 @@ class MusicHomeContent extends ConsumerWidget {
                   onFavoritesTap: () => onCategoryTap(MusicCategory.favorites),
                   onRecentTap: () => onCategoryTap(MusicCategory.recent),
                   onAllTap: () => onCategoryTap(MusicCategory.all),
-                  onShuffleTap: () => _onShuffleTap(context),
                   onPlaylistTap: () => onCategoryTap(MusicCategory.playlists),
                 ),
               ],
@@ -458,6 +466,10 @@ class MusicHomeContent extends ConsumerWidget {
     if (shuffled.isNotEmpty) {
       onTrackTap(shuffled.first, shuffled);
     }
+  }
+
+  void _showQueueSheet(BuildContext context) {
+    showMusicQueueSheet(context);
   }
 
   void _onBrowseCategoryTap(MusicBrowseCategory browseCategory) {

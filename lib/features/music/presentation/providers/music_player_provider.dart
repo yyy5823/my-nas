@@ -115,6 +115,17 @@ class PlayQueueNotifier extends StateNotifier<List<MusicItem>> {
     state = [...state, track];
   }
 
+  /// 添加到下一首播放（在指定索引后插入）
+  void addNext(MusicItem track, int currentIndex) {
+    if (state.isEmpty) {
+      state = [track];
+    } else {
+      final insertIndex = (currentIndex + 1).clamp(0, state.length);
+      final newList = [...state]..insert(insertIndex, track);
+      state = newList;
+    }
+  }
+
   void removeFromQueue(int index) {
     if (index >= 0 && index < state.length) {
       final newList = [...state]

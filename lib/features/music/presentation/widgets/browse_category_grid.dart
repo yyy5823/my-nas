@@ -175,7 +175,7 @@ class _CategoryCard extends StatelessWidget {
     );
 }
 
-/// 快捷访问卡片网格（我喜欢、最近播放、歌单、全部、随机）
+/// 快捷访问卡片网格（我喜欢、最近播放、歌单、全部）
 class QuickAccessGrid extends StatelessWidget {
   const QuickAccessGrid({
     required this.isDark,
@@ -185,7 +185,7 @@ class QuickAccessGrid extends StatelessWidget {
     required this.onFavoritesTap,
     required this.onRecentTap,
     required this.onAllTap,
-    required this.onShuffleTap,
+    @Deprecated('随机播放已集成到 HeroPlayerCard') this.onShuffleTap,
     this.playlistCount = 0,
     this.onPlaylistTap,
     this.isDesktop = false,
@@ -201,7 +201,8 @@ class QuickAccessGrid extends StatelessWidget {
   final VoidCallback onFavoritesTap;
   final VoidCallback onRecentTap;
   final VoidCallback onAllTap;
-  final VoidCallback onShuffleTap;
+  @Deprecated('随机播放已集成到 HeroPlayerCard')
+  final VoidCallback? onShuffleTap;
   final VoidCallback? onPlaylistTap;
 
   @override
@@ -243,15 +244,6 @@ class QuickAccessGrid extends StatelessWidget {
         isDark: isDark,
         isDesktop: isDesktop,
         onTap: onAllTap,
-      ),
-      _QuickCard(
-        icon: Icons.shuffle_rounded,
-        label: '随机播放',
-        subtitle: '发现新歌',
-        color: const Color(0xFF4CAF50),
-        isDark: isDark,
-        isDesktop: isDesktop,
-        onTap: onShuffleTap,
       ),
     ];
 

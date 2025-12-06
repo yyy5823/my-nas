@@ -161,6 +161,33 @@ class MusicFileWithSource {
   /// 唯一标识
   String get uniqueKey => '${sourceId}_$path';
 
+  /// 转换为 MusicItem（用于播放器和收藏功能）
+  MusicItem toMusicItem() {
+    // 获取封面 URL（如果有磁盘缓存路径）
+    String? coverUrl;
+    if (coverPath != null && coverPath!.isNotEmpty) {
+      coverUrl = 'file://$coverPath';
+    }
+
+    return MusicItem(
+      id: '${sourceId}_$path',
+      name: name,
+      path: path,
+      url: 'nas://$sourceId$path', // NAS 文件使用此格式，实际播放时会通过代理服务器
+      sourceId: sourceId,
+      title: title,
+      artist: artist,
+      album: album,
+      duration: duration != null ? Duration(milliseconds: duration!) : null,
+      trackNumber: trackNumber,
+      year: year,
+      genre: genre,
+      coverUrl: coverUrl,
+      coverData: coverData,
+      size: size,
+    );
+  }
+
   MusicLibraryCacheEntry toCacheEntry() => MusicLibraryCacheEntry(
         sourceId: sourceId,
         filePath: path,
@@ -5349,7 +5376,7 @@ class _ModernMusicTile extends ConsumerWidget {
               isDark: isDark,
               onTap: () {
                 Navigator.pop(context);
-                // TODO: Add to play next
+                _addToPlayNext(context, ref);
               },
             ),
             _BottomSheetOption(
@@ -5358,7 +5385,7 @@ class _ModernMusicTile extends ConsumerWidget {
               isDark: isDark,
               onTap: () {
                 Navigator.pop(context);
-                // TODO: Add to queue
+                _addToQueue(context, ref);
               },
             ),
             _BottomSheetOption(
@@ -5367,7 +5394,7 @@ class _ModernMusicTile extends ConsumerWidget {
               isDark: isDark,
               onTap: () {
                 Navigator.pop(context);
-                // TODO: Add to favorites
+                _addToFavorites(context, ref);
               },
             ),
             _BottomSheetOption(
@@ -5376,12 +5403,259 @@ class _ModernMusicTile extends ConsumerWidget {
               isDark: isDark,
               onTap: () {
                 Navigator.pop(context);
-                // TODO: Add to playlist
+                _showPlaylistSelector(context, ref);
               },
             ),
             const SizedBox(height: 8),
           ],
         ),
+      ),
+    );
+  }
+
+  /// 添加到下一首播放
+  void _addToPlayNext(BuildContext context, WidgetRef ref) {
+    final musicItem = track.toMusicItem();
+    final currentIndex = ref.read(musicPlayerControllerProvider).currentIndex;
+    ref.read(playQueueProvider.notifier).addNext(musicItem, currentIndex);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('已添加「${track.displayTitle}」到下一首播放'),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  /// 添加到播放队列
+  void _addToQueue(BuildContext context, WidgetRef ref) {
+    final musicItem = track.toMusicItem();
+    ref.read(playQueueProvider.notifier).addToQueue(musicItem);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('已添加「${track.displayTitle}」到播放队列'),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  /// 添加到收藏
+  Future<void> _addToFavorites(BuildContext context, WidgetRef ref) async {
+    final musicItem = track.toMusicItem();
+    final isFavorite = await ref.read(musicFavoritesProvider.notifier).toggleFavorite(musicItem);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(isFavorite ? '已添加到我喜欢' : '已从我喜欢中移除'),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  /// 显示歌单选择器
+  void _showPlaylistSelector(BuildContext context, WidgetRef ref) {
+    final playlistState = ref.read(playlistProvider);
+    final playlists = playlistState.playlists;
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (dialogContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 拖拽指示器
+            Center(
+              child: Container(
+                margin: const EdgeInsets.only(top: 12),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[400],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            // 标题
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.playlist_add_rounded,
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    '添加到歌单',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                  const Spacer(),
+                  // 新建歌单按钮
+                  TextButton.icon(
+                    onPressed: () {
+                      Navigator.pop(dialogContext);
+                      _showCreatePlaylistDialog(context, ref);
+                    },
+                    icon: const Icon(Icons.add_rounded, size: 18),
+                    label: const Text('新建'),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            // 歌单列表
+            if (playlists.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(32),
+                child: Center(
+                  child: Column(
+                    children: [
+                      Icon(
+                        Icons.queue_music_rounded,
+                        size: 48,
+                        color: isDark ? Colors.grey[600] : Colors.grey[400],
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        '暂无歌单',
+                        style: TextStyle(
+                          color: isDark ? Colors.grey[400] : Colors.grey[600],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '点击右上角新建歌单',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark ? Colors.grey[500] : Colors.grey[500],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(dialogContext).size.height * 0.4,
+                ),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: playlists.length,
+                  itemBuilder: (_, index) {
+                    final playlist = playlists[index];
+                    return ListTile(
+                      leading: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(
+                          Icons.queue_music_rounded,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                      title: Text(
+                        playlist.name,
+                        style: TextStyle(
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
+                      ),
+                      subtitle: Text(
+                        '${playlist.trackCount} 首歌曲',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark ? Colors.grey[500] : Colors.grey[600],
+                        ),
+                      ),
+                      onTap: () async {
+                        Navigator.pop(dialogContext);
+                        await ref.read(playlistProvider.notifier).addToPlaylist(
+                          playlist.id,
+                          track.path,
+                        );
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('已添加到「${playlist.name}」'),
+                              behavior: SnackBarBehavior.floating,
+                              duration: const Duration(seconds: 2),
+                            ),
+                          );
+                        }
+                      },
+                    );
+                  },
+                ),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 显示创建歌单对话框
+  void _showCreatePlaylistDialog(BuildContext context, WidgetRef ref) {
+    final controller = TextEditingController();
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('新建歌单'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: '歌单名称',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final name = controller.text.trim();
+              if (name.isNotEmpty) {
+                Navigator.pop(dialogContext);
+                final playlist = await ref.read(playlistProvider.notifier).createPlaylist(
+                  name: name,
+                  initialTracks: [track.path],
+                );
+                if (context.mounted && playlist != null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('已创建歌单「$name」并添加歌曲'),
+                      behavior: SnackBarBehavior.floating,
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                }
+              }
+            },
+            child: const Text('创建'),
+          ),
+        ],
       ),
     );
   }
