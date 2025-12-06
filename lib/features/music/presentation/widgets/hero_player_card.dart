@@ -22,8 +22,10 @@ class HeroPlayerCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final currentMusic = ref.watch(currentMusicProvider);
-    final playerState = ref.watch(musicPlayerControllerProvider);
-    final isPlaying = playerState.isPlaying;
+    // 只监听 isPlaying 状态，避免因 position 高频更新导致卡片闪烁
+    final isPlaying = ref.watch(
+      musicPlayerControllerProvider.select((state) => state.isPlaying),
+    );
 
     // 如果没有当前播放，显示欢迎卡片
     if (currentMusic == null) {

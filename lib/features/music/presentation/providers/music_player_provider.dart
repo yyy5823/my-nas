@@ -594,13 +594,13 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     await Future<void>.delayed(const Duration(seconds: 2));
 
     // 检查是否仍在播放同一首歌
-    final currentMusic = _ref.read(currentMusicProvider);
+    var currentMusic = _ref.read(currentMusicProvider);
     if (currentMusic?.id != music.id) {
       return;
     }
 
     // 检查播放器是否获取到了 duration
-    final playerDuration = _player.duration;
+    var playerDuration = _player.duration;
     if (playerDuration != null && playerDuration > Duration.zero && state.duration == Duration.zero) {
       state = state.copyWith(duration: playerDuration);
       logger.i('MusicPlayer: 延迟获取到播放器时长 => $playerDuration');
@@ -611,15 +611,46 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     await Future<void>.delayed(const Duration(seconds: 3));
 
     // 再次检查是否仍在播放同一首歌
-    final currentMusic2 = _ref.read(currentMusicProvider);
-    if (currentMusic2?.id != music.id) {
+    currentMusic = _ref.read(currentMusicProvider);
+    if (currentMusic?.id != music.id) {
       return;
     }
 
-    final playerDuration2 = _player.duration;
-    if (playerDuration2 != null && playerDuration2 > Duration.zero && state.duration == Duration.zero) {
-      state = state.copyWith(duration: playerDuration2);
-      logger.i('MusicPlayer: 延迟获取到播放器时长 (第二次尝试) => $playerDuration2');
+    playerDuration = _player.duration;
+    if (playerDuration != null && playerDuration > Duration.zero && state.duration == Duration.zero) {
+      state = state.copyWith(duration: playerDuration);
+      logger.i('MusicPlayer: 延迟获取到播放器时长 (第二次尝试) => $playerDuration');
+      return;
+    }
+
+    // 如果播放器仍然无法获取时长，尝试从元数据服务获取
+    if (state.duration == Duration.zero && music.sourceId != null) {
+      logger.i('MusicPlayer: 尝试从元数据服务获取时长...');
+      try {
+        final connections = _ref.read(activeConnectionsProvider);
+        final connection = connections[music.sourceId];
+        if (connection != null && connection.status == SourceStatus.connected) {
+          final metadataService = MusicMetadataService();
+          await metadataService.init();
+          final duration = await metadataService.getDurationFromNasFile(
+            connection.adapter.fileSystem,
+            music.path,
+          );
+          if (duration != null && duration > Duration.zero) {
+            // 再次确认是否仍在播放同一首歌
+            currentMusic = _ref.read(currentMusicProvider);
+            if (currentMusic?.id == music.id && state.duration == Duration.zero) {
+              state = state.copyWith(duration: duration);
+              logger.i('MusicPlayer: 从元数据服务获取到时长 => $duration');
+
+              // 同时更新 MusicItem 的时长信息
+              _ref.read(currentMusicProvider.notifier).state = music.copyWith(duration: duration);
+            }
+          }
+        }
+      } on Exception catch (e, stackTrace) {
+        logger.w('MusicPlayer: 从元数据服务获取时长失败', e, stackTrace);
+      }
     }
   }
 

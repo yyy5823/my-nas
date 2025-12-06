@@ -16,6 +16,7 @@ import 'package:my_nas/features/music/data/services/music_metadata_service.dart'
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/presentation/pages/music_home_page.dart';
 import 'package:my_nas/features/music/presentation/pages/music_player_page.dart';
+import 'package:my_nas/features/music/presentation/pages/playlist_detail_page.dart';
 import 'package:my_nas/features/music/presentation/providers/music_favorites_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/playlist_provider.dart';
@@ -2867,7 +2868,9 @@ class _MusicListTile extends ConsumerWidget {
 
       case 'add_to_playlist':
         if (context.mounted) {
-          _showAddToPlaylistDialog(context, ref, track.path);
+          // 使用 sourceId_path 格式唯一标识歌曲
+          final trackId = '${track.sourceId}_${track.path}';
+          _showAddToPlaylistDialog(context, ref, trackId);
         }
     }
   }
@@ -4268,10 +4271,7 @@ class _PlaylistTile extends ConsumerWidget {
       );
 
   void _openPlaylistDetail(BuildContext context, WidgetRef ref) {
-    // TODO: 打开歌单详情页面，显示歌单内的歌曲
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('歌单: ${playlist.name}')),
-    );
+    PlaylistDetailPage.open(context, playlist);
   }
 
   void _handleMenuAction(BuildContext context, WidgetRef ref, String action) {
@@ -5377,7 +5377,9 @@ class _CompactMusicTile extends ConsumerWidget {
         }
       case 'add_to_playlist':
         if (context.mounted) {
-          _showAddToPlaylistSheet(context, ref, track.path);
+          // 使用 sourceId_path 格式唯一标识歌曲
+          final trackId = '${track.sourceId}_${track.path}';
+          _showAddToPlaylistSheet(context, ref, trackId);
         }
       }
     } on Exception catch (e, stackTrace) {

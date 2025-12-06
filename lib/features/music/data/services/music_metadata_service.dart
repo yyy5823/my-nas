@@ -335,6 +335,85 @@ class MusicMetadataService {
   void clearCache() {
     _metadataCache.clear();
   }
+
+  /// 专门获取音频时长（用于播放时获取准确时长）
+  /// 会尝试读取足够的数据来获取准确的时长信息
+  /// 对于 MP3 等格式，可能需要读取更多数据才能获取准确时长
+  Future<Duration?> getDurationFromNasFile(
+    NasFileSystem fileSystem,
+    String path,
+  ) async {
+    if (!_initialized) await init();
+
+    try {
+      logger.d('MusicMetadataService: 获取音频时长: $path');
+
+      // 获取文件信息
+      final fileInfo = await fileSystem.getFileInfo(path);
+      final fileSize = fileInfo.size;
+      final ext = p.extension(path).toLowerCase();
+
+      // 对于 FLAC，只需读取文件头即可获取准确时长
+      // 对于其他格式（如 MP3），需要读取更多数据
+      int bytesToRead;
+      if (ext == '.flac') {
+        // FLAC 的 STREAMINFO 块在文件开头，512KB 足够
+        bytesToRead = fileSize < 512 * 1024 ? fileSize : 512 * 1024;
+      } else {
+        // 对于 MP3 等 CBR/VBR 格式，读取整个文件以获取准确时长
+        // 或者至少读取 4MB 以获取较准确的估算
+        bytesToRead = fileSize < 4 * 1024 * 1024 ? fileSize : 4 * 1024 * 1024;
+      }
+
+      // 读取文件数据
+      final stream = await fileSystem.getFileStream(
+        path,
+        range: FileRange(start: 0, end: bytesToRead),
+      );
+
+      final chunks = <int>[];
+      await for (final chunk in stream) {
+        chunks.addAll(chunk);
+      }
+
+      // 保存到临时文件
+      final uniqueId = '${DateTime.now().microsecondsSinceEpoch}_${Random().nextInt(999999)}';
+      final tempFile = File(p.join(_cacheDir.path, 'temp_duration_$uniqueId$ext'));
+
+      try {
+        await tempFile.writeAsBytes(Uint8List.fromList(chunks));
+
+        final metadata = readMetadata(tempFile);
+        final duration = metadata.duration;
+
+        if (duration != null && duration > Duration.zero) {
+          logger.i('MusicMetadataService: 获取到时长: $duration (读取了 $bytesToRead 字节)');
+
+          // 对于部分读取的非 FLAC 文件，根据实际文件大小调整时长估算
+          if (ext != '.flac' && bytesToRead < fileSize) {
+            // 基于比特率估算完整文件时长
+            final bytesPerSecond = bytesToRead / duration.inSeconds;
+            final estimatedDuration = Duration(
+              seconds: (fileSize / bytesPerSecond).round(),
+            );
+            logger.i('MusicMetadataService: 调整后的时长估算: $estimatedDuration');
+            return estimatedDuration;
+          }
+
+          return duration;
+        }
+
+        logger.w('MusicMetadataService: 无法获取时长');
+        return null;
+      } finally {
+        // 清理临时文件
+        await _deleteTempFile(tempFile);
+      }
+    } on Exception catch (e, stackTrace) {
+      logger.w('MusicMetadataService: 获取时长失败: $path', e, stackTrace);
+      return null;
+    }
+  }
 }
 
 /// 音乐元数据

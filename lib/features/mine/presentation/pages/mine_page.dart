@@ -32,17 +32,15 @@ class MinePage extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: isDark ? AppColors.darkBackground : null,
-      body: CustomScrollView(
-        slivers: [
-          // 顶部头像区域
-          SliverToBoxAdapter(
-            child: _buildHeader(context, isDark, connectedCount, connections.length),
-          ),
-          // 设置列表
-          SliverPadding(
-            padding: AppSpacing.paddingMd,
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
+      body: Column(
+        children: [
+          // 固定的顶部头像区域
+          _buildHeader(context, isDark, connectedCount, connections.length),
+          // 可滚动的设置列表
+          Expanded(
+            child: ListView(
+              padding: AppSpacing.paddingMd,
+              children: [
                 // 连接设置
                 _buildSectionHeader(context, '连接', Icons.lan_rounded, isDark),
                 const SizedBox(height: AppSpacing.sm),
@@ -77,6 +75,36 @@ class MinePage extends ConsumerWidget {
                   isDark,
                   children: [
                     _TmdbApiKeyTile(isDark: isDark),
+                    _buildDivider(isDark),
+                    _buildSettingsTile(
+                      context,
+                      isDark,
+                      icon: Icons.construction_rounded,
+                      iconColor: Colors.grey,
+                      title: 'NASTool',
+                      subtitle: '暂未实现',
+                      showChevron: false,
+                    ),
+                    _buildDivider(isDark),
+                    _buildSettingsTile(
+                      context,
+                      isDark,
+                      icon: Icons.download_for_offline_rounded,
+                      iconColor: Colors.grey,
+                      title: '下载器',
+                      subtitle: '暂未实现',
+                      showChevron: false,
+                    ),
+                    _buildDivider(isDark),
+                    _buildSettingsTile(
+                      context,
+                      isDark,
+                      icon: Icons.movie_filter_rounded,
+                      iconColor: Colors.grey,
+                      title: 'Trakt',
+                      subtitle: '暂未实现',
+                      showChevron: false,
+                    ),
                   ],
                 ),
 
@@ -120,12 +148,10 @@ class MinePage extends ConsumerWidget {
                     _VersionTile(isDark: isDark),
                     _buildDivider(isDark),
                     CheckUpdateTile(isDark: isDark),
-                    _buildDivider(isDark),
-                    _LicenseTile(isDark: isDark),
                   ],
                 ),
                 const SizedBox(height: AppSpacing.xxxl),
-              ]),
+              ],
             ),
           ),
         ],
@@ -692,88 +718,6 @@ class _VersionTileState extends State<_VersionTile> {
     );
 }
 
-/// 开源许可组件
-class _LicenseTile extends StatefulWidget {
-  const _LicenseTile({required this.isDark});
-
-  final bool isDark;
-
-  @override
-  State<_LicenseTile> createState() => _LicenseTileState();
-}
-
-class _LicenseTileState extends State<_LicenseTile> {
-  String _version = '';
-
-  @override
-  void initState() {
-    super.initState();
-    _loadVersion();
-  }
-
-  Future<void> _loadVersion() async {
-    final packageInfo = await PackageInfo.fromPlatform();
-    if (mounted) {
-      setState(() {
-        _version = packageInfo.version;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) => Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () {
-          showLicensePage(
-            context: context,
-            applicationName: 'MyNAS',
-            applicationVersion: _version.isNotEmpty ? _version : null,
-          );
-        },
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.lg,
-            vertical: AppSpacing.md,
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: AppColors.tertiary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  Icons.description_rounded,
-                  color: AppColors.tertiary,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: Text(
-                  '开源许可',
-                  style: context.textTheme.bodyLarge?.copyWith(
-                    color: widget.isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-              Icon(
-                Icons.chevron_right_rounded,
-                color: widget.isDark
-                    ? AppColors.darkOnSurfaceVariant
-                    : AppColors.lightOnSurfaceVariant,
-                size: 22,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-}
 
 /// TMDB API Key 设置项
 class _TmdbApiKeyTile extends StatefulWidget {

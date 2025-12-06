@@ -438,46 +438,51 @@ class SourceManagerService {
     }
 
     if (result != null) {
-      final newConnection = switch (result) {
-        ConnectionSuccess(:final deviceId) => () {
-            // 2FA 成功后，保存/更新凭证（包括设备ID）
-            if (deviceId != null) {
-              logger.i('SourceManagerService: 2FA 成功，保存设备ID');
-              // 获取现有凭证中的密码
-              getCredential(sourceId).then((credential) {
-                if (credential != null) {
-                  saveCredential(
-                    sourceId,
-                    SourceCredential(
-                      password: password ?? credential.password,
-                      deviceId: deviceId,
-                    ),
-                  );
-                } else if (password != null) {
-                  saveCredential(
-                    sourceId,
-                    SourceCredential(password: password, deviceId: deviceId),
-                  );
-                }
-              });
+      SourceConnection newConnection;
+
+      switch (result) {
+        case ConnectionSuccess(:final deviceId):
+          // 2FA 成功后，保存/更新凭证（包括设备ID）
+          if (deviceId != null) {
+            logger.i('SourceManagerService: 2FA 成功，保存设备ID');
+            // 获取现有凭证中的密码，必须等待完成
+            final credential = await getCredential(sourceId);
+            if (credential != null) {
+              await saveCredential(
+                sourceId,
+                SourceCredential(
+                  password: password ?? credential.password,
+                  deviceId: deviceId,
+                ),
+              );
+            } else if (password != null) {
+              await saveCredential(
+                sourceId,
+                SourceCredential(password: password, deviceId: deviceId),
+              );
             }
+          }
 
-            // 更新最后连接时间
-            updateSource(connection.source.copyWith(lastConnected: DateTime.now()));
+          // 更新最后连接时间
+          await updateSource(
+              connection.source.copyWith(lastConnected: DateTime.now()));
 
-            return connection.copyWith(
-              status: SourceStatus.connected,
-            );
-          }(),
-        ConnectionFailure(:final error) => connection.copyWith(
+          newConnection = connection.copyWith(
+            status: SourceStatus.connected,
+          );
+
+        case ConnectionFailure(:final error):
+          newConnection = connection.copyWith(
             status: SourceStatus.error,
             errorMessage: error,
-          ),
-        ConnectionRequires2FA() => connection.copyWith(
+          );
+
+        case ConnectionRequires2FA():
+          newConnection = connection.copyWith(
             status: SourceStatus.error,
             errorMessage: '二次验证失败',
-          ),
-      };
+          );
+      }
 
       _connections[sourceId] = newConnection;
       return newConnection;
