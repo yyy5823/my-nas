@@ -4,8 +4,8 @@ import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:my_nas/core/services/media_proxy_server.dart';
 import 'package:my_nas/core/utils/logger.dart';
-import 'package:my_nas/features/music/data/services/audio_cache_service.dart';
 import 'package:my_nas/features/music/data/services/live_activity_service.dart';
 import 'package:my_nas/features/music/data/services/music_metadata_service.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
@@ -45,6 +45,7 @@ class MusicPlayerState {
     this.isPlaying = false,
     this.isBuffering = false,
     this.position = Duration.zero,
+    this.bufferedPosition = Duration.zero,
     this.duration = Duration.zero,
     this.volume = 1.0,
     this.playMode = PlayMode.loop,
@@ -55,6 +56,7 @@ class MusicPlayerState {
   final bool isPlaying;
   final bool isBuffering;
   final Duration position;
+  final Duration bufferedPosition;
   final Duration duration;
   final double volume;
   final PlayMode playMode;
@@ -63,6 +65,10 @@ class MusicPlayerState {
 
   double get progress =>
       duration.inMilliseconds > 0 ? position.inMilliseconds / duration.inMilliseconds : 0;
+
+  /// 缓冲进度 (0.0 - 1.0)
+  double get bufferedProgress =>
+      duration.inMilliseconds > 0 ? bufferedPosition.inMilliseconds / duration.inMilliseconds : 0;
 
   String get positionText => _formatDuration(position);
   String get durationText => _formatDuration(duration);
@@ -77,6 +83,7 @@ class MusicPlayerState {
     bool? isPlaying,
     bool? isBuffering,
     Duration? position,
+    Duration? bufferedPosition,
     Duration? duration,
     double? volume,
     PlayMode? playMode,
@@ -87,6 +94,7 @@ class MusicPlayerState {
         isPlaying: isPlaying ?? this.isPlaying,
         isBuffering: isBuffering ?? this.isBuffering,
         position: position ?? this.position,
+        bufferedPosition: bufferedPosition ?? this.bufferedPosition,
         duration: duration ?? this.duration,
         volume: volume ?? this.volume,
         playMode: playMode ?? this.playMode,
@@ -135,14 +143,17 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   MusicPlayerNotifier(this._ref) : super(const MusicPlayerState()) {
     _initPlayer();
     _initLiveActivity();
-    _initAudioCache();
+    _initMediaProxy();
   }
 
   final Ref _ref;
   late final AudioPlayer _player;
 
-  // 音频缓存服务
-  final AudioCacheService _audioCacheService = AudioCacheService();
+  // 媒体代理服务器（用于流式播放 NAS 文件）
+  final MediaProxyServer _mediaProxyServer = MediaProxyServer();
+
+  // 当前代理的文件 ID（用于清理）
+  String? _currentProxyId;
 
   // Live Activity 服务
   final LiveActivityService _liveActivityService = LiveActivityService();
@@ -150,9 +161,9 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
   AudioPlayer get player => _player;
 
-  /// 初始化音频缓存服务
-  Future<void> _initAudioCache() async {
-    await _audioCacheService.init();
+  /// 初始化媒体代理服务器
+  Future<void> _initMediaProxy() async {
+    await _mediaProxyServer.start();
   }
 
   void _initPlayer() {
@@ -197,6 +208,11 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       if (duration != null && duration > Duration.zero) {
         state = state.copyWith(duration: duration);
       }
+    });
+
+    // 监听缓冲位置（边下边播时显示已下载进度）
+    _player.bufferedPositionStream.listen((bufferedPosition) {
+      state = state.copyWith(bufferedPosition: bufferedPosition);
     });
 
     // 监听播放错误
@@ -330,8 +346,9 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     ..d('MusicPlayer: size=${music.size}, path=${music.path}, sourceId=${music.sourceId}');
 
     try {
-      // 先停止当前播放
+      // 先停止当前播放并清理之前的代理
       await _player.stop();
+      _cleanupCurrentProxy();
       state = state.copyWith(position: Duration.zero, duration: Duration.zero);
       logger.d('MusicPlayer: 已停止当前播放并重置状态');
 
@@ -343,11 +360,10 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       logger.d('MusicPlayer: URI 解析成功 - scheme: ${uri.scheme}, host: ${uri.host}');
 
       // 根据音频来源选择合适的播放方式
-      Uri? localFileUri;
+      AudioSource audioSource;
 
       if (music.sourceId != null) {
-        // NAS 源：先下载到本地缓存，然后播放本地文件
-        // 这样可以使用播放器原生的 positionStream，无需定时器估算
+        // NAS 源：使用代理服务器 + LockCachingAudioSource 实现边下边播
         logger.d('MusicPlayer: 检测到 NAS 源 (sourceId=${music.sourceId})');
 
         final connections = _ref.read(activeConnectionsProvider);
@@ -361,51 +377,37 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
         final fileInfo = await connection.adapter.fileSystem.getFileInfo(music.path);
         final fileSize = fileInfo.size;
 
-        // 检查是否应该使用缓存（文件不超过 100MB）
-        if (_audioCacheService.shouldUseCache(fileSize)) {
-          logger.i('MusicPlayer: 使用本地缓存播放模式 (文件大小: ${_formatFileSize(fileSize)})');
+        // 注册文件到代理服务器
+        final proxyUrl = await _mediaProxyServer.registerFile(
+          sourceId: music.sourceId!,
+          filePath: music.path,
+          fileSize: fileSize,
+        );
 
-          // 下载到本地缓存
-          final cachedFile = await _audioCacheService.getCachedFile(
-            fileSystem: connection.adapter.fileSystem,
-            remotePath: music.path,
-            sourceId: music.sourceId!,
-            onProgress: (progress) {
-              // 可以在这里更新下载进度 UI
-              logger.d('MusicPlayer: 下载进度: ${(progress * 100).toStringAsFixed(1)}%');
-            },
-          );
+        // 保存代理 ID 以便清理
+        _currentProxyId = proxyUrl.split('/').last;
 
-          if (cachedFile != null) {
-            localFileUri = Uri.file(cachedFile.path);
-            logger.i('MusicPlayer: 使用缓存文件: ${cachedFile.path}');
-          } else {
-            logger.w('MusicPlayer: 缓存失败，回退到直接 URL 播放');
-            // 回退到直接 URL
-            final directUrl = await connection.adapter.fileSystem.getFileUrl(music.path);
-            localFileUri = Uri.parse(directUrl);
-          }
-        } else {
-          // 文件过大，直接使用 URL 播放（接受可能的位置追踪问题）
-          logger.w('MusicPlayer: 文件过大 (${_formatFileSize(fileSize)})，使用直接 URL 播放');
-          final directUrl = await connection.adapter.fileSystem.getFileUrl(music.path);
-          localFileUri = Uri.parse(directUrl);
-        }
+        logger.i('MusicPlayer: 使用流式播放模式 (边下边播)');
+        logger.d('MusicPlayer: 代理URL => $proxyUrl');
+
+        // 使用 LockCachingAudioSource 实现边下边播并自动缓存
+        // 这是 just_audio 提供的实验性功能，支持渐进式下载
+        audioSource = LockCachingAudioSource(Uri.parse(proxyUrl));
       } else if (uri.scheme == 'file') {
-        // 本地文件
+        // 本地文件：直接使用 URI
         logger.d('MusicPlayer: 本地文件');
-        localFileUri = uri;
+        audioSource = AudioSource.uri(uri);
       } else if (uri.scheme == 'http' || uri.scheme == 'https') {
-        // HTTP/HTTPS URL
-        logger.d('MusicPlayer: 使用 HTTP/HTTPS URL');
-        localFileUri = uri;
+        // HTTP/HTTPS URL：使用 LockCachingAudioSource 边下边播
+        logger.d('MusicPlayer: 使用 HTTP/HTTPS URL (流式播放)');
+        audioSource = LockCachingAudioSource(uri);
       } else {
         throw Exception('不支持的音频协议: ${uri.scheme}');
       }
 
       // 设置音频源
-      logger.d('MusicPlayer: 设置音频源: $localFileUri');
-      await _player.setAudioSource(AudioSource.uri(localFileUri));
+      logger.d('MusicPlayer: 设置音频源...');
+      await _player.setAudioSource(audioSource);
       logger.d('MusicPlayer: 音频源设置成功');
 
       // 获取播放器时长
@@ -458,14 +460,12 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     }
   }
 
-  /// 格式化文件大小
-  String _formatFileSize(int bytes) {
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) {
-      return '${(bytes / 1024 / 1024).toStringAsFixed(1)} MB';
+  /// 清理当前代理的文件
+  void _cleanupCurrentProxy() {
+    if (_currentProxyId != null) {
+      _mediaProxyServer.unregisterFile(_currentProxyId!);
+      _currentProxyId = null;
     }
-    return '${(bytes / 1024 / 1024 / 1024).toStringAsFixed(1)} GB';
   }
 
   /// 基于文件大小估算音频时长
@@ -680,6 +680,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   /// 停止
   Future<void> stop() async {
     await _player.stop();
+    _cleanupCurrentProxy();
     state = state.copyWith(position: Duration.zero, duration: Duration.zero);
     _ref.read(currentMusicProvider.notifier).state = null;
     // 结束 Live Activity
@@ -770,6 +771,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
   @override
   void dispose() {
+    _cleanupCurrentProxy();
     _stopLiveActivityUpdateTimer();
     _liveActivityService.dispose();
     _player.dispose();

@@ -1202,7 +1202,12 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
   Future<void> _playTrack(BuildContext context, WidgetRef ref, MusicFileWithSource track, List<MusicFileWithSource> allTracks) async {
     logger.i('_playTrack: 开始播放 ${track.name}');
 
+    // 提前获取所有需要的 provider（避免异步后使用 ref）
     final connections = ref.read(activeConnectionsProvider);
+    final playQueueNotifier = ref.read(playQueueProvider.notifier);
+    final playerNotifier = ref.read(musicPlayerControllerProvider.notifier);
+    final historyNotifier = ref.read(musicHistoryProvider.notifier);
+
     final connection = connections[track.sourceId];
     if (connection == null || connection.status != SourceStatus.connected) {
       logger.e('_playTrack: 源未连接 sourceId=${track.sourceId}');
@@ -1237,21 +1242,21 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
       // 找到当前曲目在列表中的索引
       final trackIndex = allTracks.indexWhere((t) => t.path == track.path);
 
-      // 先播放当前曲目
-      ref.read(playQueueProvider.notifier).setQueue([musicItem]);
-      ref.read(musicPlayerControllerProvider.notifier).updateCurrentIndex(0);
-      await ref.read(musicPlayerControllerProvider.notifier).play(musicItem);
+      // 先播放当前曲目（使用提前获取的 notifier）
+      playQueueNotifier.setQueue([musicItem]);
+      playerNotifier.updateCurrentIndex(0);
+      await playerNotifier.play(musicItem);
 
       // 记录最近播放
-      await ref.read(musicHistoryProvider.notifier).addToHistory(musicItem);
+      await historyNotifier.addToHistory(musicItem);
 
       // 导航到播放器页面
       if (context.mounted) {
         unawaited(MusicPlayerPage.open(context));
       }
 
-      // 在后台构建完整播放队列
-      await _buildPlayQueue(ref, connections, track, allTracks, trackIndex);
+      // 在后台构建完整播放队列（使用提前获取的 notifier）
+      unawaited(_buildPlayQueue(playQueueNotifier, playerNotifier, connections, track, allTracks, trackIndex));
     } on Exception catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1263,7 +1268,8 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
 
   /// 在后台构建播放队列
   Future<void> _buildPlayQueue(
-    WidgetRef ref,
+    PlayQueueNotifier playQueueNotifier,
+    MusicPlayerNotifier playerNotifier,
     Map<String, SourceConnection> connections,
     MusicFileWithSource currentTrack,
     List<MusicFileWithSource> allTracks,
@@ -1315,9 +1321,9 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
         }
       }
 
-      // 更新播放队列
-      ref.read(playQueueProvider.notifier).setQueue(queue);
-      ref.read(musicPlayerControllerProvider.notifier).updateCurrentIndex(newCurrentIndex);
+      // 更新播放队列（使用传入的 notifier，不再使用 ref）
+      playQueueNotifier.setQueue(queue);
+      playerNotifier.updateCurrentIndex(newCurrentIndex);
     } on Exception catch (e) {
       logger.w('构建播放队列失败: $e');
     }

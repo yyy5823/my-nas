@@ -11,14 +11,12 @@ import SwiftUI
 
 // MARK: - Live Activities App Attributes
 // 必须使用这个名称和结构，以匹配 live_activities Flutter 插件
-// ContentState 必须包含 appGroupId，与插件定义保持一致
+// ContentState 必须为空 - 所有数据通过 UserDefaults App Group 共享
 
 struct LiveActivitiesAppAttributes: ActivityAttributes, Identifiable {
     public typealias LiveDeliveryData = ContentState
 
-    public struct ContentState: Codable, Hashable {
-        var appGroupId: String
-    }
+    public struct ContentState: Codable, Hashable { }
 
     var id = UUID()
 }
@@ -32,21 +30,18 @@ extension LiveActivitiesAppAttributes {
 // MARK: - Shared UserDefaults Helper
 // 使用 App Group 共享数据
 
-/// 获取 App Group 的 UserDefaults
-/// - Parameter appGroupId: App Group ID，如果为空则使用默认值
-/// - Returns: UserDefaults 实例
-func getSharedDefaults(appGroupId: String?) -> UserDefaults {
-    let groupId = appGroupId ?? "group.com.kkape.mynas"
-    if let defaults = UserDefaults(suiteName: groupId) {
+/// App Group ID - 必须与 Flutter 端和 entitlements 配置一致
+private let appGroupId = "group.com.kkape.mynas"
+
+/// 共享的 UserDefaults 实例
+let sharedDefault: UserDefaults = {
+    if let defaults = UserDefaults(suiteName: appGroupId) {
         return defaults
     }
     // 如果 App Group 不可用，使用标准 UserDefaults（数据不会跨进程共享）
-    print("Warning: App Group '\(groupId)' not available, falling back to standard UserDefaults")
+    print("Warning: App Group '\(appGroupId)' not available, falling back to standard UserDefaults")
     return UserDefaults.standard
-}
-
-/// 默认的 sharedDefault（向后兼容）
-let sharedDefault: UserDefaults = getSharedDefaults(appGroupId: nil)
+}()
 
 // MARK: - Music Live Activity Widget
 
@@ -56,8 +51,8 @@ struct MusicActivityWidgetLiveActivity: Widget {
             // 锁屏/通知中心的 Live Activity 视图
             LockScreenMusicView(context: context)
         } dynamicIsland: { context in
-            // 从 context.state 获取 appGroupId，使用动态 UserDefaults
-            let defaults = getSharedDefaults(appGroupId: context.state.appGroupId)
+            // 使用共享的 UserDefaults
+            let defaults = sharedDefault
 
             return DynamicIsland {
                 // 展开状态 - 长按灵动岛时显示
@@ -140,8 +135,8 @@ struct LockScreenMusicView: View {
     let context: ActivityViewContext<LiveActivitiesAppAttributes>
 
     var body: some View {
-        // 从 context.state 获取 appGroupId，使用动态 UserDefaults
-        let defaults = getSharedDefaults(appGroupId: context.state.appGroupId)
+        // 使用共享的 UserDefaults
+        let defaults = sharedDefault
         let title = defaults.string(forKey: context.attributes.prefixedKey("title")) ?? "Unknown"
         let artist = defaults.string(forKey: context.attributes.prefixedKey("artist")) ?? "Unknown Artist"
         let isPlaying = defaults.bool(forKey: context.attributes.prefixedKey("isPlaying"))
