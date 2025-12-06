@@ -84,7 +84,7 @@ struct MusicActivityWidgetLiveActivity: Widget {
                 // 展开状态 - 长按灵动岛时显示
                 DynamicIslandExpandedRegion(.leading) {
                     MusicCoverView(context: context, defaults: defaults)
-                        .frame(width: 52, height: 52)
+                        .frame(width: 56, height: 56)
                         .cornerRadius(8)
                 }
 
@@ -102,47 +102,90 @@ struct MusicActivityWidgetLiveActivity: Widget {
                 }
 
                 DynamicIslandExpandedRegion(.trailing) {
-                    let isPlaying = defaults.bool(forKey: context.attributes.prefixedKey("isPlaying"))
-                    Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 24))
-                        .foregroundColor(.white)
+                    // 收藏按钮
+                    Link(destination: URL(string: "mynas://music/favorite")!) {
+                        Image(systemName: "heart")
+                            .font(.system(size: 18))
+                            .foregroundColor(.white)
+                    }
                 }
 
                 DynamicIslandExpandedRegion(.bottom) {
                     let progress = defaults.double(forKey: context.attributes.prefixedKey("progress"))
                     let currentTime = defaults.integer(forKey: context.attributes.prefixedKey("currentTime"))
                     let totalTime = defaults.integer(forKey: context.attributes.prefixedKey("totalTime"))
+                    let isPlaying = defaults.bool(forKey: context.attributes.prefixedKey("isPlaying"))
 
-                    VStack(spacing: 4) {
-                        ProgressView(value: progress)
-                            .progressViewStyle(LinearProgressViewStyle(tint: .white))
+                    VStack(spacing: 8) {
+                        // 进度条
+                        VStack(spacing: 4) {
+                            ProgressView(value: progress)
+                                .progressViewStyle(LinearProgressViewStyle(tint: .white))
 
-                        HStack {
-                            Text(formatTime(currentTime))
-                                .font(.system(size: 10))
-                                .foregroundColor(.gray)
-                            Spacer()
-                            Text(formatTime(totalTime))
-                                .font(.system(size: 10))
-                                .foregroundColor(.gray)
+                            HStack {
+                                Text(formatTime(currentTime))
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.gray)
+                                Spacer()
+                                Text(formatTime(totalTime))
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.gray)
+                            }
+                        }
+
+                        // 播放控制按钮
+                        HStack(spacing: 32) {
+                            // 上一首
+                            Link(destination: URL(string: "mynas://music/previous")!) {
+                                Image(systemName: "backward.fill")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(.white)
+                            }
+
+                            // 播放/暂停
+                            Link(destination: URL(string: "mynas://music/toggle")!) {
+                                Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                                    .font(.system(size: 36))
+                                    .foregroundColor(.white)
+                            }
+
+                            // 下一首
+                            Link(destination: URL(string: "mynas://music/next")!) {
+                                Image(systemName: "forward.fill")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(.white)
+                            }
                         }
                     }
                     .padding(.horizontal, 4)
                 }
             } compactLeading: {
+                // Compact 模式显示封面
                 MusicCoverView(context: context, defaults: defaults)
                     .frame(width: 24, height: 24)
                     .cornerRadius(4)
             } compactTrailing: {
+                // Compact 模式显示音乐波形动效
                 let isPlaying = defaults.bool(forKey: context.attributes.prefixedKey("isPlaying"))
-                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 12))
-                    .foregroundColor(.white)
+                if isPlaying {
+                    MusicWaveformView()
+                        .frame(width: 24, height: 16)
+                } else {
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 12))
+                        .foregroundColor(.white)
+                }
             } minimal: {
+                // 最小模式显示音乐波形动效
                 let isPlaying = defaults.bool(forKey: context.attributes.prefixedKey("isPlaying"))
-                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 12))
-                    .foregroundColor(.white)
+                if isPlaying {
+                    MusicWaveformView()
+                        .frame(width: 16, height: 12)
+                } else {
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 10))
+                        .foregroundColor(.white)
+                }
             }
             .widgetURL(URL(string: "mynas://music/player"))
         }
@@ -152,6 +195,40 @@ struct MusicActivityWidgetLiveActivity: Widget {
         let minutes = seconds / 60
         let secs = seconds % 60
         return String(format: "%d:%02d", minutes, secs)
+    }
+}
+
+// MARK: - Music Waveform Animation View (for Dynamic Island minimal/compact modes)
+
+struct MusicWaveformView: View {
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(0..<3, id: \.self) { index in
+                WaveformBar(delay: Double(index) * 0.15)
+            }
+        }
+    }
+}
+
+struct WaveformBar: View {
+    let delay: Double
+
+    @State private var isAnimating = false
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 1)
+            .fill(Color.white)
+            .frame(width: 3)
+            .scaleEffect(y: isAnimating ? 1.0 : 0.3, anchor: .bottom)
+            .animation(
+                Animation.easeInOut(duration: 0.4)
+                    .repeatForever(autoreverses: true)
+                    .delay(delay),
+                value: isAnimating
+            )
+            .onAppear {
+                isAnimating = true
+            }
     }
 }
 

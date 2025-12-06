@@ -752,7 +752,10 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
     await _loadCategorizedData();
   }
 
-  Future<void> loadMusic({bool forceRefresh = false, int maxDepth = 3}) async {
+  /// 加载音乐库
+  ///
+  /// 注意：无深度限制，会递归扫描所有子目录
+  Future<void> loadMusic({bool forceRefresh = false}) async {
     final connections = _ref.read(activeConnectionsProvider);
     final configAsync = _ref.read(mediaLibraryConfigProvider);
 
@@ -827,8 +830,6 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
           mediaPath.path,
           tracks,
           sourceId: mediaPath.sourceId,
-          depth: 0,
-          maxDepth: maxDepth,
           onBatchFound: () {
             // 每发现 5 个文件更新一次进度，使进度显示更平滑
             if (tracks.length - lastUpdateCount >= 5) {
@@ -958,23 +959,22 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
     logger.i('元数据提取完成，处理了 $processedCount 首音乐');
   }
 
+  /// 递归扫描音乐文件（无深度限制）
+  ///
+  /// 会跳过以下目录：
+  /// - 隐藏目录（以 . 开头）
+  /// - 系统目录（以 @ 开头、#recycle）
   Future<void> _scanForMusic(
     NasFileSystem fs,
     String path,
     List<MusicFileWithSource> tracks, {
     required String sourceId,
-    required int depth,
-    int maxDepth = 3,
     VoidCallback? onBatchFound,
   }) async {
-    if (depth > maxDepth) return;
-
     try {
       final items = await fs.listDirectory(path);
       for (final item in items) {
-        if (item.name.startsWith('.') ||
-            item.name.startsWith('@') ||
-            item.name == '#recycle') {
+        if (_shouldSkipDirectory(item.name)) {
           continue;
         }
 
@@ -984,8 +984,6 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
             item.path,
             tracks,
             sourceId: sourceId,
-            depth: depth + 1,
-            maxDepth: maxDepth,
             onBatchFound: onBatchFound,
           );
         } else if (item.type == FileType.audio) {
@@ -996,6 +994,13 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
     } on Exception catch (e) {
       logger.w('扫描子文件夹失败: $path - $e');
     }
+  }
+
+  /// 判断是否应该跳过该目录
+  bool _shouldSkipDirectory(String name) {
+    return name.startsWith('.') ||
+        name.startsWith('@') ||
+        name.startsWith('#recycle');
   }
 
   void setSearchQuery(String query) {

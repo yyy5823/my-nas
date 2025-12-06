@@ -324,6 +324,18 @@ jobs:
           echo "=== Flutter doctor ==="
           flutter doctor -v
 
+      # 禁用代码签名以在 CI 环境中构建
+      - name: Disable code signing
+        run: |
+          # 修改 Xcode 项目配置，禁用代码签名
+          sed -i '' 's/CODE_SIGN_IDENTITY = ".*";/CODE_SIGN_IDENTITY = "-";/g' macos/Runner.xcodeproj/project.pbxproj
+          sed -i '' 's/DEVELOPMENT_TEAM = .*;/DEVELOPMENT_TEAM = "";/g' macos/Runner.xcodeproj/project.pbxproj
+          sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' macos/Runner.xcodeproj/project.pbxproj
+          sed -i '' 's/PROVISIONING_PROFILE_SPECIFIER = ".*";/PROVISIONING_PROFILE_SPECIFIER = "";/g' macos/Runner.xcodeproj/project.pbxproj
+
+          # 对于 Release 配置，确保禁用签名
+          echo "Code signing disabled for CI build"
+
       - name: Build macOS
         run: flutter build macos --release
 

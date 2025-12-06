@@ -97,14 +97,13 @@ class TvShowGroup {
       // 确定分组键：优先使用 tmdbId
       final groupKey = _getGroupKey(metadata);
 
-      // 获取或创建分组构建器
-      final builder = groups.putIfAbsent(
-        groupKey,
-        () => _TvShowGroupBuilder(groupKey: groupKey),
-      )
-
-      // 添加剧集到对应季
-      ..addEpisode(metadata);
+      // 获取或创建分组构建器，并添加剧集
+      groups
+          .putIfAbsent(
+            groupKey,
+            () => _TvShowGroupBuilder(groupKey: groupKey),
+          )
+          .addEpisode(metadata);
     }
 
     // 构建最终结果

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:charset_converter/charset_converter.dart';
+import 'package:enough_convert/enough_convert.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:path/path.dart' as p;
@@ -196,36 +197,67 @@ class LyricService {
 
     // 3. 尝试 GBK/GB2312 解码（中文 Windows 常用）
     final uint8Bytes = Uint8List.fromList(bytes);
-    try {
-      final decoded = await CharsetConverter.decode('GBK', uint8Bytes);
-      if (decoded.isNotEmpty && _looksValidGbk(decoded)) {
-        logger.d('LyricService: 成功使用 GBK 解码');
-        return decoded;
-      }
-    } on Exception catch (e) {
-      logger.d('LyricService: GBK 解码失败: $e');
-    }
 
-    // 4. 尝试 GB18030 解码（GBK 的超集）
-    try {
-      final decoded = await CharsetConverter.decode('GB18030', uint8Bytes);
-      if (decoded.isNotEmpty) {
-        logger.d('LyricService: 成功使用 GB18030 解码');
-        return decoded;
-      }
-    } on Exception catch (e) {
-      logger.d('LyricService: GB18030 解码失败: $e');
-    }
+    // 根据平台选择不同的解码方式
+    final isDesktop = Platform.isMacOS || Platform.isWindows || Platform.isLinux;
 
-    // 5. 尝试 Big5 解码（繁体中文）
-    try {
-      final decoded = await CharsetConverter.decode('Big5', uint8Bytes);
-      if (decoded.isNotEmpty && _containsChinese(decoded)) {
-        logger.d('LyricService: 成功使用 Big5 解码');
-        return decoded;
+    if (isDesktop) {
+      // 桌面平台使用 enough_convert（纯 Dart 实现）
+      try {
+        final gbkCodec = const GbkCodec(allowInvalid: false);
+        final decoded = gbkCodec.decode(bytes);
+        if (decoded.isNotEmpty && _looksValidGbk(decoded)) {
+          logger.d('LyricService: 成功使用 GBK 解码 (enough_convert)');
+          return decoded;
+        }
+      } on Exception catch (e) {
+        logger.d('LyricService: GBK 解码失败 (enough_convert): $e');
       }
-    } on Exception catch (e) {
-      logger.d('LyricService: Big5 解码失败: $e');
+
+      // 尝试 Big5 解码（繁体中文）
+      try {
+        final big5Codec = const Big5Codec(allowInvalid: false);
+        final decoded = big5Codec.decode(bytes);
+        if (decoded.isNotEmpty && _containsChinese(decoded)) {
+          logger.d('LyricService: 成功使用 Big5 解码 (enough_convert)');
+          return decoded;
+        }
+      } on Exception catch (e) {
+        logger.d('LyricService: Big5 解码失败 (enough_convert): $e');
+      }
+    } else {
+      // 移动平台使用 charset_converter（原生实现）
+      try {
+        final decoded = await CharsetConverter.decode('GBK', uint8Bytes);
+        if (decoded.isNotEmpty && _looksValidGbk(decoded)) {
+          logger.d('LyricService: 成功使用 GBK 解码');
+          return decoded;
+        }
+      } on Exception catch (e) {
+        logger.d('LyricService: GBK 解码失败: $e');
+      }
+
+      // 4. 尝试 GB18030 解码（GBK 的超集）
+      try {
+        final decoded = await CharsetConverter.decode('GB18030', uint8Bytes);
+        if (decoded.isNotEmpty) {
+          logger.d('LyricService: 成功使用 GB18030 解码');
+          return decoded;
+        }
+      } on Exception catch (e) {
+        logger.d('LyricService: GB18030 解码失败: $e');
+      }
+
+      // 5. 尝试 Big5 解码（繁体中文）
+      try {
+        final decoded = await CharsetConverter.decode('Big5', uint8Bytes);
+        if (decoded.isNotEmpty && _containsChinese(decoded)) {
+          logger.d('LyricService: 成功使用 Big5 解码');
+          return decoded;
+        }
+      } on Exception catch (e) {
+        logger.d('LyricService: Big5 解码失败: $e');
+      }
     }
 
     // 6. 最后尝试 UTF-8 with allowMalformed

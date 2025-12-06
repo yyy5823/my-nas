@@ -7,7 +7,9 @@ import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
+import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/pages/media_library_page.dart';
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
@@ -22,6 +24,7 @@ import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
 import 'package:my_nas/features/video/presentation/pages/video_detail_page.dart';
 import 'package:my_nas/features/video/presentation/pages/video_player_page.dart';
 import 'package:my_nas/features/video/presentation/providers/video_history_provider.dart';
+import 'package:my_nas/features/video/presentation/widgets/global_scrape_indicator.dart';
 import 'package:my_nas/features/video/presentation/widgets/hero_banner.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/adaptive_image.dart';
@@ -194,6 +197,13 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     _scrapeStatsSubscription = VideoScannerService().scrapeStatsStream.listen(
       _onScrapeStatsChanged,
     );
+
+    // 监听连接状态变化，当有新连接时检查恢复刮削
+    _connectionsSubscription = _ref.listen<Map<String, SourceConnection>>(
+      activeConnectionsProvider,
+      _onConnectionsChanged,
+      fireImmediately: false,
+    );
   }
 
   final Ref _ref;
@@ -202,7 +212,9 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
   final VideoDatabaseService _db = VideoDatabaseService();
 
   StreamSubscription<ScrapeStats>? _scrapeStatsSubscription;
+  ProviderSubscription<Map<String, SourceConnection>>? _connectionsSubscription;
   int _lastCompletedCount = 0;
+  bool _hasCheckedResume = false;
 
   /// 获取启用的路径列表（用于 SQLite 过滤）
   List<({String sourceId, String path})>? _getEnabledPaths() {
@@ -220,7 +232,24 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
   @override
   void dispose() {
     _scrapeStatsSubscription?.cancel();
+    _connectionsSubscription?.close();
     super.dispose();
+  }
+
+  /// 连接状态变化时检查是否需要恢复刮削
+  void _onConnectionsChanged(
+    Map<String, SourceConnection>? previous,
+    Map<String, SourceConnection> next,
+  ) {
+    // 只在首次有连接成功时检查恢复刮削
+    if (_hasCheckedResume) return;
+
+    final hasConnected = next.values.any((c) => c.status == SourceStatus.connected);
+    if (hasConnected) {
+      _hasCheckedResume = true;
+      logger.d('VideoListNotifier: 检测到连接成功，检查是否有待恢复的刮削任务');
+      VideoScannerService().checkAndResumeScraping(next);
+    }
   }
 
   /// 刮削统计变化时刷新数据
@@ -381,6 +410,8 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
       body: Column(
         children: [
           _buildHeader(context, ref, isDark, state),
+          // 全局刮削进度指示器
+          const GlobalScrapeIndicator(),
           Expanded(
             child: switch (state) {
               VideoListLoading(

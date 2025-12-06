@@ -1,0 +1,252 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/features/video/data/services/video_database_service.dart';
+import 'package:my_nas/features/video/data/services/video_scanner_service.dart';
+
+/// 全局刮削状态指示器
+///
+/// 用于在应用任何页面显示刮削进度，即使用户离开了媒体库页面
+class GlobalScrapeIndicator extends StatefulWidget {
+  const GlobalScrapeIndicator({super.key});
+
+  @override
+  State<GlobalScrapeIndicator> createState() => _GlobalScrapeIndicatorState();
+}
+
+class _GlobalScrapeIndicatorState extends State<GlobalScrapeIndicator>
+    with SingleTickerProviderStateMixin {
+  StreamSubscription<ScrapeStats>? _subscription;
+  ScrapeStats? _stats;
+  bool _isVisible = false;
+
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+
+    _fadeAnimation = CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeInOut,
+    );
+
+    _subscription = VideoScannerService().scrapeStatsStream.listen((stats) {
+      if (mounted) {
+        setState(() {
+          _stats = stats;
+          final shouldShow = !stats.isAllDone && stats.total > 0;
+
+          if (shouldShow && !_isVisible) {
+            _isVisible = true;
+            _animationController.forward();
+          } else if (!shouldShow && _isVisible) {
+            _animationController.reverse().then((_) {
+              if (mounted) {
+                setState(() => _isVisible = false);
+              }
+            });
+          }
+        });
+      }
+    });
+
+    // 初始检查刮削状态
+    _checkInitialState();
+  }
+
+  Future<void> _checkInitialState() async {
+    if (VideoScannerService().isScraping) {
+      final stats = await VideoScannerService().getScrapeStats();
+      if (mounted && !stats.isAllDone) {
+        setState(() {
+          _stats = stats;
+          _isVisible = true;
+          _animationController.forward();
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_isVisible || _stats == null) {
+      return const SizedBox.shrink();
+    }
+
+    final stats = _stats!;
+    final progress = stats.progress;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isDark ? AppColors.darkSurface : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.1),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '正在刮削视频元数据...',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                ),
+                Text(
+                  '${stats.processed}/${stats.total}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: progress,
+                backgroundColor: isDark ? Colors.grey[800] : Colors.grey[200],
+                valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+                minHeight: 4,
+              ),
+            ),
+            if (stats.failed > 0) ...[
+              const SizedBox(height: 4),
+              Text(
+                '${stats.completed} 成功 · ${stats.failed} 失败',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: isDark ? Colors.grey[500] : Colors.grey[600],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 紧凑版刮削指示器（用于 AppBar）
+class CompactScrapeIndicator extends StatefulWidget {
+  const CompactScrapeIndicator({super.key});
+
+  @override
+  State<CompactScrapeIndicator> createState() => _CompactScrapeIndicatorState();
+}
+
+class _CompactScrapeIndicatorState extends State<CompactScrapeIndicator> {
+  StreamSubscription<ScrapeStats>? _subscription;
+  ScrapeStats? _stats;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _subscription = VideoScannerService().scrapeStatsStream.listen((stats) {
+      if (mounted) {
+        setState(() => _stats = stats);
+      }
+    });
+
+    _checkInitialState();
+  }
+
+  Future<void> _checkInitialState() async {
+    if (VideoScannerService().isScraping) {
+      final stats = await VideoScannerService().getScrapeStats();
+      if (mounted) {
+        setState(() => _stats = stats);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_stats == null || _stats!.isAllDone) {
+      return const SizedBox.shrink();
+    }
+
+    final stats = _stats!;
+    final progress = stats.progress;
+
+    return Tooltip(
+      message: '刮削进度: ${stats.processed}/${stats.total}',
+      child: Container(
+        width: 32,
+        height: 32,
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(
+                value: progress,
+                strokeWidth: 2.5,
+                backgroundColor: Colors.grey.withValues(alpha: 0.3),
+                valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+              ),
+            ),
+            Text(
+              '${(progress * 100).toInt()}',
+              style: const TextStyle(
+                fontSize: 8,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

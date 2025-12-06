@@ -1,7 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/router/app_router.dart';
 import 'package:my_nas/app/theme/app_theme.dart';
+import 'package:my_nas/core/services/deep_link_service.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/shared/providers/theme_provider.dart';
 import 'package:my_nas/shared/widgets/stream_image.dart';
@@ -14,6 +17,7 @@ class MyNasApp extends ConsumerStatefulWidget {
 }
 
 class _MyNasAppState extends ConsumerState<MyNasApp> with WidgetsBindingObserver {
+  bool _deepLinkInitialized = false;
 
   @override
   void initState() {
@@ -24,7 +28,18 @@ class _MyNasAppState extends ConsumerState<MyNasApp> with WidgetsBindingObserver
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    // 释放 DeepLinkService
+    if (Platform.isIOS) {
+      DeepLinkService().dispose();
+    }
     super.dispose();
+  }
+
+  /// 初始化 DeepLinkService（仅 iOS）
+  void _initDeepLinkService() {
+    if (_deepLinkInitialized || !Platform.isIOS) return;
+    _deepLinkInitialized = true;
+    DeepLinkService().init(ref);
   }
 
   @override
@@ -50,6 +65,9 @@ class _MyNasAppState extends ConsumerState<MyNasApp> with WidgetsBindingObserver
 
   @override
   Widget build(BuildContext context) {
+    // 初始化 DeepLinkService（在 build 中调用以确保 ref 可用）
+    _initDeepLinkService();
+
     final themeMode = ref.watch(themeModeProvider);
 
     return MaterialApp.router(

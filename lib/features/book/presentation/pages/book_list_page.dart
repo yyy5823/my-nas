@@ -302,7 +302,10 @@ class BookListNotifier extends StateNotifier<BookListState> {
     await _loadFromSqlite();
   }
 
-  Future<void> loadBooks({bool forceRefresh = false, int maxDepth = 3}) async {
+  /// 加载书籍库
+  ///
+  /// 注意：无深度限制，会递归扫描所有子目录
+  Future<void> loadBooks({bool forceRefresh = false}) async {
     final connections = _ref.read(activeConnectionsProvider);
     final configAsync = _ref.read(mediaLibraryConfigProvider);
 
@@ -379,8 +382,6 @@ class BookListNotifier extends StateNotifier<BookListState> {
           mediaPath.path,
           books,
           sourceId: mediaPath.sourceId,
-          depth: 0,
-          maxDepth: maxDepth,
           onBatchFound: () {
             // 每发现 5 本书更新一次进度
             if (books.length - lastUpdateCount >= 5) {
@@ -427,23 +428,22 @@ class BookListNotifier extends StateNotifier<BookListState> {
     await _loadFromSqlite();
   }
 
+  /// 递归扫描书籍文件（无深度限制）
+  ///
+  /// 会跳过以下目录：
+  /// - 隐藏目录（以 . 开头）
+  /// - 系统目录（以 @ 开头、#recycle）
   Future<void> _scanForBooks(
     NasFileSystem fs,
     String path,
     List<BookFileWithSource> books, {
     required String sourceId,
-    required int depth,
-    int maxDepth = 3,
     VoidCallback? onBatchFound,
   }) async {
-    if (depth > maxDepth) return;
-
     try {
       final items = await fs.listDirectory(path);
       for (final item in items) {
-        if (item.name.startsWith('.') ||
-            item.name.startsWith('@') ||
-            item.name == '#recycle') {
+        if (_shouldSkipDirectory(item.name)) {
           continue;
         }
 
@@ -453,8 +453,6 @@ class BookListNotifier extends StateNotifier<BookListState> {
             item.path,
             books,
             sourceId: sourceId,
-            depth: depth + 1,
-            maxDepth: maxDepth,
             onBatchFound: onBatchFound,
           );
         } else if (_isBookFile(item.name)) {
@@ -465,6 +463,13 @@ class BookListNotifier extends StateNotifier<BookListState> {
     } on Exception catch (e) {
       logger.w('扫描子文件夹失败: $path - $e');
     }
+  }
+
+  /// 判断是否应该跳过该目录
+  bool _shouldSkipDirectory(String name) {
+    return name.startsWith('.') ||
+        name.startsWith('@') ||
+        name.startsWith('#recycle');
   }
 
   bool _isBookFile(String filename) {

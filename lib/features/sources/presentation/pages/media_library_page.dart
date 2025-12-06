@@ -301,6 +301,10 @@ class _MediaTypeTab extends ConsumerWidget {
           connections: connections,
         ).then((_) async {
           await ref.read(videoListProvider.notifier).reloadFromCache();
+          // 扫描完成后自动触发后台刮削
+          if (connections.values.any((c) => c.status == SourceStatus.connected)) {
+            unawaited(VideoScannerService().scrapeMetadata(connections: connections));
+          }
         }));
       case MediaType.music:
         unawaited(ref
@@ -917,8 +921,12 @@ class _PathCardState extends ConsumerState<_PathCard> {
           await _loadStats();
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('扫描完成，共 $count 个视频')),
+              SnackBar(content: Text('扫描完成，共 $count 个视频，开始刮削元数据...')),
             );
+          }
+          // 扫描完成后自动触发后台刮削
+          if (widget.connections.values.any((c) => c.status == SourceStatus.connected)) {
+            unawaited(VideoScannerService().scrapeMetadata(connections: widget.connections));
           }
         case MediaType.music:
           await ref.read(musicListProvider.notifier).loadMusic(forceRefresh: true);

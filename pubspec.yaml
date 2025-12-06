@@ -96,8 +96,10 @@ dependencies:
 
   # Live Activities (Dynamic Island)
   live_activities: ^2.3.0
+  app_links: ^6.3.3  # Deep link handling for Dynamic Island controls
   encrypt: ^5.0.3
   charset_converter: ^2.3.0
+  enough_convert: ^1.6.0
 
 dev_dependencies:
   flutter_test:

@@ -358,7 +358,10 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
     await _loadFromSqlite();
   }
 
-  Future<void> loadPhotos({bool forceRefresh = false, int maxDepth = 3}) async {
+  /// 加载照片库
+  ///
+  /// 注意：无深度限制，会递归扫描所有子目录
+  Future<void> loadPhotos({bool forceRefresh = false}) async {
     final connections = _ref.read(activeConnectionsProvider);
     final configAsync = _ref.read(mediaLibraryConfigProvider);
 
@@ -438,8 +441,6 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
           mediaPath.path,
           photos,
           sourceId: mediaPath.sourceId,
-          currentDepth: 0,
-          maxDepth: maxDepth,
           onBatchFound: () {
             // 每发现 5 个文件更新一次进度，使进度显示更平滑
             if (photos.length - lastUpdateCount >= 5) {
@@ -496,17 +497,18 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
     await _loadFromSqlite();
   }
 
+  /// 递归扫描照片文件（无深度限制）
+  ///
+  /// 会跳过以下目录：
+  /// - 隐藏目录（以 . 开头）
+  /// - 系统目录（以 @ 开头、#recycle）
   Future<void> _scanFolderRecursively(
     NasFileSystem fileSystem,
     String path,
     List<PhotoFileWithSource> photos, {
     required String sourceId,
-    required int currentDepth,
-    required int maxDepth,
     VoidCallback? onBatchFound,
   }) async {
-    if (currentDepth > maxDepth) return;
-
     try {
       final files = await fileSystem.listDirectory(path);
 
@@ -557,10 +559,8 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
 
           photos.add(PhotoFileWithSource(file: fileWithThumbnail, sourceId: sourceId));
           onBatchFound?.call();
-        } else if (file.isDirectory && currentDepth < maxDepth) {
-          if (file.name.startsWith('.') ||
-              file.name.startsWith('@') ||
-              file.name == '#recycle') {
+        } else if (file.isDirectory) {
+          if (_shouldSkipDirectory(file.name)) {
             continue;
           }
 
@@ -569,8 +569,6 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
             file.path,
             photos,
             sourceId: sourceId,
-            currentDepth: currentDepth + 1,
-            maxDepth: maxDepth,
             onBatchFound: onBatchFound,
           );
         }
@@ -578,6 +576,13 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
     } on Exception catch (e) {
       logger.w('扫描子文件夹失败: $path - $e');
     }
+  }
+
+  /// 判断是否应该跳过该目录
+  bool _shouldSkipDirectory(String name) {
+    return name.startsWith('.') ||
+        name.startsWith('@') ||
+        name.startsWith('#recycle');
   }
 
   void setSearchQuery(String query) {

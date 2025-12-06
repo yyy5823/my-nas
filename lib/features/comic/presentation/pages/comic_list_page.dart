@@ -311,6 +311,16 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
     state = ComicListLoaded(comics: comics);
   }
 
+  /// 递归扫描漫画文件（无深度限制）
+  ///
+  /// 扫描逻辑：
+  /// 1. 如果是文件夹且包含图片 -> 识别为漫画文件夹
+  /// 2. 如果是文件夹但不包含图片 -> 递归进入继续扫描
+  /// 3. 如果是漫画压缩包（.cbz/.cbr/.zip/.rar） -> 识别为漫画文件
+  ///
+  /// 会跳过以下目录：
+  /// - 隐藏目录（以 . 开头）
+  /// - 系统目录（以 @ 开头、#recycle）
   Future<void> _scanForComics(
     NasFileSystem fs,
     String path,
@@ -322,7 +332,7 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
       final items = await fs.listDirectory(path);
 
       for (final item in items) {
-        if (item.name.startsWith('.') || item.name.startsWith('@') || item.name == '#recycle') {
+        if (_shouldSkipDirectory(item.name)) {
           continue;
         }
 
@@ -330,6 +340,7 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
           // 检查这个文件夹是否是漫画（包含图片文件）
           final comicInfo = await _checkIfComicFolder(fs, item.path);
           if (comicInfo != null) {
+            // 是漫画文件夹
             comics.add(ComicItem(
               folderPath: item.path,
               folderName: item.name,
@@ -339,6 +350,15 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
               modifiedTime: item.modifiedTime,
             ));
             onBatchFound?.call();
+          } else {
+            // 不是漫画文件夹，递归进入继续扫描
+            await _scanForComics(
+              fs,
+              item.path,
+              comics,
+              sourceId: sourceId,
+              onBatchFound: onBatchFound,
+            );
           }
         } else {
           // 检查是否是漫画压缩包
@@ -361,6 +381,13 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
     } on Exception catch (e) {
       logger.w('扫描漫画目录失败: $path - $e');
     }
+  }
+
+  /// 判断是否应该跳过该目录
+  bool _shouldSkipDirectory(String name) {
+    return name.startsWith('.') ||
+        name.startsWith('@') ||
+        name.startsWith('#recycle');
   }
 
   /// 移除文件扩展名

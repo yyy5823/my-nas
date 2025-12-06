@@ -106,6 +106,12 @@ class NfoScraperService {
   static const _thumbPatterns = ['thumb', 'thumbnail'];
 
   /// 获取视频同级目录下的刮削信息
+  ///
+  /// 查找顺序：
+  /// 1. 视频同名 NFO 文件（如 S01E01.nfo）
+  /// 2. 当前目录的 episode.nfo 或 movie.nfo
+  /// 3. 父目录的 tvshow.nfo（用于获取剧集整体信息）
+  /// 4. 祖父目录的 tvshow.nfo（适用于 Season 子目录结构）
   Future<NfoMetadata?> scrapeFromDirectory({
     required NasFileSystem fileSystem,
     required String videoPath,
@@ -121,54 +127,15 @@ class NfoScraperService {
       // 列出目录内容
       final files = await fileSystem.listDirectory(videoDir);
 
-      // 查找 NFO 文件
-      String? nfoContent;
-      for (final file in files) {
-        if (file.isDirectory) continue;
+      // 1. 查找视频同名 NFO 文件或 episode.nfo
+      var episodeNfo = await _findEpisodeNfo(fileSystem, files, videoBaseName);
 
-        final fileName = file.name.toLowerCase();
-
-        // 优先查找与视频同名的 NFO 文件
-        if (_isMatchingNfo(fileName, videoBaseName)) {
-          try {
-            nfoContent = await _readFileAsString(fileSystem, file.path);
-            logger.d('NfoScraperService: 找到匹配的 NFO 文件 ${file.name}');
-            break;
-          } on Exception catch (e) {
-            logger.w('NfoScraperService: 读取 NFO 文件失败 ${file.name}', e);
-          }
-        }
+      // 2. 如果没找到，查找 movie.nfo
+      if (episodeNfo == null) {
+        episodeNfo = await _findMovieNfo(fileSystem, files);
       }
 
-      // 如果没找到同名 NFO，查找通用 NFO 文件
-      if (nfoContent == null) {
-        for (final file in files) {
-          if (file.isDirectory) continue;
-
-          final fileName = file.name.toLowerCase();
-          if (fileName == 'movie.nfo' ||
-              fileName == 'tvshow.nfo' ||
-              fileName == 'episode.nfo') {
-            try {
-              nfoContent = await _readFileAsString(fileSystem, file.path);
-              logger.d('NfoScraperService: 找到通用 NFO 文件 ${file.name}');
-              break;
-            } on Exception catch (e) {
-              logger.w('NfoScraperService: 读取通用 NFO 文件失败', e);
-            }
-          }
-        }
-      }
-
-      if (nfoContent == null) {
-        logger.d('NfoScraperService: 未找到 NFO 文件');
-        return null;
-      }
-
-      // 解析 NFO 内容
-      final nfoMetadata = _parseNfoContent(nfoContent);
-
-      // 查找本地图片
+      // 3. 查找本地图片（当前目录）
       final localImages = await _findLocalImages(
         files,
         videoBaseName,
@@ -176,31 +143,215 @@ class NfoScraperService {
         videoDir,
       );
 
-      return NfoMetadata(
-        title: nfoMetadata.title,
-        originalTitle: nfoMetadata.originalTitle,
-        year: nfoMetadata.year,
-        plot: nfoMetadata.plot,
-        rating: nfoMetadata.rating,
-        runtime: nfoMetadata.runtime,
-        genres: nfoMetadata.genres,
-        director: nfoMetadata.director,
-        actors: nfoMetadata.actors,
-        studio: nfoMetadata.studio,
-        tmdbId: nfoMetadata.tmdbId,
-        imdbId: nfoMetadata.imdbId,
-        posterPath: localImages['poster'],
-        fanartPath: localImages['fanart'],
-        thumbPath: localImages['thumb'],
-        seasonNumber: nfoMetadata.seasonNumber,
-        episodeNumber: nfoMetadata.episodeNumber,
-        episodeTitle: nfoMetadata.episodeTitle,
-        aired: nfoMetadata.aired,
+      // 4. 向上查找 tvshow.nfo（获取剧集整体信息）
+      NfoMetadata? showNfo;
+      Map<String, String?>? showImages;
+
+      // 判断是否可能是剧集（有季集信息或文件名匹配剧集模式）
+      final isPossibleTvShow = episodeNfo?.seasonNumber != null ||
+          episodeNfo?.episodeNumber != null ||
+          _looksLikeTvShow(videoFileName);
+
+      if (isPossibleTvShow) {
+        final (nfo, images) = await _findShowNfoInParents(
+          fileSystem,
+          videoDir,
+          maxLevels: 2,
+        );
+        showNfo = nfo;
+        showImages = images;
+      }
+
+      // 5. 合并信息（单集信息 + 剧集整体信息）
+      return _mergeNfoData(
+        episodeNfo: episodeNfo,
+        showNfo: showNfo,
+        localImages: localImages,
+        showImages: showImages,
       );
     } on Exception catch (e) {
       logger.e('NfoScraperService: 刮削失败', e);
       return null;
     }
+  }
+
+  /// 查找单集 NFO 文件
+  Future<NfoMetadata?> _findEpisodeNfo(
+    NasFileSystem fileSystem,
+    List<FileItem> files,
+    String videoBaseName,
+  ) async {
+    // 优先查找与视频同名的 NFO 文件
+    for (final file in files) {
+      if (file.isDirectory) continue;
+
+      final fileName = file.name.toLowerCase();
+      if (_isMatchingNfo(fileName, videoBaseName)) {
+        try {
+          final content = await _readFileAsString(fileSystem, file.path);
+          logger.d('NfoScraperService: 找到匹配的 NFO 文件 ${file.name}');
+          return _parseNfoContent(content);
+        } on Exception catch (e) {
+          logger.w('NfoScraperService: 读取 NFO 文件失败 ${file.name}', e);
+        }
+      }
+    }
+
+    // 查找 episode.nfo
+    for (final file in files) {
+      if (file.isDirectory) continue;
+
+      if (file.name.toLowerCase() == 'episode.nfo') {
+        try {
+          final content = await _readFileAsString(fileSystem, file.path);
+          logger.d('NfoScraperService: 找到 episode.nfo');
+          return _parseNfoContent(content);
+        } on Exception catch (e) {
+          logger.w('NfoScraperService: 读取 episode.nfo 失败', e);
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /// 查找电影 NFO 文件
+  Future<NfoMetadata?> _findMovieNfo(
+    NasFileSystem fileSystem,
+    List<FileItem> files,
+  ) async {
+    for (final file in files) {
+      if (file.isDirectory) continue;
+
+      final fileName = file.name.toLowerCase();
+      if (fileName == 'movie.nfo' || fileName == 'tvshow.nfo') {
+        try {
+          final content = await _readFileAsString(fileSystem, file.path);
+          logger.d('NfoScraperService: 找到 $fileName');
+          return _parseNfoContent(content);
+        } on Exception catch (e) {
+          logger.w('NfoScraperService: 读取 $fileName 失败', e);
+        }
+      }
+    }
+    return null;
+  }
+
+  /// 向上查找父目录中的 tvshow.nfo
+  ///
+  /// 适用于以下目录结构：
+  /// /TV Shows/Breaking Bad/tvshow.nfo
+  /// /TV Shows/Breaking Bad/Season 1/S01E01.mp4
+  ///
+  /// 从 Season 1 目录向上查找，最多查找 [maxLevels] 级
+  Future<(NfoMetadata?, Map<String, String?>?)> _findShowNfoInParents(
+    NasFileSystem fileSystem,
+    String startDir,
+    {int maxLevels = 2,}
+  ) async {
+    var currentDir = startDir;
+
+    for (var level = 0; level < maxLevels; level++) {
+      // 向上一级
+      final parentDir = _getParentPath(currentDir);
+      if (parentDir.isEmpty || parentDir == currentDir || parentDir == '/') {
+        break;
+      }
+      currentDir = parentDir;
+
+      try {
+        final files = await fileSystem.listDirectory(currentDir);
+
+        // 查找 tvshow.nfo
+        for (final file in files) {
+          if (file.isDirectory) continue;
+
+          if (file.name.toLowerCase() == 'tvshow.nfo') {
+            try {
+              final content = await _readFileAsString(fileSystem, file.path);
+              final nfo = _parseNfoContent(content);
+              logger.i('NfoScraperService: 在父目录找到 tvshow.nfo: $currentDir');
+
+              // 同时查找剧集级别的图片
+              final images = await _findLocalImages(
+                files,
+                '', // 不匹配特定视频名
+                fileSystem,
+                currentDir,
+              );
+
+              return (nfo, images);
+            } on Exception catch (e) {
+              logger.w('NfoScraperService: 读取 tvshow.nfo 失败', e);
+            }
+          }
+        }
+      } on Exception catch (e) {
+        logger.w('NfoScraperService: 列出父目录失败 $currentDir', e);
+      }
+    }
+
+    return (null, null);
+  }
+
+  /// 判断文件名是否像剧集
+  bool _looksLikeTvShow(String fileName) {
+    final lowerName = fileName.toLowerCase();
+    // 匹配常见剧集命名模式
+    return RegExp(r's\d+e\d+|第.+[季部]|第.+集|\d+x\d+', caseSensitive: false)
+        .hasMatch(lowerName);
+  }
+
+  /// 合并单集信息和剧集整体信息
+  NfoMetadata? _mergeNfoData({
+    NfoMetadata? episodeNfo,
+    NfoMetadata? showNfo,
+    Map<String, String?> localImages = const {},
+    Map<String, String?>? showImages,
+  }) {
+    // 如果都没有数据，返回 null
+    if (episodeNfo == null && showNfo == null) {
+      logger.d('NfoScraperService: 未找到任何 NFO 文件');
+      return null;
+    }
+
+    // 优先使用单集信息，缺失的从剧集信息补充
+    final ep = episodeNfo;
+    final show = showNfo;
+
+    // 图片优先使用当前目录的，没有则使用剧集目录的
+    final posterPath = localImages['poster'] ?? showImages?['poster'];
+    final fanartPath = localImages['fanart'] ?? showImages?['fanart'];
+    final thumbPath = localImages['thumb'] ?? showImages?['thumb'];
+
+    return NfoMetadata(
+      // 单集专属信息
+      episodeNumber: ep?.episodeNumber,
+      seasonNumber: ep?.seasonNumber,
+      episodeTitle: ep?.episodeTitle ?? ep?.title,
+      aired: ep?.aired,
+
+      // 优先单集，回退到剧集
+      title: show?.title ?? ep?.title, // 剧集标题优先使用 tvshow.nfo
+      originalTitle: show?.originalTitle ?? ep?.originalTitle,
+      year: show?.year ?? ep?.year,
+      plot: ep?.plot ?? show?.plot, // 剧情优先使用单集的
+      rating: show?.rating ?? ep?.rating, // 评分使用剧集整体的
+      runtime: ep?.runtime ?? show?.runtime,
+      genres: show?.genres ?? ep?.genres,
+      director: ep?.director ?? show?.director,
+      actors: show?.actors ?? ep?.actors,
+      studio: show?.studio ?? ep?.studio,
+
+      // TMDB ID 优先使用剧集的（便于后续查询季集信息）
+      tmdbId: show?.tmdbId ?? ep?.tmdbId,
+      imdbId: show?.imdbId ?? ep?.imdbId,
+
+      // 图片路径
+      posterPath: posterPath,
+      fanartPath: fanartPath,
+      thumbPath: thumbPath,
+    );
   }
 
   /// 检查是否是匹配的 NFO 文件
