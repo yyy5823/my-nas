@@ -284,6 +284,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     Uint8List? coverData;
     if (music.coverData != null && music.coverData!.isNotEmpty) {
       coverData = Uint8List.fromList(music.coverData!);
+      logger.d('LiveActivity: 使用音乐自带封面 - size=${coverData.length} bytes');
     } else {
       // 尝试从封面缓存中获取
       // uniqueKey 格式: sourceId_path
@@ -291,7 +292,9 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       final coverCacheService = MusicCoverCacheService();
       coverData = await coverCacheService.getCover(uniqueKey);
       if (coverData != null) {
-        logger.d('LiveActivity: 从缓存获取到封面 - $uniqueKey');
+        logger.d('LiveActivity: 从缓存获取到封面 - $uniqueKey, size=${coverData.length} bytes');
+      } else {
+        logger.w('LiveActivity: 无法获取封面 - $uniqueKey');
       }
     }
 

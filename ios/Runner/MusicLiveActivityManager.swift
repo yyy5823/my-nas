@@ -77,7 +77,7 @@ class MusicLiveActivityManager {
             currentActivityId = activity.id
             currentActivityUUID = activityUUID
 
-            print("MusicLiveActivityManager: Activity created with ID: \(activity.id)")
+            print("MusicLiveActivityManager: Activity created with ID: \(activity.id), UUID: \(activityUUID)")
             return activity.id
         } catch {
             print("MusicLiveActivityManager: Failed to create activity: \(error.localizedDescription)")
@@ -154,21 +154,34 @@ class MusicLiveActivityManager {
             return
         }
 
+        print("MusicLiveActivityManager: Saving data to UserDefaults with UUID prefix: \(prefix)")
+
         for (key, value) in data {
             let prefixedKey = "\(prefix)_\(key)"
 
             // 处理图片数据
             if key == "coverImage" {
+                print("MusicLiveActivityManager: Processing coverImage, type: \(type(of: value))")
                 // Flutter 发送的 Uint8List 会被转换为 FlutterStandardTypedData
                 if let typedData = value as? FlutterStandardTypedData {
+                    print("MusicLiveActivityManager: coverImage is FlutterStandardTypedData, size: \(typedData.data.count)")
                     if let imagePath = saveImageToFile(data: typedData.data, filename: "cover_\(prefix.hashValue).jpg") {
+                        print("MusicLiveActivityManager: coverImage saved to: \(imagePath), key: \(prefixedKey)")
                         defaults.set(imagePath, forKey: prefixedKey)
+                    } else {
+                        print("MusicLiveActivityManager: Failed to save coverImage from FlutterStandardTypedData")
                     }
                 } else if let data = value as? Data {
                     // 直接作为 Data 类型
+                    print("MusicLiveActivityManager: coverImage is Data, size: \(data.count)")
                     if let imagePath = saveImageToFile(data: data, filename: "cover_\(prefix.hashValue).jpg") {
+                        print("MusicLiveActivityManager: coverImage saved to: \(imagePath)")
                         defaults.set(imagePath, forKey: prefixedKey)
+                    } else {
+                        print("MusicLiveActivityManager: Failed to save coverImage from Data")
                     }
+                } else {
+                    print("MusicLiveActivityManager: coverImage is unknown type, cannot process")
                 }
             } else {
                 defaults.set(value, forKey: prefixedKey)
@@ -192,14 +205,22 @@ class MusicLiveActivityManager {
     /// 保存图片到 App Group 目录
     private func saveImageToFile(data: Data, filename: String) -> String? {
         guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupId) else {
-            print("MusicLiveActivityManager: Cannot access App Group container")
+            print("MusicLiveActivityManager: Cannot access App Group container for appGroupId: \(appGroupId)")
             return nil
         }
+
+        print("MusicLiveActivityManager: App Group container URL: \(containerURL.path)")
 
         let fileURL = containerURL.appendingPathComponent(filename)
 
         do {
             try data.write(to: fileURL)
+            print("MusicLiveActivityManager: Image saved successfully, path: \(fileURL.path), size: \(data.count) bytes")
+
+            // 验证文件是否存在
+            let exists = FileManager.default.fileExists(atPath: fileURL.path)
+            print("MusicLiveActivityManager: File exists after save: \(exists)")
+
             return fileURL.path
         } catch {
             print("MusicLiveActivityManager: Failed to save image: \(error)")
@@ -211,14 +232,34 @@ class MusicLiveActivityManager {
 // MARK: - LiveActivitiesAppAttributes
 // 必须与 Widget Extension 中的定义完全一致
 
-struct LiveActivitiesAppAttributes: ActivityAttributes, Identifiable {
+struct LiveActivitiesAppAttributes: ActivityAttributes, Identifiable, Codable {
     public typealias LiveDeliveryData = ContentState
 
     public struct ContentState: Codable, Hashable {
         var appGroupId: String
     }
 
-    var id = UUID()
+    var id: UUID
+
+    // 提供默认初始化器
+    init(id: UUID = UUID()) {
+        self.id = id
+    }
+
+    // 显式实现 Codable 以确保 id 正确编解码
+    enum CodingKeys: String, CodingKey {
+        case id
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(UUID.self, forKey: .id)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+    }
 }
 
 extension LiveActivitiesAppAttributes {

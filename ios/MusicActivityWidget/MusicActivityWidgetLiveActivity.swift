@@ -13,14 +13,34 @@ import SwiftUI
 // 必须使用这个名称和结构，以匹配 live_activities Flutter 插件
 // ContentState 必须包含 appGroupId，与插件内部定义保持一致
 
-struct LiveActivitiesAppAttributes: ActivityAttributes, Identifiable {
+struct LiveActivitiesAppAttributes: ActivityAttributes, Identifiable, Codable {
     public typealias LiveDeliveryData = ContentState
 
     public struct ContentState: Codable, Hashable {
         var appGroupId: String
     }
 
-    var id = UUID()
+    var id: UUID
+
+    // 提供默认初始化器
+    init(id: UUID = UUID()) {
+        self.id = id
+    }
+
+    // 显式实现 Codable 以确保 id 正确编解码
+    enum CodingKeys: String, CodingKey {
+        case id
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(UUID.self, forKey: .id)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+    }
 }
 
 extension LiveActivitiesAppAttributes {
@@ -37,11 +57,15 @@ private let appGroupId = "group.com.kkape.mynas"
 
 /// 共享的 UserDefaults 实例
 let sharedDefault: UserDefaults = {
+    print("MusicActivityWidget: Initializing sharedDefault with appGroupId: \(appGroupId)")
     if let defaults = UserDefaults(suiteName: appGroupId) {
+        print("MusicActivityWidget: Successfully created UserDefaults for App Group")
+        // 同步以确保获取最新数据
+        defaults.synchronize()
         return defaults
     }
     // 如果 App Group 不可用，使用标准 UserDefaults（数据不会跨进程共享）
-    print("Warning: App Group '\(appGroupId)' not available, falling back to standard UserDefaults")
+    print("MusicActivityWidget: Warning: App Group '\(appGroupId)' not available, falling back to standard UserDefaults")
     return UserDefaults.standard
 }()
 
@@ -181,8 +205,34 @@ struct MusicCoverView: View {
     let defaults: UserDefaults
 
     var body: some View {
-        if let imagePath = defaults.string(forKey: context.attributes.prefixedKey("coverImage")),
-           let uiImage = UIImage(contentsOfFile: imagePath) {
+        let coverKey = context.attributes.prefixedKey("coverImage")
+        let imagePath = defaults.string(forKey: coverKey)
+
+        // 调试日志
+        let _ = {
+            print("MusicCoverView: Looking for cover with key: \(coverKey)")
+            print("MusicCoverView: Activity ID: \(context.attributes.id)")
+            if let path = imagePath {
+                print("MusicCoverView: Found image path: \(path)")
+                let fileExists = FileManager.default.fileExists(atPath: path)
+                print("MusicCoverView: File exists at path: \(fileExists)")
+                if fileExists {
+                    if let image = UIImage(contentsOfFile: path) {
+                        print("MusicCoverView: Successfully loaded image, size: \(image.size)")
+                    } else {
+                        print("MusicCoverView: Failed to create UIImage from file")
+                    }
+                }
+            } else {
+                print("MusicCoverView: No image path found in UserDefaults")
+                // 打印所有相关的 keys
+                let allKeys = defaults.dictionaryRepresentation().keys.filter { $0.contains("coverImage") }
+                print("MusicCoverView: All coverImage keys in defaults: \(allKeys)")
+            }
+        }()
+
+        if let path = imagePath,
+           let uiImage = UIImage(contentsOfFile: path) {
             Image(uiImage: uiImage)
                 .resizable()
                 .aspectRatio(contentMode: .fill)
