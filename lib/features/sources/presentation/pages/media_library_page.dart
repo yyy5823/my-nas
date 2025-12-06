@@ -351,6 +351,7 @@ class _PathCardState extends ConsumerState<_PathCard> {
   bool _isScanning = false;
   double _scanProgress = 0;
   String? _scanDescription;
+  int _videoScannedCount = 0;  // 视频扫描时的实时数量
 
   // 视频专用：刮削状态
   bool _isScraping = false;
@@ -376,6 +377,7 @@ class _PathCardState extends ConsumerState<_PathCard> {
             _isScanning = VideoScannerService().isScanning;
             _scanProgress = progress.progress;
             _scanDescription = progress.description;
+            _videoScannedCount = progress.scannedCount;
           });
         }
       });
@@ -403,48 +405,52 @@ class _PathCardState extends ConsumerState<_PathCard> {
   }
 
   /// 获取非视频类型的扫描进度信息
-  (bool isLoading, double progress, String? description) _getOtherMediaScanState() {
+  /// 返回: (是否正在扫描, 进度, 描述, 已扫描数量)
+  (bool isLoading, double progress, String? description, int scannedCount) _getOtherMediaScanState() {
     switch (widget.mediaType) {
       case MediaType.music:
         final state = ref.watch(musicListProvider);
         if (state is MusicListLoading) {
-          final phase = state.phase == MusicScanPhase.metadata ? '提取元数据' : '扫描文件';
-          final desc = state.currentFolder != null
-              ? '$phase: ${state.currentFolder}'
-              : phase;
-          return (true, state.progress, desc);
+          // currentFolder 已包含完整描述，直接使用
+          final desc = state.currentFolder ??
+              (state.phase == MusicScanPhase.metadata ? '提取元数据...' : '扫描文件...');
+          return (true, state.metadataProgress > 0 ? state.metadataProgress : state.progress, desc, state.scannedCount);
         }
-        return (false, 0, null);
+        return (false, 0, null, 0);
       case MediaType.photo:
         final state = ref.watch(photoListProvider);
         if (state is PhotoListLoading) {
-          final desc = state.currentFolder != null
-              ? '扫描: ${state.currentFolder}'
-              : '扫描照片...';
-          return (true, state.progress, desc);
+          final desc = state.currentFolder ?? '扫描照片...';
+          return (true, state.progress, desc, state.scannedCount);
         }
-        return (false, 0, null);
+        return (false, 0, null, 0);
       case MediaType.book:
         final state = ref.watch(bookListProvider);
         if (state is BookListLoading) {
-          final desc = state.currentFolder != null
-              ? '扫描: ${state.currentFolder}'
-              : '扫描书籍...';
-          return (true, state.progress, desc);
+          final desc = state.currentFolder ?? '扫描书籍...';
+          return (true, state.progress, desc, state.scannedCount);
         }
-        return (false, 0, null);
+        return (false, 0, null, 0);
       case MediaType.comic:
         final state = ref.watch(comicListProvider);
         if (state is ComicListLoading) {
-          final desc = state.currentFolder != null
-              ? '扫描: ${state.currentFolder}'
-              : '扫描漫画...';
-          return (true, state.progress, desc);
+          final desc = state.currentFolder ?? '扫描漫画...';
+          return (true, state.progress, desc, state.scannedCount);
         }
-        return (false, 0, null);
+        return (false, 0, null, 0);
       default:
-        return (false, 0, null);
+        return (false, 0, null, 0);
     }
+  }
+
+  /// 获取实时的媒体数量（扫描中使用扫描数量，否则使用数据库数量）
+  int _getDisplayCount(bool isScanning, int scannedCount) {
+    if (isScanning) {
+      // 视频类型使用 _videoScannedCount，其他类型使用传入的 scannedCount
+      final count = widget.mediaType == MediaType.video ? _videoScannedCount : scannedCount;
+      if (count > 0) return count;
+    }
+    return _itemCount;
   }
 
   Future<void> _loadStats() async {
@@ -487,13 +493,17 @@ class _PathCardState extends ConsumerState<_PathCard> {
     final isDark = theme.brightness == Brightness.dark;
 
     // 获取非视频类型的扫描进度
-    final (otherIsScanning, otherProgress, otherDescription) =
-        widget.mediaType != MediaType.video ? _getOtherMediaScanState() : (false, 0.0, null);
+    final (otherIsScanning, otherProgress, otherDescription, otherScannedCount) =
+        widget.mediaType != MediaType.video ? _getOtherMediaScanState() : (false, 0.0, null, 0);
 
     // 合并扫描状态：视频用 _isScanning，其他用 provider 状态
     final isCurrentlyScanning = widget.mediaType == MediaType.video ? _isScanning : otherIsScanning;
     final currentProgress = widget.mediaType == MediaType.video ? _scanProgress : otherProgress;
     final currentDescription = widget.mediaType == MediaType.video ? _scanDescription : otherDescription;
+
+    // 获取显示的数量（扫描时实时更新）
+    final displayCount = _getDisplayCount(isCurrentlyScanning, otherScannedCount);
+    final isVideo = widget.mediaType == MediaType.video;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -502,12 +512,12 @@ class _PathCardState extends ConsumerState<_PathCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 第一行：图标、名称、连接状态、更多按钮
+            // 第一行：图标、名称+数量、连接状态、更多按钮
             Row(
               children: [
                 Container(
-                  width: 44,
-                  height: 44,
+                  width: 40,
+                  height: 40,
                   decoration: BoxDecoration(
                     color: (widget.path.isEnabled ? _getMediaColor() : Colors.grey)
                         .withValues(alpha: 0.1),
@@ -516,25 +526,57 @@ class _PathCardState extends ConsumerState<_PathCard> {
                   child: Icon(
                     _getMediaIcon(),
                     color: widget.path.isEnabled ? _getMediaColor() : Colors.grey,
+                    size: 20,
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        widget.path.displayName,
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: widget.path.isEnabled ? null : Colors.grey,
-                        ),
+                      // 名称 + 数量
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              widget.path.displayName,
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: widget.path.isEnabled ? null : Colors.grey,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (displayCount > 0 || isCurrentlyScanning) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: (isCurrentlyScanning ? AppColors.primary : _getMediaColor())
+                                    .withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                isCurrentlyScanning && displayCount == 0
+                                    ? '...'
+                                    : '$displayCount',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: isCurrentlyScanning ? AppColors.primary : _getMediaColor(),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                       const SizedBox(height: 2),
                       Text(
                         widget.path.path,
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
+                          fontSize: 11,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -544,25 +586,25 @@ class _PathCardState extends ConsumerState<_PathCard> {
                 ),
                 // 连接状态指示
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                   decoration: BoxDecoration(
                     color: (isConnected ? Colors.green : Colors.grey)
                         .withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(10),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
                         isConnected ? Icons.cloud_done : Icons.cloud_off,
-                        size: 12,
+                        size: 10,
                         color: isConnected ? Colors.green : Colors.grey,
                       ),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: 3),
                       Text(
                         widget.source.displayName,
                         style: TextStyle(
-                          fontSize: 10,
+                          fontSize: 9,
                           color: isConnected ? Colors.green : Colors.grey,
                         ),
                       ),
@@ -574,15 +616,15 @@ class _PathCardState extends ConsumerState<_PathCard> {
               ],
             ),
 
-            // 统计信息行
-            if (_itemCount > 0 || widget.mediaType == MediaType.video) ...[
-              const SizedBox(height: 12),
-              _buildStatsRow(theme, isDark),
+            // 视频专用：刮削统计行（已刮削/待处理）
+            if (isVideo && _itemCount > 0) ...[
+              const SizedBox(height: 8),
+              _buildVideoStatsRow(theme, isDark),
             ],
 
             // 扫描进度
             if (isCurrentlyScanning) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               _buildProgressRow(
                 theme: theme,
                 isDark: isDark,
@@ -593,8 +635,8 @@ class _PathCardState extends ConsumerState<_PathCard> {
             ],
 
             // 视频刮削进度
-            if (widget.mediaType == MediaType.video && _isScraping) ...[
-              const SizedBox(height: 8),
+            if (isVideo && _isScraping) ...[
+              const SizedBox(height: 6),
               _buildProgressRow(
                 theme: theme,
                 isDark: isDark,
@@ -605,20 +647,21 @@ class _PathCardState extends ConsumerState<_PathCard> {
             ],
 
             // 视频专用：刮削按钮（当有待刮削内容时显示）
-            if (widget.mediaType == MediaType.video &&
+            if (isVideo &&
                 _pendingScrapeCount > 0 &&
                 !_isScraping &&
                 isConnected) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
                   onPressed: _startScraping,
-                  icon: const Icon(Icons.auto_fix_high_rounded, size: 18),
-                  label: Text('刮削元数据 ($_pendingScrapeCount 待处理)'),
+                  icon: const Icon(Icons.auto_fix_high_rounded, size: 16),
+                  label: Text('刮削元数据 ($_pendingScrapeCount 待处理)', style: const TextStyle(fontSize: 13)),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.orange,
                     side: const BorderSide(color: Colors.orange),
+                    padding: const EdgeInsets.symmetric(vertical: 8),
                   ),
                 ),
               ),
@@ -629,75 +672,56 @@ class _PathCardState extends ConsumerState<_PathCard> {
     );
   }
 
-  Widget _buildStatsRow(ThemeData theme, bool isDark) {
-    final isVideo = widget.mediaType == MediaType.video;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: isDark ? Colors.grey[850] : Colors.grey[100],
-        borderRadius: BorderRadius.circular(8),
+  /// 视频专用：刮削统计行（更紧凑的样式）
+  Widget _buildVideoStatsRow(ThemeData theme, bool isDark) => Row(
+    children: [
+      // 已刮削
+      _buildCompactStatChip(
+        icon: Icons.check_circle_outline,
+        label: '已刮削',
+        value: _scrapedCount,
+        color: Colors.green,
+        isDark: isDark,
       ),
-      child: Row(
-        children: [
-          // 总数
-          _buildStatItem(
-            theme,
-            icon: Icons.folder_open_rounded,
-            label: _getCountLabel(),
-            value: _itemCount,
-            color: _getMediaColor(),
-          ),
-
-          // 视频专用：刮削统计
-          if (isVideo && _itemCount > 0) ...[
-            const SizedBox(width: 16),
-            _buildStatItem(
-              theme,
-              icon: Icons.check_circle_outline,
-              label: '已刮削',
-              value: _scrapedCount,
-              color: Colors.green,
-            ),
-            const SizedBox(width: 16),
-            _buildStatItem(
-              theme,
-              icon: Icons.pending_outlined,
-              label: '待处理',
-              value: _pendingScrapeCount,
-              color: _pendingScrapeCount > 0 ? Colors.orange : Colors.grey,
-            ),
-          ],
-        ],
+      const SizedBox(width: 8),
+      // 待处理
+      _buildCompactStatChip(
+        icon: Icons.pending_outlined,
+        label: '待处理',
+        value: _pendingScrapeCount,
+        color: _pendingScrapeCount > 0 ? Colors.orange : Colors.grey,
+        isDark: isDark,
       ),
-    );
-  }
+    ],
+  );
 
-  Widget _buildStatItem(
-    ThemeData theme, {
+  Widget _buildCompactStatChip({
     required IconData icon,
     required String label,
     required int value,
     required Color color,
-  }) => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      Icon(icon, size: 14, color: color),
-      const SizedBox(width: 4),
-      Text(
-        '$label ',
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
+    required bool isDark,
+  }) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: 0.1),
+      borderRadius: BorderRadius.circular(6),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 12, color: color),
+        const SizedBox(width: 4),
+        Text(
+          '$label $value',
+          style: TextStyle(
+            fontSize: 11,
+            color: color,
+            fontWeight: FontWeight.w500,
+          ),
         ),
-      ),
-      Text(
-        '$value',
-        style: theme.textTheme.bodySmall?.copyWith(
-          fontWeight: FontWeight.bold,
-          color: color,
-        ),
-      ),
-    ],
+      ],
+    ),
   );
 
   Widget _buildProgressRow({
@@ -980,14 +1004,5 @@ class _PathCardState extends ConsumerState<_PathCard> {
     MediaType.comic => Icons.collections_bookmark_rounded,
     MediaType.book => Icons.library_books_rounded,
     MediaType.note => Icons.note_rounded,
-  };
-
-  String _getCountLabel() => switch (widget.mediaType) {
-    MediaType.video => '视频',
-    MediaType.music => '音乐',
-    MediaType.photo => '照片',
-    MediaType.comic => '漫画',
-    MediaType.book => '图书',
-    MediaType.note => '笔记',
   };
 }

@@ -215,6 +215,22 @@ class _BufferedTrackShape extends RoundedRectSliderTrackShape {
   final Color inactiveColor;
 
   @override
+  Rect getPreferredRect({
+    required RenderBox parentBox,
+    required SliderThemeData sliderTheme,
+    Offset offset = Offset.zero,
+    bool isEnabled = false,
+    bool isDiscrete = false,
+  }) {
+    final trackHeight = sliderTheme.trackHeight ?? 4.0;
+    final trackLeft = offset.dx;
+    final trackTop = offset.dy + (parentBox.size.height - trackHeight) / 2;
+    // 使用完整的父容器宽度，不留空白
+    final trackWidth = parentBox.size.width;
+    return Rect.fromLTWH(trackLeft, trackTop, trackWidth, trackHeight);
+  }
+
+  @override
   void paint(
     PaintingContext context,
     Offset offset, {
@@ -230,10 +246,18 @@ class _BufferedTrackShape extends RoundedRectSliderTrackShape {
   }) {
     final canvas = context.canvas;
     final trackHeight = sliderTheme.trackHeight ?? 4.0;
-    final trackLeft = offset.dx;
-    final trackTop = offset.dy + (parentBox.size.height - trackHeight) / 2;
-    final trackWidth = parentBox.size.width;
-    final trackRight = trackLeft + trackWidth;
+    // 获取轨道矩形，确保与 getPreferredRect 一致
+    final trackRect = getPreferredRect(
+      parentBox: parentBox,
+      offset: offset,
+      sliderTheme: sliderTheme,
+      isEnabled: isEnabled,
+      isDiscrete: isDiscrete,
+    );
+    final trackLeft = trackRect.left;
+    final trackTop = trackRect.top;
+    final trackRight = trackRect.right;
+    final trackWidth = trackRect.width;
     final trackRadius = Radius.circular(trackHeight / 2);
 
     // 1. 绘制底层未播放轨道（灰色）

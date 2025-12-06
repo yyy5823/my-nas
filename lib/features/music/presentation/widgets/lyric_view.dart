@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/music/data/services/lyric_service.dart';
@@ -6,6 +7,10 @@ import 'package:my_nas/features/music/presentation/providers/lyric_provider.dart
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
 
 /// Spotify 风格的歌词视图 - 现代化设计
+/// 参考主流音乐APP的歌词展示方式：
+/// - 当前歌词始终居中显示
+/// - 平滑滚动动画
+/// - 支持手动滚动后暂停自动滚动
 class LyricView extends ConsumerStatefulWidget {
   const LyricView({
     super.key,
@@ -26,9 +31,17 @@ class LyricView extends ConsumerStatefulWidget {
 class _LyricViewState extends ConsumerState<LyricView>
     with SingleTickerProviderStateMixin {
   final ScrollController _scrollController = ScrollController();
+  final GlobalKey _listKey = GlobalKey();
+
   int _lastLineIndex = -1;
   bool _userScrolling = false;
+  bool _isAnimating = false;
+  DateTime? _lastUserScrollTime;
+
   late AnimationController _pulseController;
+
+  // 每行歌词的 GlobalKey，用于精确计算位置
+  final Map<int, GlobalKey> _lineKeys = {};
 
   @override
   void initState() {
@@ -46,20 +59,54 @@ class _LyricViewState extends ConsumerState<LyricView>
     super.dispose();
   }
 
+  /// 获取指定行的 key
+  GlobalKey _getKeyForLine(int index) =>
+      _lineKeys.putIfAbsent(index, GlobalKey.new);
+
+  /// 滚动到指定行，使其居中显示
   void _scrollToLine(int index, int totalLines) {
-    if (!_scrollController.hasClients || _userScrolling) return;
+    if (!_scrollController.hasClients) return;
     if (index < 0 || index >= totalLines) return;
+    if (_isAnimating) return;
 
-    // 计算目标位置，使当前行居中
-    final itemHeight = widget.showFullScreen ? 72.0 : 56.0;
-    final viewportHeight = _scrollController.position.viewportDimension;
-    final targetOffset = (index * itemHeight) - (viewportHeight / 2) + (itemHeight / 2);
+    // 检查是否在用户滚动的冷却期内
+    if (_userScrolling) return;
+    if (_lastUserScrollTime != null) {
+      final elapsed = DateTime.now().difference(_lastUserScrollTime!);
+      if (elapsed.inSeconds < 3) return;
+    }
 
-    _scrollController.animateTo(
-      targetOffset.clamp(0.0, _scrollController.position.maxScrollExtent),
-      duration: const Duration(milliseconds: 400),
-      curve: Curves.easeOutCubic,
+    // 计算估算的行高（包含 padding）
+    // 全屏模式: fontSize 26/18 + padding 14*2 = 约 56px
+    // 非全屏: fontSize 20/16 + padding 10*2 = 约 44px
+    final estimatedLineHeight = widget.showFullScreen ? 56.0 : 44.0;
+
+    // 列表使用 verticalPadding = screenHeight * 0.4 作为顶部/底部 padding
+    // 这样第一行会从屏幕 40% 处开始，我们需要考虑这个偏移
+    // 目标：让当前行显示在视口中央
+    //
+    // 内容结构：[顶部padding 40%][歌词内容][底部padding 40%]
+    // 第 index 行在列表中的位置 = index * lineHeight
+    // 我们希望这一行居中，即它距离视口顶部 = viewportHeight / 2 - lineHeight / 2
+    // 所以 scrollOffset = index * lineHeight - (viewportHeight / 2 - lineHeight / 2)
+    // 但由于有顶部 padding，实际滚动位置需要考虑这个 padding
+    final targetOffset = index * estimatedLineHeight;
+
+    final clampedOffset = targetOffset.clamp(
+      0.0,
+      _scrollController.position.maxScrollExtent,
     );
+
+    _isAnimating = true;
+    _scrollController.animateTo(
+      clampedOffset,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
+    ).then((_) {
+      if (mounted) {
+        _isAnimating = false;
+      }
+    });
   }
 
   @override
@@ -79,25 +126,36 @@ class _LyricViewState extends ConsumerState<LyricView>
     final lyrics = lyricState.lyricData;
     final currentIndex = lyrics.getCurrentLineIndex(playerState.position);
 
-    // 自动滚动到当前行
-    if (currentIndex != _lastLineIndex && currentIndex >= 0) {
+    // 自动滚动到当前行 - 只要索引变化就滚动
+    if (currentIndex >= 0 && currentIndex != _lastLineIndex) {
       _lastLineIndex = currentIndex;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _scrollToLine(currentIndex, lyrics.lines.length);
+      // 使用 SchedulerBinding 确保在布局完成后滚动
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _scrollToLine(currentIndex, lyrics.lines.length);
+        }
       });
     }
+
+    // 计算视口高度用于 padding
+    final screenHeight = MediaQuery.of(context).size.height;
+    final verticalPadding = screenHeight * 0.4; // 40% 的空白用于居中效果
 
     return GestureDetector(
       onTap: widget.onTap,
       child: NotificationListener<ScrollNotification>(
         onNotification: (notification) {
-          if (notification is ScrollStartNotification) {
+          if (notification is UserScrollNotification) {
+            // 用户开始手动滚动
             _userScrolling = true;
+            _lastUserScrollTime = DateTime.now();
           } else if (notification is ScrollEndNotification) {
-            // 延迟恢复自动滚动
+            // 滚动结束后，延迟恢复自动滚动
             Future.delayed(const Duration(seconds: 3), () {
               if (mounted) {
-                setState(() => _userScrolling = false);
+                setState(() {
+                  _userScrolling = false;
+                });
               }
             });
           }
@@ -113,14 +171,15 @@ class _LyricViewState extends ConsumerState<LyricView>
               Colors.white,
               Colors.transparent,
             ],
-            stops: const [0.0, 0.1, 0.9, 1.0],
+            stops: const [0.0, 0.15, 0.85, 1.0],
           ).createShader(bounds),
           blendMode: BlendMode.dstIn,
           child: ListView.builder(
+            key: _listKey,
             controller: _scrollController,
             physics: const BouncingScrollPhysics(),
             padding: EdgeInsets.symmetric(
-              vertical: widget.showFullScreen ? 200 : 100,
+              vertical: verticalPadding,
               horizontal: widget.showFullScreen ? 32 : 24,
             ),
             itemCount: lyrics.lines.length,
@@ -130,6 +189,7 @@ class _LyricViewState extends ConsumerState<LyricView>
               final isPast = index < currentIndex;
 
               return _LyricLineWidget(
+                key: _getKeyForLine(index),
                 line: line,
                 isCurrent: isCurrent,
                 isPast: isPast,
@@ -250,6 +310,7 @@ class _LyricLineWidget extends StatelessWidget {
     required this.isDark,
     required this.showFullScreen,
     required this.onTap,
+    super.key,
   });
 
   final LyricLine line;

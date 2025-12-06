@@ -7,6 +7,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:my_nas/core/services/media_proxy_server.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/data/services/live_activity_service.dart';
+import 'package:my_nas/features/music/data/services/music_cover_cache_service.dart';
 import 'package:my_nas/features/music/data/services/music_metadata_service.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/presentation/providers/music_favorites_provider.dart';
@@ -283,6 +284,15 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     Uint8List? coverData;
     if (music.coverData != null && music.coverData!.isNotEmpty) {
       coverData = Uint8List.fromList(music.coverData!);
+    } else {
+      // 尝试从封面缓存中获取
+      // uniqueKey 格式: sourceId_path
+      final uniqueKey = '${music.sourceId ?? ''}_${music.path}';
+      final coverCacheService = MusicCoverCacheService();
+      coverData = await coverCacheService.getCover(uniqueKey);
+      if (coverData != null) {
+        logger.d('LiveActivity: 从缓存获取到封面 - $uniqueKey');
+      }
     }
 
     await _liveActivityService.startMusicActivity(

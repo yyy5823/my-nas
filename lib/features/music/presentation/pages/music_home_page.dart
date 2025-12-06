@@ -4,7 +4,6 @@ import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/music/presentation/pages/music_list_page.dart';
 import 'package:my_nas/features/music/presentation/widgets/browse_category_grid.dart';
 import 'package:my_nas/features/music/presentation/widgets/hero_player_card.dart';
-import 'package:my_nas/features/music/presentation/widgets/music_queue_sheet.dart';
 import 'package:my_nas/features/music/presentation/widgets/music_stats_card.dart';
 import 'package:my_nas/features/music/presentation/widgets/recent_tracks_section.dart';
 
@@ -17,6 +16,7 @@ class MusicHomeContent extends ConsumerWidget {
     required this.favoriteTracks,
     required this.onTrackTap,
     required this.onCategoryTap,
+    this.onShuffleTap,
     this.totalCount = 0,
     this.artistCount = 0,
     this.albumCount = 0,
@@ -44,6 +44,9 @@ class MusicHomeContent extends ConsumerWidget {
   /// 点击分类的回调
   final void Function(MusicCategory category) onCategoryTap;
 
+  /// 随机播放回调
+  final VoidCallback? onShuffleTap;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -68,8 +71,7 @@ class MusicHomeContent extends ConsumerWidget {
           // Hero 播放卡片
           HeroPlayerCard(
             isDark: isDark,
-            onShuffleTap: () => _onShuffleTap(context),
-            onQueueTap: () => _showQueueSheet(context),
+            onShuffleTap: onShuffleTap,
           ),
           const SizedBox(height: 16),
           // 快捷访问
@@ -346,8 +348,7 @@ class MusicHomeContent extends ConsumerWidget {
                 HeroPlayerCard(
                   isDark: isDark,
                   isDesktop: true,
-                  onShuffleTap: () => _onShuffleTap(context),
-                  onQueueTap: () => _showQueueSheet(context),
+                  onShuffleTap: onShuffleTap,
                 ),
               ],
             ),
@@ -458,18 +459,6 @@ class MusicHomeContent extends ConsumerWidget {
     if (tracks.isEmpty) return [];
     final shuffled = List<MusicFileWithSource>.from(tracks)..shuffle();
     return shuffled.take(count).toList();
-  }
-
-  void _onShuffleTap(BuildContext context) {
-    if (tracks.isEmpty) return;
-    final shuffled = List<MusicFileWithSource>.from(tracks)..shuffle();
-    if (shuffled.isNotEmpty) {
-      onTrackTap(shuffled.first, shuffled);
-    }
-  }
-
-  void _showQueueSheet(BuildContext context) {
-    showMusicQueueSheet(context);
   }
 
   void _onBrowseCategoryTap(MusicBrowseCategory browseCategory) {

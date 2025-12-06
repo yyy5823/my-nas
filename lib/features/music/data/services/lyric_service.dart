@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:charset_converter/charset_converter.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:path/path.dart' as p;
@@ -138,14 +140,8 @@ class LyricService {
           (previous, element) => previous..addAll(element),
         );
 
-        // 尝试 UTF-8 解码
-        String content;
-        try {
-          content = utf8.decode(bytes);
-        } on Exception catch (_) {
-          // 尝试 Latin-1 解码
-          content = latin1.decode(bytes);
-        }
+        // 智能检测并解码歌词内容
+        final content = await _decodeBytes(bytes);
 
         client.close();
         return parseLrc(content);
@@ -157,6 +153,132 @@ class LyricService {
       logger.e('LyricService: 下载歌词失败', e);
       return LyricData.empty;
     }
+  }
+
+  /// 智能检测字节编码并解码为字符串
+  /// 支持 UTF-8、UTF-16、GBK/GB2312、Latin-1 等编码
+  Future<String> _decodeBytes(List<int> bytes) async {
+    if (bytes.isEmpty) return '';
+
+    // 1. 检查 BOM (Byte Order Mark)
+    if (bytes.length >= 3 &&
+        bytes[0] == 0xEF &&
+        bytes[1] == 0xBB &&
+        bytes[2] == 0xBF) {
+      // UTF-8 with BOM
+      logger.d('LyricService: 检测到 UTF-8 BOM');
+      return utf8.decode(bytes.sublist(3));
+    }
+    if (bytes.length >= 2) {
+      if (bytes[0] == 0xFF && bytes[1] == 0xFE) {
+        // UTF-16 LE BOM
+        logger.d('LyricService: 检测到 UTF-16 LE BOM');
+        return _decodeUtf16Le(bytes.sublist(2));
+      }
+      if (bytes[0] == 0xFE && bytes[1] == 0xFF) {
+        // UTF-16 BE BOM
+        logger.d('LyricService: 检测到 UTF-16 BE BOM');
+        return _decodeUtf16Be(bytes.sublist(2));
+      }
+    }
+
+    // 2. 尝试 UTF-8 解码
+    try {
+      final decoded = utf8.decode(bytes, allowMalformed: false);
+      // 检查解码结果是否包含有效的中文字符或看起来正常
+      if (_looksValidUtf8(decoded)) {
+        logger.d('LyricService: 成功使用 UTF-8 解码');
+        return decoded;
+      }
+    } on FormatException catch (_) {
+      // UTF-8 解码失败，继续尝试其他编码
+    }
+
+    // 3. 尝试 GBK/GB2312 解码（中文 Windows 常用）
+    final uint8Bytes = Uint8List.fromList(bytes);
+    try {
+      final decoded = await CharsetConverter.decode('GBK', uint8Bytes);
+      if (decoded.isNotEmpty && _looksValidGbk(decoded)) {
+        logger.d('LyricService: 成功使用 GBK 解码');
+        return decoded;
+      }
+    } on Exception catch (e) {
+      logger.d('LyricService: GBK 解码失败: $e');
+    }
+
+    // 4. 尝试 GB18030 解码（GBK 的超集）
+    try {
+      final decoded = await CharsetConverter.decode('GB18030', uint8Bytes);
+      if (decoded.isNotEmpty) {
+        logger.d('LyricService: 成功使用 GB18030 解码');
+        return decoded;
+      }
+    } on Exception catch (e) {
+      logger.d('LyricService: GB18030 解码失败: $e');
+    }
+
+    // 5. 尝试 Big5 解码（繁体中文）
+    try {
+      final decoded = await CharsetConverter.decode('Big5', uint8Bytes);
+      if (decoded.isNotEmpty && _containsChinese(decoded)) {
+        logger.d('LyricService: 成功使用 Big5 解码');
+        return decoded;
+      }
+    } on Exception catch (e) {
+      logger.d('LyricService: Big5 解码失败: $e');
+    }
+
+    // 6. 最后尝试 UTF-8 with allowMalformed
+    logger.d('LyricService: 使用 UTF-8 (allowMalformed) 解码');
+    return utf8.decode(bytes, allowMalformed: true);
+  }
+
+  /// 检查 UTF-8 解码结果是否看起来正确
+  bool _looksValidUtf8(String text) {
+    // 如果包含替换字符，说明有解码错误
+    if (text.contains('\uFFFD')) return false;
+    // 如果包含常见的 GBK 乱码特征，说明可能不是 UTF-8
+    // GBK 编码的中文在 UTF-8 下会产生特定的乱码模式
+    if (text.contains('鏈') || text.contains('鐜') || text.contains('闈')) {
+      return false;
+    }
+    return true;
+  }
+
+  /// 检查 GBK 解码结果是否看起来正确
+  bool _looksValidGbk(String text) {
+    // 检查是否包含中文字符
+    if (_containsChinese(text)) return true;
+    // 检查是否全是 ASCII 字符（也是有效的）
+    if (text.codeUnits.every((c) => c < 128)) return true;
+    return false;
+  }
+
+  /// 检查字符串是否包含中文字符
+  bool _containsChinese(String text) {
+    // 中文 Unicode 范围：\u4e00-\u9fff
+    final chineseRegex = RegExp(r'[\u4e00-\u9fff]');
+    return chineseRegex.hasMatch(text);
+  }
+
+  /// UTF-16 LE 解码
+  String _decodeUtf16Le(List<int> bytes) {
+    final buffer = StringBuffer();
+    for (var i = 0; i < bytes.length - 1; i += 2) {
+      final codeUnit = bytes[i] | (bytes[i + 1] << 8);
+      buffer.writeCharCode(codeUnit);
+    }
+    return buffer.toString();
+  }
+
+  /// UTF-16 BE 解码
+  String _decodeUtf16Be(List<int> bytes) {
+    final buffer = StringBuffer();
+    for (var i = 0; i < bytes.length - 1; i += 2) {
+      final codeUnit = (bytes[i] << 8) | bytes[i + 1];
+      buffer.writeCharCode(codeUnit);
+    }
+    return buffer.toString();
   }
 
   /// 解析歌词（自动检测格式：LRC 或纯文本）

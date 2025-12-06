@@ -324,9 +324,9 @@ class HeroPlayerCard extends ConsumerWidget {
               ],
             ),
           ),
-          // 队列按钮
-          if (onQueueTap != null) ...[
-            _buildQueueButton(),
+          // 随机播放按钮
+          if (onShuffleTap != null) ...[
+            _buildShuffleButton(),
             const SizedBox(width: 12),
           ],
           // 播放按钮
@@ -335,8 +335,8 @@ class HeroPlayerCard extends ConsumerWidget {
       ),
     );
 
-  Widget _buildQueueButton() => GestureDetector(
-      onTap: onQueueTap,
+  Widget _buildShuffleButton() => GestureDetector(
+      onTap: onShuffleTap,
       child: Container(
         width: 44,
         height: 44,
@@ -345,7 +345,7 @@ class HeroPlayerCard extends ConsumerWidget {
           shape: BoxShape.circle,
         ),
         child: const Icon(
-          Icons.queue_music_rounded,
+          Icons.shuffle_rounded,
           color: Colors.white,
           size: 22,
         ),

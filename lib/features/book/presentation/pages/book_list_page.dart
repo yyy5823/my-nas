@@ -68,10 +68,11 @@ enum ReadingCategory {
 sealed class BookListState {}
 
 class BookListLoading extends BookListState {
-  BookListLoading({this.progress = 0, this.currentFolder, this.fromCache = false});
+  BookListLoading({this.progress = 0, this.currentFolder, this.fromCache = false, this.scannedCount = 0});
   final double progress;
   final String? currentFolder;
   final bool fromCache;
+  final int scannedCount;
 }
 
 class BookListNotConnected extends BookListState {}
@@ -387,6 +388,7 @@ class BookListNotifier extends StateNotifier<BookListState> {
               state = BookListLoading(
                 progress: scannedFolders / totalFolders,
                 currentFolder: '${mediaPath.displayName} (${books.length})',
+                scannedCount: books.length,
               );
             }
           },

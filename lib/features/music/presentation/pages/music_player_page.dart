@@ -4,6 +4,8 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:my_nas/app/router/routes.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/presentation/providers/music_favorites_provider.dart';
@@ -83,6 +85,22 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
 
   void _toggleLyricView() {
     setState(() => _showLyrics = !_showLyrics);
+  }
+
+  /// 安全处理返回导航
+  /// 当从灵动岛深度链接打开时，导航栈可能只有当前页面
+  /// 此时直接 pop 会导致黑屏，需要改为导航到音乐主页
+  void _handleBack(BuildContext context) {
+    // 首先尝试使用 Navigator 的 pop
+    // 检查是否可以 pop（栈中是否有其他页面）
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) {
+      navigator.pop();
+    } else {
+      // 无法 pop 时，说明是从深度链接直接打开的
+      // 使用 GoRouter 导航到音乐主页
+      context.go(Routes.music);
+    }
   }
 
   @override
@@ -222,7 +240,11 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
     MusicItem currentMusic,
     MusicPlayerState playerState,
     bool isDark,
-  ) => Column(
+  ) {
+    final screenHeight = MediaQuery.of(context).size.height;
+    final isCompact = screenHeight < 700;
+
+    return Column(
       key: const ValueKey('lyric_mode'),
       children: [
         // 歌词视图
@@ -232,15 +254,9 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
             showFullScreen: true,
           ),
         ),
-        // 底部控制区域
+        // 底部控制区域 - 与封面模式保持一致的布局
         Container(
-          padding: EdgeInsets.only(
-            left: 24,
-            right: 24,
-            top: 16,
-            // 在 iOS 上添加额外的底部 padding 以避免与 Home Indicator 重叠
-            bottom: 16 + MediaQuery.of(context).padding.bottom,
-          ),
+          padding: EdgeInsets.fromLTRB(16, isCompact ? 8 : 12, 16, isCompact ? 8 : 16),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
@@ -248,175 +264,26 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
               colors: [
                 Colors.transparent,
                 (isDark ? AppColors.darkBackground : Colors.grey[100]!)
-                    .withValues(alpha: 0.9),
-                if (isDark) AppColors.darkBackground else Colors.grey[100]!,
+                    .withValues(alpha: 0.8),
               ],
             ),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // 迷你封面和歌曲信息
-              Row(
-                children: [
-                  // 迷你封面
-                  GestureDetector(
-                    onTap: _toggleLyricView,
-                    child: Container(
-                      width: 56,
-                      height: 56,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(8),
-                        color: isDark ? Colors.grey[800] : Colors.grey[300],
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.2),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      clipBehavior: Clip.antiAlias,
-                      child: _buildMiniCoverImage(currentMusic, 56, isDark),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  // 歌曲信息
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          currentMusic.displayTitle,
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: isDark ? Colors.white : Colors.black87,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          currentMusic.displayArtist,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: isDark ? Colors.grey[400] : Colors.grey[600],
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
               // 进度条
               _buildProgressBar(context, ref, playerState, isDark),
-              const SizedBox(height: 16),
+              SizedBox(height: isCompact ? 12 : 20),
               // 控制按钮
               _buildControlButtons(context, ref, playerState, isDark),
-              const SizedBox(height: 8),
-              // 额外控制（歌词模式下）
-              _buildLyricModeExtraControls(context, playerState, isDark),
+              SizedBox(height: isCompact ? 8 : 12),
+              // 额外控制
+              _buildExtraControls(context, playerState, isDark),
             ],
           ),
         ),
       ],
     );
-
-  /// 歌词模式下的额外控制按钮（音量、封面等）
-  Widget _buildLyricModeExtraControls(
-    BuildContext context,
-    MusicPlayerState state,
-    bool isDark,
-  ) => Padding(
-      // 添加额外的底部 padding 以适应 iOS 的 Home Indicator 区域
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).padding.bottom > 0 ? 8 : 0,
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          // 音量控制按钮（点击弹出滑块）
-          _VolumePopupButton(
-            volume: state.volume,
-            isDark: isDark,
-          ),
-          // 切换到封面按钮
-          IconButton(
-            onPressed: _toggleLyricView,
-            icon: Icon(
-              Icons.album_rounded,
-              color: isDark ? Colors.grey[400] : Colors.grey[600],
-            ),
-            tooltip: '切换到封面',
-          ),
-          // 定时关闭
-          IconButton(
-            onPressed: () => _showSleepTimer(context),
-            icon: Icon(
-              Icons.timer_outlined,
-              color: isDark ? Colors.grey[400] : Colors.grey[600],
-            ),
-            tooltip: '定时关闭',
-          ),
-        ],
-      ),
-    );
-
-  Widget _buildMiniCoverPlaceholder(bool isDark) => Container(
-      color: isDark ? Colors.grey[800] : Colors.grey[300],
-      child: Icon(
-        Icons.music_note_rounded,
-        size: 28,
-        color: isDark ? Colors.grey[600] : Colors.grey[400],
-      ),
-    );
-
-  /// 构建迷你封面图片，优先使用嵌入的封面数据，其次是封面 URL
-  Widget _buildMiniCoverImage(MusicItem music, double size, bool isDark) {
-    // 优先使用嵌入的封面数据
-    if (music.coverData != null && music.coverData!.isNotEmpty) {
-      return Image.memory(
-        Uint8List.fromList(music.coverData!),
-        key: ValueKey('mini_cover_${music.id}'),
-        width: size,
-        height: size,
-        fit: BoxFit.cover,
-        gaplessPlayback: true,
-        errorBuilder: (_, _, _) => _buildMiniCoverPlaceholder(isDark),
-      );
-    }
-
-    // 其次使用封面 URL（支持 file:// 和网络 URL）
-    if (music.coverUrl != null && music.coverUrl!.isNotEmpty) {
-      if (music.coverUrl!.startsWith('file://')) {
-        final filePath = music.coverUrl!.substring(7); // 移除 'file://' 前缀
-        return Image.file(
-          File(filePath),
-          key: ValueKey('mini_cover_file_${music.id}'),
-          width: size,
-          height: size,
-          fit: BoxFit.cover,
-          gaplessPlayback: true,
-          errorBuilder: (_, _, _) => _buildMiniCoverPlaceholder(isDark),
-        );
-      }
-      return Image.network(
-        music.coverUrl!,
-        key: ValueKey('mini_cover_url_${music.id}'),
-        width: size,
-        height: size,
-        fit: BoxFit.cover,
-        gaplessPlayback: true,
-        errorBuilder: (_, _, _) => _buildMiniCoverPlaceholder(isDark),
-      );
-    }
-
-    // 没有封面时显示占位符
-    return _buildMiniCoverPlaceholder(isDark);
   }
 
   PreferredSizeWidget _buildAppBar(
@@ -431,7 +298,7 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
       backgroundColor: Colors.transparent,
       elevation: 0,
       leading: IconButton(
-        onPressed: () => Navigator.of(context).pop(),
+        onPressed: () => _handleBack(context),
         icon: Icon(
           Icons.keyboard_arrow_down_rounded,
           size: 32,
@@ -899,128 +766,6 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
               onTap: () => Navigator.pop(context),
             ),
             const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// 音量弹出按钮（点击弹出垂直滑块）
-class _VolumePopupButton extends ConsumerWidget {
-  const _VolumePopupButton({
-    required this.volume,
-    required this.isDark,
-  });
-
-  final double volume;
-  final bool isDark;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) => IconButton(
-      onPressed: () => _showVolumePopup(context, ref),
-      icon: Icon(
-        volume == 0
-            ? Icons.volume_off_rounded
-            : volume < 0.5
-                ? Icons.volume_down_rounded
-                : Icons.volume_up_rounded,
-        color: isDark ? Colors.grey[400] : Colors.grey[600],
-      ),
-      tooltip: '音量',
-    );
-
-  void _showVolumePopup(BuildContext context, WidgetRef ref) {
-    final button = context.findRenderObject()! as RenderBox;
-    final overlay = Navigator.of(context).overlay!.context.findRenderObject()! as RenderBox;
-    final buttonPosition = button.localToGlobal(Offset.zero, ancestor: overlay);
-
-    showDialog<void>(
-      context: context,
-      barrierColor: Colors.transparent,
-      builder: (dialogContext) => Stack(
-        children: [
-          // 点击外部关闭
-          Positioned.fill(
-            child: GestureDetector(
-              onTap: () => Navigator.of(dialogContext).pop(),
-              behavior: HitTestBehavior.opaque,
-              child: Container(color: Colors.transparent),
-            ),
-          ),
-          // 音量弹窗
-          Positioned(
-            left: buttonPosition.dx - 10,
-            bottom: overlay.size.height - buttonPosition.dy + 8,
-            child: _VolumePopupContent(isDark: isDark),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// 音量弹窗内容
-class _VolumePopupContent extends ConsumerWidget {
-  const _VolumePopupContent({required this.isDark});
-
-  final bool isDark;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final volume = ref.watch(
-      musicPlayerControllerProvider.select((s) => s.volume.clamp(0.0, 1.0)),
-    );
-
-    return Material(
-      elevation: 8,
-      borderRadius: BorderRadius.circular(12),
-      color: isDark ? AppColors.darkSurface : Colors.white,
-      child: Container(
-        width: 48,
-        height: 160,
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        child: Column(
-          children: [
-            Icon(
-              Icons.volume_up_rounded,
-              size: 18,
-              color: isDark ? Colors.grey[400] : Colors.grey[600],
-            ),
-            Expanded(
-              child: RotatedBox(
-                quarterTurns: 3,
-                child: SliderTheme(
-                  data: SliderTheme.of(context).copyWith(
-                    trackHeight: 4,
-                    activeTrackColor: AppColors.primary,
-                    inactiveTrackColor: isDark ? Colors.grey[800] : Colors.grey[300],
-                    thumbColor: AppColors.primary,
-                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
-                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
-                  ),
-                  child: Slider(
-                    value: volume,
-                    onChanged: (value) {
-                      ref.read(musicPlayerControllerProvider.notifier).setVolume(value);
-                    },
-                  ),
-                ),
-              ),
-            ),
-            Icon(
-              Icons.volume_off_rounded,
-              size: 18,
-              color: isDark ? Colors.grey[400] : Colors.grey[600],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '${(volume * 100).round()}%',
-              style: TextStyle(
-                fontSize: 11,
-                color: isDark ? Colors.grey[400] : Colors.grey[600],
-              ),
-            ),
           ],
         ),
       ),

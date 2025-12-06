@@ -113,10 +113,11 @@ final comicListProvider =
 sealed class ComicListState {}
 
 class ComicListLoading extends ComicListState {
-  ComicListLoading({this.progress = 0, this.currentFolder, this.fromCache = false});
+  ComicListLoading({this.progress = 0, this.currentFolder, this.fromCache = false, this.scannedCount = 0});
   final double progress;
   final String? currentFolder;
   final bool fromCache;
+  final int scannedCount;
 }
 
 class ComicListNotConnected extends ComicListState {}
@@ -285,6 +286,7 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
               state = ComicListLoading(
                 progress: scannedFolders / totalFolders,
                 currentFolder: '${mediaPath.displayName} (${comics.length})',
+                scannedCount: comics.length,
               );
             }
           },

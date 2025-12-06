@@ -21,6 +21,7 @@ import 'package:my_nas/features/music/presentation/providers/music_favorites_pro
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/playlist_provider.dart';
 import 'package:my_nas/features/music/presentation/widgets/mini_player.dart';
+import 'package:my_nas/features/music/presentation/widgets/music_queue_sheet.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
@@ -1157,7 +1158,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
 
   /// 问候语头部
   Widget _buildGreetingHeader(BuildContext context, WidgetRef ref, bool isDark, MusicListState state) {
-    final trackCount = state is MusicListLoaded ? state.tracks.length : 0;
+    final trackCount = state is MusicListLoaded ? state.totalCount : 0;
 
     return Row(
       children: [
@@ -1190,6 +1191,15 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
             color: isDark ? Colors.white : Colors.black87,
           ),
           tooltip: '搜索',
+        ),
+        // 播放队列按钮
+        IconButton(
+          onPressed: () => showMusicQueueSheet(context),
+          icon: Icon(
+            Icons.queue_music_rounded,
+            color: isDark ? Colors.white : Colors.black87,
+          ),
+          tooltip: '播放队列',
         ),
         IconButton(
           onPressed: () => _showSettingsMenu(context),
@@ -1354,6 +1364,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
       folderCount: state.folderCount,
       onTrackTap: (track, allTracks) => _playTrack(context, ref, track, allTracks),
       onCategoryTap: (category) => _navigateToCategory(context, category, state),
+      onShuffleTap: () => _shufflePlay(context, ref, state.tracks),
     );
   }
 
@@ -1519,6 +1530,79 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
       playerNotifier.updateCurrentIndex(newCurrentIndex);
     } on Exception catch (e) {
       logger.w('构建播放队列失败: $e');
+    }
+  }
+
+  /// 随机播放
+  Future<void> _shufflePlay(BuildContext context, WidgetRef ref, List<MusicFileWithSource> tracks) async {
+    logger.i('MusicListPage._shufflePlay: 开始随机播放 (${tracks.length} 首)');
+
+    if (tracks.isEmpty) {
+      logger.w('MusicListPage._shufflePlay: 没有歌曲可播放');
+      return;
+    }
+
+    final connections = ref.read(activeConnectionsProvider);
+    final shuffled = List<MusicFileWithSource>.from(tracks)..shuffle();
+    final first = shuffled.first;
+
+    try {
+      final firstConnection = connections[first.sourceId];
+      if (firstConnection == null || firstConnection.status != SourceStatus.connected) {
+        logger.e('MusicListPage._shufflePlay: 第一首歌曲的源未连接');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('源未连接，请先连接到 NAS')),
+          );
+        }
+        return;
+      }
+
+      logger.d('MusicListPage._shufflePlay: 获取第一首歌曲 URL: ${first.path}');
+      final url = await firstConnection.adapter.fileSystem.getFileUrl(first.path);
+      final musicItem = MusicItem.fromFileItem(
+        first.file,
+        url,
+        sourceId: first.sourceId,
+        title: first.title,
+        artist: first.artist,
+        album: first.album,
+        durationMs: first.duration,
+        coverData: first.coverData,
+        coverUrl: first.coverFileUrl,
+      );
+
+      final queue = <MusicItem>[];
+      for (final track in shuffled.take(100)) {
+        final conn = connections[track.sourceId];
+        if (conn == null || conn.status != SourceStatus.connected) continue;
+        final trackUrl = await conn.adapter.fileSystem.getFileUrl(track.path);
+        queue.add(MusicItem.fromFileItem(
+          track.file,
+          trackUrl,
+          sourceId: track.sourceId,
+          title: track.title,
+          artist: track.artist,
+          album: track.album,
+          durationMs: track.duration,
+          coverData: track.coverData,
+          coverUrl: track.coverFileUrl,
+        ));
+      }
+      logger.d('MusicListPage._shufflePlay: 创建队列完成 (${queue.length} 首)');
+
+      ref.read(playQueueProvider.notifier).setQueue(queue);
+      await ref.read(musicPlayerControllerProvider.notifier).play(musicItem);
+      logger.i('MusicListPage._shufflePlay: 播放成功');
+
+      if (context.mounted) {
+        await MusicPlayerPage.open(context);
+      }
+    } on Exception catch (e, stackTrace) {
+      logger.e('MusicListPage._shufflePlay: 播放失败', e, stackTrace);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('播放失败: $e')));
+      }
     }
   }
 
@@ -1702,7 +1786,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
     final cacheInfo = cacheService.getCacheInfo();
 
     return Center(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1918,8 +2002,8 @@ class _AllSongsPageState extends ConsumerState<AllSongsPage> {
     // 从 provider 获取数据
     final tracks = musicState is MusicListLoaded ? musicState.tracks : (widget.tracks ?? []);
     final totalCount = musicState is MusicListLoaded ? musicState.totalCount : tracks.length;
-    final hasMore = musicState is MusicListLoaded ? musicState.hasMoreTracks : false;
-    final isLoadingMore = musicState is MusicListLoaded ? musicState.isLoadingMore : false;
+    final hasMore = musicState is MusicListLoaded && musicState.hasMoreTracks;
+    final isLoadingMore = musicState is MusicListLoaded && musicState.isLoadingMore;
 
     final sortedTracks = _applySorting(tracks, sortState);
 
