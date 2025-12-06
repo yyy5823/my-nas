@@ -484,9 +484,13 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
     final recent = results[1] as List<MusicTrackEntity>;
     final allTracks = results[2] as List<MusicTrackEntity>;
 
+    // 验证并修复封面路径（处理重新安装后封面文件丢失的情况）
+    final validatedRecent = await _validateCoverPaths(recent);
+    final validatedAllTracks = await _validateCoverPaths(allTracks);
+
     // 构建快速查找 Map
     final trackByPath = <String, MusicTrackEntity>{};
-    for (final m in allTracks) {
+    for (final m in validatedAllTracks) {
       trackByPath[m.uniqueKey] = m;
     }
 
@@ -505,13 +509,107 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
       genreCount: stats['genres'] as int? ?? 0,
       yearCount: stats['years'] as int? ?? 0,
       folderCount: stats['folders'] as int? ?? 0,
-      recentTracks: recent,
-      allTracks: allTracks,
+      recentTracks: validatedRecent,
+      allTracks: validatedAllTracks,
       trackByPath: trackByPath,
       fromCache: true,
     );
 
     logger.i('MusicListNotifier: 数据加载完成，总计 $total 首音乐');
+  }
+
+  /// 验证封面文件路径是否有效
+  /// 如果封面文件不存在，清除 coverPath 引用并更新数据库
+  /// 同时启动后台任务重新提取丢失的封面
+  Future<List<MusicTrackEntity>> _validateCoverPaths(List<MusicTrackEntity> tracks) async {
+    final validatedTracks = <MusicTrackEntity>[];
+    final tracksWithMissingCovers = <MusicTrackEntity>[];
+
+    for (final track in tracks) {
+      if (track.coverPath != null && track.coverPath!.isNotEmpty) {
+        final file = File(track.coverPath!);
+        if (await file.exists()) {
+          // 封面文件存在，保持不变
+          validatedTracks.add(track);
+        } else {
+          // 封面文件不存在，清除路径引用
+          final updatedTrack = track.copyWith(coverPath: null);
+          validatedTracks.add(updatedTrack);
+          tracksWithMissingCovers.add(updatedTrack);
+          logger.d('封面文件不存在，已清除引用: ${track.coverPath}');
+        }
+      } else {
+        validatedTracks.add(track);
+      }
+    }
+
+    // 批量更新数据库中的无效封面路径
+    if (tracksWithMissingCovers.isNotEmpty) {
+      logger.i('发现 ${tracksWithMissingCovers.length} 首歌曲的封面文件丢失，正在更新数据库...');
+      await _db.upsertBatch(tracksWithMissingCovers);
+
+      // 在后台异步重新提取丢失的封面
+      _repairMissingCoversInBackground(tracksWithMissingCovers);
+    }
+
+    return validatedTracks;
+  }
+
+  /// 后台异步修复丢失的封面
+  /// 不阻塞 UI，完成后自动更新状态
+  void _repairMissingCoversInBackground(List<MusicTrackEntity> tracksToRepair) {
+    // 使用 Future 异步执行，不等待完成
+    Future(() async {
+      final connections = _ref.read(activeConnectionsProvider);
+      if (connections.isEmpty) return;
+
+      await _metadataService.init();
+      var repairedCount = 0;
+      final updatedTracks = <MusicTrackEntity>[];
+
+      for (final track in tracksToRepair) {
+        final connection = connections[track.sourceId];
+        if (connection == null || connection.status != SourceStatus.connected) {
+          continue;
+        }
+
+        try {
+          // 从 NAS 重新提取封面
+          final metadata = await _metadataService.extractFromNasFile(
+            connection.adapter.fileSystem,
+            track.filePath,
+            skipLyrics: true,
+          );
+
+          if (metadata?.coverData != null && metadata!.coverData!.isNotEmpty) {
+            // 保存封面到磁盘缓存
+            final uniqueKey = '${track.sourceId}_${track.filePath}';
+            final coverPath = await _coverCache.saveCover(
+              uniqueKey,
+              Uint8List.fromList(metadata.coverData!),
+            );
+
+            if (coverPath != null) {
+              updatedTracks.add(track.copyWith(coverPath: coverPath));
+              repairedCount++;
+            }
+          }
+        } on Exception catch (e) {
+          logger.w('修复封面失败 ${track.filePath}: $e');
+        }
+      }
+
+      // 批量更新数据库
+      if (updatedTracks.isNotEmpty) {
+        await _db.upsertBatch(updatedTracks);
+        logger.i('后台修复完成：已恢复 $repairedCount/${tracksToRepair.length} 首歌曲的封面');
+
+        // 通知 UI 刷新（如果状态允许）
+        if (state is MusicListLoaded) {
+          await _loadCategorizedData();
+        }
+      }
+    });
   }
 
   /// 从旧缓存迁移数据到 SQLite

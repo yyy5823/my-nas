@@ -11,12 +11,14 @@ import SwiftUI
 
 // MARK: - Live Activities App Attributes
 // 必须使用这个名称和结构，以匹配 live_activities Flutter 插件
-// ContentState 必须为空 - 所有数据通过 UserDefaults App Group 共享
+// ContentState 必须包含 appGroupId，与插件内部定义保持一致
 
 struct LiveActivitiesAppAttributes: ActivityAttributes, Identifiable {
     public typealias LiveDeliveryData = ContentState
 
-    public struct ContentState: Codable, Hashable { }
+    public struct ContentState: Codable, Hashable {
+        var appGroupId: String
+    }
 
     var id = UUID()
 }

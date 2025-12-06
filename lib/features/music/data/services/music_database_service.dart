@@ -95,7 +95,7 @@ class MusicTrackEntity {
     int? trackNumber,
     int? year,
     String? genre,
-    String? coverPath,
+    Object? coverPath = _sentinel,
     int? size,
     DateTime? modifiedTime,
     DateTime? lastUpdated,
@@ -111,12 +111,15 @@ class MusicTrackEntity {
         trackNumber: trackNumber ?? this.trackNumber,
         year: year ?? this.year,
         genre: genre ?? this.genre,
-        coverPath: coverPath ?? this.coverPath,
+        coverPath: coverPath == _sentinel ? this.coverPath : coverPath as String?,
         size: size ?? this.size,
         modifiedTime: modifiedTime ?? this.modifiedTime,
         lastUpdated: lastUpdated ?? this.lastUpdated,
       );
 }
+
+/// 用于 copyWith 方法中区分 null 和未提供参数的哨兵值
+const _sentinel = Object();
 
 /// 音乐数据库服务 - 使用 SQLite 支持大规模数据和索引查询
 class MusicDatabaseService {
