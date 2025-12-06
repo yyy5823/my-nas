@@ -29,99 +29,81 @@ class MiniPlayer extends ConsumerWidget {
         }
       },
       child: Container(
-        height: 72,
+        height: 68,
         margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          color: isDark
-              ? Colors.grey[900]!.withValues(alpha: 0.95)
-              : Colors.white.withValues(alpha: 0.95),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.primary.withValues(alpha: isDark ? 0.2 : 0.15),
-              blurRadius: 20,
-              offset: const Offset(0, 4),
-            ),
-            BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.1),
-              blurRadius: 10,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(18),
           child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-            child: Stack(
-              children: [
-                // 进度条背景
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: _buildProgressBar(playerState, isDark),
+            filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                color: isDark
+                    ? Colors.black.withValues(alpha: 0.4)
+                    : Colors.white.withValues(alpha: 0.65),
+                border: Border.all(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.1)
+                      : Colors.white.withValues(alpha: 0.8),
+                  width: 0.5,
                 ),
-                // 内容
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 10, 8, 14),
-                  child: Row(
-                    children: [
-                      // 封面
-                      _buildCover(currentMusic.coverData, currentMusic.coverUrl, isDark),
-                      const SizedBox(width: 12),
-                      // 歌曲信息
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              currentMusic.displayTitle,
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: isDark ? Colors.white : Colors.black87,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              currentMusic.displayArtist,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: isDark ? Colors.grey[400] : Colors.grey[600],
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                      // 控制按钮
-                      _buildControlButtons(ref, playerState, playerNotifier, isDark),
-                    ],
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.1),
+                    blurRadius: 20,
+                    offset: const Offset(0, 4),
                   ),
-                ),
-              ],
+                ],
+              ),
+              child: Stack(
+                children: [
+                  // 内容
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(10, 8, 6, 8),
+                    child: Row(
+                      children: [
+                        // 封面
+                        _buildCover(currentMusic.coverData, currentMusic.coverUrl, isDark),
+                        const SizedBox(width: 12),
+                        // 歌曲信息
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                currentMusic.displayTitle,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: isDark ? Colors.white : Colors.black87,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 3),
+                              // 动态进度条
+                              _AnimatedProgressBar(
+                                progress: playerState.progress,
+                                isPlaying: playerState.isPlaying,
+                                isDark: isDark,
+                              ),
+                            ],
+                          ),
+                        ),
+                        // 控制按钮
+                        _buildControlButtons(ref, playerState, playerNotifier, isDark),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
       ),
     );
   }
-
-  Widget _buildProgressBar(MusicPlayerState playerState, bool isDark) => SizedBox(
-      height: 3,
-      child: LinearProgressIndicator(
-        value: playerState.progress.clamp(0.0, 1.0),
-        backgroundColor: isDark
-            ? Colors.white.withValues(alpha: 0.1)
-            : Colors.black.withValues(alpha: 0.05),
-        valueColor: AlwaysStoppedAnimation(AppColors.primary),
-      ),
-    );
 
   Widget _buildCover(List<int>? coverData, String? coverUrl, bool isDark) {
     Widget coverImage;
@@ -229,8 +211,8 @@ class MiniPlayer extends ConsumerWidget {
   ) => GestureDetector(
       onTap: playerNotifier.playOrPause,
       child: Container(
-        width: 44,
-        height: 44,
+        width: 42,
+        height: 42,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           gradient: LinearGradient(
@@ -240,15 +222,15 @@ class MiniPlayer extends ConsumerWidget {
           ),
           boxShadow: [
             BoxShadow(
-              color: AppColors.primary.withValues(alpha: 0.4),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
+              color: AppColors.primary.withValues(alpha: 0.35),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
             ),
           ],
         ),
         child: playerState.isBuffering
             ? const Padding(
-                padding: EdgeInsets.all(12),
+                padding: EdgeInsets.all(11),
                 child: CircularProgressIndicator(
                   color: Colors.white,
                   strokeWidth: 2,
@@ -258,9 +240,139 @@ class MiniPlayer extends ConsumerWidget {
                 playerState.isPlaying
                     ? Icons.pause_rounded
                     : Icons.play_arrow_rounded,
-                size: 26,
+                size: 24,
                 color: Colors.white,
               ),
       ),
     );
+}
+
+/// 动态进度条 - 带有流动动画效果
+class _AnimatedProgressBar extends StatefulWidget {
+  const _AnimatedProgressBar({
+    required this.progress,
+    required this.isPlaying,
+    required this.isDark,
+  });
+
+  final double progress;
+  final bool isPlaying;
+  final bool isDark;
+
+  @override
+  State<_AnimatedProgressBar> createState() => _AnimatedProgressBarState();
+}
+
+class _AnimatedProgressBarState extends State<_AnimatedProgressBar>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _shimmerController;
+
+  @override
+  void initState() {
+    super.initState();
+    _shimmerController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    );
+    if (widget.isPlaying) {
+      _shimmerController.repeat();
+    }
+  }
+
+  @override
+  void didUpdateWidget(_AnimatedProgressBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isPlaying && !_shimmerController.isAnimating) {
+      _shimmerController.repeat();
+    } else if (!widget.isPlaying && _shimmerController.isAnimating) {
+      _shimmerController.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _shimmerController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final clampedProgress = widget.progress.clamp(0.0, 1.0);
+
+    return SizedBox(
+      height: 14,
+      child: Row(
+        children: [
+          // 进度条
+          Expanded(
+            child: Stack(
+              alignment: Alignment.centerLeft,
+              children: [
+                // 背景轨道
+                Container(
+                  height: 4,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(2),
+                    color: widget.isDark
+                        ? Colors.white.withValues(alpha: 0.15)
+                        : Colors.black.withValues(alpha: 0.08),
+                  ),
+                ),
+                // 进度
+                AnimatedBuilder(
+                  animation: _shimmerController,
+                  builder: (context, child) => FractionallySizedBox(
+                      widthFactor: clampedProgress,
+                      child: Container(
+                        height: 4,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(2),
+                          gradient: LinearGradient(
+                            colors: [
+                              AppColors.primary,
+                              AppColors.secondary,
+                              AppColors.primary,
+                            ],
+                            stops: [
+                              0.0,
+                              _shimmerController.value,
+                              1.0,
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                ),
+                // 进度点
+                if (clampedProgress > 0)
+                  Positioned(
+                    child: FractionallySizedBox(
+                      widthFactor: clampedProgress,
+                      alignment: Alignment.centerLeft,
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white,
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.primary.withValues(alpha: 0.5),
+                                blurRadius: 4,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

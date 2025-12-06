@@ -21,6 +21,7 @@ class MusicHomeContent extends ConsumerWidget {
     this.genreCount = 0,
     this.yearCount = 0,
     this.folderCount = 0,
+    this.playlistCount = 0,
     super.key,
   });
 
@@ -32,6 +33,7 @@ class MusicHomeContent extends ConsumerWidget {
   final int genreCount;
   final int yearCount;
   final int folderCount;
+  final int playlistCount;
 
   /// 点击播放曲目的回调
   final void Function(MusicFileWithSource track, List<MusicFileWithSource> allTracks) onTrackTap;
@@ -59,24 +61,35 @@ class MusicHomeContent extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           // Hero 播放卡片
           HeroPlayerCard(isDark: isDark),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
           // 快捷访问
           _buildSectionTitle('快捷访问', isDark),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           QuickAccessGrid(
             isDark: isDark,
             favoritesCount: favoriteTracks.length,
             recentCount: recentTracks.length,
             totalCount: tracks.length,
+            playlistCount: playlistCount,
             onFavoritesTap: () => onCategoryTap(MusicCategory.favorites),
             onRecentTap: () => onCategoryTap(MusicCategory.recent),
             onAllTap: () => onCategoryTap(MusicCategory.all),
             onShuffleTap: () => _onShuffleTap(context),
+            onPlaylistTap: () => onCategoryTap(MusicCategory.playlists),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
+          // 分类浏览
+          _buildSectionTitle('浏览音乐库', isDark),
+          const SizedBox(height: 8),
+          BrowseCategoryGrid(
+            isDark: isDark,
+            counts: _getCategoryCounts(),
+            onCategoryTap: _onBrowseCategoryTap,
+          ),
+          const SizedBox(height: 16),
           // 最近播放
           if (recentTracks.isNotEmpty) ...[
             RecentTracksSection(
@@ -85,17 +98,8 @@ class MusicHomeContent extends ConsumerWidget {
               onTrackTap: (track) => onTrackTap(track, tracks),
               onMoreTap: () => onCategoryTap(MusicCategory.recent),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
           ],
-          // 分类浏览
-          _buildSectionTitle('浏览音乐库', isDark),
-          const SizedBox(height: 10),
-          BrowseCategoryGrid(
-            isDark: isDark,
-            counts: _getCategoryCounts(),
-            onCategoryTap: _onBrowseCategoryTap,
-          ),
-          const SizedBox(height: 20),
           // 热门歌曲（随机推荐）
           if (tracks.isNotEmpty) ...[
             PopularTracksSection(
@@ -105,7 +109,7 @@ class MusicHomeContent extends ConsumerWidget {
               onTrackTap: (track) => onTrackTap(track, tracks),
               onMoreTap: () => onCategoryTap(MusicCategory.all),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
           ],
         ],
       ),
@@ -360,10 +364,12 @@ class MusicHomeContent extends ConsumerWidget {
                   favoritesCount: favoriteTracks.length,
                   recentCount: recentTracks.length,
                   totalCount: tracks.length,
+                  playlistCount: playlistCount,
                   onFavoritesTap: () => onCategoryTap(MusicCategory.favorites),
                   onRecentTap: () => onCategoryTap(MusicCategory.recent),
                   onAllTap: () => onCategoryTap(MusicCategory.all),
                   onShuffleTap: () => _onShuffleTap(context),
+                  onPlaylistTap: () => onCategoryTap(MusicCategory.playlists),
                 ),
               ],
             ),

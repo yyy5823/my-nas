@@ -1,4 +1,4 @@
-package com.kkape.nas
+package com.kkape.mynas
 
 import io.flutter.embedding.android.FlutterActivity
 

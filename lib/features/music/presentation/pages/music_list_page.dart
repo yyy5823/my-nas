@@ -841,7 +841,8 @@ enum MusicCategory {
   favorites('我喜欢', Icons.favorite_rounded),
   recent('最近播放', Icons.history_rounded),
   genres('流派', Icons.category_rounded),
-  years('年代', Icons.date_range_rounded);
+  years('年代', Icons.date_range_rounded),
+  playlists('歌单', Icons.playlist_play_rounded);
 
   const MusicCategory(this.label, this.icon);
   final String label;
@@ -1652,6 +1653,7 @@ class _MusicCategoryPage extends ConsumerWidget {
       MusicCategory.recent => _RecentView(isDark: isDark),
       MusicCategory.genres => _GenresView(tracks: tracks, isDark: isDark),
       MusicCategory.years => _YearsView(tracks: tracks, isDark: isDark),
+      MusicCategory.playlists => _PlaylistsView(isDark: isDark),
     };
 }
 
@@ -4047,6 +4049,304 @@ class _RecentTrackTile extends ConsumerWidget {
           ),
         ),
       );
+}
+
+/// 歌单列表视图
+class _PlaylistsView extends ConsumerWidget {
+  const _PlaylistsView({required this.isDark});
+
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final playlistState = ref.watch(playlistProvider);
+    final playlists = playlistState.playlists;
+
+    if (playlistState.isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return Column(
+      children: [
+        // 创建歌单按钮
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: _CreatePlaylistButton(isDark: isDark),
+        ),
+        // 歌单列表
+        Expanded(
+          child: playlists.isEmpty
+              ? _buildEmptyView('暂无歌单', Icons.playlist_play_rounded, isDark)
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  itemCount: playlists.length,
+                  itemBuilder: (context, index) {
+                    final playlist = playlists[index];
+                    return _PlaylistTile(playlist: playlist, isDark: isDark);
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 创建歌单按钮
+class _CreatePlaylistButton extends ConsumerWidget {
+  const _CreatePlaylistButton({required this.isDark});
+
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _showCreatePlaylistDialog(context, ref),
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: AppColors.primary.withValues(alpha: 0.3),
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.add_rounded,
+                  color: AppColors.primary,
+                  size: 22,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '创建新歌单',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.primary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+  void _showCreatePlaylistDialog(BuildContext context, WidgetRef ref) {
+    final controller = TextEditingController();
+
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('创建歌单'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: '歌单名称',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final name = controller.text.trim();
+              if (name.isNotEmpty) {
+                await ref.read(playlistProvider.notifier).createPlaylist(name: name);
+                if (context.mounted) {
+                  Navigator.pop(context);
+                }
+              }
+            },
+            child: const Text('创建'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 歌单列表项
+class _PlaylistTile extends ConsumerWidget {
+  const _PlaylistTile({
+    required this.playlist,
+    required this.isDark,
+  });
+
+  final PlaylistEntry playlist;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        decoration: BoxDecoration(
+          color: isDark
+              ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
+              : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isDark
+                ? AppColors.darkOutline.withValues(alpha: 0.2)
+                : Colors.grey.withValues(alpha: 0.2),
+          ),
+        ),
+        child: ListTile(
+          onTap: () => _openPlaylistDetail(context, ref),
+          leading: Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  const Color(0xFF9C27B0).withValues(alpha: 0.8),
+                  const Color(0xFFE91E63).withValues(alpha: 0.8),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(
+              Icons.playlist_play_rounded,
+              color: Colors.white,
+              size: 26,
+            ),
+          ),
+          title: Text(
+            playlist.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontWeight: FontWeight.w500,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
+          ),
+          subtitle: Text(
+            '${playlist.trackCount} 首歌曲',
+            style: TextStyle(
+              fontSize: 12,
+              color: isDark ? Colors.grey[400] : Colors.grey[600],
+            ),
+          ),
+          trailing: PopupMenuButton<String>(
+            icon: Icon(
+              Icons.more_vert_rounded,
+              color: isDark ? Colors.grey[400] : Colors.grey[600],
+            ),
+            onSelected: (value) => _handleMenuAction(context, ref, value),
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'rename',
+                child: Row(
+                  children: [
+                    Icon(Icons.edit_rounded, size: 20),
+                    SizedBox(width: 12),
+                    Text('重命名'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'delete',
+                child: Row(
+                  children: [
+                    Icon(Icons.delete_rounded, size: 20, color: Colors.red),
+                    SizedBox(width: 12),
+                    Text('删除', style: TextStyle(color: Colors.red)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
+  void _openPlaylistDetail(BuildContext context, WidgetRef ref) {
+    // TODO: 打开歌单详情页面，显示歌单内的歌曲
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('歌单: ${playlist.name}')),
+    );
+  }
+
+  void _handleMenuAction(BuildContext context, WidgetRef ref, String action) {
+    switch (action) {
+      case 'rename':
+        _showRenameDialog(context, ref);
+      case 'delete':
+        _showDeleteConfirm(context, ref);
+    }
+  }
+
+  void _showRenameDialog(BuildContext context, WidgetRef ref) {
+    final controller = TextEditingController(text: playlist.name);
+
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('重命名歌单'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: '歌单名称',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final name = controller.text.trim();
+              if (name.isNotEmpty && name != playlist.name) {
+                await ref.read(playlistProvider.notifier).renamePlaylist(playlist.id, name);
+                if (context.mounted) {
+                  Navigator.pop(context);
+                }
+              }
+            },
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDeleteConfirm(BuildContext context, WidgetRef ref) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除歌单'),
+        content: Text('确定要删除歌单「${playlist.name}」吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red,
+            ),
+            onPressed: () async {
+              await ref.read(playlistProvider.notifier).deletePlaylist(playlist.id);
+              if (context.mounted) {
+                Navigator.pop(context);
+              }
+            },
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// 排序方向切换按钮

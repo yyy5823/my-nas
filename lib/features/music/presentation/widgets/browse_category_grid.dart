@@ -175,7 +175,7 @@ class _CategoryCard extends StatelessWidget {
     );
 }
 
-/// 快捷访问卡片网格（我喜欢、最近播放、全部、随机）
+/// 快捷访问卡片网格（我喜欢、最近播放、歌单、全部、随机）
 class QuickAccessGrid extends StatelessWidget {
   const QuickAccessGrid({
     required this.isDark,
@@ -186,6 +186,8 @@ class QuickAccessGrid extends StatelessWidget {
     required this.onRecentTap,
     required this.onAllTap,
     required this.onShuffleTap,
+    this.playlistCount = 0,
+    this.onPlaylistTap,
     this.isDesktop = false,
     super.key,
   });
@@ -195,10 +197,12 @@ class QuickAccessGrid extends StatelessWidget {
   final int favoritesCount;
   final int recentCount;
   final int totalCount;
+  final int playlistCount;
   final VoidCallback onFavoritesTap;
   final VoidCallback onRecentTap;
   final VoidCallback onAllTap;
   final VoidCallback onShuffleTap;
+  final VoidCallback? onPlaylistTap;
 
   @override
   Widget build(BuildContext context) {
@@ -221,6 +225,16 @@ class QuickAccessGrid extends StatelessWidget {
         isDesktop: isDesktop,
         onTap: onRecentTap,
       ),
+      if (onPlaylistTap != null)
+        _QuickCard(
+          icon: Icons.playlist_play_rounded,
+          label: '歌单',
+          subtitle: '$playlistCount 个',
+          color: const Color(0xFF9C27B0),
+          isDark: isDark,
+          isDesktop: isDesktop,
+          onTap: onPlaylistTap!,
+        ),
       _QuickCard(
         icon: Icons.queue_music_rounded,
         label: '全部歌曲',
@@ -241,17 +255,29 @@ class QuickAccessGrid extends StatelessWidget {
       ),
     ];
 
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: isDesktop ? 0 : 16),
-      child: GridView.count(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        crossAxisCount: isDesktop ? 4 : 2,
-        mainAxisSpacing: isDesktop ? 12 : 10,
-        crossAxisSpacing: isDesktop ? 12 : 10,
-        childAspectRatio: isDesktop ? 3.0 : 2.8,
-        children: cards,
-      ),
+    // 移动端使用横向滚动列表，更紧凑
+    if (!isDesktop) {
+      return SizedBox(
+        height: 56,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          itemCount: cards.length,
+          separatorBuilder: (_, _) => const SizedBox(width: 10),
+          itemBuilder: (_, index) => cards[index],
+        ),
+      );
+    }
+
+    // 桌面端保持网格布局
+    return GridView.count(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisCount: 5,
+      mainAxisSpacing: 12,
+      crossAxisSpacing: 12,
+      childAspectRatio: 2.5,
+      children: cards,
     );
   }
 }
@@ -276,16 +302,72 @@ class _QuickCard extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => Material(
+  Widget build(BuildContext context) {
+    // 移动端：紧凑的胶囊样式
+    if (!isDesktop) {
+      return Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(28),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: isDark ? 0.2 : 0.12),
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(
+                color: color.withValues(alpha: isDark ? 0.3 : 0.2),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, color: color, size: 18),
+                ),
+                const SizedBox(width: 10),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? Colors.white : Colors.black87,
+                      ),
+                    ),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isDark ? Colors.white60 : Colors.black45,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    // 桌面端：保持原有样式
+    return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
         child: Container(
-          padding: EdgeInsets.symmetric(
-            horizontal: isDesktop ? 14 : 12,
-            vertical: isDesktop ? 12 : 10,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
             color: isDark
                 ? Colors.white.withValues(alpha: 0.08)
@@ -300,15 +382,15 @@ class _QuickCard extends StatelessWidget {
           child: Row(
             children: [
               Container(
-                width: isDesktop ? 44 : 40,
-                height: isDesktop ? 44 : 40,
+                width: 44,
+                height: 44,
                 decoration: BoxDecoration(
                   color: color.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(icon, color: color, size: isDesktop ? 22 : 20),
+                child: Icon(icon, color: color, size: 22),
               ),
-              SizedBox(width: isDesktop ? 12 : 10),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -317,7 +399,7 @@ class _QuickCard extends StatelessWidget {
                     Text(
                       label,
                       style: TextStyle(
-                        fontSize: isDesktop ? 14 : 13,
+                        fontSize: 14,
                         fontWeight: FontWeight.w600,
                         color: isDark ? Colors.white : Colors.black87,
                       ),
@@ -328,7 +410,7 @@ class _QuickCard extends StatelessWidget {
                     Text(
                       subtitle,
                       style: TextStyle(
-                        fontSize: isDesktop ? 12 : 11,
+                        fontSize: 12,
                         color: isDark ? Colors.white60 : Colors.black45,
                       ),
                       maxLines: 1,
@@ -347,4 +429,5 @@ class _QuickCard extends StatelessWidget {
         ),
       ),
     );
+  }
 }

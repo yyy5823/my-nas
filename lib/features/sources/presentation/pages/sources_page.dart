@@ -113,6 +113,7 @@ class SourcesPage extends ConsumerWidget {
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
+      enableDrag: false, // 禁用拖动关闭，防止顶栏被拖动
       builder: (context) => const AddSourceSheet(),
     );
   }
@@ -517,6 +518,7 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
+      enableDrag: false, // 禁用拖动关闭，防止顶栏被拖动
       builder: (context) => AddSourceSheet(source: widget.source),
     );
   }
