@@ -387,8 +387,8 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
         // 保存代理 ID 以便清理
         _currentProxyId = proxyUrl.split('/').last;
 
-        logger.i('MusicPlayer: 使用流式播放模式 (边下边播)');
-        logger.d('MusicPlayer: 代理URL => $proxyUrl');
+        logger..i('MusicPlayer: 使用流式播放模式 (边下边播)')
+        ..d('MusicPlayer: 代理URL => $proxyUrl');
 
         // 使用 LockCachingAudioSource 实现边下边播并自动缓存
         // 这是 just_audio 提供的实验性功能，支持渐进式下载
@@ -415,7 +415,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       logger.i('MusicPlayer: 播放器时长 => $playerDuration');
 
       // 使用播放器时长或 MusicItem 的元数据时长
-      Duration? effectiveDuration = playerDuration;
+      var effectiveDuration = playerDuration;
       if ((effectiveDuration == null || effectiveDuration == Duration.zero) &&
           music.duration != null && music.duration! > Duration.zero) {
         effectiveDuration = music.duration;

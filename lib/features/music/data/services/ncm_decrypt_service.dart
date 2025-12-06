@@ -186,12 +186,10 @@ class NcmDecryptService {
   }
 
   /// 读取小端序 32 位无符号整数
-  int _readUint32LE(Uint8List data, int offset) {
-    return data[offset] |
+  int _readUint32LE(Uint8List data, int offset) => data[offset] |
         (data[offset + 1] << 8) |
         (data[offset + 2] << 16) |
         (data[offset + 3] << 24);
-  }
 
   /// PKCS7 去除填充
   Uint8List _unpad(Uint8List data) {

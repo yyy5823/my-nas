@@ -441,11 +441,12 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
           currentDepth: 0,
           maxDepth: maxDepth,
           onBatchFound: () {
-            if (photos.length - lastUpdateCount >= 20) {
+            // 每发现 5 个文件更新一次进度，使进度显示更平滑
+            if (photos.length - lastUpdateCount >= 5) {
               lastUpdateCount = photos.length;
               state = PhotoListLoading(
                 progress: scannedFolders / totalFolders,
-                currentFolder: mediaPath.displayName,
+                currentFolder: '${mediaPath.displayName} (${photos.length})',
                 partialPhotos: List.from(photos),
                 scannedCount: photos.length,
               );

@@ -299,6 +299,9 @@ class MusicListLoaded extends MusicListState {
     this.searchResults = const [],
     // 用于 O(1) 查找的 Map
     this.trackByPath = const {},
+    // 分页状态
+    this.hasMoreTracks = true,
+    this.isLoadingMore = false,
   });
 
   final int totalCount;
@@ -320,6 +323,10 @@ class MusicListLoaded extends MusicListState {
 
   // 用于 O(1) 查找的 Map
   final Map<String, MusicTrackEntity> trackByPath;
+
+  // 分页状态
+  final bool hasMoreTracks; // 是否还有更多歌曲可加载
+  final bool isLoadingMore; // 是否正在加载更多
 
   /// 兼容旧代码：返回当前展示的曲目列表
   List<MusicFileWithSource> get tracks => allTracks
@@ -409,6 +416,8 @@ class MusicListLoaded extends MusicListState {
     List<MusicTrackEntity>? allTracks,
     List<MusicTrackEntity>? searchResults,
     Map<String, MusicTrackEntity>? trackByPath,
+    bool? hasMoreTracks,
+    bool? isLoadingMore,
   }) =>
       MusicListLoaded(
         totalCount: totalCount ?? this.totalCount,
@@ -424,6 +433,8 @@ class MusicListLoaded extends MusicListState {
         allTracks: allTracks ?? this.allTracks,
         searchResults: searchResults ?? this.searchResults,
         trackByPath: trackByPath ?? this.trackByPath,
+        hasMoreTracks: hasMoreTracks ?? this.hasMoreTracks,
+        isLoadingMore: isLoadingMore ?? this.isLoadingMore,
       );
 }
 
@@ -472,15 +483,18 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
     }
   }
 
+  /// 每页加载的歌曲数量
+  static const int _pageSize = 100;
+
   /// 从 SQLite 加载分类数据（高性能）
   Future<void> _loadCategorizedData() async {
     state = MusicListLoading(fromCache: true, currentFolder: '加载数据...');
 
-    // 并行查询统计数据和分类数据
+    // 并行查询统计数据和初始数据
     final results = await Future.wait([
       _db.getStats(),
       _db.getRecentlyAdded(limit: 20),
-      _db.getPage(limit: 200),
+      _db.getPage(limit: _pageSize),
     ]);
 
     final stats = results[0] as Map<String, dynamic>;
@@ -516,9 +530,58 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
       allTracks: validatedAllTracks,
       trackByPath: trackByPath,
       fromCache: true,
+      hasMoreTracks: validatedAllTracks.length < total,
+      isLoadingMore: false,
     );
 
-    logger.i('MusicListNotifier: 数据加载完成，总计 $total 首音乐');
+    logger.i('MusicListNotifier: 数据加载完成，已加载 ${validatedAllTracks.length}/$total 首音乐');
+  }
+
+  /// 加载更多歌曲（无限滚动）
+  Future<void> loadMoreTracks() async {
+    final current = state;
+    if (current is! MusicListLoaded) return;
+    if (current.isLoadingMore || !current.hasMoreTracks) return;
+
+    // 设置加载中状态
+    state = current.copyWith(isLoadingMore: true);
+
+    try {
+      final offset = current.allTracks.length;
+      final moreTracks = await _db.getPage(limit: _pageSize, offset: offset);
+
+      if (moreTracks.isEmpty) {
+        state = current.copyWith(
+          hasMoreTracks: false,
+          isLoadingMore: false,
+        );
+        return;
+      }
+
+      // 验证封面路径
+      final validatedMore = await _validateCoverPaths(moreTracks);
+
+      // 合并歌曲列表
+      final newAllTracks = [...current.allTracks, ...validatedMore];
+
+      // 更新快速查找 Map
+      final newTrackByPath = Map<String, MusicTrackEntity>.from(current.trackByPath);
+      for (final m in validatedMore) {
+        newTrackByPath[m.uniqueKey] = m;
+      }
+
+      state = current.copyWith(
+        allTracks: newAllTracks,
+        trackByPath: newTrackByPath,
+        hasMoreTracks: newAllTracks.length < current.totalCount,
+        isLoadingMore: false,
+      );
+
+      logger.d('MusicListNotifier: 加载更多完成，已加载 ${newAllTracks.length}/${current.totalCount}');
+    } on Exception catch (e) {
+      logger.e('MusicListNotifier: 加载更多失败', e);
+      state = current.copyWith(isLoadingMore: false);
+    }
   }
 
   /// 验证封面文件路径是否有效
@@ -739,11 +802,12 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
           depth: 0,
           maxDepth: maxDepth,
           onBatchFound: () {
-            if (tracks.length - lastUpdateCount >= 20) {
+            // 每发现 5 个文件更新一次进度，使进度显示更平滑
+            if (tracks.length - lastUpdateCount >= 5) {
               lastUpdateCount = tracks.length;
               state = MusicListLoading(
                 progress: scannedFolders / totalFolders,
-                currentFolder: mediaPath.displayName,
+                currentFolder: '${mediaPath.displayName} (${tracks.length})',
                 partialTracks: List.from(tracks),
                 scannedCount: tracks.length,
               );
@@ -843,15 +907,15 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
 
       processedCount++;
 
-      // 每处理 50 首保存一次，并更新进度
-      if (processedCount % 50 == 0 || processedCount == totalTracks) {
+      // 每处理 10 首保存一次，并更新进度（使进度显示更平滑）
+      if (processedCount % 10 == 0 || processedCount == totalTracks) {
         await _db.upsertBatch(metadataList);
         metadataList.clear();
 
         final progress = processedCount / totalTracks;
         state = MusicListLoading(
           phase: MusicScanPhase.metadata,
-          currentFolder: '正在提取元数据 ($processedCount/$totalTracks)',
+          currentFolder: '提取元数据 ($processedCount/$totalTracks)',
           metadataProgress: progress,
           scannedCount: totalTracks,
         );
@@ -1255,6 +1319,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
       tracks: state.tracks,
       recentTracks: recentTracks,
       favoriteTracks: favoriteTracks,
+      totalCount: state.totalCount,
       artistCount: state.artistCount,
       albumCount: state.albumCount,
       genreCount: state.genreCount,
@@ -1780,18 +1845,55 @@ class _MusicCategoryPage extends ConsumerWidget {
 }
 
 /// 全部歌曲页面 - 独立的页面，支持更丰富的 AppBar
-class AllSongsPage extends ConsumerWidget {
+/// 从 provider 获取数据，支持无限滚动分页
+class AllSongsPage extends ConsumerStatefulWidget {
   const AllSongsPage({
-    required this.tracks,
+    this.tracks,
     super.key,
   });
 
-  final List<MusicFileWithSource> tracks;
+  /// 可选的 tracks 参数（向后兼容），优先从 provider 获取
+  final List<MusicFileWithSource>? tracks;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AllSongsPage> createState() => _AllSongsPageState();
+}
+
+class _AllSongsPageState extends ConsumerState<AllSongsPage> {
+  final _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController..removeListener(_onScroll)
+    ..dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      ref.read(musicListProvider.notifier).loadMoreTracks();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final sortState = ref.watch(musicSortProvider);
+    final musicState = ref.watch(musicListProvider);
+
+    // 从 provider 获取数据
+    final tracks = musicState is MusicListLoaded ? musicState.tracks : (widget.tracks ?? []);
+    final totalCount = musicState is MusicListLoaded ? musicState.totalCount : tracks.length;
+    final hasMore = musicState is MusicListLoaded ? musicState.hasMoreTracks : false;
+    final isLoadingMore = musicState is MusicListLoaded ? musicState.isLoadingMore : false;
+
     final sortedTracks = _applySorting(tracks, sortState);
 
     return Scaffold(
@@ -1799,22 +1901,28 @@ class AllSongsPage extends ConsumerWidget {
       body: Column(
         children: [
           // 自定义顶栏
-          _buildAppBar(context, ref, isDark, sortState),
+          _buildAppBar(context, isDark, sortState, totalCount),
           // 播放控制栏
-          _buildPlayControls(context, ref, isDark, sortedTracks),
+          _buildPlayControls(context, isDark, sortedTracks),
           // 歌曲列表
           Expanded(
             child: tracks.isEmpty
                 ? _buildEmptyState(isDark)
                 : ListView.builder(
+                    controller: _scrollController,
                     padding: const EdgeInsets.only(bottom: 16),
-                    itemCount: sortedTracks.length,
-                    itemBuilder: (context, index) => _ModernMusicTile(
-                      track: sortedTracks[index],
-                      index: index,
-                      isDark: isDark,
-                      allTracks: sortedTracks,
-                    ),
+                    itemCount: sortedTracks.length + (hasMore ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      if (index >= sortedTracks.length) {
+                        return _buildLoadMoreIndicator(isDark, isLoadingMore);
+                      }
+                      return _ModernMusicTile(
+                        track: sortedTracks[index],
+                        index: index,
+                        isDark: isDark,
+                        allTracks: sortedTracks,
+                      );
+                    },
                   ),
           ),
           const MiniPlayer(),
@@ -1823,10 +1931,25 @@ class AllSongsPage extends ConsumerWidget {
     );
   }
 
-  Widget _buildAppBar(BuildContext context, WidgetRef ref, bool isDark, MusicSortState sortState) {
-    final trackCount = tracks.length;
+  Widget _buildLoadMoreIndicator(bool isDark, bool isLoading) => Container(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      alignment: Alignment.center,
+      child: isLoading
+          ? const SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : Text(
+              '上拉加载更多',
+              style: TextStyle(
+                fontSize: 13,
+                color: isDark ? Colors.grey[500] : Colors.grey[600],
+              ),
+            ),
+    );
 
-    return DecoratedBox(
+  Widget _buildAppBar(BuildContext context, bool isDark, MusicSortState sortState, int trackCount) => DecoratedBox(
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurface : Colors.white,
         boxShadow: [
@@ -1884,17 +2007,16 @@ class AllSongsPage extends ConsumerWidget {
               _SortButton(
                 sortState: sortState,
                 isDark: isDark,
-                onTap: () => _showSortOptions(context, ref, sortState, isDark),
+                onTap: () => _showSortOptions(context, sortState, isDark),
               ),
             ],
           ),
         ),
       ),
     );
-  }
 
-  Widget _buildPlayControls(BuildContext context, WidgetRef ref, bool isDark, List<MusicFileWithSource> sortedTracks) {
-    if (tracks.isEmpty) return const SizedBox.shrink();
+  Widget _buildPlayControls(BuildContext context, bool isDark, List<MusicFileWithSource> sortedTracks) {
+    if (sortedTracks.isEmpty) return const SizedBox.shrink();
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
@@ -1903,7 +2025,7 @@ class AllSongsPage extends ConsumerWidget {
           // 播放全部按钮
           Expanded(
             child: _SpotifyPlayButton(
-              onPressed: () => _playAll(context, ref, sortedTracks),
+              onPressed: () => _playAll(context, sortedTracks),
               icon: Icons.play_arrow_rounded,
               label: '播放全部',
             ),
@@ -1912,7 +2034,7 @@ class AllSongsPage extends ConsumerWidget {
           // 随机播放按钮
           Expanded(
             child: _SpotifyPlayButton(
-              onPressed: () => _shufflePlay(context, ref, sortedTracks),
+              onPressed: () => _shufflePlay(context, sortedTracks),
               icon: Icons.shuffle_rounded,
               label: '随机播放',
               isPrimary: false,
@@ -1990,7 +2112,7 @@ class AllSongsPage extends ConsumerWidget {
     return sorted;
   }
 
-  void _showSortOptions(BuildContext context, WidgetRef ref, MusicSortState currentSort, bool isDark) {
+  void _showSortOptions(BuildContext context, MusicSortState currentSort, bool isDark) {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
@@ -2067,7 +2189,7 @@ class AllSongsPage extends ConsumerWidget {
     );
   }
 
-  Future<void> _playAll(BuildContext context, WidgetRef ref, List<MusicFileWithSource> sortedTracks) async {
+  Future<void> _playAll(BuildContext context, List<MusicFileWithSource> sortedTracks) async {
     logger.i('AllSongsPage._playAll: 开始播放全部 (${sortedTracks.length} 首)');
 
     if (sortedTracks.isEmpty) {
@@ -2138,7 +2260,7 @@ class AllSongsPage extends ConsumerWidget {
     }
   }
 
-  Future<void> _shufflePlay(BuildContext context, WidgetRef ref, List<MusicFileWithSource> sortedTracks) async {
+  Future<void> _shufflePlay(BuildContext context, List<MusicFileWithSource> sortedTracks) async {
     logger.i('AllSongsPage._shufflePlay: 开始随机播放 (${sortedTracks.length} 首)');
 
     if (sortedTracks.isEmpty) {
@@ -2270,7 +2392,7 @@ class _SortButton extends StatelessWidget {
 }
 
 /// 全部歌曲内容（用于嵌入到通用分类页面中）
-class _AllSongsContent extends ConsumerWidget {
+class _AllSongsContent extends ConsumerStatefulWidget {
   const _AllSongsContent({
     required this.tracks,
     required this.isDark,
@@ -2280,8 +2402,41 @@ class _AllSongsContent extends ConsumerWidget {
   final bool isDark;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    if (tracks.isEmpty) {
+  ConsumerState<_AllSongsContent> createState() => _AllSongsContentState();
+}
+
+class _AllSongsContentState extends ConsumerState<_AllSongsContent> {
+  final _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController..removeListener(_onScroll)
+    ..dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    // 当滚动到距离底部 200 像素时触发加载更多
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      ref.read(musicListProvider.notifier).loadMoreTracks();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final musicState = ref.watch(musicListProvider);
+    final totalCount = musicState is MusicListLoaded ? musicState.totalCount : 0;
+    final hasMore = musicState is MusicListLoaded && musicState.hasMoreTracks;
+    final isLoadingMore = musicState is MusicListLoaded && musicState.isLoadingMore;
+
+    if (widget.tracks.isEmpty) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -2306,7 +2461,7 @@ class _AllSongsContent extends ConsumerWidget {
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w500,
-                color: isDark ? Colors.grey[400] : Colors.grey[600],
+                color: widget.isDark ? Colors.grey[400] : Colors.grey[600],
               ),
             ),
             const SizedBox(height: 8),
@@ -2314,7 +2469,7 @@ class _AllSongsContent extends ConsumerWidget {
               '扫描音乐库以添加歌曲',
               style: TextStyle(
                 fontSize: 13,
-                color: isDark ? Colors.grey[600] : Colors.grey[500],
+                color: widget.isDark ? Colors.grey[600] : Colors.grey[500],
               ),
             ),
           ],
@@ -2324,27 +2479,55 @@ class _AllSongsContent extends ConsumerWidget {
 
     // 应用排序
     final sortState = ref.watch(musicSortProvider);
-    final sortedTracks = _applySorting(tracks, sortState);
+    final sortedTracks = _applySorting(widget.tracks, sortState);
+
+    // 计算需要显示的项目数（包括加载更多指示器）
+    final itemCount = sortedTracks.length + (hasMore ? 1 : 0);
 
     return Column(
       children: [
-        // 播放控制栏
-        _buildControlBar(context, ref, sortState),
+        // 播放控制栏 - 显示总数而不是当前加载数
+        _buildControlBar(context, ref, sortState, totalCount),
         Expanded(
           child: ListView.builder(
+            controller: _scrollController,
             padding: const EdgeInsets.only(bottom: 16),
-            itemCount: sortedTracks.length,
-            itemBuilder: (context, index) => _ModernMusicTile(
-              track: sortedTracks[index],
-              index: index,
-              isDark: isDark,
-              allTracks: sortedTracks,
-            ),
+            itemCount: itemCount,
+            itemBuilder: (context, index) {
+              // 最后一项显示加载更多指示器
+              if (index >= sortedTracks.length) {
+                return _buildLoadMoreIndicator(isLoadingMore);
+              }
+              return _ModernMusicTile(
+                track: sortedTracks[index],
+                index: index,
+                isDark: widget.isDark,
+                allTracks: sortedTracks,
+              );
+            },
           ),
         ),
       ],
     );
   }
+
+  Widget _buildLoadMoreIndicator(bool isLoading) => Container(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      alignment: Alignment.center,
+      child: isLoading
+          ? const SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : Text(
+              '上拉加载更多',
+              style: TextStyle(
+                fontSize: 13,
+                color: widget.isDark ? Colors.grey[500] : Colors.grey[600],
+              ),
+            ),
+    );
 
   List<MusicFileWithSource> _applySorting(
     List<MusicFileWithSource> tracks,
@@ -2373,10 +2556,7 @@ class _AllSongsContent extends ConsumerWidget {
     return sorted;
   }
 
-  Widget _buildControlBar(BuildContext context, WidgetRef ref, MusicSortState sortState) {
-    final trackCount = tracks.length;
-
-    return Padding(
+  Widget _buildControlBar(BuildContext context, WidgetRef ref, MusicSortState sortState, int totalCount) => Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -2384,12 +2564,12 @@ class _AllSongsContent extends ConsumerWidget {
           // 顶部信息行：歌曲数量 + 排序按钮
           Row(
             children: [
-              // 歌曲数量
+              // 歌曲数量 - 使用数据库总数而不是当前加载的数量
               Text(
-                '共 $trackCount 首歌曲',
+                '共 $totalCount 首歌曲',
                 style: TextStyle(
                   fontSize: 13,
-                  color: isDark ? Colors.white60 : Colors.black54,
+                  color: widget.isDark ? Colors.white60 : Colors.black54,
                 ),
               ),
               const Spacer(),
@@ -2397,7 +2577,7 @@ class _AllSongsContent extends ConsumerWidget {
               _SpotifyIconButton(
                 icon: Icons.swap_vert_rounded,
                 label: sortState.option.label,
-                isDark: isDark,
+                isDark: widget.isDark,
                 onTap: () => _showSortOptions(context, ref, sortState),
               ),
             ],
@@ -2422,7 +2602,7 @@ class _AllSongsContent extends ConsumerWidget {
                   icon: Icons.shuffle_rounded,
                   label: '随机播放',
                   isPrimary: false,
-                  isDark: isDark,
+                  isDark: widget.isDark,
                 ),
               ),
             ],
@@ -2430,12 +2610,11 @@ class _AllSongsContent extends ConsumerWidget {
         ],
       ),
     );
-  }
 
   void _showSortOptions(BuildContext context, WidgetRef ref, MusicSortState currentSort) {
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
+      backgroundColor: widget.isDark ? AppColors.darkSurface : Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -2449,7 +2628,7 @@ class _AllSongsContent extends ConsumerWidget {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: isDark ? Colors.grey[700] : Colors.grey[300],
+                color: widget.isDark ? Colors.grey[700] : Colors.grey[300],
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -2460,7 +2639,7 @@ class _AllSongsContent extends ConsumerWidget {
                 children: [
                   Icon(
                     Icons.sort_rounded,
-                    color: isDark ? Colors.white70 : Colors.black87,
+                    color: widget.isDark ? Colors.white70 : Colors.black87,
                   ),
                   const SizedBox(width: 12),
                   Text(
@@ -2468,14 +2647,14 @@ class _AllSongsContent extends ConsumerWidget {
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
-                      color: isDark ? Colors.white : Colors.black87,
+                      color: widget.isDark ? Colors.white : Colors.black87,
                     ),
                   ),
                   const Spacer(),
                   // 排序方向切换
                   _SortDirectionButton(
                     direction: currentSort.direction,
-                    isDark: isDark,
+                    isDark: widget.isDark,
                     onTap: () {
                       final newDirection = currentSort.direction == SortDirection.ascending
                           ? SortDirection.descending
@@ -2494,7 +2673,7 @@ class _AllSongsContent extends ConsumerWidget {
             ...MusicSortOption.values.map((option) => _SortOptionTile(
               option: option,
               isSelected: currentSort.option == option,
-              isDark: isDark,
+              isDark: widget.isDark,
               onTap: () {
                 ref.read(musicSortProvider.notifier).state = currentSort.copyWith(
                   option: option,
@@ -2510,9 +2689,9 @@ class _AllSongsContent extends ConsumerWidget {
   }
 
   Future<void> _playAll(BuildContext context, WidgetRef ref) async {
-    logger.i('_AllSongsView._playAll: 开始播放全部 (${tracks.length} 首)');
+    logger.i('_AllSongsView._playAll: 开始播放全部 (${widget.tracks.length} 首)');
 
-    if (tracks.isEmpty) {
+    if (widget.tracks.isEmpty) {
       logger.w('_AllSongsView._playAll: 没有歌曲可播放');
       return;
     }
@@ -2520,7 +2699,7 @@ class _AllSongsContent extends ConsumerWidget {
     final connections = ref.read(activeConnectionsProvider);
 
     try {
-      final first = tracks.first;
+      final first = widget.tracks.first;
       final firstConnection = connections[first.sourceId];
       if (firstConnection == null || firstConnection.status != SourceStatus.connected) {
         logger.e('_AllSongsView._playAll: 第一首歌曲的源未连接');
@@ -2547,7 +2726,7 @@ class _AllSongsContent extends ConsumerWidget {
       );
 
       final queue = <MusicItem>[];
-      for (final track in tracks.take(100)) {
+      for (final track in widget.tracks.take(100)) {
         final conn = connections[track.sourceId];
         if (conn == null || conn.status != SourceStatus.connected) continue;
         final trackUrl = await conn.adapter.fileSystem.getFileUrl(track.path);
@@ -2581,15 +2760,15 @@ class _AllSongsContent extends ConsumerWidget {
   }
 
   Future<void> _shufflePlay(BuildContext context, WidgetRef ref) async {
-    logger.i('_AllSongsView._shufflePlay: 开始随机播放 (${tracks.length} 首)');
+    logger.i('_AllSongsView._shufflePlay: 开始随机播放 (${widget.tracks.length} 首)');
 
-    if (tracks.isEmpty) {
+    if (widget.tracks.isEmpty) {
       logger.w('_AllSongsView._shufflePlay: 没有歌曲可播放');
       return;
     }
 
     final connections = ref.read(activeConnectionsProvider);
-    final shuffled = List<MusicFileWithSource>.from(tracks)..shuffle();
+    final shuffled = List<MusicFileWithSource>.from(widget.tracks)..shuffle();
     final first = shuffled.first;
 
     try {

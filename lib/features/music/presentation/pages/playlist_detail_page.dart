@@ -593,7 +593,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
+      builder: (context) => DecoratedBox(
         decoration: BoxDecoration(
           color: Theme.of(context).brightness == Brightness.dark
               ? AppColors.darkSurface

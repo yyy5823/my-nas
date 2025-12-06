@@ -16,6 +16,7 @@ class MusicHomeContent extends ConsumerWidget {
     required this.favoriteTracks,
     required this.onTrackTap,
     required this.onCategoryTap,
+    this.totalCount = 0,
     this.artistCount = 0,
     this.albumCount = 0,
     this.genreCount = 0,
@@ -28,6 +29,7 @@ class MusicHomeContent extends ConsumerWidget {
   final List<MusicFileWithSource> tracks;
   final List<MusicFileWithSource> recentTracks;
   final List<MusicFileWithSource> favoriteTracks;
+  final int totalCount; // 数据库中的歌曲总数
   final int artistCount;
   final int albumCount;
   final int genreCount;
@@ -72,7 +74,7 @@ class MusicHomeContent extends ConsumerWidget {
             isDark: isDark,
             favoritesCount: favoriteTracks.length,
             recentCount: recentTracks.length,
-            totalCount: tracks.length,
+            totalCount: totalCount > 0 ? totalCount : tracks.length,
             playlistCount: playlistCount,
             onFavoritesTap: () => onCategoryTap(MusicCategory.favorites),
             onRecentTap: () => onCategoryTap(MusicCategory.recent),
@@ -363,7 +365,7 @@ class MusicHomeContent extends ConsumerWidget {
                   isDesktop: true,
                   favoritesCount: favoriteTracks.length,
                   recentCount: recentTracks.length,
-                  totalCount: tracks.length,
+                  totalCount: totalCount > 0 ? totalCount : tracks.length,
                   playlistCount: playlistCount,
                   onFavoritesTap: () => onCategoryTap(MusicCategory.favorites),
                   onRecentTap: () => onCategoryTap(MusicCategory.recent),

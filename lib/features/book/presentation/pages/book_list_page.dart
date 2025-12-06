@@ -372,6 +372,7 @@ class BookListNotifier extends StateNotifier<BookListState> {
       );
 
       try {
+        var lastUpdateCount = books.length;
         await _scanForBooks(
           connection.adapter.fileSystem,
           mediaPath.path,
@@ -379,6 +380,16 @@ class BookListNotifier extends StateNotifier<BookListState> {
           sourceId: mediaPath.sourceId,
           depth: 0,
           maxDepth: maxDepth,
+          onBatchFound: () {
+            // 每发现 5 本书更新一次进度
+            if (books.length - lastUpdateCount >= 5) {
+              lastUpdateCount = books.length;
+              state = BookListLoading(
+                progress: scannedFolders / totalFolders,
+                currentFolder: '${mediaPath.displayName} (${books.length})',
+              );
+            }
+          },
         );
       } on Exception catch (e) {
         logger.w('扫描书籍文件夹失败: ${mediaPath.path} - $e');
@@ -421,6 +432,7 @@ class BookListNotifier extends StateNotifier<BookListState> {
     required String sourceId,
     required int depth,
     int maxDepth = 3,
+    VoidCallback? onBatchFound,
   }) async {
     if (depth > maxDepth) return;
 
@@ -441,9 +453,11 @@ class BookListNotifier extends StateNotifier<BookListState> {
             sourceId: sourceId,
             depth: depth + 1,
             maxDepth: maxDepth,
+            onBatchFound: onBatchFound,
           );
         } else if (_isBookFile(item.name)) {
           books.add(BookFileWithSource(file: item, sourceId: sourceId));
+          onBatchFound?.call();
         }
       }
     } on Exception catch (e) {

@@ -30,7 +30,7 @@ class _MusicProgressBarState extends ConsumerState<MusicProgressBar> {
   bool _isDragging = false;
 
   /// 拖动过程中的临时进度值
-  double _dragValue = 0.0;
+  double _dragValue = 0;
 
   @override
   Widget build(BuildContext context) {

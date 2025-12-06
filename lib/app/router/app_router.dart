@@ -16,10 +16,42 @@ import 'package:my_nas/shared/widgets/main_scaffold.dart';
 final rootNavigatorKey = GlobalKey<NavigatorState>();
 final shellNavigatorKey = GlobalKey<NavigatorState>();
 
+/// 待处理的 deep link 路径
+/// 当应用尚未完全初始化时，保存 deep link 路径稍后处理
+String? _pendingDeepLink;
+
+/// 获取并清除待处理的 deep link
+String? consumePendingDeepLink() {
+  final link = _pendingDeepLink;
+  _pendingDeepLink = null;
+  return link;
+}
+
 final appRouter = GoRouter(
   navigatorKey: rootNavigatorKey,
   initialLocation: Routes.startup,
   debugLogDiagnostics: kDebugMode,
+  // 错误处理 - 当导航失败时显示错误页面
+  errorBuilder: (context, state) {
+    logger.e('GoRouter error: ${state.error}');
+    return Scaffold(
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline, size: 48, color: Colors.red),
+            const SizedBox(height: 16),
+            Text('导航错误: ${state.uri}'),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () => context.go(Routes.music),
+              child: const Text('返回音乐'),
+            ),
+          ],
+        ),
+      ),
+    );
+  },
   // 处理深度链接 (mynas://music/player -> /music/player)
   redirect: (context, state) {
     final uri = state.uri;

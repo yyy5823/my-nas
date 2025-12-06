@@ -347,7 +347,7 @@ class _PathCard extends ConsumerStatefulWidget {
 }
 
 class _PathCardState extends ConsumerState<_PathCard> {
-  // 扫描状态
+  // 扫描状态（仅用于视频，其他媒体类型通过 provider 监听）
   bool _isScanning = false;
   double _scanProgress = 0;
   String? _scanDescription;
@@ -402,6 +402,51 @@ class _PathCardState extends ConsumerState<_PathCard> {
     super.dispose();
   }
 
+  /// 获取非视频类型的扫描进度信息
+  (bool isLoading, double progress, String? description) _getOtherMediaScanState() {
+    switch (widget.mediaType) {
+      case MediaType.music:
+        final state = ref.watch(musicListProvider);
+        if (state is MusicListLoading) {
+          final phase = state.phase == MusicScanPhase.metadata ? '提取元数据' : '扫描文件';
+          final desc = state.currentFolder != null
+              ? '$phase: ${state.currentFolder}'
+              : phase;
+          return (true, state.progress, desc);
+        }
+        return (false, 0, null);
+      case MediaType.photo:
+        final state = ref.watch(photoListProvider);
+        if (state is PhotoListLoading) {
+          final desc = state.currentFolder != null
+              ? '扫描: ${state.currentFolder}'
+              : '扫描照片...';
+          return (true, state.progress, desc);
+        }
+        return (false, 0, null);
+      case MediaType.book:
+        final state = ref.watch(bookListProvider);
+        if (state is BookListLoading) {
+          final desc = state.currentFolder != null
+              ? '扫描: ${state.currentFolder}'
+              : '扫描书籍...';
+          return (true, state.progress, desc);
+        }
+        return (false, 0, null);
+      case MediaType.comic:
+        final state = ref.watch(comicListProvider);
+        if (state is ComicListLoading) {
+          final desc = state.currentFolder != null
+              ? '扫描: ${state.currentFolder}'
+              : '扫描漫画...';
+          return (true, state.progress, desc);
+        }
+        return (false, 0, null);
+      default:
+        return (false, 0, null);
+    }
+  }
+
   Future<void> _loadStats() async {
     try {
       switch (widget.mediaType) {
@@ -440,6 +485,15 @@ class _PathCardState extends ConsumerState<_PathCard> {
     final isConnected = widget.connection?.status == SourceStatus.connected;
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+
+    // 获取非视频类型的扫描进度
+    final (otherIsScanning, otherProgress, otherDescription) =
+        widget.mediaType != MediaType.video ? _getOtherMediaScanState() : (false, 0.0, null);
+
+    // 合并扫描状态：视频用 _isScanning，其他用 provider 状态
+    final isCurrentlyScanning = widget.mediaType == MediaType.video ? _isScanning : otherIsScanning;
+    final currentProgress = widget.mediaType == MediaType.video ? _scanProgress : otherProgress;
+    final currentDescription = widget.mediaType == MediaType.video ? _scanDescription : otherDescription;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -516,7 +570,7 @@ class _PathCardState extends ConsumerState<_PathCard> {
                   ),
                 ),
                 // 更多按钮
-                _buildMoreButton(context),
+                _buildMoreButton(context, isCurrentlyScanning),
               ],
             ),
 
@@ -527,13 +581,13 @@ class _PathCardState extends ConsumerState<_PathCard> {
             ],
 
             // 扫描进度
-            if (_isScanning) ...[
+            if (isCurrentlyScanning) ...[
               const SizedBox(height: 12),
               _buildProgressRow(
                 theme: theme,
                 isDark: isDark,
-                progress: _scanProgress,
-                description: _scanDescription ?? '正在扫描...',
+                progress: currentProgress,
+                description: currentDescription ?? '正在扫描...',
                 color: AppColors.primary,
               ),
             ],
@@ -696,7 +750,7 @@ class _PathCardState extends ConsumerState<_PathCard> {
     ],
   );
 
-  Widget _buildMoreButton(BuildContext context) => PopupMenuButton<String>(
+  Widget _buildMoreButton(BuildContext context, bool isCurrentlyScanning) => PopupMenuButton<String>(
     onSelected: (value) => _handleMenuAction(value, context),
     itemBuilder: (context) {
       final isConnected = widget.connection?.status == SourceStatus.connected;
@@ -704,15 +758,15 @@ class _PathCardState extends ConsumerState<_PathCard> {
         // 扫描按钮
         PopupMenuItem(
           value: 'scan',
-          enabled: isConnected && !_isScanning,
+          enabled: isConnected && !isCurrentlyScanning,
           child: Row(
             children: [
               Icon(
-                _isScanning ? Icons.hourglass_empty : Icons.refresh_rounded,
-                color: isConnected && !_isScanning ? null : Colors.grey,
+                isCurrentlyScanning ? Icons.hourglass_empty : Icons.refresh_rounded,
+                color: isConnected && !isCurrentlyScanning ? null : Colors.grey,
               ),
               const SizedBox(width: 12),
-              Text(_isScanning ? '扫描中...' : '扫描'),
+              Text(isCurrentlyScanning ? '扫描中...' : '扫描'),
             ],
           ),
         ),

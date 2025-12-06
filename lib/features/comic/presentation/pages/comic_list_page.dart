@@ -272,11 +272,22 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
       );
 
       try {
+        var lastUpdateCount = comics.length;
         await _scanForComics(
           connection.adapter.fileSystem,
           mediaPath.path,
           comics,
           sourceId: mediaPath.sourceId,
+          onBatchFound: () {
+            // 每发现 5 本漫画更新一次进度
+            if (comics.length - lastUpdateCount >= 5) {
+              lastUpdateCount = comics.length;
+              state = ComicListLoading(
+                progress: scannedFolders / totalFolders,
+                currentFolder: '${mediaPath.displayName} (${comics.length})',
+              );
+            }
+          },
         );
       } on Exception catch (e) {
         logger.w('扫描漫画文件夹失败: ${mediaPath.path} - $e');
@@ -303,6 +314,7 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
     String path,
     List<ComicItem> comics, {
     required String sourceId,
+    VoidCallback? onBatchFound,
   }) async {
     try {
       final items = await fs.listDirectory(path);
@@ -324,6 +336,7 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
               pageCount: comicInfo.pageCount,
               modifiedTime: item.modifiedTime,
             ));
+            onBatchFound?.call();
           }
         } else {
           // 检查是否是漫画压缩包
@@ -339,6 +352,7 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
               type: comicType,
               fileSize: item.size,
             ));
+            onBatchFound?.call();
           }
         }
       }

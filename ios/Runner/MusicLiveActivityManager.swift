@@ -1,6 +1,7 @@
 import Foundation
 import ActivityKit
 import UIKit
+import Flutter
 
 /// 音乐 Live Activity 管理器
 /// 专门为个人开发者账号设计，使用 pushType: nil 来避免 Push Notification 能力限制
