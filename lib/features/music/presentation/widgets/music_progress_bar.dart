@@ -122,19 +122,22 @@ class _MusicProgressBarState extends ConsumerState<MusicProgressBar> {
     });
   }
 
-  void _onDragEnd(double value) {
+  Future<void> _onDragEnd(double value) async {
     // 计算目标位置
     final duration = ref.read(musicPlayerControllerProvider).duration;
     final position = Duration(
       milliseconds: (value * duration.inMilliseconds).toInt(),
     );
 
-    // 执行 seek
-    ref.read(musicPlayerControllerProvider.notifier).seek(position);
+    // 执行 seek 并等待完成
+    await ref.read(musicPlayerControllerProvider.notifier).seek(position);
 
-    setState(() {
-      _isDragging = false;
-    });
+    // seek 完成后才结束拖动状态
+    if (mounted) {
+      setState(() {
+        _isDragging = false;
+      });
+    }
   }
 
   String _formatDuration(Duration d) {

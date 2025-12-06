@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -15,10 +16,46 @@ import 'package:my_nas/features/music/presentation/widgets/music_settings_sheet.
 class MusicPlayerPage extends ConsumerStatefulWidget {
   const MusicPlayerPage({super.key});
 
+  /// 导航锁，防止短时间内重复打开播放器页面
+  static bool _isNavigating = false;
+  static DateTime? _lastNavigationTime;
+
   /// 全屏打开音乐播放器（隐藏底部导航栏）
-  static Future<void> open(BuildContext context) => Navigator.of(context, rootNavigator: true).push(
-      MaterialPageRoute<void>(builder: (context) => const MusicPlayerPage()),
-    );
+  /// 包含防重复导航机制，避免快速连续点击导致多次打开
+  static Future<void> open(BuildContext context) async {
+    // 检查是否正在导航中
+    if (_isNavigating) {
+      return;
+    }
+
+    // 检查上次导航时间，防止短时间内重复导航（500ms 防抖）
+    final now = DateTime.now();
+    if (_lastNavigationTime != null &&
+        now.difference(_lastNavigationTime!).inMilliseconds < 500) {
+      return;
+    }
+
+    // 检查当前路由是否已经是播放器页面
+    final navigator = Navigator.of(context, rootNavigator: true);
+    final currentRoute = ModalRoute.of(context);
+    if (currentRoute?.settings.name == '/music_player') {
+      return;
+    }
+
+    _isNavigating = true;
+    _lastNavigationTime = now;
+
+    try {
+      await navigator.push(
+        MaterialPageRoute<void>(
+          settings: const RouteSettings(name: '/music_player'),
+          builder: (context) => const MusicPlayerPage(),
+        ),
+      );
+    } finally {
+      _isNavigating = false;
+    }
+  }
 
   @override
   ConsumerState<MusicPlayerPage> createState() => _MusicPlayerPageState();
@@ -353,8 +390,20 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
       );
     }
 
-    // 其次使用封面 URL
-    if (music.coverUrl != null) {
+    // 其次使用封面 URL（支持 file:// 和网络 URL）
+    if (music.coverUrl != null && music.coverUrl!.isNotEmpty) {
+      if (music.coverUrl!.startsWith('file://')) {
+        final filePath = music.coverUrl!.substring(7); // 移除 'file://' 前缀
+        return Image.file(
+          File(filePath),
+          key: ValueKey('mini_cover_file_${music.id}'),
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+          errorBuilder: (_, _, _) => _buildMiniCoverPlaceholder(isDark),
+        );
+      }
       return Image.network(
         music.coverUrl!,
         key: ValueKey('mini_cover_url_${music.id}'),
@@ -586,8 +635,20 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
       );
     }
 
-    // 其次使用封面 URL
-    if (music.coverUrl != null) {
+    // 其次使用封面 URL（支持 file:// 和网络 URL）
+    if (music.coverUrl != null && music.coverUrl!.isNotEmpty) {
+      if (music.coverUrl!.startsWith('file://')) {
+        final filePath = music.coverUrl!.substring(7); // 移除 'file://' 前缀
+        return Image.file(
+          File(filePath),
+          key: ValueKey('cover_file_${music.id}'),
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+          errorBuilder: (_, _, _) => _buildCoverPlaceholder(size, isDark),
+        );
+      }
       return Image.network(
         music.coverUrl!,
         key: ValueKey('cover_url_${music.id}'),

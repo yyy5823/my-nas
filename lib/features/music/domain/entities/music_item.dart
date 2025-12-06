@@ -37,6 +37,7 @@ class MusicItem {
     int? year,
     String? genre,
     List<int>? coverData,
+    String? coverUrl,
   }) {
     final parsed = parseFileName(file.name);
     final folderPath = file.path.split('/');
@@ -56,6 +57,7 @@ class MusicItem {
       year: year,
       genre: genre,
       coverData: coverData,
+      coverUrl: coverUrl,
       size: file.size,
       folder: folderName,
     );

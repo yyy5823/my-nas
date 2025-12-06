@@ -5,7 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:my_nas/core/utils/logger.dart';
-import 'package:my_nas/features/music/data/audio_sources/stream_audio_source.dart';
+import 'package:my_nas/features/music/data/services/audio_cache_service.dart';
 import 'package:my_nas/features/music/data/services/live_activity_service.dart';
 import 'package:my_nas/features/music/data/services/music_metadata_service.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
@@ -135,22 +135,25 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   MusicPlayerNotifier(this._ref) : super(const MusicPlayerState()) {
     _initPlayer();
     _initLiveActivity();
+    _initAudioCache();
   }
 
   final Ref _ref;
   late final AudioPlayer _player;
-  Timer? _positionUpdateTimer;
 
-  // 用于位置估算的变量（当 StreamAudioSource 无法获取真实位置时使用）
-  DateTime? _playStartTime;
-  Duration _playStartPosition = Duration.zero;
-  bool _useEstimatedPosition = false;
+  // 音频缓存服务
+  final AudioCacheService _audioCacheService = AudioCacheService();
 
   // Live Activity 服务
   final LiveActivityService _liveActivityService = LiveActivityService();
   Timer? _liveActivityUpdateTimer;
 
   AudioPlayer get player => _player;
+
+  /// 初始化音频缓存服务
+  Future<void> _initAudioCache() async {
+    await _audioCacheService.init();
+  }
 
   void _initPlayer() {
     _player = AudioPlayer();
@@ -163,25 +166,6 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     _player.playingStream.listen((playing) {
       logger.i('MusicPlayer: playingStream => $playing');
       state = state.copyWith(isPlaying: playing);
-
-      // 管理定时器和位置估算
-      if (playing) {
-        // 开始播放时记录时间点
-        if (_useEstimatedPosition) {
-          _playStartTime = DateTime.now();
-          _playStartPosition = state.position;
-          logger.d('MusicPlayer: 开始位置估算 - startPosition=$_playStartPosition');
-        }
-        _startPositionUpdateTimer();
-      } else {
-        // 暂停时更新起始位置
-        if (_useEstimatedPosition && _playStartTime != null) {
-          _playStartPosition = _getEstimatedPosition();
-          _playStartTime = null;
-          logger.d('MusicPlayer: 暂停位置估算 - savedPosition=$_playStartPosition');
-        }
-        _stopPositionUpdateTimer();
-      }
     });
 
     // 监听缓冲状态
@@ -198,7 +182,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       }
     });
 
-    // 监听播放位置
+    // 监听播放位置（使用播放器原生的 positionStream，无需定时器）
     _player.positionStream.listen((position) {
       // 只在位置变化超过1秒时记录日志，避免日志过多
       if ((position.inSeconds - state.position.inSeconds).abs() >= 1) {
@@ -210,10 +194,8 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     // 监听总时长
     _player.durationStream.listen((duration) {
       logger.i('MusicPlayer: durationStream => $duration');
-      if (duration != null) {
+      if (duration != null && duration > Duration.zero) {
         state = state.copyWith(duration: duration);
-      } else {
-        logger.w('MusicPlayer: durationStream 返回 null');
       }
     });
 
@@ -228,73 +210,6 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       },
     );
 
-  }
-
-  /// 获取估算的播放位置
-  Duration _getEstimatedPosition() {
-    if (_playStartTime == null) {
-      return _playStartPosition;
-    }
-    final elapsed = DateTime.now().difference(_playStartTime!);
-    final estimated = _playStartPosition + elapsed;
-
-    // 不超过总时长
-    if (state.duration > Duration.zero && estimated > state.duration) {
-      return state.duration;
-    }
-    return estimated;
-  }
-
-  /// 启动位置更新定时器
-  void _startPositionUpdateTimer() {
-    _stopPositionUpdateTimer();
-    logger.i('MusicPlayer: 启动位置更新定时器 (useEstimated=$_useEstimatedPosition)');
-
-    _positionUpdateTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
-      final playerPosition = _player.position;
-      final duration = _player.duration;
-      final playerState = _player.processingState;
-
-      // 决定使用哪个位置
-      Duration effectivePosition;
-      if (_useEstimatedPosition) {
-        effectivePosition = _getEstimatedPosition();
-      } else {
-        effectivePosition = playerPosition;
-      }
-
-      // 每秒打印一次状态
-      if (effectivePosition.inMilliseconds % 1000 < 200) {
-        logger.d('MusicPlayer: 定时器 - position=$effectivePosition (player=$playerPosition), duration=${state.duration}, state=$playerState');
-      }
-
-      // 更新位置
-      if (effectivePosition != state.position) {
-        state = state.copyWith(position: effectivePosition);
-      }
-
-      // 如果播放器有了新的 duration，更新它
-      if (duration != null && duration != state.duration && duration > Duration.zero) {
-        logger.i('MusicPlayer: 定时器检测到 duration 更新 => $duration');
-        state = state.copyWith(duration: duration);
-        // 如果播放器能获取到有效 duration，可能也能获取 position
-        // 但保持当前模式不变，以确保一致性
-      }
-
-      // 检测播放完成（基于估算位置）
-      if (_useEstimatedPosition &&
-          state.duration > Duration.zero &&
-          effectivePosition >= state.duration) {
-        logger.i('MusicPlayer: 估算位置达到结尾，触发播放完成');
-        _onTrackCompleted();
-      }
-    });
-  }
-
-  /// 停止位置更新定时器
-  void _stopPositionUpdateTimer() {
-    _positionUpdateTimer?.cancel();
-    _positionUpdateTimer = null;
   }
 
   /// 应用保存的设置
@@ -415,12 +330,8 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     ..d('MusicPlayer: size=${music.size}, path=${music.path}, sourceId=${music.sourceId}');
 
     try {
-      // 先停止当前播放并重置位置估算
+      // 先停止当前播放
       await _player.stop();
-      _stopPositionUpdateTimer();
-      _useEstimatedPosition = false;
-      _playStartTime = null;
-      _playStartPosition = Duration.zero;
       state = state.copyWith(position: Duration.zero, duration: Duration.zero);
       logger.d('MusicPlayer: 已停止当前播放并重置状态');
 
@@ -431,29 +342,12 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       }
       logger.d('MusicPlayer: URI 解析成功 - scheme: ${uri.scheme}, host: ${uri.host}');
 
-      // 获取文件扩展名来确定 MIME 类型
-      final ext = p.extension(music.name).toLowerCase();
-      var mimeType = 'audio/mpeg'; // 默认
-      if (ext == '.flac') {
-        mimeType = 'audio/flac';
-      } else if (ext == '.wav') {
-        mimeType = 'audio/wav';
-      } else if (ext == '.m4a' || ext == '.aac') {
-        mimeType = 'audio/aac';
-      } else if (ext == '.ogg') {
-        mimeType = 'audio/ogg';
-      }
-
-      logger.d('MusicPlayer: 正在设置音频源 (MIME: $mimeType)...');
-
-      // 根据音频来源选择合适的音频源
-      // 对于 NAS 源，优先使用 NasStreamAudioSource 以确保认证和编码正确处理
-      // 对于本地文件或其他直接 URL，使用 AudioSource.uri
-      final AudioSource audioSource;
+      // 根据音频来源选择合适的播放方式
+      Uri? localFileUri;
 
       if (music.sourceId != null) {
-        // NAS 源：使用流式音频源，通过 Dart HTTP 客户端处理认证
-        // 这可以避免 iOS AVPlayer 对 NAS URL 的兼容性问题（如自签名证书、特殊字符编码等）
+        // NAS 源：先下载到本地缓存，然后播放本地文件
+        // 这样可以使用播放器原生的 positionStream，无需定时器估算
         logger.d('MusicPlayer: 检测到 NAS 源 (sourceId=${music.sourceId})');
 
         final connections = _ref.read(activeConnectionsProvider);
@@ -463,94 +357,75 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
           throw Exception('源未连接，请先连接到 NAS: ${music.sourceId}');
         }
 
-        logger.d('MusicPlayer: 使用 NasStreamAudioSource, path=${music.path}');
-        audioSource = NasStreamAudioSource(
-          fileSystem: connection.adapter.fileSystem,
-          path: music.path,
-          tag: music.id,
-        );
-        // NasStreamAudioSource 在 iOS 上无法获取真实播放位置，需要使用估算
-        _useEstimatedPosition = true;
-        logger.i('MusicPlayer: 启用位置估算模式 (NasStreamAudioSource)');
+        // 获取文件大小
+        final fileInfo = await connection.adapter.fileSystem.getFileInfo(music.path);
+        final fileSize = fileInfo.size;
+
+        // 检查是否应该使用缓存（文件不超过 100MB）
+        if (_audioCacheService.shouldUseCache(fileSize)) {
+          logger.i('MusicPlayer: 使用本地缓存播放模式 (文件大小: ${_formatFileSize(fileSize)})');
+
+          // 下载到本地缓存
+          final cachedFile = await _audioCacheService.getCachedFile(
+            fileSystem: connection.adapter.fileSystem,
+            remotePath: music.path,
+            sourceId: music.sourceId!,
+            onProgress: (progress) {
+              // 可以在这里更新下载进度 UI
+              logger.d('MusicPlayer: 下载进度: ${(progress * 100).toStringAsFixed(1)}%');
+            },
+          );
+
+          if (cachedFile != null) {
+            localFileUri = Uri.file(cachedFile.path);
+            logger.i('MusicPlayer: 使用缓存文件: ${cachedFile.path}');
+          } else {
+            logger.w('MusicPlayer: 缓存失败，回退到直接 URL 播放');
+            // 回退到直接 URL
+            final directUrl = await connection.adapter.fileSystem.getFileUrl(music.path);
+            localFileUri = Uri.parse(directUrl);
+          }
+        } else {
+          // 文件过大，直接使用 URL 播放（接受可能的位置追踪问题）
+          logger.w('MusicPlayer: 文件过大 (${_formatFileSize(fileSize)})，使用直接 URL 播放');
+          final directUrl = await connection.adapter.fileSystem.getFileUrl(music.path);
+          localFileUri = Uri.parse(directUrl);
+        }
       } else if (uri.scheme == 'file') {
         // 本地文件
-        logger.d('MusicPlayer: 使用 AudioSource.uri (本地文件)');
-        audioSource = AudioSource.uri(uri);
+        logger.d('MusicPlayer: 本地文件');
+        localFileUri = uri;
       } else if (uri.scheme == 'http' || uri.scheme == 'https') {
-        // 非 NAS 源的 HTTP/HTTPS URL - 直接播放
-        logger.d('MusicPlayer: 使用 AudioSource.uri (HTTP/HTTPS)');
-        audioSource = AudioSource.uri(
-          uri,
-          headers: {
-            'Accept': mimeType,
-          },
-        );
+        // HTTP/HTTPS URL
+        logger.d('MusicPlayer: 使用 HTTP/HTTPS URL');
+        localFileUri = uri;
       } else {
         throw Exception('不支持的音频协议: ${uri.scheme}');
       }
 
-      logger.d('MusicPlayer: 调用 setAudioSource...');
-      await _player.setAudioSource(audioSource);
+      // 设置音频源
+      logger.d('MusicPlayer: 设置音频源: $localFileUri');
+      await _player.setAudioSource(AudioSource.uri(localFileUri));
       logger.d('MusicPlayer: 音频源设置成功');
 
-      // 获取音频时长 - 使用多种来源
-      Duration? effectiveDuration;
-
-      // 1. 首先检查播放器是否获取到时长
+      // 获取播放器时长
       final playerDuration = _player.duration;
       logger.i('MusicPlayer: 播放器时长 => $playerDuration');
 
-      if (playerDuration != null && playerDuration > Duration.zero) {
-        effectiveDuration = playerDuration;
-        logger.i('MusicPlayer: 使用播放器时长');
-      }
-      // 2. 如果播放器没有时长，使用 MusicItem 的元数据时长
-      else if (music.duration != null && music.duration! > Duration.zero) {
+      // 使用播放器时长或 MusicItem 的元数据时长
+      Duration? effectiveDuration = playerDuration;
+      if ((effectiveDuration == null || effectiveDuration == Duration.zero) &&
+          music.duration != null && music.duration! > Duration.zero) {
         effectiveDuration = music.duration;
         logger.i('MusicPlayer: 使用 MusicItem 的时长信息 => ${music.duration}');
       }
-      // 3. 如果仍然没有时长且是 NAS 源，尝试通过直接 URL 获取时长
-      else if (music.sourceId != null) {
-        logger.i('MusicPlayer: 尝试通过直接 URL 获取音频时长...');
-        try {
-          final connections = _ref.read(activeConnectionsProvider);
-          final connection = connections[music.sourceId];
-          if (connection != null) {
-            // 获取直接访问 URL
-            final directUrl = await connection.adapter.fileSystem.getFileUrl(music.path);
-            logger.d('MusicPlayer: 直接 URL => ${directUrl.substring(0, directUrl.length.clamp(0, 100))}...');
 
-            // 使用临时播放器获取时长
-            final tempPlayer = AudioPlayer();
-            try {
-              await tempPlayer.setUrl(directUrl);
-              final tempDuration = tempPlayer.duration;
-              if (tempDuration != null && tempDuration > Duration.zero) {
-                effectiveDuration = tempDuration;
-                logger.i('MusicPlayer: 从直接 URL 获取到时长 => $tempDuration');
-              }
-            } on Exception catch (e) {
-              logger.w('MusicPlayer: 通过直接 URL 获取时长失败: $e');
-            } finally {
-              await tempPlayer.dispose();
-            }
-          }
-        } on Exception catch (e) {
-          logger.w('MusicPlayer: 获取直接 URL 失败: $e');
-        }
-      }
-
-      // 应用时长
-      if (effectiveDuration != null) {
+      if (effectiveDuration != null && effectiveDuration > Duration.zero) {
         state = state.copyWith(duration: effectiveDuration);
         logger.i('MusicPlayer: 最终时长 => $effectiveDuration');
-      } else {
-        logger.w('MusicPlayer: 无法立即获取音频时长，将在播放过程中尝试获取');
-        // 对于某些流式音频源，duration 可能需要在播放过程中才能获取
-        // 延迟检查播放器是否获取到了 duration
-        unawaited(_tryGetDurationLater(music));
       }
 
+      // 跳转到指定位置
       if (startPosition != null && startPosition > Duration.zero) {
         logger.d('MusicPlayer: 跳转到位置 $startPosition');
         await _player.seek(startPosition);
@@ -558,25 +433,21 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
       // 确保音量正确
       final currentVolume = _player.volume;
-      logger.d('MusicPlayer: 当前音量 => $currentVolume');
       if (currentVolume == 0) {
         await _player.setVolume(1);
         state = state.copyWith(volume: 1);
         logger.d('MusicPlayer: 音量已重置为 1.0');
       }
 
+      // 开始播放
       logger.d('MusicPlayer: 调用 play()...');
       await _player.play();
-      logger..i('MusicPlayer: play() 调用完成')
-
-      // 验证播放状态
-      ..d('MusicPlayer: 播放状态 - playing: ${_player.playing}, processingState: ${_player.processingState}');
+      logger.i('MusicPlayer: play() 调用完成');
 
       // 添加到播放历史
       await _ref.read(musicHistoryProvider.notifier).addToHistory(music);
 
       // 在后台提取元数据
-      logger.i('MusicPlayer: 开始后台提取元数据...');
       unawaited(_extractMetadataInBackground(music));
 
       // 启动 Live Activity（iOS 灵动岛）
@@ -587,71 +458,57 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     }
   }
 
-  /// 延迟尝试获取音频时长
-  /// 对于某些流式音频源，duration 可能需要在播放过程中才能获取
-  Future<void> _tryGetDurationLater(MusicItem music) async {
-    // 等待播放器开始播放后再检查
-    await Future<void>.delayed(const Duration(seconds: 2));
+  /// 格式化文件大小
+  String _formatFileSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / 1024 / 1024).toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / 1024 / 1024 / 1024).toStringAsFixed(1)} GB';
+  }
 
-    // 检查是否仍在播放同一首歌
-    var currentMusic = _ref.read(currentMusicProvider);
-    if (currentMusic?.id != music.id) {
-      return;
+  /// 基于文件大小估算音频时长
+  /// 使用常见比特率估算，对于无法获取元数据的文件提供 fallback
+  Duration? _estimateDurationFromFileSize(MusicItem music) {
+    final fileSize = music.size;
+    if (fileSize == null || fileSize <= 0) return null;
+
+    // 根据文件扩展名选择估算比特率
+    final ext = p.extension(music.name).toLowerCase();
+    int estimatedBitrate; // kbps
+
+    switch (ext) {
+      case '.flac':
+        // FLAC 通常是 800-1400 kbps，使用 1000 kbps 作为平均值
+        estimatedBitrate = 1000;
+      case '.wav':
+        // WAV 通常是 1411 kbps (CD 质量)
+        estimatedBitrate = 1411;
+      case '.m4a':
+      case '.aac':
+        // AAC 通常是 128-256 kbps
+        estimatedBitrate = 192;
+      case '.ogg':
+        // OGG 通常是 128-320 kbps
+        estimatedBitrate = 192;
+      case '.mp3':
+      default:
+        // MP3 通常是 128-320 kbps，使用 192 kbps 作为平均值
+        estimatedBitrate = 192;
     }
 
-    // 检查播放器是否获取到了 duration
-    var playerDuration = _player.duration;
-    if (playerDuration != null && playerDuration > Duration.zero && state.duration == Duration.zero) {
-      state = state.copyWith(duration: playerDuration);
-      logger.i('MusicPlayer: 延迟获取到播放器时长 => $playerDuration');
-      return;
+    // 文件大小 (bytes) / (比特率 (kbps) * 1000 / 8) = 时长 (秒)
+    // 简化：时长 (秒) = 文件大小 (bytes) * 8 / (比特率 (kbps) * 1000)
+    final durationSeconds = (fileSize * 8) / (estimatedBitrate * 1000);
+
+    // 验证结果是否合理（1秒到3小时之间）
+    if (durationSeconds < 1 || durationSeconds > 10800) {
+      logger.w('MusicPlayer: 估算时长不合理: ${durationSeconds}s, 跳过');
+      return null;
     }
 
-    // 如果仍然没有 duration，再等待一段时间后重试一次
-    await Future<void>.delayed(const Duration(seconds: 3));
-
-    // 再次检查是否仍在播放同一首歌
-    currentMusic = _ref.read(currentMusicProvider);
-    if (currentMusic?.id != music.id) {
-      return;
-    }
-
-    playerDuration = _player.duration;
-    if (playerDuration != null && playerDuration > Duration.zero && state.duration == Duration.zero) {
-      state = state.copyWith(duration: playerDuration);
-      logger.i('MusicPlayer: 延迟获取到播放器时长 (第二次尝试) => $playerDuration');
-      return;
-    }
-
-    // 如果播放器仍然无法获取时长，尝试从元数据服务获取
-    if (state.duration == Duration.zero && music.sourceId != null) {
-      logger.i('MusicPlayer: 尝试从元数据服务获取时长...');
-      try {
-        final connections = _ref.read(activeConnectionsProvider);
-        final connection = connections[music.sourceId];
-        if (connection != null && connection.status == SourceStatus.connected) {
-          final metadataService = MusicMetadataService();
-          await metadataService.init();
-          final duration = await metadataService.getDurationFromNasFile(
-            connection.adapter.fileSystem,
-            music.path,
-          );
-          if (duration != null && duration > Duration.zero) {
-            // 再次确认是否仍在播放同一首歌
-            currentMusic = _ref.read(currentMusicProvider);
-            if (currentMusic?.id == music.id && state.duration == Duration.zero) {
-              state = state.copyWith(duration: duration);
-              logger.i('MusicPlayer: 从元数据服务获取到时长 => $duration');
-
-              // 同时更新 MusicItem 的时长信息
-              _ref.read(currentMusicProvider.notifier).state = music.copyWith(duration: duration);
-            }
-          }
-        }
-      } on Exception catch (e, stackTrace) {
-        logger.w('MusicPlayer: 从元数据服务获取时长失败', e, stackTrace);
-      }
-    }
+    return Duration(seconds: durationSeconds.round());
   }
 
   /// 在后台提取音乐元数据
@@ -753,9 +610,33 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
         }
       } else {
         logger.w('MusicPlayer: 未能提取到元数据');
+        // 元数据提取失败时，如果没有时长，尝试基于文件大小估算
+        if (state.duration == Duration.zero) {
+          final estimatedDuration = _estimateDurationFromFileSize(music);
+          if (estimatedDuration != null && estimatedDuration > Duration.zero) {
+            final currentMusic = _ref.read(currentMusicProvider);
+            if (currentMusic?.id == music.id) {
+              state = state.copyWith(duration: estimatedDuration);
+              logger.i('MusicPlayer: 元数据提取失败，使用文件大小估算时长 => $estimatedDuration');
+              _ref.read(currentMusicProvider.notifier).state = music.copyWith(duration: estimatedDuration);
+            }
+          }
+        }
       }
     } on Exception catch (e, stackTrace) {
       logger.e('MusicPlayer: 提取元数据失败: $e', e, stackTrace);
+      // 元数据提取异常时，如果没有时长，尝试基于文件大小估算
+      if (state.duration == Duration.zero) {
+        final estimatedDuration = _estimateDurationFromFileSize(music);
+        if (estimatedDuration != null && estimatedDuration > Duration.zero) {
+          final currentMusic = _ref.read(currentMusicProvider);
+          if (currentMusic?.id == music.id) {
+            state = state.copyWith(duration: estimatedDuration);
+            logger.i('MusicPlayer: 元数据提取异常，使用文件大小估算时长 => $estimatedDuration');
+            _ref.read(currentMusicProvider.notifier).state = music.copyWith(duration: estimatedDuration);
+          }
+        }
+      }
     }
   }
 
@@ -799,10 +680,6 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   /// 停止
   Future<void> stop() async {
     await _player.stop();
-    _stopPositionUpdateTimer();
-    _useEstimatedPosition = false;
-    _playStartTime = null;
-    _playStartPosition = Duration.zero;
     state = state.copyWith(position: Duration.zero, duration: Duration.zero);
     _ref.read(currentMusicProvider.notifier).state = null;
     // 结束 Live Activity
@@ -849,21 +726,16 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
   /// 跳转到指定位置
   Future<void> seek(Duration position) async {
-    logger.d('MusicPlayer: seek => $position (useEstimated=$_useEstimatedPosition)');
+    logger.d('MusicPlayer: seek => $position');
 
-    // 对于估算模式，需要更新起始位置
-    if (_useEstimatedPosition) {
-      _playStartPosition = position;
-      if (state.isPlaying) {
-        _playStartTime = DateTime.now();
-      } else {
-        _playStartTime = null;
-      }
-      // 立即更新 UI
+    try {
+      await _player.seek(position);
+      // seek 完成后更新 state 以确保 UI 同步
       state = state.copyWith(position: position);
+      logger.d('MusicPlayer: seek 完成');
+    } on Exception catch (e) {
+      logger.e('MusicPlayer: seek 失败: $e');
     }
-
-    await _player.seek(position);
   }
 
   /// 设置音量 (0.0 - 1.0)
@@ -898,7 +770,6 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
   @override
   void dispose() {
-    _stopPositionUpdateTimer();
     _stopLiveActivityUpdateTimer();
     _liveActivityService.dispose();
     _player.dispose();

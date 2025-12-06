@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui';
 
@@ -115,13 +116,24 @@ class MiniPlayer extends ConsumerWidget {
         gaplessPlayback: true,
         errorBuilder: (_, _, _) => _buildCoverPlaceholder(isDark),
       );
-    } else if (coverUrl != null) {
-      coverImage = Image.network(
-        coverUrl,
-        fit: BoxFit.cover,
-        gaplessPlayback: true,
-        errorBuilder: (_, _, _) => _buildCoverPlaceholder(isDark),
-      );
+    } else if (coverUrl != null && coverUrl.isNotEmpty) {
+      // 支持 file:// URL 和网络 URL
+      if (coverUrl.startsWith('file://')) {
+        final filePath = coverUrl.substring(7); // 移除 'file://' 前缀
+        coverImage = Image.file(
+          File(filePath),
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+          errorBuilder: (_, _, _) => _buildCoverPlaceholder(isDark),
+        );
+      } else {
+        coverImage = Image.network(
+          coverUrl,
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+          errorBuilder: (_, _, _) => _buildCoverPlaceholder(isDark),
+        );
+      }
     } else {
       coverImage = _buildCoverPlaceholder(isDark);
     }

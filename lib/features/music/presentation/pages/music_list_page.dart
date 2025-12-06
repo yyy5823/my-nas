@@ -139,6 +139,13 @@ class MusicFileWithSource {
     return File(coverPath!);
   }
 
+  /// 获取封面文件 URL（用于 MusicItem.coverUrl）
+  /// 返回 file:// 格式的 URL，供播放器组件使用
+  String? get coverFileUrl {
+    if (coverPath == null || coverPath!.isEmpty) return null;
+    return 'file://$coverPath';
+  }
+
   /// 格式化时长
   String get durationText {
     if (duration == null) return '--:--';
@@ -1224,6 +1231,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
         year: track.year,
         genre: track.genre,
         coverData: track.coverData,
+        coverUrl: track.coverFileUrl,
       );
 
       // 找到当前曲目在列表中的索引
@@ -1299,6 +1307,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
           year: t.year,
           genre: t.genre,
           coverData: t.coverData,
+          coverUrl: t.coverFileUrl,
         );
         queue.add(item);
         if (t.path == currentTrack.path) {
@@ -1976,14 +1985,34 @@ class AllSongsPage extends ConsumerWidget {
 
       logger.d('AllSongsPage._playAll: 获取第一首歌曲 URL: ${first.path}');
       final url = await firstConnection.adapter.fileSystem.getFileUrl(first.path);
-      final musicItem = MusicItem.fromFileItem(first.file, url, sourceId: first.sourceId);
+      final musicItem = MusicItem.fromFileItem(
+        first.file,
+        url,
+        sourceId: first.sourceId,
+        title: first.title,
+        artist: first.artist,
+        album: first.album,
+        durationMs: first.duration,
+        coverData: first.coverData,
+        coverUrl: first.coverFileUrl,
+      );
 
       final queue = <MusicItem>[];
       for (final track in sortedTracks.take(100)) {
         final conn = connections[track.sourceId];
         if (conn == null || conn.status != SourceStatus.connected) continue;
         final trackUrl = await conn.adapter.fileSystem.getFileUrl(track.path);
-        queue.add(MusicItem.fromFileItem(track.file, trackUrl, sourceId: track.sourceId));
+        queue.add(MusicItem.fromFileItem(
+          track.file,
+          trackUrl,
+          sourceId: track.sourceId,
+          title: track.title,
+          artist: track.artist,
+          album: track.album,
+          durationMs: track.duration,
+          coverData: track.coverData,
+          coverUrl: track.coverFileUrl,
+        ));
       }
       logger.d('AllSongsPage._playAll: 创建队列完成 (${queue.length} 首)');
 
@@ -2028,14 +2057,34 @@ class AllSongsPage extends ConsumerWidget {
 
       logger.d('AllSongsPage._shufflePlay: 获取第一首歌曲 URL: ${first.path}');
       final url = await firstConnection.adapter.fileSystem.getFileUrl(first.path);
-      final musicItem = MusicItem.fromFileItem(first.file, url, sourceId: first.sourceId);
+      final musicItem = MusicItem.fromFileItem(
+        first.file,
+        url,
+        sourceId: first.sourceId,
+        title: first.title,
+        artist: first.artist,
+        album: first.album,
+        durationMs: first.duration,
+        coverData: first.coverData,
+        coverUrl: first.coverFileUrl,
+      );
 
       final queue = <MusicItem>[];
       for (final track in shuffled.take(100)) {
         final conn = connections[track.sourceId];
         if (conn == null || conn.status != SourceStatus.connected) continue;
         final trackUrl = await conn.adapter.fileSystem.getFileUrl(track.path);
-        queue.add(MusicItem.fromFileItem(track.file, trackUrl, sourceId: track.sourceId));
+        queue.add(MusicItem.fromFileItem(
+          track.file,
+          trackUrl,
+          sourceId: track.sourceId,
+          title: track.title,
+          artist: track.artist,
+          album: track.album,
+          durationMs: track.duration,
+          coverData: track.coverData,
+          coverUrl: track.coverFileUrl,
+        ));
       }
       logger.d('AllSongsPage._shufflePlay: 创建队列完成 (${queue.length} 首)');
 
@@ -2378,14 +2427,34 @@ class _AllSongsContent extends ConsumerWidget {
 
       logger.d('_AllSongsView._playAll: 获取第一首歌曲 URL: ${first.path}');
       final url = await firstConnection.adapter.fileSystem.getFileUrl(first.path);
-      final musicItem = MusicItem.fromFileItem(first.file, url, sourceId: first.sourceId);
+      final musicItem = MusicItem.fromFileItem(
+        first.file,
+        url,
+        sourceId: first.sourceId,
+        title: first.title,
+        artist: first.artist,
+        album: first.album,
+        durationMs: first.duration,
+        coverData: first.coverData,
+        coverUrl: first.coverFileUrl,
+      );
 
       final queue = <MusicItem>[];
       for (final track in tracks.take(100)) {
         final conn = connections[track.sourceId];
         if (conn == null || conn.status != SourceStatus.connected) continue;
         final trackUrl = await conn.adapter.fileSystem.getFileUrl(track.path);
-        queue.add(MusicItem.fromFileItem(track.file, trackUrl, sourceId: track.sourceId));
+        queue.add(MusicItem.fromFileItem(
+          track.file,
+          trackUrl,
+          sourceId: track.sourceId,
+          title: track.title,
+          artist: track.artist,
+          album: track.album,
+          durationMs: track.duration,
+          coverData: track.coverData,
+          coverUrl: track.coverFileUrl,
+        ));
       }
       logger.d('_AllSongsView._playAll: 创建队列完成 (${queue.length} 首)');
 
@@ -2430,14 +2499,34 @@ class _AllSongsContent extends ConsumerWidget {
 
       logger.d('_AllSongsView._shufflePlay: 获取第一首歌曲 URL: ${first.path}');
       final url = await firstConnection.adapter.fileSystem.getFileUrl(first.path);
-      final musicItem = MusicItem.fromFileItem(first.file, url, sourceId: first.sourceId);
+      final musicItem = MusicItem.fromFileItem(
+        first.file,
+        url,
+        sourceId: first.sourceId,
+        title: first.title,
+        artist: first.artist,
+        album: first.album,
+        durationMs: first.duration,
+        coverData: first.coverData,
+        coverUrl: first.coverFileUrl,
+      );
 
       final queue = <MusicItem>[];
       for (final track in shuffled.take(100)) {
         final conn = connections[track.sourceId];
         if (conn == null || conn.status != SourceStatus.connected) continue;
         final trackUrl = await conn.adapter.fileSystem.getFileUrl(track.path);
-        queue.add(MusicItem.fromFileItem(track.file, trackUrl, sourceId: track.sourceId));
+        queue.add(MusicItem.fromFileItem(
+          track.file,
+          trackUrl,
+          sourceId: track.sourceId,
+          title: track.title,
+          artist: track.artist,
+          album: track.album,
+          durationMs: track.duration,
+          coverData: track.coverData,
+          coverUrl: track.coverFileUrl,
+        ));
       }
       logger.d('_AllSongsView._shufflePlay: 创建队列完成 (${queue.length} 首)');
 
@@ -2798,6 +2887,7 @@ class _MusicListTile extends ConsumerWidget {
       year: track.year,
       genre: track.genre,
       coverData: track.coverData,
+      coverUrl: track.coverFileUrl,
     );
 
     if (!context.mounted) return;
@@ -2833,6 +2923,7 @@ class _MusicListTile extends ConsumerWidget {
       year: track.year,
       genre: track.genre,
       coverData: track.coverData,
+      coverUrl: track.coverFileUrl,
     );
 
     switch (action) {
@@ -4841,6 +4932,7 @@ class _ModernMusicTile extends ConsumerWidget {
         year: track.year,
         genre: track.genre,
         coverData: track.coverData,
+        coverUrl: track.coverFileUrl,
       );
 
       // 设置播放队列
@@ -4858,6 +4950,7 @@ class _ModernMusicTile extends ConsumerWidget {
           album: t.album,
           durationMs: t.duration,
           coverData: t.coverData,
+          coverUrl: t.coverFileUrl,
         ));
       }
 
@@ -5246,6 +5339,7 @@ class _CompactMusicTile extends ConsumerWidget {
         year: track.year,
         genre: track.genre,
         coverData: track.coverData,
+        coverUrl: track.coverFileUrl,
       );
       logger.d('_CompactMusicTile._playTrack: 创建 MusicItem 成功');
 
@@ -5312,7 +5406,17 @@ class _CompactMusicTile extends ConsumerWidget {
         final conn = connections[t.sourceId];
         if (conn == null || conn.status != SourceStatus.connected) continue;
         final trackUrl = await conn.adapter.fileSystem.getFileUrl(t.path);
-        final item = MusicItem.fromFileItem(t.file, trackUrl, sourceId: t.sourceId);
+        final item = MusicItem.fromFileItem(
+          t.file,
+          trackUrl,
+          sourceId: t.sourceId,
+          title: t.title,
+          artist: t.artist,
+          album: t.album,
+          durationMs: t.duration,
+          coverData: t.coverData,
+          coverUrl: t.coverFileUrl,
+        );
         queue.add(item);
         if (t.path == track.path) {
           newCurrentIndex = queue.length - 1;
@@ -5347,7 +5451,17 @@ class _CompactMusicTile extends ConsumerWidget {
 
     try {
       final url = await adapter.fileSystem.getFileUrl(track.path);
-      final musicItem = MusicItem.fromFileItem(track.file, url, sourceId: track.sourceId);
+      final musicItem = MusicItem.fromFileItem(
+        track.file,
+        url,
+        sourceId: track.sourceId,
+        title: track.title,
+        artist: track.artist,
+        album: track.album,
+        durationMs: track.duration,
+        coverData: track.coverData,
+        coverUrl: track.coverFileUrl,
+      );
 
       switch (action) {
       case 'play_next':
@@ -5587,7 +5701,17 @@ class _PlayAllButton extends ConsumerWidget {
         continue; // 跳过未连接源的歌曲
       }
       final url = await connection.adapter.fileSystem.getFileUrl(track.path);
-      musicItems.add(MusicItem.fromFileItem(track.file, url, sourceId: track.sourceId));
+      musicItems.add(MusicItem.fromFileItem(
+        track.file,
+        url,
+        sourceId: track.sourceId,
+        title: track.title,
+        artist: track.artist,
+        album: track.album,
+        durationMs: track.duration,
+        coverData: track.coverData,
+        coverUrl: track.coverFileUrl,
+      ));
     }
 
     if (musicItems.isEmpty) return;

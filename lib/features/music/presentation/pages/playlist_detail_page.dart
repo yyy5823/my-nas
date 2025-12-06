@@ -201,7 +201,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
       ),
     );
 
-    if (confirmed == true) {
+    if (confirmed ?? false) {
       await ref.read(playlistProvider.notifier).removeFromPlaylist(
             widget.playlist.id,
             track.path,
@@ -402,7 +402,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
               children: [
                 Expanded(
                   child: _PlayButton(
-                    onPressed: () => _playAll(),
+                    onPressed: _playAll,
                     icon: Icons.play_arrow_rounded,
                     label: '播放全部',
                     isPrimary: true,
@@ -581,10 +581,10 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
 
   Future<void> _playTrack(MusicItem track, int index) async {
     final playerNotifier = ref.read(musicPlayerControllerProvider.notifier);
-    final queueNotifier = ref.read(playQueueProvider.notifier);
+    final queueNotifier = ref.read(playQueueProvider.notifier)
 
     // 设置播放队列为歌单中的所有歌曲
-    queueNotifier.setQueue(_tracks);
+    ..setQueue(_tracks);
     // 播放选中的歌曲
     await playerNotifier.play(track);
   }
