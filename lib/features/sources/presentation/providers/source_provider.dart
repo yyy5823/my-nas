@@ -158,12 +158,14 @@ class ActiveConnectionsNotifier
     String sourceId,
     String otpCode, {
     bool rememberDevice = false,
+    String? password,
   }) async {
     final manager = _ref.read(sourceManagerProvider);
     final connection = await manager.verify2FA(
       sourceId,
       otpCode,
       rememberDevice: rememberDevice,
+      password: password,
     );
     state = {...state, sourceId: connection};
     return connection;

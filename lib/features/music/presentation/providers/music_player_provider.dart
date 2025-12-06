@@ -658,11 +658,19 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   Future<void> _extractMetadataInBackground(MusicItem music) async {
     logger.d('MusicPlayer: 开始提取元数据 - name=${music.name}, sourceId=${music.sourceId}, url=${music.url}');
 
-    // 如果已经有元数据，跳过
-    if (music.coverData != null || music.lyrics != null) {
-      logger.d('MusicPlayer: 已有元数据，跳过 - hasCover=${music.coverData != null}, hasLyrics=${music.lyrics != null}');
+    // 检查是否需要提取元数据
+    // 需要提取的情况：没有封面数据、没有歌词、或者没有时长
+    final needsCover = music.coverData == null || music.coverData!.isEmpty;
+    final needsLyrics = music.lyrics == null || music.lyrics!.isEmpty;
+    final needsDuration = music.duration == null || music.duration == Duration.zero;
+
+    // 如果所有元数据都已存在，跳过提取
+    if (!needsCover && !needsLyrics && !needsDuration) {
+      logger.d('MusicPlayer: 元数据完整，跳过提取 - hasCover=true, hasLyrics=true, hasDuration=true');
       return;
     }
+
+    logger.d('MusicPlayer: 需要提取元数据 - needsCover=$needsCover, needsLyrics=$needsLyrics, needsDuration=$needsDuration');
 
     try {
       final metadataService = MusicMetadataService();
@@ -718,12 +726,19 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
           _ref.read(currentMusicProvider.notifier).state = updatedMusic;
           logger.i('MusicPlayer: 元数据已更新 - artist=${metadata.artist}, album=${metadata.album}, hasCover=${metadata.coverData != null}, hasLyrics=${metadata.lyrics != null}, duration=${metadata.duration}');
 
-          // 如果提取到了 duration 且播放器当前没有 duration，更新播放器状态
-          if (metadata.duration != null &&
-              metadata.duration! > Duration.zero &&
-              state.duration == Duration.zero) {
-            state = state.copyWith(duration: metadata.duration);
-            logger.i('MusicPlayer: 从元数据更新播放器时长 => ${metadata.duration}');
+          // 如果提取到了有效的 duration，且当前没有时长或者时长为零，更新播放器状态
+          if (metadata.duration != null && metadata.duration! > Duration.zero) {
+            final currentDuration = state.duration;
+            // 更新条件：当前没有时长，或者元数据时长与当前时长差异较大（可能之前是估算值）
+            final shouldUpdate = currentDuration == Duration.zero ||
+                (currentDuration.inSeconds > 0 &&
+                    (metadata.duration!.inSeconds - currentDuration.inSeconds).abs() >
+                        currentDuration.inSeconds * 0.1); // 差异超过 10%
+
+            if (shouldUpdate) {
+              state = state.copyWith(duration: metadata.duration);
+              logger.i('MusicPlayer: 从元数据更新播放器时长 => ${metadata.duration} (之前: $currentDuration)');
+            }
           }
 
           // 更新 Live Activity 封面图片

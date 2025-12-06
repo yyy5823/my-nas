@@ -8,6 +8,7 @@ import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/presentation/providers/music_favorites_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
 import 'package:my_nas/features/music/presentation/widgets/lyric_view.dart';
+import 'package:my_nas/features/music/presentation/widgets/music_progress_bar.dart';
 import 'package:my_nas/features/music/presentation/widgets/music_queue_sheet.dart';
 import 'package:my_nas/features/music/presentation/widgets/music_settings_sheet.dart';
 
@@ -637,55 +638,9 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
     WidgetRef ref,
     MusicPlayerState state,
     bool isDark,
-  ) => Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Column(
-        children: [
-          SliderTheme(
-            data: SliderTheme.of(context).copyWith(
-              trackHeight: 4,
-              activeTrackColor: AppColors.primary,
-              inactiveTrackColor: isDark ? Colors.grey[800] : Colors.grey[300],
-              thumbColor: AppColors.primary,
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-              overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
-              overlayColor: AppColors.primary.withValues(alpha: 0.2),
-            ),
-            child: Slider(
-              value: state.progress.clamp(0.0, 1.0),
-              onChanged: (value) {
-                final position = Duration(
-                  milliseconds: (value * state.duration.inMilliseconds).toInt(),
-                );
-                ref.read(musicPlayerControllerProvider.notifier).seek(position);
-              },
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  state.positionText,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isDark ? Colors.grey[500] : Colors.grey[600],
-                  ),
-                ),
-                Text(
-                  state.durationText,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isDark ? Colors.grey[500] : Colors.grey[600],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
+  ) =>
+      // 使用专门的进度条组件，支持平滑拖动
+      MusicProgressBar(isDark: isDark);
 
   Widget _buildControlButtons(
     BuildContext context,

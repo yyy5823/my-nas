@@ -57,6 +57,17 @@
 		</array>
 		<key>NSSupportsLiveActivities</key>
 		<true/>
+		<key>CFBundleURLTypes</key>
+		<array>
+			<dict>
+				<key>CFBundleURLName</key>
+				<string>com.kkape.mynas</string>
+				<key>CFBundleURLSchemes</key>
+				<array>
+					<string>mynas</string>
+				</array>
+			</dict>
+		</array>
 		<key>NSAppTransportSecurity</key>
 		<dict>
 			<key>NSAllowsArbitraryLoads</key>

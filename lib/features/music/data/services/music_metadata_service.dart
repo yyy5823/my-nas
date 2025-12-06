@@ -320,15 +320,18 @@ class MusicMetadataService {
   }
 
   /// 将元数据应用到 MusicItem
+  /// 只更新缺失的字段，不覆盖已有的有效数据
   MusicItem applyMetadataToItem(MusicItem item, MusicMetadata metadata) => item.copyWith(
-      artist: metadata.artist ?? item.artist,
-      album: metadata.album ?? item.album,
-      trackNumber: metadata.trackNumber,
-      year: metadata.year,
-      genre: metadata.genre,
-      lyrics: metadata.lyrics,
-      coverData: metadata.coverData,
-      duration: metadata.duration ?? item.duration,
+      artist: (item.artist?.isNotEmpty ?? false) ? item.artist : metadata.artist,
+      album: (item.album?.isNotEmpty ?? false) ? item.album : metadata.album,
+      trackNumber: item.trackNumber ?? metadata.trackNumber,
+      year: item.year ?? metadata.year,
+      genre: (item.genre?.isNotEmpty ?? false) ? item.genre : metadata.genre,
+      lyrics: (item.lyrics?.isNotEmpty ?? false) ? item.lyrics : metadata.lyrics,
+      coverData: (item.coverData?.isNotEmpty ?? false) ? item.coverData : metadata.coverData,
+      duration: (item.duration != null && item.duration! > Duration.zero)
+          ? item.duration
+          : metadata.duration,
     );
 
   /// 清除缓存

@@ -146,14 +146,30 @@ class HeroPlayerCard extends ConsumerWidget {
 
   Widget _buildBlurredBackground(MusicItem currentMusic) {
     final coverData = currentMusic.coverData;
+    final coverUrl = currentMusic.coverUrl;
+
+    Widget? coverImage;
+
     if (coverData != null && coverData.isNotEmpty) {
+      coverImage = Image.memory(
+        Uint8List.fromList(coverData),
+        fit: BoxFit.cover,
+        gaplessPlayback: true,
+        errorBuilder: (_, _, _) => _buildDefaultBackground(),
+      );
+    } else if (coverUrl != null && coverUrl.isNotEmpty) {
+      coverImage = Image.network(
+        coverUrl,
+        fit: BoxFit.cover,
+        gaplessPlayback: true,
+        errorBuilder: (_, _, _) => _buildDefaultBackground(),
+      );
+    }
+
+    if (coverImage != null) {
       return ImageFiltered(
         imageFilter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-        child: Image.memory(
-          Uint8List.fromList(coverData),
-          fit: BoxFit.cover,
-          errorBuilder: (_, _, _) => _buildDefaultBackground(),
-        ),
+        child: coverImage,
       );
     }
     return _buildDefaultBackground();
@@ -255,10 +271,20 @@ class HeroPlayerCard extends ConsumerWidget {
   Widget _buildCover(MusicItem currentMusic) {
     Widget coverImage;
     final coverData = currentMusic.coverData;
+    final coverUrl = currentMusic.coverUrl;
+
     if (coverData != null && coverData.isNotEmpty) {
       coverImage = Image.memory(
         Uint8List.fromList(coverData),
         fit: BoxFit.cover,
+        gaplessPlayback: true,
+        errorBuilder: (_, _, _) => _buildDefaultCover(),
+      );
+    } else if (coverUrl != null && coverUrl.isNotEmpty) {
+      coverImage = Image.network(
+        coverUrl,
+        fit: BoxFit.cover,
+        gaplessPlayback: true,
         errorBuilder: (_, _, _) => _buildDefaultCover(),
       );
     } else {

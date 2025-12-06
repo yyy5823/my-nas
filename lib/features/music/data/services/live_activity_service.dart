@@ -48,13 +48,25 @@ class LiveActivityService {
 
   /// 初始化服务
   Future<void> init() async {
-    if (_initialized || !isSupported) return;
+    logger.i('LiveActivityService: init 调用 - isSupported=$isSupported, initialized=$_initialized');
+
+    if (_initialized) {
+      logger.d('LiveActivityService: 已初始化，跳过');
+      return;
+    }
+
+    if (!isSupported) {
+      logger.w('LiveActivityService: 当前平台不支持 Live Activities');
+      return;
+    }
 
     try {
+      logger.d('LiveActivityService: 正在初始化插件 - appGroupId=$_appGroupId, urlScheme=$_urlScheme');
       await _liveActivities.init(
         appGroupId: _appGroupId,
         urlScheme: _urlScheme,
       );
+      logger.d('LiveActivityService: 插件初始化完成');
 
       // 监听 URL Scheme 事件（用于接收控制命令）
       _urlSchemeSubscription = _liveActivities.urlSchemeStream().listen((data) {
@@ -67,7 +79,7 @@ class LiveActivityService {
           _liveActivities.activityUpdateStream.listen((update) {
         update.map(
           active: (state) {
-            logger.d('LiveActivity: 活动状态 - active, id=${state.activityId}');
+            logger.i('LiveActivity: 活动状态 - active, id=${state.activityId}');
           },
           ended: (state) {
             logger.i('LiveActivity: 活动已结束, id=${state.activityId}');
@@ -85,7 +97,7 @@ class LiveActivityService {
       });
 
       _initialized = true;
-      logger.i('LiveActivityService: 初始化成功');
+      logger.i('LiveActivityService: 初始化成功，服务已就绪');
     } on Exception catch (e, stackTrace) {
       logger.e('LiveActivityService: 初始化失败', e, stackTrace);
     }
@@ -110,18 +122,36 @@ class LiveActivityService {
     required Duration duration,
     Uint8List? coverData,
   }) async {
-    if (!isSupported || !_initialized) return;
+    logger.i('LiveActivity: startMusicActivity 调用 - isSupported=$isSupported, initialized=$_initialized');
+
+    if (!isSupported) {
+      logger.w('LiveActivity: 平台不支持 (非 iOS)');
+      return;
+    }
+
+    if (!_initialized) {
+      logger.w('LiveActivity: 服务未初始化，尝试初始化...');
+      await init();
+      if (!_initialized) {
+        logger.e('LiveActivity: 初始化失败，无法创建活动');
+        return;
+      }
+    }
 
     try {
       // 检查是否启用了 Live Activities
+      logger.d('LiveActivity: 检查用户是否启用了 Live Activities...');
       final enabled = await _liveActivities.areActivitiesEnabled();
+      logger.i('LiveActivity: areActivitiesEnabled=$enabled');
+
       if (!enabled) {
-        logger.w('LiveActivity: 用户未启用 Live Activities');
+        logger.w('LiveActivity: 用户未启用 Live Activities，请在设置中开启');
         return;
       }
 
       // 如果已有 Activity，先结束它
       if (_currentActivityId != null) {
+        logger.d('LiveActivity: 已有活动存在，先结束它: $_currentActivityId');
         await endActivity();
       }
 
@@ -137,6 +167,8 @@ class LiveActivityService {
         coverData: coverData,
       );
 
+      logger.d('LiveActivity: 准备创建活动，数据: title=${activityData['title']}, artist=${activityData['artist']}, hasCover=${coverData != null}');
+
       // 创建 Live Activity
       _currentActivityId = await _liveActivities.createActivity(
         activityData,
@@ -146,7 +178,7 @@ class LiveActivityService {
       if (_currentActivityId != null) {
         logger.i('LiveActivity: 创建成功, ID=$_currentActivityId');
       } else {
-        logger.w('LiveActivity: 创建失败，返回 null ID');
+        logger.w('LiveActivity: 创建失败，返回 null ID - 可能是 iOS 版本不支持或配置问题');
       }
     } on Exception catch (e, stackTrace) {
       logger.e('LiveActivity: 创建失败', e, stackTrace);

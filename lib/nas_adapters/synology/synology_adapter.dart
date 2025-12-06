@@ -93,11 +93,19 @@ class SynologyAdapter implements NasAdapter {
       return const ConnectionFailure(error: '请先调用 connect');
     }
 
+    // 如果需要记住设备，必须提供设备名称
+    // 优先使用传入的设备名，其次使用配置中的设备名，最后使用默认名称
+    final effectiveDeviceName = rememberDevice
+        ? (deviceName ?? _config!.deviceName ?? 'MyNAS-${DateTime.now().millisecondsSinceEpoch}')
+        : null;
+
+    logger.d('SynologyAdapter: verify2FA - rememberDevice=$rememberDevice, deviceName=$effectiveDeviceName');
+
     final authResult = await _api.login(
       account: _config!.username,
       password: _config!.password,
       otpCode: otpCode,
-      deviceName: rememberDevice ? (deviceName ?? _config!.deviceName) : null,
+      deviceName: effectiveDeviceName,
       enableDeviceToken: rememberDevice,
     );
 

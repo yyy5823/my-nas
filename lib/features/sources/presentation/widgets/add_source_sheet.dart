@@ -476,16 +476,23 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
                     source.id,
                     result.otpCode,
                     rememberDevice: result.rememberDevice,
+                    password: password,
                   );
 
               if (verified.status == SourceStatus.connected) {
-                // 2FA验证成功，保存源和凭证
+                // 2FA验证成功，保存源
                 await ref.read(sourcesProvider.notifier).addSource(source);
+                // 保存凭证时需要保留 verify2FA 返回的 deviceId
                 if (!isLocal) {
                   final manager = ref.read(sourceManagerProvider);
+                  // 先读取已保存的凭证（可能包含 deviceId）
+                  final existingCredential = await manager.getCredential(source.id);
                   await manager.saveCredential(
                     source.id,
-                    SourceCredential(password: password),
+                    SourceCredential(
+                      password: password,
+                      deviceId: existingCredential?.deviceId,
+                    ),
                   );
                 }
                 if (mounted) {

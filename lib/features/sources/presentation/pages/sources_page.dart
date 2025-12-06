@@ -345,6 +345,8 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
       _errorMessage = null;
     });
 
+    String? usedPassword;
+
     try {
       // 本地存储不需要密码，直接连接
       if (widget.source.type == SourceType.local) {
@@ -366,6 +368,7 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
               setState(() => _isConnecting = false);
               return;
             }
+            usedPassword = password;
             await ref.read(activeConnectionsProvider.notifier).connect(
                   widget.source,
                   password: password,
@@ -373,6 +376,7 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
           }
         } else {
           // 总是保存凭证，以便更新 deviceId
+          usedPassword = credential.password;
           await ref.read(activeConnectionsProvider.notifier).connect(
                 widget.source,
                 password: credential.password,
@@ -392,6 +396,7 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
                   widget.source.id,
                   result.otpCode,
                   rememberDevice: result.rememberDevice,
+                  password: usedPassword,
                 );
           }
         }

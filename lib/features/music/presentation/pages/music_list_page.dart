@@ -918,7 +918,12 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
               final MusicListLoaded loaded => _buildHomeContent(context, ref, loaded, isDark),
             },
           ),
-          const MiniPlayer(),
+          // 首页有 HeroPlayerCard，不显示底部迷你播放器
+          // 只在非首页状态（加载中、未连接、错误、空状态）或搜索模式下显示迷你播放器
+          if (state case MusicListLoaded(:final searchQuery) when searchQuery.isNotEmpty)
+            const MiniPlayer()
+          else if (state is! MusicListLoaded)
+            const MiniPlayer(),
         ],
       ),
     );
