@@ -107,7 +107,9 @@ class MusicItem {
 
   /// 格式化时长
   String get durationText {
-    if (duration == null) return '--:--';
+    if (duration == null || duration! <= Duration.zero) return '--:--';
+    // 过滤异常值：超过 24 小时的时长视为无效
+    if (duration! > const Duration(hours: 24)) return '--:--';
     final minutes = duration!.inMinutes;
     final seconds = duration!.inSeconds.remainder(60);
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';

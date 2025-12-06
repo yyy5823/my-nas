@@ -96,6 +96,7 @@ dependencies:
 
   # Live Activities (Dynamic Island)
   live_activities: ^2.3.0
+  encrypt: ^5.0.3
 
 dev_dependencies:
   flutter_test:

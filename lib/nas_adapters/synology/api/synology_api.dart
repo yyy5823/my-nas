@@ -132,7 +132,8 @@ class SynologyApi {
   }
 
   /// 列出目录
-  Future<List<FileStationFile>> listFiles({
+  /// 返回 [FileListResult] 包含文件列表和总数，用于分页
+  Future<FileListResult> listFiles({
     required String folderPath,
     int offset = 0,
     int limit = 100,
@@ -143,7 +144,7 @@ class SynologyApi {
     // Synology API v2 additional 参数需要 JSON 数组格式: ["real_path","size","owner","time"]
     // 参考: https://stackoverflow.com/questions/61786866/synology-filestation-api
     final additionalParam = '["${additional.join('","')}"]';
-    logger.d('SynologyApi listFiles: folder=$folderPath, additional=$additionalParam');
+    logger.d('SynologyApi listFiles: folder=$folderPath, offset=$offset, limit=$limit');
 
     final response = await _request(
       'SYNO.FileStation.List',
@@ -159,20 +160,19 @@ class SynologyApi {
       },
     );
 
-    // 调试：打印原始数据中的文件大小字段
-    final debugData = response['data'] as Map<String, dynamic>?;
-    final debugFiles = debugData?['files'] as List<dynamic>? ?? [];
-    if (debugFiles.isNotEmpty) {
-      final sample = debugFiles.first as Map<String, dynamic>;
-      logger.d('SynologyApi listFiles 原始样本: $sample');
-    }
-
     final data = response['data'] as Map<String, dynamic>;
     final files = data['files'] as List<dynamic>? ?? [];
+    final total = data['total'] as int? ?? files.length;
 
-    return files
-        .map((f) => FileStationFile.fromJson(f as Map<String, dynamic>))
-        .toList();
+    logger.d('SynologyApi listFiles: 获取 ${files.length} 个文件，总计 $total');
+
+    return FileListResult(
+      files: files
+          .map((f) => FileStationFile.fromJson(f as Map<String, dynamic>))
+          .toList(),
+      total: total,
+      offset: offset,
+    );
   }
 
   /// 获取共享文件夹列表
@@ -769,4 +769,25 @@ class CopyMoveStatus {
   final double progress;
   final String? destFolderPath;
   final String? path;
+}
+
+/// 文件列表结果（包含分页信息）
+class FileListResult {
+  const FileListResult({
+    required this.files,
+    required this.total,
+    required this.offset,
+  });
+
+  /// 文件列表
+  final List<FileStationFile> files;
+
+  /// 目录中的文件总数
+  final int total;
+
+  /// 当前偏移量
+  final int offset;
+
+  /// 是否还有更多文件
+  bool get hasMore => offset + files.length < total;
 }

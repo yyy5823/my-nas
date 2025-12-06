@@ -60,7 +60,10 @@ class MusicTrackEntity {
 
   /// 格式化时长
   String get durationText {
-    if (duration == null) return '--:--';
+    if (duration == null || duration! <= 0) return '--:--';
+    // 过滤异常值：超过 24 小时的时长视为无效
+    // 86400000 毫秒 = 24 小时
+    if (duration! > 86400000) return '--:--';
     final totalSeconds = duration! ~/ 1000;
     final minutes = totalSeconds ~/ 60;
     final seconds = totalSeconds % 60;

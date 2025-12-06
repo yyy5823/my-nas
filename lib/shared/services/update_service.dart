@@ -17,7 +17,7 @@ class UpdateConfig {
     this.appStoreId,
     this.checkTimeout = const Duration(seconds: 30),
     this.downloadTimeout = const Duration(minutes: 30),
-    this.maxRetries = 3,
+    this.maxRetries = 1,
     this.retryDelay = const Duration(seconds: 2),
   });
 

@@ -1,9 +1,12 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:my_nas/app/router/routes.dart';
+import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/connection/presentation/pages/connection_page.dart';
 import 'package:my_nas/features/mine/presentation/pages/mine_page.dart';
 import 'package:my_nas/features/music/presentation/pages/music_list_page.dart';
+import 'package:my_nas/features/music/presentation/pages/music_player_page.dart';
 import 'package:my_nas/features/photo/presentation/pages/photo_list_page.dart';
 import 'package:my_nas/features/reading/presentation/pages/reading_page.dart';
 import 'package:my_nas/features/startup/presentation/pages/startup_page.dart';
@@ -16,7 +19,39 @@ final shellNavigatorKey = GlobalKey<NavigatorState>();
 final appRouter = GoRouter(
   navigatorKey: rootNavigatorKey,
   initialLocation: Routes.startup,
-  debugLogDiagnostics: true,
+  debugLogDiagnostics: kDebugMode,
+  // 处理深度链接 (mynas://music/player -> /music/player)
+  redirect: (context, state) {
+    final uri = state.uri;
+    final matchedLocation = state.matchedLocation;
+
+    logger.d('GoRouter redirect: uri=$uri, scheme=${uri.scheme}, '
+        'host=${uri.host}, path=${uri.path}, matchedLocation=$matchedLocation');
+
+    // 情况1: 完整的 URI scheme (mynas://music/player)
+    // 在这种情况下：scheme=mynas, host=music, path=/player
+    if (uri.scheme == 'mynas') {
+      final host = uri.host; // e.g., "music"
+      final path = uri.path; // e.g., "/player"
+      // 组合成完整路径: /music/player
+      final fullPath = host.isNotEmpty ? '/$host$path' : path;
+      logger.i('GoRouter: Deep link detected, redirecting to $fullPath');
+      return fullPath;
+    }
+
+    // 情况2: GoRouter 可能只收到路径部分 (music/player)
+    // 没有前导斜杠的路径可能来自 deep link
+    final uriString = uri.toString();
+    if (!uriString.startsWith('/') &&
+        !uriString.startsWith('http') &&
+        uriString.contains('music/player')) {
+      final path = '/$uriString';
+      logger.i('GoRouter: Path without leading slash, redirecting to $path');
+      return path;
+    }
+
+    return null;
+  },
   routes: [
     // Startup page (handles auto-login)
     GoRoute(
@@ -30,6 +65,13 @@ final appRouter = GoRouter(
       path: Routes.connection,
       name: 'connection',
       builder: (context, state) => const ConnectionPage(),
+    ),
+
+    // Music player page (full screen, accessed from Deep Link / Live Activity)
+    GoRoute(
+      path: Routes.musicPlayer,
+      name: 'musicPlayer',
+      builder: (context, state) => const MusicPlayerPage(),
     ),
 
     // Main shell with bottom navigation (6 tabs)

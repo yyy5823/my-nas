@@ -142,7 +142,14 @@ enum FileType {
       'wma' ||
       'ape' ||
       'aiff' ||
-      'dsd' =>
+      'dsd' ||
+      'ncm' ||    // 网易云音乐加密格式
+      'dsf' ||    // DSD 格式
+      'dff' ||    // DSD 格式
+      'alac' ||   // Apple Lossless
+      'opus' ||   // Opus 编码
+      'mka' ||    // Matroska 音频
+      'cue' =>    // CUE 分轨文件
         FileType.audio,
       'doc' || 'docx' || 'xls' || 'xlsx' || 'ppt' || 'pptx' => FileType.document,
       'zip' || 'rar' || '7z' || 'tar' || 'gz' || 'bz2' => FileType.archive,

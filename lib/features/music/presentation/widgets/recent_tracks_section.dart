@@ -395,9 +395,9 @@ class _PopularTrackItem extends StatelessWidget {
                 ),
               ),
               // 时长
-              if (track.duration != null)
+              if (track.duration != null && track.duration! > 0 && track.duration! <= 86400000)
                 Text(
-                  _formatDuration(track.duration!),
+                  track.durationText,
                   style: TextStyle(
                     fontSize: 12,
                     color: isDark ? Colors.white38 : Colors.black38,
@@ -451,10 +451,4 @@ class _PopularTrackItem extends StatelessWidget {
         size: 24,
       ),
     );
-
-  String _formatDuration(int seconds) {
-    final minutes = seconds ~/ 60;
-    final secs = seconds % 60;
-    return '$minutes:${secs.toString().padLeft(2, '0')}';
-  }
 }

@@ -1,3 +1,4 @@
+import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/nas_adapters/synology/api/synology_api.dart';
 import 'package:path/path.dart' as p;
@@ -25,8 +26,29 @@ class SynologyFileSystem implements NasFileSystem {
           .toList();
     }
 
-    final files = await _api.listFiles(folderPath: path);
-    return files
+    // 分页获取所有文件
+    const pageSize = 500; // 每页获取 500 个文件
+    final allFiles = <FileStationFile>[];
+    var offset = 0;
+    var hasMore = true;
+
+    while (hasMore) {
+      final result = await _api.listFiles(
+        folderPath: path,
+        offset: offset,
+        limit: pageSize,
+      );
+
+      allFiles.addAll(result.files);
+      hasMore = result.hasMore;
+      offset += result.files.length;
+
+      if (result.files.isEmpty) break; // 防止无限循环
+    }
+
+    logger.d('SynologyFileSystem: 目录 $path 共获取 ${allFiles.length} 个文件');
+
+    return allFiles
         .map(
           (f) => FileItem(
             name: f.name,

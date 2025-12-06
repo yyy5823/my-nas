@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:audio_metadata_reader/audio_metadata_reader.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/music/data/services/ncm_decrypt_service.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:path/path.dart' as p;
@@ -114,7 +115,13 @@ class MusicMetadataService {
     }
 
     try {
-      logger.d('MusicMetadataService: 提取 NAS 文件元数据: $path');
+      final ext = p.extension(path).toLowerCase();
+      logger.d('MusicMetadataService: 提取 NAS 文件元数据: $path (ext: $ext)');
+
+      // NCM 文件使用专门的解密服务
+      if (ext == '.ncm') {
+        return _extractFromNcmFile(fileSystem, path, cacheKey);
+      }
 
       // 获取文件信息
       final fileInfo = await fileSystem.getFileInfo(path);
@@ -225,6 +232,55 @@ class MusicMetadataService {
       if (tempFile != null) {
         await _deleteTempFile(tempFile);
       }
+    }
+  }
+
+  /// 从 NCM 文件提取元数据
+  Future<MusicMetadata?> _extractFromNcmFile(
+    NasFileSystem fileSystem,
+    String path,
+    String cacheKey,
+  ) async {
+    try {
+      logger.d('MusicMetadataService: 开始解密 NCM 文件: $path');
+
+      // 下载整个 NCM 文件（NCM 文件需要完整读取才能解密）
+      final stream = await fileSystem.getFileStream(path);
+      final chunks = <int>[];
+      await for (final chunk in stream) {
+        chunks.addAll(chunk);
+      }
+
+      final ncmData = Uint8List.fromList(chunks);
+      logger.d('MusicMetadataService: NCM 文件大小: ${ncmData.length} bytes');
+
+      // 解密 NCM 文件
+      final ncmService = NcmDecryptService();
+      final result = ncmService.decrypt(ncmData);
+
+      if (result == null) {
+        logger.w('MusicMetadataService: NCM 解密失败: $path');
+        return null;
+      }
+
+      // 从解密结果中提取元数据
+      final ncmMeta = result.metadata;
+      final metadata = MusicMetadata(
+        title: ncmMeta?.musicName,
+        artist: ncmMeta?.artist,
+        album: ncmMeta?.album,
+        duration: ncmMeta != null && ncmMeta.duration > 0
+            ? Duration(milliseconds: ncmMeta.duration)
+            : null,
+        coverData: result.coverData?.toList(),
+      );
+
+      _metadataCache[cacheKey] = metadata;
+      logger.i('MusicMetadataService: NCM 元数据提取成功 - ${metadata.title}');
+      return metadata;
+    } on Exception catch (e, stackTrace) {
+      logger.e('MusicMetadataService: NCM 文件处理失败: $path', e, stackTrace);
+      return null;
     }
   }
 
