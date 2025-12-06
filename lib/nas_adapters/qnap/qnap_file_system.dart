@@ -25,8 +25,29 @@ class QnapFileSystem implements NasFileSystem {
           .toList();
     }
 
-    final files = await _api.listFiles(folderPath: path);
-    return files
+    // 分页获取所有文件
+    const pageSize = 500;
+    final allFiles = <QnapFile>[];
+    var start = 0;
+    var hasMore = true;
+
+    while (hasMore) {
+      final files = await _api.listFiles(
+        folderPath: path,
+        start: start,
+        limit: pageSize,
+      );
+
+      allFiles.addAll(files);
+
+      // 如果返回的文件数少于 pageSize，说明没有更多了
+      hasMore = files.length >= pageSize;
+      start += files.length;
+
+      if (files.isEmpty) break; // 防止无限循环
+    }
+
+    return allFiles
         .map(
           (f) => FileItem(
             name: f.name,
