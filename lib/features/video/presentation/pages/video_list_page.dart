@@ -97,6 +97,8 @@ class VideoListLoaded extends VideoListState {
     this.recentVideos = const [],
     this.movies = const [],
     this.tvShowGroups = const {},
+    // 电影系列数据
+    this.movieCollections = const [],
     // 搜索结果
     this.searchResults = const [],
     // 用于快速查找的 Map（O(1) 查找）
@@ -120,6 +122,8 @@ class VideoListLoaded extends VideoListState {
   final List<VideoMetadata> movies;
   /// 剧集分组（使用 TvShowGroup 按季组织）
   final Map<String, TvShowGroup> tvShowGroups;
+  /// 电影系列
+  final List<MovieCollection> movieCollections;
 
   // 搜索结果
   final List<VideoMetadata> searchResults;
@@ -166,6 +170,7 @@ class VideoListLoaded extends VideoListState {
     List<VideoMetadata>? recentVideos,
     List<VideoMetadata>? movies,
     Map<String, TvShowGroup>? tvShowGroups,
+    List<MovieCollection>? movieCollections,
     List<VideoMetadata>? searchResults,
     Map<String, VideoMetadata>? videoByKey,
   }) =>
@@ -182,6 +187,7 @@ class VideoListLoaded extends VideoListState {
         recentVideos: recentVideos ?? this.recentVideos,
         movies: movies ?? this.movies,
         tvShowGroups: tvShowGroups ?? this.tvShowGroups,
+        movieCollections: movieCollections ?? this.movieCollections,
         searchResults: searchResults ?? this.searchResults,
         videoByKey: videoByKey ?? this.videoByKey,
       );
@@ -319,6 +325,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       _db.getRecentlyUpdated(limit: 100, enabledPaths: enabledPaths), // 获取足够多的最近更新
       _db.getByCategory(MediaCategory.movie, limit: 50, enabledPaths: enabledPaths), // 首页只需要少量电影
       _db.getTvShowGroupRepresentatives(limit: 50, enabledPaths: enabledPaths), // 首页只需要少量剧集代表
+      _db.getMovieCollections(minCount: 2), // 获取电影系列（至少2部）
     ]);
 
     final stats = results[0] as Map<String, dynamic>;
@@ -327,6 +334,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     final recentRaw = results[3] as List<VideoMetadata>;
     final moviesList = results[4] as List<VideoMetadata>;
     final tvShowRepresentatives = results[5] as List<VideoMetadata>;
+    final movieCollections = results[6] as List<MovieCollection>;
 
     // 首页剧集直接使用代表性数据，不需要再分组
     // 但为了兼容性，仍然构建 TvShowGroup（用于高分推荐和最近添加的去重）
@@ -371,6 +379,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       recentVideos: recent,
       movies: moviesList,
       tvShowGroups: tvShowGroups,
+      movieCollections: movieCollections,
       videoByKey: videoByKey,
       fromCache: true,
     );
@@ -380,6 +389,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       '总计 ${stats['total']} 个视频，'
       '电影 ${stats['movies']} 个（首页加载 ${moviesList.length}），'
       '剧集 $tvShowGroupCount 部（首页加载 ${tvShowRepresentatives.length} 部），'
+      '电影系列 ${movieCollections.length} 个，'
       '高分推荐 ${topRated.length} 个，'
       '最近添加 ${recent.length} 个',
     );
@@ -1114,6 +1124,9 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     // 获取剧集分组列表
     final tvShowGroups = state.tvShowGroupList;
 
+    // 获取电影系列
+    final movieCollections = state.movieCollections;
+
     // 高分推荐
     final topRated = state.topRatedMovies;
 
@@ -1188,6 +1201,19 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
             ),
           ),
 
+        // 电影系列（横向卡片，显示系列中电影数量）
+        if (movieCollections.isNotEmpty)
+          SliverToBoxAdapter(
+            child: _MovieCollectionRow(
+              title: '电影系列',
+              collections: movieCollections,
+              onCollectionTap: (collection) => _showCollectionPage(context, ref, collection),
+              isDark: isDark,
+              icon: Icons.collections_bookmark_rounded,
+              iconColor: Colors.purple,
+            ),
+          ),
+
         // 高分推荐（纵向海报）
         if (topRated.length > 5)
           SliverToBoxAdapter(
@@ -1257,6 +1283,18 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
         builder: (context) => _TvShowsFullPage(
           title: title,
           groups: groups,
+        ),
+      ),
+    );
+  }
+
+  /// 显示电影系列详情页面
+  void _showCollectionPage(BuildContext context, WidgetRef ref, MovieCollection collection) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => _MovieCollectionPage(
+          collection: collection,
+          onMovieTap: (movie) => _openVideoDetail(context, ref, movie),
         ),
       ),
     );
@@ -4116,7 +4154,7 @@ class _TvShowsFullPageState extends ConsumerState<_TvShowsFullPage> {
   }
 }
 
-/// 电影分页页面（支持懒加载）
+/// 电影分页页面（支持懒加载和筛选）
 class _MoviesPaginatedPage extends ConsumerStatefulWidget {
   const _MoviesPaginatedPage({
     required this.title,
@@ -4136,9 +4174,18 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
   int _offset = 0;
   static const int _pageSize = 50;
 
+  // 筛选相关
+  List<String> _availableGenres = [];
+  List<int> _availableYears = [];
+  String? _selectedGenre;
+  int? _selectedYear;
+  int _filteredCount = 0;
+  bool _isLoadingFilters = true;
+
   @override
   void initState() {
     super.initState();
+    _loadFilters();
     _loadMore();
     _scrollController.addListener(_onScroll);
   }
@@ -4147,6 +4194,28 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
   void dispose() {
     _scrollController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadFilters() async {
+    try {
+      final db = VideoDatabaseService();
+      final genres = await db.getAvailableGenres(category: MediaCategory.movie);
+      final years = await db.getAvailableYears(category: MediaCategory.movie);
+      final count = await db.getFilteredCount(category: MediaCategory.movie);
+
+      if (mounted) {
+        setState(() {
+          _availableGenres = genres;
+          _availableYears = years;
+          _filteredCount = count;
+          _isLoadingFilters = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingFilters = false);
+      }
+    }
   }
 
   void _onScroll() {
@@ -4163,8 +4232,10 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
 
     try {
       final db = VideoDatabaseService();
-      final newMovies = await db.getByCategory(
-        MediaCategory.movie,
+      final newMovies = await db.getFiltered(
+        category: MediaCategory.movie,
+        genre: _selectedGenre,
+        year: _selectedYear,
         offset: _offset,
       );
 
@@ -4179,11 +4250,61 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
     }
   }
 
+  Future<void> _resetAndReload() async {
+    setState(() {
+      _movies.clear();
+      _offset = 0;
+      _hasMore = true;
+    });
+
+    // 更新筛选后的数量
+    try {
+      final db = VideoDatabaseService();
+      final count = await db.getFilteredCount(
+        category: MediaCategory.movie,
+        genre: _selectedGenre,
+        year: _selectedYear,
+      );
+      if (mounted) {
+        setState(() => _filteredCount = count);
+      }
+    } catch (e) {
+      // 忽略错误
+    }
+
+    await _loadMore();
+  }
+
+  void _showFilterSheet(BuildContext context, bool isDark) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _FilterBottomSheet(
+        isDark: isDark,
+        availableGenres: _availableGenres,
+        availableYears: _availableYears,
+        selectedGenre: _selectedGenre,
+        selectedYear: _selectedYear,
+        onApply: (genre, year) {
+          Navigator.of(context).pop();
+          if (genre != _selectedGenre || year != _selectedYear) {
+            setState(() {
+              _selectedGenre = genre;
+              _selectedYear = year;
+            });
+            _resetAndReload();
+          }
+        },
+      ),
+    );
+  }
+
+  bool get _hasFilters => _selectedGenre != null || _selectedYear != null;
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final videoState = ref.watch(videoListProvider);
-    final totalCount = videoState is VideoListLoaded ? videoState.movieCount : _movies.length;
 
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF0D0D0D) : Colors.grey[50],
@@ -4198,43 +4319,142 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Text(
-          '${widget.title} ($totalCount)',
+          '${widget.title} ($_filteredCount)',
           style: TextStyle(
             fontWeight: FontWeight.bold,
             color: isDark ? Colors.white : Colors.black87,
           ),
         ),
-      ),
-      body: _movies.isEmpty && _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : GridView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(16),
-              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: 150,
-                childAspectRatio: 0.55,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 16,
+        actions: [
+          Stack(
+            children: [
+              IconButton(
+                icon: Icon(
+                  Icons.filter_list_rounded,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+                onPressed: _isLoadingFilters ? null : () => _showFilterSheet(context, isDark),
               ),
-              itemCount: _movies.length + (_hasMore ? 1 : 0),
-              itemBuilder: (context, index) {
-                if (index >= _movies.length) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(16),
-                      child: CircularProgressIndicator(),
+              if (_hasFilters)
+                Positioned(
+                  right: 8,
+                  top: 8,
+                  child: Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: Colors.red,
+                      shape: BoxShape.circle,
                     ),
-                  );
-                }
-
-                final movie = _movies[index];
-                return _VerticalPosterCard(
-                  metadata: movie,
-                  onTap: () => _openVideoDetail(context, movie),
-                  isDark: isDark,
-                );
-              },
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          // 筛选标签
+          if (_hasFilters)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  if (_selectedGenre != null)
+                    _FilterChip(
+                      label: _selectedGenre!,
+                      onRemove: () {
+                        setState(() => _selectedGenre = null);
+                        _resetAndReload();
+                      },
+                      isDark: isDark,
+                    ),
+                  if (_selectedYear != null)
+                    _FilterChip(
+                      label: '$_selectedYear年',
+                      onRemove: () {
+                        setState(() => _selectedYear = null);
+                        _resetAndReload();
+                      },
+                      isDark: isDark,
+                    ),
+                  GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _selectedGenre = null;
+                        _selectedYear = null;
+                      });
+                      _resetAndReload();
+                    },
+                    child: Text(
+                      '清除全部',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.blue,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
+          // 内容区域
+          Expanded(
+            child: _movies.isEmpty && _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _movies.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.movie_filter_outlined,
+                              size: 64,
+                              color: isDark ? Colors.white30 : Colors.black26,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              '没有找到匹配的电影',
+                              style: TextStyle(
+                                color: isDark ? Colors.white54 : Colors.black45,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : GridView.builder(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.all(16),
+                        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: 150,
+                          childAspectRatio: 0.55,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 16,
+                        ),
+                        itemCount: _movies.length + (_hasMore ? 1 : 0),
+                        itemBuilder: (context, index) {
+                          if (index >= _movies.length) {
+                            return const Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(16),
+                                child: CircularProgressIndicator(),
+                              ),
+                            );
+                          }
+
+                          final movie = _movies[index];
+                          return _VerticalPosterCard(
+                            metadata: movie,
+                            onTap: () => _openVideoDetail(context, movie),
+                            isDark: isDark,
+                          );
+                        },
+                      ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -4250,7 +4470,295 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
   }
 }
 
-/// 剧集分页页面（支持懒加载）
+/// 筛选标签
+class _FilterChip extends StatelessWidget {
+  const _FilterChip({
+    required this.label,
+    required this.onRemove,
+    required this.isDark,
+  });
+
+  final String label;
+  final VoidCallback onRemove;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDark ? Colors.white24 : Colors.black12,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
+          ),
+          const SizedBox(width: 4),
+          GestureDetector(
+            onTap: onRemove,
+            child: Icon(
+              Icons.close,
+              size: 16,
+              color: isDark ? Colors.white54 : Colors.black45,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 筛选底部弹窗
+class _FilterBottomSheet extends StatefulWidget {
+  const _FilterBottomSheet({
+    required this.isDark,
+    required this.availableGenres,
+    required this.availableYears,
+    required this.selectedGenre,
+    required this.selectedYear,
+    required this.onApply,
+  });
+
+  final bool isDark;
+  final List<String> availableGenres;
+  final List<int> availableYears;
+  final String? selectedGenre;
+  final int? selectedYear;
+  final void Function(String? genre, int? year) onApply;
+
+  @override
+  State<_FilterBottomSheet> createState() => _FilterBottomSheetState();
+}
+
+class _FilterBottomSheetState extends State<_FilterBottomSheet> {
+  late String? _genre;
+  late int? _year;
+
+  @override
+  void initState() {
+    super.initState();
+    _genre = widget.selectedGenre;
+    _year = widget.selectedYear;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.7,
+      ),
+      decoration: BoxDecoration(
+        color: widget.isDark ? const Color(0xFF1A1A2E) : Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 拖动条
+          Container(
+            margin: const EdgeInsets.only(top: 12),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: widget.isDark ? Colors.white24 : Colors.black12,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          // 标题栏
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '筛选',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: widget.isDark ? Colors.white : Colors.black87,
+                  ),
+                ),
+                TextButton(
+                  onPressed: () {
+                    setState(() {
+                      _genre = null;
+                      _year = null;
+                    });
+                  },
+                  child: const Text('重置'),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          // 筛选内容
+          Flexible(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 类型筛选
+                  Text(
+                    '类型',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: widget.isDark ? Colors.white70 : Colors.black54,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: widget.availableGenres.map((genre) {
+                      final isSelected = _genre == genre;
+                      return GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _genre = isSelected ? null : genre;
+                          });
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? Colors.blue
+                                : widget.isDark
+                                    ? Colors.white.withValues(alpha: 0.1)
+                                    : Colors.black.withValues(alpha: 0.05),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: isSelected
+                                  ? Colors.blue
+                                  : widget.isDark
+                                      ? Colors.white24
+                                      : Colors.black12,
+                            ),
+                          ),
+                          child: Text(
+                            genre,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: isSelected
+                                  ? Colors.white
+                                  : widget.isDark
+                                      ? Colors.white
+                                      : Colors.black87,
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 24),
+                  // 年份筛选
+                  Text(
+                    '年份',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: widget.isDark ? Colors.white70 : Colors.black54,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: widget.availableYears.map((year) {
+                      final isSelected = _year == year;
+                      return GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _year = isSelected ? null : year;
+                          });
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? Colors.blue
+                                : widget.isDark
+                                    ? Colors.white.withValues(alpha: 0.1)
+                                    : Colors.black.withValues(alpha: 0.05),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: isSelected
+                                  ? Colors.blue
+                                  : widget.isDark
+                                      ? Colors.white24
+                                      : Colors.black12,
+                            ),
+                          ),
+                          child: Text(
+                            '$year',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: isSelected
+                                  ? Colors.white
+                                  : widget.isDark
+                                      ? Colors.white
+                                      : Colors.black87,
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // 底部按钮
+          Container(
+            padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + MediaQuery.of(context).padding.bottom),
+            decoration: BoxDecoration(
+              color: widget.isDark ? const Color(0xFF1A1A2E) : Colors.white,
+              border: Border(
+                top: BorderSide(
+                  color: widget.isDark ? Colors.white12 : Colors.black12,
+                ),
+              ),
+            ),
+            child: SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () => widget.onApply(_genre, _year),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text(
+                  '应用筛选',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 剧集分页页面（支持懒加载和筛选）
 class _TvShowsPaginatedPage extends ConsumerStatefulWidget {
   const _TvShowsPaginatedPage({
     required this.title,
@@ -4270,9 +4778,18 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
   int _offset = 0;
   static const int _pageSize = 50;
 
+  // 筛选相关
+  List<String> _availableGenres = [];
+  List<int> _availableYears = [];
+  String? _selectedGenre;
+  int? _selectedYear;
+  int _filteredCount = 0;
+  bool _isLoadingFilters = true;
+
   @override
   void initState() {
     super.initState();
+    _loadFilters();
     _loadMore();
     _scrollController.addListener(_onScroll);
   }
@@ -4281,6 +4798,28 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
   void dispose() {
     _scrollController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadFilters() async {
+    try {
+      final db = VideoDatabaseService();
+      final genres = await db.getAvailableGenres(category: MediaCategory.tvShow);
+      final years = await db.getAvailableYears(category: MediaCategory.tvShow);
+      final count = await db.getTvShowGroupCount();
+
+      if (mounted) {
+        setState(() {
+          _availableGenres = genres;
+          _availableYears = years;
+          _filteredCount = count;
+          _isLoadingFilters = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingFilters = false);
+      }
+    }
   }
 
   void _onScroll() {
@@ -4297,7 +4836,9 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
 
     try {
       final db = VideoDatabaseService();
-      final newTvShows = await db.getTvShowGroupRepresentatives(
+      final newTvShows = await db.getTvShowGroupRepresentativesFiltered(
+        genre: _selectedGenre,
+        year: _selectedYear,
         limit: _pageSize,
         offset: _offset,
       );
@@ -4313,11 +4854,60 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
     }
   }
 
+  Future<void> _resetAndReload() async {
+    setState(() {
+      _tvShows.clear();
+      _offset = 0;
+      _hasMore = true;
+    });
+
+    // 更新筛选后的数量
+    try {
+      final db = VideoDatabaseService();
+      final count = await db.getTvShowGroupCountFiltered(
+        genre: _selectedGenre,
+        year: _selectedYear,
+      );
+      if (mounted) {
+        setState(() => _filteredCount = count);
+      }
+    } catch (e) {
+      // 忽略错误
+    }
+
+    await _loadMore();
+  }
+
+  void _showFilterSheet(BuildContext context, bool isDark) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _FilterBottomSheet(
+        isDark: isDark,
+        availableGenres: _availableGenres,
+        availableYears: _availableYears,
+        selectedGenre: _selectedGenre,
+        selectedYear: _selectedYear,
+        onApply: (genre, year) {
+          Navigator.of(context).pop();
+          if (genre != _selectedGenre || year != _selectedYear) {
+            setState(() {
+              _selectedGenre = genre;
+              _selectedYear = year;
+            });
+            _resetAndReload();
+          }
+        },
+      ),
+    );
+  }
+
+  bool get _hasFilters => _selectedGenre != null || _selectedYear != null;
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final videoState = ref.watch(videoListProvider);
-    final totalCount = videoState is VideoListLoaded ? videoState.tvShowGroupCount : _tvShows.length;
 
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF0D0D0D) : Colors.grey[50],
@@ -4332,43 +4922,142 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Text(
-          '${widget.title} ($totalCount)',
+          '${widget.title} ($_filteredCount)',
           style: TextStyle(
             fontWeight: FontWeight.bold,
             color: isDark ? Colors.white : Colors.black87,
           ),
         ),
-      ),
-      body: _tvShows.isEmpty && _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : GridView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(16),
-              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: 150,
-                childAspectRatio: 0.55,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 16,
+        actions: [
+          Stack(
+            children: [
+              IconButton(
+                icon: Icon(
+                  Icons.filter_list_rounded,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+                onPressed: _isLoadingFilters ? null : () => _showFilterSheet(context, isDark),
               ),
-              itemCount: _tvShows.length + (_hasMore ? 1 : 0),
-              itemBuilder: (context, index) {
-                if (index >= _tvShows.length) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(16),
-                      child: CircularProgressIndicator(),
+              if (_hasFilters)
+                Positioned(
+                  right: 8,
+                  top: 8,
+                  child: Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: Colors.red,
+                      shape: BoxShape.circle,
                     ),
-                  );
-                }
-
-                final tvShow = _tvShows[index];
-                return _VerticalPosterCard(
-                  metadata: tvShow,
-                  onTap: () => _openVideoDetail(context, tvShow),
-                  isDark: isDark,
-                );
-              },
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          // 筛选标签
+          if (_hasFilters)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  if (_selectedGenre != null)
+                    _FilterChip(
+                      label: _selectedGenre!,
+                      onRemove: () {
+                        setState(() => _selectedGenre = null);
+                        _resetAndReload();
+                      },
+                      isDark: isDark,
+                    ),
+                  if (_selectedYear != null)
+                    _FilterChip(
+                      label: '$_selectedYear年',
+                      onRemove: () {
+                        setState(() => _selectedYear = null);
+                        _resetAndReload();
+                      },
+                      isDark: isDark,
+                    ),
+                  GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _selectedGenre = null;
+                        _selectedYear = null;
+                      });
+                      _resetAndReload();
+                    },
+                    child: Text(
+                      '清除全部',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.blue,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
+          // 内容区域
+          Expanded(
+            child: _tvShows.isEmpty && _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _tvShows.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.live_tv_outlined,
+                              size: 64,
+                              color: isDark ? Colors.white30 : Colors.black26,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              '没有找到匹配的剧集',
+                              style: TextStyle(
+                                color: isDark ? Colors.white54 : Colors.black45,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : GridView.builder(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.all(16),
+                        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: 150,
+                          childAspectRatio: 0.55,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 16,
+                        ),
+                        itemCount: _tvShows.length + (_hasMore ? 1 : 0),
+                        itemBuilder: (context, index) {
+                          if (index >= _tvShows.length) {
+                            return const Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(16),
+                                child: CircularProgressIndicator(),
+                              ),
+                            );
+                          }
+
+                          final tvShow = _tvShows[index];
+                          return _VerticalPosterCard(
+                            metadata: tvShow,
+                            onTap: () => _openVideoDetail(context, tvShow),
+                            isDark: isDark,
+                          );
+                        },
+                      ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -4379,6 +5068,429 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
           metadata: metadata,
           sourceId: metadata.sourceId,
         ),
+      ),
+    );
+  }
+}
+
+/// 电影系列行组件
+class _MovieCollectionRow extends StatelessWidget {
+  const _MovieCollectionRow({
+    required this.title,
+    required this.collections,
+    required this.onCollectionTap,
+    required this.isDark,
+    this.icon,
+    this.iconColor,
+    this.maxCount = 10,
+  });
+
+  final String title;
+  final List<MovieCollection> collections;
+  final void Function(MovieCollection) onCollectionTap;
+  final bool isDark;
+  final IconData? icon;
+  final Color? iconColor;
+  final int maxCount;
+
+  @override
+  Widget build(BuildContext context) {
+    if (collections.isEmpty) return const SizedBox.shrink();
+
+    final displayItems = collections.take(maxCount).toList();
+    final effectiveIconColor = iconColor ?? AppColors.primary;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 标题栏
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 24, 16, 12),
+          child: Row(
+            children: [
+              if (icon != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: effectiveIconColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(icon, size: 18, color: effectiveIconColor),
+                ),
+                const SizedBox(width: 10),
+              ],
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.grey[800] : Colors.grey[200],
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '${collections.length}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        // 系列列表
+        SizedBox(
+          height: 180,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: displayItems.length,
+            itemBuilder: (context, index) {
+              final collection = displayItems[index];
+              return _MovieCollectionCard(
+                collection: collection,
+                onTap: () => onCollectionTap(collection),
+                isDark: isDark,
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 电影系列卡片
+class _MovieCollectionCard extends StatefulWidget {
+  const _MovieCollectionCard({
+    required this.collection,
+    required this.onTap,
+    required this.isDark,
+  });
+
+  final MovieCollection collection;
+  final VoidCallback onTap;
+  final bool isDark;
+
+  @override
+  State<_MovieCollectionCard> createState() => _MovieCollectionCardState();
+}
+
+class _MovieCollectionCardState extends State<_MovieCollectionCard> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final collection = widget.collection;
+    final posterUrl = collection.posterUrl;
+    final hasPoster = posterUrl != null && posterUrl.isNotEmpty;
+
+    return Container(
+      width: 280,
+      margin: const EdgeInsets.only(right: 12),
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _isHovered = true),
+        onExit: (_) => setState(() => _isHovered = false),
+        child: GestureDetector(
+          onTap: widget.onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            transform: Matrix4.identity()..scaleByDouble(_isHovered ? 1.02 : 1.0, _isHovered ? 1.02 : 1.0, 1, 1),
+            transformAlignment: Alignment.center,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: _isHovered ? 0.3 : 0.15),
+                    blurRadius: _isHovered ? 16 : 8,
+                    offset: Offset(0, _isHovered ? 8 : 4),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // 背景图 - 显示多张海报叠加效果
+                    _buildCollectionPosters(hasPoster, posterUrl),
+                    // 渐变遮罩
+                    Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.transparent,
+                            Colors.black.withValues(alpha: 0.7),
+                            Colors.black.withValues(alpha: 0.9),
+                          ],
+                          stops: const [0.3, 0.7, 1.0],
+                        ),
+                      ),
+                    ),
+                    // 内容
+                    Positioned(
+                      left: 12,
+                      right: 12,
+                      bottom: 12,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // 系列名称
+                          Text(
+                            collection.name,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          // 电影数量
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.movie_rounded,
+                                size: 14,
+                                color: Colors.grey[400],
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '${collection.movieCount} 部电影',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[400],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    // 悬停边框
+                    if (_isHovered)
+                      Container(
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            color: AppColors.primary,
+                            width: 2,
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCollectionPosters(bool hasPoster, String? posterUrl) {
+    final movies = widget.collection.movies;
+
+    // 如果只有一个电影或没有海报，显示单张
+    if (movies.length == 1 || !hasPoster) {
+      if (hasPoster) {
+        return AdaptiveImage(
+          imageUrl: posterUrl!,
+          placeholder: (_) => _buildPlaceholder(),
+          errorWidget: (_, __) => _buildPlaceholder(),
+        );
+      }
+      return _buildPlaceholder();
+    }
+
+    // 显示多张海报叠加效果（最多3张）
+    final showPosters = movies.take(3).toList();
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // 背景 - 最后一张（稍微右移和缩小）
+        if (showPosters.length >= 3 && showPosters[2].posterUrl != null)
+          Positioned(
+            left: 20,
+            right: -10,
+            top: 5,
+            bottom: 5,
+            child: Transform.scale(
+              scale: 0.85,
+              child: Opacity(
+                opacity: 0.4,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: AdaptiveImage(
+                    imageUrl: showPosters[2].posterUrl!,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        // 中间层
+        if (showPosters.length >= 2 && showPosters[1].posterUrl != null)
+          Positioned(
+            left: 10,
+            right: 0,
+            top: 3,
+            bottom: 3,
+            child: Transform.scale(
+              scale: 0.92,
+              child: Opacity(
+                opacity: 0.6,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: AdaptiveImage(
+                    imageUrl: showPosters[1].posterUrl!,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        // 前景 - 第一张
+        if (showPosters.isNotEmpty && showPosters[0].posterUrl != null)
+          AdaptiveImage(
+            imageUrl: showPosters[0].posterUrl!,
+            placeholder: (_) => _buildPlaceholder(),
+            errorWidget: (_, __) => _buildPlaceholder(),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildPlaceholder() => Container(
+      color: widget.isDark ? Colors.grey[850] : Colors.grey[200],
+      child: Center(
+        child: Icon(
+          Icons.collections_bookmark_rounded,
+          size: 40,
+          color: widget.isDark ? Colors.grey[600] : Colors.grey[400],
+        ),
+      ),
+    );
+}
+
+/// 电影系列详情页面
+class _MovieCollectionPage extends ConsumerWidget {
+  const _MovieCollectionPage({
+    required this.collection,
+    required this.onMovieTap,
+  });
+
+  final MovieCollection collection;
+  final void Function(VideoMetadata) onMovieTap;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final movies = collection.movies;
+
+    return Scaffold(
+      backgroundColor: isDark ? const Color(0xFF0D0D1A) : Colors.grey[50],
+      body: CustomScrollView(
+        slivers: [
+          // 顶部 AppBar 带背景图
+          SliverAppBar(
+            expandedHeight: 200,
+            pinned: true,
+            backgroundColor: isDark ? const Color(0xFF0D0D1A) : Colors.white,
+            flexibleSpace: FlexibleSpaceBar(
+              title: Text(
+                collection.name,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              background: collection.backdropUrl != null
+                  ? Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        AdaptiveImage(
+                          imageUrl: collection.backdropUrl!,
+                          fit: BoxFit.cover,
+                        ),
+                        Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.transparent,
+                                (isDark ? const Color(0xFF0D0D1A) : Colors.white).withValues(alpha: 0.8),
+                                isDark ? const Color(0xFF0D0D1A) : Colors.white,
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
+                  : null,
+            ),
+          ),
+          // 电影数量标签
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.movie_rounded,
+                    size: 20,
+                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${movies.length} 部电影',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // 电影列表
+          SliverPadding(
+            padding: const EdgeInsets.all(16),
+            sliver: SliverGrid(
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 160,
+                mainAxisSpacing: 16,
+                crossAxisSpacing: 12,
+                childAspectRatio: 0.55,
+              ),
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  final movie = movies[index];
+                  return _VerticalPosterCard(
+                    metadata: movie,
+                    onTap: () => onMovieTap(movie),
+                    isDark: isDark,
+                  );
+                },
+                childCount: movies.length,
+              ),
+            ),
+          ),
+          // 底部留白
+          const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
+        ],
       ),
     );
   }

@@ -573,9 +573,16 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
           color: Colors.black.withValues(alpha: 0.3),
           shape: BoxShape.circle,
         ),
-        child: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
-          onPressed: () => Navigator.of(context).pop(),
+        child: GestureDetector(
+          onLongPress: () {
+            // 长按：返回到视频库主页（弹出所有详情页）
+            Navigator.of(context).popUntil((route) => route.isFirst);
+          },
+          child: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+            onPressed: () => Navigator.of(context).pop(),
+            tooltip: '返回（长按返回主页）',
+          ),
         ),
       ),
     );
@@ -720,16 +727,35 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     }
   }
 
-  void _onRecommendationTap(TmdbMediaItem item) {
-    // TODO: 检查本地是否有该影片，如果有则跳转到详情页
-    // 目前先显示一个提示
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${item.title} (${item.year ?? "未知年份"})'),
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
-      ),
-    );
+  Future<void> _onRecommendationTap(TmdbMediaItem item) async {
+    // 检查本地是否有该影片
+    final metadataService = ref.read(videoMetadataServiceProvider);
+    await metadataService.init();
+    final localVideo = await metadataService.getFirstByTmdbId(item.id);
+
+    if (!mounted) return;
+
+    if (localVideo != null) {
+      // 本地有该影片，跳转到详情页
+      // 使用 pushReplacement 避免详情页嵌套过深
+      await Navigator.of(context).pushReplacement(
+        MaterialPageRoute<void>(
+          builder: (context) => VideoDetailPage(
+            metadata: localVideo,
+            sourceId: localVideo.sourceId,
+          ),
+        ),
+      );
+    } else {
+      // 本地没有该影片，显示提示
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('本地未找到 "${item.title}" (${item.year ?? "未知年份"})'),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
   }
 }
 

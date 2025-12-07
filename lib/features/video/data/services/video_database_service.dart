@@ -42,6 +42,8 @@ class VideoDatabaseService {
   static const String _colGeneratedThumbnailUrl = 'generated_thumbnail_url';
   static const String _colFileSize = 'file_size';
   static const String _colFileModifiedTime = 'file_modified_time';
+  static const String _colCollectionId = 'collection_id';
+  static const String _colCollectionName = 'collection_name';
 
   /// 初始化数据库
   Future<void> init() async {
@@ -53,7 +55,7 @@ class VideoDatabaseService {
 
       _db = await openDatabase(
         dbPath,
-        version: 2, // 升级版本以添加新字段
+        version: 3, // 升级版本以添加 collection 字段
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
       );
@@ -97,6 +99,8 @@ class VideoDatabaseService {
         $_colGeneratedThumbnailUrl TEXT,
         $_colFileSize INTEGER,
         $_colFileModifiedTime INTEGER,
+        $_colCollectionId INTEGER,
+        $_colCollectionName TEXT,
         UNIQUE($_colSourceId, $_colFilePath)
       )
     ''');
@@ -119,6 +123,9 @@ class VideoDatabaseService {
     // 复合索引 - 用于剧集查询
     await db.execute(
         'CREATE INDEX idx_tmdb_season_episode ON $_tableMetadata($_colTmdbId, $_colSeasonNumber, $_colEpisodeNumber)');
+    // 电影系列索引
+    await db.execute(
+        'CREATE INDEX idx_collection_id ON $_tableMetadata($_colCollectionId)');
 
     logger.i('VideoDatabaseService: 表和索引创建完成');
   }
@@ -150,6 +157,20 @@ class VideoDatabaseService {
       ''');
 
       logger.i('VideoDatabaseService: 版本1->2 升级完成');
+    }
+
+    // 从版本2升级到版本3
+    if (oldVersion < 3) {
+      // 添加电影系列字段
+      await db.execute(
+          'ALTER TABLE $_tableMetadata ADD COLUMN $_colCollectionId INTEGER');
+      await db.execute(
+          'ALTER TABLE $_tableMetadata ADD COLUMN $_colCollectionName TEXT');
+      // 创建电影系列索引
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_collection_id ON $_tableMetadata($_colCollectionId)');
+
+      logger.i('VideoDatabaseService: 版本2->3 升级完成');
     }
   }
 
@@ -707,6 +728,8 @@ class VideoDatabaseService {
         _colGeneratedThumbnailUrl: m.generatedThumbnailUrl,
         _colFileSize: m.fileSize,
         _colFileModifiedTime: m.fileModifiedTime?.millisecondsSinceEpoch,
+        _colCollectionId: m.collectionId,
+        _colCollectionName: m.collectionName,
       };
 
   /// 从数据库行转换
@@ -745,6 +768,8 @@ class VideoDatabaseService {
             ? DateTime.fromMillisecondsSinceEpoch(
                 row[_colFileModifiedTime] as int)
             : null,
+        collectionId: row[_colCollectionId] as int?,
+        collectionName: row[_colCollectionName] as String?,
       );
 
   /// 获取刮削统计信息
@@ -914,6 +939,303 @@ class VideoDatabaseService {
       where: '$_colScrapeStatus = ?',
       whereArgs: [ScrapeStatus.scraping.index],
     );
+  }
+
+  /// 获取所有电影系列（按系列分组，返回每个系列的电影列表）
+  ///
+  /// 只返回有2部或更多电影的系列
+  Future<List<MovieCollection>> getMovieCollections({int minCount = 2}) async {
+    if (!_initialized) await init();
+
+    // 先获取所有有 collectionId 的电影，按系列分组
+    final results = await _db!.rawQuery('''
+      SELECT $_colCollectionId, $_colCollectionName, COUNT(*) as count
+      FROM $_tableMetadata
+      WHERE $_colCollectionId IS NOT NULL
+        AND $_colCategory = 0
+      GROUP BY $_colCollectionId
+      HAVING COUNT(*) >= ?
+      ORDER BY count DESC
+    ''', [minCount]);
+
+    final collections = <MovieCollection>[];
+
+    for (final row in results) {
+      final collectionId = row[_colCollectionId] as int;
+      final collectionName = row[_colCollectionName] as String? ?? '未知系列';
+
+      // 获取该系列的所有电影
+      final moviesResult = await _db!.query(
+        _tableMetadata,
+        where: '$_colCollectionId = ?',
+        whereArgs: [collectionId],
+        orderBy: '$_colYear ASC',
+      );
+
+      final movies = moviesResult.map(_fromRow).toList();
+
+      collections.add(MovieCollection(
+        id: collectionId,
+        name: collectionName,
+        movies: movies,
+      ));
+    }
+
+    return collections;
+  }
+
+  /// 根据 collectionId 获取同系列的电影
+  Future<List<VideoMetadata>> getByCollectionId(int collectionId) async {
+    if (!_initialized) await init();
+
+    final results = await _db!.query(
+      _tableMetadata,
+      where: '$_colCollectionId = ?',
+      whereArgs: [collectionId],
+      orderBy: '$_colYear ASC',
+    );
+
+    return results.map(_fromRow).toList();
+  }
+
+  /// 获取所有可用的年份列表（按分类筛选）
+  Future<List<int>> getAvailableYears({MediaCategory? category}) async {
+    if (!_initialized) await init();
+
+    var sql = '''
+      SELECT DISTINCT $_colYear FROM $_tableMetadata
+      WHERE $_colYear IS NOT NULL
+    ''';
+    final args = <Object>[];
+
+    if (category != null) {
+      sql += ' AND $_colCategory = ?';
+      args.add(category.index);
+    }
+
+    sql += ' ORDER BY $_colYear DESC';
+
+    final results = await _db!.rawQuery(sql, args);
+    return results.map((r) => r[_colYear] as int).toList();
+  }
+
+  /// 获取所有可用的类型列表（按分类筛选）
+  Future<List<String>> getAvailableGenres({MediaCategory? category}) async {
+    if (!_initialized) await init();
+
+    var sql = '''
+      SELECT DISTINCT $_colGenres FROM $_tableMetadata
+      WHERE $_colGenres IS NOT NULL AND $_colGenres != ''
+    ''';
+    final args = <Object>[];
+
+    if (category != null) {
+      sql += ' AND $_colCategory = ?';
+      args.add(category.index);
+    }
+
+    final results = await _db!.rawQuery(sql, args);
+
+    // 解析所有类型并去重
+    final genreSet = <String>{};
+    for (final row in results) {
+      final genres = row[_colGenres] as String?;
+      if (genres != null && genres.isNotEmpty) {
+        genreSet.addAll(genres.split(',').map((g) => g.trim()));
+      }
+    }
+
+    final genreList = genreSet.toList()..sort();
+    return genreList;
+  }
+
+  /// 根据分类、类型、年份筛选获取元数据（支持组合筛选）
+  Future<List<VideoMetadata>> getFiltered({
+    MediaCategory? category,
+    String? genre,
+    int? year,
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    if (!_initialized) await init();
+
+    var where = '1 = 1';
+    final whereArgs = <Object>[];
+
+    if (category != null) {
+      where += ' AND $_colCategory = ?';
+      whereArgs.add(category.index);
+    }
+
+    if (genre != null && genre.isNotEmpty) {
+      where += ' AND $_colGenres LIKE ?';
+      whereArgs.add('%$genre%');
+    }
+
+    if (year != null) {
+      where += ' AND $_colYear = ?';
+      whereArgs.add(year);
+    }
+
+    final results = await _db!.query(
+      _tableMetadata,
+      where: where,
+      whereArgs: whereArgs,
+      orderBy: '$_colRating DESC NULLS LAST, $_colTitle',
+      limit: limit,
+      offset: offset,
+    );
+
+    return results.map(_fromRow).toList();
+  }
+
+  /// 获取筛选后的数量
+  Future<int> getFilteredCount({
+    MediaCategory? category,
+    String? genre,
+    int? year,
+  }) async {
+    if (!_initialized) await init();
+
+    var where = '1 = 1';
+    final whereArgs = <Object>[];
+
+    if (category != null) {
+      where += ' AND $_colCategory = ?';
+      whereArgs.add(category.index);
+    }
+
+    if (genre != null && genre.isNotEmpty) {
+      where += ' AND $_colGenres LIKE ?';
+      whereArgs.add('%$genre%');
+    }
+
+    if (year != null) {
+      where += ' AND $_colYear = ?';
+      whereArgs.add(year);
+    }
+
+    final result = await _db!.rawQuery(
+      'SELECT COUNT(*) FROM $_tableMetadata WHERE $where',
+      whereArgs,
+    );
+
+    return Sqflite.firstIntValue(result) ?? 0;
+  }
+
+  /// 获取剧集分组的代表性元数据（带筛选条件）
+  Future<List<VideoMetadata>> getTvShowGroupRepresentativesFiltered({
+    String? genre,
+    int? year,
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    if (!_initialized) await init();
+
+    var filterWhere = '';
+    final filterArgs = <Object>[];
+
+    if (genre != null && genre.isNotEmpty) {
+      filterWhere += ' AND $_colGenres LIKE ?';
+      filterArgs.add('%$genre%');
+    }
+
+    if (year != null) {
+      filterWhere += ' AND $_colYear = ?';
+      filterArgs.add(year);
+    }
+
+    // 使用子查询获取每个分组的代表性记录
+    final sql = '''
+      SELECT * FROM $_tableMetadata m1
+      WHERE $_colCategory = 1$filterWhere
+        AND m1.rowid = (
+          SELECT m2.rowid FROM $_tableMetadata m2
+          WHERE m2.$_colCategory = 1
+            AND (
+              (m1.$_colTmdbId IS NOT NULL AND m2.$_colTmdbId = m1.$_colTmdbId)
+              OR (m1.$_colTmdbId IS NULL AND m2.$_colTmdbId IS NULL AND LOWER(m2.$_colTitle) = LOWER(m1.$_colTitle))
+            )
+          ORDER BY m2.$_colRating DESC NULLS LAST, m2.$_colSeasonNumber ASC, m2.$_colEpisodeNumber ASC
+          LIMIT 1
+        )
+      ORDER BY $_colRating DESC NULLS LAST, $_colTitle
+      LIMIT ? OFFSET ?
+    ''';
+
+    final results = await _db!.rawQuery(sql, [...filterArgs, limit, offset]);
+    return results.map(_fromRow).toList();
+  }
+
+  /// 获取筛选后的剧集分组数量
+  Future<int> getTvShowGroupCountFiltered({
+    String? genre,
+    int? year,
+  }) async {
+    if (!_initialized) await init();
+
+    var filterWhere = '';
+    final filterArgs = <Object>[];
+
+    if (genre != null && genre.isNotEmpty) {
+      filterWhere += ' AND $_colGenres LIKE ?';
+      filterArgs.add('%$genre%');
+    }
+
+    if (year != null) {
+      filterWhere += ' AND $_colYear = ?';
+      filterArgs.add(year);
+    }
+
+    // 统计不同的 tmdbId 数量（有 tmdbId 的）
+    final withTmdbIdCount = Sqflite.firstIntValue(await _db!.rawQuery(
+      '''
+      SELECT COUNT(DISTINCT $_colTmdbId) FROM $_tableMetadata
+      WHERE $_colCategory = 1 AND $_colTmdbId IS NOT NULL$filterWhere
+      ''',
+      filterArgs,
+    )) ?? 0;
+
+    // 统计没有 tmdbId 的不同 title 数量
+    final withoutTmdbIdCount = Sqflite.firstIntValue(await _db!.rawQuery(
+      '''
+      SELECT COUNT(DISTINCT LOWER($_colTitle)) FROM $_tableMetadata
+      WHERE $_colCategory = 1 AND $_colTmdbId IS NULL$filterWhere
+      ''',
+      filterArgs,
+    )) ?? 0;
+
+    return withTmdbIdCount + withoutTmdbIdCount;
+  }
+}
+
+/// 电影系列
+class MovieCollection {
+  const MovieCollection({
+    required this.id,
+    required this.name,
+    required this.movies,
+  });
+
+  final int id;
+  final String name;
+  final List<VideoMetadata> movies;
+
+  /// 系列中电影数量
+  int get movieCount => movies.length;
+
+  /// 代表电影（第一部）
+  VideoMetadata? get representative => movies.isNotEmpty ? movies.first : null;
+
+  /// 系列海报（使用第一部电影的海报）
+  String? get posterUrl => representative?.posterUrl;
+
+  /// 系列背景图（使用评分最高的电影的背景图）
+  String? get backdropUrl {
+    if (movies.isEmpty) return null;
+    final sortedByRating = List<VideoMetadata>.from(movies)
+      ..sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
+    return sortedByRating.first.backdropUrl;
   }
 }
 

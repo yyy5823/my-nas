@@ -53,6 +53,8 @@ class VideoMetadata {
     this.generatedThumbnailUrl,
     this.fileSize,
     this.fileModifiedTime,
+    this.collectionId,
+    this.collectionName,
   });
 
   /// 从 Map 创建
@@ -86,6 +88,8 @@ class VideoMetadata {
       fileModifiedTime: map['fileModifiedTime'] != null
           ? DateTime.fromMillisecondsSinceEpoch(map['fileModifiedTime'] as int)
           : null,
+      collectionId: map['collectionId'] as int?,
+      collectionName: map['collectionName'] as String?,
     );
 
   final String filePath;
@@ -113,6 +117,8 @@ class VideoMetadata {
   String? generatedThumbnailUrl; // 生成的缩略图 URL（本地 file://）
   int? fileSize; // 文件大小（字节）
   DateTime? fileModifiedTime; // 文件修改时间
+  int? collectionId; // TMDB 电影系列 ID
+  String? collectionName; // TMDB 电影系列名称
 
   /// 优先使用 TMDB 海报，其次使用内置缩略图，最后使用生成的缩略图
   String? get displayPosterUrl => posterUrl ?? thumbnailUrl ?? generatedThumbnailUrl;
@@ -186,6 +192,9 @@ class VideoMetadata {
     genres = movie.genresText;
     director = movie.director?.name;
     cast = movie.cast.take(5).map((c) => c.name).join(', ');
+    // 保存电影系列信息
+    collectionId = movie.belongsToCollection?.id;
+    collectionName = movie.belongsToCollection?.name;
     lastUpdated = DateTime.now();
   }
 
@@ -253,6 +262,8 @@ class VideoMetadata {
       'generatedThumbnailUrl': generatedThumbnailUrl,
       'fileSize': fileSize,
       'fileModifiedTime': fileModifiedTime?.millisecondsSinceEpoch,
+      'collectionId': collectionId,
+      'collectionName': collectionName,
     };
 
   /// 复制
@@ -282,6 +293,8 @@ class VideoMetadata {
     String? generatedThumbnailUrl,
     int? fileSize,
     DateTime? fileModifiedTime,
+    int? collectionId,
+    String? collectionName,
   }) => VideoMetadata(
       filePath: filePath ?? this.filePath,
       sourceId: sourceId ?? this.sourceId,
@@ -308,6 +321,8 @@ class VideoMetadata {
       generatedThumbnailUrl: generatedThumbnailUrl ?? this.generatedThumbnailUrl,
       fileSize: fileSize ?? this.fileSize,
       fileModifiedTime: fileModifiedTime ?? this.fileModifiedTime,
+      collectionId: collectionId ?? this.collectionId,
+      collectionName: collectionName ?? this.collectionName,
     );
 }
 
