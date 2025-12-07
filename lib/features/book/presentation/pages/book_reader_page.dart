@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_html/flutter_html.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
@@ -19,6 +20,7 @@ import 'package:my_nas/shared/widgets/error_widget.dart';
 import 'package:my_nas/shared/widgets/loading_widget.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 /// 阅读器状态
@@ -36,14 +38,27 @@ class TxtReaderLoading extends TxtReaderState {
 }
 
 class TxtReaderLoaded extends TxtReaderState {
-  TxtReaderLoaded({required this.content, this.scrollPosition = 0.0});
+  TxtReaderLoaded({
+    required this.content,
+    this.htmlContent,
+    this.scrollPosition = 0.0,
+  });
 
   final String content;
+  final String? htmlContent; // 原始 HTML 内容（用于 MOBI 等格式）
   final double scrollPosition;
 
-  TxtReaderLoaded copyWith({String? content, double? scrollPosition}) =>
+  /// 是否有 HTML 内容可用
+  bool get hasHtml => htmlContent != null && htmlContent!.isNotEmpty;
+
+  TxtReaderLoaded copyWith({
+    String? content,
+    String? htmlContent,
+    double? scrollPosition,
+  }) =>
       TxtReaderLoaded(
         content: content ?? this.content,
+        htmlContent: htmlContent ?? this.htmlContent,
         scrollPosition: scrollPosition ?? this.scrollPosition,
       );
 }
@@ -79,6 +94,7 @@ class TxtReaderNotifier extends StateNotifier<TxtReaderState> {
 
     try {
       String content;
+      String? htmlContent;
 
       switch (book.format) {
         case BookFormat.txt:
@@ -90,7 +106,9 @@ class TxtReaderNotifier extends StateNotifier<TxtReaderState> {
           return;
         case BookFormat.mobi:
         case BookFormat.azw3:
-          content = await _loadMobiBook();
+          final result = await _loadMobiBook();
+          content = result.content;
+          htmlContent = result.htmlContent;
         case BookFormat.unknown:
           state = TxtReaderError('未知的电子书格式');
           return;
@@ -103,6 +121,7 @@ class TxtReaderNotifier extends StateNotifier<TxtReaderState> {
 
       state = TxtReaderLoaded(
         content: content,
+        htmlContent: htmlContent,
         scrollPosition: progress?.position ?? 0.0,
       );
     } on Exception catch (e) {
@@ -169,7 +188,7 @@ class TxtReaderNotifier extends StateNotifier<TxtReaderState> {
   String _decodeGbk(List<int> bytes) => String.fromCharCodes(bytes);
 
   /// 加载 MOBI/AZW3 电子书
-  Future<String> _loadMobiBook() async {
+  Future<({String content, String? htmlContent})> _loadMobiBook() async {
     final uri = Uri.parse(book.url);
     Uint8List bytes;
 
@@ -204,7 +223,7 @@ class TxtReaderNotifier extends StateNotifier<TxtReaderState> {
       throw Exception(result.error ?? '解析失败');
     }
 
-    return result.content ?? '';
+    return (content: result.content ?? '', htmlContent: result.htmlContent);
   }
 
   Future<String> _loadEpubBook() async {
@@ -441,8 +460,362 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
   }
 
   Widget _buildContent(TxtReaderLoaded state, BookReaderSettings settings) {
+    // 如果有 HTML 内容，使用 flutter_html 渲染
+    if (state.hasHtml) {
+      return _buildHtmlContent(state.htmlContent!, settings);
+    }
+
+    // 否则使用纯文本渲染
+    return _buildTextContent(state.content, settings);
+  }
+
+  /// 使用 flutter_html 渲染 HTML 内容
+  Widget _buildHtmlContent(String htmlContent, BookReaderSettings settings) {
     final theme = settings.theme;
-    final content = state.content;
+
+    // 清理 HTML 中的无效 CSS 颜色值
+    final cleanedHtml = _cleanInvalidCssColors(htmlContent);
+
+    // 构建 HTML 样式
+    final style = {
+      'body': Style(
+        fontSize: FontSize(settings.fontSize),
+        lineHeight: LineHeight(settings.lineHeight),
+        color: theme.textColor,
+        fontFamily: settings.fontFamily,
+        margin: Margins.zero,
+        padding: HtmlPaddings.zero,
+      ),
+      'p': Style(
+        margin: Margins.only(bottom: settings.paragraphSpacing * 16),
+        textAlign: TextAlign.justify,
+      ),
+      'h1': Style(
+        fontSize: FontSize(settings.fontSize * 1.5),
+        fontWeight: FontWeight.bold,
+        margin: Margins.only(top: 24, bottom: 16),
+      ),
+      'h2': Style(
+        fontSize: FontSize(settings.fontSize * 1.3),
+        fontWeight: FontWeight.bold,
+        margin: Margins.only(top: 20, bottom: 12),
+      ),
+      'h3': Style(
+        fontSize: FontSize(settings.fontSize * 1.15),
+        fontWeight: FontWeight.bold,
+        margin: Margins.only(top: 16, bottom: 8),
+      ),
+      'h4': Style(
+        fontSize: FontSize(settings.fontSize * 1.05),
+        fontWeight: FontWeight.bold,
+        margin: Margins.only(top: 12, bottom: 6),
+      ),
+      'h5': Style(
+        fontSize: FontSize(settings.fontSize),
+        fontWeight: FontWeight.bold,
+        margin: Margins.only(top: 8, bottom: 4),
+      ),
+      'h6': Style(
+        fontSize: FontSize(settings.fontSize * 0.9),
+        fontWeight: FontWeight.bold,
+        margin: Margins.only(top: 8, bottom: 4),
+      ),
+      'blockquote': Style(
+        margin: Margins.symmetric(vertical: 12, horizontal: 16),
+        padding: HtmlPaddings.only(left: 12),
+        border: Border(
+          left: BorderSide(
+            color: theme.textColor.withValues(alpha: 0.3),
+            width: 3,
+          ),
+        ),
+        fontStyle: FontStyle.italic,
+      ),
+      'a': Style(
+        color: Colors.blue,
+        textDecoration: TextDecoration.underline,
+      ),
+      'img': Style(
+        display: Display.none, // 隐藏图片，避免加载问题
+      ),
+      'ul': Style(
+        margin: Margins.only(bottom: 12),
+        padding: HtmlPaddings.only(left: 20),
+      ),
+      'ol': Style(
+        margin: Margins.only(bottom: 12),
+        padding: HtmlPaddings.only(left: 20),
+      ),
+      'li': Style(
+        margin: Margins.only(bottom: 4),
+      ),
+      'pre': Style(
+        backgroundColor: theme.textColor.withValues(alpha: 0.05),
+        padding: HtmlPaddings.all(12),
+        margin: Margins.symmetric(vertical: 8),
+      ),
+      'code': Style(
+        backgroundColor: theme.textColor.withValues(alpha: 0.05),
+        fontFamily: 'monospace',
+        fontSize: FontSize(settings.fontSize * 0.9),
+      ),
+    };
+
+    return Html(
+      data: cleanedHtml,
+      style: style,
+      onLinkTap: (url, attributes, element) {
+        if (url != null) {
+          launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+        }
+      },
+    );
+  }
+
+  /// 修复 HTML 中的无效 CSS 颜色值
+  /// flutter_html 无法解析某些格式不正确的颜色值（如 0x0000c 应该是 #0000cc）
+  String _cleanInvalidCssColors(String html) {
+    var cleaned = html;
+
+    // 修复 style 属性中的颜色值
+    cleaned = cleaned.replaceAllMapped(
+      RegExp(r'style\s*=\s*"([^"]*)"', caseSensitive: false),
+      (match) {
+        final styleContent = match.group(1) ?? '';
+        final fixedStyle = _fixColorValuesInStyle(styleContent);
+        if (fixedStyle.isEmpty) {
+          return '';
+        }
+        return 'style="$fixedStyle"';
+      },
+    );
+
+    // 同样处理单引号的 style 属性
+    cleaned = cleaned.replaceAllMapped(
+      RegExp(r"style\s*=\s*'([^']*)'", caseSensitive: false),
+      (match) {
+        final styleContent = match.group(1) ?? '';
+        final fixedStyle = _fixColorValuesInStyle(styleContent);
+        if (fixedStyle.isEmpty) {
+          return '';
+        }
+        return "style='$fixedStyle'";
+      },
+    );
+
+    // 修复 <font color="..."> 标签的 color 属性
+    cleaned = cleaned.replaceAllMapped(
+      RegExp(r'color\s*=\s*"([^"]*)"', caseSensitive: false),
+      (match) {
+        final colorValue = match.group(1) ?? '';
+        final fixedColor = _fixColorValue(colorValue);
+        if (fixedColor == null) {
+          return '';
+        }
+        return 'color="$fixedColor"';
+      },
+    );
+
+    cleaned = cleaned.replaceAllMapped(
+      RegExp(r"color\s*=\s*'([^']*)'", caseSensitive: false),
+      (match) {
+        final colorValue = match.group(1) ?? '';
+        final fixedColor = _fixColorValue(colorValue);
+        if (fixedColor == null) {
+          return '';
+        }
+        return "color='$fixedColor'";
+      },
+    );
+
+    // 修复 bgcolor 属性
+    cleaned = cleaned.replaceAllMapped(
+      RegExp(r'bgcolor\s*=\s*"([^"]*)"', caseSensitive: false),
+      (match) {
+        final colorValue = match.group(1) ?? '';
+        final fixedColor = _fixColorValue(colorValue);
+        if (fixedColor == null) {
+          return '';
+        }
+        return 'bgcolor="$fixedColor"';
+      },
+    );
+
+    cleaned = cleaned.replaceAllMapped(
+      RegExp(r"bgcolor\s*=\s*'([^']*)'", caseSensitive: false),
+      (match) {
+        final colorValue = match.group(1) ?? '';
+        final fixedColor = _fixColorValue(colorValue);
+        if (fixedColor == null) {
+          return '';
+        }
+        return "bgcolor='$fixedColor'";
+      },
+    );
+
+    return cleaned;
+  }
+
+  /// 修复 style 属性中的颜色值
+  String _fixColorValuesInStyle(String style) =>
+      // 匹配 color: xxx 或 background-color: xxx 或 background: xxx
+      style.replaceAllMapped(
+        RegExp(
+          r'((?:background-)?color)\s*:\s*([^;]+)',
+          caseSensitive: false,
+        ),
+        (match) {
+          final property = match.group(1) ?? 'color';
+          final colorValue = match.group(2)?.trim() ?? '';
+          final fixedColor = _fixColorValue(colorValue);
+          if (fixedColor == null) {
+            return ''; // 移除无法修复的颜色
+          }
+          return '$property: $fixedColor';
+        },
+      );
+
+  /// 修复单个颜色值，返回 null 表示无法修复
+  String? _fixColorValue(String value) {
+    final trimmed = value.trim().toLowerCase();
+    if (trimmed.isEmpty) return null;
+
+    // 已经是有效的颜色名称
+    if (_isValidColorName(trimmed)) {
+      return trimmed;
+    }
+
+    // 已经是有效的 # 格式
+    if (trimmed.startsWith('#')) {
+      final hex = trimmed.substring(1);
+      if (_isValidHexColor(hex)) {
+        return trimmed;
+      }
+      // 尝试修复不完整的 hex
+      final fixed = _fixHexColor(hex);
+      return fixed != null ? '#$fixed' : null;
+    }
+
+    // 0x 格式转换为 # 格式
+    if (trimmed.startsWith('0x')) {
+      final hex = trimmed.substring(2);
+      final fixed = _fixHexColor(hex);
+      return fixed != null ? '#$fixed' : null;
+    }
+
+    // rgb/rgba 格式
+    if (trimmed.startsWith('rgb')) {
+      return value; // 假设 rgb/rgba 格式是有效的
+    }
+
+    // 其他格式尝试当作 hex 处理
+    if (RegExp(r'^[0-9a-f]+$').hasMatch(trimmed)) {
+      final fixed = _fixHexColor(trimmed);
+      return fixed != null ? '#$fixed' : null;
+    }
+
+    return null;
+  }
+
+  /// 修复不完整的 hex 颜色值
+  String? _fixHexColor(String hex) {
+    // 移除可能的前缀
+    var cleaned = hex.replaceAll(RegExp('^[0x#]+'), '');
+
+    // 只保留有效的 hex 字符
+    cleaned = cleaned.replaceAll(RegExp('[^0-9a-fA-F]'), '');
+
+    if (cleaned.isEmpty) return null;
+
+    // 3位 -> 有效
+    if (cleaned.length == 3) {
+      return cleaned;
+    }
+
+    // 4位 -> 补齐到6位（可能是 RGBA 的缩写，取前3位扩展）
+    if (cleaned.length == 4) {
+      return '${cleaned[0]}${cleaned[0]}${cleaned[1]}${cleaned[1]}${cleaned[2]}${cleaned[2]}';
+    }
+
+    // 5位 -> 补齐到6位
+    if (cleaned.length == 5) {
+      return '${cleaned}0';
+    }
+
+    // 6位 -> 有效
+    if (cleaned.length == 6) {
+      return cleaned;
+    }
+
+    // 7位 -> 补齐到8位
+    if (cleaned.length == 7) {
+      return '${cleaned}0';
+    }
+
+    // 8位 -> 有效 (RRGGBBAA)
+    if (cleaned.length == 8) {
+      return cleaned;
+    }
+
+    // 超过8位，截取前6位
+    if (cleaned.length > 8) {
+      return cleaned.substring(0, 6);
+    }
+
+    // 少于3位，无法修复
+    return null;
+  }
+
+  /// 检查是否是有效的 hex 颜色
+  bool _isValidHexColor(String hex) {
+    final length = hex.length;
+    if (length != 3 && length != 4 && length != 6 && length != 8) {
+      return false;
+    }
+    return RegExp(r'^[0-9a-fA-F]+$').hasMatch(hex);
+  }
+
+  /// 检查是否是有效的颜色名称
+  bool _isValidColorName(String name) {
+    const validColors = {
+      'transparent', 'currentcolor', 'inherit',
+      // 基本颜色
+      'black', 'white', 'red', 'green', 'blue', 'yellow', 'cyan', 'magenta',
+      'gray', 'grey', 'silver', 'maroon', 'olive', 'lime', 'aqua', 'teal',
+      'navy', 'fuchsia', 'purple', 'orange', 'pink', 'brown', 'gold',
+      // 扩展颜色
+      'aliceblue', 'antiquewhite', 'aquamarine', 'azure', 'beige', 'bisque',
+      'blanchedalmond', 'blueviolet', 'burlywood', 'cadetblue', 'chartreuse',
+      'chocolate', 'coral', 'cornflowerblue', 'cornsilk', 'crimson',
+      'darkblue', 'darkcyan', 'darkgoldenrod', 'darkgray', 'darkgreen',
+      'darkgrey', 'darkkhaki', 'darkmagenta', 'darkolivegreen', 'darkorange',
+      'darkorchid', 'darkred', 'darksalmon', 'darkseagreen', 'darkslateblue',
+      'darkslategray', 'darkslategrey', 'darkturquoise', 'darkviolet',
+      'deeppink', 'deepskyblue', 'dimgray', 'dimgrey', 'dodgerblue',
+      'firebrick', 'floralwhite', 'forestgreen', 'gainsboro', 'ghostwhite',
+      'goldenrod', 'greenyellow', 'honeydew', 'hotpink', 'indianred',
+      'indigo', 'ivory', 'khaki', 'lavender', 'lavenderblush', 'lawngreen',
+      'lemonchiffon', 'lightblue', 'lightcoral', 'lightcyan',
+      'lightgoldenrodyellow', 'lightgray', 'lightgreen', 'lightgrey',
+      'lightpink', 'lightsalmon', 'lightseagreen', 'lightskyblue',
+      'lightslategray', 'lightslategrey', 'lightsteelblue', 'lightyellow',
+      'limegreen', 'linen', 'mediumaquamarine', 'mediumblue', 'mediumorchid',
+      'mediumpurple', 'mediumseagreen', 'mediumslateblue', 'mediumspringgreen',
+      'mediumturquoise', 'mediumvioletred', 'midnightblue', 'mintcream',
+      'mistyrose', 'moccasin', 'navajowhite', 'oldlace', 'olivedrab',
+      'orangered', 'orchid', 'palegoldenrod', 'palegreen', 'paleturquoise',
+      'palevioletred', 'papayawhip', 'peachpuff', 'peru', 'plum', 'powderblue',
+      'rosybrown', 'royalblue', 'saddlebrown', 'salmon', 'sandybrown',
+      'seagreen', 'seashell', 'sienna', 'skyblue', 'slateblue', 'slategray',
+      'slategrey', 'snow', 'springgreen', 'steelblue', 'tan', 'thistle',
+      'tomato', 'turquoise', 'violet', 'wheat', 'whitesmoke', 'yellowgreen',
+    };
+    return validColors.contains(name.toLowerCase());
+  }
+
+  /// 使用纯文本渲染
+  Widget _buildTextContent(String content, BookReaderSettings settings) {
+    final theme = settings.theme;
 
     // 智能段落检测
     final paragraphs = _splitIntoParagraphs(content);

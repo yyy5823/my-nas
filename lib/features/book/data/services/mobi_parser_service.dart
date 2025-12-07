@@ -13,6 +13,7 @@ class MobiParseResult {
     this.title,
     this.author,
     this.content,
+    this.htmlContent,
     this.error,
   });
 
@@ -23,12 +24,14 @@ class MobiParseResult {
 
   factory MobiParseResult.fromContent({
     required String content,
+    String? htmlContent,
     String? title,
     String? author,
   }) =>
       MobiParseResult(
         success: true,
         content: content,
+        htmlContent: htmlContent,
         title: title,
         author: author,
       );
@@ -37,6 +40,7 @@ class MobiParseResult {
   final String? title;
   final String? author;
   final String? content;
+  final String? htmlContent; // 原始 HTML 内容
   final String? error;
 }
 
@@ -283,12 +287,14 @@ class MobiParserService {
         if (textBuffer.length >= textLength) break;
       }
 
-      // 清理 HTML 标签，提取纯文本
-      var content = textBuffer.toString();
-      content = _cleanHtml(content);
+      // 保留原始 HTML 内容用于渲染
+      final rawHtml = textBuffer.toString();
+      // 清理 HTML 标签，提取纯文本（用于备用显示）
+      final cleanedContent = _cleanHtml(rawHtml);
 
       return MobiParseResult.fromContent(
-        content: content,
+        content: cleanedContent,
+        htmlContent: rawHtml,
         title: title.isNotEmpty ? title : null,
         author: author,
       );

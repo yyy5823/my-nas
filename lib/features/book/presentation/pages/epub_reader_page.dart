@@ -578,6 +578,9 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
   Widget _buildHtmlContent(String htmlContent, BookReaderSettings settings) {
     final theme = settings.theme;
 
+    // 清理 HTML 中的无效 CSS 颜色值
+    final cleanedHtml = _cleanInvalidCssColors(htmlContent);
+
     // 构建自定义样式
     final style = {
       'body': Style(
@@ -651,13 +654,218 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
     };
 
     return Html(
-      data: htmlContent,
+      data: cleanedHtml,
       style: style,
       onLinkTap: (url, attributes, element) {
         // 处理链接点击（可以跳转到其他章节或外部链接）
         logger.d('链接点击: $url');
       },
     );
+  }
+
+  /// 修复 HTML 中的无效 CSS 颜色值
+  /// flutter_html 无法解析某些格式不正确的颜色值（如 0x0000c 应该是 #0000cc）
+  String _cleanInvalidCssColors(String html) {
+    var cleaned = html;
+
+    // 修复 style 属性中的颜色值
+    cleaned = cleaned.replaceAllMapped(
+      RegExp(r'style\s*=\s*"([^"]*)"', caseSensitive: false),
+      (match) {
+        final styleContent = match.group(1) ?? '';
+        final fixedStyle = _fixColorValuesInStyle(styleContent);
+        if (fixedStyle.isEmpty) {
+          return '';
+        }
+        return 'style="$fixedStyle"';
+      },
+    );
+
+    // 同样处理单引号的 style 属性
+    cleaned = cleaned.replaceAllMapped(
+      RegExp(r"style\s*=\s*'([^']*)'", caseSensitive: false),
+      (match) {
+        final styleContent = match.group(1) ?? '';
+        final fixedStyle = _fixColorValuesInStyle(styleContent);
+        if (fixedStyle.isEmpty) {
+          return '';
+        }
+        return "style='$fixedStyle'";
+      },
+    );
+
+    // 修复 <font color="..."> 标签的 color 属性
+    cleaned = cleaned.replaceAllMapped(
+      RegExp(r'color\s*=\s*"([^"]*)"', caseSensitive: false),
+      (match) {
+        final colorValue = match.group(1) ?? '';
+        final fixedColor = _fixColorValue(colorValue);
+        if (fixedColor == null) {
+          return '';
+        }
+        return 'color="$fixedColor"';
+      },
+    );
+
+    cleaned = cleaned.replaceAllMapped(
+      RegExp(r"color\s*=\s*'([^']*)'", caseSensitive: false),
+      (match) {
+        final colorValue = match.group(1) ?? '';
+        final fixedColor = _fixColorValue(colorValue);
+        if (fixedColor == null) {
+          return '';
+        }
+        return "color='$fixedColor'";
+      },
+    );
+
+    // 修复 bgcolor 属性
+    cleaned = cleaned.replaceAllMapped(
+      RegExp(r'bgcolor\s*=\s*"([^"]*)"', caseSensitive: false),
+      (match) {
+        final colorValue = match.group(1) ?? '';
+        final fixedColor = _fixColorValue(colorValue);
+        if (fixedColor == null) {
+          return '';
+        }
+        return 'bgcolor="$fixedColor"';
+      },
+    );
+
+    cleaned = cleaned.replaceAllMapped(
+      RegExp(r"bgcolor\s*=\s*'([^']*)'", caseSensitive: false),
+      (match) {
+        final colorValue = match.group(1) ?? '';
+        final fixedColor = _fixColorValue(colorValue);
+        if (fixedColor == null) {
+          return '';
+        }
+        return "bgcolor='$fixedColor'";
+      },
+    );
+
+    return cleaned;
+  }
+
+  /// 修复 style 属性中的颜色值
+  String _fixColorValuesInStyle(String style) => style.replaceAllMapped(
+        RegExp(
+          r'((?:background-)?color)\s*:\s*([^;]+)',
+          caseSensitive: false,
+        ),
+        (match) {
+          final property = match.group(1) ?? 'color';
+          final colorValue = match.group(2)?.trim() ?? '';
+          final fixedColor = _fixColorValue(colorValue);
+          if (fixedColor == null) {
+            return '';
+          }
+          return '$property: $fixedColor';
+        },
+      );
+
+  /// 修复单个颜色值，返回 null 表示无法修复
+  String? _fixColorValue(String value) {
+    final trimmed = value.trim().toLowerCase();
+    if (trimmed.isEmpty) return null;
+
+    // 已经是有效的颜色名称
+    if (_isValidColorName(trimmed)) {
+      return trimmed;
+    }
+
+    // 已经是有效的 # 格式
+    if (trimmed.startsWith('#')) {
+      final hex = trimmed.substring(1);
+      if (_isValidHexColor(hex)) {
+        return trimmed;
+      }
+      final fixed = _fixHexColor(hex);
+      return fixed != null ? '#$fixed' : null;
+    }
+
+    // 0x 格式转换为 # 格式
+    if (trimmed.startsWith('0x')) {
+      final hex = trimmed.substring(2);
+      final fixed = _fixHexColor(hex);
+      return fixed != null ? '#$fixed' : null;
+    }
+
+    // rgb/rgba 格式
+    if (trimmed.startsWith('rgb')) {
+      return value;
+    }
+
+    // 其他格式尝试当作 hex 处理
+    if (RegExp(r'^[0-9a-f]+$').hasMatch(trimmed)) {
+      final fixed = _fixHexColor(trimmed);
+      return fixed != null ? '#$fixed' : null;
+    }
+
+    return null;
+  }
+
+  /// 修复不完整的 hex 颜色值
+  String? _fixHexColor(String hex) {
+    var cleaned = hex.replaceAll(RegExp('^[0x#]+'), '');
+    cleaned = cleaned.replaceAll(RegExp('[^0-9a-fA-F]'), '');
+
+    if (cleaned.isEmpty) return null;
+
+    if (cleaned.length == 3) return cleaned;
+    if (cleaned.length == 4) {
+      return '${cleaned[0]}${cleaned[0]}${cleaned[1]}${cleaned[1]}${cleaned[2]}${cleaned[2]}';
+    }
+    if (cleaned.length == 5) return '${cleaned}0';
+    if (cleaned.length == 6) return cleaned;
+    if (cleaned.length == 7) return '${cleaned}0';
+    if (cleaned.length == 8) return cleaned;
+    if (cleaned.length > 8) return cleaned.substring(0, 6);
+
+    return null;
+  }
+
+  bool _isValidHexColor(String hex) {
+    final length = hex.length;
+    if (length != 3 && length != 4 && length != 6 && length != 8) {
+      return false;
+    }
+    return RegExp(r'^[0-9a-fA-F]+$').hasMatch(hex);
+  }
+
+  bool _isValidColorName(String name) {
+    const validColors = {
+      'transparent', 'currentcolor', 'inherit',
+      'black', 'white', 'red', 'green', 'blue', 'yellow', 'cyan', 'magenta',
+      'gray', 'grey', 'silver', 'maroon', 'olive', 'lime', 'aqua', 'teal',
+      'navy', 'fuchsia', 'purple', 'orange', 'pink', 'brown', 'gold',
+      'aliceblue', 'antiquewhite', 'aquamarine', 'azure', 'beige', 'bisque',
+      'blanchedalmond', 'blueviolet', 'burlywood', 'cadetblue', 'chartreuse',
+      'chocolate', 'coral', 'cornflowerblue', 'cornsilk', 'crimson',
+      'darkblue', 'darkcyan', 'darkgoldenrod', 'darkgray', 'darkgreen',
+      'darkgrey', 'darkkhaki', 'darkmagenta', 'darkolivegreen', 'darkorange',
+      'darkorchid', 'darkred', 'darksalmon', 'darkseagreen', 'darkslateblue',
+      'darkslategray', 'darkslategrey', 'darkturquoise', 'darkviolet',
+      'deeppink', 'deepskyblue', 'dimgray', 'dimgrey', 'dodgerblue',
+      'firebrick', 'floralwhite', 'forestgreen', 'gainsboro', 'ghostwhite',
+      'goldenrod', 'greenyellow', 'honeydew', 'hotpink', 'indianred',
+      'indigo', 'ivory', 'khaki', 'lavender', 'lavenderblush', 'lawngreen',
+      'lemonchiffon', 'lightblue', 'lightcoral', 'lightcyan',
+      'lightgoldenrodyellow', 'lightgray', 'lightgreen', 'lightgrey',
+      'lightpink', 'lightsalmon', 'lightseagreen', 'lightskyblue',
+      'lightslategray', 'lightslategrey', 'lightsteelblue', 'lightyellow',
+      'limegreen', 'linen', 'mediumaquamarine', 'mediumblue', 'mediumorchid',
+      'mediumpurple', 'mediumseagreen', 'mediumslateblue', 'mediumspringgreen',
+      'mediumturquoise', 'mediumvioletred', 'midnightblue', 'mintcream',
+      'mistyrose', 'moccasin', 'navajowhite', 'oldlace', 'olivedrab',
+      'orangered', 'orchid', 'palegoldenrod', 'palegreen', 'paleturquoise',
+      'palevioletred', 'papayawhip', 'peachpuff', 'peru', 'plum', 'powderblue',
+      'rosybrown', 'royalblue', 'saddlebrown', 'salmon', 'sandybrown',
+      'seagreen', 'seashell', 'sienna', 'skyblue', 'slateblue', 'slategray',
+      'slategrey', 'snow', 'springgreen', 'steelblue', 'tan', 'thistle',
+      'tomato', 'turquoise', 'violet', 'wheat', 'whitesmoke', 'yellowgreen',
+    };
+    return validColors.contains(name.toLowerCase());
   }
 
   Widget _buildTapZones(EpubReaderLoaded state, BookReaderSettings settings) =>
