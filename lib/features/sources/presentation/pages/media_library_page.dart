@@ -365,6 +365,7 @@ class _PathCardState extends ConsumerState<_PathCard> {
   int _itemCount = 0;
   int _scrapedCount = 0;  // 视频专用：已刮削数量
   int _pendingScrapeCount = 0;  // 视频专用：待刮削数量
+  int _retryableCount = 0;  // 视频专用：可重试数量（失败+无TMDB）
 
   StreamSubscription<VideoScanProgress>? _videoProgressSub;
   StreamSubscription<ScrapeStats>? _scrapeStatsSub;
@@ -412,11 +413,13 @@ class _PathCardState extends ConsumerState<_PathCard> {
 
   Future<void> _loadInitialScrapeStats() async {
     final stats = await VideoScannerService().getScrapeStats();
+    final retryable = await VideoScannerService().getRetryableCount();
     if (mounted) {
       setState(() {
         _itemCount = stats.total;
         _scrapedCount = stats.completed;
         _pendingScrapeCount = stats.pending;
+        _retryableCount = retryable;
         if (stats.total > 0) {
           _scrapeProgress = stats.processed / stats.total;
         }
@@ -485,11 +488,13 @@ class _PathCardState extends ConsumerState<_PathCard> {
       switch (widget.mediaType) {
         case MediaType.video:
           final stats = await VideoScannerService().getScrapeStats();
+          final retryable = await VideoScannerService().getRetryableCount();
           if (mounted) {
             setState(() {
               _itemCount = stats.total;
               _scrapedCount = stats.completed;
               _pendingScrapeCount = stats.pending;
+              _retryableCount = retryable;
             });
           }
         case MediaType.music:
@@ -688,6 +693,28 @@ class _PathCardState extends ConsumerState<_PathCard> {
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.orange,
                     side: const BorderSide(color: Colors.orange),
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                  ),
+                ),
+              ),
+            ],
+
+            // 视频专用：重试按钮（当有失败或无TMDB数据的内容时显示）
+            if (isVideo &&
+                _retryableCount > 0 &&
+                _pendingScrapeCount == 0 &&
+                !_isScraping &&
+                isConnected) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _retryScraping,
+                  icon: const Icon(Icons.refresh_rounded, size: 16),
+                  label: Text('重试刮削 ($_retryableCount 失败/无数据)', style: const TextStyle(fontSize: 13)),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.redAccent,
+                    side: const BorderSide(color: Colors.redAccent),
                     padding: const EdgeInsets.symmetric(vertical: 8),
                   ),
                 ),
@@ -1026,6 +1053,46 @@ class _PathCardState extends ConsumerState<_PathCard> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('正在停止刮削...')),
     );
+  }
+
+  /// 重试刮削失败和无 TMDB 数据的视频
+  Future<void> _retryScraping() async {
+    // 检查是否已在刮削中
+    if (VideoScannerService().isScraping) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('刮削任务正在进行中...')),
+      );
+      return;
+    }
+
+    setState(() => _isScraping = true);
+
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('开始重试刮削 $_retryableCount 个视频...')),
+      );
+
+      await VideoScannerService().retryScrapeFailedVideos(
+        connections: widget.connections,
+      );
+
+      await _loadStats();
+      await _loadInitialScrapeStats();
+      await ref.read(videoListProvider.notifier).reloadFromCache();
+      if (mounted) {
+        setState(() => _isScraping = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('重试刮削完成')),
+        );
+      }
+    } on Exception catch (e) {
+      if (mounted) {
+        setState(() => _isScraping = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('重试刮削失败: $e')),
+        );
+      }
+    }
   }
 
   Color _getMediaColor() => switch (widget.mediaType) {

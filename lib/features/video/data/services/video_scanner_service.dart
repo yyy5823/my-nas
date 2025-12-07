@@ -509,6 +509,48 @@ class VideoScannerService {
     return _dbService.getScrapeStats();
   }
 
+  /// 获取需要重试的视频数量
+  ///
+  /// 包括刮削失败的和刮削完成但没有 TMDB 数据的
+  Future<int> getRetryableCount() async {
+    await _dbService.init();
+    return _dbService.getRetryableCount();
+  }
+
+  /// 重试刮削失败和无 TMDB 数据的视频
+  ///
+  /// 只会刮削失败的和完成但无 TMDB ID 的视频，
+  /// 不会重新刮削已成功获取 TMDB 数据的视频
+  Future<void> retryScrapeFailedVideos({
+    required Map<String, SourceConnection> connections,
+  }) async {
+    if (_isScraping) {
+      logger.w('VideoScannerService: 刮削正在进行中，跳过重试');
+      return;
+    }
+
+    try {
+      await _dbService.init();
+
+      // 获取需要重试的数量
+      final retryableCount = await _dbService.getRetryableCount();
+      if (retryableCount == 0) {
+        logger.i('VideoScannerService: 没有需要重试的视频');
+        return;
+      }
+
+      logger.i('VideoScannerService: 开始重试刮削 $retryableCount 个视频');
+
+      // 重置需要重试的视频状态为 pending
+      await _dbService.resetRetryableVideos();
+
+      // 开始刮削
+      await scrapeMetadata(connections: connections);
+    } on Exception catch (e, st) {
+      logger.e('VideoScannerService: 重试刮削失败', e, st);
+    }
+  }
+
   /// 递归扫描目录（无深度限制）
   ///
   /// 会跳过以下目录：

@@ -257,9 +257,10 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     // 只有当有新的刮削完成时才刷新
     if (stats.completed > _lastCompletedCount) {
       _lastCompletedCount = stats.completed;
-      // 每刮削完成 5 个视频刷新一次，避免频繁刷新
-      if (stats.completed % 5 == 0 || stats.pending == 0) {
-        _loadCategorizedData();
+      // 每刮削完成 10 个视频刷新一次，避免频繁刷新
+      // 使用 silent: true 避免页面闪烁
+      if (stats.completed % 10 == 0 || stats.pending == 0) {
+        _loadCategorizedData(silent: true);
       }
     }
   }
@@ -285,8 +286,13 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
   }
 
   /// 从 SQLite 加载分类数据（高性能）
-  Future<void> _loadCategorizedData() async {
-    state = VideoListLoading(fromCache: true);
+  ///
+  /// [silent] 为 true 时不显示加载状态，避免页面闪烁（用于刮削进度更新）
+  Future<void> _loadCategorizedData({bool silent = false}) async {
+    // 非静默模式才显示加载状态
+    if (!silent) {
+      state = VideoListLoading(fromCache: true);
+    }
 
     // 获取启用的路径（用于过滤停用文件夹的视频）
     final enabledPaths = _getEnabledPaths();

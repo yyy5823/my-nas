@@ -743,6 +743,64 @@ class VideoDatabaseService {
     return results.map(_fromRow).toList();
   }
 
+  /// 获取需要重试的视频列表
+  ///
+  /// 包括：
+  /// - 刮削失败的 (failed)
+  /// - 刮削完成但没有 TMDB 数据的（只有封面或连封面都没有）
+  Future<List<VideoMetadata>> getRetryableVideos({int limit = 50}) async {
+    if (!_initialized) await init();
+
+    // 获取失败的和完成但无 TMDB ID 的视频
+    final results = await _db!.query(
+      _tableMetadata,
+      where: '''
+        $_colScrapeStatus = ?
+        OR ($_colScrapeStatus = ? AND $_colTmdbId IS NULL)
+      ''',
+      whereArgs: [
+        ScrapeStatus.failed.index,
+        ScrapeStatus.completed.index,
+      ],
+      orderBy: _colId,
+      limit: limit,
+    );
+
+    return results.map(_fromRow).toList();
+  }
+
+  /// 获取需要重试的视频数量
+  Future<int> getRetryableCount() async {
+    if (!_initialized) await init();
+
+    final count = Sqflite.firstIntValue(await _db!.rawQuery('''
+      SELECT COUNT(*) FROM $_tableMetadata
+      WHERE $_colScrapeStatus = ?
+        OR ($_colScrapeStatus = ? AND $_colTmdbId IS NULL)
+    ''', [ScrapeStatus.failed.index, ScrapeStatus.completed.index]));
+
+    return count ?? 0;
+  }
+
+  /// 重置失败和无TMDB数据的视频状态为待刮削
+  Future<int> resetRetryableVideos() async {
+    if (!_initialized) await init();
+
+    final count = await _db!.rawUpdate('''
+      UPDATE $_tableMetadata
+      SET $_colScrapeStatus = ?
+      WHERE $_colScrapeStatus = ?
+        OR ($_colScrapeStatus = ? AND $_colTmdbId IS NULL)
+    ''', [
+      ScrapeStatus.pending.index,
+      ScrapeStatus.failed.index,
+      ScrapeStatus.completed.index,
+    ]);
+
+    logger.i('VideoDatabaseService: 重置 $count 个视频为待刮削状态');
+    return count;
+  }
+
   /// 更新刮削状态
   Future<void> updateScrapeStatus(
     String sourceId,
