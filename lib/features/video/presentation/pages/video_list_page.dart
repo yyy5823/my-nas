@@ -24,7 +24,6 @@ import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
 import 'package:my_nas/features/video/presentation/pages/video_detail_page.dart';
 import 'package:my_nas/features/video/presentation/pages/video_player_page.dart';
 import 'package:my_nas/features/video/presentation/providers/video_history_provider.dart';
-import 'package:my_nas/features/video/presentation/widgets/global_scrape_indicator.dart';
 import 'package:my_nas/features/video/presentation/widgets/hero_banner.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/adaptive_image.dart';
@@ -585,8 +584,39 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
   final _searchController = TextEditingController();
   bool _showSearch = false;
 
+  // 刮削进度状态
+  StreamSubscription<ScrapeStats>? _scrapeSubscription;
+  ScrapeStats? _scrapeStats;
+
+  @override
+  void initState() {
+    super.initState();
+    _initScrapeListener();
+  }
+
+  void _initScrapeListener() {
+    _scrapeSubscription = VideoScannerService().scrapeStatsStream.listen((stats) {
+      if (mounted) {
+        setState(() => _scrapeStats = stats);
+      }
+    });
+
+    // 初始检查刮削状态
+    _checkInitialScrapeState();
+  }
+
+  Future<void> _checkInitialScrapeState() async {
+    if (VideoScannerService().isScraping) {
+      final stats = await VideoScannerService().getScrapeStats();
+      if (mounted) {
+        setState(() => _scrapeStats = stats);
+      }
+    }
+  }
+
   @override
   void dispose() {
+    _scrapeSubscription?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -611,8 +641,6 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
       body: Column(
         children: [
           _buildHeader(context, ref, isDark, state),
-          // 全局刮削进度指示器
-          const GlobalScrapeIndicator(),
           Expanded(
             child: switch (state) {
               VideoListLoading(
@@ -689,6 +717,9 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     final movieCount = state is VideoListLoaded ? state.movieCount : 0;
     final tvShowCount = state is VideoListLoaded ? state.tvShowGroups.length : 0;
 
+    // 判断是否正在刮削
+    final isScraping = _scrapeStats != null && !_scrapeStats!.isAllDone && _scrapeStats!.total > 0;
+
     return Row(
       children: [
         Expanded(
@@ -703,7 +734,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
                 ),
               ),
               const SizedBox(height: 4),
-              if (videoCount > 0)
+              if (videoCount > 0 || isScraping)
                 Row(
                   children: [
                     _buildStatChip(
@@ -719,6 +750,11 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
                       color: AppColors.accent,
                       isDark: isDark,
                     ),
+                    // 刮削进度指示器
+                    if (isScraping) ...[
+                      const SizedBox(width: 12),
+                      _buildScrapeProgressChip(isDark),
+                    ],
                   ],
                 ),
             ],
@@ -742,6 +778,41 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
           tooltip: '更多',
         ),
       ],
+    );
+  }
+
+  /// 刮削进度标签
+  Widget _buildScrapeProgressChip(bool isDark) {
+    final stats = _scrapeStats!;
+    final progress = stats.progress;
+    final percentage = (progress * 100).toInt();
+
+    return Tooltip(
+      message: '刮削进度: ${stats.processed}/${stats.total}',
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(
+              value: progress,
+              strokeWidth: 2,
+              backgroundColor: isDark ? Colors.grey[700] : Colors.grey[300],
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.orange),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            '$percentage%',
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.orange,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
