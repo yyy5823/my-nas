@@ -337,13 +337,18 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     });
   }
 
-  void _showSettingsSheet(BookReaderSettings settings) {
+  void _showSettingsSheet() {
     showReaderSettingsSheet(
       context,
       title: '阅读设置',
       icon: Icons.auto_stories_rounded,
       iconColor: AppColors.info,
-      content: _buildSettingsContent(settings),
+      contentBuilder: (context) => Consumer(
+        builder: (context, ref, _) {
+          final settings = ref.watch(bookReaderSettingsProvider);
+          return _buildSettingsContent(settings);
+        },
+      ),
     );
   }
 
@@ -1060,7 +1065,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
                 tooltip: '放大字体',
               ),
               IconButton(
-                onPressed: () => _showSettingsSheet(settings),
+                onPressed: _showSettingsSheet,
                 icon: const Icon(
                   Icons.settings_outlined,
                   color: Colors.white70,

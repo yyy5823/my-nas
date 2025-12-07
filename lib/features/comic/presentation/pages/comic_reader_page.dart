@@ -305,13 +305,18 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
     super.dispose();
   }
 
-  void _showSettingsSheet(ComicReaderSettings settings) {
+  void _showSettingsSheet() {
     showReaderSettingsSheet(
       context,
       title: '漫画设置',
       icon: Icons.menu_book_rounded,
       iconColor: AppColors.secondary,
-      content: _buildSettingsContent(settings),
+      contentBuilder: (context) => Consumer(
+        builder: (context, ref, _) {
+          final settings = ref.watch(comicReaderSettingsProvider);
+          return _buildSettingsContent(settings);
+        },
+      ),
     );
   }
 
@@ -708,7 +713,7 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
                 // 设置按钮
                 IconButton(
                   icon: const Icon(Icons.settings_outlined, color: Colors.white),
-                  onPressed: () => _showSettingsSheet(ref.read(comicReaderSettingsProvider)),
+                  onPressed: _showSettingsSheet,
                 ),
               ],
             ),

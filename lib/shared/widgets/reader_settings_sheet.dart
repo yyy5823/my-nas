@@ -3,12 +3,15 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 
+/// 内容构建器类型
+typedef ReaderSettingsContentBuilder = Widget Function(BuildContext context);
+
 /// 显示阅读设置弹框
 void showReaderSettingsSheet(
   BuildContext context, {
   required String title,
   required IconData icon,
-  required Widget content,
+  required ReaderSettingsContentBuilder contentBuilder,
   Color? iconColor,
 }) {
   showModalBottomSheet<void>(
@@ -19,7 +22,7 @@ void showReaderSettingsSheet(
       title: title,
       icon: icon,
       iconColor: iconColor,
-      content: content,
+      contentBuilder: contentBuilder,
     ),
   );
 }
@@ -29,7 +32,7 @@ class ReaderSettingsSheet extends StatelessWidget {
   const ReaderSettingsSheet({
     required this.title,
     required this.icon,
-    required this.content,
+    required this.contentBuilder,
     this.iconColor,
     super.key,
   });
@@ -37,7 +40,7 @@ class ReaderSettingsSheet extends StatelessWidget {
   final String title;
   final IconData icon;
   final Color? iconColor;
-  final Widget content;
+  final ReaderSettingsContentBuilder contentBuilder;
 
   @override
   Widget build(BuildContext context) {
@@ -93,12 +96,12 @@ class ReaderSettingsSheet extends StatelessWidget {
                         : Colors.black.withValues(alpha: 0.05),
                   ),
                 ),
-                // 内容区域
+                // 内容区域 - 使用 builder 以支持状态更新
                 Expanded(
                   child: SingleChildScrollView(
                     controller: scrollController,
                     padding: const EdgeInsets.all(20),
-                    child: content,
+                    child: contentBuilder(context),
                   ),
                 ),
               ],
@@ -312,7 +315,7 @@ class SettingSwitchRow extends StatelessWidget {
             value: value,
             onChanged: onChanged,
             activeTrackColor: AppColors.primary.withValues(alpha: 0.5),
-            activeColor: AppColors.primary,
+            activeThumbColor: AppColors.primary,
           ),
         ],
       ),
@@ -437,4 +440,3 @@ class SettingColorPicker extends StatelessWidget {
       }),
     );
 }
-
