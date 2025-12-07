@@ -4,8 +4,9 @@ import 'dart:typed_data';
 import 'dart:ui' as ui
     show Color, Image, ImageByteFormat, PixelFormat, decodeImageFromPixels;
 
-import 'package:epub_decoder/epub_decoder.dart';
+import 'package:epub_plus/epub_plus.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
+import 'package:image/image.dart' as img;
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
@@ -121,31 +122,46 @@ class BookCoverService {
         }
       }
 
-      final epub = Epub.fromBytes(Uint8List.fromList(bytes));
-      final cover = epub.cover;
+      // 使用 epub_plus 解析 EPUB
+      final epubBook = await EpubReader.readBook(bytes);
 
-      if (cover == null) {
-        logger.d('EPUB 没有封面: $bookPath');
-        return null;
+      // 获取封面图片
+      final coverImage = epubBook.coverImage;
+      if (coverImage != null) {
+        // epub_plus 返回的是 image 包的 Image 对象，需要编码为 PNG
+        final pngBytes = img.encodePng(coverImage);
+        if (_isValidImageData(Uint8List.fromList(pngBytes))) {
+          return Uint8List.fromList(pngBytes);
+        }
       }
 
-      // 安全获取封面内容
-      // epub_decoder 在文件不存在时会抛出断言错误，需要捕获所有错误
-      final Uint8List coverBytes;
-      try {
-        coverBytes = cover.fileContent;
-        // ignore: avoid_catches_without_on_clauses
-      } on Object catch (e) {
-        // 捕获所有错误（包括 AssertionError，它是 Error 的子类）
-        logger.w('EPUB 封面文件不存在或无法读取: $bookPath', e);
-        return null;
+      // 如果没有封面图片，尝试从 content.images 获取第一张图片
+      final images = epubBook.content?.images;
+      if (images != null && images.isNotEmpty) {
+        // 优先查找名称包含 cover 的图片
+        for (final entry in images.entries) {
+          if (entry.key.toLowerCase().contains('cover')) {
+            final imageBytes = entry.value.content;
+            if (imageBytes != null) {
+              final bytes = Uint8List.fromList(imageBytes);
+              if (_isValidImageData(bytes)) {
+                return bytes;
+              }
+            }
+          }
+        }
+        // 否则使用第一张图片
+        final firstImage = images.values.first;
+        final imageBytes = firstImage.content;
+        if (imageBytes != null) {
+          final bytes = Uint8List.fromList(imageBytes);
+          if (_isValidImageData(bytes)) {
+            return bytes;
+          }
+        }
       }
 
-      // 验证是否为有效图片数据（检查常见图片格式的魔数）
-      if (_isValidImageData(coverBytes)) {
-        return coverBytes;
-      }
-      logger.w('EPUB 封面数据无效: $bookPath');
+      logger.d('EPUB 没有封面: $bookPath');
       return null;
     } on Exception catch (e) {
       logger.w('提取 EPUB 封面失败: $bookPath', e);

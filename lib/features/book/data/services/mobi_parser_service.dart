@@ -396,10 +396,34 @@ class MobiParserService {
     return null;
   }
 
-  /// 清理 HTML 标签
+  /// 清理 HTML 标签，保留段落结构
   String _cleanHtml(String html) {
-    // 移除 HTML 标签
-    var text = html.replaceAll(RegExp('<[^>]*>'), '');
+    var text = html;
+
+    // 移除 script 和 style 标签及其内容
+    text = text.replaceAll(
+      RegExp('<script[^>]*>.*?</script>', caseSensitive: false, dotAll: true),
+      '',
+    );
+    text = text.replaceAll(
+      RegExp('<style[^>]*>.*?</style>', caseSensitive: false, dotAll: true),
+      '',
+    );
+
+    // 在段落结束标签前添加换行
+    text = text.replaceAll(RegExp('</p>', caseSensitive: false), '\n\n');
+    text = text.replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n');
+    text = text.replaceAll(RegExp('</h[1-6]>', caseSensitive: false), '\n\n');
+    text = text.replaceAll(RegExp('</div>', caseSensitive: false), '\n');
+    text = text.replaceAll(RegExp('</li>', caseSensitive: false), '\n');
+    text = text.replaceAll(RegExp('</tr>', caseSensitive: false), '\n');
+    text = text.replaceAll(
+      RegExp('</blockquote>', caseSensitive: false),
+      '\n\n',
+    );
+
+    // 移除所有其他 HTML 标签
+    text = text.replaceAll(RegExp('<[^>]*>'), '');
 
     // 解码 HTML 实体
     text = text
@@ -408,10 +432,45 @@ class MobiParserService {
         .replaceAll('&gt;', '>')
         .replaceAll('&amp;', '&')
         .replaceAll('&quot;', '"')
+        .replaceAll('&apos;', "'")
         .replaceAll('&#39;', "'")
-        // 清理多余的空白
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .replaceAll(RegExp(r'\n\s*\n'), '\n\n');
+        .replaceAll('&ldquo;', '"')
+        .replaceAll('&rdquo;', '"')
+        .replaceAll('&lsquo;', '\u2018')
+        .replaceAll('&rsquo;', '\u2019')
+        .replaceAll('&mdash;', '—')
+        .replaceAll('&ndash;', '–')
+        .replaceAll('&hellip;', '…');
+
+    // 解码数字实体
+    text = text.replaceAllMapped(
+      RegExp(r'&#(\d+);'),
+      (match) {
+        final code = int.tryParse(match.group(1) ?? '');
+        if (code != null && code > 0 && code < 0x10FFFF) {
+          return String.fromCharCode(code);
+        }
+        return match.group(0) ?? '';
+      },
+    );
+
+    text = text.replaceAllMapped(
+      RegExp('&#x([0-9a-fA-F]+);'),
+      (match) {
+        final code = int.tryParse(match.group(1) ?? '', radix: 16);
+        if (code != null && code > 0 && code < 0x10FFFF) {
+          return String.fromCharCode(code);
+        }
+        return match.group(0) ?? '';
+      },
+    );
+
+    // 清理多余的空白，但保留段落换行
+    text = text
+        .replaceAll(RegExp(r'[ \t]+'), ' ') // 合并多个空格
+        .replaceAll(RegExp(r'\n[ \t]+'), '\n') // 移除行首空白
+        .replaceAll(RegExp(r'[ \t]+\n'), '\n') // 移除行尾空白
+        .replaceAll(RegExp(r'\n{3,}'), '\n\n'); // 最多保留两个换行
 
     return text.trim();
   }

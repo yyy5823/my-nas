@@ -444,8 +444,8 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     final theme = settings.theme;
     final content = state.content;
 
-    // 处理段落间距
-    final paragraphs = content.split('\n\n');
+    // 智能段落检测
+    final paragraphs = _splitIntoParagraphs(content);
     final children = <Widget>[];
 
     for (var i = 0; i < paragraphs.length; i++) {
@@ -474,6 +474,86 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: children,
     );
+  }
+
+  /// 智能段落分割
+  /// 支持多种段落格式：
+  /// 1. 双换行分隔 (\n\n)
+  /// 2. 中文段落缩进（以全角空格或两个空格开头）
+  /// 3. 单换行但下一行有缩进
+  List<String> _splitIntoParagraphs(String content) {
+    // 首先尝试按双换行分割
+    final doubleNewlineParagraphs = content.split(RegExp(r'\n\s*\n'));
+    if (doubleNewlineParagraphs.length > 10) {
+      // 如果有足够多的双换行段落，使用这种方式
+      return doubleNewlineParagraphs;
+    }
+
+    // 否则尝试智能分割
+    final lines = content.split('\n');
+    final paragraphs = <String>[];
+    final currentParagraph = StringBuffer();
+
+    for (var i = 0; i < lines.length; i++) {
+      final line = lines[i];
+      final trimmedLine = line.trim();
+
+      if (trimmedLine.isEmpty) {
+        // 空行表示段落结束
+        if (currentParagraph.isNotEmpty) {
+          paragraphs.add(currentParagraph.toString().trim());
+          currentParagraph.clear();
+        }
+        continue;
+      }
+
+      // 检测是否是新段落的开始
+      final isNewParagraph = _isNewParagraphStart(line, trimmedLine);
+
+      if (isNewParagraph && currentParagraph.isNotEmpty) {
+        // 保存当前段落，开始新段落
+        paragraphs.add(currentParagraph.toString().trim());
+        currentParagraph.clear();
+      }
+
+      if (currentParagraph.isNotEmpty) {
+        currentParagraph.write(' ');
+      }
+      currentParagraph.write(trimmedLine);
+    }
+
+    // 添加最后一个段落
+    if (currentParagraph.isNotEmpty) {
+      paragraphs.add(currentParagraph.toString().trim());
+    }
+
+    return paragraphs.isEmpty ? [content] : paragraphs;
+  }
+
+  /// 检测是否是新段落的开始
+  bool _isNewParagraphStart(String line, String trimmedLine) {
+    // 1. 以全角空格开头（中文段落缩进）
+    if (line.startsWith('\u3000') || line.startsWith('　')) {
+      return true;
+    }
+
+    // 2. 以两个或更多空格开头
+    if (line.startsWith('  ')) {
+      return true;
+    }
+
+    // 3. 以章节标题开头（第X章、Chapter X 等）
+    if (RegExp(r'^(第[一二三四五六七八九十百千万\d]+[章节回篇卷集部]|Chapter\s*\d+|CHAPTER\s*\d+)', caseSensitive: false)
+        .hasMatch(trimmedLine)) {
+      return true;
+    }
+
+    // 4. 以数字序号开头（1. 2. 等）
+    if (RegExp(r'^\d+[.、．]\s').hasMatch(trimmedLine)) {
+      return true;
+    }
+
+    return false;
   }
 
   String _getProgressText(TxtReaderLoaded state) {

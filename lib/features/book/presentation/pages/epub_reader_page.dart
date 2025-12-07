@@ -1,9 +1,9 @@
-import 'dart:convert';
 import 'dart:io';
 
-import 'package:epub_decoder/epub_decoder.dart';
+import 'package:epub_plus/epub_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_html/flutter_html.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
@@ -36,38 +36,45 @@ class EpubReaderLoading extends EpubReaderState {
 
 class EpubReaderLoaded extends EpubReaderState {
   EpubReaderLoaded({
-    required this.epub,
+    required this.title,
+    required this.author,
     required this.chapters,
-    required this.chapterContents,
     this.currentChapter = 0,
     this.scrollPosition = 0.0,
+    this.cssContent = '',
   });
 
-  final Epub epub;
-  final List<EpubChapter> chapters;
-  final List<String> chapterContents;
+  final String title;
+  final String author;
+  final List<BookChapterInfo> chapters;
   final int currentChapter;
   final double scrollPosition;
-
-  String get title => epub.title.isNotEmpty ? epub.title : '未知书名';
-
-  String get author =>
-      epub.authors.isNotEmpty ? epub.authors.join(', ') : '未知作者';
+  final String cssContent;
 
   int get totalChapters => chapters.length;
 
+  /// 获取当前章节的 HTML 内容
+  String get currentHtmlContent {
+    if (currentChapter >= 0 && currentChapter < chapters.length) {
+      return chapters[currentChapter].htmlContent;
+    }
+    return '';
+  }
+
   EpubReaderLoaded copyWith({
-    Epub? epub,
-    List<EpubChapter>? chapters,
-    List<String>? chapterContents,
+    String? title,
+    String? author,
+    List<BookChapterInfo>? chapters,
     int? currentChapter,
     double? scrollPosition,
+    String? cssContent,
   }) => EpubReaderLoaded(
-    epub: epub ?? this.epub,
+    title: title ?? this.title,
+    author: author ?? this.author,
     chapters: chapters ?? this.chapters,
-    chapterContents: chapterContents ?? this.chapterContents,
     currentChapter: currentChapter ?? this.currentChapter,
     scrollPosition: scrollPosition ?? this.scrollPosition,
+    cssContent: cssContent ?? this.cssContent,
   );
 }
 
@@ -77,13 +84,32 @@ class EpubReaderError extends EpubReaderState {
   final String message;
 }
 
-/// EPUB 章节
-class EpubChapter {
-  EpubChapter({required this.title, required this.href, this.content = ''});
+/// 图书章节信息（避免与 epub_plus 的 EpubChapter 冲突）
+class BookChapterInfo {
+  BookChapterInfo({
+    required this.title,
+    required this.href,
+    this.htmlContent = '',
+  });
 
   final String title;
   final String href;
-  String content;
+  final String htmlContent;
+}
+
+/// EPUB 解析结果（用于 Isolate 传递）
+class _EpubParseResult {
+  _EpubParseResult({
+    required this.title,
+    required this.author,
+    required this.chapters,
+    this.cssContent = '',
+  });
+
+  final String title;
+  final String author;
+  final List<BookChapterInfo> chapters;
+  final String cssContent;
 }
 
 class EpubReaderNotifier extends StateNotifier<EpubReaderState> {
@@ -133,7 +159,7 @@ class EpubReaderNotifier extends StateNotifier<EpubReaderState> {
       // 优先使用流式加载（支持 SMB/WebDAV 等协议）
       final fileSystem = _getFileSystem();
       if (fileSystem != null) {
-        state = EpubReaderLoading(message: '流式加载中...');
+        state = EpubReaderLoading(message: '加载文件中...');
         final stream = await fileSystem.getFileStream(book.path);
         final bytes = await _readStreamBytes(stream);
         await epubFile.writeAsBytes(bytes);
@@ -162,51 +188,9 @@ class EpubReaderNotifier extends StateNotifier<EpubReaderState> {
 
       // 解析 EPUB
       final bytes = await epubFile.readAsBytes();
-      final epub = Epub.fromBytes(bytes);
+      final result = await _parseEpub(bytes);
 
-      // 获取章节列表
-      final chapters = <EpubChapter>[];
-      final chapterContents = <String>[];
-
-      // 从 spine 获取阅读顺序
-      for (final section in epub.sections) {
-        try {
-          // 安全获取文件内容，可能会抛出 AssertionError
-          final Uint8List fileBytes;
-          try {
-            fileBytes = section.content.fileContent;
-            // ignore: avoid_catches_without_on_clauses
-          } on Object catch (e) {
-            logger.w('跳过无法读取的章节: ${section.content.href}', e);
-            continue;
-          }
-
-          final htmlContent = utf8.decode(fileBytes);
-          final title =
-              _extractTitle(htmlContent) ?? '章节 ${chapters.length + 1}';
-          final content = _extractTextContent(htmlContent);
-
-          // 跳过空内容的章节
-          if (content.trim().isEmpty) {
-            continue;
-          }
-
-          chapters.add(
-            EpubChapter(
-              title: title,
-              href: section.content.href,
-              content: content,
-            ),
-          );
-          chapterContents.add(content);
-        } on Exception catch (e) {
-          // 跳过无法解析的章节（可能是封面页或其他非文本内容）
-          logger.w('跳过无法解析的章节: ${section.content.href}', e);
-        }
-      }
-
-      // 如果没有章节，尝试从目录获取
-      if (chapters.isEmpty) {
+      if (result.chapters.isEmpty) {
         state = EpubReaderError('无法解析 EPUB 内容');
         return;
       }
@@ -218,148 +202,124 @@ class EpubReaderNotifier extends StateNotifier<EpubReaderState> {
       final startChapter = progress?.chapter ?? 0;
 
       state = EpubReaderLoaded(
-        epub: epub,
-        chapters: chapters,
-        chapterContents: chapterContents,
-        currentChapter: startChapter.clamp(0, chapters.length - 1),
+        title: result.title,
+        author: result.author,
+        chapters: result.chapters,
+        cssContent: result.cssContent,
+        currentChapter: startChapter.clamp(0, result.chapters.length - 1),
       );
 
-      logger.i('EPUB 加载完成: ${epub.title}, ${chapters.length} 章节');
+      logger.i('EPUB 加载完成: ${result.title}, ${result.chapters.length} 章节');
     } on Exception catch (e, stackTrace) {
       logger.e('加载 EPUB 失败', e, stackTrace);
       state = EpubReaderError('加载失败: $e');
     }
   }
 
-  String? _extractTitle(String htmlContent) {
-    // 尝试从 HTML 中提取标题
-    // 简单的标题提取
-    final h1Match = RegExp(
-      '<h1[^>]*>([^<]+)</h1>',
-      caseSensitive: false,
-    ).firstMatch(htmlContent);
-    if (h1Match != null) return h1Match.group(1)?.trim();
+  /// 异步解析 EPUB
+  Future<_EpubParseResult> _parseEpub(Uint8List bytes) async {
+    final epubBook = await EpubReader.readBook(bytes);
 
-    final h2Match = RegExp(
-      '<h2[^>]*>([^<]+)</h2>',
-      caseSensitive: false,
-    ).firstMatch(htmlContent);
-    if (h2Match != null) return h2Match.group(1)?.trim();
+    final chapters = <BookChapterInfo>[];
 
-    final titleMatch = RegExp(
-      '<title[^>]*>([^<]+)</title>',
-      caseSensitive: false,
-    ).firstMatch(htmlContent);
-    if (titleMatch != null) return titleMatch.group(1)?.trim();
-
-    return null;
-  }
-
-  String _extractTextContent(String htmlContent) {
-    // 移除 HTML 标签，保留文本
-    var text = htmlContent
-        // 移除 script 和 style 标签及其内容
-        .replaceAll(
-          RegExp('<script[^>]*>.*?</script>', caseSensitive: false, dotAll: true),
-          '',
-        )
-        .replaceAll(
-          RegExp('<style[^>]*>.*?</style>', caseSensitive: false, dotAll: true),
-          '',
-        )
-        // 保留段落换行
-        .replaceAll(RegExp('</p>', caseSensitive: false), '\n\n')
-        .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n')
-        .replaceAll(RegExp('</h[1-6]>', caseSensitive: false), '\n\n')
-        .replaceAll(RegExp('</div>', caseSensitive: false), '\n')
-        .replaceAll(RegExp('</li>', caseSensitive: false), '\n')
-        .replaceAll(RegExp('</tr>', caseSensitive: false), '\n')
-        .replaceAll(RegExp('</blockquote>', caseSensitive: false), '\n\n')
-        // 移除所有其他标签
-        .replaceAll(RegExp('<[^>]+>'), '');
-
-    // 解码 HTML 实体
-    text = _decodeHtmlEntities(text);
-
-    // 清理多余空白
-    text = text
-        .replaceAll(RegExp(r'[ \t]+'), ' ') // 合并多个空格
-        .replaceAll(RegExp(r'\n[ \t]+'), '\n') // 移除行首空白
-        .replaceAll(RegExp(r'[ \t]+\n'), '\n') // 移除行尾空白
-        .replaceAll(RegExp(r'\n{3,}'), '\n\n') // 最多保留两个换行
-        .trim();
-
-    return text;
-  }
-
-  /// 解码 HTML 实体
-  String _decodeHtmlEntities(String text) {
-    // 常见命名实体
-    final namedEntities = {
-      '&nbsp;': ' ',
-      '&lt;': '<',
-      '&gt;': '>',
-      '&amp;': '&',
-      '&quot;': '"',
-      '&apos;': "'",
-      '&#39;': "'",
-      '&ldquo;': '"',
-      '&rdquo;': '"',
-      '&lsquo;': '\u2018',
-      '&rsquo;': '\u2019',
-      '&mdash;': '—',
-      '&ndash;': '–',
-      '&hellip;': '…',
-      '&copy;': '©',
-      '&reg;': '®',
-      '&trade;': '™',
-      '&times;': '×',
-      '&divide;': '÷',
-      '&plusmn;': '±',
-      '&deg;': '°',
-      '&para;': '¶',
-      '&sect;': '§',
-      '&bull;': '•',
-      '&middot;': '·',
-      '&laquo;': '«',
-      '&raquo;': '»',
-      '&iexcl;': '¡',
-      '&iquest;': '¿',
-      '&cent;': '¢',
-      '&pound;': '£',
-      '&yen;': '¥',
-      '&euro;': '€',
-    };
-
-    var result = text;
-    for (final entry in namedEntities.entries) {
-      result = result.replaceAll(entry.key, entry.value);
+    // 收集 CSS 内容
+    final cssBuffer = StringBuffer();
+    if (epubBook.content?.css != null) {
+      for (final css in epubBook.content!.css.values) {
+        if (css.content != null) {
+          cssBuffer.writeln(css.content);
+        }
+      }
     }
 
-    // 解码数字实体 (&#123; 或 &#x7B;)
-    result = result.replaceAllMapped(
-      RegExp(r'&#(\d+);'),
-      (match) {
-        final code = int.tryParse(match.group(1) ?? '');
-        if (code != null && code > 0 && code < 0x10FFFF) {
-          return String.fromCharCode(code);
+    // 从 epub_plus 的 chapters 获取章节
+    void processChapters(List<EpubChapter> epubChapters) {
+      for (final chapter in epubChapters) {
+        final htmlContent = chapter.htmlContent;
+        if (htmlContent == null || htmlContent.isEmpty) {
+          if (chapter.subChapters.isNotEmpty) {
+            processChapters(chapter.subChapters);
+          }
+          continue;
         }
-        return match.group(0) ?? '';
-      },
-    );
 
-    result = result.replaceAllMapped(
-      RegExp('&#x([0-9a-fA-F]+);'),
-      (match) {
-        final code = int.tryParse(match.group(1) ?? '', radix: 16);
-        if (code != null && code > 0 && code < 0x10FFFF) {
-          return String.fromCharCode(code);
+        final title = chapter.title ?? '章节 ${chapters.length + 1}';
+
+        // 检查是否有实际内容（不只是空白）
+        final textContent = htmlContent
+            .replaceAll(RegExp('<[^>]+>'), '')
+            .replaceAll(RegExp(r'\s+'), ' ')
+            .trim();
+        if (textContent.isEmpty) {
+          if (chapter.subChapters.isNotEmpty) {
+            processChapters(chapter.subChapters);
+          }
+          continue;
         }
-        return match.group(0) ?? '';
-      },
-    );
 
-    return result;
+        chapters.add(
+          BookChapterInfo(
+            title: title,
+            href: chapter.contentFileName ?? '',
+            htmlContent: htmlContent,
+          ),
+        );
+
+        if (chapter.subChapters.isNotEmpty) {
+          processChapters(chapter.subChapters);
+        }
+      }
+    }
+
+    processChapters(epubBook.chapters);
+
+    // 如果没有章节，尝试从 HTML 内容获取
+    if (chapters.isEmpty && epubBook.content?.html != null) {
+      for (final entry in epubBook.content!.html.entries) {
+        final htmlContent = entry.value.content;
+        if (htmlContent == null || htmlContent.isEmpty) continue;
+
+        // 提取标题
+        String? title;
+        final h1Match = RegExp(
+          '<h1[^>]*>([^<]+)</h1>',
+          caseSensitive: false,
+        ).firstMatch(htmlContent);
+        if (h1Match != null) {
+          title = h1Match.group(1)?.trim();
+        }
+        final titleMatch = RegExp(
+          '<title[^>]*>([^<]+)</title>',
+          caseSensitive: false,
+        ).firstMatch(htmlContent);
+        if (title == null && titleMatch != null) {
+          title = titleMatch.group(1)?.trim();
+        }
+        title ??= entry.key;
+
+        // 检查是否有实际内容
+        final textContent = htmlContent
+            .replaceAll(RegExp('<[^>]+>'), '')
+            .replaceAll(RegExp(r'\s+'), ' ')
+            .trim();
+        if (textContent.isEmpty) continue;
+
+        chapters.add(
+          BookChapterInfo(
+            title: title,
+            href: entry.key,
+            htmlContent: htmlContent,
+          ),
+        );
+      }
+    }
+
+    return _EpubParseResult(
+      title: epubBook.title ?? '未知书名',
+      author: epubBook.author ?? '未知作者',
+      chapters: chapters,
+      cssContent: cssBuffer.toString(),
+    );
   }
 
   void goToChapter(int index) {
@@ -571,8 +531,6 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
   }
 
   Widget _buildContent(EpubReaderLoaded state, BookReaderSettings settings) {
-    final theme = settings.theme;
-
     switch (settings.pageTurnMode) {
       case BookPageTurnMode.scroll:
         return GestureDetector(
@@ -583,7 +541,7 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
               horizontal: settings.horizontalPadding,
               vertical: settings.verticalPadding,
             ),
-            child: _buildChapterText(state, settings),
+            child: _buildHtmlContent(state.currentHtmlContent, settings),
           ),
         );
 
@@ -606,14 +564,9 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
                 horizontal: settings.horizontalPadding,
                 vertical: settings.verticalPadding,
               ),
-              child: SelectableText(
-                state.chapterContents[index],
-                style: TextStyle(
-                  fontSize: settings.fontSize,
-                  height: settings.lineHeight,
-                  color: theme.textColor,
-                  fontFamily: settings.fontFamily,
-                ),
+              child: _buildHtmlContent(
+                state.chapters[index].htmlContent,
+                settings,
               ),
             ),
           ),
@@ -621,42 +574,89 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
     }
   }
 
-  Widget _buildChapterText(
-    EpubReaderLoaded state,
-    BookReaderSettings settings,
-  ) {
+  /// 使用 flutter_html 渲染 HTML 内容
+  Widget _buildHtmlContent(String htmlContent, BookReaderSettings settings) {
     final theme = settings.theme;
-    final content = state.chapterContents[state.currentChapter];
 
-    // 处理段落间距
-    final paragraphs = content.split('\n\n');
-    final children = <Widget>[];
-
-    for (var i = 0; i < paragraphs.length; i++) {
-      if (paragraphs[i].trim().isEmpty) continue;
-      children.add(
-        Padding(
-          padding: EdgeInsets.only(
-            bottom: i < paragraphs.length - 1
-                ? settings.paragraphSpacing * 16
-                : 0,
-          ),
-          child: SelectableText(
-            paragraphs[i].trim(),
-            style: TextStyle(
-              fontSize: settings.fontSize,
-              height: settings.lineHeight,
-              color: theme.textColor,
-              fontFamily: settings.fontFamily,
-            ),
+    // 构建自定义样式
+    final style = {
+      'body': Style(
+        fontSize: FontSize(settings.fontSize),
+        lineHeight: LineHeight(settings.lineHeight),
+        color: theme.textColor,
+        fontFamily: settings.fontFamily,
+        margin: Margins.zero,
+        padding: HtmlPaddings.zero,
+      ),
+      'p': Style(
+        fontSize: FontSize(settings.fontSize),
+        lineHeight: LineHeight(settings.lineHeight),
+        color: theme.textColor,
+        margin: Margins.only(bottom: settings.paragraphSpacing * 16),
+      ),
+      'h1': Style(
+        fontSize: FontSize(settings.fontSize * 1.5),
+        fontWeight: FontWeight.bold,
+        color: theme.textColor,
+        margin: Margins.only(bottom: 16, top: 8),
+      ),
+      'h2': Style(
+        fontSize: FontSize(settings.fontSize * 1.3),
+        fontWeight: FontWeight.bold,
+        color: theme.textColor,
+        margin: Margins.only(bottom: 12, top: 8),
+      ),
+      'h3': Style(
+        fontSize: FontSize(settings.fontSize * 1.15),
+        fontWeight: FontWeight.bold,
+        color: theme.textColor,
+        margin: Margins.only(bottom: 8, top: 8),
+      ),
+      'h4, h5, h6': Style(
+        fontSize: FontSize(settings.fontSize),
+        fontWeight: FontWeight.bold,
+        color: theme.textColor,
+        margin: Margins.only(bottom: 8, top: 8),
+      ),
+      'blockquote': Style(
+        fontStyle: FontStyle.italic,
+        color: theme.textColor.withValues(alpha: 0.8),
+        padding: HtmlPaddings.only(left: 16),
+        border: Border(
+          left: BorderSide(
+            color: theme.textColor.withValues(alpha: 0.3),
+            width: 3,
           ),
         ),
-      );
-    }
+      ),
+      'a': Style(
+        color: AppColors.primary,
+        textDecoration: TextDecoration.underline,
+      ),
+      'img': Style(
+        display: Display.block,
+        margin: Margins.symmetric(vertical: 8),
+      ),
+      'ul, ol': Style(
+        margin: Margins.only(left: 16, bottom: 8),
+      ),
+      'li': Style(
+        margin: Margins.only(bottom: 4),
+      ),
+      'pre, code': Style(
+        fontFamily: 'monospace',
+        backgroundColor: theme.textColor.withValues(alpha: 0.05),
+        padding: HtmlPaddings.all(8),
+      ),
+    };
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: children,
+    return Html(
+      data: htmlContent,
+      style: style,
+      onLinkTap: (url, attributes, element) {
+        // 处理链接点击（可以跳转到其他章节或外部链接）
+        logger.d('链接点击: $url');
+      },
     );
   }
 
