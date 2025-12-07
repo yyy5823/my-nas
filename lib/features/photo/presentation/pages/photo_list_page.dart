@@ -92,7 +92,13 @@ class PhotoListLoaded extends PhotoListState {
     this.photoByPath = const {},
     // 用于 O(1) 索引查找的 Map
     Map<String, int>? pathToIndex,
-  }) : _pathToIndex = pathToIndex;
+    // 缓存的分组数据
+    List<PhotoGroup<PhotoEntity>>? cachedGroupedPhotos,
+    // 缓存的过滤后照片列表
+    List<PhotoFileWithSource>? cachedFilteredPhotos,
+  })  : _pathToIndex = pathToIndex,
+        _cachedGroupedPhotos = cachedGroupedPhotos,
+        _cachedFilteredPhotos = cachedFilteredPhotos;
 
   final int totalCount;
   final int dateGroupCount;
@@ -114,6 +120,12 @@ class PhotoListLoaded extends PhotoListState {
   // 用于 O(1) 索引查找
   final Map<String, int>? _pathToIndex;
 
+  // 缓存的分组数据 - 避免每次 build 都重新计算
+  final List<PhotoGroup<PhotoEntity>>? _cachedGroupedPhotos;
+
+  // 缓存的过滤后照片列表 - 避免每次 build 都重新创建对象
+  final List<PhotoFileWithSource>? _cachedFilteredPhotos;
+
   /// 当前显示的照片（搜索时返回搜索结果）
   List<PhotoEntity> get displayPhotos =>
       searchQuery.isNotEmpty ? searchResults : allPhotos;
@@ -133,8 +145,14 @@ class PhotoListLoaded extends PhotoListState {
           ))
       .toList();
 
-  /// 兼容旧代码：过滤后的照片
-  List<PhotoFileWithSource> get filteredPhotos => displayPhotos
+  /// 兼容旧代码：过滤后的照片（使用缓存避免重复创建）
+  List<PhotoFileWithSource> get filteredPhotos {
+    if (_cachedFilteredPhotos != null) return _cachedFilteredPhotos;
+    return _computeFilteredPhotos();
+  }
+
+  /// 计算过滤后的照片列表（内部方法）
+  List<PhotoFileWithSource> _computeFilteredPhotos() => displayPhotos
       .map((p) => PhotoFileWithSource(
             file: FileItem(
               name: p.fileName,
@@ -147,6 +165,22 @@ class PhotoListLoaded extends PhotoListState {
             sourceId: p.sourceId,
           ))
       .toList();
+
+  /// 静态方法：预计算过滤后的照片列表
+  static List<PhotoFileWithSource> computeFilteredPhotos(List<PhotoEntity> photos) =>
+      photos
+          .map((p) => PhotoFileWithSource(
+                file: FileItem(
+                  name: p.fileName,
+                  path: p.filePath,
+                  size: p.size,
+                  isDirectory: false,
+                  modifiedTime: p.modifiedTime,
+                  thumbnailUrl: p.thumbnailUrl,
+                ),
+                sourceId: p.sourceId,
+              ))
+          .toList();
 
   /// 通过路径获取照片 - O(1) 查找
   PhotoFileWithSource? getPhotoByPath(String path) {
@@ -165,23 +199,24 @@ class PhotoListLoaded extends PhotoListState {
     );
   }
 
-  /// 按日期分组的照片（预计算，不再每次重新生成）
-  List<PhotoGroup> get groupedPhotos {
-    final result = <PhotoGroup>[];
-    final photosByDate = <DateTime, List<PhotoItem>>{};
+  /// 按日期分组的照片（使用缓存，避免每次 build 都重新计算）
+  List<PhotoGroup<PhotoEntity>> get groupedPhotos {
+    // 如果有缓存，直接返回
+    if (_cachedGroupedPhotos != null) return _cachedGroupedPhotos;
+    // 否则计算（仅在首次访问或缓存失效时）
+    return _computeGroupedPhotos();
+  }
 
+  /// 计算分组数据（内部方法）
+  List<PhotoGroup<PhotoEntity>> _computeGroupedPhotos() {
+    final result = <PhotoGroup<PhotoEntity>>[];
+    final photosByDate = <DateTime, List<PhotoEntity>>{};
+
+    // 直接使用 PhotoEntity，避免创建新对象
     for (final photo in displayPhotos) {
       final dateKey = photo.dateKey;
       photosByDate.putIfAbsent(dateKey, () => []);
-      photosByDate[dateKey]!.add(PhotoItem(
-        name: photo.fileName,
-        path: photo.filePath,
-        url: '',
-        sourceId: photo.sourceId,
-        thumbnailUrl: photo.thumbnailUrl,
-        size: photo.size,
-        modifiedAt: photo.modifiedTime,
-      ));
+      photosByDate[dateKey]!.add(photo);
     }
 
     // 按日期排序，未知日期放最后
@@ -193,7 +228,32 @@ class PhotoListLoaded extends PhotoListState {
       });
 
     for (final date in sortedDates) {
-      result.add(PhotoGroup(date: date, photos: photosByDate[date]!));
+      result.add(PhotoGroup<PhotoEntity>(date: date, photos: photosByDate[date]!));
+    }
+
+    return result;
+  }
+
+  /// 静态方法：预计算分组数据（用于在状态创建时调用）
+  static List<PhotoGroup<PhotoEntity>> computeGroupedPhotos(List<PhotoEntity> photos) {
+    final result = <PhotoGroup<PhotoEntity>>[];
+    final photosByDate = <DateTime, List<PhotoEntity>>{};
+
+    for (final photo in photos) {
+      final dateKey = photo.dateKey;
+      photosByDate.putIfAbsent(dateKey, () => []);
+      photosByDate[dateKey]!.add(photo);
+    }
+
+    final sortedDates = photosByDate.keys.toList()
+      ..sort((a, b) {
+        if (a.year <= 1970) return 1;
+        if (b.year <= 1970) return -1;
+        return b.compareTo(a);
+      });
+
+    for (final date in sortedDates) {
+      result.add(PhotoGroup<PhotoEntity>(date: date, photos: photosByDate[date]!));
     }
 
     return result;
@@ -228,9 +288,11 @@ class PhotoListLoaded extends PhotoListState {
     List<({DateTime date, int count})>? dateGroups,
     Map<String, PhotoEntity>? photoByPath,
     Map<String, int>? pathToIndex,
+    List<PhotoGroup<PhotoEntity>>? cachedGroupedPhotos,
+    List<PhotoFileWithSource>? cachedFilteredPhotos,
   }) {
-    // 如果照片列表或搜索结果变化，需要重建索引
-    final needsNewIndex = allPhotos != null || searchResults != null || searchQuery != null;
+    // 如果照片列表或搜索结果变化，需要重建索引和所有缓存
+    final needsRebuild = allPhotos != null || searchResults != null || searchQuery != null;
     return PhotoListLoaded(
       totalCount: totalCount ?? this.totalCount,
       dateGroupCount: dateGroupCount ?? this.dateGroupCount,
@@ -244,7 +306,10 @@ class PhotoListLoaded extends PhotoListState {
       searchResults: searchResults ?? this.searchResults,
       dateGroups: dateGroups ?? this.dateGroups,
       photoByPath: photoByPath ?? this.photoByPath,
-      pathToIndex: needsNewIndex ? null : (pathToIndex ?? _pathToIndex),
+      pathToIndex: needsRebuild ? null : (pathToIndex ?? _pathToIndex),
+      // 如果数据变化，清除所有缓存，让其惰性重新计算
+      cachedGroupedPhotos: needsRebuild ? null : (cachedGroupedPhotos ?? _cachedGroupedPhotos),
+      cachedFilteredPhotos: needsRebuild ? null : (cachedFilteredPhotos ?? _cachedFilteredPhotos),
     );
   }
 }
@@ -314,6 +379,18 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
       photoByPath[p.uniqueKey] = p;
     }
 
+    // 预构建路径到索引的 Map，避免惰性构建的首次访问开销
+    final pathToIndex = <String, int>{};
+    for (var i = 0; i < allPhotos.length; i++) {
+      pathToIndex[allPhotos[i].filePath] = i;
+    }
+
+    // 预计算分组数据
+    final cachedGroupedPhotos = PhotoListLoaded.computeGroupedPhotos(allPhotos);
+
+    // 预计算过滤后的照片列表
+    final cachedFilteredPhotos = PhotoListLoaded.computeFilteredPhotos(allPhotos);
+
     state = PhotoListLoaded(
       totalCount: stats['total'] as int? ?? 0,
       dateGroupCount: stats['dateGroups'] as int? ?? 0,
@@ -322,6 +399,9 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
       allPhotos: allPhotos,
       dateGroups: dateGroups,
       photoByPath: photoByPath,
+      pathToIndex: pathToIndex,
+      cachedGroupedPhotos: cachedGroupedPhotos,
+      cachedFilteredPhotos: cachedFilteredPhotos,
       fromCache: true,
     );
 
@@ -1388,7 +1468,8 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
                 final photo = group.photos[index];
                 final allPhotos = state.filteredPhotos;
                 // 使用 O(1) 查找替代 O(n) indexWhere
-                final globalIndex = state.getGlobalIndex(photo.path);
+                // PhotoEntity 使用 filePath 而非 path
+                final globalIndex = state.getGlobalIndex(photo.filePath);
                 if (globalIndex < 0) return const SizedBox.shrink();
 
                 return AnimatedGridItem(
@@ -1434,22 +1515,25 @@ class _PhotoGridItem extends ConsumerWidget {
     final connection = connections[photo.sourceId];
     final fileSystem = connection?.adapter.fileSystem;
 
-    return Material(
-      color: isDark
-          ? AppColors.darkSurfaceElevated
-          : context.colorScheme.surfaceContainerHighest,
-      child: InkWell(
-        onTap: () {
-          debugPrint('PhotoGridItem: onTap called for ${photo.name}');
-          _openPhotoViewer(context, ref);
-        },
-        child: StreamImage(
-          url: photo.thumbnailUrl,
-          path: photo.path,
-          fileSystem: fileSystem,
-          placeholder: _buildPlaceholder(),
-          errorWidget: _buildPlaceholder(),
-          cacheKey: photo.path,
+    // 使用 RepaintBoundary 隔离重绘，避免单个项目变化导致整个列表重绘
+    return RepaintBoundary(
+      child: Material(
+        color: isDark
+            ? AppColors.darkSurfaceElevated
+            : context.colorScheme.surfaceContainerHighest,
+        child: InkWell(
+          onTap: () {
+            debugPrint('PhotoGridItem: onTap called for ${photo.name}');
+            _openPhotoViewer(context, ref);
+          },
+          child: StreamImage(
+            url: photo.thumbnailUrl,
+            path: photo.path,
+            fileSystem: fileSystem,
+            placeholder: _buildPlaceholder(),
+            errorWidget: _buildPlaceholder(),
+            cacheKey: photo.path,
+          ),
         ),
       ),
     );

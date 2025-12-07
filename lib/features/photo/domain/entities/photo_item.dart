@@ -114,14 +114,15 @@ class PhotoItem {
 }
 
 /// 照片分组（按日期）
-class PhotoGroup {
+/// 支持泛型以兼容 PhotoItem 和 PhotoEntity
+class PhotoGroup<T> {
   const PhotoGroup({
     required this.date,
     required this.photos,
   });
 
   final DateTime date;
-  final List<PhotoItem> photos;
+  final List<T> photos;
 
   /// 格式化日期标题
   String get dateTitle {
