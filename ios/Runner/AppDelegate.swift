@@ -17,4 +17,24 @@ import UIKit
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
+
+  /// App 即将终止时清理 Live Activity
+  override func applicationWillTerminate(_ application: UIApplication) {
+    super.applicationWillTerminate(application)
+
+    // 结束所有 Live Activities
+    if #available(iOS 16.1, *) {
+      print("AppDelegate: App terminating, ending all Live Activities")
+      MusicLiveActivityManager.shared.endAllActivities()
+    }
+  }
+
+  /// App 进入后台时的处理
+  /// 注意：不在这里结束 Live Activity，因为用户可能希望在后台继续显示
+  /// 只有在 app 完全终止时才清理
+  override func applicationDidEnterBackground(_ application: UIApplication) {
+    super.applicationDidEnterBackground(application)
+    // 可以在这里添加日志或其他后台处理
+    print("AppDelegate: App entered background")
+  }
 }

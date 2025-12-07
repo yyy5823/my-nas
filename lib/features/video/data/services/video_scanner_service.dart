@@ -266,12 +266,20 @@ class VideoScannerService {
     for (var i = 0; i < videos.length; i += batchSize) {
       final batch = videos.skip(i).take(batchSize).toList();
       final metadataList = <VideoMetadata>[];
+      final nfoFlags = <({String sourceId, String filePath, bool hasNfo})>[];
 
       for (final video in batch) {
         // 检查是否已存在
         final existing = await _dbService.get(video.sourceId, video.file.path);
         if (existing != null) {
-          // 已存在，跳过
+          // 已存在，但仍需更新 NFO 标志（可能目录内容有变化）
+          if (video.hasNfoInDirectory) {
+            nfoFlags.add((
+              sourceId: video.sourceId,
+              filePath: video.file.path,
+              hasNfo: true,
+            ));
+          }
           continue;
         }
 
@@ -285,10 +293,24 @@ class VideoScannerService {
           fileModifiedTime: video.file.modifiedTime,
         );
         metadataList.add(metadata);
+
+        // 记录 NFO 标志（新视频）
+        if (video.hasNfoInDirectory) {
+          nfoFlags.add((
+            sourceId: video.sourceId,
+            filePath: video.file.path,
+            hasNfo: true,
+          ));
+        }
       }
 
       if (metadataList.isNotEmpty) {
         await _dbService.upsertBatch(metadataList);
+      }
+
+      // 批量更新 NFO 标志
+      if (nfoFlags.isNotEmpty) {
+        await _dbService.updateNfoFlagBatch(nfoFlags);
       }
 
       _emitProgress(
@@ -592,6 +614,13 @@ class VideoScannerService {
     try {
       final items = await fileSystem.listDirectory(path);
 
+      // 检测当前目录是否包含 NFO 文件（用于设置刮削优先级）
+      final hasNfo = items.any((item) =>
+          !item.isDirectory &&
+          (item.name.toLowerCase().endsWith('.nfo') ||
+           item.name.toLowerCase() == 'movie.nfo' ||
+           item.name.toLowerCase() == 'tvshow.nfo'));
+
       for (final item in items) {
         if (item.isDirectory) {
           // 跳过隐藏目录和系统目录
@@ -607,7 +636,11 @@ class VideoScannerService {
             videos: videos,
           );
         } else if (item.type == FileType.video) {
-          videos.add(_ScannedVideo(sourceId: sourceId, file: item));
+          videos.add(_ScannedVideo(
+            sourceId: sourceId,
+            file: item,
+            hasNfoInDirectory: hasNfo,
+          ));
 
           // 每扫描到一定数量更新进度
           if (videos.length % 10 == 0) {
@@ -646,8 +679,13 @@ class VideoScannerService {
 
 /// 扫描到的视频
 class _ScannedVideo {
-  const _ScannedVideo({required this.sourceId, required this.file});
+  const _ScannedVideo({
+    required this.sourceId,
+    required this.file,
+    this.hasNfoInDirectory = false,
+  });
 
   final String sourceId;
   final FileItem file;
+  final bool hasNfoInDirectory; // 同目录下是否有 NFO 文件
 }

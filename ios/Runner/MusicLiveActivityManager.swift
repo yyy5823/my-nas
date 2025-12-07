@@ -35,6 +35,24 @@ class MusicLiveActivityManager {
     private init() {
         // 注册 Darwin 通知监听
         registerDarwinNotificationListener()
+
+        // 清理上次残留的 Live Activities（防止 app 意外退出后灵动岛残留）
+        cleanupStaleActivities()
+    }
+
+    /// 清理残留的 Live Activities
+    /// 在 app 启动时调用，确保没有上次意外退出留下的灵动岛
+    private func cleanupStaleActivities() {
+        Task {
+            let activities = Activity<LiveActivitiesAppAttributes>.activities
+            if !activities.isEmpty {
+                print("MusicLiveActivityManager: Found \(activities.count) stale activities, cleaning up...")
+                for activity in activities {
+                    await activity.end(dismissalPolicy: .immediate)
+                }
+                print("MusicLiveActivityManager: Stale activities cleaned up")
+            }
+        }
     }
 
     /// 注册 Darwin 通知监听器
@@ -218,12 +236,29 @@ class MusicLiveActivityManager {
 
     /// 结束所有 Live Activities
     func endAllActivities() {
+        // 使用信号量确保同步执行（对于 app 终止场景很重要）
+        let semaphore = DispatchSemaphore(value: 0)
+        let activities = Activity<LiveActivitiesAppAttributes>.activities
+
+        if activities.isEmpty {
+            print("MusicLiveActivityManager: No activities to end")
+            currentActivityId = nil
+            currentActivityUUID = nil
+            return
+        }
+
+        print("MusicLiveActivityManager: Ending \(activities.count) activities...")
+
         Task {
-            for activity in Activity<LiveActivitiesAppAttributes>.activities {
+            for activity in activities {
                 await activity.end(dismissalPolicy: .immediate)
             }
             print("MusicLiveActivityManager: All activities ended")
+            semaphore.signal()
         }
+
+        // 等待最多 1 秒
+        _ = semaphore.wait(timeout: .now() + 1.0)
 
         currentActivityId = nil
         currentActivityUUID = nil

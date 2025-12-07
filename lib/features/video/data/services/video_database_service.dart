@@ -106,6 +106,8 @@ class VideoDatabaseService {
   static const String _colFileModifiedTime = 'file_modified_time';
   static const String _colCollectionId = 'collection_id';
   static const String _colCollectionName = 'collection_name';
+  static const String _colHasNfo = 'has_nfo'; // 是否检测到 NFO 文件
+  static const String _colScrapePriority = 'scrape_priority'; // 刮削优先级
 
   /// 初始化数据库
   Future<void> init() async {
@@ -117,7 +119,7 @@ class VideoDatabaseService {
 
       _db = await openDatabase(
         dbPath,
-        version: 3, // 升级版本以添加 collection 字段
+        version: 4, // 升级版本以添加刮削优先级字段
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
       );
@@ -163,6 +165,8 @@ class VideoDatabaseService {
         $_colFileModifiedTime INTEGER,
         $_colCollectionId INTEGER,
         $_colCollectionName TEXT,
+        $_colHasNfo INTEGER DEFAULT 0,
+        $_colScrapePriority INTEGER DEFAULT 2,
         UNIQUE($_colSourceId, $_colFilePath)
       )
     ''');
@@ -188,6 +192,9 @@ class VideoDatabaseService {
     // 电影系列索引
     await db.execute(
         'CREATE INDEX idx_collection_id ON $_tableMetadata($_colCollectionId)');
+    // 刮削优先级索引（用于智能排序）
+    await db.execute(
+        'CREATE INDEX idx_scrape_priority ON $_tableMetadata($_colScrapePriority, $_colScrapeStatus)');
 
     logger.i('VideoDatabaseService: 表和索引创建完成');
   }
@@ -233,6 +240,21 @@ class VideoDatabaseService {
           'CREATE INDEX IF NOT EXISTS idx_collection_id ON $_tableMetadata($_colCollectionId)');
 
       logger.i('VideoDatabaseService: 版本2->3 升级完成');
+    }
+
+    // 从版本3升级到版本4
+    if (oldVersion < 4) {
+      // 添加 NFO 检测标志
+      await db.execute(
+          'ALTER TABLE $_tableMetadata ADD COLUMN $_colHasNfo INTEGER DEFAULT 0');
+      // 添加刮削优先级字段
+      await db.execute(
+          'ALTER TABLE $_tableMetadata ADD COLUMN $_colScrapePriority INTEGER DEFAULT 2');
+      // 创建刮削优先级索引
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_scrape_priority ON $_tableMetadata($_colScrapePriority, $_colScrapeStatus)');
+
+      logger.i('VideoDatabaseService: 版本3->4 升级完成');
     }
   }
 
@@ -882,19 +904,83 @@ class VideoDatabaseService {
     );
   }
 
-  /// 获取待刮削的视频列表
+  /// 获取待刮削的视频列表（智能优先级排序）
+  ///
+  /// 优先级策略（通过 scrape_priority 字段和 SQL CASE 表达式实现）：
+  /// 0. 已检测到 NFO 文件的视频 - 几乎瞬间完成
+  /// 1. 文件名格式规范的视频（包含年份、剧集信息如 S01E01）- 最容易匹配 TMDB
+  /// 2. 普通视频文件 - 需要解析文件名匹配 TMDB
+  /// 3. 特殊字符较多的文件名 - 可能难以匹配，需要抽帧
+  ///
+  /// 这样可以让容易刮削的视频优先完成，用户能更快看到有元数据的内容
   Future<List<VideoMetadata>> getPendingScrape({int limit = 50}) async {
     if (!_initialized) await init();
 
-    final results = await _db!.query(
-      _tableMetadata,
-      where: '$_colScrapeStatus = ?',
-      whereArgs: [ScrapeStatus.pending.index],
-      orderBy: _colId,
-      limit: limit,
-    );
+    // 优先使用预设的 scrape_priority 字段（在扫描时设置）
+    // 如果没有预设，使用 SQL CASE 表达式动态计算
+    // 分数越小优先级越高
+    final sql = '''
+      SELECT *,
+        CASE
+          -- 优先级 0：已检测到 NFO 文件（扫描时标记）
+          WHEN $_colHasNfo = 1 THEN 0
 
+          -- 优先级 1：文件名包含年份（如 Movie.2023）或剧集信息（如 S01E01）
+          -- 这类文件名格式规范，TMDB 匹配成功率高
+          WHEN $_colFileName GLOB '*[12][09][0-9][0-9]*'
+               OR $_colFileName GLOB '*[Ss][0-9][0-9][Ee][0-9][0-9]*'
+               OR $_colFileName GLOB '*[0-9]x[0-9][0-9]*'
+          THEN 1
+
+          -- 优先级 2：普通文件名（没有太多特殊字符）
+          WHEN LENGTH($_colFileName) - LENGTH(REPLACE(REPLACE(REPLACE($_colFileName, '[', ''), ']', ''), '.', '')) < 5
+          THEN 2
+
+          -- 优先级 3：其他文件（特殊字符较多，可能需要更复杂的解析）
+          ELSE 3
+        END AS priority
+      FROM $_tableMetadata
+      WHERE $_colScrapeStatus = ?
+      ORDER BY priority ASC, $_colId ASC
+      LIMIT ?
+    ''';
+
+    final results = await _db!.rawQuery(sql, [ScrapeStatus.pending.index, limit]);
     return results.map(_fromRow).toList();
+  }
+
+  /// 更新视频的 NFO 检测标志和刮削优先级
+  Future<void> updateNfoFlag(String sourceId, String filePath, {required bool hasNfo}) async {
+    if (!_initialized) await init();
+
+    await _db!.update(
+      _tableMetadata,
+      {
+        _colHasNfo: hasNfo ? 1 : 0,
+        _colScrapePriority: hasNfo ? 0 : 2, // 有 NFO 的优先级最高
+      },
+      where: '$_colSourceId = ? AND $_colFilePath = ?',
+      whereArgs: [sourceId, filePath],
+    );
+  }
+
+  /// 批量更新 NFO 检测标志
+  Future<void> updateNfoFlagBatch(List<({String sourceId, String filePath, bool hasNfo})> items) async {
+    if (!_initialized) await init();
+
+    final batch = _db!.batch();
+    for (final item in items) {
+      batch.update(
+        _tableMetadata,
+        {
+          _colHasNfo: item.hasNfo ? 1 : 0,
+          _colScrapePriority: item.hasNfo ? 0 : 2,
+        },
+        where: '$_colSourceId = ? AND $_colFilePath = ?',
+        whereArgs: [item.sourceId, item.filePath],
+      );
+    }
+    await batch.commit(noResult: true);
   }
 
   /// 获取需要重试的视频列表

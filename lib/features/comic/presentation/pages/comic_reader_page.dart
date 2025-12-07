@@ -5,17 +5,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/comic/presentation/pages/comic_list_page.dart';
+import 'package:my_nas/features/reading/data/services/reader_settings_service.dart';
 import 'package:my_nas/features/reading/data/services/reading_progress_service.dart';
+import 'package:my_nas/features/reading/presentation/providers/reader_settings_provider.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:photo_view/photo_view_gallery.dart';
-
-/// 漫画阅读模式
-enum ComicReadingMode {
-  singlePage, // 单页模式
-  doublePage, // 双页模式
-  webtoon, // 长条模式（从上到下）
-}
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 /// 漫画页面项
 class ComicPage {
@@ -39,34 +35,34 @@ class ComicReaderState {
   ComicReaderState({
     required this.pages,
     required this.currentPage,
-    required this.readingMode,
     this.isLoading = true,
     this.error,
     this.showControls = false,
+    this.showSettings = false,
   });
 
   final List<ComicPage> pages;
   final int currentPage;
-  final ComicReadingMode readingMode;
   final bool isLoading;
   final String? error;
   final bool showControls;
+  final bool showSettings;
 
   ComicReaderState copyWith({
     List<ComicPage>? pages,
     int? currentPage,
-    ComicReadingMode? readingMode,
     bool? isLoading,
     String? error,
     bool? showControls,
+    bool? showSettings,
   }) =>
       ComicReaderState(
         pages: pages ?? this.pages,
         currentPage: currentPage ?? this.currentPage,
-        readingMode: readingMode ?? this.readingMode,
         isLoading: isLoading ?? this.isLoading,
         error: error,
         showControls: showControls ?? this.showControls,
+        showSettings: showSettings ?? this.showSettings,
       );
 }
 
@@ -76,7 +72,6 @@ class ComicReaderNotifier extends StateNotifier<ComicReaderState> {
       : super(ComicReaderState(
           pages: [],
           currentPage: 0,
-          readingMode: ComicReadingMode.singlePage,
         )) {
     _init();
   }
@@ -234,33 +229,33 @@ class ComicReaderNotifier extends StateNotifier<ComicReaderState> {
     _saveProgress();
   }
 
-  void nextPage() {
-    if (state.readingMode == ComicReadingMode.doublePage) {
+  void nextPage(ComicReadingMode readingMode) {
+    if (readingMode == ComicReadingMode.doublePage) {
       goToPage(state.currentPage + 2);
     } else {
       goToPage(state.currentPage + 1);
     }
   }
 
-  void previousPage() {
-    if (state.readingMode == ComicReadingMode.doublePage) {
+  void previousPage(ComicReadingMode readingMode) {
+    if (readingMode == ComicReadingMode.doublePage) {
       goToPage(state.currentPage - 2);
     } else {
       goToPage(state.currentPage - 1);
     }
   }
 
-  void setReadingMode(ComicReadingMode mode) {
-    state = state.copyWith(readingMode: mode);
+  void toggleControls() {
+    state = state.copyWith(showControls: !state.showControls, showSettings: false);
   }
 
-  void toggleControls() {
-    state = state.copyWith(showControls: !state.showControls);
+  void toggleSettings() {
+    state = state.copyWith(showSettings: !state.showSettings);
   }
 
   void hideControls() {
     if (state.showControls) {
-      state = state.copyWith(showControls: false);
+      state = state.copyWith(showControls: false, showSettings: false);
     }
   }
 
@@ -302,12 +297,21 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
 
     // 进入全屏模式
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    _initWakelock();
+  }
+
+  Future<void> _initWakelock() async {
+    final settings = ref.read(comicReaderSettingsProvider);
+    if (settings.keepScreenOn) {
+      await WakelockPlus.enable();
+    }
   }
 
   @override
   void dispose() {
     _pageController?.dispose();
     _scrollController?.dispose();
+    WakelockPlus.disable();
     // 退出全屏模式
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
@@ -317,10 +321,11 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
   Widget build(BuildContext context) {
     final state = ref.watch(_provider);
     final notifier = ref.read(_provider.notifier);
+    final settings = ref.watch(comicReaderSettingsProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: settings.backgroundColor.color,
       body: Stack(
         children: [
           // 主内容
@@ -356,10 +361,11 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
               ),
             )
           else
-            GestureDetector(
-              onTap: notifier.toggleControls,
-              child: _buildReader(state, notifier),
-            ),
+            _buildReader(state, notifier, settings),
+
+          // 点击翻页区域
+          if (settings.tapToTurn && !state.isLoading && state.pages.isNotEmpty)
+            _buildTapZones(state, notifier, settings),
 
           // 控制栏
           if (state.showControls) ...[
@@ -368,45 +374,132 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
               top: 0,
               left: 0,
               right: 0,
-              child: _buildTopBar(context, state, isDark),
+              child: _buildTopBar(context, state, settings, isDark),
             ),
             // 底部栏
             Positioned(
               bottom: 0,
               left: 0,
               right: 0,
-              child: _buildBottomBar(context, state, notifier, isDark),
+              child: _buildBottomBar(context, state, notifier, settings, isDark),
             ),
           ],
+
+          // 设置面板
+          if (state.showSettings)
+            Positioned(
+              bottom: 100,
+              left: 16,
+              right: 16,
+              child: _buildSettingsPanel(context, settings, isDark),
+            ),
         ],
       ),
     );
   }
 
-  Widget _buildReader(ComicReaderState state, ComicReaderNotifier notifier) {
-    switch (state.readingMode) {
+  Widget _buildTapZones(
+    ComicReaderState state,
+    ComicReaderNotifier notifier,
+    ComicReaderSettings settings,
+  ) {
+    final isRtl = settings.readingDirection == ComicReadingDirection.rtl;
+
+    return Positioned.fill(
+      child: Row(
+        children: [
+          // 左侧区域
+          Expanded(
+            child: GestureDetector(
+              onTap: () {
+                if (isRtl) {
+                  notifier.nextPage(settings.readingMode);
+                  _pageController?.nextPage(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOut,
+                  );
+                } else {
+                  notifier.previousPage(settings.readingMode);
+                  _pageController?.previousPage(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOut,
+                  );
+                }
+              },
+              behavior: HitTestBehavior.translucent,
+              child: Container(),
+            ),
+          ),
+          // 中间区域 - 显示/隐藏控制栏
+          Expanded(
+            flex: 2,
+            child: GestureDetector(
+              onTap: notifier.toggleControls,
+              behavior: HitTestBehavior.translucent,
+              child: Container(),
+            ),
+          ),
+          // 右侧区域
+          Expanded(
+            child: GestureDetector(
+              onTap: () {
+                if (isRtl) {
+                  notifier.previousPage(settings.readingMode);
+                  _pageController?.previousPage(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOut,
+                  );
+                } else {
+                  notifier.nextPage(settings.readingMode);
+                  _pageController?.nextPage(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOut,
+                  );
+                }
+              },
+              behavior: HitTestBehavior.translucent,
+              child: Container(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReader(
+    ComicReaderState state,
+    ComicReaderNotifier notifier,
+    ComicReaderSettings settings,
+  ) {
+    switch (settings.readingMode) {
       case ComicReadingMode.singlePage:
-        return _buildSinglePageReader(state, notifier);
+        return _buildSinglePageReader(state, notifier, settings);
       case ComicReadingMode.doublePage:
-        return _buildDoublePageReader(state, notifier);
+        return _buildDoublePageReader(state, notifier, settings);
       case ComicReadingMode.webtoon:
-        return _buildWebtoonReader(state, notifier);
+        return _buildWebtoonReader(state, notifier, settings);
     }
   }
 
-  Widget _buildSinglePageReader(ComicReaderState state, ComicReaderNotifier notifier) {
+  Widget _buildSinglePageReader(
+    ComicReaderState state,
+    ComicReaderNotifier notifier,
+    ComicReaderSettings settings,
+  ) {
     _pageController ??= PageController(initialPage: state.currentPage);
+    final isRtl = settings.readingDirection == ComicReadingDirection.rtl;
 
     return PhotoViewGallery.builder(
       pageController: _pageController,
       itemCount: state.pages.length,
+      reverse: isRtl,
       builder: (context, index) {
         final page = state.pages[index];
         return PhotoViewGalleryPageOptions(
           imageProvider: _getImageProvider(page),
-          minScale: PhotoViewComputedScale.contained,
+          minScale: _getMinScale(settings.scaleMode),
           maxScale: PhotoViewComputedScale.covered * 3,
-          initialScale: PhotoViewComputedScale.contained,
+          initialScale: _getInitialScale(settings.scaleMode),
           heroAttributes: PhotoViewHeroAttributes(tag: 'comic_page_$index'),
         );
       },
@@ -414,23 +507,43 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
         notifier.goToPage(index);
       },
       scrollPhysics: const BouncingScrollPhysics(),
-      backgroundDecoration: const BoxDecoration(color: Colors.black),
+      backgroundDecoration: BoxDecoration(color: settings.backgroundColor.color),
       loadingBuilder: (context, event) => const Center(
         child: CircularProgressIndicator(color: Colors.white54),
       ),
     );
   }
 
-  Widget _buildDoublePageReader(ComicReaderState state, ComicReaderNotifier notifier) {
+  PhotoViewComputedScale _getMinScale(ComicScaleMode mode) => switch (mode) {
+        ComicScaleMode.fitWidth => PhotoViewComputedScale.contained,
+        ComicScaleMode.fitHeight => PhotoViewComputedScale.contained,
+        ComicScaleMode.fitScreen => PhotoViewComputedScale.contained,
+        ComicScaleMode.original => PhotoViewComputedScale.contained,
+      };
+
+  PhotoViewComputedScale _getInitialScale(ComicScaleMode mode) => switch (mode) {
+        ComicScaleMode.fitWidth => PhotoViewComputedScale.contained,
+        ComicScaleMode.fitHeight => PhotoViewComputedScale.contained,
+        ComicScaleMode.fitScreen => PhotoViewComputedScale.contained,
+        ComicScaleMode.original => PhotoViewComputedScale.covered,
+      };
+
+  Widget _buildDoublePageReader(
+    ComicReaderState state,
+    ComicReaderNotifier notifier,
+    ComicReaderSettings settings,
+  ) {
     // 双页模式：左右两页并排显示
     final totalDoublePages = (state.pages.length + 1) ~/ 2;
     final currentDoublePage = state.currentPage ~/ 2;
+    final isRtl = settings.readingDirection == ComicReadingDirection.rtl;
 
     _pageController ??= PageController(initialPage: currentDoublePage);
 
     return PageView.builder(
       controller: _pageController,
       itemCount: totalDoublePages,
+      reverse: isRtl,
       onPageChanged: (index) {
         notifier.goToPage(index * 2);
       },
@@ -438,16 +551,20 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
         final leftIndex = index * 2;
         final rightIndex = leftIndex + 1;
 
+        // RTL 模式下交换左右页
+        final firstIndex = isRtl ? rightIndex : leftIndex;
+        final secondIndex = isRtl ? leftIndex : rightIndex;
+
         return Row(
           children: [
             Expanded(
-              child: leftIndex < state.pages.length
-                  ? _buildPageImage(state.pages[leftIndex])
+              child: firstIndex < state.pages.length && firstIndex >= 0
+                  ? _buildPageImage(state.pages[firstIndex], settings)
                   : const SizedBox(),
             ),
             Expanded(
-              child: rightIndex < state.pages.length
-                  ? _buildPageImage(state.pages[rightIndex])
+              child: secondIndex < state.pages.length && secondIndex >= 0
+                  ? _buildPageImage(state.pages[secondIndex], settings)
                   : const SizedBox(),
             ),
           ],
@@ -456,7 +573,11 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
     );
   }
 
-  Widget _buildWebtoonReader(ComicReaderState state, ComicReaderNotifier notifier) {
+  Widget _buildWebtoonReader(
+    ComicReaderState state,
+    ComicReaderNotifier notifier,
+    ComicReaderSettings settings,
+  ) {
     _scrollController ??= ScrollController();
 
     return ListView.builder(
@@ -464,12 +585,19 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
       itemCount: state.pages.length,
       itemBuilder: (context, index) {
         final page = state.pages[index];
-        return _buildPageImage(page, fit: BoxFit.fitWidth);
+        return Padding(
+          padding: EdgeInsets.only(bottom: settings.webtoonPageGap),
+          child: _buildPageImage(page, settings, fit: BoxFit.fitWidth),
+        );
       },
     );
   }
 
-  Widget _buildPageImage(ComicPage page, {BoxFit fit = BoxFit.contain}) {
+  Widget _buildPageImage(
+    ComicPage page,
+    ComicReaderSettings settings, {
+    BoxFit fit = BoxFit.contain,
+  }) {
     if (page.bytes != null) {
       return Image.memory(
         page.bytes!,
@@ -493,8 +621,8 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
   }
 
   Widget _buildErrorPlaceholder() => const Center(
-      child: Icon(Icons.broken_image, size: 48, color: Colors.white24),
-    );
+        child: Icon(Icons.broken_image, size: 48, color: Colors.white24),
+      );
 
   ImageProvider _getImageProvider(ComicPage page) {
     if (page.bytes != null) {
@@ -505,130 +633,65 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
     return const AssetImage('assets/images/placeholder.png');
   }
 
-  Widget _buildTopBar(BuildContext context, ComicReaderState state, bool isDark) => DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Colors.black.withValues(alpha: 0.7),
-            Colors.transparent,
-          ],
-        ),
-      ),
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          child: Row(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.arrow_back, color: Colors.white),
-                onPressed: () => Navigator.pop(context),
-              ),
-              Expanded(
-                child: Text(
-                  widget.comic.folderName,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              // 阅读模式切换
-              PopupMenuButton<ComicReadingMode>(
-                icon: const Icon(Icons.view_carousel, color: Colors.white),
-                color: isDark ? AppColors.darkSurface : Colors.white,
-                onSelected: (mode) {
-                  ref.read(_provider.notifier).setReadingMode(mode);
-                  _pageController?.dispose();
-                  _pageController = null;
-                  _scrollController?.dispose();
-                  _scrollController = null;
-                },
-                itemBuilder: (context) => [
-                  PopupMenuItem(
-                    value: ComicReadingMode.singlePage,
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.crop_portrait,
-                          color: state.readingMode == ComicReadingMode.singlePage
-                              ? AppColors.primary
-                              : null,
-                        ),
-                        const SizedBox(width: 12),
-                        Text(
-                          '单页模式',
-                          style: TextStyle(
-                            color: state.readingMode == ComicReadingMode.singlePage
-                                ? AppColors.primary
-                                : null,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  PopupMenuItem(
-                    value: ComicReadingMode.doublePage,
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.menu_book,
-                          color: state.readingMode == ComicReadingMode.doublePage
-                              ? AppColors.primary
-                              : null,
-                        ),
-                        const SizedBox(width: 12),
-                        Text(
-                          '双页模式',
-                          style: TextStyle(
-                            color: state.readingMode == ComicReadingMode.doublePage
-                                ? AppColors.primary
-                                : null,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  PopupMenuItem(
-                    value: ComicReadingMode.webtoon,
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.view_day,
-                          color: state.readingMode == ComicReadingMode.webtoon
-                              ? AppColors.primary
-                              : null,
-                        ),
-                        const SizedBox(width: 12),
-                        Text(
-                          '长条模式',
-                          style: TextStyle(
-                            color: state.readingMode == ComicReadingMode.webtoon
-                                ? AppColors.primary
-                                : null,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+  Widget _buildTopBar(
+    BuildContext context,
+    ComicReaderState state,
+    ComicReaderSettings settings,
+    bool isDark,
+  ) =>
+      DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.black.withValues(alpha: 0.7),
+              Colors.transparent,
             ],
           ),
         ),
-      ),
-    );
+        child: SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back, color: Colors.white),
+                  onPressed: () => Navigator.pop(context),
+                ),
+                Expanded(
+                  child: Text(
+                    widget.comic.folderName,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                // 设置按钮
+                IconButton(
+                  icon: const Icon(Icons.settings, color: Colors.white),
+                  onPressed: () => ref.read(_provider.notifier).toggleSettings(),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
 
   Widget _buildBottomBar(
     BuildContext context,
     ComicReaderState state,
     ComicReaderNotifier notifier,
+    ComicReaderSettings settings,
     bool isDark,
-  ) => DecoratedBox(
+  ) {
+    final isRtl = settings.readingDirection == ComicReadingDirection.rtl;
+
+    return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.bottomCenter,
@@ -660,7 +723,7 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
                       onChanged: (value) {
                         notifier.goToPage(value.round());
                         _pageController?.jumpToPage(
-                          state.readingMode == ComicReadingMode.doublePage
+                          settings.readingMode == ComicReadingMode.doublePage
                               ? value.round() ~/ 2
                               : value.round(),
                         );
@@ -680,10 +743,13 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.skip_previous, color: Colors.white),
+                    icon: Icon(
+                      isRtl ? Icons.skip_next : Icons.skip_previous,
+                      color: Colors.white,
+                    ),
                     onPressed: state.currentPage > 0
                         ? () {
-                            notifier.previousPage();
+                            notifier.previousPage(settings.readingMode);
                             _pageController?.previousPage(
                               duration: const Duration(milliseconds: 300),
                               curve: Curves.easeOut,
@@ -696,10 +762,13 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
                     style: const TextStyle(color: Colors.white, fontSize: 16),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.skip_next, color: Colors.white),
+                    icon: Icon(
+                      isRtl ? Icons.skip_previous : Icons.skip_next,
+                      color: Colors.white,
+                    ),
                     onPressed: state.currentPage < state.pages.length - 1
                         ? () {
-                            notifier.nextPage();
+                            notifier.nextPage(settings.readingMode);
                             _pageController?.nextPage(
                               duration: const Duration(milliseconds: 300),
                               curve: Curves.easeOut,
@@ -714,4 +783,337 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
         ),
       ),
     );
+  }
+
+  Widget _buildSettingsPanel(
+    BuildContext context,
+    ComicReaderSettings settings,
+    bool isDark,
+  ) {
+    final settingsNotifier = ref.read(comicReaderSettingsProvider.notifier);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: (isDark ? Colors.grey[900] : Colors.white)?.withValues(alpha: 0.95),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.3),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 阅读模式
+            _buildSettingSection(
+              context,
+              title: '阅读模式',
+              isDark: isDark,
+              child: Row(
+                children: [
+                  _buildModeButton(
+                    context,
+                    icon: Icons.crop_portrait,
+                    label: '单页',
+                    isSelected: settings.readingMode == ComicReadingMode.singlePage,
+                    onTap: () {
+                      settingsNotifier.setReadingMode(ComicReadingMode.singlePage);
+                      _resetControllers();
+                    },
+                    isDark: isDark,
+                  ),
+                  const SizedBox(width: 8),
+                  _buildModeButton(
+                    context,
+                    icon: Icons.menu_book,
+                    label: '双页',
+                    isSelected: settings.readingMode == ComicReadingMode.doublePage,
+                    onTap: () {
+                      settingsNotifier.setReadingMode(ComicReadingMode.doublePage);
+                      _resetControllers();
+                    },
+                    isDark: isDark,
+                  ),
+                  const SizedBox(width: 8),
+                  _buildModeButton(
+                    context,
+                    icon: Icons.view_day,
+                    label: '长条',
+                    isSelected: settings.readingMode == ComicReadingMode.webtoon,
+                    onTap: () {
+                      settingsNotifier.setReadingMode(ComicReadingMode.webtoon);
+                      _resetControllers();
+                    },
+                    isDark: isDark,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // 阅读方向
+            _buildSettingSection(
+              context,
+              title: '阅读方向',
+              isDark: isDark,
+              child: Row(
+                children: [
+                  _buildModeButton(
+                    context,
+                    icon: Icons.arrow_forward,
+                    label: '从左到右',
+                    isSelected: settings.readingDirection == ComicReadingDirection.ltr,
+                    onTap: () => settingsNotifier.setReadingDirection(ComicReadingDirection.ltr),
+                    isDark: isDark,
+                  ),
+                  const SizedBox(width: 8),
+                  _buildModeButton(
+                    context,
+                    icon: Icons.arrow_back,
+                    label: '从右到左',
+                    isSelected: settings.readingDirection == ComicReadingDirection.rtl,
+                    onTap: () => settingsNotifier.setReadingDirection(ComicReadingDirection.rtl),
+                    isDark: isDark,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // 缩放模式
+            _buildSettingSection(
+              context,
+              title: '缩放模式',
+              isDark: isDark,
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _buildModeButton(
+                    context,
+                    icon: Icons.width_normal,
+                    label: '适应宽度',
+                    isSelected: settings.scaleMode == ComicScaleMode.fitWidth,
+                    onTap: () => settingsNotifier.setScaleMode(ComicScaleMode.fitWidth),
+                    isDark: isDark,
+                  ),
+                  _buildModeButton(
+                    context,
+                    icon: Icons.height,
+                    label: '适应高度',
+                    isSelected: settings.scaleMode == ComicScaleMode.fitHeight,
+                    onTap: () => settingsNotifier.setScaleMode(ComicScaleMode.fitHeight),
+                    isDark: isDark,
+                  ),
+                  _buildModeButton(
+                    context,
+                    icon: Icons.fit_screen,
+                    label: '适应屏幕',
+                    isSelected: settings.scaleMode == ComicScaleMode.fitScreen,
+                    onTap: () => settingsNotifier.setScaleMode(ComicScaleMode.fitScreen),
+                    isDark: isDark,
+                  ),
+                  _buildModeButton(
+                    context,
+                    icon: Icons.crop_original,
+                    label: '原始大小',
+                    isSelected: settings.scaleMode == ComicScaleMode.original,
+                    onTap: () => settingsNotifier.setScaleMode(ComicScaleMode.original),
+                    isDark: isDark,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // 背景颜色
+            _buildSettingSection(
+              context,
+              title: '背景颜色',
+              isDark: isDark,
+              child: Row(
+                children: ComicBackgroundColor.values.map((color) {
+                  final isSelected = settings.backgroundColor == color;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: GestureDetector(
+                      onTap: () => settingsNotifier.setBackgroundColor(color),
+                      child: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: color.color,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: isSelected ? AppColors.primary : Colors.grey,
+                            width: isSelected ? 3 : 1,
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // 长条模式页间距
+            if (settings.readingMode == ComicReadingMode.webtoon) ...[
+              _buildSettingSection(
+                context,
+                title: '页间距: ${settings.webtoonPageGap.toInt()}',
+                isDark: isDark,
+                child: Slider(
+                  value: settings.webtoonPageGap,
+                  min: 0,
+                  max: 50,
+                  divisions: 10,
+                  onChanged: (value) => settingsNotifier.setWebtoonPageGap(value),
+                  activeColor: AppColors.primary,
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+
+            // 开关选项
+            _buildSwitchRow(
+              context,
+              title: '显示页码',
+              value: settings.showPageNumber,
+              onChanged: (value) => settingsNotifier.setShowPageNumber(value),
+              isDark: isDark,
+            ),
+            _buildSwitchRow(
+              context,
+              title: '保持屏幕常亮',
+              value: settings.keepScreenOn,
+              onChanged: (value) async {
+                settingsNotifier.setKeepScreenOn(value);
+                if (value) {
+                  await WakelockPlus.enable();
+                } else {
+                  await WakelockPlus.disable();
+                }
+              },
+              isDark: isDark,
+            ),
+            _buildSwitchRow(
+              context,
+              title: '点击翻页',
+              value: settings.tapToTurn,
+              onChanged: (value) => settingsNotifier.setTapToTurn(value),
+              isDark: isDark,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _resetControllers() {
+    _pageController?.dispose();
+    _pageController = null;
+    _scrollController?.dispose();
+    _scrollController = null;
+  }
+
+  Widget _buildSettingSection(
+    BuildContext context, {
+    required String title,
+    required Widget child,
+    required bool isDark,
+  }) =>
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: isDark ? Colors.white70 : Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 8),
+          child,
+        ],
+      );
+
+  Widget _buildModeButton(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required bool isSelected,
+    required VoidCallback onTap,
+    required bool isDark,
+  }) =>
+      GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? AppColors.primary.withValues(alpha: 0.2)
+                : (isDark ? Colors.grey[800] : Colors.grey[200]),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: isSelected ? AppColors.primary : Colors.transparent,
+              width: 1.5,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 18,
+                color: isSelected ? AppColors.primary : (isDark ? Colors.white70 : Colors.black54),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isSelected ? AppColors.primary : (isDark ? Colors.white70 : Colors.black54),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
+  Widget _buildSwitchRow(
+    BuildContext context, {
+    required String title,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+    required bool isDark,
+  }) =>
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 14,
+                color: isDark ? Colors.white70 : Colors.black87,
+              ),
+            ),
+            Switch(
+              value: value,
+              onChanged: onChanged,
+              activeTrackColor: AppColors.primary.withValues(alpha: 0.5),
+              activeThumbColor: AppColors.primary,
+            ),
+          ],
+        ),
+      );
 }
