@@ -65,22 +65,22 @@ class BookReaderSettingsNotifier extends StateNotifier<BookReaderSettings> {
     _save();
   }
 
-  void setKeepScreenOn(bool value) {
+  void setKeepScreenOn({required bool value}) {
     state = state.copyWith(keepScreenOn: value);
     _save();
   }
 
-  void setTapToTurn(bool value) {
+  void setTapToTurn({required bool value}) {
     state = state.copyWith(tapToTurn: value);
     _save();
   }
 
-  void setVolumeKeyTurn(bool value) {
+  void setVolumeKeyTurn({required bool value}) {
     state = state.copyWith(volumeKeyTurn: value);
     _save();
   }
 
-  void setShowProgress(bool value) {
+  void setShowProgress({required bool value}) {
     state = state.copyWith(showProgress: value);
     _save();
   }
@@ -133,22 +133,22 @@ class ComicReaderSettingsNotifier extends StateNotifier<ComicReaderSettings> {
     _save();
   }
 
-  void setKeepScreenOn(bool value) {
+  void setKeepScreenOn({required bool value}) {
     state = state.copyWith(keepScreenOn: value);
     _save();
   }
 
-  void setTapToTurn(bool value) {
+  void setTapToTurn({required bool value}) {
     state = state.copyWith(tapToTurn: value);
     _save();
   }
 
-  void setVolumeKeyTurn(bool value) {
+  void setVolumeKeyTurn({required bool value}) {
     state = state.copyWith(volumeKeyTurn: value);
     _save();
   }
 
-  void setShowPageNumber(bool value) {
+  void setShowPageNumber({required bool value}) {
     state = state.copyWith(showPageNumber: value);
     _save();
   }
@@ -158,7 +158,7 @@ class ComicReaderSettingsNotifier extends StateNotifier<ComicReaderSettings> {
     _save();
   }
 
-  void setDoubleTapToZoom(bool value) {
+  void setDoubleTapToZoom({required bool value}) {
     state = state.copyWith(doubleTapToZoom: value);
     _save();
   }

@@ -44,6 +44,24 @@ class BookReaderSettings {
     this.fontFamily,
   });
 
+  factory BookReaderSettings.fromJson(Map<String, dynamic> json) =>
+      BookReaderSettings(
+        fontSize: (json['fontSize'] as num?)?.toDouble() ?? 18.0,
+        lineHeight: (json['lineHeight'] as num?)?.toDouble() ?? 1.8,
+        paragraphSpacing: (json['paragraphSpacing'] as num?)?.toDouble() ?? 1.0,
+        horizontalPadding:
+            (json['horizontalPadding'] as num?)?.toDouble() ?? 24.0,
+        verticalPadding: (json['verticalPadding'] as num?)?.toDouble() ?? 16.0,
+        theme: BookReaderTheme.values[(json['theme'] as int?) ?? 0],
+        pageTurnMode:
+            BookPageTurnMode.values[(json['pageTurnMode'] as int?) ?? 1],
+        keepScreenOn: json['keepScreenOn'] as bool? ?? true,
+        tapToTurn: json['tapToTurn'] as bool? ?? true,
+        volumeKeyTurn: json['volumeKeyTurn'] as bool? ?? false,
+        showProgress: json['showProgress'] as bool? ?? true,
+        fontFamily: json['fontFamily'] as String?,
+      );
+
   final double fontSize;
   final double lineHeight;
   final double paragraphSpacing;
@@ -100,24 +118,6 @@ class BookReaderSettings {
         'showProgress': showProgress,
         'fontFamily': fontFamily,
       };
-
-  factory BookReaderSettings.fromJson(Map<String, dynamic> json) =>
-      BookReaderSettings(
-        fontSize: (json['fontSize'] as num?)?.toDouble() ?? 18.0,
-        lineHeight: (json['lineHeight'] as num?)?.toDouble() ?? 1.8,
-        paragraphSpacing: (json['paragraphSpacing'] as num?)?.toDouble() ?? 1.0,
-        horizontalPadding:
-            (json['horizontalPadding'] as num?)?.toDouble() ?? 24.0,
-        verticalPadding: (json['verticalPadding'] as num?)?.toDouble() ?? 16.0,
-        theme: BookReaderTheme.values[(json['theme'] as int?) ?? 0],
-        pageTurnMode:
-            BookPageTurnMode.values[(json['pageTurnMode'] as int?) ?? 1],
-        keepScreenOn: json['keepScreenOn'] as bool? ?? true,
-        tapToTurn: json['tapToTurn'] as bool? ?? true,
-        volumeKeyTurn: json['volumeKeyTurn'] as bool? ?? false,
-        showProgress: json['showProgress'] as bool? ?? true,
-        fontFamily: json['fontFamily'] as String?,
-      );
 }
 
 /// 漫画翻页方向
@@ -169,6 +169,24 @@ class ComicReaderSettings {
     this.preloadPages = 2,
     this.doubleTapToZoom = true,
   });
+
+  factory ComicReaderSettings.fromJson(Map<String, dynamic> json) =>
+      ComicReaderSettings(
+        readingMode:
+            ComicReadingMode.values[(json['readingMode'] as int?) ?? 0],
+        readingDirection:
+            ComicReadingDirection.values[(json['readingDirection'] as int?) ?? 0],
+        scaleMode: ComicScaleMode.values[(json['scaleMode'] as int?) ?? 0],
+        backgroundColor:
+            ComicBackgroundColor.values[(json['backgroundColor'] as int?) ?? 0],
+        webtoonPageGap: (json['webtoonPageGap'] as num?)?.toDouble() ?? 0.0,
+        keepScreenOn: json['keepScreenOn'] as bool? ?? true,
+        tapToTurn: json['tapToTurn'] as bool? ?? true,
+        volumeKeyTurn: json['volumeKeyTurn'] as bool? ?? false,
+        showPageNumber: json['showPageNumber'] as bool? ?? true,
+        preloadPages: json['preloadPages'] as int? ?? 2,
+        doubleTapToZoom: json['doubleTapToZoom'] as bool? ?? true,
+      );
 
   final ComicReadingMode readingMode;
   final ComicReadingDirection readingDirection;
@@ -222,24 +240,6 @@ class ComicReaderSettings {
         'preloadPages': preloadPages,
         'doubleTapToZoom': doubleTapToZoom,
       };
-
-  factory ComicReaderSettings.fromJson(Map<String, dynamic> json) =>
-      ComicReaderSettings(
-        readingMode:
-            ComicReadingMode.values[(json['readingMode'] as int?) ?? 0],
-        readingDirection:
-            ComicReadingDirection.values[(json['readingDirection'] as int?) ?? 0],
-        scaleMode: ComicScaleMode.values[(json['scaleMode'] as int?) ?? 0],
-        backgroundColor:
-            ComicBackgroundColor.values[(json['backgroundColor'] as int?) ?? 0],
-        webtoonPageGap: (json['webtoonPageGap'] as num?)?.toDouble() ?? 0.0,
-        keepScreenOn: json['keepScreenOn'] as bool? ?? true,
-        tapToTurn: json['tapToTurn'] as bool? ?? true,
-        volumeKeyTurn: json['volumeKeyTurn'] as bool? ?? false,
-        showPageNumber: json['showPageNumber'] as bool? ?? true,
-        preloadPages: json['preloadPages'] as int? ?? 2,
-        doubleTapToZoom: json['doubleTapToZoom'] as bool? ?? true,
-      );
 }
 
 /// 阅读设置服务

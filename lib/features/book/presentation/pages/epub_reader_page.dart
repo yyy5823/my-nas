@@ -20,12 +20,14 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 /// EPUB 阅读器状态
 final epubReaderProvider =
     StateNotifierProvider.family<EpubReaderNotifier, EpubReaderState, BookItem>(
-        (ref, book) => EpubReaderNotifier(book));
+      (ref, book) => EpubReaderNotifier(book),
+    );
 
 sealed class EpubReaderState {}
 
 class EpubReaderLoading extends EpubReaderState {
   EpubReaderLoading({this.message = '加载中...'});
+
   final String message;
 }
 
@@ -45,8 +47,10 @@ class EpubReaderLoaded extends EpubReaderState {
   final double scrollPosition;
 
   String get title => epub.title.isNotEmpty ? epub.title : '未知书名';
+
   String get author =>
       epub.authors.isNotEmpty ? epub.authors.join(', ') : '未知作者';
+
   int get totalChapters => chapters.length;
 
   EpubReaderLoaded copyWith({
@@ -55,28 +59,24 @@ class EpubReaderLoaded extends EpubReaderState {
     List<String>? chapterContents,
     int? currentChapter,
     double? scrollPosition,
-  }) =>
-      EpubReaderLoaded(
-        epub: epub ?? this.epub,
-        chapters: chapters ?? this.chapters,
-        chapterContents: chapterContents ?? this.chapterContents,
-        currentChapter: currentChapter ?? this.currentChapter,
-        scrollPosition: scrollPosition ?? this.scrollPosition,
-      );
+  }) => EpubReaderLoaded(
+    epub: epub ?? this.epub,
+    chapters: chapters ?? this.chapters,
+    chapterContents: chapterContents ?? this.chapterContents,
+    currentChapter: currentChapter ?? this.currentChapter,
+    scrollPosition: scrollPosition ?? this.scrollPosition,
+  );
 }
 
 class EpubReaderError extends EpubReaderState {
   EpubReaderError(this.message);
+
   final String message;
 }
 
 /// EPUB 章节
 class EpubChapter {
-  EpubChapter({
-    required this.title,
-    required this.href,
-    this.content = '',
-  });
+  EpubChapter({required this.title, required this.href, this.content = ''});
 
   final String title;
   final String href;
@@ -136,11 +136,13 @@ class EpubReaderNotifier extends StateNotifier<EpubReaderState> {
         final title = _extractTitle(htmlContent) ?? '章节 ${chapters.length + 1}';
         final content = _extractTextContent(htmlContent);
 
-        chapters.add(EpubChapter(
-          title: title,
-          href: section.content.href,
-          content: content,
-        ));
+        chapters.add(
+          EpubChapter(
+            title: title,
+            href: section.content.href,
+            content: content,
+          ),
+        );
         chapterContents.add(content);
       }
 
@@ -173,13 +175,22 @@ class EpubReaderNotifier extends StateNotifier<EpubReaderState> {
   String? _extractTitle(String htmlContent) {
     // 尝试从 HTML 中提取标题
     // 简单的标题提取
-    final h1Match = RegExp('<h1[^>]*>([^<]+)</h1>', caseSensitive: false).firstMatch(htmlContent);
+    final h1Match = RegExp(
+      '<h1[^>]*>([^<]+)</h1>',
+      caseSensitive: false,
+    ).firstMatch(htmlContent);
     if (h1Match != null) return h1Match.group(1)?.trim();
 
-    final h2Match = RegExp('<h2[^>]*>([^<]+)</h2>', caseSensitive: false).firstMatch(htmlContent);
+    final h2Match = RegExp(
+      '<h2[^>]*>([^<]+)</h2>',
+      caseSensitive: false,
+    ).firstMatch(htmlContent);
     if (h2Match != null) return h2Match.group(1)?.trim();
 
-    final titleMatch = RegExp('<title[^>]*>([^<]+)</title>', caseSensitive: false).firstMatch(htmlContent);
+    final titleMatch = RegExp(
+      '<title[^>]*>([^<]+)</title>',
+      caseSensitive: false,
+    ).firstMatch(htmlContent);
     if (titleMatch != null) return titleMatch.group(1)?.trim();
 
     return null;
@@ -247,15 +258,17 @@ class EpubReaderNotifier extends StateNotifier<EpubReaderState> {
     final current = state;
     if (current is EpubReaderLoaded) {
       final itemId = _progressService.generateItemId(book.id, book.path);
-      await _progressService.saveProgress(ReadingProgress(
-        itemId: itemId,
-        itemType: 'epub',
-        position: chapter.toDouble(),
-        totalPositions: current.chapters.length,
-        chapter: chapter,
-        chapterTitle: current.chapters[chapter].title,
-        lastReadAt: DateTime.now(),
-      ));
+      await _progressService.saveProgress(
+        ReadingProgress(
+          itemId: itemId,
+          itemType: 'epub',
+          position: chapter.toDouble(),
+          totalPositions: current.chapters.length,
+          chapter: chapter,
+          chapterTitle: current.chapters[chapter].title,
+          lastReadAt: DateTime.now(),
+        ),
+      );
     }
   }
 }
@@ -313,28 +326,28 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
   }
 
   Widget _buildError(String message) => Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.error_outline, size: 64, color: Colors.red.shade300),
-            const SizedBox(height: 16),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 16),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: () => Navigator.pop(context),
-              icon: const Icon(Icons.arrow_back),
-              label: const Text('返回'),
-            ),
-          ],
-        ),
+    child: Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.error_outline, size: 64, color: Colors.red.shade300),
+          const SizedBox(height: 16),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 16),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.pop(context),
+            icon: const Icon(Icons.arrow_back),
+            label: const Text('返回'),
+          ),
+        ],
       ),
-    );
+    ),
+  );
 
   Widget _buildReader(BuildContext context, EpubReaderLoaded state) {
     final settings = ref.watch(bookReaderSettingsProvider);
@@ -349,9 +362,7 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
             child: Column(
               children: [
                 // 章节内容
-                Expanded(
-                  child: _buildContent(state, settings),
-                ),
+                Expanded(child: _buildContent(state, settings)),
                 // 进度指示器
                 if (settings.showProgress)
                   Container(
@@ -444,7 +455,9 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
             controller: _pageController,
             itemCount: state.chapters.length,
             onPageChanged: (index) {
-              ref.read(epubReaderProvider(widget.book).notifier).goToChapter(index);
+              ref
+                  .read(epubReaderProvider(widget.book).notifier)
+                  .goToChapter(index);
             },
             itemBuilder: (context, index) => SingleChildScrollView(
               padding: EdgeInsets.symmetric(
@@ -466,7 +479,10 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
     }
   }
 
-  Widget _buildChapterText(EpubReaderLoaded state, BookReaderSettings settings) {
+  Widget _buildChapterText(
+    EpubReaderLoaded state,
+    BookReaderSettings settings,
+  ) {
     final theme = settings.theme;
     final content = state.chapterContents[state.currentChapter];
 
@@ -479,7 +495,9 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
       children.add(
         Padding(
           padding: EdgeInsets.only(
-            bottom: i < paragraphs.length - 1 ? settings.paragraphSpacing * 16 : 0,
+            bottom: i < paragraphs.length - 1
+                ? settings.paragraphSpacing * 16
+                : 0,
           ),
           child: SelectableText(
             paragraphs[i].trim(),
@@ -500,7 +518,8 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
     );
   }
 
-  Widget _buildTapZones(EpubReaderLoaded state, BookReaderSettings settings) => Positioned.fill(
+  Widget _buildTapZones(EpubReaderLoaded state, BookReaderSettings settings) =>
+      Positioned.fill(
         child: Row(
           children: [
             // 左侧 - 上一章
@@ -508,7 +527,9 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
               child: GestureDetector(
                 onTap: () {
                   if (settings.pageTurnMode == BookPageTurnMode.scroll) {
-                    ref.read(epubReaderProvider(widget.book).notifier).previousChapter();
+                    ref
+                        .read(epubReaderProvider(widget.book).notifier)
+                        .previousChapter();
                   } else {
                     _pageController.previousPage(
                       duration: const Duration(milliseconds: 300),
@@ -534,7 +555,9 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
               child: GestureDetector(
                 onTap: () {
                   if (settings.pageTurnMode == BookPageTurnMode.scroll) {
-                    ref.read(epubReaderProvider(widget.book).notifier).nextChapter();
+                    ref
+                        .read(epubReaderProvider(widget.book).notifier)
+                        .nextChapter();
                   } else {
                     _pageController.nextPage(
                       duration: const Duration(milliseconds: 300),
@@ -560,196 +583,199 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
     });
   }
 
-  Widget _buildTopBar(BuildContext context, EpubReaderLoaded state) => DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Colors.black.withValues(alpha: 0.7),
-            Colors.transparent,
-          ],
-        ),
-      ),
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-          child: Row(
-            children: [
-              IconButton(
-                onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      state.title,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    Text(
-                      state.author,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.7),
-                        fontSize: 12,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                onPressed: () => setState(() => _showToc = !_showToc),
-                icon: const Icon(Icons.list_rounded, color: Colors.white),
-                tooltip: '目录',
-              ),
-            ],
+  Widget _buildTopBar(BuildContext context, EpubReaderLoaded state) =>
+      DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Colors.black.withValues(alpha: 0.7), Colors.transparent],
           ),
         ),
-      ),
-    );
+        child: SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            child: Row(
+              children: [
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(
+                    Icons.arrow_back_rounded,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        state.title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        state.author,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.7),
+                          fontSize: 12,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => setState(() => _showToc = !_showToc),
+                  icon: const Icon(Icons.list_rounded, color: Colors.white),
+                  tooltip: '目录',
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
 
   Widget _buildBottomBar(
     BuildContext context,
     EpubReaderLoaded state,
     BookReaderSettings settings,
-  ) =>
-      DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.bottomCenter,
-            end: Alignment.topCenter,
-            colors: [
-              Colors.black.withValues(alpha: 0.7),
-              Colors.transparent,
-            ],
-          ),
-        ),
-        child: SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+  ) => DecoratedBox(
+    decoration: BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.bottomCenter,
+        end: Alignment.topCenter,
+        colors: [Colors.black.withValues(alpha: 0.7), Colors.transparent],
+      ),
+    ),
+    child: SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 章节进度条
+            Row(
               children: [
-                // 章节进度条
-                Row(
-                  children: [
-                    IconButton(
-                      onPressed: state.currentChapter > 0
-                          ? () {
-                              ref
-                                  .read(epubReaderProvider(widget.book).notifier)
-                                  .previousChapter();
-                              if (settings.pageTurnMode != BookPageTurnMode.scroll) {
-                                _pageController.previousPage(
-                                  duration: const Duration(milliseconds: 300),
-                                  curve: Curves.easeOut,
-                                );
-                              }
-                            }
-                          : null,
-                      icon: Icon(
-                        Icons.skip_previous_rounded,
-                        color: state.currentChapter > 0 ? Colors.white : Colors.white38,
-                      ),
-                    ),
-                    Expanded(
-                      child: Slider(
-                        value: state.currentChapter.toDouble(),
-                        max: (state.totalChapters - 1).toDouble(),
-                        divisions: state.totalChapters > 1 ? state.totalChapters - 1 : null,
-                        onChanged: (value) {
+                IconButton(
+                  onPressed: state.currentChapter > 0
+                      ? () {
                           ref
                               .read(epubReaderProvider(widget.book).notifier)
-                              .goToChapter(value.toInt());
-                          if (settings.pageTurnMode != BookPageTurnMode.scroll) {
-                            _pageController.jumpToPage(value.toInt());
+                              .previousChapter();
+                          if (settings.pageTurnMode !=
+                              BookPageTurnMode.scroll) {
+                            _pageController.previousPage(
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeOut,
+                            );
                           }
-                        },
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: state.currentChapter < state.totalChapters - 1
-                          ? () {
-                              ref
-                                  .read(epubReaderProvider(widget.book).notifier)
-                                  .nextChapter();
-                              if (settings.pageTurnMode != BookPageTurnMode.scroll) {
-                                _pageController.nextPage(
-                                  duration: const Duration(milliseconds: 300),
-                                  curve: Curves.easeOut,
-                                );
-                              }
-                            }
-                          : null,
-                      icon: Icon(
-                        Icons.skip_next_rounded,
-                        color: state.currentChapter < state.totalChapters - 1
-                            ? Colors.white
-                            : Colors.white38,
-                      ),
-                    ),
-                  ],
+                        }
+                      : null,
+                  icon: Icon(
+                    Icons.skip_previous_rounded,
+                    color: state.currentChapter > 0
+                        ? Colors.white
+                        : Colors.white38,
+                  ),
                 ),
-                const SizedBox(height: 8),
-                // 功能按钮
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _buildBottomButton(
-                      icon: Icons.text_decrease_rounded,
-                      label: '缩小',
-                      onTap: () => ref
-                          .read(bookReaderSettingsProvider.notifier)
-                          .setFontSize(settings.fontSize - 2),
-                    ),
-                    _buildBottomButton(
-                      icon: Icons.text_increase_rounded,
-                      label: '放大',
-                      onTap: () => ref
-                          .read(bookReaderSettingsProvider.notifier)
-                          .setFontSize(settings.fontSize + 2),
-                    ),
-                    _buildBottomButton(
-                      icon: Icons.settings_rounded,
-                      label: '设置',
-                      onTap: () => setState(() => _showSettings = !_showSettings),
-                    ),
-                  ],
-              ),
-            ],
-          ),
+                Expanded(
+                  child: Slider(
+                    value: state.currentChapter.toDouble(),
+                    max: (state.totalChapters - 1).toDouble(),
+                    divisions: state.totalChapters > 1
+                        ? state.totalChapters - 1
+                        : null,
+                    onChanged: (value) {
+                      ref
+                          .read(epubReaderProvider(widget.book).notifier)
+                          .goToChapter(value.toInt());
+                      if (settings.pageTurnMode != BookPageTurnMode.scroll) {
+                        _pageController.jumpToPage(value.toInt());
+                      }
+                    },
+                  ),
+                ),
+                IconButton(
+                  onPressed: state.currentChapter < state.totalChapters - 1
+                      ? () {
+                          ref
+                              .read(epubReaderProvider(widget.book).notifier)
+                              .nextChapter();
+                          if (settings.pageTurnMode !=
+                              BookPageTurnMode.scroll) {
+                            _pageController.nextPage(
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeOut,
+                            );
+                          }
+                        }
+                      : null,
+                  icon: Icon(
+                    Icons.skip_next_rounded,
+                    color: state.currentChapter < state.totalChapters - 1
+                        ? Colors.white
+                        : Colors.white38,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            // 功能按钮
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _buildBottomButton(
+                  icon: Icons.text_decrease_rounded,
+                  label: '缩小',
+                  onTap: () => ref
+                      .read(bookReaderSettingsProvider.notifier)
+                      .setFontSize(settings.fontSize - 2),
+                ),
+                _buildBottomButton(
+                  icon: Icons.text_increase_rounded,
+                  label: '放大',
+                  onTap: () => ref
+                      .read(bookReaderSettingsProvider.notifier)
+                      .setFontSize(settings.fontSize + 2),
+                ),
+                _buildBottomButton(
+                  icon: Icons.settings_rounded,
+                  label: '设置',
+                  onTap: () => setState(() => _showSettings = !_showSettings),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
-    );
+    ),
+  );
 
   Widget _buildBottomButton({
     required IconData icon,
     required String label,
     required VoidCallback onTap,
   }) => GestureDetector(
-      onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: Colors.white, size: 24),
-          const SizedBox(height: 4),
-          Text(label, style: const TextStyle(color: Colors.white, fontSize: 12)),
-        ],
-      ),
-    );
+    onTap: onTap,
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, color: Colors.white, size: 24),
+        const SizedBox(height: 4),
+        Text(label, style: const TextStyle(color: Colors.white, fontSize: 12)),
+      ],
+    ),
+  );
 
   Widget _buildTocDrawer(
     BuildContext context,
@@ -805,7 +831,9 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
                     return ListTile(
                       dense: true,
                       selected: isActive,
-                      selectedTileColor: AppColors.primary.withValues(alpha: 0.1),
+                      selectedTileColor: AppColors.primary.withValues(
+                        alpha: 0.1,
+                      ),
                       leading: Text(
                         '${index + 1}',
                         style: TextStyle(
@@ -915,8 +943,8 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
                 value: settings.lineHeight.toStringAsFixed(1),
                 child: Slider(
                   value: settings.lineHeight,
-                  min: 1.0,
-                  max: 3.0,
+                  min: 1,
+                  max: 3,
                   divisions: 20,
                   onChanged: settingsNotifier.setLineHeight,
                 ),
@@ -931,8 +959,7 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
                 value: settings.paragraphSpacing.toStringAsFixed(1),
                 child: Slider(
                   value: settings.paragraphSpacing,
-                  min: 0.0,
-                  max: 3.0,
+                  max: 3,
                   divisions: 15,
                   onChanged: settingsNotifier.setParagraphSpacing,
                 ),
@@ -1005,7 +1032,7 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
                 title: '屏幕常亮',
                 value: settings.keepScreenOn,
                 onChanged: (value) {
-                  settingsNotifier.setKeepScreenOn(value);
+                  settingsNotifier.setKeepScreenOn(value: value);
                   if (value) {
                     WakelockPlus.enable();
                   } else {
@@ -1018,13 +1045,17 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
                 title: '点击翻页',
                 subtitle: '左侧上一章，右侧下一章',
                 value: settings.tapToTurn,
-                onChanged: settingsNotifier.setTapToTurn,
+                onChanged: (value) {
+                  settingsNotifier.setTapToTurn(value: value);
+                },
               ),
               _buildSwitchTile(
                 context,
                 title: '显示进度',
                 value: settings.showProgress,
-                onChanged: settingsNotifier.setShowProgress,
+                onChanged: (value) {
+                  settingsNotifier.setShowProgress(value: value);
+                },
               ),
             ],
           ),
@@ -1034,95 +1065,90 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
   }
 
   String _getPageTurnModeLabel(BookPageTurnMode mode) => switch (mode) {
-        BookPageTurnMode.scroll => '滚动',
-        BookPageTurnMode.slide => '滑动',
-        BookPageTurnMode.simulation => '仿真',
-        BookPageTurnMode.cover => '覆盖',
-        BookPageTurnMode.none => '无动画',
-      };
+    BookPageTurnMode.scroll => '滚动',
+    BookPageTurnMode.slide => '滑动',
+    BookPageTurnMode.simulation => '仿真',
+    BookPageTurnMode.cover => '覆盖',
+    BookPageTurnMode.none => '无动画',
+  };
 
   Widget _buildSettingRow(
     BuildContext context, {
     required String label,
     required String value,
     required Widget child,
-  }) =>
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  }) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(label, style: context.textTheme.bodyMedium),
-              Text(
-                value,
-                style: context.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
+          Text(label, style: context.textTheme.bodyMedium),
+          Text(
+            value,
+            style: context.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
           ),
-          child,
         ],
-      );
+      ),
+      child,
+    ],
+  );
 
   Widget _buildSwitchTile(
     BuildContext context, {
     required String title,
-    String? subtitle,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-  }) =>
-      SwitchListTile(
-        title: Text(title, style: context.textTheme.bodyMedium),
-        subtitle: subtitle != null
-            ? Text(subtitle, style: context.textTheme.bodySmall)
-            : null,
-        value: value,
-        onChanged: onChanged,
-        dense: true,
-        contentPadding: EdgeInsets.zero,
-      );
+    required bool value, required ValueChanged<bool> onChanged, String? subtitle,
+  }) => SwitchListTile(
+    title: Text(title, style: context.textTheme.bodyMedium),
+    subtitle: subtitle != null
+        ? Text(subtitle, style: context.textTheme.bodySmall)
+        : null,
+    value: value,
+    onChanged: onChanged,
+    dense: true,
+    contentPadding: EdgeInsets.zero,
+  );
 
   Widget _buildThemeOption({
     required BookReaderTheme theme,
     required bool isSelected,
     required VoidCallback onTap,
-  }) =>
-      GestureDetector(
-        onTap: onTap,
-        child: Column(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: theme.backgroundColor,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: isSelected ? AppColors.primary : Colors.grey.shade300,
-                  width: isSelected ? 3 : 1,
-                ),
-              ),
-              child: Center(
-                child: Text(
-                  'Aa',
-                  style: TextStyle(
-                    color: theme.textColor,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
+  }) => GestureDetector(
+    onTap: onTap,
+    child: Column(
+      children: [
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: theme.backgroundColor,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isSelected ? AppColors.primary : Colors.grey.shade300,
+              width: isSelected ? 3 : 1,
             ),
-            const SizedBox(height: 4),
-            Text(
-              theme.label,
+          ),
+          child: Center(
+            child: Text(
+              'Aa',
               style: TextStyle(
-                fontSize: 12,
-                color: isSelected ? AppColors.primary : null,
+                color: theme.textColor,
+                fontWeight: FontWeight.bold,
               ),
             ),
-          ],
+          ),
         ),
-      );
+        const SizedBox(height: 4),
+        Text(
+          theme.label,
+          style: TextStyle(
+            fontSize: 12,
+            color: isSelected ? AppColors.primary : null,
+          ),
+        ),
+      ],
+    ),
+  );
 }

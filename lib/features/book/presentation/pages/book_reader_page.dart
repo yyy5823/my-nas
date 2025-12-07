@@ -26,22 +26,17 @@ sealed class TxtReaderState {}
 
 class TxtReaderLoading extends TxtReaderState {
   TxtReaderLoading({this.message = '加载中...'});
+
   final String message;
 }
 
 class TxtReaderLoaded extends TxtReaderState {
-  TxtReaderLoaded({
-    required this.content,
-    this.scrollPosition = 0.0,
-  });
+  TxtReaderLoaded({required this.content, this.scrollPosition = 0.0});
 
   final String content;
   final double scrollPosition;
 
-  TxtReaderLoaded copyWith({
-    String? content,
-    double? scrollPosition,
-  }) =>
+  TxtReaderLoaded copyWith({String? content, double? scrollPosition}) =>
       TxtReaderLoaded(
         content: content ?? this.content,
         scrollPosition: scrollPosition ?? this.scrollPosition,
@@ -50,6 +45,7 @@ class TxtReaderLoaded extends TxtReaderState {
 
 class TxtReaderError extends TxtReaderState {
   TxtReaderError(this.message);
+
   final String message;
 }
 
@@ -168,13 +164,15 @@ class TxtReaderNotifier extends StateNotifier<TxtReaderState> {
     final current = state;
     if (current is TxtReaderLoaded) {
       final itemId = _progressService.generateItemId(book.id, book.path);
-      await _progressService.saveProgress(ReadingProgress(
-        itemId: itemId,
-        itemType: 'txt',
-        position: position,
-        totalPositions: maxPosition.toInt(),
-        lastReadAt: DateTime.now(),
-      ));
+      await _progressService.saveProgress(
+        ReadingProgress(
+          itemId: itemId,
+          itemType: 'txt',
+          position: position,
+          totalPositions: maxPosition.toInt(),
+          lastReadAt: DateTime.now(),
+        ),
+      );
     }
   }
 }
@@ -213,10 +211,14 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     if (_scrollController.hasClients) {
       final position = _scrollController.position.pixels;
       final maxPosition = _scrollController.position.maxScrollExtent;
-      ref.read(txtReaderProvider(widget.book).notifier).setScrollPosition(position);
+      ref
+          .read(txtReaderProvider(widget.book).notifier)
+          .setScrollPosition(position);
       // 定期保存进度
       if (position % 500 < 10) {
-        ref.read(txtReaderProvider(widget.book).notifier).saveProgress(position, maxPosition);
+        ref
+            .read(txtReaderProvider(widget.book).notifier)
+            .saveProgress(position, maxPosition);
       }
     }
   }
@@ -225,8 +227,8 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
   void dispose() {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     WakelockPlus.disable();
-    _scrollController.removeListener(_onScroll);
-    _scrollController.dispose();
+    _scrollController..removeListener(_onScroll)
+    ..dispose();
     super.dispose();
   }
 
@@ -249,10 +251,10 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
       body: switch (state) {
         TxtReaderLoading(:final message) => LoadingWidget(message: message),
         TxtReaderError(:final message) => AppErrorWidget(
-            message: message,
-            onRetry: () =>
-                ref.read(txtReaderProvider(widget.book).notifier).loadBook(),
-          ),
+          message: message,
+          onRetry: () =>
+              ref.read(txtReaderProvider(widget.book).notifier).loadBook(),
+        ),
         TxtReaderLoaded() => _buildReader(context, state, settings),
       },
     );
@@ -326,12 +328,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
 
         // 顶部控制栏
         if (_showControls)
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: _buildTopBar(context),
-          ),
+          Positioned(top: 0, left: 0, right: 0, child: _buildTopBar(context)),
 
         // 底部控制栏
         if (_showControls)
@@ -367,7 +364,9 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
       children.add(
         Padding(
           padding: EdgeInsets.only(
-            bottom: i < paragraphs.length - 1 ? settings.paragraphSpacing * 16 : 0,
+            bottom: i < paragraphs.length - 1
+                ? settings.paragraphSpacing * 16
+                : 0,
           ),
           child: SelectableText(
             paragraphs[i].trim(),
@@ -398,106 +397,102 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
   }
 
   Widget _buildTapZones(BookReaderSettings settings) => Positioned.fill(
-        child: Row(
-          children: [
-            // 左侧 - 向上滚动
-            Expanded(
-              child: GestureDetector(
-                onTap: () {
-                  if (_scrollController.hasClients) {
-                    _scrollController.animateTo(
-                      (_scrollController.offset - MediaQuery.of(context).size.height * 0.8)
-                          .clamp(0, _scrollController.position.maxScrollExtent),
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeOut,
-                    );
-                  }
-                },
-                behavior: HitTestBehavior.translucent,
-                child: Container(),
-              ),
-            ),
-            // 中间 - 显示/隐藏控制栏
-            Expanded(
-              flex: 2,
-              child: GestureDetector(
-                onTap: _toggleControls,
-                behavior: HitTestBehavior.translucent,
-                child: Container(),
-              ),
-            ),
-            // 右侧 - 向下滚动
-            Expanded(
-              child: GestureDetector(
-                onTap: () {
-                  if (_scrollController.hasClients) {
-                    _scrollController.animateTo(
-                      (_scrollController.offset + MediaQuery.of(context).size.height * 0.8)
-                          .clamp(0, _scrollController.position.maxScrollExtent),
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeOut,
-                    );
-                  }
-                },
-                behavior: HitTestBehavior.translucent,
-                child: Container(),
-              ),
-            ),
-          ],
+    child: Row(
+      children: [
+        // 左侧 - 向上滚动
+        Expanded(
+          child: GestureDetector(
+            onTap: () {
+              if (_scrollController.hasClients) {
+                _scrollController.animateTo(
+                  (_scrollController.offset -
+                          MediaQuery.of(context).size.height * 0.8)
+                      .clamp(0, _scrollController.position.maxScrollExtent),
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOut,
+                );
+              }
+            },
+            behavior: HitTestBehavior.translucent,
+            child: Container(),
+          ),
         ),
-      );
+        // 中间 - 显示/隐藏控制栏
+        Expanded(
+          flex: 2,
+          child: GestureDetector(
+            onTap: _toggleControls,
+            behavior: HitTestBehavior.translucent,
+            child: Container(),
+          ),
+        ),
+        // 右侧 - 向下滚动
+        Expanded(
+          child: GestureDetector(
+            onTap: () {
+              if (_scrollController.hasClients) {
+                _scrollController.animateTo(
+                  (_scrollController.offset +
+                          MediaQuery.of(context).size.height * 0.8)
+                      .clamp(0, _scrollController.position.maxScrollExtent),
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOut,
+                );
+              }
+            },
+            behavior: HitTestBehavior.translucent,
+            child: Container(),
+          ),
+        ),
+      ],
+    ),
+  );
 
   Widget _buildTopBar(BuildContext context) => DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Colors.black.withValues(alpha: 0.7), Colors.transparent],
-          ),
-        ),
-        child: SafeArea(
-          bottom: false,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-            child: Row(
-              children: [
-                IconButton(
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(
-                    Icons.arrow_back_rounded,
-                    color: Colors.white,
-                  ),
-                  tooltip: '返回',
-                ),
-                Expanded(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        widget.book.displayName,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 48), // 平衡布局
-              ],
+    decoration: BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [Colors.black.withValues(alpha: 0.7), Colors.transparent],
+      ),
+    ),
+    child: SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+        child: Row(
+          children: [
+            IconButton(
+              onPressed: () => Navigator.pop(context),
+              icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+              tooltip: '返回',
             ),
-          ),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    widget.book.displayName,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 48), // 平衡布局
+          ],
         ),
-      );
+      ),
+    ),
+  );
 
-  Widget _buildBottomBar(
-    BuildContext context,
-    BookReaderSettings settings,
-  ) {
+  Widget _buildBottomBar(BuildContext context, BookReaderSettings settings) {
     final settingsNotifier = ref.read(bookReaderSettingsProvider.notifier);
 
     return DecoratedBox(
@@ -516,7 +511,8 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               IconButton(
-                onPressed: () => settingsNotifier.setFontSize(settings.fontSize - 2),
+                onPressed: () =>
+                    settingsNotifier.setFontSize(settings.fontSize - 2),
                 icon: const Icon(
                   Icons.text_decrease_rounded,
                   color: Colors.white,
@@ -524,7 +520,8 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
                 tooltip: '缩小字体',
               ),
               IconButton(
-                onPressed: () => settingsNotifier.setFontSize(settings.fontSize + 2),
+                onPressed: () =>
+                    settingsNotifier.setFontSize(settings.fontSize + 2),
                 icon: const Icon(
                   Icons.text_increase_rounded,
                   color: Colors.white,
@@ -614,8 +611,8 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
               value: settings.lineHeight.toStringAsFixed(1),
               child: Slider(
                 value: settings.lineHeight,
-                min: 1.0,
-                max: 3.0,
+                min: 1,
+                max: 3,
                 divisions: 20,
                 onChanged: settingsNotifier.setLineHeight,
               ),
@@ -685,7 +682,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
               title: '屏幕常亮',
               value: settings.keepScreenOn,
               onChanged: (value) {
-                settingsNotifier.setKeepScreenOn(value);
+                settingsNotifier.setKeepScreenOn(value: value);
                 if (value) {
                   WakelockPlus.enable();
                 } else {
@@ -698,13 +695,17 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
               title: '点击翻页',
               subtitle: '左侧上翻，右侧下翻',
               value: settings.tapToTurn,
-              onChanged: settingsNotifier.setTapToTurn,
+              onChanged: (value) {
+                settingsNotifier.setTapToTurn(value: value);
+              },
             ),
             _buildSwitchTile(
               context,
               title: '显示进度',
               value: settings.showProgress,
-              onChanged: settingsNotifier.setShowProgress,
+              onChanged: (value) {
+                settingsNotifier.setShowProgress(value: value);
+              },
             ),
           ],
         ),
@@ -717,83 +718,78 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     required String label,
     required String value,
     required Widget child,
-  }) =>
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  }) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(label, style: context.textTheme.bodyMedium),
-              Text(
-                value,
-                style: context.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
+          Text(label, style: context.textTheme.bodyMedium),
+          Text(
+            value,
+            style: context.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
           ),
-          child,
         ],
-      );
+      ),
+      child,
+    ],
+  );
 
   Widget _buildSwitchTile(
     BuildContext context, {
     required String title,
-    String? subtitle,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-  }) =>
-      SwitchListTile(
-        title: Text(title, style: context.textTheme.bodyMedium),
-        subtitle: subtitle != null
-            ? Text(subtitle, style: context.textTheme.bodySmall)
-            : null,
-        value: value,
-        onChanged: onChanged,
-        dense: true,
-        contentPadding: EdgeInsets.zero,
-      );
+    required bool value, required ValueChanged<bool> onChanged, String? subtitle,
+  }) => SwitchListTile(
+    title: Text(title, style: context.textTheme.bodyMedium),
+    subtitle: subtitle != null
+        ? Text(subtitle, style: context.textTheme.bodySmall)
+        : null,
+    value: value,
+    onChanged: onChanged,
+    dense: true,
+    contentPadding: EdgeInsets.zero,
+  );
 
   Widget _buildThemeOption({
     required BookReaderTheme theme,
     required bool isSelected,
     required VoidCallback onTap,
-  }) =>
-      GestureDetector(
-        onTap: onTap,
-        child: Column(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: theme.backgroundColor,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: isSelected ? AppColors.primary : Colors.grey.shade300,
-                  width: isSelected ? 3 : 1,
-                ),
-              ),
-              child: Center(
-                child: Text(
-                  'Aa',
-                  style: TextStyle(
-                    color: theme.textColor,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
+  }) => GestureDetector(
+    onTap: onTap,
+    child: Column(
+      children: [
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: theme.backgroundColor,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isSelected ? AppColors.primary : Colors.grey.shade300,
+              width: isSelected ? 3 : 1,
             ),
-            const SizedBox(height: 4),
-            Text(
-              theme.label,
+          ),
+          child: Center(
+            child: Text(
+              'Aa',
               style: TextStyle(
-                fontSize: 12,
-                color: isSelected ? AppColors.primary : null,
+                color: theme.textColor,
+                fontWeight: FontWeight.bold,
               ),
             ),
-          ],
+          ),
         ),
-      );
+        const SizedBox(height: 4),
+        Text(
+          theme.label,
+          style: TextStyle(
+            fontSize: 12,
+            color: isSelected ? AppColors.primary : null,
+          ),
+        ),
+      ],
+    ),
+  );
 }

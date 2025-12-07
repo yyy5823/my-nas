@@ -971,10 +971,9 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
                 isDark: isDark,
                 child: Slider(
                   value: settings.webtoonPageGap,
-                  min: 0,
                   max: 50,
                   divisions: 10,
-                  onChanged: (value) => settingsNotifier.setWebtoonPageGap(value),
+                  onChanged: settingsNotifier.setWebtoonPageGap,
                   activeColor: AppColors.primary,
                 ),
               ),
@@ -986,7 +985,7 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
               context,
               title: '显示页码',
               value: settings.showPageNumber,
-              onChanged: (value) => settingsNotifier.setShowPageNumber(value),
+              onChanged: (value) => settingsNotifier.setShowPageNumber(value: value),
               isDark: isDark,
             ),
             _buildSwitchRow(
@@ -994,7 +993,7 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
               title: '保持屏幕常亮',
               value: settings.keepScreenOn,
               onChanged: (value) async {
-                settingsNotifier.setKeepScreenOn(value);
+                settingsNotifier.setKeepScreenOn(value: value);
                 if (value) {
                   await WakelockPlus.enable();
                 } else {
@@ -1007,7 +1006,7 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
               context,
               title: '点击翻页',
               value: settings.tapToTurn,
-              onChanged: (value) => settingsNotifier.setTapToTurn(value),
+              onChanged: (value) => settingsNotifier.setTapToTurn(value:value),
               isDark: isDark,
             ),
           ],
