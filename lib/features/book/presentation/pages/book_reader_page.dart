@@ -12,6 +12,9 @@ import 'package:my_nas/features/book/domain/entities/book_item.dart';
 import 'package:my_nas/features/reading/data/services/reader_settings_service.dart';
 import 'package:my_nas/features/reading/data/services/reading_progress_service.dart';
 import 'package:my_nas/features/reading/presentation/providers/reader_settings_provider.dart';
+import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
+import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
+import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
 import 'package:my_nas/shared/widgets/loading_widget.dart';
 import 'package:path/path.dart' as path;
@@ -21,7 +24,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 /// 阅读器状态
 final txtReaderProvider =
     StateNotifierProvider.family<TxtReaderNotifier, TxtReaderState, BookItem>(
-      (ref, book) => TxtReaderNotifier(book),
+      (ref, book) => TxtReaderNotifier(book, ref),
     );
 
 sealed class TxtReaderState {}
@@ -52,12 +55,24 @@ class TxtReaderError extends TxtReaderState {
 }
 
 class TxtReaderNotifier extends StateNotifier<TxtReaderState> {
-  TxtReaderNotifier(this.book) : super(TxtReaderLoading()) {
+  TxtReaderNotifier(this.book, this._ref) : super(TxtReaderLoading()) {
     loadBook();
   }
 
   final BookItem book;
+  final Ref _ref;
   final ReadingProgressService _progressService = ReadingProgressService();
+
+  /// 获取文件系统（如果有 sourceId）
+  NasFileSystem? _getFileSystem() {
+    if (book.sourceId == null) return null;
+    final connections = _ref.read(activeConnectionsProvider);
+    final connection = connections[book.sourceId];
+    if (connection == null || connection.status != SourceStatus.connected) {
+      return null;
+    }
+    return connection.adapter.fileSystem;
+  }
 
   Future<void> loadBook() async {
     state = TxtReaderLoading();
@@ -95,24 +110,48 @@ class TxtReaderNotifier extends StateNotifier<TxtReaderState> {
     }
   }
 
+  /// 从流中读取所有字节
+  Future<Uint8List> _readStreamBytes(Stream<List<int>> stream) async {
+    final chunks = <List<int>>[];
+    await for (final chunk in stream) {
+      chunks.add(chunk);
+    }
+    final totalLength = chunks.fold<int>(0, (sum, chunk) => sum + chunk.length);
+    final result = Uint8List(totalLength);
+    var offset = 0;
+    for (final chunk in chunks) {
+      result.setRange(offset, offset + chunk.length, chunk);
+      offset += chunk.length;
+    }
+    return result;
+  }
+
   Future<String> _loadTxtBook() async {
     final uri = Uri.parse(book.url);
     List<int> bytes;
 
-    // 检查是否为本地文件 (file:// 协议)
-    if (uri.scheme == 'file') {
+    // 优先使用流式加载（支持 SMB/WebDAV 等协议）
+    final fileSystem = _getFileSystem();
+    if (fileSystem != null) {
+      state = TxtReaderLoading(message: '流式加载中...');
+      final stream = await fileSystem.getFileStream(book.path);
+      bytes = await _readStreamBytes(stream);
+    } else if (uri.scheme == 'file') {
+      // 本地文件
       final localFile = File(uri.toFilePath());
       if (!await localFile.exists()) {
         throw Exception('文件不存在');
       }
       bytes = await localFile.readAsBytes();
-    } else {
-      // 远程文件，使用 HTTP 下载
+    } else if (uri.scheme == 'http' || uri.scheme == 'https') {
+      // HTTP 远程文件
       final response = await InsecureHttpClient.get(uri);
       if (response.statusCode != 200) {
         throw Exception('加载失败: ${response.statusCode}');
       }
       bytes = response.bodyBytes;
+    } else {
+      throw Exception('不支持的协议: ${uri.scheme}');
     }
 
     // 尝试检测编码
@@ -134,20 +173,26 @@ class TxtReaderNotifier extends StateNotifier<TxtReaderState> {
     final uri = Uri.parse(book.url);
     Uint8List bytes;
 
-    // 检查是否为本地文件 (file:// 协议)
-    if (uri.scheme == 'file') {
+    // 优先使用流式加载
+    final fileSystem = _getFileSystem();
+    if (fileSystem != null) {
+      state = TxtReaderLoading(message: '流式加载中...');
+      final stream = await fileSystem.getFileStream(book.path);
+      bytes = await _readStreamBytes(stream);
+    } else if (uri.scheme == 'file') {
       final localFile = File(uri.toFilePath());
       if (!await localFile.exists()) {
         throw Exception('文件不存在');
       }
       bytes = await localFile.readAsBytes();
-    } else {
-      // 远程文件，使用 HTTP 下载
+    } else if (uri.scheme == 'http' || uri.scheme == 'https') {
       final response = await InsecureHttpClient.get(uri);
       if (response.statusCode != 200) {
         throw Exception('加载失败: ${response.statusCode}');
       }
       bytes = response.bodyBytes;
+    } else {
+      throw Exception('不支持的协议: ${uri.scheme}');
     }
 
     // 使用 MOBI 解析器
@@ -167,21 +212,27 @@ class TxtReaderNotifier extends StateNotifier<TxtReaderState> {
     final tempDir = await getTemporaryDirectory();
     final epubFile = File('${tempDir.path}/${book.name}');
 
-    // 检查是否为本地文件 (file:// 协议)
-    if (uri.scheme == 'file') {
+    // 优先使用流式加载
+    final fileSystem = _getFileSystem();
+    if (fileSystem != null) {
+      state = TxtReaderLoading(message: '流式加载中...');
+      final stream = await fileSystem.getFileStream(book.path);
+      final bytes = await _readStreamBytes(stream);
+      await epubFile.writeAsBytes(bytes);
+    } else if (uri.scheme == 'file') {
       final localFile = File(uri.toFilePath());
       if (!await localFile.exists()) {
         throw Exception('文件不存在');
       }
-      // 复制到临时目录
       await localFile.copy(epubFile.path);
-    } else {
-      // 远程文件，使用 HTTP 下载
+    } else if (uri.scheme == 'http' || uri.scheme == 'https') {
       final response = await InsecureHttpClient.get(uri);
       if (response.statusCode != 200) {
         throw Exception('下载失败: ${response.statusCode}');
       }
       await epubFile.writeAsBytes(response.bodyBytes);
+    } else {
+      throw Exception('不支持的协议: ${uri.scheme}');
     }
 
     // TODO: 使用 epubx 或 epub_view 解析 EPUB

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/router/app_router.dart';
@@ -11,6 +13,7 @@ import 'package:my_nas/features/book/domain/entities/book_item.dart';
 import 'package:my_nas/features/book/presentation/pages/book_reader_page.dart';
 import 'package:my_nas/features/book/presentation/pages/epub_reader_page.dart';
 import 'package:my_nas/features/book/presentation/pages/pdf_reader_page.dart';
+import 'package:my_nas/features/book/presentation/providers/book_cover_provider.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
@@ -1410,7 +1413,7 @@ class _BookListContentState extends ConsumerState<BookListContent> {
     );
 }
 
-class _BookGridItem extends ConsumerWidget {
+class _BookGridItem extends ConsumerStatefulWidget {
   const _BookGridItem({
     required this.book,
     required this.isDark,
@@ -1420,8 +1423,68 @@ class _BookGridItem extends ConsumerWidget {
   final bool isDark;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final file = book.file;
+  ConsumerState<_BookGridItem> createState() => _BookGridItemState();
+}
+
+class _BookGridItemState extends ConsumerState<_BookGridItem> {
+  String? _coverPath;
+  bool _coverLoaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCover();
+  }
+
+  Future<void> _loadCover() async {
+    final format = BookItem.formatFromExtension(widget.book.file.name);
+
+    // 只有 EPUB 和 PDF 支持封面提取
+    if (format != BookFormat.epub && format != BookFormat.pdf) {
+      return;
+    }
+
+    final coverService = ref.read(bookCoverServiceProvider);
+    final connections = ref.read(activeConnectionsProvider);
+    final connection = connections[widget.book.sourceId];
+
+    if (connection == null) return;
+
+    // 先检查缓存
+    final cached = coverService.getCachedCoverPath(
+      widget.book.path,
+      widget.book.sourceId,
+    );
+
+    if (cached != null && await File(cached).exists()) {
+      if (mounted) {
+        setState(() {
+          _coverPath = cached;
+          _coverLoaded = true;
+        });
+      }
+      return;
+    }
+
+    // 异步提取封面
+    final coverPath = await coverService.extractAndCacheCover(
+      bookPath: widget.book.path,
+      sourceId: widget.book.sourceId,
+      format: format,
+      fileSystem: connection.adapter.fileSystem,
+    );
+
+    if (mounted) {
+      setState(() {
+        _coverPath = coverPath;
+        _coverLoaded = true;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final file = widget.book.file;
     final format = BookItem.formatFromExtension(file.name);
     final displayName = _getDisplayName(file.name);
 
@@ -1429,16 +1492,16 @@ class _BookGridItem extends ConsumerWidget {
       onTap: () => _openBook(context, ref),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: isDark ? AppColors.darkSurfaceVariant : context.colorScheme.surface,
+          color: widget.isDark ? AppColors.darkSurfaceVariant : context.colorScheme.surface,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isDark
+            color: widget.isDark
                 ? AppColors.darkOutline.withValues(alpha: 0.2)
                 : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.08),
+              color: Colors.black.withValues(alpha: widget.isDark ? 0.2 : 0.08),
               blurRadius: 8,
               offset: const Offset(0, 2),
             ),
@@ -1449,41 +1512,9 @@ class _BookGridItem extends ConsumerWidget {
           children: [
             Expanded(
               flex: 3,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: _getFormatGradient(format),
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                ),
-                child: Stack(
-                  children: [
-                    Center(
-                      child: Icon(
-                        _getFormatIcon(format),
-                        size: 48,
-                        color: Colors.white.withValues(alpha: 0.9),
-                      ),
-                    ),
-                    Positioned(
-                      top: 8,
-                      right: 8,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.3),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          format.name.toUpperCase(),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+              child: ClipRRect(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                child: _buildCover(format),
               ),
             ),
             Expanded(
@@ -1500,7 +1531,7 @@ class _BookGridItem extends ConsumerWidget {
                         overflow: TextOverflow.ellipsis,
                         style: context.textTheme.bodyMedium?.copyWith(
                           fontWeight: FontWeight.w600,
-                          color: isDark ? AppColors.darkOnSurface : null,
+                          color: widget.isDark ? AppColors.darkOnSurface : null,
                         ),
                       ),
                     ),
@@ -1508,7 +1539,7 @@ class _BookGridItem extends ConsumerWidget {
                     Text(
                       file.displaySize,
                       style: context.textTheme.labelSmall?.copyWith(
-                        color: isDark
+                        color: widget.isDark
                             ? AppColors.darkOnSurfaceVariant
                             : context.colorScheme.onSurfaceVariant,
                       ),
@@ -1522,6 +1553,96 @@ class _BookGridItem extends ConsumerWidget {
       ),
     );
   }
+
+  /// 构建封面区域
+  Widget _buildCover(BookFormat format) {
+    // 如果有封面图片，显示封面
+    if (_coverPath != null) {
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.file(
+            File(_coverPath!),
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) => _buildPlaceholder(format),
+          ),
+          // 格式标签
+          Positioned(
+            top: 8,
+            right: 8,
+            child: _buildFormatBadge(format),
+          ),
+        ],
+      );
+    }
+
+    // 如果正在加载封面，显示加载指示器
+    if (!_coverLoaded && (format == BookFormat.epub || format == BookFormat.pdf)) {
+      return DecoratedBox(
+        decoration: BoxDecoration(gradient: _getFormatGradient(format)),
+        child: Stack(
+          children: [
+            const Center(
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white54,
+                ),
+              ),
+            ),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: _buildFormatBadge(format),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 默认显示格式图标
+    return _buildPlaceholder(format);
+  }
+
+  /// 构建占位符（格式图标）
+  Widget _buildPlaceholder(BookFormat format) => DecoratedBox(
+        decoration: BoxDecoration(gradient: _getFormatGradient(format)),
+        child: Stack(
+          children: [
+            Center(
+              child: Icon(
+                _getFormatIcon(format),
+                size: 48,
+                color: Colors.white.withValues(alpha: 0.9),
+              ),
+            ),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: _buildFormatBadge(format),
+            ),
+          ],
+        ),
+      );
+
+  /// 构建格式标签
+  Widget _buildFormatBadge(BookFormat format) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.3),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          format.name.toUpperCase(),
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      );
 
   String _getDisplayName(String filename) {
     final dotIndex = filename.lastIndexOf('.');
@@ -1566,12 +1687,16 @@ class _BookGridItem extends ConsumerWidget {
 
   Future<void> _openBook(BuildContext context, WidgetRef ref) async {
     final connections = ref.read(activeConnectionsProvider);
-    final connection = connections[book.sourceId];
+    final connection = connections[widget.book.sourceId];
     if (connection == null) return;
 
-    final file = book.file;
+    final file = widget.book.file;
     final url = await connection.adapter.fileSystem.getFileUrl(file.path);
-    final bookItem = BookItem.fromFileItem(file, url);
+    final bookItem = BookItem.fromFileItem(
+      file,
+      url,
+      sourceId: widget.book.sourceId,
+    );
 
     if (!context.mounted) return;
 

@@ -17,6 +17,7 @@ class BookItem {
     required this.name,
     required this.path,
     required this.url,
+    this.sourceId,
     this.format = BookFormat.unknown,
     this.coverUrl,
     this.author,
@@ -29,19 +30,26 @@ class BookItem {
   });
 
   /// 从 FileItem 创建
-  factory BookItem.fromFileItem(FileItem file, String url) => BookItem(
-      id: file.path,
-      name: file.name,
-      path: file.path,
-      url: url,
-      format: formatFromExtension(file.name),
-      size: file.size,
-    );
+  factory BookItem.fromFileItem(
+    FileItem file,
+    String url, {
+    String? sourceId,
+  }) =>
+      BookItem(
+        id: file.path,
+        name: file.name,
+        path: file.path,
+        url: url,
+        sourceId: sourceId,
+        format: formatFromExtension(file.name),
+        size: file.size,
+      );
 
   final String id;
   final String name;
   final String path;
   final String url;
+  final String? sourceId; // 数据源ID，用于流式加载
   final BookFormat format;
   final String? coverUrl;
   final String? author;
@@ -92,6 +100,7 @@ class BookItem {
     String? name,
     String? path,
     String? url,
+    String? sourceId,
     BookFormat? format,
     String? coverUrl,
     String? author,
@@ -101,19 +110,21 @@ class BookItem {
     DateTime? lastReadAt,
     int? totalPages,
     int? currentPage,
-  }) => BookItem(
-      id: id ?? this.id,
-      name: name ?? this.name,
-      path: path ?? this.path,
-      url: url ?? this.url,
-      format: format ?? this.format,
-      coverUrl: coverUrl ?? this.coverUrl,
-      author: author ?? this.author,
-      description: description ?? this.description,
-      size: size ?? this.size,
-      lastReadPosition: lastReadPosition ?? this.lastReadPosition,
-      lastReadAt: lastReadAt ?? this.lastReadAt,
-      totalPages: totalPages ?? this.totalPages,
-      currentPage: currentPage ?? this.currentPage,
-    );
+  }) =>
+      BookItem(
+        id: id ?? this.id,
+        name: name ?? this.name,
+        path: path ?? this.path,
+        url: url ?? this.url,
+        sourceId: sourceId ?? this.sourceId,
+        format: format ?? this.format,
+        coverUrl: coverUrl ?? this.coverUrl,
+        author: author ?? this.author,
+        description: description ?? this.description,
+        size: size ?? this.size,
+        lastReadPosition: lastReadPosition ?? this.lastReadPosition,
+        lastReadAt: lastReadAt ?? this.lastReadAt,
+        totalPages: totalPages ?? this.totalPages,
+        currentPage: currentPage ?? this.currentPage,
+      );
 }

@@ -9,6 +9,8 @@ import 'package:my_nas/features/reading/data/services/reader_settings_service.da
 import 'package:my_nas/features/reading/data/services/reading_progress_service.dart';
 import 'package:my_nas/features/reading/presentation/providers/reader_settings_provider.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
+import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
+import 'package:my_nas/shared/widgets/stream_image.dart';
 import 'package:path/path.dart' as path;
 import 'package:photo_view/photo_view.dart';
 import 'package:photo_view/photo_view_gallery.dart';
@@ -21,14 +23,17 @@ class ComicPage {
     this.url,
     this.bytes,
     this.fileName,
+    this.filePath,
   });
 
   final int index;
   final String? url;
   final Uint8List? bytes;
   final String? fileName;
+  /// 文件路径（用于流式加载）
+  final String? filePath;
 
-  bool get isLoaded => url != null || bytes != null;
+  bool get isLoaded => url != null || bytes != null || filePath != null;
 }
 
 /// 漫画阅读器状态
@@ -127,10 +132,11 @@ class ComicReaderNotifier extends StateNotifier<ComicReaderState> {
     final pages = <ComicPage>[];
     for (var i = 0; i < imageFiles.length; i++) {
       final file = imageFiles[i];
-      final url = await fs.getFileUrl(file.path);
+      // 存储文件路径用于流式加载，而不是 URL
+      // 因为 SMB/WebDAV 的 URL 格式 (smb://, webdav://) 无法被 Image.network 加载
       pages.add(ComicPage(
         index: i,
-        url: url,
+        filePath: file.path,
         fileName: file.name,
       ));
     }
@@ -574,32 +580,77 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
     );
   }
 
+  /// 获取当前漫画对应的文件系统
+  NasFileSystem? _getFileSystem() {
+    final connections = ref.read(activeConnectionsProvider);
+    final conn = connections[widget.comic.sourceId];
+    return conn?.adapter.fileSystem;
+  }
+
   Widget _buildPageImage(
     ComicPage page,
     ComicReaderSettings settings, {
     BoxFit fit = BoxFit.contain,
   }) {
+    // 优先使用内存中的字节数据（压缩包解压后的图片）
     if (page.bytes != null) {
       return Image.memory(
         page.bytes!,
         fit: fit,
         errorBuilder: (_, _, _) => _buildErrorPlaceholder(),
       );
-    } else if (page.url != null) {
-      return Image.network(
-        page.url!,
-        fit: fit,
-        loadingBuilder: (context, child, progress) {
-          if (progress == null) return child;
-          return const Center(
-            child: CircularProgressIndicator(color: Colors.white54),
-          );
-        },
-        errorBuilder: (_, _, _) => _buildErrorPlaceholder(),
-      );
     }
+
+    // 使用文件路径流式加载（文件夹类型漫画）
+    if (page.filePath != null) {
+      final fs = _getFileSystem();
+      if (fs != null) {
+        return StreamImage(
+          path: page.filePath,
+          fileSystem: fs,
+          fit: fit,
+          placeholder: _buildLoadingPlaceholder(),
+          errorWidget: _buildErrorPlaceholder(),
+          cacheKey: '${widget.comic.sourceId}_${page.filePath}',
+        );
+      }
+    }
+
+    // 使用 URL 加载（仅适用于 HTTP/HTTPS URL）
+    if (page.url != null) {
+      final url = page.url!;
+      // 检查是否是有效的 HTTP URL
+      if (url.startsWith('http://') || url.startsWith('https://')) {
+        return Image.network(
+          url,
+          fit: fit,
+          loadingBuilder: (context, child, progress) {
+            if (progress == null) return child;
+            return _buildLoadingPlaceholder();
+          },
+          errorBuilder: (_, _, _) => _buildErrorPlaceholder(),
+        );
+      }
+      // 对于非 HTTP URL（如 smb://, webdav://），尝试使用流式加载
+      final fs = _getFileSystem();
+      if (fs != null && page.filePath != null) {
+        return StreamImage(
+          path: page.filePath,
+          fileSystem: fs,
+          fit: fit,
+          placeholder: _buildLoadingPlaceholder(),
+          errorWidget: _buildErrorPlaceholder(),
+          cacheKey: '${widget.comic.sourceId}_${page.filePath}',
+        );
+      }
+    }
+
     return _buildErrorPlaceholder();
   }
+
+  Widget _buildLoadingPlaceholder() => const Center(
+        child: CircularProgressIndicator(color: Colors.white54),
+      );
 
   Widget _buildErrorPlaceholder() => const Center(
         child: Icon(Icons.broken_image, size: 48, color: Colors.white24),

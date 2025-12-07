@@ -13,6 +13,9 @@ import 'package:my_nas/features/book/domain/entities/book_item.dart';
 import 'package:my_nas/features/reading/data/services/reader_settings_service.dart';
 import 'package:my_nas/features/reading/data/services/reading_progress_service.dart';
 import 'package:my_nas/features/reading/presentation/providers/reader_settings_provider.dart';
+import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
+import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
+import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/loading_widget.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -20,7 +23,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 /// EPUB 阅读器状态
 final epubReaderProvider =
     StateNotifierProvider.family<EpubReaderNotifier, EpubReaderState, BookItem>(
-      (ref, book) => EpubReaderNotifier(book),
+      (ref, book) => EpubReaderNotifier(book, ref),
     );
 
 sealed class EpubReaderState {}
@@ -84,12 +87,40 @@ class EpubChapter {
 }
 
 class EpubReaderNotifier extends StateNotifier<EpubReaderState> {
-  EpubReaderNotifier(this.book) : super(EpubReaderLoading()) {
+  EpubReaderNotifier(this.book, this._ref) : super(EpubReaderLoading()) {
     _loadEpub();
   }
 
   final BookItem book;
+  final Ref _ref;
   final ReadingProgressService _progressService = ReadingProgressService();
+
+  /// 获取文件系统（如果有 sourceId）
+  NasFileSystem? _getFileSystem() {
+    if (book.sourceId == null) return null;
+    final connections = _ref.read(activeConnectionsProvider);
+    final connection = connections[book.sourceId];
+    if (connection == null || connection.status != SourceStatus.connected) {
+      return null;
+    }
+    return connection.adapter.fileSystem;
+  }
+
+  /// 从流中读取所有字节
+  Future<Uint8List> _readStreamBytes(Stream<List<int>> stream) async {
+    final chunks = <List<int>>[];
+    await for (final chunk in stream) {
+      chunks.add(chunk);
+    }
+    final totalLength = chunks.fold<int>(0, (sum, chunk) => sum + chunk.length);
+    final result = Uint8List(totalLength);
+    var offset = 0;
+    for (final chunk in chunks) {
+      result.setRange(offset, offset + chunk.length, chunk);
+      offset += chunk.length;
+    }
+    return result;
+  }
 
   Future<void> _loadEpub() async {
     try {
@@ -99,18 +130,22 @@ class EpubReaderNotifier extends StateNotifier<EpubReaderState> {
       final tempDir = await getTemporaryDirectory();
       final epubFile = File('${tempDir.path}/${book.name}');
 
-      // 检查是否为本地文件 (file:// 协议)
-      if (uri.scheme == 'file') {
+      // 优先使用流式加载（支持 SMB/WebDAV 等协议）
+      final fileSystem = _getFileSystem();
+      if (fileSystem != null) {
+        state = EpubReaderLoading(message: '流式加载中...');
+        final stream = await fileSystem.getFileStream(book.path);
+        final bytes = await _readStreamBytes(stream);
+        await epubFile.writeAsBytes(bytes);
+      } else if (uri.scheme == 'file') {
         state = EpubReaderLoading(message: '读取本地文件...');
         final localFile = File(uri.toFilePath());
         if (!await localFile.exists()) {
           state = EpubReaderError('文件不存在');
           return;
         }
-        // 复制到临时目录
         await localFile.copy(epubFile.path);
-      } else {
-        // 远程文件，使用 HTTP 下载
+      } else if (uri.scheme == 'http' || uri.scheme == 'https') {
         state = EpubReaderLoading(message: '下载中...');
         final response = await InsecureHttpClient.get(uri);
         if (response.statusCode != 200) {
@@ -118,6 +153,9 @@ class EpubReaderNotifier extends StateNotifier<EpubReaderState> {
           return;
         }
         await epubFile.writeAsBytes(response.bodyBytes);
+      } else {
+        state = EpubReaderError('不支持的协议: ${uri.scheme}');
+        return;
       }
 
       state = EpubReaderLoading(message: '解析中...');
@@ -132,18 +170,24 @@ class EpubReaderNotifier extends StateNotifier<EpubReaderState> {
 
       // 从 spine 获取阅读顺序
       for (final section in epub.sections) {
-        final htmlContent = utf8.decode(section.content.fileContent);
-        final title = _extractTitle(htmlContent) ?? '章节 ${chapters.length + 1}';
-        final content = _extractTextContent(htmlContent);
+        try {
+          final htmlContent = utf8.decode(section.content.fileContent);
+          final title =
+              _extractTitle(htmlContent) ?? '章节 ${chapters.length + 1}';
+          final content = _extractTextContent(htmlContent);
 
-        chapters.add(
-          EpubChapter(
-            title: title,
-            href: section.content.href,
-            content: content,
-          ),
-        );
-        chapterContents.add(content);
+          chapters.add(
+            EpubChapter(
+              title: title,
+              href: section.content.href,
+              content: content,
+            ),
+          );
+          chapterContents.add(content);
+        } on Exception catch (e) {
+          // 跳过无法解析的章节（可能是封面页或其他非文本内容）
+          logger.w('跳过无法解析的章节: ${section.content.href}', e);
+        }
       }
 
       // 如果没有章节，尝试从目录获取

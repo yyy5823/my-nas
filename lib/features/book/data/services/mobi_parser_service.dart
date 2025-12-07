@@ -344,11 +344,17 @@ class MobiParserService {
         final distance = ((byte & 0x3F) << 5) | (nextByte >> 3);
         final length = (nextByte & 0x07) + 3;
 
-        for (var j = 0; j < length; j++) {
-          if (output.length >= distance) {
-            output.add(output[output.length - distance]);
+        // 安全检查：确保 distance 有效且不超过当前输出长度
+        if (distance > 0 && distance <= output.length) {
+          for (var j = 0; j < length; j++) {
+            // 每次循环都需要重新计算索引，因为 output 在增长
+            final srcIndex = output.length - distance;
+            if (srcIndex >= 0 && srcIndex < output.length) {
+              output.add(output[srcIndex]);
+            }
           }
         }
+        // 如果 distance 无效，跳过这个指令（容错处理）
       } else {
         // 0xC0-0xFF: 空格 + 字符
         output

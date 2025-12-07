@@ -7,7 +7,6 @@ import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/comic/data/services/comic_library_cache_service.dart';
 import 'package:my_nas/features/comic/presentation/pages/comic_reader_page.dart';
-import 'package:my_nas/features/connection/presentation/providers/connection_provider.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
@@ -17,6 +16,7 @@ import 'package:my_nas/features/sources/presentation/providers/source_provider.d
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
 import 'package:my_nas/shared/widgets/media_setup_widget.dart';
+import 'package:my_nas/shared/widgets/stream_image.dart';
 
 /// 漫画类型
 enum ComicType {
@@ -722,21 +722,18 @@ class _ComicCard extends ConsumerWidget {
     );
 
   Widget _buildCover(WidgetRef ref) {
-    final adapter = ref.watch(activeAdapterProvider);
-    if (adapter == null) return _buildPlaceholder();
+    // 获取当前漫画对应的连接
+    final connections = ref.watch(activeConnectionsProvider);
+    final conn = connections[comic.sourceId];
+    if (conn == null) return _buildPlaceholder();
 
-    return FutureBuilder<String>(
-      future: adapter.fileSystem.getFileUrl(comic.coverPath!),
-      builder: (context, snapshot) {
-        if (snapshot.hasData) {
-          return Image.network(
-            snapshot.data!,
-            fit: BoxFit.cover,
-            errorBuilder: (_, _, _) => _buildPlaceholder(),
-          );
-        }
-        return _buildPlaceholder();
-      },
+    // 使用 StreamImage 流式加载封面，支持 SMB/WebDAV
+    return StreamImage(
+      path: comic.coverPath,
+      fileSystem: conn.adapter.fileSystem,
+      placeholder: _buildPlaceholder(),
+      errorWidget: _buildPlaceholder(),
+      cacheKey: '${comic.sourceId}_${comic.coverPath}',
     );
   }
 
