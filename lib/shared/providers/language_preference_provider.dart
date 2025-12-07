@@ -6,17 +6,17 @@ import 'package:my_nas/core/utils/logger.dart';
 /// 语言偏好设置
 /// 用于配置音频、字幕、元数据的语言显示
 class LanguagePreference {
+  const LanguagePreference({
+    this.audioLanguage = LanguageOption.auto,
+    this.subtitleLanguage = LanguageOption.auto,
+    this.metadataLanguage = LanguageOption.auto,
+  });
 
   factory LanguagePreference.fromJson(Map<String, dynamic> json) => LanguagePreference(
       audioLanguage: LanguageOption.fromCode(json['audioLanguage'] as String?),
       subtitleLanguage: LanguageOption.fromCode(json['subtitleLanguage'] as String?),
       metadataLanguage: LanguageOption.fromCode(json['metadataLanguage'] as String?),
     );
-  const LanguagePreference({
-    this.audioLanguage = LanguageOption.auto,
-    this.subtitleLanguage = LanguageOption.auto,
-    this.metadataLanguage = LanguageOption.auto,
-  });
 
   /// 音频语言偏好
   final LanguageOption audioLanguage;

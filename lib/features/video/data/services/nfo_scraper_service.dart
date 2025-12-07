@@ -156,7 +156,6 @@ class NfoScraperService {
         final (nfo, images) = await _findShowNfoInParents(
           fileSystem,
           videoDir,
-          maxLevels: 2,
         );
         showNfo = nfo;
         showImages = images;

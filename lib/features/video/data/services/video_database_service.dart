@@ -961,7 +961,7 @@ class VideoDatabaseService {
     final collections = <MovieCollection>[];
 
     for (final row in results) {
-      final collectionId = row[_colCollectionId] as int;
+      final collectionId = row[_colCollectionId]! as int;
       final collectionName = row[_colCollectionName] as String? ?? '未知系列';
 
       // 获取该系列的所有电影
@@ -1016,7 +1016,7 @@ class VideoDatabaseService {
     sql += ' ORDER BY $_colYear DESC';
 
     final results = await _db!.rawQuery(sql, args);
-    return results.map((r) => r[_colYear] as int).toList();
+    return results.map((r) => r[_colYear]! as int).toList();
   }
 
   /// 获取所有可用的类型列表（按分类筛选）

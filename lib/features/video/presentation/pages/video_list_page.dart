@@ -323,9 +323,9 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       _db.getTvShowGroupCount(enabledPaths: enabledPaths), // 获取不同电视剧总数
       _db.getTopRated(limit: 200, enabledPaths: enabledPaths), // 获取足够多的高分视频
       _db.getRecentlyUpdated(limit: 100, enabledPaths: enabledPaths), // 获取足够多的最近更新
-      _db.getByCategory(MediaCategory.movie, limit: 50, enabledPaths: enabledPaths), // 首页只需要少量电影
-      _db.getTvShowGroupRepresentatives(limit: 50, enabledPaths: enabledPaths), // 首页只需要少量剧集代表
-      _db.getMovieCollections(minCount: 2), // 获取电影系列（至少2部）
+      _db.getByCategory(MediaCategory.movie, enabledPaths: enabledPaths), // 首页只需要少量电影
+      _db.getTvShowGroupRepresentatives(enabledPaths: enabledPaths), // 首页只需要少量剧集代表
+      _db.getMovieCollections(), // 获取电影系列（至少2部）
     ]);
 
     final stats = results[0] as Map<String, dynamic>;
@@ -1271,18 +1271,6 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
       MaterialPageRoute<void>(
         builder: (context) => _TvShowsPaginatedPage(
           title: title,
-        ),
-      ),
-    );
-  }
-
-  /// 显示剧集列表页面（旧版，保留兼容）
-  void _showTvShowsPage(BuildContext context, String title, List<TvShowGroup> groups) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (context) => _TvShowsFullPage(
-          title: title,
-          groups: groups,
         ),
       ),
     );
@@ -4211,7 +4199,7 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
           _isLoadingFilters = false;
         });
       }
-    } catch (e) {
+    } on Exception catch (e) {
       if (mounted) {
         setState(() => _isLoadingFilters = false);
       }
@@ -4246,6 +4234,7 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
         _isLoading = false;
       });
     } on Exception catch (e) {
+      logger.e('VideoListPage: 加载更多失败', e);
       setState(() => _isLoading = false);
     }
   }
@@ -4268,7 +4257,7 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
       if (mounted) {
         setState(() => _filteredCount = count);
       }
-    } catch (e) {
+    } on Exception catch (e) {
       // 忽略错误
     }
 
@@ -4483,8 +4472,7 @@ class _FilterChip extends StatelessWidget {
   final bool isDark;
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
+  Widget build(BuildContext context) => Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.05),
@@ -4515,7 +4503,6 @@ class _FilterChip extends StatelessWidget {
         ],
       ),
     );
-  }
 }
 
 /// 筛选底部弹窗
@@ -4552,8 +4539,7 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
+  Widget build(BuildContext context) => Container(
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height * 0.7,
       ),
@@ -4755,7 +4741,6 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
         ],
       ),
     );
-  }
 }
 
 /// 剧集分页页面（支持懒加载和筛选）
@@ -4815,7 +4800,7 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
           _isLoadingFilters = false;
         });
       }
-    } catch (e) {
+    } on Exception catch (e) {
       if (mounted) {
         setState(() => _isLoadingFilters = false);
       }
@@ -4850,6 +4835,7 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
         _isLoading = false;
       });
     } on Exception catch (e) {
+      logger.e('TvShowsPaginatedPage: 加载更多失败', e);
       setState(() => _isLoading = false);
     }
   }
@@ -4871,7 +4857,7 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
       if (mounted) {
         setState(() => _filteredCount = count);
       }
-    } catch (e) {
+    } on Exception catch (e) {
       // 忽略错误
     }
 
@@ -5308,7 +5294,7 @@ class _MovieCollectionCardState extends State<_MovieCollectionCard> {
         return AdaptiveImage(
           imageUrl: posterUrl!,
           placeholder: (_) => _buildPlaceholder(),
-          errorWidget: (_, __) => _buildPlaceholder(),
+          errorWidget: (_, _) => _buildPlaceholder(),
         );
       }
       return _buildPlaceholder();
@@ -5334,7 +5320,6 @@ class _MovieCollectionCardState extends State<_MovieCollectionCard> {
                   borderRadius: BorderRadius.circular(8),
                   child: AdaptiveImage(
                     imageUrl: showPosters[2].posterUrl!,
-                    fit: BoxFit.cover,
                   ),
                 ),
               ),
@@ -5355,7 +5340,6 @@ class _MovieCollectionCardState extends State<_MovieCollectionCard> {
                   borderRadius: BorderRadius.circular(8),
                   child: AdaptiveImage(
                     imageUrl: showPosters[1].posterUrl!,
-                    fit: BoxFit.cover,
                   ),
                 ),
               ),
@@ -5366,7 +5350,7 @@ class _MovieCollectionCardState extends State<_MovieCollectionCard> {
           AdaptiveImage(
             imageUrl: showPosters[0].posterUrl!,
             placeholder: (_) => _buildPlaceholder(),
-            errorWidget: (_, __) => _buildPlaceholder(),
+            errorWidget: (_, _) => _buildPlaceholder(),
           ),
       ],
     );
@@ -5422,7 +5406,6 @@ class _MovieCollectionPage extends ConsumerWidget {
                       children: [
                         AdaptiveImage(
                           imageUrl: collection.backdropUrl!,
-                          fit: BoxFit.cover,
                         ),
                         Container(
                           decoration: BoxDecoration(
@@ -5432,7 +5415,7 @@ class _MovieCollectionPage extends ConsumerWidget {
                               colors: [
                                 Colors.transparent,
                                 (isDark ? const Color(0xFF0D0D1A) : Colors.white).withValues(alpha: 0.8),
-                                isDark ? const Color(0xFF0D0D1A) : Colors.white,
+                                if (isDark) const Color(0xFF0D0D1A) else Colors.white,
                               ],
                             ),
                           ),
