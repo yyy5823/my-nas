@@ -39,3 +39,26 @@ Future<void> refreshVideoHistory(WidgetRef ref) async {
   ..invalidate(continueWatchingProvider)
   ..invalidate(allVideoProgressProvider);
 }
+
+/// 视频已观看状态 Provider - 用于获取单个视频的观看状态
+final isWatchedProvider = FutureProvider.family<bool, String>((ref, videoPath) async {
+  final service = ref.watch(videoHistoryServiceProvider);
+  await service.init();
+  return service.isVideoWatched(videoPath);
+});
+
+/// 所有已观看视频路径 Provider
+final allWatchedPathsProvider = FutureProvider<Set<String>>((ref) async {
+  final service = ref.watch(videoHistoryServiceProvider);
+  await service.init();
+  return service.getAllWatchedPaths();
+});
+
+/// 切换观看状态并刷新相关 Provider
+Future<bool> toggleWatchedStatus(WidgetRef ref, String videoPath) async {
+  final service = ref.read(videoHistoryServiceProvider);
+  final newStatus = await service.toggleWatched(videoPath);
+  ref..invalidate(isWatchedProvider(videoPath))
+  ..invalidate(allWatchedPathsProvider);
+  return newStatus;
+}

@@ -10,6 +10,7 @@ class VideoHistoryService {
 
   late Box<dynamic> _historyBox;
   late Box<dynamic> _progressBox;
+  late Box<dynamic> _watchedBox;
   bool _initialized = false;
 
   /// 初始化
@@ -19,6 +20,7 @@ class VideoHistoryService {
     // Hive.initFlutter() 已在 main.dart 中调用，这里直接打开 box
     _historyBox = await Hive.openBox('video_history');
     _progressBox = await Hive.openBox('video_progress');
+    _watchedBox = await Hive.openBox('video_watched');
     _initialized = true;
 
     logger.i('VideoHistoryService: 初始化完成');
@@ -192,6 +194,57 @@ class VideoHistoryService {
       'list',
       history.map((h) => h.toJson()).toList(),
     );
+  }
+
+  // ========== 已观看状态管理 ==========
+
+  /// 标记为已观看
+  Future<void> markAsWatched(String videoPath) async {
+    if (!_initialized) await init();
+    await _watchedBox.put(videoPath, DateTime.now().toIso8601String());
+    logger.d('VideoHistoryService: 标记为已观看 $videoPath');
+  }
+
+  /// 标记为未观看
+  Future<void> markAsUnwatched(String videoPath) async {
+    if (!_initialized) await init();
+    await _watchedBox.delete(videoPath);
+    logger.d('VideoHistoryService: 标记为未观看 $videoPath');
+  }
+
+  /// 切换观看状态
+  Future<bool> toggleWatched(String videoPath) async {
+    if (!_initialized) await init();
+    final isWatched = await isVideoWatched(videoPath);
+    if (isWatched) {
+      await markAsUnwatched(videoPath);
+      return false;
+    } else {
+      await markAsWatched(videoPath);
+      return true;
+    }
+  }
+
+  /// 检查是否已观看
+  Future<bool> isVideoWatched(String videoPath) async {
+    if (!_initialized) await init();
+    return _watchedBox.containsKey(videoPath);
+  }
+
+  /// 批量检查观看状态
+  Future<Map<String, bool>> getWatchedStatusBatch(List<String> videoPaths) async {
+    if (!_initialized) await init();
+    final result = <String, bool>{};
+    for (final path in videoPaths) {
+      result[path] = _watchedBox.containsKey(path);
+    }
+    return result;
+  }
+
+  /// 获取所有已观看的视频路径
+  Future<Set<String>> getAllWatchedPaths() async {
+    if (!_initialized) await init();
+    return _watchedBox.keys.cast<String>().toSet();
   }
 }
 

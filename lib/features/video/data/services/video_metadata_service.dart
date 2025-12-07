@@ -364,7 +364,7 @@ class VideoMetadataService {
           }
         }
 
-        logger.i('VideoMetadataService: 从 NFO 获取到元数据 "${nfoData.title}"');
+        logger.d('VideoMetadataService: 从 NFO 获取到元数据 "${nfoData.title}"');
         return true;
       }
     } on Exception catch (e) {

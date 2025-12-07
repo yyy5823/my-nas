@@ -326,6 +326,36 @@ class TmdbService {
       return TmdbSearchResult.empty();
     }
   }
+
+  /// 获取电影合集/系列详情
+  Future<TmdbCollection?> getCollection(
+    int collectionId, {
+    String language = 'zh-CN',
+  }) async {
+    if (!hasApiKey) return null;
+
+    try {
+      final params = {
+        'api_key': _apiKey,
+        'language': language,
+      };
+
+      final uri = Uri.parse('$_baseUrl/collection/$collectionId')
+          .replace(queryParameters: params);
+      final response = await http.get(uri);
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body) as Map<String, dynamic>;
+        return TmdbCollection.fromJson(data);
+      } else {
+        logger.e('TMDB获取合集详情失败: ${response.statusCode}');
+        return null;
+      }
+    } on Exception catch (e) {
+      logger.e('TMDB获取合集详情异常', e);
+      return null;
+    }
+  }
 }
 
 /// 图片尺寸
@@ -461,10 +491,12 @@ class TmdbMovieDetail {
     required this.status,
     required this.budget,
     required this.revenue,
+    this.belongsToCollection,
   });
 
   factory TmdbMovieDetail.fromJson(Map<String, dynamic> json) {
     final credits = json['credits'] as Map<String, dynamic>?;
+    final collectionData = json['belongs_to_collection'] as Map<String, dynamic>?;
 
     return TmdbMovieDetail(
       id: json['id'] as int,
@@ -498,6 +530,9 @@ class TmdbMovieDetail {
       status: json['status'] as String? ?? '',
       budget: json['budget'] as int? ?? 0,
       revenue: json['revenue'] as int? ?? 0,
+      belongsToCollection: collectionData != null
+          ? TmdbCollectionInfo.fromJson(collectionData)
+          : null,
     );
   }
 
@@ -519,6 +554,7 @@ class TmdbMovieDetail {
   final String status;
   final int budget;
   final int revenue;
+  final TmdbCollectionInfo? belongsToCollection;
 
   String get posterUrl => TmdbService.getImageUrl(posterPath);
   String get backdropUrl => TmdbService.getImageUrl(backdropPath, size: ImageSize.original);
@@ -867,4 +903,117 @@ class TmdbNetwork {
   final String originCountry;
 
   String get logoUrl => TmdbService.getImageUrl(logoPath, size: ImageSize.w185);
+}
+
+/// 电影系列/合集信息 (基础信息，在电影详情中返回)
+class TmdbCollectionInfo {
+  TmdbCollectionInfo({
+    required this.id,
+    required this.name,
+    required this.posterPath,
+    required this.backdropPath,
+  });
+
+  factory TmdbCollectionInfo.fromJson(Map<String, dynamic> json) => TmdbCollectionInfo(
+      id: json['id'] as int,
+      name: json['name'] as String? ?? '',
+      posterPath: json['poster_path'] as String?,
+      backdropPath: json['backdrop_path'] as String?,
+    );
+
+  final int id;
+  final String name;
+  final String? posterPath;
+  final String? backdropPath;
+
+  String get posterUrl => TmdbService.getImageUrl(posterPath);
+  String get backdropUrl => TmdbService.getImageUrl(backdropPath, size: ImageSize.w780);
+}
+
+/// 电影系列/合集详情 (包含所有电影)
+class TmdbCollection {
+  TmdbCollection({
+    required this.id,
+    required this.name,
+    required this.overview,
+    required this.posterPath,
+    required this.backdropPath,
+    required this.parts,
+  });
+
+  factory TmdbCollection.fromJson(Map<String, dynamic> json) => TmdbCollection(
+      id: json['id'] as int,
+      name: json['name'] as String? ?? '',
+      overview: json['overview'] as String? ?? '',
+      posterPath: json['poster_path'] as String?,
+      backdropPath: json['backdrop_path'] as String?,
+      parts: (json['parts'] as List?)
+              ?.map((e) => TmdbCollectionPart.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+    );
+
+  final int id;
+  final String name;
+  final String overview;
+  final String? posterPath;
+  final String? backdropPath;
+  final List<TmdbCollectionPart> parts;
+
+  String get posterUrl => TmdbService.getImageUrl(posterPath);
+  String get backdropUrl => TmdbService.getImageUrl(backdropPath, size: ImageSize.w780);
+
+  /// 按发布日期排序的电影列表
+  List<TmdbCollectionPart> get sortedParts {
+    final sorted = List<TmdbCollectionPart>.from(parts);
+    sorted.sort((a, b) => a.releaseDate.compareTo(b.releaseDate));
+    return sorted;
+  }
+}
+
+/// 合集中的电影
+class TmdbCollectionPart {
+  TmdbCollectionPart({
+    required this.id,
+    required this.title,
+    required this.originalTitle,
+    required this.overview,
+    required this.posterPath,
+    required this.backdropPath,
+    required this.releaseDate,
+    required this.voteAverage,
+    required this.voteCount,
+  });
+
+  factory TmdbCollectionPart.fromJson(Map<String, dynamic> json) => TmdbCollectionPart(
+      id: json['id'] as int,
+      title: json['title'] as String? ?? '',
+      originalTitle: json['original_title'] as String? ?? '',
+      overview: json['overview'] as String? ?? '',
+      posterPath: json['poster_path'] as String?,
+      backdropPath: json['backdrop_path'] as String?,
+      releaseDate: json['release_date'] as String? ?? '',
+      voteAverage: (json['vote_average'] as num?)?.toDouble() ?? 0.0,
+      voteCount: json['vote_count'] as int? ?? 0,
+    );
+
+  final int id;
+  final String title;
+  final String originalTitle;
+  final String overview;
+  final String? posterPath;
+  final String? backdropPath;
+  final String releaseDate;
+  final double voteAverage;
+  final int voteCount;
+
+  String get posterUrl => TmdbService.getImageUrl(posterPath);
+  String get backdropUrl => TmdbService.getImageUrl(backdropPath, size: ImageSize.w780);
+
+  int? get year {
+    if (releaseDate.isEmpty) return null;
+    return int.tryParse(releaseDate.split('-').first);
+  }
+
+  String get ratingText => voteAverage.toStringAsFixed(1);
 }

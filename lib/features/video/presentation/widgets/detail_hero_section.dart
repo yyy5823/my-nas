@@ -4,37 +4,60 @@ import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
 import 'package:my_nas/shared/widgets/adaptive_image.dart';
 
 /// 详情页 Hero 区域组件
+///
+/// 重新设计后的 Banner:
+/// - 更大的高度，占据更多屏幕空间
+/// - 简介、按钮、详细信息浮动在 Banner 上
+/// - TMDB/Trakt 评分标识
+/// - 已观看/未观看按钮
 class DetailHeroSection extends StatelessWidget {
   const DetailHeroSection({
     required this.metadata,
     required this.onPlay,
     this.onFavorite,
+    this.onToggleWatched,
     this.isFavorite = false,
+    this.isWatched = false,
     this.watchProgress,
     this.backdropUrl,
     this.tagline,
+    this.overview,
+    this.tmdbRating,
+    this.traktRating,
+    this.voteCount,
     super.key,
   });
 
   final VideoMetadata metadata;
   final VoidCallback onPlay;
   final VoidCallback? onFavorite;
+  final VoidCallback? onToggleWatched;
   final bool isFavorite;
+  final bool isWatched;
   final double? watchProgress;
   final String? backdropUrl;
   final String? tagline;
+  final String? overview;
+  final double? tmdbRating;
+  final double? traktRating;
+  final int? voteCount;
 
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isWide = size.width > 800;
-    final heroHeight = isWide ? 450.0 : 350.0;
+    // 增加 Banner 高度：宽屏 600px，窄屏 550px
+    final heroHeight = isWide ? 600.0 : 550.0;
 
     final displayBackdrop = backdropUrl ?? metadata.backdropUrl;
     final displayPoster = metadata.displayPosterUrl;
     final hasBackdrop = displayBackdrop != null && displayBackdrop.isNotEmpty;
     final hasPoster = displayPoster != null && displayPoster.isNotEmpty;
+
+    // 使用简介：优先使用传入的 overview，否则使用 metadata 的
+    final displayOverview = overview ?? metadata.overview;
+    final hasOverview = displayOverview != null && displayOverview.isNotEmpty;
 
     return SizedBox(
       height: heroHeight,
@@ -51,7 +74,7 @@ class DetailHeroSection extends StatelessWidget {
           else
             _buildBackdropPlaceholder(isDark),
 
-          // 渐变遮罩
+          // 渐变遮罩 - 更强的渐变以便内容可读
           Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -59,11 +82,12 @@ class DetailHeroSection extends StatelessWidget {
                 end: Alignment.bottomCenter,
                 colors: [
                   Colors.transparent,
-                  Colors.black.withValues(alpha: 0.3),
-                  if (isDark) AppColors.darkBackground.withValues(alpha: 0.9) else Colors.black.withValues(alpha: 0.7),
+                  Colors.black.withValues(alpha: 0.2),
+                  Colors.black.withValues(alpha: 0.5),
+                  if (isDark) AppColors.darkBackground.withValues(alpha: 0.95) else Colors.black.withValues(alpha: 0.85),
                   if (isDark) AppColors.darkBackground else Colors.black,
                 ],
-                stops: const [0.0, 0.4, 0.7, 1.0],
+                stops: const [0.0, 0.25, 0.5, 0.75, 1.0],
               ),
             ),
           ),
@@ -74,10 +98,10 @@ class DetailHeroSection extends StatelessWidget {
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    if (isDark) AppColors.darkBackground.withValues(alpha: 0.8) else Colors.black.withValues(alpha: 0.6),
+                    if (isDark) AppColors.darkBackground.withValues(alpha: 0.7) else Colors.black.withValues(alpha: 0.5),
                     Colors.transparent,
                   ],
-                  stops: const [0.0, 0.5],
+                  stops: const [0.0, 0.4],
                 ),
               ),
             ),
@@ -90,8 +114,8 @@ class DetailHeroSection extends StatelessWidget {
                 vertical: 16,
               ),
               child: isWide
-                  ? _buildWideLayout(isDark, hasPoster, displayPoster)
-                  : _buildNarrowLayout(isDark, hasPoster, displayPoster),
+                  ? _buildWideLayout(isDark, hasPoster, displayPoster, hasOverview, displayOverview)
+                  : _buildNarrowLayout(isDark, hasPoster, displayPoster, hasOverview, displayOverview),
             ),
           ),
         ],
@@ -100,111 +124,147 @@ class DetailHeroSection extends StatelessWidget {
   }
 
   /// 宽屏布局 (海报在左，信息在右)
-  Widget _buildWideLayout(bool isDark, bool hasPoster, String? displayPoster) => Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        // 海报
-        if (hasPoster)
-          Container(
-            width: 200,
-            height: 300,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.4),
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: AdaptiveImage(
-                imageUrl: displayPoster!,
-                placeholder: (_) => _buildPosterPlaceholder(isDark),
-                errorWidget: (_, _) => _buildPosterPlaceholder(isDark),
-              ),
-            ),
-          ),
-        if (hasPoster) const SizedBox(width: 32),
-        // 信息区域
-        Expanded(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.end,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildTitleSection(isDark, large: true),
-              const SizedBox(height: 8),
-              _buildMetadataRow(isDark),
-              if (tagline != null && tagline!.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                _buildTagline(isDark),
-              ],
-              const SizedBox(height: 20),
-              _buildActionButtons(isDark, large: true),
-            ],
-          ),
-        ),
-      ],
-    );
-
-  /// 窄屏布局 (垂直排列)
-  Widget _buildNarrowLayout(bool isDark, bool hasPoster, String? displayPoster) => Column(
-      mainAxisAlignment: MainAxisAlignment.end,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // 海报和标题横向排列
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            // 小海报
-            if (hasPoster)
-              Container(
-                width: 100,
-                height: 150,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.3),
-                      blurRadius: 12,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: AdaptiveImage(
-                    imageUrl: displayPoster!,
-                    placeholder: (_) => _buildPosterPlaceholder(isDark),
-                    errorWidget: (_, _) => _buildPosterPlaceholder(isDark),
+  Widget _buildWideLayout(
+    bool isDark,
+    bool hasPoster,
+    String? displayPoster,
+    bool hasOverview,
+    String? displayOverview,
+  ) =>
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          // 海报
+          if (hasPoster)
+            Container(
+              width: 220,
+              height: 330,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.5),
+                    blurRadius: 24,
+                    offset: const Offset(0, 12),
                   ),
-                ),
-              ),
-            if (hasPoster) const SizedBox(width: 16),
-            // 标题和元数据
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  _buildTitleSection(isDark),
-                  const SizedBox(height: 6),
-                  _buildMetadataRow(isDark),
                 ],
               ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: AdaptiveImage(
+                  imageUrl: displayPoster!,
+                  placeholder: (_) => _buildPosterPlaceholder(isDark),
+                  errorWidget: (_, _) => _buildPosterPlaceholder(isDark),
+                ),
+              ),
             ),
-          ],
-        ),
-        if (tagline != null && tagline!.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          _buildTagline(isDark),
+          if (hasPoster) const SizedBox(width: 32),
+          // 信息区域
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.end,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 评分标识区
+                _buildRatingBadges(),
+                const SizedBox(height: 12),
+                // 标题
+                _buildTitleSection(isDark, large: true),
+                const SizedBox(height: 8),
+                // 元数据标签
+                _buildMetadataRow(isDark),
+                // 标语
+                if (tagline != null && tagline!.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  _buildTagline(isDark),
+                ],
+                // 简介 (浮动在 Banner 上)
+                if (hasOverview) ...[
+                  const SizedBox(height: 16),
+                  _buildOverviewSection(displayOverview!, large: true),
+                ],
+                const SizedBox(height: 20),
+                // 操作按钮
+                _buildActionButtons(isDark, large: true),
+              ],
+            ),
+          ),
         ],
-        const SizedBox(height: 16),
-        _buildActionButtons(isDark),
-      ],
-    );
+      );
+
+  /// 窄屏布局 (垂直排列)
+  Widget _buildNarrowLayout(
+    bool isDark,
+    bool hasPoster,
+    String? displayPoster,
+    bool hasOverview,
+    String? displayOverview,
+  ) =>
+      Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 评分标识区
+          _buildRatingBadges(),
+          const SizedBox(height: 12),
+          // 海报和标题横向排列
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              // 小海报
+              if (hasPoster)
+                Container(
+                  width: 110,
+                  height: 165,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.4),
+                        blurRadius: 16,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: AdaptiveImage(
+                      imageUrl: displayPoster!,
+                      placeholder: (_) => _buildPosterPlaceholder(isDark),
+                      errorWidget: (_, _) => _buildPosterPlaceholder(isDark),
+                    ),
+                  ),
+                ),
+              if (hasPoster) const SizedBox(width: 16),
+              // 标题和元数据
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    _buildTitleSection(isDark),
+                    const SizedBox(height: 6),
+                    _buildMetadataRow(isDark),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          // 标语
+          if (tagline != null && tagline!.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _buildTagline(isDark),
+          ],
+          // 简介 (浮动在 Banner 上)
+          if (hasOverview) ...[
+            const SizedBox(height: 12),
+            _buildOverviewSection(displayOverview!),
+          ],
+          const SizedBox(height: 16),
+          // 操作按钮
+          _buildActionButtons(isDark),
+        ],
+      );
 
   Widget _buildTitleSection(bool isDark, {bool large = false}) => Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -328,6 +388,132 @@ class DetailHeroSection extends StatelessWidget {
       ),
     );
 
+  /// 评分标识区域
+  Widget _buildRatingBadges() {
+    final badges = <Widget>[];
+
+    // TMDB 评分
+    final rating = tmdbRating ?? metadata.rating;
+    if (rating != null && rating > 0) {
+      badges.add(_buildRatingBadge(
+        label: 'TMDB',
+        rating: rating,
+        color: const Color(0xFF01D277), // TMDB 绿色
+        voteCount: voteCount,
+      ));
+    }
+
+    // Trakt 评分 (如果有)
+    if (traktRating != null && traktRating! > 0) {
+      badges.add(_buildRatingBadge(
+        label: 'Trakt',
+        rating: traktRating!,
+        color: const Color(0xFFED1C24), // Trakt 红色
+      ));
+    }
+
+    if (badges.isEmpty) return const SizedBox.shrink();
+
+    return Wrap(
+      spacing: 12,
+      runSpacing: 8,
+      children: badges,
+    );
+  }
+
+  Widget _buildRatingBadge({
+    required String label,
+    required double rating,
+    required Color color,
+    int? voteCount,
+  }) =>
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.6),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: color.withValues(alpha: 0.5),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 平台标识
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            // 评分数值
+            Icon(Icons.star_rounded, size: 16, color: color),
+            const SizedBox(width: 4),
+            Text(
+              rating.toStringAsFixed(1),
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            // 投票数
+            if (voteCount != null && voteCount > 0) ...[
+              const SizedBox(width: 6),
+              Text(
+                '(${_formatVoteCount(voteCount)})',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.white.withValues(alpha: 0.6),
+                ),
+              ),
+            ],
+          ],
+        ),
+      );
+
+  String _formatVoteCount(int count) {
+    if (count >= 1000000) {
+      return '${(count / 1000000).toStringAsFixed(1)}M';
+    } else if (count >= 1000) {
+      return '${(count / 1000).toStringAsFixed(1)}K';
+    }
+    return count.toString();
+  }
+
+  /// 简介区域 (浮动在 Banner 上)
+  Widget _buildOverviewSection(String overview, {bool large = false}) {
+    final maxLines = large ? 4 : 3;
+    return Text(
+      overview,
+      maxLines: maxLines,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        fontSize: large ? 14 : 13,
+        height: 1.5,
+        color: Colors.white.withValues(alpha: 0.85),
+        shadows: [
+          Shadow(
+            offset: const Offset(0, 1),
+            blurRadius: 2,
+            color: Colors.black.withValues(alpha: 0.5),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildActionButtons(bool isDark, {bool large = false}) {
     final buttonHeight = large ? 48.0 : 42.0;
     final fontSize = large ? 15.0 : 14.0;
@@ -381,14 +567,37 @@ class DetailHeroSection extends StatelessWidget {
             ),
           ),
         ],
+        // 已观看/未观看按钮
+        if (onToggleWatched != null) ...[
+          const SizedBox(width: 10),
+          SizedBox(
+            height: buttonHeight,
+            width: buttonHeight,
+            child: IconButton.filled(
+              onPressed: onToggleWatched,
+              tooltip: isWatched ? '标记为未观看' : '标记为已观看',
+              style: IconButton.styleFrom(
+                backgroundColor: isWatched
+                    ? AppColors.primary.withValues(alpha: 0.3)
+                    : Colors.white.withValues(alpha: 0.15),
+                foregroundColor: Colors.white,
+              ),
+              icon: Icon(
+                isWatched ? Icons.check_circle_rounded : Icons.check_circle_outline_rounded,
+                color: isWatched ? AppColors.primary : Colors.white,
+              ),
+            ),
+          ),
+        ],
         // 收藏按钮
         if (onFavorite != null) ...[
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           SizedBox(
             height: buttonHeight,
             width: buttonHeight,
             child: IconButton.filled(
               onPressed: onFavorite,
+              tooltip: isFavorite ? '取消收藏' : '收藏',
               style: IconButton.styleFrom(
                 backgroundColor: Colors.white.withValues(alpha: 0.15),
                 foregroundColor: Colors.white,

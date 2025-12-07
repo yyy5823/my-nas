@@ -87,6 +87,7 @@ class VideoListLoaded extends VideoListState {
     required this.totalCount,
     this.movieCount = 0,
     this.tvShowCount = 0,
+    this.tvShowGroupCount = 0,
     this.currentTab = VideoTab.all,
     this.searchQuery = '',
     this.isLoadingMetadata = false,
@@ -104,7 +105,10 @@ class VideoListLoaded extends VideoListState {
 
   final int totalCount;
   final int movieCount;
+  /// 剧集集数（单集数量）
   final int tvShowCount;
+  /// 剧集分组数量（不同电视剧数量）
+  final int tvShowGroupCount;
   final VideoTab currentTab;
   final String searchQuery;
   final bool isLoadingMetadata;
@@ -153,6 +157,7 @@ class VideoListLoaded extends VideoListState {
     int? totalCount,
     int? movieCount,
     int? tvShowCount,
+    int? tvShowGroupCount,
     VideoTab? currentTab,
     String? searchQuery,
     bool? isLoadingMetadata,
@@ -168,6 +173,7 @@ class VideoListLoaded extends VideoListState {
         totalCount: totalCount ?? this.totalCount,
         movieCount: movieCount ?? this.movieCount,
         tvShowCount: tvShowCount ?? this.tvShowCount,
+        tvShowGroupCount: tvShowGroupCount ?? this.tvShowGroupCount,
         currentTab: currentTab ?? this.currentTab,
         searchQuery: searchQuery ?? this.searchQuery,
         isLoadingMetadata: isLoadingMetadata ?? this.isLoadingMetadata,
@@ -254,6 +260,13 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
 
   /// 刮削统计变化时刷新数据
   void _onScrapeStatsChanged(ScrapeStats stats) {
+    // 当刮削全部完成时，强制刷新
+    if (stats.isAllDone && _lastCompletedCount > 0) {
+      _lastCompletedCount = 0; // 重置计数器
+      _loadCategorizedData(silent: true);
+      return;
+    }
+
     // 只有当有新的刮削完成时才刷新
     if (stats.completed > _lastCompletedCount) {
       _lastCompletedCount = stats.completed;
@@ -298,29 +311,54 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     final enabledPaths = _getEnabledPaths();
 
     // 并行查询各分类数据（使用 SQLite 索引，O(log N) 复杂度）
+    // 首页只加载少量数据用于展示，查看全部页面支持分页懒加载
     final results = await Future.wait([
       _db.getStats(enabledPaths: enabledPaths),
-      _db.getTopRated(limit: 20, enabledPaths: enabledPaths),
-      _db.getRecentlyUpdated(limit: 20, enabledPaths: enabledPaths),
-      _db.getByCategory(MediaCategory.movie, limit: 100, enabledPaths: enabledPaths),
-      _db.getByCategory(MediaCategory.tvShow, limit: 200, enabledPaths: enabledPaths),
+      _db.getTvShowGroupCount(enabledPaths: enabledPaths), // 获取不同电视剧总数
+      _db.getTopRated(limit: 200, enabledPaths: enabledPaths), // 获取足够多的高分视频
+      _db.getRecentlyUpdated(limit: 100, enabledPaths: enabledPaths), // 获取足够多的最近更新
+      _db.getByCategory(MediaCategory.movie, limit: 50, enabledPaths: enabledPaths), // 首页只需要少量电影
+      _db.getTvShowGroupRepresentatives(limit: 50, enabledPaths: enabledPaths), // 首页只需要少量剧集代表
     ]);
 
     final stats = results[0] as Map<String, dynamic>;
-    final topRated = results[1] as List<VideoMetadata>;
-    final recent = results[2] as List<VideoMetadata>;
-    final moviesList = results[3] as List<VideoMetadata>;
-    final tvShowsList = results[4] as List<VideoMetadata>;
+    final tvShowGroupCount = results[1] as int;
+    final topRatedRaw = results[2] as List<VideoMetadata>;
+    final recentRaw = results[3] as List<VideoMetadata>;
+    final moviesList = results[4] as List<VideoMetadata>;
+    final tvShowRepresentatives = results[5] as List<VideoMetadata>;
 
-    // 构建剧集分组（使用 TvShowGroup，优先用 tmdbId 分组）
-    final tvShowGroups = TvShowGroup.fromMetadataList(tvShowsList);
+    // 首页剧集直接使用代表性数据，不需要再分组
+    // 但为了兼容性，仍然构建 TvShowGroup（用于高分推荐和最近添加的去重）
+    final tvShowGroups = <String, TvShowGroup>{};
+    for (final rep in tvShowRepresentatives) {
+      final groupKey = rep.tmdbId != null ? 'tmdb_${rep.tmdbId}' : 'title_${rep.title?.toLowerCase()}';
+      tvShowGroups[groupKey] = TvShowGroup(
+        groupKey: groupKey,
+        title: rep.title ?? rep.fileName,
+        tmdbId: rep.tmdbId,
+        posterUrl: rep.posterUrl,
+        backdropUrl: rep.backdropUrl,
+        rating: rep.rating,
+        overview: rep.overview,
+        year: rep.year,
+        genres: rep.genres,
+        seasonEpisodes: {rep.seasonNumber ?? 1: [rep]},
+      );
+    }
+
+    // 对高分推荐进行去重：电影直接使用，剧集使用 TvShowGroup 的信息
+    final topRated = _buildTopRatedWithGroups(topRatedRaw, tvShowGroups);
+
+    // 对最近添加进行去重
+    final recent = _buildRecentWithGroups(recentRaw, tvShowGroups);
 
     // 构建快速查找 Map
     final videoByKey = <String, VideoMetadata>{};
     for (final m in moviesList) {
       videoByKey[m.uniqueKey] = m;
     }
-    for (final m in tvShowsList) {
+    for (final m in tvShowRepresentatives) {
       videoByKey[m.uniqueKey] = m;
     }
 
@@ -328,6 +366,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       totalCount: stats['total'] as int? ?? 0,
       movieCount: stats['movies'] as int? ?? 0,
       tvShowCount: stats['tvShows'] as int? ?? 0,
+      tvShowGroupCount: tvShowGroupCount,
       topRatedMovies: topRated,
       recentVideos: recent,
       movies: moviesList,
@@ -336,7 +375,14 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       fromCache: true,
     );
 
-    logger.i('VideoListNotifier: 数据加载完成，总计 ${stats['total']} 个视频');
+    logger.i(
+      'VideoListNotifier: 数据加载完成，'
+      '总计 ${stats['total']} 个视频，'
+      '电影 ${stats['movies']} 个（首页加载 ${moviesList.length}），'
+      '剧集 $tvShowGroupCount 部（首页加载 ${tvShowRepresentatives.length} 部），'
+      '高分推荐 ${topRated.length} 个，'
+      '最近添加 ${recent.length} 个',
+    );
   }
 
   /// 重新加载数据（扫描完成后调用）
@@ -376,6 +422,144 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
         isLoadingMetadata: false,
       );
     }
+  }
+
+  /// 构建高分推荐列表，剧集使用 TvShowGroup 的完整信息
+  ///
+  /// 对于剧集，会使用 TvShowGroup 的海报、评分等信息替换单集信息
+  List<VideoMetadata> _buildTopRatedWithGroups(
+    List<VideoMetadata> videos,
+    Map<String, TvShowGroup> tvShowGroups,
+    {int limit = 20}
+  ) {
+    final result = <VideoMetadata>[];
+    final seenTvShows = <String>{};
+
+    for (final video in videos) {
+      if (result.length >= limit) break;
+
+      // 电影直接添加
+      if (video.category == MediaCategory.movie) {
+        result.add(video);
+        continue;
+      }
+
+      // 剧集需要去重并使用分组信息
+      final groupKey = _getTvShowGroupKey(video);
+      if (seenTvShows.contains(groupKey)) {
+        continue;
+      }
+      seenTvShows.add(groupKey);
+
+      // 使用 TvShowGroup 的信息构建代表元数据
+      final group = tvShowGroups[groupKey];
+      if (group != null) {
+        // 使用分组的海报、评分等信息
+        result.add(_buildGroupRepresentative(group));
+      } else {
+        result.add(video);
+      }
+    }
+
+    return result;
+  }
+
+  /// 构建最近添加列表，剧集使用 TvShowGroup 的完整信息
+  List<VideoMetadata> _buildRecentWithGroups(
+    List<VideoMetadata> videos,
+    Map<String, TvShowGroup> tvShowGroups,
+    {int limit = 20}
+  ) {
+    final result = <VideoMetadata>[];
+    final seenTvShows = <String>{};
+
+    for (final video in videos) {
+      if (result.length >= limit) break;
+
+      // 电影直接添加
+      if (video.category == MediaCategory.movie) {
+        result.add(video);
+        continue;
+      }
+
+      // 剧集需要去重
+      final groupKey = _getTvShowGroupKey(video);
+      if (seenTvShows.contains(groupKey)) {
+        continue;
+      }
+      seenTvShows.add(groupKey);
+
+      // 使用 TvShowGroup 的信息
+      final group = tvShowGroups[groupKey];
+      if (group != null) {
+        result.add(_buildGroupRepresentative(group));
+      } else {
+        result.add(video);
+      }
+    }
+
+    return result;
+  }
+
+  /// 从 TvShowGroup 构建代表性的 VideoMetadata
+  /// 使用分组的标题、海报、评分等信息
+  VideoMetadata _buildGroupRepresentative(TvShowGroup group) {
+    final rep = group.representative;
+    return VideoMetadata(
+      sourceId: rep.sourceId,
+      filePath: rep.filePath,
+      fileName: rep.fileName,
+      category: MediaCategory.tvShow,
+      scrapeStatus: rep.scrapeStatus,
+      tmdbId: group.tmdbId ?? rep.tmdbId,
+      title: group.title, // 使用分组标题
+      originalTitle: rep.originalTitle,
+      year: group.year ?? rep.year,
+      overview: group.overview ?? rep.overview, // 使用分组简介
+      posterUrl: group.displayPosterUrl, // 使用分组海报
+      backdropUrl: group.backdropUrl ?? rep.backdropUrl,
+      rating: group.rating ?? rep.rating, // 使用分组评分
+      runtime: rep.runtime,
+      genres: group.genres ?? rep.genres,
+      director: rep.director,
+      cast: rep.cast,
+      seasonNumber: rep.seasonNumber,
+      episodeNumber: rep.episodeNumber,
+      episodeTitle: rep.episodeTitle,
+      lastUpdated: rep.lastUpdated,
+      thumbnailUrl: rep.thumbnailUrl,
+      generatedThumbnailUrl: rep.generatedThumbnailUrl,
+      fileSize: rep.fileSize,
+      fileModifiedTime: rep.fileModifiedTime,
+    );
+  }
+
+  /// 获取剧集的分组键
+  String _getTvShowGroupKey(VideoMetadata video) {
+    // 优先使用 tmdbId
+    if (video.tmdbId != null) {
+      return 'tmdb_${video.tmdbId}';
+    }
+    // 否则使用标准化标题
+    return _normalizeTitle(video.title ?? video.fileName);
+  }
+
+  /// 标准化标题（移除季集信息）
+  String _normalizeTitle(String title) {
+    var normalized = title.toLowerCase().trim();
+    // 移除季集标记
+    normalized = normalized.replaceAll(
+      RegExp(r'[第\s]*(\d+|[一二三四五六七八九十]+)[季部期]'),
+      '',
+    );
+    normalized = normalized.replaceAll(
+      RegExp(r'season\s*\d+', caseSensitive: false),
+      '',
+    );
+    normalized = normalized.replaceAll(RegExp(r's\d+', caseSensitive: false), '');
+    normalized = normalized.replaceAll(RegExp(r'[\(\[\s]\d{4}[\)\]\s]?'), '');
+    normalized = normalized.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return 'title_$normalized';
   }
 }
 
@@ -980,8 +1164,9 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               isDark: isDark,
               icon: Icons.movie_rounded,
               iconColor: AppColors.primary,
-              onViewAll: movies.length > 10
-                  ? () => _showCategoryPage(context, '电影', movies)
+              totalCount: state.movieCount,
+              onViewAll: state.movieCount > 10
+                  ? () => _showMoviesPage(context, ref, '电影')
                   : null,
             ),
           ),
@@ -996,8 +1181,9 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               isDark: isDark,
               icon: Icons.live_tv_rounded,
               iconColor: AppColors.accent,
-              onViewAll: tvShowGroups.length > 10
-                  ? () => _showTvShowsPage(context, '剧集', tvShowGroups)
+              totalCount: state.tvShowGroupCount,
+              onViewAll: state.tvShowGroupCount > 10
+                  ? () => _showTvShowsFullPage(context, ref, '剧集')
                   : null,
             ),
           ),
@@ -1030,7 +1216,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     return limit != null ? recentVideos.take(limit).toList() : recentVideos;
   }
 
-  /// 显示分类页面
+  /// 显示分类页面（旧版，用于最近添加等）
   void _showCategoryPage(BuildContext context, String title, List<VideoMetadata> items) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -1042,7 +1228,29 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     );
   }
 
-  /// 显示剧集列表页面
+  /// 显示电影全部页面（支持分页懒加载）
+  void _showMoviesPage(BuildContext context, WidgetRef ref, String title) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => _MoviesPaginatedPage(
+          title: title,
+        ),
+      ),
+    );
+  }
+
+  /// 显示剧集全部页面（支持分页懒加载）
+  void _showTvShowsFullPage(BuildContext context, WidgetRef ref, String title) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => _TvShowsPaginatedPage(
+          title: title,
+        ),
+      ),
+    );
+  }
+
+  /// 显示剧集列表页面（旧版，保留兼容）
   void _showTvShowsPage(BuildContext context, String title, List<TvShowGroup> groups) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -1853,6 +2061,7 @@ class _CategoryRow extends StatelessWidget {
     this.maxCount = 10,
     this.onViewAll,
     this.useVerticalPosters = true,
+    this.totalCount,
   });
 
   final String title;
@@ -1864,6 +2073,8 @@ class _CategoryRow extends StatelessWidget {
   final int maxCount;
   final VoidCallback? onViewAll;
   final bool useVerticalPosters;
+  /// 实际总数量（用于显示在"查看全部"按钮上，如果不传则使用 items.length）
+  final int? totalCount;
 
   @override
   Widget build(BuildContext context) {
@@ -1872,7 +2083,9 @@ class _CategoryRow extends StatelessWidget {
     final displayItems = items.take(maxCount).toList();
     // 始终显示"查看更多"卡片（只要有 onViewAll 回调）
     final showViewMore = onViewAll != null;
-    final remainingCount = items.length > maxCount ? items.length - maxCount : 0;
+    // 使用真实总数（如果提供），否则使用 items.length
+    final actualTotalCount = totalCount ?? items.length;
+    final remainingCount = actualTotalCount > maxCount ? actualTotalCount - maxCount : 0;
     final effectiveIconColor = iconColor ?? AppColors.primary;
 
     // 根据海报类型计算高度
@@ -1920,7 +2133,7 @@ class _CategoryRow extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        '查看全部 (${items.length})',
+                        '查看全部 ($actualTotalCount)',
                         style: TextStyle(
                           color: AppColors.primary,
                           fontSize: 13,
@@ -2304,14 +2517,27 @@ class _VerticalPosterCardState extends ConsumerState<_VerticalPosterCard> {
   bool _isHovered = false;
 
   // 缓存图片 URL 避免重复计算
-  late final String? _posterUrl;
-  late final bool _hasPoster;
+  late String? _posterUrl;
+  late bool _hasPoster;
 
   @override
   void initState() {
     super.initState();
+    _updatePosterUrl();
+  }
+
+  @override
+  void didUpdateWidget(covariant _VerticalPosterCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 当 metadata 变化时更新海报 URL
+    if (oldWidget.metadata.displayPosterUrl != widget.metadata.displayPosterUrl) {
+      _updatePosterUrl();
+    }
+  }
+
+  void _updatePosterUrl() {
     _posterUrl = widget.metadata.displayPosterUrl;
-    _hasPoster = _posterUrl != null && _posterUrl.isNotEmpty;
+    _hasPoster = _posterUrl != null && _posterUrl!.isNotEmpty;
   }
 
   @override
@@ -2601,14 +2827,26 @@ class _HorizontalVideoCardState extends ConsumerState<_HorizontalVideoCard> {
   bool _isHovered = false;
 
   // 缓存图片 URL 避免重复计算
-  late final String? _posterUrl;
-  late final bool _hasPoster;
+  late String? _posterUrl;
+  late bool _hasPoster;
 
   @override
   void initState() {
     super.initState();
+    _updatePosterUrl();
+  }
+
+  @override
+  void didUpdateWidget(covariant _HorizontalVideoCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.metadata.displayPosterUrl != widget.metadata.displayPosterUrl) {
+      _updatePosterUrl();
+    }
+  }
+
+  void _updatePosterUrl() {
     _posterUrl = widget.metadata.displayPosterUrl;
-    _hasPoster = _posterUrl != null && _posterUrl.isNotEmpty;
+    _hasPoster = _posterUrl != null && _posterUrl!.isNotEmpty;
   }
 
   @override
@@ -3442,6 +3680,7 @@ class _TvShowRow extends StatelessWidget {
     this.iconColor,
     this.maxCount = 10,
     this.onViewAll,
+    this.totalCount,
   });
 
   final String title;
@@ -3452,6 +3691,8 @@ class _TvShowRow extends StatelessWidget {
   final Color? iconColor;
   final int maxCount;
   final VoidCallback? onViewAll;
+  /// 实际总数量（用于显示在"查看全部"按钮上，如果不传则使用 groups.length）
+  final int? totalCount;
 
   @override
   Widget build(BuildContext context) {
@@ -3459,7 +3700,9 @@ class _TvShowRow extends StatelessWidget {
 
     final displayGroups = groups.take(maxCount).toList();
     final showViewMore = onViewAll != null;
-    final remainingCount = groups.length > maxCount ? groups.length - maxCount : 0;
+    // 使用真实总数（如果提供），否则使用 groups.length
+    final actualTotalCount = totalCount ?? groups.length;
+    final remainingCount = actualTotalCount > maxCount ? actualTotalCount - maxCount : 0;
     final effectiveIconColor = iconColor ?? AppColors.primary;
 
     return Column(
@@ -3501,7 +3744,7 @@ class _TvShowRow extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        '查看全部 (${groups.length})',
+                        '查看全部 ($actualTotalCount)',
                         style: TextStyle(
                           color: AppColors.primary,
                           fontSize: 13,
@@ -3572,14 +3815,26 @@ class _TvShowPosterCard extends StatefulWidget {
 class _TvShowPosterCardState extends State<_TvShowPosterCard> {
   bool _isHovered = false;
 
-  late final String? _posterUrl;
-  late final bool _hasPoster;
+  late String? _posterUrl;
+  late bool _hasPoster;
 
   @override
   void initState() {
     super.initState();
+    _updatePosterUrl();
+  }
+
+  @override
+  void didUpdateWidget(covariant _TvShowPosterCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.group.displayPosterUrl != widget.group.displayPosterUrl) {
+      _updatePosterUrl();
+    }
+  }
+
+  void _updatePosterUrl() {
     _posterUrl = widget.group.displayPosterUrl;
-    _hasPoster = _posterUrl != null && _posterUrl.isNotEmpty;
+    _hasPoster = _posterUrl != null && _posterUrl!.isNotEmpty;
   }
 
   @override
@@ -3846,6 +4101,274 @@ class _TvShowsFullPageState extends ConsumerState<_TvShowsFullPage> {
           );
         },
       ),
+    );
+  }
+
+  Future<void> _openVideoDetail(BuildContext context, VideoMetadata metadata) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => VideoDetailPage(
+          metadata: metadata,
+          sourceId: metadata.sourceId,
+        ),
+      ),
+    );
+  }
+}
+
+/// 电影分页页面（支持懒加载）
+class _MoviesPaginatedPage extends ConsumerStatefulWidget {
+  const _MoviesPaginatedPage({
+    required this.title,
+  });
+
+  final String title;
+
+  @override
+  ConsumerState<_MoviesPaginatedPage> createState() => _MoviesPaginatedPageState();
+}
+
+class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
+  final List<VideoMetadata> _movies = [];
+  final ScrollController _scrollController = ScrollController();
+  bool _isLoading = false;
+  bool _hasMore = true;
+  int _offset = 0;
+  static const int _pageSize = 50;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMore();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      _loadMore();
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_isLoading || !_hasMore) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final db = VideoDatabaseService();
+      final newMovies = await db.getByCategory(
+        MediaCategory.movie,
+        offset: _offset,
+      );
+
+      setState(() {
+        _movies.addAll(newMovies);
+        _offset += newMovies.length;
+        _hasMore = newMovies.length >= _pageSize;
+        _isLoading = false;
+      });
+    } on Exception catch (e) {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final videoState = ref.watch(videoListProvider);
+    final totalCount = videoState is VideoListLoaded ? videoState.movieCount : _movies.length;
+
+    return Scaffold(
+      backgroundColor: isDark ? const Color(0xFF0D0D0D) : Colors.grey[50],
+      appBar: AppBar(
+        backgroundColor: isDark ? const Color(0xFF1A1A2E) : Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          icon: Icon(
+            Icons.arrow_back_rounded,
+            color: isDark ? Colors.white : Colors.black87,
+          ),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: Text(
+          '${widget.title} ($totalCount)',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: isDark ? Colors.white : Colors.black87,
+          ),
+        ),
+      ),
+      body: _movies.isEmpty && _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : GridView.builder(
+              controller: _scrollController,
+              padding: const EdgeInsets.all(16),
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 150,
+                childAspectRatio: 0.55,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 16,
+              ),
+              itemCount: _movies.length + (_hasMore ? 1 : 0),
+              itemBuilder: (context, index) {
+                if (index >= _movies.length) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(16),
+                      child: CircularProgressIndicator(),
+                    ),
+                  );
+                }
+
+                final movie = _movies[index];
+                return _VerticalPosterCard(
+                  metadata: movie,
+                  onTap: () => _openVideoDetail(context, movie),
+                  isDark: isDark,
+                );
+              },
+            ),
+    );
+  }
+
+  Future<void> _openVideoDetail(BuildContext context, VideoMetadata metadata) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => VideoDetailPage(
+          metadata: metadata,
+          sourceId: metadata.sourceId,
+        ),
+      ),
+    );
+  }
+}
+
+/// 剧集分页页面（支持懒加载）
+class _TvShowsPaginatedPage extends ConsumerStatefulWidget {
+  const _TvShowsPaginatedPage({
+    required this.title,
+  });
+
+  final String title;
+
+  @override
+  ConsumerState<_TvShowsPaginatedPage> createState() => _TvShowsPaginatedPageState();
+}
+
+class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
+  final List<VideoMetadata> _tvShows = [];
+  final ScrollController _scrollController = ScrollController();
+  bool _isLoading = false;
+  bool _hasMore = true;
+  int _offset = 0;
+  static const int _pageSize = 50;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMore();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      _loadMore();
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_isLoading || !_hasMore) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final db = VideoDatabaseService();
+      final newTvShows = await db.getTvShowGroupRepresentatives(
+        limit: _pageSize,
+        offset: _offset,
+      );
+
+      setState(() {
+        _tvShows.addAll(newTvShows);
+        _offset += newTvShows.length;
+        _hasMore = newTvShows.length >= _pageSize;
+        _isLoading = false;
+      });
+    } on Exception catch (e) {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final videoState = ref.watch(videoListProvider);
+    final totalCount = videoState is VideoListLoaded ? videoState.tvShowGroupCount : _tvShows.length;
+
+    return Scaffold(
+      backgroundColor: isDark ? const Color(0xFF0D0D0D) : Colors.grey[50],
+      appBar: AppBar(
+        backgroundColor: isDark ? const Color(0xFF1A1A2E) : Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          icon: Icon(
+            Icons.arrow_back_rounded,
+            color: isDark ? Colors.white : Colors.black87,
+          ),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: Text(
+          '${widget.title} ($totalCount)',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: isDark ? Colors.white : Colors.black87,
+          ),
+        ),
+      ),
+      body: _tvShows.isEmpty && _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : GridView.builder(
+              controller: _scrollController,
+              padding: const EdgeInsets.all(16),
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 150,
+                childAspectRatio: 0.55,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 16,
+              ),
+              itemCount: _tvShows.length + (_hasMore ? 1 : 0),
+              itemBuilder: (context, index) {
+                if (index >= _tvShows.length) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(16),
+                      child: CircularProgressIndicator(),
+                    ),
+                  );
+                }
+
+                final tvShow = _tvShows[index];
+                return _VerticalPosterCard(
+                  metadata: tvShow,
+                  onTap: () => _openVideoDetail(context, tvShow),
+                  isDark: isDark,
+                );
+              },
+            ),
     );
   }
 

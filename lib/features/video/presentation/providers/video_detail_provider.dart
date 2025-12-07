@@ -56,6 +56,12 @@ final similarTvShowsProvider = FutureProvider.autoDispose.family<List<TmdbMediaI
   return result.results;
 });
 
+/// 电影合集/系列 Provider（autoDispose）
+final movieCollectionProvider = FutureProvider.autoDispose.family<TmdbCollection?, int>((ref, collectionId) async {
+  final tmdbService = ref.watch(tmdbServiceProvider);
+  return tmdbService.getCollection(collectionId);
+});
+
 /// 本地剧集文件 Provider（autoDispose + SQLite 索引优化）
 /// 根据 TMDB ID 查找本地所有匹配的剧集文件
 /// 返回: `Map<seasonNumber, Map<episodeNumber, VideoMetadata>>`

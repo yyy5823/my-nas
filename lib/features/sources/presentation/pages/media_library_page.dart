@@ -395,17 +395,26 @@ class _PathCardState extends ConsumerState<_PathCard> {
           });
         }
       });
-      _scrapeStatsSub = VideoScannerService().scrapeStatsStream.listen((stats) {
+      _scrapeStatsSub = VideoScannerService().scrapeStatsStream.listen((stats) async {
         if (mounted) {
-          setState(() {
-            _isScraping = VideoScannerService().isScraping;
-            _itemCount = stats.total;
-            _scrapedCount = stats.completed;
-            _pendingScrapeCount = stats.pending;
-            if (stats.total > 0) {
-              _scrapeProgress = stats.processed / stats.total;
-            }
-          });
+          // 获取最新的可重试数量
+          final retryable = await VideoScannerService().getRetryableCount();
+          if (mounted) {
+            setState(() {
+              _isScraping = VideoScannerService().isScraping;
+              _itemCount = stats.total;
+              _scrapedCount = stats.completed;
+              _pendingScrapeCount = stats.pending;
+              _retryableCount = retryable;
+              if (stats.total > 0) {
+                _scrapeProgress = stats.processed / stats.total;
+              }
+              // 当刮削完成时（pending 和 scraping 都为 0），确保关闭进度条
+              if (stats.isAllDone) {
+                _isScraping = false;
+              }
+            });
+          }
         }
       });
     }

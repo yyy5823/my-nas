@@ -466,11 +466,9 @@ class BookListNotifier extends StateNotifier<BookListState> {
   }
 
   /// 判断是否应该跳过该目录
-  bool _shouldSkipDirectory(String name) {
-    return name.startsWith('.') ||
+  bool _shouldSkipDirectory(String name) => name.startsWith('.') ||
         name.startsWith('@') ||
         name.startsWith('#recycle');
-  }
 
   bool _isBookFile(String filename) {
     final lower = filename.toLowerCase();

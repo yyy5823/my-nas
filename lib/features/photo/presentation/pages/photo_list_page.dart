@@ -579,11 +579,9 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
   }
 
   /// 判断是否应该跳过该目录
-  bool _shouldSkipDirectory(String name) {
-    return name.startsWith('.') ||
+  bool _shouldSkipDirectory(String name) => name.startsWith('.') ||
         name.startsWith('@') ||
         name.startsWith('#recycle');
-  }
 
   void setSearchQuery(String query) {
     final current = state;

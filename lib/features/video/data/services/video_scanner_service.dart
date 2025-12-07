@@ -607,13 +607,11 @@ class VideoScannerService {
   }
 
   /// 判断是否应该跳过该目录
-  bool _shouldSkipDirectory(String name) {
-    return name.startsWith('.') ||
+  bool _shouldSkipDirectory(String name) => name.startsWith('.') ||
         name.startsWith('@') ||
         name.startsWith('#recycle') ||
         name == 'eaDir' ||
         name == '@eaDir';
-  }
 
   void _emitProgress(VideoScanProgress progress) {
     _progressController.add(progress);

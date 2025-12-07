@@ -562,6 +562,73 @@ class VideoDatabaseService {
     return Sqflite.firstIntValue(await _db!.rawQuery(sql, args)) ?? 0;
   }
 
+  /// 获取剧集分组数量（按 tmdbId 或 title 去重）
+  ///
+  /// [enabledPaths] 启用的路径列表
+  Future<int> getTvShowGroupCount({
+    List<({String sourceId, String path})>? enabledPaths,
+  }) async {
+    if (!_initialized) await init();
+
+    final pathFilter = _buildPathFilter(enabledPaths);
+
+    // 统计不同的 tmdbId 数量（有 tmdbId 的）
+    final withTmdbIdCount = Sqflite.firstIntValue(await _db!.rawQuery(
+      '''
+      SELECT COUNT(DISTINCT $_colTmdbId) FROM $_tableMetadata
+      WHERE $_colCategory = 1 AND $_colTmdbId IS NOT NULL${pathFilter.andWhere}
+      ''',
+      pathFilter.args,
+    )) ?? 0;
+
+    // 统计没有 tmdbId 的不同 title 数量
+    final withoutTmdbIdCount = Sqflite.firstIntValue(await _db!.rawQuery(
+      '''
+      SELECT COUNT(DISTINCT LOWER($_colTitle)) FROM $_tableMetadata
+      WHERE $_colCategory = 1 AND $_colTmdbId IS NULL${pathFilter.andWhere}
+      ''',
+      pathFilter.args,
+    )) ?? 0;
+
+    return withTmdbIdCount + withoutTmdbIdCount;
+  }
+
+  /// 获取剧集分组的代表性元数据（用于分页显示剧集列表）
+  ///
+  /// 返回每个剧集分组的一条代表性记录（按 tmdbId 或 title 分组，取评分最高的）
+  /// [enabledPaths] 启用的路径列表
+  Future<List<VideoMetadata>> getTvShowGroupRepresentatives({
+    int limit = 50,
+    int offset = 0,
+    List<({String sourceId, String path})>? enabledPaths,
+  }) async {
+    if (!_initialized) await init();
+
+    final pathFilter = _buildPathFilter(enabledPaths);
+
+    // 使用子查询获取每个分组的代表性记录
+    // 优先使用 tmdbId 分组，否则使用 title
+    final sql = '''
+      SELECT * FROM $_tableMetadata m1
+      WHERE $_colCategory = 1${pathFilter.andWhere}
+        AND m1.rowid = (
+          SELECT m2.rowid FROM $_tableMetadata m2
+          WHERE m2.$_colCategory = 1
+            AND (
+              (m1.$_colTmdbId IS NOT NULL AND m2.$_colTmdbId = m1.$_colTmdbId)
+              OR (m1.$_colTmdbId IS NULL AND m2.$_colTmdbId IS NULL AND LOWER(m2.$_colTitle) = LOWER(m1.$_colTitle))
+            )
+          ORDER BY m2.$_colRating DESC NULLS LAST, m2.$_colSeasonNumber ASC, m2.$_colEpisodeNumber ASC
+          LIMIT 1
+        )
+      ORDER BY $_colRating DESC NULLS LAST, $_colTitle
+      LIMIT ? OFFSET ?
+    ''';
+
+    final results = await _db!.rawQuery(sql, [...pathFilter.args, limit, offset]);
+    return results.map(_fromRow).toList();
+  }
+
   /// 删除元数据
   Future<void> delete(String sourceId, String filePath) async {
     if (!_initialized) await init();

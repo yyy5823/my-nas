@@ -384,11 +384,9 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
   }
 
   /// 判断是否应该跳过该目录
-  bool _shouldSkipDirectory(String name) {
-    return name.startsWith('.') ||
+  bool _shouldSkipDirectory(String name) => name.startsWith('.') ||
         name.startsWith('@') ||
         name.startsWith('#recycle');
-  }
 
   /// 移除文件扩展名
   String _removeExtension(String fileName) {
