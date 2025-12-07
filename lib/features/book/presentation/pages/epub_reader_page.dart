@@ -171,10 +171,25 @@ class EpubReaderNotifier extends StateNotifier<EpubReaderState> {
       // 从 spine 获取阅读顺序
       for (final section in epub.sections) {
         try {
-          final htmlContent = utf8.decode(section.content.fileContent);
+          // 安全获取文件内容，可能会抛出 AssertionError
+          final Uint8List fileBytes;
+          try {
+            fileBytes = section.content.fileContent;
+            // ignore: avoid_catches_without_on_clauses
+          } on Object catch (e) {
+            logger.w('跳过无法读取的章节: ${section.content.href}', e);
+            continue;
+          }
+
+          final htmlContent = utf8.decode(fileBytes);
           final title =
               _extractTitle(htmlContent) ?? '章节 ${chapters.length + 1}';
           final content = _extractTextContent(htmlContent);
+
+          // 跳过空内容的章节
+          if (content.trim().isEmpty) {
+            continue;
+          }
 
           chapters.add(
             EpubChapter(
@@ -242,26 +257,109 @@ class EpubReaderNotifier extends StateNotifier<EpubReaderState> {
 
   String _extractTextContent(String htmlContent) {
     // 移除 HTML 标签，保留文本
-    final text = htmlContent
+    var text = htmlContent
+        // 移除 script 和 style 标签及其内容
+        .replaceAll(
+          RegExp('<script[^>]*>.*?</script>', caseSensitive: false, dotAll: true),
+          '',
+        )
+        .replaceAll(
+          RegExp('<style[^>]*>.*?</style>', caseSensitive: false, dotAll: true),
+          '',
+        )
         // 保留段落换行
         .replaceAll(RegExp('</p>', caseSensitive: false), '\n\n')
         .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n')
         .replaceAll(RegExp('</h[1-6]>', caseSensitive: false), '\n\n')
         .replaceAll(RegExp('</div>', caseSensitive: false), '\n')
+        .replaceAll(RegExp('</li>', caseSensitive: false), '\n')
+        .replaceAll(RegExp('</tr>', caseSensitive: false), '\n')
+        .replaceAll(RegExp('</blockquote>', caseSensitive: false), '\n\n')
         // 移除所有其他标签
-        .replaceAll(RegExp('<[^>]+>'), '')
-        // 解码 HTML 实体
-        .replaceAll('&nbsp;', ' ')
-        .replaceAll('&lt;', '<')
-        .replaceAll('&gt;', '>')
-        .replaceAll('&amp;', '&')
-        .replaceAll('&quot;', '"')
-        .replaceAll('&#39;', "'")
-        // 清理多余空白
-        .replaceAll(RegExp(r'\n\s*\n\s*\n+'), '\n\n')
+        .replaceAll(RegExp('<[^>]+>'), '');
+
+    // 解码 HTML 实体
+    text = _decodeHtmlEntities(text);
+
+    // 清理多余空白
+    text = text
+        .replaceAll(RegExp(r'[ \t]+'), ' ') // 合并多个空格
+        .replaceAll(RegExp(r'\n[ \t]+'), '\n') // 移除行首空白
+        .replaceAll(RegExp(r'[ \t]+\n'), '\n') // 移除行尾空白
+        .replaceAll(RegExp(r'\n{3,}'), '\n\n') // 最多保留两个换行
         .trim();
 
     return text;
+  }
+
+  /// 解码 HTML 实体
+  String _decodeHtmlEntities(String text) {
+    // 常见命名实体
+    final namedEntities = {
+      '&nbsp;': ' ',
+      '&lt;': '<',
+      '&gt;': '>',
+      '&amp;': '&',
+      '&quot;': '"',
+      '&apos;': "'",
+      '&#39;': "'",
+      '&ldquo;': '"',
+      '&rdquo;': '"',
+      '&lsquo;': '\u2018',
+      '&rsquo;': '\u2019',
+      '&mdash;': '—',
+      '&ndash;': '–',
+      '&hellip;': '…',
+      '&copy;': '©',
+      '&reg;': '®',
+      '&trade;': '™',
+      '&times;': '×',
+      '&divide;': '÷',
+      '&plusmn;': '±',
+      '&deg;': '°',
+      '&para;': '¶',
+      '&sect;': '§',
+      '&bull;': '•',
+      '&middot;': '·',
+      '&laquo;': '«',
+      '&raquo;': '»',
+      '&iexcl;': '¡',
+      '&iquest;': '¿',
+      '&cent;': '¢',
+      '&pound;': '£',
+      '&yen;': '¥',
+      '&euro;': '€',
+    };
+
+    var result = text;
+    for (final entry in namedEntities.entries) {
+      result = result.replaceAll(entry.key, entry.value);
+    }
+
+    // 解码数字实体 (&#123; 或 &#x7B;)
+    result = result.replaceAllMapped(
+      RegExp(r'&#(\d+);'),
+      (match) {
+        final code = int.tryParse(match.group(1) ?? '');
+        if (code != null && code > 0 && code < 0x10FFFF) {
+          return String.fromCharCode(code);
+        }
+        return match.group(0) ?? '';
+      },
+    );
+
+    result = result.replaceAllMapped(
+      RegExp('&#x([0-9a-fA-F]+);'),
+      (match) {
+        final code = int.tryParse(match.group(1) ?? '', radix: 16);
+        if (code != null && code > 0 && code < 0x10FFFF) {
+          return String.fromCharCode(code);
+        }
+        return match.group(0) ?? '';
+      },
+    );
+
+    return result;
   }
 
   void goToChapter(int index) {
