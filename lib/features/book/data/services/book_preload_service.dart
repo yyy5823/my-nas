@@ -60,10 +60,10 @@ class BookPreloadService {
       // 跳过太大的文件
       if (book.size > maxPreloadSize) return false;
       return true;
-    }).toList();
+    }).toList()
 
     // 按格式优先级排序
-    toPreload.sort((a, b) => _priorityFormats.indexOf(a.format).compareTo(
+    ..sort((a, b) => _priorityFormats.indexOf(a.format).compareTo(
           _priorityFormats.indexOf(b.format),
         ));
 
@@ -177,4 +177,3 @@ class _PreloadTask {
   final BookEntity book;
   final NasFileSystem? Function(String sourceId) fileSystemProvider;
 }
-

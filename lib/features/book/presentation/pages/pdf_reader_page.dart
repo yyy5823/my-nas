@@ -178,7 +178,7 @@ class PdfReaderNotifier extends StateNotifier<PdfReaderState> {
     final listenable = documentRef.resolveListenable();
 
     // 等待文档加载完成
-    PdfDocument? document = listenable.document;
+    var document = listenable.document;
     if (document == null) {
       // 等待文档加载
       final completer = Completer<PdfDocument>();
@@ -262,7 +262,7 @@ class PdfReaderNotifier extends StateNotifier<PdfReaderState> {
   /// 等待文档加载完成
   Future<PdfDocument> _waitForDocument(PdfDocumentRef documentRef) async {
     final listenable = documentRef.resolveListenable();
-    PdfDocument? document = listenable.document;
+    var document = listenable.document;
 
     if (document != null) return document;
 
