@@ -11,26 +11,42 @@ class BookEntity {
     required this.filePath,
     required this.fileName,
     required this.format,
+    this.title,
+    this.author,
+    this.description,
+    this.coverPath,
+    this.totalPages,
     this.size = 0,
     this.modifiedTime,
     this.lastUpdated,
+    this.metadataExtracted = false,
   });
 
   final String sourceId;
   final String filePath;
   final String fileName;
   final BookFormat format;
+  final String? title;
+  final String? author;
+  final String? description;
+  final String? coverPath; // 封面文件路径（磁盘缓存）
+  final int? totalPages;
   final int size;
   final DateTime? modifiedTime;
   final DateTime? lastUpdated;
+  final bool metadataExtracted; // 是否已提取元数据
 
   String get uniqueKey => '${sourceId}_$filePath';
 
-  /// 显示名称（去除扩展名）
+  /// 显示名称（优先使用元数据标题）
   String get displayName {
+    if (title != null && title!.isNotEmpty) return title!;
     final dotIndex = fileName.lastIndexOf('.');
     return dotIndex > 0 ? fileName.substring(0, dotIndex) : fileName;
   }
+
+  /// 显示的作者
+  String get displayAuthor => author ?? '未知作者';
 
   /// 显示的文件大小
   String get displaySize {
@@ -50,20 +66,35 @@ class BookEntity {
     String? filePath,
     String? fileName,
     BookFormat? format,
+    Object? title = _sentinel,
+    Object? author = _sentinel,
+    Object? description = _sentinel,
+    Object? coverPath = _sentinel,
+    Object? totalPages = _sentinel,
     int? size,
     DateTime? modifiedTime,
     DateTime? lastUpdated,
+    bool? metadataExtracted,
   }) =>
       BookEntity(
         sourceId: sourceId ?? this.sourceId,
         filePath: filePath ?? this.filePath,
         fileName: fileName ?? this.fileName,
         format: format ?? this.format,
+        title: title == _sentinel ? this.title : title as String?,
+        author: author == _sentinel ? this.author : author as String?,
+        description: description == _sentinel ? this.description : description as String?,
+        coverPath: coverPath == _sentinel ? this.coverPath : coverPath as String?,
+        totalPages: totalPages == _sentinel ? this.totalPages : totalPages as int?,
         size: size ?? this.size,
         modifiedTime: modifiedTime ?? this.modifiedTime,
         lastUpdated: lastUpdated ?? this.lastUpdated,
+        metadataExtracted: metadataExtracted ?? this.metadataExtracted,
       );
 }
+
+/// 用于 copyWith 方法中区分 null 和未提供参数的哨兵值
+const _sentinel = Object();
 
 /// 图书数据库服务 - 使用 SQLite 支持大规模数据和索引查询
 class BookDatabaseService {
@@ -80,9 +111,15 @@ class BookDatabaseService {
   static const String _colFilePath = 'file_path';
   static const String _colFileName = 'file_name';
   static const String _colFormat = 'format';
+  static const String _colTitle = 'title';
+  static const String _colAuthor = 'author';
+  static const String _colDescription = 'description';
+  static const String _colCoverPath = 'cover_path';
+  static const String _colTotalPages = 'total_pages';
   static const String _colSize = 'size';
   static const String _colModifiedTime = 'modified_time';
   static const String _colLastUpdated = 'last_updated';
+  static const String _colMetadataExtracted = 'metadata_extracted';
 
   /// 初始化数据库
   Future<void> init() async {
@@ -94,29 +131,9 @@ class BookDatabaseService {
 
       _db = await openDatabase(
         dbPath,
-        version: 1,
-        onCreate: (db, version) async {
-          await db.execute('''
-            CREATE TABLE $_tableBooks (
-              $_colSourceId TEXT NOT NULL,
-              $_colFilePath TEXT NOT NULL,
-              $_colFileName TEXT NOT NULL,
-              $_colFormat TEXT NOT NULL,
-              $_colSize INTEGER DEFAULT 0,
-              $_colModifiedTime INTEGER,
-              $_colLastUpdated INTEGER,
-              PRIMARY KEY ($_colSourceId, $_colFilePath)
-            )
-          ''');
-
-          // 创建索引以加速查询
-          await db.execute(
-              'CREATE INDEX idx_books_format ON $_tableBooks ($_colFormat)');
-          await db.execute(
-              'CREATE INDEX idx_books_modified ON $_tableBooks ($_colModifiedTime DESC)');
-          await db.execute(
-              'CREATE INDEX idx_books_filename ON $_tableBooks ($_colFileName)');
-        },
+        version: 2, // 升级版本以添加新字段
+        onCreate: _onCreate,
+        onUpgrade: _onUpgrade,
       );
 
       _initialized = true;
@@ -124,6 +141,56 @@ class BookDatabaseService {
     } catch (e) {
       logger.e('BookDatabaseService: 数据库初始化失败', e);
       rethrow;
+    }
+  }
+
+  /// 创建表
+  Future<void> _onCreate(Database db, int version) async {
+    await db.execute('''
+      CREATE TABLE $_tableBooks (
+        $_colSourceId TEXT NOT NULL,
+        $_colFilePath TEXT NOT NULL,
+        $_colFileName TEXT NOT NULL,
+        $_colFormat TEXT NOT NULL,
+        $_colTitle TEXT,
+        $_colAuthor TEXT,
+        $_colDescription TEXT,
+        $_colCoverPath TEXT,
+        $_colTotalPages INTEGER,
+        $_colSize INTEGER DEFAULT 0,
+        $_colModifiedTime INTEGER,
+        $_colLastUpdated INTEGER,
+        $_colMetadataExtracted INTEGER DEFAULT 0,
+        PRIMARY KEY ($_colSourceId, $_colFilePath)
+      )
+    ''');
+
+    // 创建索引以加速查询
+    await db.execute('CREATE INDEX idx_books_format ON $_tableBooks ($_colFormat)');
+    await db.execute('CREATE INDEX idx_books_modified ON $_tableBooks ($_colModifiedTime DESC)');
+    await db.execute('CREATE INDEX idx_books_filename ON $_tableBooks ($_colFileName)');
+    await db.execute('CREATE INDEX idx_books_title ON $_tableBooks ($_colTitle)');
+    await db.execute('CREATE INDEX idx_books_author ON $_tableBooks ($_colAuthor)');
+    await db.execute('CREATE INDEX idx_books_metadata ON $_tableBooks ($_colMetadataExtracted)');
+  }
+
+  /// 升级数据库
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    logger.i('BookDatabaseService: 数据库升级 $oldVersion -> $newVersion');
+
+    if (oldVersion < 2) {
+      // 添加新字段
+      await db.execute('ALTER TABLE $_tableBooks ADD COLUMN $_colTitle TEXT');
+      await db.execute('ALTER TABLE $_tableBooks ADD COLUMN $_colAuthor TEXT');
+      await db.execute('ALTER TABLE $_tableBooks ADD COLUMN $_colDescription TEXT');
+      await db.execute('ALTER TABLE $_tableBooks ADD COLUMN $_colCoverPath TEXT');
+      await db.execute('ALTER TABLE $_tableBooks ADD COLUMN $_colTotalPages INTEGER');
+      await db.execute('ALTER TABLE $_tableBooks ADD COLUMN $_colMetadataExtracted INTEGER DEFAULT 0');
+
+      // 创建新索引
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_books_title ON $_tableBooks ($_colTitle)');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_books_author ON $_tableBooks ($_colAuthor)');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_books_metadata ON $_tableBooks ($_colMetadataExtracted)');
     }
   }
 
@@ -315,16 +382,35 @@ class BookDatabaseService {
     _initialized = false;
   }
 
+  /// 获取未提取元数据的图书
+  Future<List<BookEntity>> getUnextractedMetadata({int limit = 50}) async {
+    if (!_initialized) await init();
+
+    final results = await _db!.query(
+      _tableBooks,
+      where: '$_colMetadataExtracted = 0',
+      limit: limit,
+    );
+
+    return results.map(_fromRow).toList();
+  }
+
   /// 转换为数据库行
   Map<String, dynamic> _toRow(BookEntity b) => {
         _colSourceId: b.sourceId,
         _colFilePath: b.filePath,
         _colFileName: b.fileName,
         _colFormat: b.format.name,
+        _colTitle: b.title,
+        _colAuthor: b.author,
+        _colDescription: b.description,
+        _colCoverPath: b.coverPath,
+        _colTotalPages: b.totalPages,
         _colSize: b.size,
         _colModifiedTime: b.modifiedTime?.millisecondsSinceEpoch,
         _colLastUpdated:
             b.lastUpdated?.millisecondsSinceEpoch ?? DateTime.now().millisecondsSinceEpoch,
+        _colMetadataExtracted: b.metadataExtracted ? 1 : 0,
       };
 
   /// 从数据库行转换
@@ -336,6 +422,11 @@ class BookDatabaseService {
           (f) => f.name == row[_colFormat],
           orElse: () => BookFormat.unknown,
         ),
+        title: row[_colTitle] as String?,
+        author: row[_colAuthor] as String?,
+        description: row[_colDescription] as String?,
+        coverPath: row[_colCoverPath] as String?,
+        totalPages: row[_colTotalPages] as int?,
         size: row[_colSize] as int? ?? 0,
         modifiedTime: row[_colModifiedTime] != null
             ? DateTime.fromMillisecondsSinceEpoch(row[_colModifiedTime] as int)
@@ -343,5 +434,6 @@ class BookDatabaseService {
         lastUpdated: row[_colLastUpdated] != null
             ? DateTime.fromMillisecondsSinceEpoch(row[_colLastUpdated] as int)
             : null,
+        metadataExtracted: (row[_colMetadataExtracted] as int? ?? 0) == 1,
       );
 }

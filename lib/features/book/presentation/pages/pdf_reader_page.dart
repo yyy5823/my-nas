@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 
@@ -5,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
-import 'package:my_nas/core/network/http_client.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/book/data/services/book_file_cache_service.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
@@ -26,37 +26,47 @@ final pdfReaderProvider =
 sealed class PdfReaderState {}
 
 class PdfReaderLoading extends PdfReaderState {
-  PdfReaderLoading({this.message = '加载中...'});
+  PdfReaderLoading({this.message = '加载中...', this.progress = 0.0});
   final String message;
+  final double progress; // 0.0 - 1.0
 }
 
 class PdfReaderLoaded extends PdfReaderState {
   PdfReaderLoaded({
-    required this.filePath,
-    required this.document,
+    required this.documentRef,
+    this.filePath,
     this.currentPage = 1,
     this.totalPages = 0,
     this.isDarkMode = false,
+    this.isStreaming = false,
   });
 
-  final String filePath;
-  final PdfDocument document;
+  /// PDF 文档引用（用于流式加载）
+  final PdfDocumentRef documentRef;
+
+  /// 本地文件路径（如果有缓存）
+  final String? filePath;
   final int currentPage;
   final int totalPages;
   final bool isDarkMode;
 
+  /// 是否正在流式加载
+  final bool isStreaming;
+
   PdfReaderLoaded copyWith({
+    PdfDocumentRef? documentRef,
     String? filePath,
-    PdfDocument? document,
     int? currentPage,
     int? totalPages,
     bool? isDarkMode,
+    bool? isStreaming,
   }) => PdfReaderLoaded(
+      documentRef: documentRef ?? this.documentRef,
       filePath: filePath ?? this.filePath,
-      document: document ?? this.document,
       currentPage: currentPage ?? this.currentPage,
       totalPages: totalPages ?? this.totalPages,
       isDarkMode: isDarkMode ?? this.isDarkMode,
+      isStreaming: isStreaming ?? this.isStreaming,
     );
 }
 
@@ -106,8 +116,14 @@ class PdfReaderNotifier extends StateNotifier<PdfReaderState> {
     try {
       state = PdfReaderLoading();
 
-      // 初始化缓存服务
+      // 初始化服务
       await _cacheService.init();
+      await _progressService.init();
+
+      // 恢复阅读进度
+      final itemId = _progressService.generateItemId(book.id, book.path);
+      final progress = _progressService.getProgress(itemId);
+      final startPage = progress?.position.toInt() ?? 1;
 
       // 检查是否有缓存
       final cachedFile = await _cacheService.getCachedFile(
@@ -115,78 +131,170 @@ class PdfReaderNotifier extends StateNotifier<PdfReaderState> {
         book.path,
       );
 
-      File pdfFile;
       if (cachedFile != null) {
+        // 使用缓存文件
         state = PdfReaderLoading(message: '使用缓存...');
-        pdfFile = cachedFile;
         logger.i('PDF 使用缓存: ${cachedFile.path}');
-      } else {
-        // 需要下载文件
-        final uri = Uri.parse(book.url);
-        Uint8List bytes;
-
-        final fileSystem = _getFileSystem();
-        if (fileSystem != null) {
-          state = PdfReaderLoading(message: '加载文件中...');
-          final stream = await fileSystem.getFileStream(book.path);
-          bytes = await _readStreamBytes(stream);
-        } else if (uri.scheme == 'file') {
-          state = PdfReaderLoading(message: '读取本地文件...');
-          final localFile = File(uri.toFilePath());
-          if (!await localFile.exists()) {
-            state = PdfReaderError('文件不存在');
-            return;
-          }
-          bytes = await localFile.readAsBytes();
-        } else if (uri.scheme == 'http' || uri.scheme == 'https') {
-          state = PdfReaderLoading(message: '下载中...');
-          final response = await InsecureHttpClient.get(uri);
-          if (response.statusCode != 200) {
-            state = PdfReaderError('下载失败: ${response.statusCode}');
-            return;
-          }
-          bytes = response.bodyBytes;
-        } else {
-          state = PdfReaderError('不支持的协议: ${uri.scheme}');
-          return;
-        }
-
-        // 保存到缓存
-        state = PdfReaderLoading(message: '缓存文件...');
-        final savedFile = await _cacheService.saveToCache(
-          book.sourceId,
-          book.path,
-          bytes,
-        );
-        if (savedFile == null) {
-          state = PdfReaderError('缓存文件失败');
-          return;
-        }
-        pdfFile = savedFile;
+        await _loadFromFile(cachedFile, startPage);
+        return;
       }
 
-      state = PdfReaderLoading(message: '解析中...');
+      // 尝试流式加载（直接从 URL）
+      final fileSystem = _getFileSystem();
+      if (fileSystem != null) {
+        await _loadFromUrl(fileSystem, startPage);
+        return;
+      }
 
-      // 打开 PDF
-      final document = await PdfDocument.openFile(pdfFile.path);
+      // 本地文件
+      final uri = Uri.parse(book.url);
+      if (uri.scheme == 'file') {
+        final localFile = File(uri.toFilePath());
+        if (!await localFile.exists()) {
+          state = PdfReaderError('文件不存在');
+          return;
+        }
+        await _loadFromFile(localFile, startPage);
+        return;
+      }
 
-      // 恢复阅读进度
-      await _progressService.init();
-      final itemId = _progressService.generateItemId(book.id, book.path);
-      final progress = _progressService.getProgress(itemId);
-      final startPage = progress?.position.toInt() ?? 1;
+      // HTTP URL（无文件系统）
+      if (uri.scheme == 'http' || uri.scheme == 'https') {
+        await _loadFromHttpUrl(uri, startPage);
+        return;
+      }
 
-      state = PdfReaderLoaded(
-        filePath: pdfFile.path,
-        document: document,
-        currentPage: startPage.clamp(1, document.pages.length),
-        totalPages: document.pages.length,
-      );
-
-      logger.i('PDF 加载完成: ${book.name}, ${document.pages.length} 页');
+      state = PdfReaderError('不支持的协议: ${uri.scheme}');
     } on Exception catch (e, stackTrace) {
       logger.e('加载 PDF 失败', e, stackTrace);
       state = PdfReaderError('加载失败: $e');
+    }
+  }
+
+  /// 从本地文件加载
+  Future<void> _loadFromFile(File file, int startPage) async {
+    state = PdfReaderLoading(message: '解析中...');
+    final documentRef = PdfDocumentRefFile(file.path);
+    final listenable = documentRef.resolveListenable();
+
+    // 等待文档加载完成
+    PdfDocument? document = listenable.document;
+    if (document == null) {
+      // 等待文档加载
+      final completer = Completer<PdfDocument>();
+      void listener() {
+        final doc = listenable.document;
+        if (doc != null && !completer.isCompleted) {
+          completer.complete(doc);
+        }
+      }
+
+      listenable.addListener(listener);
+      document = await completer.future;
+      listenable.removeListener(listener);
+    }
+
+    state = PdfReaderLoaded(
+      documentRef: documentRef,
+      filePath: file.path,
+      currentPage: startPage.clamp(1, document.pages.length),
+      totalPages: document.pages.length,
+    );
+    logger.i('PDF 加载完成（缓存）: ${book.name}, ${document.pages.length} 页');
+  }
+
+  /// 从 NAS URL 流式加载
+  Future<void> _loadFromUrl(NasFileSystem fileSystem, int startPage) async {
+    state = PdfReaderLoading(message: '获取文件地址...');
+
+    // 获取文件 URL
+    final url = await fileSystem.getFileUrl(book.path);
+    final uri = Uri.parse(url);
+
+    logger.i('PDF 流式加载: $url');
+    state = PdfReaderLoading(message: '流式加载中...');
+
+    // 使用 PdfDocumentRefUri 流式加载
+    // preferRangeAccess: 使用 HTTP Range 请求，只下载需要的部分
+    // useProgressiveLoading: 渐进式加载，先加载第一页
+    final documentRef = PdfDocumentRefUri(
+      uri,
+      preferRangeAccess: true,
+    );
+
+    // 等待文档加载
+    final document = await _waitForDocument(documentRef);
+
+    state = PdfReaderLoaded(
+      documentRef: documentRef,
+      currentPage: startPage.clamp(1, document.pages.length),
+      totalPages: document.pages.length,
+      isStreaming: true,
+    );
+
+    logger.i('PDF 流式加载完成: ${book.name}, ${document.pages.length} 页');
+
+    // 后台缓存文件（不阻塞 UI）
+    unawaited(_cacheInBackground(fileSystem));
+  }
+
+  /// 从 HTTP URL 加载（无文件系统）
+  Future<void> _loadFromHttpUrl(Uri uri, int startPage) async {
+    state = PdfReaderLoading(message: '流式加载中...');
+
+    final documentRef = PdfDocumentRefUri(
+      uri,
+      preferRangeAccess: true,
+    );
+
+    final document = await _waitForDocument(documentRef);
+
+    state = PdfReaderLoaded(
+      documentRef: documentRef,
+      currentPage: startPage.clamp(1, document.pages.length),
+      totalPages: document.pages.length,
+      isStreaming: true,
+    );
+
+    logger.i('PDF HTTP 加载完成: ${book.name}, ${document.pages.length} 页');
+  }
+
+  /// 等待文档加载完成
+  Future<PdfDocument> _waitForDocument(PdfDocumentRef documentRef) async {
+    final listenable = documentRef.resolveListenable();
+    PdfDocument? document = listenable.document;
+
+    if (document != null) return document;
+
+    // 等待文档加载
+    final completer = Completer<PdfDocument>();
+    void listener() {
+      final doc = listenable.document;
+      if (doc != null && !completer.isCompleted) {
+        completer.complete(doc);
+      }
+    }
+
+    listenable.addListener(listener);
+    document = await completer.future;
+    listenable.removeListener(listener);
+    return document;
+  }
+
+  /// 后台缓存文件
+  Future<void> _cacheInBackground(NasFileSystem fileSystem) async {
+    try {
+      // 检查是否已缓存
+      final cached = await _cacheService.getCachedFile(book.sourceId, book.path);
+      if (cached != null) return;
+
+      logger.d('PDF 后台缓存开始: ${book.path}');
+      final stream = await fileSystem.getFileStream(book.path);
+      final bytes = await _readStreamBytes(stream);
+      await _cacheService.saveToCache(book.sourceId, book.path, bytes);
+      logger.i('PDF 后台缓存完成: ${book.path}');
+    } on Exception catch (e) {
+      logger.w('PDF 后台缓存失败', e);
     }
   }
 
@@ -219,10 +327,8 @@ class PdfReaderNotifier extends StateNotifier<PdfReaderState> {
 
   @override
   void dispose() {
-    final current = state;
-    if (current is PdfReaderLoaded) {
-      current.document.dispose();
-    }
+    // PdfDocumentRef 会自动管理文档的生命周期
+    // 不需要手动 dispose
     super.dispose();
   }
 }
@@ -305,8 +411,8 @@ class _PdfReaderPageState extends ConsumerState<PdfReaderPage> {
             _showControls = !_showControls;
             _showThumbnails = false;
           }),
-          child: PdfViewer.file(
-            state.filePath,
+          child: PdfViewer(
+            state.documentRef,
             controller: _controller,
             params: PdfViewerParams(
               backgroundColor: state.isDarkMode ? Colors.black : Colors.grey.shade200,
@@ -317,8 +423,8 @@ class _PdfReaderPageState extends ConsumerState<PdfReaderPage> {
               ),
               // 性能优化参数
               maxImageBytesCachedOnMemory: 150 * 1024 * 1024, // 150MB 缓存
-              horizontalCacheExtent: 2.0, // 预加载左右各2页
-              verticalCacheExtent: 2.0, // 预加载上下各2页
+              horizontalCacheExtent: 2, // 预加载左右各2页
+              verticalCacheExtent: 2, // 预加载上下各2页
               // 限制渲染分辨率以提高性能
               getPageRenderingScale: (context, page, controller, estimatedScale) {
                 // 限制最大渲染尺寸为 4000 像素
@@ -339,6 +445,38 @@ class _PdfReaderPageState extends ConsumerState<PdfReaderPage> {
             ),
           ),
         ),
+
+        // 流式加载指示器
+        if (state.isStreaming)
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 8,
+            right: 8,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  ),
+                  SizedBox(width: 6),
+                  Text(
+                    '流式加载',
+                    style: TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ),
 
         // 顶部控制栏
         if (_showControls)

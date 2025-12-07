@@ -9,6 +9,7 @@ import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/book/data/services/book_database_service.dart';
 import 'package:my_nas/features/book/data/services/book_library_cache_service.dart';
+import 'package:my_nas/features/book/data/services/book_preload_service.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
 import 'package:my_nas/features/book/presentation/pages/book_reader_page.dart';
 import 'package:my_nas/features/book/presentation/pages/epub_reader_page.dart';
@@ -195,6 +196,7 @@ class BookListNotifier extends StateNotifier<BookListState> {
   final Ref _ref;
   final BookLibraryCacheService _cacheService = BookLibraryCacheService();
   final BookDatabaseService _db = BookDatabaseService();
+  final BookPreloadService _preloadService = BookPreloadService();
 
   /// 支持的电子书扩展名
   static const _supportedExtensions = [
@@ -209,6 +211,7 @@ class BookListNotifier extends StateNotifier<BookListState> {
     try {
       await _db.init();
       await _cacheService.init();
+      await _preloadService.init();
       await _loadFromSqlite();
 
       // 监听连接状态变化
@@ -273,6 +276,27 @@ class BookListNotifier extends StateNotifier<BookListState> {
     );
 
     logger.i('BookListNotifier: 从 SQLite 加载了 ${allBooks.length} 本图书');
+
+    // 启动后台预加载（只预加载前 20 本）
+    _startPreloading(allBooks.take(20).toList());
+  }
+
+  /// 启动后台预加载
+  void _startPreloading(List<BookEntity> books) {
+    if (books.isEmpty) return;
+
+    final connections = _ref.read(activeConnectionsProvider);
+
+    _preloadService.enqueue(
+      books,
+      (sourceId) {
+        final conn = connections[sourceId];
+        if (conn?.status == SourceStatus.connected) {
+          return conn!.adapter.fileSystem;
+        }
+        return null;
+      },
+    );
   }
 
   /// 从旧缓存迁移到 SQLite
