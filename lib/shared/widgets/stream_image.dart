@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
+import 'package:photo_view/photo_view.dart';
 
 /// 支持流式加载的图片组件
 ///
@@ -25,6 +26,11 @@ class StreamImage extends StatefulWidget {
     this.height,
     this.cacheKey,
     this.forceStream = false,
+    this.enableZoom = false,
+    this.minScale,
+    this.maxScale,
+    this.initialScale,
+    this.backgroundColor,
   });
 
   /// HTTP URL（如果可用）
@@ -57,6 +63,21 @@ class StreamImage extends StatefulWidget {
   /// 强制使用流式加载（即使有有效的 HTTP URL）
   /// 用于解决自签名证书等问题
   final bool forceStream;
+
+  /// 是否启用缩放功能（使用 PhotoView）
+  final bool enableZoom;
+
+  /// 最小缩放比例（仅在 enableZoom 为 true 时有效）
+  final PhotoViewComputedScale? minScale;
+
+  /// 最大缩放比例（仅在 enableZoom 为 true 时有效）
+  final PhotoViewComputedScale? maxScale;
+
+  /// 初始缩放比例（仅在 enableZoom 为 true 时有效）
+  final PhotoViewComputedScale? initialScale;
+
+  /// 背景颜色（仅在 enableZoom 为 true 时有效）
+  final Color? backgroundColor;
 
   // 内存缓存（简单实现）
   static final Map<String, Uint8List> _memoryCache = {};
@@ -362,6 +383,21 @@ class _StreamImageState extends State<StreamImage> {
     // 显示错误
     if (_hasError || _imageBytes == null) {
       return widget.errorWidget ?? _buildError();
+    }
+
+    // 如果启用缩放，使用 PhotoView
+    if (widget.enableZoom) {
+      return PhotoView(
+        imageProvider: MemoryImage(_imageBytes!),
+        minScale: widget.minScale ?? PhotoViewComputedScale.contained,
+        maxScale: widget.maxScale ?? PhotoViewComputedScale.covered * 3,
+        initialScale: widget.initialScale ?? PhotoViewComputedScale.contained,
+        backgroundDecoration: BoxDecoration(
+          color: widget.backgroundColor ?? Colors.black,
+        ),
+        loadingBuilder: (context, event) => widget.placeholder ?? _buildPlaceholder(),
+        errorBuilder: (context, error, stackTrace) => widget.errorWidget ?? _buildError(),
+      );
     }
 
     // 显示流式加载的图片

@@ -483,6 +483,26 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
     _pageController ??= PageController(initialPage: state.currentPage);
     final isRtl = settings.readingDirection == ComicReadingDirection.rtl;
 
+    // 检查是否有需要流式加载的页面（文件夹类型漫画）
+    final hasStreamPages = state.pages.any((p) => p.bytes == null && p.filePath != null);
+
+    if (hasStreamPages) {
+      // 使用 PageView + PhotoView 组合，支持流式加载
+      return PageView.builder(
+        controller: _pageController,
+        itemCount: state.pages.length,
+        reverse: isRtl,
+        onPageChanged: (index) {
+          notifier.goToPage(index);
+        },
+        itemBuilder: (context, index) {
+          final page = state.pages[index];
+          return _buildSinglePageWithZoom(page, settings, index);
+        },
+      );
+    }
+
+    // 使用 PhotoViewGallery（适用于内存图片和网络图片）
     return PhotoViewGallery.builder(
       pageController: _pageController,
       itemCount: state.pages.length,
@@ -506,6 +526,66 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
         child: CircularProgressIndicator(color: Colors.white54),
       ),
     );
+  }
+
+  /// 构建支持缩放的单页（用于流式加载的图片）
+  Widget _buildSinglePageWithZoom(
+    ComicPage page,
+    ComicReaderSettings settings,
+    int index,
+  ) {
+    // 优先使用内存中的字节数据
+    if (page.bytes != null) {
+      return PhotoView(
+        imageProvider: MemoryImage(page.bytes!),
+        minScale: _getMinScale(settings.scaleMode),
+        maxScale: PhotoViewComputedScale.covered * 3,
+        initialScale: _getInitialScale(settings.scaleMode),
+        backgroundDecoration: BoxDecoration(color: settings.backgroundColor.color),
+        heroAttributes: PhotoViewHeroAttributes(tag: 'comic_page_$index'),
+        loadingBuilder: (context, event) => _buildLoadingPlaceholder(),
+        errorBuilder: (context, error, stackTrace) => _buildErrorPlaceholder(),
+      );
+    }
+
+    // 使用文件路径流式加载（文件夹类型漫画）
+    if (page.filePath != null) {
+      final fs = _getFileSystem();
+      if (fs != null) {
+        return StreamImage(
+          path: page.filePath,
+          fileSystem: fs,
+          fit: BoxFit.contain,
+          placeholder: _buildLoadingPlaceholder(),
+          errorWidget: _buildErrorPlaceholder(),
+          cacheKey: '${widget.comic.sourceId}_${page.filePath}',
+          enableZoom: true,
+          minScale: _getMinScale(settings.scaleMode),
+          maxScale: PhotoViewComputedScale.covered * 3,
+          initialScale: _getInitialScale(settings.scaleMode),
+          backgroundColor: settings.backgroundColor.color,
+        );
+      }
+    }
+
+    // 使用 URL 加载
+    if (page.url != null) {
+      final url = page.url!;
+      if (url.startsWith('http://') || url.startsWith('https://')) {
+        return PhotoView(
+          imageProvider: NetworkImage(url),
+          minScale: _getMinScale(settings.scaleMode),
+          maxScale: PhotoViewComputedScale.covered * 3,
+          initialScale: _getInitialScale(settings.scaleMode),
+          backgroundDecoration: BoxDecoration(color: settings.backgroundColor.color),
+          heroAttributes: PhotoViewHeroAttributes(tag: 'comic_page_$index'),
+          loadingBuilder: (context, event) => _buildLoadingPlaceholder(),
+          errorBuilder: (context, error, stackTrace) => _buildErrorPlaceholder(),
+        );
+      }
+    }
+
+    return _buildErrorPlaceholder();
   }
 
   PhotoViewComputedScale _getMinScale(ComicScaleMode mode) => switch (mode) {
