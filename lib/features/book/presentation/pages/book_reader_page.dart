@@ -7,12 +7,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/network/http_client.dart';
+import 'package:my_nas/features/book/data/services/mobi_parser_service.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
 import 'package:my_nas/features/reading/data/services/reader_settings_service.dart';
 import 'package:my_nas/features/reading/data/services/reading_progress_service.dart';
 import 'package:my_nas/features/reading/presentation/providers/reader_settings_provider.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
 import 'package:my_nas/shared/widgets/loading_widget.dart';
+import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
@@ -71,8 +73,11 @@ class TxtReaderNotifier extends StateNotifier<TxtReaderState> {
         case BookFormat.pdf:
           state = TxtReaderError('PDF 阅读器正在开发中\n请使用系统应用打开');
           return;
-        default:
-          state = TxtReaderError('暂不支持该格式');
+        case BookFormat.mobi:
+        case BookFormat.azw3:
+          content = await _loadMobiBook();
+        case BookFormat.unknown:
+          state = TxtReaderError('未知的电子书格式');
           return;
       }
 
@@ -123,6 +128,39 @@ class TxtReaderNotifier extends StateNotifier<TxtReaderState> {
   }
 
   String _decodeGbk(List<int> bytes) => String.fromCharCodes(bytes);
+
+  /// 加载 MOBI/AZW3 电子书
+  Future<String> _loadMobiBook() async {
+    final uri = Uri.parse(book.url);
+    Uint8List bytes;
+
+    // 检查是否为本地文件 (file:// 协议)
+    if (uri.scheme == 'file') {
+      final localFile = File(uri.toFilePath());
+      if (!await localFile.exists()) {
+        throw Exception('文件不存在');
+      }
+      bytes = await localFile.readAsBytes();
+    } else {
+      // 远程文件，使用 HTTP 下载
+      final response = await InsecureHttpClient.get(uri);
+      if (response.statusCode != 200) {
+        throw Exception('加载失败: ${response.statusCode}');
+      }
+      bytes = response.bodyBytes;
+    }
+
+    // 使用 MOBI 解析器
+    final parser = MobiParserService();
+    final fileName = path.basename(book.path);
+    final result = await parser.parse(bytes, fileName);
+
+    if (!result.success) {
+      throw Exception(result.error ?? '解析失败');
+    }
+
+    return result.content ?? '';
+  }
 
   Future<String> _loadEpubBook() async {
     final uri = Uri.parse(book.url);

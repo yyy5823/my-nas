@@ -1,14 +1,15 @@
-import 'package:archive/archive.dart' as archive_lib;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/comic/data/services/archive_extract_service.dart';
 import 'package:my_nas/features/comic/presentation/pages/comic_list_page.dart';
 import 'package:my_nas/features/reading/data/services/reader_settings_service.dart';
 import 'package:my_nas/features/reading/data/services/reading_progress_service.dart';
 import 'package:my_nas/features/reading/presentation/providers/reader_settings_provider.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
+import 'package:path/path.dart' as path;
 import 'package:photo_view/photo_view.dart';
 import 'package:photo_view/photo_view_gallery.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -155,64 +156,44 @@ class ComicReaderNotifier extends StateNotifier<ComicReaderState> {
     }
     final archiveBytes = Uint8List.fromList(chunks.expand((e) => e).toList());
 
-    // 解析压缩包
-    archive_lib.Archive archive;
-    try {
-      if (_comic.type == ComicType.cbz) {
-        archive = archive_lib.ZipDecoder().decodeBytes(archiveBytes);
-      } else if (_comic.type == ComicType.cbr) {
-        // RAR 格式需要特殊处理，archive 包不支持 RAR
-        // 暂时尝试当作 ZIP 处理（有些 cbr 实际是 zip）
-        try {
-          archive = archive_lib.ZipDecoder().decodeBytes(archiveBytes);
-        } on Exception catch (_) {
-          state = state.copyWith(
-            isLoading: false,
-            error: 'RAR 格式暂不支持，请使用 CBZ 格式',
-          );
-          return;
-        }
-      } else if (_comic.type == ComicType.cb7) {
-        // 7z 格式需要特殊处理
-        state = state.copyWith(
-          isLoading: false,
-          error: '7Z 格式暂不支持，请使用 CBZ 格式',
-        );
-        return;
-      } else {
-        archive = archive_lib.ZipDecoder().decodeBytes(archiveBytes);
-      }
-    } on Exception catch (e) {
-      state = state.copyWith(isLoading: false, error: '解压失败: $e');
+    // 获取压缩类型
+    final fileName = path.basename(_comic.folderPath);
+    final archiveType = _getArchiveType(_comic.type);
+
+    // 使用解压服务解压
+    final extractService = ArchiveExtractService();
+    final result = await extractService.extractImages(
+      archiveBytes: archiveBytes,
+      archiveType: archiveType,
+      fileName: fileName,
+    );
+
+    if (!result.success) {
+      state = state.copyWith(isLoading: false, error: result.error);
       return;
     }
 
-    // 筛选图片文件
-    final imageFiles = archive.files.where((file) {
-      if (file.isFile) {
-        final name = file.name.toLowerCase();
-        return _imageExtensions.any(name.endsWith);
-      }
-      return false;
-    }).toList()
-
-    ..sort((a, b) => a.name.compareTo(b.name));
-
+    // 转换为 ComicPage
     final pages = <ComicPage>[];
-    for (var i = 0; i < imageFiles.length; i++) {
-      final file = imageFiles[i];
-      final content = file.content as List<int>?;
-      if (content != null) {
-        pages.add(ComicPage(
-          index: i,
-          bytes: Uint8List.fromList(content),
-          fileName: file.name,
-        ));
-      }
+    for (var i = 0; i < result.files.length; i++) {
+      final file = result.files[i];
+      pages.add(ComicPage(
+        index: i,
+        bytes: file.bytes,
+        fileName: file.name,
+      ));
     }
 
     state = state.copyWith(pages: pages, isLoading: false);
   }
+
+  /// 将 ComicType 转换为 ArchiveType
+  ArchiveType _getArchiveType(ComicType type) => switch (type) {
+        ComicType.cbz => ArchiveType.zip,
+        ComicType.cbr => ArchiveType.rar,
+        ComicType.cb7 => ArchiveType.sevenZip,
+        ComicType.folder => ArchiveType.unknown,
+      };
 
   Future<void> _restoreProgress() async {
     final itemId = _progressService.generateItemId(_comic.sourceId, _comic.folderPath);
