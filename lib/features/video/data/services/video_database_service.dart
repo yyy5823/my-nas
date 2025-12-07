@@ -1,8 +1,70 @@
+import 'package:flutter/material.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
+
+/// 视频排序选项
+enum VideoSortOption {
+  /// 评分从高到低
+  ratingDesc,
+  /// 评分从低到高
+  ratingAsc,
+  /// 年份从新到旧
+  yearDesc,
+  /// 年份从旧到新
+  yearAsc,
+  /// 名称 A-Z
+  titleAsc,
+  /// 名称 Z-A
+  titleDesc,
+  /// 添加时间从新到旧
+  addedDesc,
+  /// 添加时间从旧到新
+  addedAsc,
+}
+
+/// 排序选项显示名称
+extension VideoSortOptionExtension on VideoSortOption {
+  String get displayName {
+    switch (this) {
+      case VideoSortOption.ratingDesc:
+        return '评分最高';
+      case VideoSortOption.ratingAsc:
+        return '评分最低';
+      case VideoSortOption.yearDesc:
+        return '最新上映';
+      case VideoSortOption.yearAsc:
+        return '最早上映';
+      case VideoSortOption.titleAsc:
+        return '名称 A-Z';
+      case VideoSortOption.titleDesc:
+        return '名称 Z-A';
+      case VideoSortOption.addedDesc:
+        return '最近添加';
+      case VideoSortOption.addedAsc:
+        return '最早添加';
+    }
+  }
+
+  IconData get icon {
+    switch (this) {
+      case VideoSortOption.ratingDesc:
+      case VideoSortOption.ratingAsc:
+        return Icons.star_rounded;
+      case VideoSortOption.yearDesc:
+      case VideoSortOption.yearAsc:
+        return Icons.calendar_today_rounded;
+      case VideoSortOption.titleAsc:
+      case VideoSortOption.titleDesc:
+        return Icons.sort_by_alpha_rounded;
+      case VideoSortOption.addedDesc:
+      case VideoSortOption.addedAsc:
+        return Icons.access_time_rounded;
+    }
+  }
+}
 
 /// 视频数据库服务 - 使用 SQLite 支持大规模数据和索引查询
 class VideoDatabaseService {
@@ -1049,11 +1111,12 @@ class VideoDatabaseService {
     return genreList;
   }
 
-  /// 根据分类、类型、年份筛选获取元数据（支持组合筛选）
+  /// 根据分类、类型、年份筛选获取元数据（支持组合筛选和排序）
   Future<List<VideoMetadata>> getFiltered({
     MediaCategory? category,
     String? genre,
     int? year,
+    VideoSortOption sortOption = VideoSortOption.ratingDesc,
     int limit = 50,
     int offset = 0,
   }) async {
@@ -1077,16 +1140,40 @@ class VideoDatabaseService {
       whereArgs.add(year);
     }
 
+    final orderBy = _buildOrderBy(sortOption);
+
     final results = await _db!.query(
       _tableMetadata,
       where: where,
       whereArgs: whereArgs,
-      orderBy: '$_colRating DESC NULLS LAST, $_colTitle',
+      orderBy: orderBy,
       limit: limit,
       offset: offset,
     );
 
     return results.map(_fromRow).toList();
+  }
+
+  /// 构建排序 SQL
+  String _buildOrderBy(VideoSortOption sortOption) {
+    switch (sortOption) {
+      case VideoSortOption.ratingDesc:
+        return '$_colRating DESC NULLS LAST, $_colTitle';
+      case VideoSortOption.ratingAsc:
+        return '$_colRating ASC NULLS LAST, $_colTitle';
+      case VideoSortOption.yearDesc:
+        return '$_colYear DESC NULLS LAST, $_colTitle';
+      case VideoSortOption.yearAsc:
+        return '$_colYear ASC NULLS LAST, $_colTitle';
+      case VideoSortOption.titleAsc:
+        return '$_colTitle ASC';
+      case VideoSortOption.titleDesc:
+        return '$_colTitle DESC';
+      case VideoSortOption.addedDesc:
+        return '$_colLastUpdated DESC NULLS LAST, $_colTitle';
+      case VideoSortOption.addedAsc:
+        return '$_colLastUpdated ASC NULLS LAST, $_colTitle';
+    }
   }
 
   /// 获取筛选后的数量
@@ -1123,10 +1210,11 @@ class VideoDatabaseService {
     return Sqflite.firstIntValue(result) ?? 0;
   }
 
-  /// 获取剧集分组的代表性元数据（带筛选条件）
+  /// 获取剧集分组的代表性元数据（带筛选条件和排序）
   Future<List<VideoMetadata>> getTvShowGroupRepresentativesFiltered({
     String? genre,
     int? year,
+    VideoSortOption sortOption = VideoSortOption.ratingDesc,
     int limit = 50,
     int offset = 0,
   }) async {
@@ -1145,6 +1233,8 @@ class VideoDatabaseService {
       filterArgs.add(year);
     }
 
+    final orderBy = _buildOrderBy(sortOption);
+
     // 使用子查询获取每个分组的代表性记录
     final sql = '''
       SELECT * FROM $_tableMetadata m1
@@ -1159,7 +1249,7 @@ class VideoDatabaseService {
           ORDER BY m2.$_colRating DESC NULLS LAST, m2.$_colSeasonNumber ASC, m2.$_colEpisodeNumber ASC
           LIMIT 1
         )
-      ORDER BY $_colRating DESC NULLS LAST, $_colTitle
+      ORDER BY $orderBy
       LIMIT ? OFFSET ?
     ''';
 

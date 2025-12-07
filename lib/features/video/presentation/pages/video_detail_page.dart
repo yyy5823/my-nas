@@ -100,8 +100,8 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
 
     if (_hasTmdbId) {
       if (_isTvShow) {
-        final tvAsync = ref.watch(tvDetailProvider(widget.metadata.tmdbId!));
-        tvAsync.whenData((detail) {
+        final _ = ref.watch(tvDetailProvider(widget.metadata.tmdbId!))
+        ..whenData((detail) {
           if (detail != null) {
             tagline = detail.tagline;
             overview = detail.overview;
@@ -111,8 +111,8 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
           }
         });
       } else {
-        final movieAsync = ref.watch(movieDetailProvider(widget.metadata.tmdbId!));
-        movieAsync.whenData((detail) {
+        final _ = ref.watch(movieDetailProvider(widget.metadata.tmdbId!))
+        ..whenData((detail) {
           if (detail != null) {
             tagline = detail.tagline;
             overview = detail.overview;
@@ -358,8 +358,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     TmdbCollectionPart part,
     bool isDark, {
     bool isCurrentMovie = false,
-  }) {
-    return GestureDetector(
+  }) => GestureDetector(
       onTap: isCurrentMovie ? null : () => _onCollectionMovieTap(part),
       child: Container(
         width: 120,
@@ -379,13 +378,11 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    part.posterUrl.isNotEmpty
-                        ? Image.network(
+                    if (part.posterUrl.isNotEmpty) Image.network(
                             part.posterUrl,
                             fit: BoxFit.cover,
                             errorBuilder: (_, _, _) => _buildPosterPlaceholder(isDark),
-                          )
-                        : _buildPosterPlaceholder(isDark),
+                          ) else _buildPosterPlaceholder(isDark),
                     // 当前电影标识
                     if (isCurrentMovie)
                       Positioned(
@@ -476,7 +473,6 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         ),
       ),
     );
-  }
 
   Widget _buildPosterPlaceholder(bool isDark) => Container(
       color: isDark ? AppColors.darkSurfaceVariant : Colors.grey[300],

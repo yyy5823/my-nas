@@ -965,8 +965,8 @@ class TmdbCollection {
 
   /// 按发布日期排序的电影列表
   List<TmdbCollectionPart> get sortedParts {
-    final sorted = List<TmdbCollectionPart>.from(parts);
-    sorted.sort((a, b) => a.releaseDate.compareTo(b.releaseDate));
+    final sorted = List<TmdbCollectionPart>.from(parts)
+    ..sort((a, b) => a.releaseDate.compareTo(b.releaseDate));
     return sorted;
   }
 }

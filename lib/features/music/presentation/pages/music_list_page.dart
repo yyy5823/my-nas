@@ -573,7 +573,6 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
       trackByFilePath: trackByFilePath,
       fromCache: true,
       hasMoreTracks: validatedAllTracks.length < total,
-      isLoadingMore: false,
     );
 
     logger.i('MusicListNotifier: 数据加载完成，已加载 ${validatedAllTracks.length}/$total 首音乐');
@@ -1011,11 +1010,9 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
   }
 
   /// 判断是否应该跳过该目录
-  bool _shouldSkipDirectory(String name) {
-    return name.startsWith('.') ||
+  bool _shouldSkipDirectory(String name) => name.startsWith('.') ||
         name.startsWith('@') ||
         name.startsWith('#recycle');
-  }
 
   void setSearchQuery(String query) {
     final current = state;

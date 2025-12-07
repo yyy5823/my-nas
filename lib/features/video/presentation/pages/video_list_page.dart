@@ -384,14 +384,15 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       fromCache: true,
     );
 
-    logger.i(
-      'VideoListNotifier: 数据加载完成，'
-      '总计 ${stats['total']} 个视频，'
-      '电影 ${stats['movies']} 个（首页加载 ${moviesList.length}），'
-      '剧集 $tvShowGroupCount 部（首页加载 ${tvShowRepresentatives.length} 部），'
-      '电影系列 ${movieCollections.length} 个，'
-      '高分推荐 ${topRated.length} 个，'
-      '最近添加 ${recent.length} 个',
+    logger.i('''
+      VideoListNotifier: 数据加载完成，
+      总计 ${stats['total']} 个视频，
+      电影 ${stats['movies']} 个（首页加载 ${moviesList.length}），
+      剧集 $tvShowGroupCount 部（首页加载 ${tvShowRepresentatives.length} 部），
+      电影系列 ${movieCollections.length} 个，
+      高分推荐 ${topRated.length} 个，
+      最近添加 ${recent.length} 个'
+      '''
     );
   }
 
@@ -4170,6 +4171,9 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
   int _filteredCount = 0;
   bool _isLoadingFilters = true;
 
+  // 排序相关
+  VideoSortOption _sortOption = VideoSortOption.ratingDesc;
+
   @override
   void initState() {
     super.initState();
@@ -4200,6 +4204,7 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
         });
       }
     } on Exception catch (e) {
+      logger.e('VideoListPage: 加载筛选失败', e);
       if (mounted) {
         setState(() => _isLoadingFilters = false);
       }
@@ -4214,7 +4219,7 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
   }
 
   Future<void> _loadMore() async {
-    if (_isLoading || !_hasMore) return;
+    if (_isLoading || !_hasMore || !mounted) return;
 
     setState(() => _isLoading = true);
 
@@ -4224,8 +4229,11 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
         category: MediaCategory.movie,
         genre: _selectedGenre,
         year: _selectedYear,
+        sortOption: _sortOption,
         offset: _offset,
       );
+
+      if (!mounted) return;
 
       setState(() {
         _movies.addAll(newMovies);
@@ -4235,11 +4243,14 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
       });
     } on Exception catch (e) {
       logger.e('VideoListPage: 加载更多失败', e);
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
   Future<void> _resetAndReload() async {
+    if (!mounted) return;
     setState(() {
       _movies.clear();
       _offset = 0;
@@ -4258,6 +4269,7 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
         setState(() => _filteredCount = count);
       }
     } on Exception catch (e) {
+      logger.e('VideoListPage: 更新筛选后数量失败', e);
       // 忽略错误
     }
 
@@ -4315,6 +4327,16 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
           ),
         ),
         actions: [
+          // 排序按钮
+          IconButton(
+            icon: Icon(
+              Icons.sort_rounded,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
+            tooltip: '排序',
+            onPressed: () => _showSortMenu(context, isDark),
+          ),
+          // 筛选按钮
           Stack(
             children: [
               IconButton(
@@ -4389,6 +4411,29 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
                 ],
               ),
             ),
+          // 排序标签（当前排序不是默认时显示）
+          if (_sortOption != VideoSortOption.ratingDesc)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.sort_rounded,
+                    size: 14,
+                    color: isDark ? Colors.white54 : Colors.black45,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '按${_sortOption.displayName}排序',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark ? Colors.white54 : Colors.black45,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           // 内容区域
           Expanded(
             child: _movies.isEmpty && _isLoading
@@ -4443,6 +4488,70 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
                       ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showSortMenu(BuildContext context, bool isDark) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DecoratedBox(
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1A1A2E) : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: isDark ? Colors.white24 : Colors.black12,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                '排序方式',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+              ),
+            ),
+            const Divider(height: 1),
+            ...VideoSortOption.values.map((option) {
+              final isSelected = option == _sortOption;
+              return ListTile(
+                leading: Icon(
+                  option.icon,
+                  color: isSelected ? Colors.blue : (isDark ? Colors.white70 : Colors.black54),
+                ),
+                title: Text(
+                  option.displayName,
+                  style: TextStyle(
+                    color: isSelected ? Colors.blue : (isDark ? Colors.white : Colors.black87),
+                    fontWeight: isSelected ? FontWeight.bold : null,
+                  ),
+                ),
+                trailing: isSelected ? const Icon(Icons.check, color: Colors.blue) : null,
+                onTap: () {
+                  Navigator.of(context).pop();
+                  if (option != _sortOption) {
+                    setState(() => _sortOption = option);
+                    _resetAndReload();
+                  }
+                },
+              );
+            }),
+            SizedBox(height: MediaQuery.of(context).padding.bottom + 8),
+          ],
+        ),
       ),
     );
   }
@@ -4771,6 +4880,9 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
   int _filteredCount = 0;
   bool _isLoadingFilters = true;
 
+  // 排序相关
+  VideoSortOption _sortOption = VideoSortOption.ratingDesc;
+
   @override
   void initState() {
     super.initState();
@@ -4801,6 +4913,7 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
         });
       }
     } on Exception catch (e) {
+      logger.e('TvShowsPaginatedPage: 加载筛选失败', e);
       if (mounted) {
         setState(() => _isLoadingFilters = false);
       }
@@ -4815,7 +4928,7 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
   }
 
   Future<void> _loadMore() async {
-    if (_isLoading || !_hasMore) return;
+    if (_isLoading || !_hasMore || !mounted) return;
 
     setState(() => _isLoading = true);
 
@@ -4824,9 +4937,11 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
       final newTvShows = await db.getTvShowGroupRepresentativesFiltered(
         genre: _selectedGenre,
         year: _selectedYear,
-        limit: _pageSize,
+        sortOption: _sortOption,
         offset: _offset,
       );
+
+      if (!mounted) return;
 
       setState(() {
         _tvShows.addAll(newTvShows);
@@ -4836,11 +4951,14 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
       });
     } on Exception catch (e) {
       logger.e('TvShowsPaginatedPage: 加载更多失败', e);
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
   Future<void> _resetAndReload() async {
+    if (!mounted) return;
     setState(() {
       _tvShows.clear();
       _offset = 0;
@@ -4858,6 +4976,7 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
         setState(() => _filteredCount = count);
       }
     } on Exception catch (e) {
+      logger.w('TvShowsPaginatedPage: 更新筛选后数量失败', e);
       // 忽略错误
     }
 
@@ -4889,6 +5008,70 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
     );
   }
 
+  void _showSortMenu(BuildContext context, bool isDark) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DecoratedBox(
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1A1A2E) : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: isDark ? Colors.white24 : Colors.black12,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                '排序方式',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+              ),
+            ),
+            const Divider(height: 1),
+            ...VideoSortOption.values.map((option) {
+              final isSelected = option == _sortOption;
+              return ListTile(
+                leading: Icon(
+                  option.icon,
+                  color: isSelected ? Colors.blue : (isDark ? Colors.white70 : Colors.black54),
+                ),
+                title: Text(
+                  option.displayName,
+                  style: TextStyle(
+                    color: isSelected ? Colors.blue : (isDark ? Colors.white : Colors.black87),
+                    fontWeight: isSelected ? FontWeight.bold : null,
+                  ),
+                ),
+                trailing: isSelected ? const Icon(Icons.check, color: Colors.blue) : null,
+                onTap: () {
+                  Navigator.of(context).pop();
+                  if (option != _sortOption) {
+                    setState(() => _sortOption = option);
+                    _resetAndReload();
+                  }
+                },
+              );
+            }),
+            SizedBox(height: MediaQuery.of(context).padding.bottom + 8),
+          ],
+        ),
+      ),
+    );
+  }
+
   bool get _hasFilters => _selectedGenre != null || _selectedYear != null;
 
   @override
@@ -4915,6 +5098,16 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
           ),
         ),
         actions: [
+          // 排序按钮
+          IconButton(
+            icon: Icon(
+              Icons.sort_rounded,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
+            tooltip: '排序',
+            onPressed: () => _showSortMenu(context, isDark),
+          ),
+          // 筛选按钮
           Stack(
             children: [
               IconButton(

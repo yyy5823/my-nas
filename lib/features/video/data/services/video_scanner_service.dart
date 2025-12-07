@@ -92,6 +92,7 @@ enum VideoScanPhase {
 /// - 页面切换不影响刮削进度
 class VideoScannerService {
   factory VideoScannerService() => _instance ??= VideoScannerService._();
+
   VideoScannerService._();
 
   static VideoScannerService? _instance;
@@ -101,9 +102,11 @@ class VideoScannerService {
   final VideoDatabaseService _dbService = VideoDatabaseService();
 
   bool _isScanning = false;
+
   bool get isScanning => _isScanning;
 
   bool _isScraping = false;
+
   bool get isScraping => _isScraping;
 
   bool _shouldStopScraping = false;
@@ -114,10 +117,12 @@ class VideoScannerService {
 
   /// 扫描进度流
   final _progressController = StreamController<VideoScanProgress>.broadcast();
+
   Stream<VideoScanProgress> get progressStream => _progressController.stream;
 
   /// 刮削统计信息流
   final _scrapeStatsController = StreamController<ScrapeStats>.broadcast();
+
   Stream<ScrapeStats> get scrapeStatsStream => _scrapeStatsController.stream;
 
   /// 检查并恢复未完成的刮削任务
@@ -137,10 +142,10 @@ class VideoScannerService {
       final stats = await _dbService.getScrapeStats();
 
       if (stats.pending > 0) {
-        logger.i(
-          'VideoScannerService: 发现 ${stats.pending} 个待刮削视频，'
-          '自动恢复刮削',
-        );
+        logger.i('''
+        VideoScannerService: 发现 ${stats.pending} 个待刮削视频，
+          自动恢复刮削
+          ''');
         // 缓存 connections 并开始刮削
         _cachedConnections = connections;
         unawaited(scrapeMetadata(connections: connections));
@@ -206,14 +211,16 @@ class VideoScannerService {
 
       // 保存视频列表到 Hive 缓存（用于快速启动）
       final cacheEntries = allVideos
-          .map((v) => VideoLibraryCacheEntry(
-                sourceId: v.sourceId,
-                filePath: v.file.path,
-                fileName: v.file.name,
-                thumbnailUrl: v.file.thumbnailUrl,
-                size: v.file.size,
-                modifiedTime: v.file.modifiedTime,
-              ))
+          .map(
+            (v) => VideoLibraryCacheEntry(
+              sourceId: v.sourceId,
+              filePath: v.file.path,
+              fileName: v.file.name,
+              thumbnailUrl: v.file.thumbnailUrl,
+              size: v.file.size,
+              modifiedTime: v.file.modifiedTime,
+            ),
+          )
           .toList();
 
       final cache = VideoLibraryCache(
@@ -224,18 +231,22 @@ class VideoScannerService {
       await _cacheService.saveCache(cache);
 
       // 阶段2：保存基础记录到 SQLite
-      _emitProgress(VideoScanProgress(
-        phase: VideoScanPhase.savingToDb,
-        totalCount: allVideos.length,
-      ));
+      _emitProgress(
+        VideoScanProgress(
+          phase: VideoScanPhase.savingToDb,
+          totalCount: allVideos.length,
+        ),
+      );
 
       await _saveBasicMetadataToDb(allVideos);
 
       // 完成文件扫描
-      _emitProgress(VideoScanProgress(
-        phase: VideoScanPhase.completed,
-        scannedCount: allVideos.length,
-      ));
+      _emitProgress(
+        VideoScanProgress(
+          phase: VideoScanPhase.completed,
+          scannedCount: allVideos.length,
+        ),
+      );
 
       return allVideos.length;
     } catch (e, st) {
@@ -280,11 +291,13 @@ class VideoScannerService {
         await _dbService.upsertBatch(metadataList);
       }
 
-      _emitProgress(VideoScanProgress(
-        phase: VideoScanPhase.savingToDb,
-        scannedCount: (i + batch.length).clamp(0, total),
-        totalCount: total,
-      ));
+      _emitProgress(
+        VideoScanProgress(
+          phase: VideoScanPhase.savingToDb,
+          scannedCount: (i + batch.length).clamp(0, total),
+          totalCount: total,
+        ),
+      );
     }
   }
 
@@ -299,10 +312,7 @@ class VideoScannerService {
     required Map<String, SourceConnection> connections,
   }) async {
     // 先扫描文件
-    final count = await scanFilesOnly(
-      paths: paths,
-      connections: connections,
-    );
+    final count = await scanFilesOnly(paths: paths, connections: connections);
 
     if (count == 0) return [];
 
@@ -337,7 +347,9 @@ class VideoScannerService {
 
       while (!_shouldStopScraping) {
         // 获取待刮削的视频
-        final pendingVideos = await _dbService.getPendingScrape(limit: batchSize);
+        final pendingVideos = await _dbService.getPendingScrape(
+          limit: batchSize,
+        );
 
         if (pendingVideos.isEmpty) {
           logger.i('VideoScannerService: 所有视频刮削完成');
@@ -353,12 +365,14 @@ class VideoScannerService {
 
           // 获取当前进度（每个视频开始前）
           final currentStats = await _dbService.getScrapeStats();
-          _emitProgress(VideoScanProgress(
-            phase: VideoScanPhase.scraping,
-            scannedCount: currentStats.processed,
-            totalCount: currentStats.total,
-            currentFile: video.fileName,
-          ));
+          _emitProgress(
+            VideoScanProgress(
+              phase: VideoScanPhase.scraping,
+              scannedCount: currentStats.processed,
+              totalCount: currentStats.total,
+              currentFile: video.fileName,
+            ),
+          );
 
           await _scrapeOneVideo(video, connections);
 
@@ -371,10 +385,12 @@ class VideoScannerService {
         }
       }
 
-      _emitProgress(VideoScanProgress(
-        phase: VideoScanPhase.completed,
-        scannedCount: (await _dbService.getScrapeStats()).total,
-      ));
+      _emitProgress(
+        VideoScanProgress(
+          phase: VideoScanPhase.completed,
+          scannedCount: (await _dbService.getScrapeStats()).total,
+        ),
+      );
     } on Exception catch (e, st) {
       logger.e('VideoScannerService: 刮削失败', e, st);
       _emitProgress(const VideoScanProgress(phase: VideoScanPhase.error));
@@ -412,7 +428,9 @@ class VideoScannerService {
           try {
             videoUrl = await fileSystem.getFileUrl(video.filePath);
           } on Exception catch (e) {
-            logger.w('VideoScannerService: 获取视频URL失败 ${video.filePath}，错误原因 $e');
+            logger.w(
+              'VideoScannerService: 获取视频URL失败 ${video.filePath}，错误原因 $e',
+            );
           }
         }
 
@@ -464,9 +482,10 @@ class VideoScannerService {
     }
 
     // 所有重试都失败
-    logger.w(
-      'VideoScannerService: 刮削最终失败 ${video.fileName}，'
-      '重试 $retryCount 次后放弃',
+    logger.w('''
+      VideoScannerService: 刮削最终失败 ${video.fileName}，
+      重试 $retryCount 次后放弃,
+      ''',
       lastError,
     );
 
@@ -562,11 +581,13 @@ class VideoScannerService {
     required String path,
     required List<_ScannedVideo> videos,
   }) async {
-    _emitProgress(VideoScanProgress(
-      phase: VideoScanPhase.scanning,
-      currentPath: path,
-      scannedCount: videos.length,
-    ));
+    _emitProgress(
+      VideoScanProgress(
+        phase: VideoScanPhase.scanning,
+        currentPath: path,
+        scannedCount: videos.length,
+      ),
+    );
 
     try {
       final items = await fileSystem.listDirectory(path);
@@ -586,18 +607,17 @@ class VideoScannerService {
             videos: videos,
           );
         } else if (item.type == FileType.video) {
-          videos.add(_ScannedVideo(
-            sourceId: sourceId,
-            file: item,
-          ));
+          videos.add(_ScannedVideo(sourceId: sourceId, file: item));
 
           // 每扫描到一定数量更新进度
           if (videos.length % 10 == 0) {
-            _emitProgress(VideoScanProgress(
-              phase: VideoScanPhase.scanning,
-              currentPath: path,
-              scannedCount: videos.length,
-            ));
+            _emitProgress(
+              VideoScanProgress(
+                phase: VideoScanPhase.scanning,
+                currentPath: path,
+                scannedCount: videos.length,
+              ),
+            );
           }
         }
       }
@@ -607,11 +627,12 @@ class VideoScannerService {
   }
 
   /// 判断是否应该跳过该目录
-  bool _shouldSkipDirectory(String name) => name.startsWith('.') ||
-        name.startsWith('@') ||
-        name.startsWith('#recycle') ||
-        name == 'eaDir' ||
-        name == '@eaDir';
+  bool _shouldSkipDirectory(String name) =>
+      name.startsWith('.') ||
+      name.startsWith('@') ||
+      name.startsWith('#recycle') ||
+      name == 'eaDir' ||
+      name == '@eaDir';
 
   void _emitProgress(VideoScanProgress progress) {
     _progressController.add(progress);
@@ -625,10 +646,7 @@ class VideoScannerService {
 
 /// 扫描到的视频
 class _ScannedVideo {
-  const _ScannedVideo({
-    required this.sourceId,
-    required this.file,
-  });
+  const _ScannedVideo({required this.sourceId, required this.file});
 
   final String sourceId;
   final FileItem file;

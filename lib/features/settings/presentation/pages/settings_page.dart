@@ -1075,12 +1075,11 @@ class _LanguageSettingsSheetState extends State<_LanguageSettingsSheet> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
+  Widget build(BuildContext context) => ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: Container(
+        child: DecoratedBox(
           decoration: BoxDecoration(
             color: widget.isDark
                 ? AppColors.darkSurface.withValues(alpha: 0.95)
@@ -1185,7 +1184,6 @@ class _LanguageSettingsSheetState extends State<_LanguageSettingsSheet> {
         ),
       ),
     );
-  }
 
   Widget _buildLanguageSelector(
     BuildContext context, {
@@ -1195,10 +1193,9 @@ class _LanguageSettingsSheetState extends State<_LanguageSettingsSheet> {
     required Color iconColor,
     required LanguageOption value,
     required void Function(LanguageOption) onChanged,
-  }) {
-    return Padding(
+  }) => Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-      child: Container(
+      child: DecoratedBox(
         decoration: BoxDecoration(
           color: widget.isDark
               ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
@@ -1282,7 +1279,6 @@ class _LanguageSettingsSheetState extends State<_LanguageSettingsSheet> {
         ),
       ),
     );
-  }
 
   void _showLanguageOptions(
     BuildContext context,

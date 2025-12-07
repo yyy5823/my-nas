@@ -131,9 +131,7 @@ class NfoScraperService {
       var episodeNfo = await _findEpisodeNfo(fileSystem, files, videoBaseName);
 
       // 2. 如果没找到，查找 movie.nfo
-      if (episodeNfo == null) {
-        episodeNfo = await _findMovieNfo(fileSystem, files);
-      }
+      episodeNfo ??= await _findMovieNfo(fileSystem, files);
 
       // 3. 查找本地图片（当前目录）
       final localImages = await _findLocalImages(

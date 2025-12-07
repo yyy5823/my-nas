@@ -313,7 +313,7 @@ class LiveActivityService {
   /// 释放资源
   Future<void> dispose() async {
     await endAllActivities();
-    _eventSubscription?.cancel();
+    await _eventSubscription?.cancel();
     _eventSubscription = null;
     _initialized = false;
     _currentCoverData = null;

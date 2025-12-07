@@ -204,7 +204,7 @@ class LyricService {
     if (isDesktop) {
       // 桌面平台使用 enough_convert（纯 Dart 实现）
       try {
-        final gbkCodec = const GbkCodec(allowInvalid: false);
+        final gbkCodec = const GbkCodec();
         final decoded = gbkCodec.decode(bytes);
         if (decoded.isNotEmpty && _looksValidGbk(decoded)) {
           logger.d('LyricService: 成功使用 GBK 解码 (enough_convert)');
@@ -216,7 +216,7 @@ class LyricService {
 
       // 尝试 Big5 解码（繁体中文）
       try {
-        final big5Codec = const Big5Codec(allowInvalid: false);
+        final big5Codec = const Big5Codec();
         final decoded = big5Codec.decode(bytes);
         if (decoded.isNotEmpty && _containsChinese(decoded)) {
           logger.d('LyricService: 成功使用 Big5 解码 (enough_convert)');
