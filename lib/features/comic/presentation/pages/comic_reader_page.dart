@@ -10,6 +10,7 @@ import 'package:my_nas/features/reading/data/services/reading_progress_service.d
 import 'package:my_nas/features/reading/presentation/providers/reader_settings_provider.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
+import 'package:my_nas/shared/widgets/reader_settings_sheet.dart';
 import 'package:my_nas/shared/widgets/stream_image.dart';
 import 'package:path/path.dart' as path;
 import 'package:photo_view/photo_view.dart';
@@ -304,6 +305,16 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
     super.dispose();
   }
 
+  void _showSettingsSheet(ComicReaderSettings settings) {
+    showReaderSettingsSheet(
+      context,
+      title: '漫画设置',
+      icon: Icons.menu_book_rounded,
+      iconColor: AppColors.secondary,
+      content: _buildSettingsContent(settings),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(_provider);
@@ -371,15 +382,6 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
               child: _buildBottomBar(context, state, notifier, settings, isDark),
             ),
           ],
-
-          // 设置面板
-          if (state.showSettings)
-            Positioned(
-              bottom: 100,
-              left: 16,
-              right: 16,
-              child: _buildSettingsPanel(context, settings, isDark),
-            ),
         ],
       ),
     );
@@ -705,8 +707,8 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
                 ),
                 // 设置按钮
                 IconButton(
-                  icon: const Icon(Icons.settings, color: Colors.white),
-                  onPressed: () => ref.read(_provider.notifier).toggleSettings(),
+                  icon: const Icon(Icons.settings_outlined, color: Colors.white),
+                  onPressed: () => _showSettingsSheet(ref.read(comicReaderSettingsProvider)),
                 ),
               ],
             ),
@@ -817,233 +819,152 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
     );
   }
 
-  Widget _buildSettingsPanel(
-    BuildContext context,
-    ComicReaderSettings settings,
-    bool isDark,
-  ) {
+  Widget _buildSettingsContent(ComicReaderSettings settings) {
     final settingsNotifier = ref.read(comicReaderSettingsProvider.notifier);
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: (isDark ? Colors.grey[900] : Colors.white)?.withValues(alpha: 0.95),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.3),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 阅读模式
+        const SettingSectionTitle(title: '阅读模式'),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
           children: [
-            // 阅读模式
-            _buildSettingSection(
-              context,
-              title: '阅读模式',
-              isDark: isDark,
-              child: Row(
-                children: [
-                  _buildModeButton(
-                    context,
-                    icon: Icons.crop_portrait,
-                    label: '单页',
-                    isSelected: settings.readingMode == ComicReadingMode.singlePage,
-                    onTap: () {
-                      settingsNotifier.setReadingMode(ComicReadingMode.singlePage);
-                      _resetControllers();
-                    },
-                    isDark: isDark,
-                  ),
-                  const SizedBox(width: 8),
-                  _buildModeButton(
-                    context,
-                    icon: Icons.menu_book,
-                    label: '双页',
-                    isSelected: settings.readingMode == ComicReadingMode.doublePage,
-                    onTap: () {
-                      settingsNotifier.setReadingMode(ComicReadingMode.doublePage);
-                      _resetControllers();
-                    },
-                    isDark: isDark,
-                  ),
-                  const SizedBox(width: 8),
-                  _buildModeButton(
-                    context,
-                    icon: Icons.view_day,
-                    label: '长条',
-                    isSelected: settings.readingMode == ComicReadingMode.webtoon,
-                    onTap: () {
-                      settingsNotifier.setReadingMode(ComicReadingMode.webtoon);
-                      _resetControllers();
-                    },
-                    isDark: isDark,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // 阅读方向
-            _buildSettingSection(
-              context,
-              title: '阅读方向',
-              isDark: isDark,
-              child: Row(
-                children: [
-                  _buildModeButton(
-                    context,
-                    icon: Icons.arrow_forward,
-                    label: '从左到右',
-                    isSelected: settings.readingDirection == ComicReadingDirection.ltr,
-                    onTap: () => settingsNotifier.setReadingDirection(ComicReadingDirection.ltr),
-                    isDark: isDark,
-                  ),
-                  const SizedBox(width: 8),
-                  _buildModeButton(
-                    context,
-                    icon: Icons.arrow_back,
-                    label: '从右到左',
-                    isSelected: settings.readingDirection == ComicReadingDirection.rtl,
-                    onTap: () => settingsNotifier.setReadingDirection(ComicReadingDirection.rtl),
-                    isDark: isDark,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // 缩放模式
-            _buildSettingSection(
-              context,
-              title: '缩放模式',
-              isDark: isDark,
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  _buildModeButton(
-                    context,
-                    icon: Icons.width_normal,
-                    label: '适应宽度',
-                    isSelected: settings.scaleMode == ComicScaleMode.fitWidth,
-                    onTap: () => settingsNotifier.setScaleMode(ComicScaleMode.fitWidth),
-                    isDark: isDark,
-                  ),
-                  _buildModeButton(
-                    context,
-                    icon: Icons.height,
-                    label: '适应高度',
-                    isSelected: settings.scaleMode == ComicScaleMode.fitHeight,
-                    onTap: () => settingsNotifier.setScaleMode(ComicScaleMode.fitHeight),
-                    isDark: isDark,
-                  ),
-                  _buildModeButton(
-                    context,
-                    icon: Icons.fit_screen,
-                    label: '适应屏幕',
-                    isSelected: settings.scaleMode == ComicScaleMode.fitScreen,
-                    onTap: () => settingsNotifier.setScaleMode(ComicScaleMode.fitScreen),
-                    isDark: isDark,
-                  ),
-                  _buildModeButton(
-                    context,
-                    icon: Icons.crop_original,
-                    label: '原始大小',
-                    isSelected: settings.scaleMode == ComicScaleMode.original,
-                    onTap: () => settingsNotifier.setScaleMode(ComicScaleMode.original),
-                    isDark: isDark,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // 背景颜色
-            _buildSettingSection(
-              context,
-              title: '背景颜色',
-              isDark: isDark,
-              child: Row(
-                children: ComicBackgroundColor.values.map((color) {
-                  final isSelected = settings.backgroundColor == color;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: GestureDetector(
-                      onTap: () => settingsNotifier.setBackgroundColor(color),
-                      child: Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          color: color.color,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: isSelected ? AppColors.primary : Colors.grey,
-                            width: isSelected ? 3 : 1,
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // 长条模式页间距
-            if (settings.readingMode == ComicReadingMode.webtoon) ...[
-              _buildSettingSection(
-                context,
-                title: '页间距: ${settings.webtoonPageGap.toInt()}',
-                isDark: isDark,
-                child: Slider(
-                  value: settings.webtoonPageGap,
-                  max: 50,
-                  divisions: 10,
-                  onChanged: settingsNotifier.setWebtoonPageGap,
-                  activeColor: AppColors.primary,
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-
-            // 开关选项
-            _buildSwitchRow(
-              context,
-              title: '显示页码',
-              value: settings.showPageNumber,
-              onChanged: (value) => settingsNotifier.setShowPageNumber(value: value),
-              isDark: isDark,
-            ),
-            _buildSwitchRow(
-              context,
-              title: '保持屏幕常亮',
-              value: settings.keepScreenOn,
-              onChanged: (value) async {
-                settingsNotifier.setKeepScreenOn(value: value);
-                if (value) {
-                  await WakelockPlus.enable();
-                } else {
-                  await WakelockPlus.disable();
-                }
+            SettingOptionButton(
+              icon: Icons.crop_portrait,
+              label: '单页',
+              isSelected: settings.readingMode == ComicReadingMode.singlePage,
+              onTap: () {
+                settingsNotifier.setReadingMode(ComicReadingMode.singlePage);
+                _resetControllers();
               },
-              isDark: isDark,
             ),
-            _buildSwitchRow(
-              context,
-              title: '点击翻页',
-              value: settings.tapToTurn,
-              onChanged: (value) => settingsNotifier.setTapToTurn(value:value),
-              isDark: isDark,
+            SettingOptionButton(
+              icon: Icons.menu_book,
+              label: '双页',
+              isSelected: settings.readingMode == ComicReadingMode.doublePage,
+              onTap: () {
+                settingsNotifier.setReadingMode(ComicReadingMode.doublePage);
+                _resetControllers();
+              },
+            ),
+            SettingOptionButton(
+              icon: Icons.view_day,
+              label: '长条',
+              isSelected: settings.readingMode == ComicReadingMode.webtoon,
+              onTap: () {
+                settingsNotifier.setReadingMode(ComicReadingMode.webtoon);
+                _resetControllers();
+              },
             ),
           ],
         ),
-      ),
+        const SizedBox(height: 20),
+
+        // 阅读方向
+        const SettingSectionTitle(title: '阅读方向'),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            SettingOptionButton(
+              icon: Icons.arrow_forward,
+              label: '从左到右',
+              isSelected: settings.readingDirection == ComicReadingDirection.ltr,
+              onTap: () => settingsNotifier.setReadingDirection(ComicReadingDirection.ltr),
+            ),
+            SettingOptionButton(
+              icon: Icons.arrow_back,
+              label: '从右到左',
+              isSelected: settings.readingDirection == ComicReadingDirection.rtl,
+              onTap: () => settingsNotifier.setReadingDirection(ComicReadingDirection.rtl),
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+
+        // 缩放模式
+        const SettingSectionTitle(title: '缩放模式'),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            SettingOptionButton(
+              icon: Icons.width_normal,
+              label: '适应宽度',
+              isSelected: settings.scaleMode == ComicScaleMode.fitWidth,
+              onTap: () => settingsNotifier.setScaleMode(ComicScaleMode.fitWidth),
+            ),
+            SettingOptionButton(
+              icon: Icons.height,
+              label: '适应高度',
+              isSelected: settings.scaleMode == ComicScaleMode.fitHeight,
+              onTap: () => settingsNotifier.setScaleMode(ComicScaleMode.fitHeight),
+            ),
+            SettingOptionButton(
+              icon: Icons.fit_screen,
+              label: '适应屏幕',
+              isSelected: settings.scaleMode == ComicScaleMode.fitScreen,
+              onTap: () => settingsNotifier.setScaleMode(ComicScaleMode.fitScreen),
+            ),
+            SettingOptionButton(
+              icon: Icons.crop_original,
+              label: '原始大小',
+              isSelected: settings.scaleMode == ComicScaleMode.original,
+              onTap: () => settingsNotifier.setScaleMode(ComicScaleMode.original),
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+
+        // 背景颜色
+        const SettingSectionTitle(title: '背景颜色'),
+        SettingColorPicker(
+          colors: ComicBackgroundColor.values.map((c) => c.color).toList(),
+          selectedIndex: ComicBackgroundColor.values.indexOf(settings.backgroundColor),
+          onSelect: (index) => settingsNotifier.setBackgroundColor(ComicBackgroundColor.values[index]),
+        ),
+        const SizedBox(height: 20),
+
+        // 长条模式页间距
+        if (settings.readingMode == ComicReadingMode.webtoon) ...[
+          SettingSliderRow(
+            label: '页间距',
+            value: settings.webtoonPageGap,
+            max: 50,
+            divisions: 10,
+            valueLabel: '${settings.webtoonPageGap.toInt()}',
+            onChanged: settingsNotifier.setWebtoonPageGap,
+          ),
+          const SizedBox(height: 16),
+        ],
+
+        // 开关选项
+        const SettingSectionTitle(title: '其他设置'),
+        SettingSwitchRow(
+          title: '显示页码',
+          value: settings.showPageNumber,
+          onChanged: (value) => settingsNotifier.setShowPageNumber(value: value),
+        ),
+        SettingSwitchRow(
+          title: '保持屏幕常亮',
+          value: settings.keepScreenOn,
+          onChanged: (value) async {
+            settingsNotifier.setKeepScreenOn(value: value);
+            if (value) {
+              await WakelockPlus.enable();
+            } else {
+              await WakelockPlus.disable();
+            }
+          },
+        ),
+        SettingSwitchRow(
+          title: '点击翻页',
+          value: settings.tapToTurn,
+          onChanged: (value) => settingsNotifier.setTapToTurn(value: value),
+        ),
+      ],
     );
   }
 
@@ -1053,98 +974,4 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
     _scrollController?.dispose();
     _scrollController = null;
   }
-
-  Widget _buildSettingSection(
-    BuildContext context, {
-    required String title,
-    required Widget child,
-    required bool isDark,
-  }) =>
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: isDark ? Colors.white70 : Colors.black87,
-            ),
-          ),
-          const SizedBox(height: 8),
-          child,
-        ],
-      );
-
-  Widget _buildModeButton(
-    BuildContext context, {
-    required IconData icon,
-    required String label,
-    required bool isSelected,
-    required VoidCallback onTap,
-    required bool isDark,
-  }) =>
-      GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: isSelected
-                ? AppColors.primary.withValues(alpha: 0.2)
-                : (isDark ? Colors.grey[800] : Colors.grey[200]),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: isSelected ? AppColors.primary : Colors.transparent,
-              width: 1.5,
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                size: 18,
-                color: isSelected ? AppColors.primary : (isDark ? Colors.white70 : Colors.black54),
-              ),
-              const SizedBox(width: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: isSelected ? AppColors.primary : (isDark ? Colors.white70 : Colors.black54),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-
-  Widget _buildSwitchRow(
-    BuildContext context, {
-    required String title,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-    required bool isDark,
-  }) =>
-      Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 14,
-                color: isDark ? Colors.white70 : Colors.black87,
-              ),
-            ),
-            Switch(
-              value: value,
-              onChanged: onChanged,
-              activeTrackColor: AppColors.primary.withValues(alpha: 0.5),
-              activeThumbColor: AppColors.primary,
-            ),
-          ],
-        ),
-      );
 }

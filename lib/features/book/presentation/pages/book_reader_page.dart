@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
-import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/network/http_client.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/book/data/services/book_file_cache_service.dart';
@@ -20,6 +19,7 @@ import 'package:my_nas/features/sources/presentation/providers/source_provider.d
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
 import 'package:my_nas/shared/widgets/loading_widget.dart';
+import 'package:my_nas/shared/widgets/reader_settings_sheet.dart';
 import 'package:path/path.dart' as path;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -288,7 +288,6 @@ class BookReaderPage extends ConsumerStatefulWidget {
 
 class _BookReaderPageState extends ConsumerState<BookReaderPage> {
   bool _showControls = false;
-  bool _showSettings = false;
   final ScrollController _scrollController = ScrollController();
 
   @override
@@ -335,10 +334,17 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
   void _toggleControls() {
     setState(() {
       _showControls = !_showControls;
-      if (!_showControls) {
-        _showSettings = false;
-      }
     });
+  }
+
+  void _showSettingsSheet(BookReaderSettings settings) {
+    showReaderSettingsSheet(
+      context,
+      title: '阅读设置',
+      icon: Icons.auto_stories_rounded,
+      iconColor: AppColors.info,
+      content: _buildSettingsContent(settings),
+    );
   }
 
   @override
@@ -437,15 +443,6 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
             left: 0,
             right: 0,
             child: _buildBottomBar(context, settings),
-          ),
-
-        // 设置面板
-        if (_showSettings)
-          Positioned(
-            bottom: 100,
-            left: 16,
-            right: 16,
-            child: _buildSettingsPanel(context, settings),
           ),
       ],
     );
@@ -1063,10 +1060,10 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
                 tooltip: '放大字体',
               ),
               IconButton(
-                onPressed: () => setState(() => _showSettings = !_showSettings),
-                icon: Icon(
-                  _showSettings ? Icons.settings : Icons.settings_outlined,
-                  color: _showSettings ? Colors.white : Colors.white70,
+                onPressed: () => _showSettingsSheet(settings),
+                icon: const Icon(
+                  Icons.settings_outlined,
+                  color: Colors.white70,
                 ),
                 tooltip: '设置',
               ),
@@ -1077,253 +1074,159 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     );
   }
 
-  Widget _buildSettingsPanel(
-    BuildContext context,
-    BookReaderSettings settings,
-  ) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+  Widget _buildSettingsContent(BookReaderSettings settings) {
     final settingsNotifier = ref.read(bookReaderSettingsProvider.notifier);
 
-    return Container(
-      padding: const EdgeInsets.all(20),
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.6,
-      ),
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.2),
-            blurRadius: 20,
-            offset: const Offset(0, -4),
-          ),
-        ],
-      ),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text(
-                  '阅读设置',
-                  style: context.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const Spacer(),
-                IconButton(
-                  onPressed: () => setState(() => _showSettings = false),
-                  icon: const Icon(Icons.close, size: 20),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            // 字体大小
-            _buildSettingRow(
-              context,
-              label: '字体大小',
-              value: '${settings.fontSize.toInt()}',
-              child: Slider(
-                value: settings.fontSize,
-                min: 12,
-                max: 36,
-                divisions: 12,
-                onChanged: settingsNotifier.setFontSize,
-              ),
-            ),
-
-            const SizedBox(height: 8),
-
-            // 行高
-            _buildSettingRow(
-              context,
-              label: '行高',
-              value: settings.lineHeight.toStringAsFixed(1),
-              child: Slider(
-                value: settings.lineHeight,
-                min: 1,
-                max: 3,
-                divisions: 20,
-                onChanged: settingsNotifier.setLineHeight,
-              ),
-            ),
-
-            const SizedBox(height: 8),
-
-            // 段落间距
-            _buildSettingRow(
-              context,
-              label: '段落间距',
-              value: settings.paragraphSpacing.toStringAsFixed(1),
-              child: Slider(
-                value: settings.paragraphSpacing,
-                max: 3,
-                divisions: 15,
-                onChanged: settingsNotifier.setParagraphSpacing,
-              ),
-            ),
-
-            const SizedBox(height: 8),
-
-            // 页边距
-            _buildSettingRow(
-              context,
-              label: '页边距',
-              value: '${settings.horizontalPadding.toInt()}',
-              child: Slider(
-                value: settings.horizontalPadding,
-                min: 8,
-                max: 64,
-                divisions: 14,
-                onChanged: settingsNotifier.setHorizontalPadding,
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // 主题
-            Text('阅读主题', style: context.textTheme.bodyMedium),
-            const SizedBox(height: 12),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: BookReaderTheme.values
-                    .map(
-                      (theme) => Padding(
-                        padding: const EdgeInsets.only(right: 12),
-                        child: _buildThemeOption(
-                          theme: theme,
-                          isSelected: settings.theme == theme,
-                          onTap: () => settingsNotifier.setTheme(theme),
-                        ),
-                      ),
-                    )
-                    .toList(),
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // 其他设置
-            Text('其他设置', style: context.textTheme.bodyMedium),
-            const SizedBox(height: 8),
-            _buildSwitchTile(
-              context,
-              title: '屏幕常亮',
-              value: settings.keepScreenOn,
-              onChanged: (value) {
-                settingsNotifier.setKeepScreenOn(value: value);
-                if (value) {
-                  WakelockPlus.enable();
-                } else {
-                  WakelockPlus.disable();
-                }
-              },
-            ),
-            _buildSwitchTile(
-              context,
-              title: '点击翻页',
-              subtitle: '左侧上翻，右侧下翻',
-              value: settings.tapToTurn,
-              onChanged: (value) {
-                settingsNotifier.setTapToTurn(value: value);
-              },
-            ),
-            _buildSwitchTile(
-              context,
-              title: '显示进度',
-              value: settings.showProgress,
-              onChanged: (value) {
-                settingsNotifier.setShowProgress(value: value);
-              },
-            ),
-          ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 字体大小
+        SettingSliderRow(
+          label: '字体大小',
+          value: settings.fontSize,
+          min: 12,
+          max: 36,
+          divisions: 12,
+          valueLabel: '${settings.fontSize.toInt()}',
+          onChanged: settingsNotifier.setFontSize,
         ),
-      ),
+        const SizedBox(height: 16),
+
+        // 行高
+        SettingSliderRow(
+          label: '行高',
+          value: settings.lineHeight,
+          min: 1,
+          max: 3,
+          divisions: 20,
+          onChanged: settingsNotifier.setLineHeight,
+        ),
+        const SizedBox(height: 16),
+
+        // 段落间距
+        SettingSliderRow(
+          label: '段落间距',
+          value: settings.paragraphSpacing,
+          max: 3,
+          divisions: 15,
+          onChanged: settingsNotifier.setParagraphSpacing,
+        ),
+        const SizedBox(height: 16),
+
+        // 页边距
+        SettingSliderRow(
+          label: '页边距',
+          value: settings.horizontalPadding,
+          min: 8,
+          max: 64,
+          divisions: 14,
+          valueLabel: '${settings.horizontalPadding.toInt()}',
+          onChanged: settingsNotifier.setHorizontalPadding,
+        ),
+        const SizedBox(height: 24),
+
+        // 主题
+        const SettingSectionTitle(title: '阅读主题'),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: BookReaderTheme.values
+                .map(
+                  (theme) => Padding(
+                    padding: const EdgeInsets.only(right: 12),
+                    child: _buildThemeOption(
+                      theme: theme,
+                      isSelected: settings.theme == theme,
+                      onTap: () => settingsNotifier.setTheme(theme),
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
+        ),
+        const SizedBox(height: 24),
+
+        // 其他设置
+        const SettingSectionTitle(title: '其他设置'),
+        SettingSwitchRow(
+          title: '屏幕常亮',
+          value: settings.keepScreenOn,
+          onChanged: (value) {
+            settingsNotifier.setKeepScreenOn(value: value);
+            if (value) {
+              WakelockPlus.enable();
+            } else {
+              WakelockPlus.disable();
+            }
+          },
+        ),
+        SettingSwitchRow(
+          title: '点击翻页',
+          subtitle: '左侧上翻，右侧下翻',
+          value: settings.tapToTurn,
+          onChanged: (value) => settingsNotifier.setTapToTurn(value: value),
+        ),
+        SettingSwitchRow(
+          title: '显示进度',
+          value: settings.showProgress,
+          onChanged: (value) => settingsNotifier.setShowProgress(value: value),
+        ),
+      ],
     );
   }
-
-  Widget _buildSettingRow(
-    BuildContext context, {
-    required String label,
-    required String value,
-    required Widget child,
-  }) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: context.textTheme.bodyMedium),
-          Text(
-            value,
-            style: context.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ],
-      ),
-      child,
-    ],
-  );
-
-  Widget _buildSwitchTile(
-    BuildContext context, {
-    required String title,
-    required bool value, required ValueChanged<bool> onChanged, String? subtitle,
-  }) => SwitchListTile(
-    title: Text(title, style: context.textTheme.bodyMedium),
-    subtitle: subtitle != null
-        ? Text(subtitle, style: context.textTheme.bodySmall)
-        : null,
-    value: value,
-    onChanged: onChanged,
-    dense: true,
-    contentPadding: EdgeInsets.zero,
-  );
 
   Widget _buildThemeOption({
     required BookReaderTheme theme,
     required bool isSelected,
     required VoidCallback onTap,
-  }) => GestureDetector(
-    onTap: onTap,
-    child: Column(
-      children: [
-        Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            color: theme.backgroundColor,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isSelected ? AppColors.primary : Colors.grey.shade300,
-              width: isSelected ? 3 : 1,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: theme.backgroundColor,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: isSelected ? AppColors.primary : (isDark ? Colors.grey.shade600 : Colors.grey.shade300),
+                width: isSelected ? 3 : 1,
+              ),
+              boxShadow: isSelected
+                  ? [
+                      BoxShadow(
+                        color: AppColors.primary.withValues(alpha: 0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ]
+                  : null,
             ),
-          ),
-          child: Center(
-            child: Text(
-              'Aa',
-              style: TextStyle(
-                color: theme.textColor,
-                fontWeight: FontWeight.bold,
+            child: Center(
+              child: Text(
+                'Aa',
+                style: TextStyle(
+                  color: theme.textColor,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
               ),
             ),
           ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          theme.label,
-          style: TextStyle(
-            fontSize: 12,
-            color: isSelected ? AppColors.primary : null,
+          const SizedBox(height: 6),
+          Text(
+            theme.label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+              color: isSelected ? AppColors.primary : (isDark ? Colors.white70 : Colors.black54),
+            ),
           ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 }

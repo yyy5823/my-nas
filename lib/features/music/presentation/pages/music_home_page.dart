@@ -511,6 +511,16 @@ class _PlaylistsSection extends ConsumerWidget {
   final int playlistCount;
   final VoidCallback onMoreTap;
 
+  // 歌单渐变色列表
+  static const List<List<Color>> _gradientColors = [
+    [Color(0xFF9C27B0), Color(0xFF7B1FA2)], // 紫色
+    [Color(0xFF2196F3), Color(0xFF1976D2)], // 蓝色
+    [Color(0xFFE91E63), Color(0xFFC2185B)], // 粉色
+    [Color(0xFF00BCD4), Color(0xFF0097A7)], // 青色
+    [Color(0xFFFF9800), Color(0xFFF57C00)], // 橙色
+    [Color(0xFF4CAF50), Color(0xFF388E3C)], // 绿色
+  ];
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final playlistState = ref.watch(playlistProvider);
@@ -529,151 +539,145 @@ class _PlaylistsSection extends ConsumerWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Text(
-                    '歌单',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: isDark ? Colors.white : Colors.black87,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: isDark
-                          ? Colors.white.withValues(alpha: 0.1)
-                          : Colors.black.withValues(alpha: 0.05),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      '${playlists.length}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isDark ? Colors.white60 : Colors.black45,
-                      ),
-                    ),
-                  ),
-                ],
+              Text(
+                '歌单',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
               ),
-              if (playlists.length > 4)
-                TextButton(
-                  onPressed: onMoreTap,
-                  child: const Text('查看全部'),
+              if (playlists.length > 5)
+                GestureDetector(
+                  onTap: onMoreTap,
+                  child: Text(
+                    '查看全部',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: isDark ? Colors.white60 : Colors.black45,
+                    ),
+                  ),
                 ),
             ],
           ),
         ),
         const SizedBox(height: 12),
-        // 歌单网格
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            mainAxisSpacing: 12,
-            crossAxisSpacing: 12,
-            childAspectRatio: 2.5,
+        // 歌单横向滚动列表
+        SizedBox(
+          height: 140,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: playlists.length > 10 ? 10 : playlists.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 12),
+            itemBuilder: (context, index) {
+              final playlist = playlists[index];
+              final colors = _gradientColors[index % _gradientColors.length];
+              return _PlaylistCard(
+                playlist: playlist,
+                isDark: isDark,
+                gradientColors: colors,
+              );
+            },
           ),
-          itemCount: playlists.length > 4 ? 4 : playlists.length,
-          itemBuilder: (context, index) {
-            final playlist = playlists[index];
-            return _PlaylistCard(
-              playlist: playlist,
-              isDark: isDark,
-            );
-          },
         ),
       ],
     );
   }
 }
 
-/// 歌单卡片
+/// 歌单卡片 - 现代化设计
 class _PlaylistCard extends StatelessWidget {
   const _PlaylistCard({
     required this.playlist,
     required this.isDark,
+    required this.gradientColors,
   });
 
   final PlaylistEntry playlist;
   final bool isDark;
+  final List<Color> gradientColors;
 
   @override
   Widget build(BuildContext context) => Material(
       color: Colors.transparent,
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => PlaylistDetailPage.open(context, playlist),
-        borderRadius: BorderRadius.circular(12),
         child: Container(
-          padding: const EdgeInsets.all(12),
+          width: 120,
+          height: 140,
           decoration: BoxDecoration(
-            color: isDark
-                ? Colors.white.withValues(alpha: 0.08)
-                : Colors.black.withValues(alpha: 0.04),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.1)
-                  : Colors.black.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(16),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: gradientColors,
             ),
+            boxShadow: [
+              BoxShadow(
+                color: gradientColors[0].withValues(alpha: 0.3),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
-          child: Row(
+          child: Stack(
             children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      const Color(0xFF9C27B0),
-                      const Color(0xFF9C27B0).withValues(alpha: 0.7),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(
+              // 装饰性大图标
+              Positioned(
+                right: -20,
+                top: -20,
+                child: Icon(
                   Icons.playlist_play_rounded,
-                  color: Colors.white,
-                  size: 24,
+                  size: 80,
+                  color: Colors.white.withValues(alpha: 0.15),
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
+              // 内容
+              Padding(
+                padding: const EdgeInsets.all(12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
+                    // 图标
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.25),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.playlist_play_rounded,
+                        color: Colors.white,
+                        size: 22,
+                      ),
+                    ),
+                    const Spacer(),
+                    // 歌单名称
                     Text(
                       playlist.name,
-                      style: TextStyle(
-                        fontSize: 14,
+                      style: const TextStyle(
+                        fontSize: 13,
                         fontWeight: FontWeight.w600,
-                        color: isDark ? Colors.white : Colors.black87,
+                        color: Colors.white,
                       ),
-                      maxLines: 1,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 4),
+                    // 歌曲数量
                     Text(
-                      '${playlist.trackPaths.length} 首歌曲',
+                      '${playlist.trackPaths.length} 首',
                       style: TextStyle(
-                        fontSize: 12,
-                        color: isDark ? Colors.white60 : Colors.black45,
+                        fontSize: 11,
+                        color: Colors.white.withValues(alpha: 0.8),
                       ),
                     ),
                   ],
                 ),
-              ),
-              Icon(
-                Icons.chevron_right_rounded,
-                color: isDark ? Colors.white30 : Colors.black26,
-                size: 20,
               ),
             ],
           ),
