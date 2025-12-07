@@ -181,6 +181,8 @@ class LiveActivityService {
   }
 
   /// 更新 Live Activity 状态
+  /// 注意：定时更新时不传 coverData，避免每秒都重新保存封面导致性能问题
+  /// 封面只在创建 Activity 或切歌时通过 updateCoverImage 单独更新
   Future<void> updateActivity({
     required MusicItem music,
     required bool isPlaying,
@@ -196,12 +198,14 @@ class LiveActivityService {
         _currentCoverData = coverData;
       }
 
+      // 构建更新数据时不包含封面（除非显式传入新封面）
+      // 这样可以避免每秒都重新保存相同的封面文件
       final activityData = _buildActivityData(
         music: music,
         isPlaying: isPlaying,
         position: position,
         duration: duration,
-        coverData: _currentCoverData,
+        coverData: coverData, // 只传入新封面，不传入缓存的封面
       );
 
       // 使用自定义 Method Channel 更新
