@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/music/presentation/pages/music_list_page.dart';
+import 'package:my_nas/features/music/presentation/pages/playlist_detail_page.dart';
+import 'package:my_nas/features/music/presentation/providers/playlist_provider.dart';
 import 'package:my_nas/features/music/presentation/widgets/browse_category_grid.dart';
 import 'package:my_nas/features/music/presentation/widgets/hero_player_card.dart';
 import 'package:my_nas/features/music/presentation/widgets/music_stats_card.dart';
@@ -116,6 +118,15 @@ class MusicHomeContent extends ConsumerWidget {
               title: '为你推荐',
               onTrackTap: (track) => onTrackTap(track, tracks),
               onMoreTap: () => onCategoryTap(MusicCategory.all),
+            ),
+            const SizedBox(height: 16),
+          ],
+          // 歌单
+          if (playlistCount > 0) ...[
+            _PlaylistsSection(
+              isDark: isDark,
+              playlistCount: playlistCount,
+              onMoreTap: () => onCategoryTap(MusicCategory.playlists),
             ),
             const SizedBox(height: 16),
           ],
@@ -482,4 +493,201 @@ class MusicHomeContent extends ConsumerWidget {
         onCategoryTap(MusicCategory.folders);
     }
   }
+}
+
+/// 歌单区块 - 展示所有歌单
+class _PlaylistsSection extends ConsumerWidget {
+  const _PlaylistsSection({
+    required this.isDark,
+    required this.playlistCount,
+    required this.onMoreTap,
+  });
+
+  final bool isDark;
+  final int playlistCount;
+  final VoidCallback onMoreTap;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final playlistState = ref.watch(playlistProvider);
+    final playlists = playlistState.playlists;
+
+    if (playlists.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 标题栏
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF9C27B0).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.playlist_play_rounded,
+                      color: Color(0xFF9C27B0),
+                      size: 18,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    '歌单',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.1)
+                          : Colors.black.withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '${playlists.length}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark ? Colors.white60 : Colors.black45,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (playlists.length > 4)
+                TextButton(
+                  onPressed: onMoreTap,
+                  child: const Text('查看全部'),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        // 歌单网格
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            mainAxisSpacing: 12,
+            crossAxisSpacing: 12,
+            childAspectRatio: 2.5,
+          ),
+          itemCount: playlists.length > 4 ? 4 : playlists.length,
+          itemBuilder: (context, index) {
+            final playlist = playlists[index];
+            return _PlaylistCard(
+              playlist: playlist,
+              isDark: isDark,
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+/// 歌单卡片
+class _PlaylistCard extends StatelessWidget {
+  const _PlaylistCard({
+    required this.playlist,
+    required this.isDark,
+  });
+
+  final PlaylistEntry playlist;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) => Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => PlaylistDetailPage.open(context, playlist),
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.08)
+                : Colors.black.withValues(alpha: 0.04),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.1)
+                  : Colors.black.withValues(alpha: 0.06),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      const Color(0xFF9C27B0),
+                      const Color(0xFF9C27B0).withValues(alpha: 0.7),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.playlist_play_rounded,
+                  color: Colors.white,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      playlist.name,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? Colors.white : Colors.black87,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${playlist.trackPaths.length} 首歌曲',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark ? Colors.white60 : Colors.black45,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: isDark ? Colors.white30 : Colors.black26,
+                size: 20,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
 }

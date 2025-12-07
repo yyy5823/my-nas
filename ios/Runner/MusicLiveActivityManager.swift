@@ -12,6 +12,9 @@ class MusicLiveActivityManager {
     /// App Group ID
     private let appGroupId = "group.com.kkape.mynas"
 
+    /// Darwin 通知名称（用于从 Widget Extension 接收控制命令）
+    private let darwinNotificationName = "com.kkape.mynas.musicControl"
+
     /// 共享的 UserDefaults
     private lazy var sharedDefaults: UserDefaults? = {
         UserDefaults(suiteName: appGroupId)
@@ -23,7 +26,86 @@ class MusicLiveActivityManager {
     /// 当前活动的 UUID (用于数据前缀)
     private var currentActivityUUID: UUID?
 
-    private init() {}
+    /// 控制命令回调
+    var onControlCommand: ((String) -> Void)?
+
+    /// 上次处理的命令时间戳（防止重复处理）
+    private var lastCommandTimestamp: TimeInterval = 0
+
+    private init() {
+        // 注册 Darwin 通知监听
+        registerDarwinNotificationListener()
+    }
+
+    /// 注册 Darwin 通知监听器
+    /// Widget Extension 发送的控制命令会通过此通知传递
+    private func registerDarwinNotificationListener() {
+        let notificationName = CFNotificationName(darwinNotificationName as CFString)
+
+        CFNotificationCenterAddObserver(
+            CFNotificationCenterGetDarwinNotifyCenter(),
+            Unmanaged.passUnretained(self).toOpaque(),
+            { (_, observer, name, _, _) in
+                guard let observer = observer else { return }
+                let manager = Unmanaged<MusicLiveActivityManager>.fromOpaque(observer).takeUnretainedValue()
+                manager.handleDarwinNotification()
+            },
+            darwinNotificationName as CFString,
+            nil,
+            .deliverImmediately
+        )
+
+        print("MusicLiveActivityManager: Darwin notification listener registered for \(darwinNotificationName)")
+    }
+
+    /// 处理来自 Widget Extension 的 Darwin 通知
+    private func handleDarwinNotification() {
+        guard let defaults = sharedDefaults else {
+            print("MusicLiveActivityManager: SharedDefaults not available for reading command")
+            return
+        }
+
+        // 同步以获取最新数据
+        defaults.synchronize()
+
+        // 读取命令和时间戳
+        guard let command = defaults.string(forKey: "musicControlCommand") else {
+            print("MusicLiveActivityManager: No command found in UserDefaults")
+            return
+        }
+
+        let timestamp = defaults.double(forKey: "musicControlTimestamp")
+
+        // 防止重复处理同一命令
+        if timestamp <= lastCommandTimestamp {
+            print("MusicLiveActivityManager: Command already processed (timestamp: \(timestamp))")
+            return
+        }
+
+        lastCommandTimestamp = timestamp
+
+        print("MusicLiveActivityManager: Received control command: \(command), timestamp: \(timestamp)")
+
+        // 在主线程调用回调
+        DispatchQueue.main.async { [weak self] in
+            self?.onControlCommand?(command)
+        }
+
+        // 清除命令
+        defaults.removeObject(forKey: "musicControlCommand")
+        defaults.synchronize()
+    }
+
+    /// 注销 Darwin 通知监听器
+    func unregisterDarwinNotificationListener() {
+        CFNotificationCenterRemoveObserver(
+            CFNotificationCenterGetDarwinNotifyCenter(),
+            Unmanaged.passUnretained(self).toOpaque(),
+            CFNotificationName(darwinNotificationName as CFString),
+            nil
+        )
+        print("MusicLiveActivityManager: Darwin notification listener unregistered")
+    }
 
     /// 检查 Live Activities 是否可用
     func areActivitiesEnabled() -> Bool {
@@ -49,7 +131,7 @@ class MusicLiveActivityManager {
         // 创建属性
         let activityUUID = UUID()
         let attributes = LiveActivitiesAppAttributes(id: activityUUID)
-        let contentState = LiveActivitiesAppAttributes.ContentState(appGroupId: appGroupId)
+        let contentState = LiveActivitiesAppAttributes.ContentState(appGroupId: appGroupId, updateTimestamp: Date().timeIntervalSince1970)
 
         // 保存数据到 UserDefaults
         saveDataToDefaults(data: data, prefix: activityUUID)
@@ -106,7 +188,7 @@ class MusicLiveActivityManager {
                 return
             }
 
-            let contentState = LiveActivitiesAppAttributes.ContentState(appGroupId: appGroupId)
+            let contentState = LiveActivitiesAppAttributes.ContentState(appGroupId: appGroupId, updateTimestamp: Date().timeIntervalSince1970)
             await activity.update(using: contentState)
         }
     }
@@ -203,6 +285,7 @@ class MusicLiveActivityManager {
     }
 
     /// 保存图片到 App Group 目录
+    /// 返回文件名（不是完整路径），Widget Extension 会使用自己的 App Group container URL 拼接
     private func saveImageToFile(data: Data, filename: String) -> String? {
         guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupId) else {
             print("MusicLiveActivityManager: Cannot access App Group container for appGroupId: \(appGroupId)")
@@ -221,7 +304,8 @@ class MusicLiveActivityManager {
             let exists = FileManager.default.fileExists(atPath: fileURL.path)
             print("MusicLiveActivityManager: File exists after save: \(exists)")
 
-            return fileURL.path
+            // 返回文件名而不是完整路径，Widget Extension 会使用自己的 container URL 拼接
+            return filename
         } catch {
             print("MusicLiveActivityManager: Failed to save image: \(error)")
             return nil
@@ -237,6 +321,8 @@ struct LiveActivitiesAppAttributes: ActivityAttributes, Identifiable, Codable {
 
     public struct ContentState: Codable, Hashable {
         var appGroupId: String
+        // 添加更新时间戳，用于强制 Widget 刷新
+        var updateTimestamp: TimeInterval
     }
 
     var id: UUID

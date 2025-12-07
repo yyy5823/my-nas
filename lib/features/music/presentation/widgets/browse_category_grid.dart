@@ -207,6 +207,7 @@ class QuickAccessGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 顺序：我喜欢 -> 全部歌曲 -> 最近播放（歌单已移至单独标签）
     final cards = [
       _QuickCard(
         icon: Icons.favorite_rounded,
@@ -218,25 +219,6 @@ class QuickAccessGrid extends StatelessWidget {
         onTap: onFavoritesTap,
       ),
       _QuickCard(
-        icon: Icons.history_rounded,
-        label: '最近播放',
-        subtitle: '$recentCount 首',
-        color: const Color(0xFF2196F3),
-        isDark: isDark,
-        isDesktop: isDesktop,
-        onTap: onRecentTap,
-      ),
-      if (onPlaylistTap != null)
-        _QuickCard(
-          icon: Icons.playlist_play_rounded,
-          label: '歌单',
-          subtitle: '$playlistCount 个',
-          color: const Color(0xFF9C27B0),
-          isDark: isDark,
-          isDesktop: isDesktop,
-          onTap: onPlaylistTap!,
-        ),
-      _QuickCard(
         icon: Icons.queue_music_rounded,
         label: '全部歌曲',
         subtitle: '$totalCount 首',
@@ -244,6 +226,15 @@ class QuickAccessGrid extends StatelessWidget {
         isDark: isDark,
         isDesktop: isDesktop,
         onTap: onAllTap,
+      ),
+      _QuickCard(
+        icon: Icons.history_rounded,
+        label: '最近播放',
+        subtitle: '$recentCount 首',
+        color: const Color(0xFF2196F3),
+        isDark: isDark,
+        isDesktop: isDesktop,
+        onTap: onRecentTap,
       ),
     ];
 

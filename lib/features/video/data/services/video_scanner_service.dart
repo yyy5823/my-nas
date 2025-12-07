@@ -351,22 +351,24 @@ class VideoScannerService {
         for (final video in pendingVideos) {
           if (_shouldStopScraping) break;
 
+          // 获取当前进度（每个视频开始前）
+          final currentStats = await _dbService.getScrapeStats();
           _emitProgress(VideoScanProgress(
             phase: VideoScanPhase.scraping,
-            scannedCount: stats.processed,
-            totalCount: stats.total,
+            scannedCount: currentStats.processed,
+            totalCount: currentStats.total,
             currentFile: video.fileName,
           ));
 
           await _scrapeOneVideo(video, connections);
 
+          // 刮削完成后立即更新统计
+          final updatedStats = await _dbService.getScrapeStats();
+          _scrapeStatsController.add(updatedStats);
+
           // 添加延迟避免 API 限制
           await Future<void>.delayed(const Duration(milliseconds: 100));
         }
-
-        // 更新统计
-        final newStats = await _dbService.getScrapeStats();
-        _scrapeStatsController.add(newStats);
       }
 
       _emitProgress(VideoScanProgress(
@@ -414,13 +416,14 @@ class VideoScannerService {
           }
         }
 
-        // 获取元数据
+        // 获取元数据（跳过缩略图生成以加速刮削，缩略图会在后台异步生成）
         final metadata = await _metadataService.getOrFetch(
           sourceId: video.sourceId,
           filePath: video.filePath,
           fileName: video.fileName,
           fileSystem: fileSystem,
           videoUrl: videoUrl,
+          skipThumbnail: true, // 刮削时跳过缩略图，后续单独处理
         );
 
         // 根据结果更新刮削状态

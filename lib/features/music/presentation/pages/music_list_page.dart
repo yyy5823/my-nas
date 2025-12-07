@@ -327,6 +327,8 @@ class MusicListLoaded extends MusicListState {
     this.searchResults = const [],
     // 用于 O(1) 查找的 Map
     this.trackByPath = const {},
+    // 基于 filePath 的备用查找 Map（用于收藏和历史记录）
+    this.trackByFilePath = const {},
     // 分页状态
     this.hasMoreTracks = true,
     this.isLoadingMore = false,
@@ -349,8 +351,11 @@ class MusicListLoaded extends MusicListState {
   // 搜索结果
   final List<MusicTrackEntity> searchResults;
 
-  // 用于 O(1) 查找的 Map
+  // 用于 O(1) 查找的 Map（使用 uniqueKey 作为键）
   final Map<String, MusicTrackEntity> trackByPath;
+
+  // 基于 filePath 的备用查找 Map（用于收藏和历史记录）
+  final Map<String, MusicTrackEntity> trackByFilePath;
 
   // 分页状态
   final bool hasMoreTracks; // 是否还有更多歌曲可加载
@@ -444,6 +449,7 @@ class MusicListLoaded extends MusicListState {
     List<MusicTrackEntity>? allTracks,
     List<MusicTrackEntity>? searchResults,
     Map<String, MusicTrackEntity>? trackByPath,
+    Map<String, MusicTrackEntity>? trackByFilePath,
     bool? hasMoreTracks,
     bool? isLoadingMore,
   }) =>
@@ -461,6 +467,7 @@ class MusicListLoaded extends MusicListState {
         allTracks: allTracks ?? this.allTracks,
         searchResults: searchResults ?? this.searchResults,
         trackByPath: trackByPath ?? this.trackByPath,
+        trackByFilePath: trackByFilePath ?? this.trackByFilePath,
         hasMoreTracks: hasMoreTracks ?? this.hasMoreTracks,
         isLoadingMore: isLoadingMore ?? this.isLoadingMore,
       );
@@ -534,9 +541,15 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
     final validatedAllTracks = await _validateCoverPaths(allTracks);
 
     // 构建快速查找 Map
+    // 注意：使用 uniqueKey (${sourceId}_$filePath) 作为主键
+    // 同时也需要支持通过 filePath 查找（用于收藏和历史记录）
     final trackByPath = <String, MusicTrackEntity>{};
+    final trackByFilePath = <String, MusicTrackEntity>{};
     for (final m in validatedAllTracks) {
       trackByPath[m.uniqueKey] = m;
+      // 使用 filePath 作为备用查找键
+      // 如果有多个来源的同路径文件，后者会覆盖前者，但这在实际中很少发生
+      trackByFilePath[m.filePath] = m;
     }
 
     final total = stats['total'] as int? ?? 0;
@@ -557,6 +570,7 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
       recentTracks: validatedRecent,
       allTracks: validatedAllTracks,
       trackByPath: trackByPath,
+      trackByFilePath: trackByFilePath,
       fromCache: true,
       hasMoreTracks: validatedAllTracks.length < total,
       isLoadingMore: false,
@@ -1305,10 +1319,11 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
     final historyState = ref.watch(musicHistoryProvider);
 
     // 转换收藏为 MusicFileWithSource
+    // 注意：收藏存储的是 musicPath (filePath)，需要使用 trackByFilePath 查找
     final favoriteTracks = favoritesState.favorites
-        .where((fav) => state.trackByPath.containsKey(fav.musicPath))
+        .where((fav) => state.trackByFilePath.containsKey(fav.musicPath))
         .map((fav) {
-          final m = state.trackByPath[fav.musicPath]!;
+          final m = state.trackByFilePath[fav.musicPath]!;
           return MusicFileWithSource(
             file: FileItem(
               name: m.fileName,
@@ -1331,11 +1346,12 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
         .toList();
 
     // 转换历史为 MusicFileWithSource
+    // 注意：历史存储的是 musicPath (filePath)，需要使用 trackByFilePath 查找
     final recentTracks = historyState.history
         .take(20)
-        .where((h) => state.trackByPath.containsKey(h.musicPath))
+        .where((h) => state.trackByFilePath.containsKey(h.musicPath))
         .map((h) {
-          final m = state.trackByPath[h.musicPath]!;
+          final m = state.trackByFilePath[h.musicPath]!;
           return MusicFileWithSource(
             file: FileItem(
               name: m.fileName,
@@ -1357,6 +1373,10 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
         })
         .toList();
 
+    // 获取歌单数量
+    final playlistState = ref.watch(playlistProvider);
+    final playlistCount = playlistState.playlists.length;
+
     return MusicHomeContent(
       tracks: state.tracks,
       recentTracks: recentTracks,
@@ -1367,6 +1387,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
       genreCount: state.genreCount,
       yearCount: state.yearCount,
       folderCount: state.folderCount,
+      playlistCount: playlistCount,
       onTrackTap: (track, allTracks) => _playTrack(context, ref, track, allTracks),
       onCategoryTap: (category) => _navigateToCategory(context, category, state),
       onShuffleTap: () => _shufflePlay(context, ref, state.tracks),
@@ -3667,12 +3688,19 @@ class _AlbumsView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // 按文件夹作为"专辑"分组（因为没有真正的专辑元数据）
+    // 按专辑元数据分组（优先使用专辑名，无专辑名则按文件夹分组）
     final albumMap = <String, List<MusicFileWithSource>>{};
     for (final track in tracks) {
-      final parts = track.path.split('/');
-      final album = parts.length >= 2 ? parts[parts.length - 2] : '未知专辑';
-      albumMap.putIfAbsent(album, () => []).add(track);
+      // 优先使用元数据中的专辑名
+      String albumName;
+      if (track.album != null && track.album!.isNotEmpty) {
+        albumName = track.album!;
+      } else {
+        // 如果没有专辑元数据，则使用文件夹名作为备选
+        final parts = track.path.split('/');
+        albumName = parts.length >= 2 ? parts[parts.length - 2] : '未知专辑';
+      }
+      albumMap.putIfAbsent(albumName, () => []).add(track);
     }
 
     final albums = albumMap.entries.toList()
@@ -5552,6 +5580,8 @@ class _ModernMusicTile extends ConsumerWidget {
   void _showPlaylistSelector(BuildContext context, WidgetRef ref) {
     final playlistState = ref.read(playlistProvider);
     final playlists = playlistState.playlists;
+    // 保存根 Navigator context，用于后续对话框
+    final rootContext = Navigator.of(context, rootNavigator: true).context;
 
     showModalBottomSheet<void>(
       context: context,
@@ -5599,7 +5629,8 @@ class _ModernMusicTile extends ConsumerWidget {
                   TextButton.icon(
                     onPressed: () {
                       Navigator.pop(dialogContext);
-                      _showCreatePlaylistDialog(context, ref);
+                      // 使用 rootContext 避免 context 失效问题
+                      _showCreatePlaylistDialog(rootContext, ref);
                     },
                     icon: const Icon(Icons.add_rounded, size: 18),
                     label: const Text('新建'),
@@ -5681,8 +5712,8 @@ class _ModernMusicTile extends ConsumerWidget {
                           playlist.id,
                           track.path,
                         );
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
+                        if (rootContext.mounted) {
+                          ScaffoldMessenger.of(rootContext).showSnackBar(
                             SnackBar(
                               content: Text('已添加到「${playlist.name}」'),
                               behavior: SnackBarBehavior.floating,

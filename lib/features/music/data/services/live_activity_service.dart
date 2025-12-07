@@ -20,17 +20,23 @@ class LiveActivityService {
   /// 自定义 Method Channel（用于个人开发者账号，不需要 Push Notification）
   static const _channel = MethodChannel('com.kkape.mynas/music_live_activity');
 
+  /// Event Channel 用于接收来自灵动岛的控制命令
+  static const _eventChannel = EventChannel('com.kkape.mynas/music_live_activity_events');
+
   /// 当前 Live Activity 的 ID
   String? _currentActivityId;
 
   /// 是否已初始化
   bool _initialized = false;
 
-  /// 控制命令回调
+  /// 控制命令回调（来自灵动岛按钮点击）
   void Function(String action)? onControlAction;
 
   /// 当前封面数据（用于更新时携带）
   Uint8List? _currentCoverData;
+
+  /// Event Channel 订阅
+  StreamSubscription<dynamic>? _eventSubscription;
 
   /// 检查是否支持 Live Activities
   bool get isSupported => Platform.isIOS;
@@ -60,6 +66,9 @@ class LiveActivityService {
         logger.w('LiveActivityService: 用户未启用 Live Activities，请在设置中开启');
       }
 
+      // 监听来自灵动岛的控制命令
+      _startListeningToControlCommands();
+
       _initialized = true;
       logger.i('LiveActivityService: 初始化成功，服务已就绪（使用自定义 Method Channel，无需 Push Notification）');
     } on PlatformException catch (e, stackTrace) {
@@ -67,6 +76,23 @@ class LiveActivityService {
     } on Exception catch (e, stackTrace) {
       logger.e('LiveActivityService: 初始化失败', e, stackTrace);
     }
+  }
+
+  /// 开始监听来自灵动岛的控制命令
+  void _startListeningToControlCommands() {
+    _eventSubscription?.cancel();
+    _eventSubscription = _eventChannel.receiveBroadcastStream().listen(
+      (dynamic event) {
+        if (event is String) {
+          logger.i('LiveActivityService: 收到灵动岛控制命令: $event');
+          onControlAction?.call(event);
+        }
+      },
+      onError: (Object error) {
+        logger.e('LiveActivityService: EventChannel 错误', error);
+      },
+    );
+    logger.d('LiveActivityService: 开始监听灵动岛控制命令');
   }
 
   /// 开始音乐播放的 Live Activity
@@ -104,10 +130,22 @@ class LiveActivityService {
         return;
       }
 
-      // 如果已有 Activity，先结束它
+      // 如果已有 Activity，更新它而不是重新创建
+      // 这样可以避免在后台时创建新 Activity 失败导致灵动岛被清除
       if (_currentActivityId != null) {
-        logger.d('LiveActivity: 已有活动存在，先结束它: $_currentActivityId');
-        await endActivity();
+        logger.d('LiveActivity: 已有活动存在，更新它: $_currentActivityId');
+        // 更新封面数据
+        if (coverData != null) {
+          _currentCoverData = coverData;
+        }
+        await updateActivity(
+          music: music,
+          isPlaying: isPlaying,
+          position: position,
+          duration: duration,
+          coverData: coverData,
+        );
+        return;
       }
 
       // 保存封面数据
@@ -275,6 +313,8 @@ class LiveActivityService {
   /// 释放资源
   Future<void> dispose() async {
     await endAllActivities();
+    _eventSubscription?.cancel();
+    _eventSubscription = null;
     _initialized = false;
     _currentCoverData = null;
     logger.i('LiveActivityService: 已释放资源');

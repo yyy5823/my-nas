@@ -375,6 +375,15 @@ class _PathCardState extends ConsumerState<_PathCard> {
     _loadStats();
 
     if (widget.mediaType == MediaType.video) {
+      // 检查初始刮削状态
+      _isScraping = VideoScannerService().isScraping;
+      _isScanning = VideoScannerService().isScanning;
+
+      // 如果正在刮削，异步获取当前统计
+      if (_isScraping) {
+        _loadInitialScrapeStats();
+      }
+
       _videoProgressSub = VideoScannerService().progressStream.listen((progress) {
         if (mounted) {
           setState(() {
@@ -396,6 +405,20 @@ class _PathCardState extends ConsumerState<_PathCard> {
               _scrapeProgress = stats.processed / stats.total;
             }
           });
+        }
+      });
+    }
+  }
+
+  Future<void> _loadInitialScrapeStats() async {
+    final stats = await VideoScannerService().getScrapeStats();
+    if (mounted) {
+      setState(() {
+        _itemCount = stats.total;
+        _scrapedCount = stats.completed;
+        _pendingScrapeCount = stats.pending;
+        if (stats.total > 0) {
+          _scrapeProgress = stats.processed / stats.total;
         }
       });
     }
@@ -963,21 +986,30 @@ class _PathCardState extends ConsumerState<_PathCard> {
   }
 
   Future<void> _startScraping() async {
+    // 检查是否已在刮削中
+    if (VideoScannerService().isScraping) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('刮削任务正在进行中...')),
+      );
+      return;
+    }
+
     setState(() => _isScraping = true);
 
     try {
-      unawaited(VideoScannerService().scrapeMetadata(
+      // 直接等待刮削完成（不使用 unawaited）
+      await VideoScannerService().scrapeMetadata(
         connections: widget.connections,
-      ).then((_) async {
-        await _loadStats();
-        await ref.read(videoListProvider.notifier).reloadFromCache();
-        if (mounted) {
-          setState(() => _isScraping = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('元数据刮削完成')),
-          );
-        }
-      }));
+      );
+
+      await _loadStats();
+      await ref.read(videoListProvider.notifier).reloadFromCache();
+      if (mounted) {
+        setState(() => _isScraping = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('元数据刮削完成')),
+        );
+      }
     } on Exception catch (e) {
       if (mounted) {
         setState(() => _isScraping = false);

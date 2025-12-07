@@ -8,6 +8,7 @@
 import ActivityKit
 import WidgetKit
 import SwiftUI
+import AppIntents
 
 // MARK: - Live Activities App Attributes
 // 必须使用这个名称和结构，以匹配 live_activities Flutter 插件
@@ -18,6 +19,8 @@ struct LiveActivitiesAppAttributes: ActivityAttributes, Identifiable, Codable {
 
     public struct ContentState: Codable, Hashable {
         var appGroupId: String
+        // 添加更新时间戳，用于强制 Widget 刷新
+        var updateTimestamp: TimeInterval
     }
 
     var id: UUID
@@ -57,17 +60,87 @@ private let appGroupId = "group.com.kkape.mynas"
 
 /// 共享的 UserDefaults 实例
 let sharedDefault: UserDefaults = {
-    print("MusicActivityWidget: Initializing sharedDefault with appGroupId: \(appGroupId)")
     if let defaults = UserDefaults(suiteName: appGroupId) {
-        print("MusicActivityWidget: Successfully created UserDefaults for App Group")
         // 同步以确保获取最新数据
         defaults.synchronize()
         return defaults
     }
     // 如果 App Group 不可用，使用标准 UserDefaults（数据不会跨进程共享）
-    print("MusicActivityWidget: Warning: App Group '\(appGroupId)' not available, falling back to standard UserDefaults")
     return UserDefaults.standard
 }()
+
+/// 获取 App Group Container URL
+func getAppGroupContainerURL() -> URL? {
+    return FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupId)
+}
+
+// MARK: - Music Control Helper
+// 通过 Darwin 通知和 UserDefaults 实现跨进程通信
+
+/// 发送音乐控制命令到主 App
+/// 使用 Darwin 通知实现即时通信
+private func sendMusicControlCommand(_ command: String) {
+    // 1. 保存命令到 UserDefaults
+    sharedDefault.set(command, forKey: "musicControlCommand")
+    sharedDefault.set(Date().timeIntervalSince1970, forKey: "musicControlTimestamp")
+    sharedDefault.synchronize()
+
+    // 2. 发送 Darwin 通知（跨进程通知）
+    let notificationName = CFNotificationName("com.kkape.mynas.musicControl" as CFString)
+    CFNotificationCenterPostNotification(
+        CFNotificationCenterGetDarwinNotifyCenter(),
+        notificationName,
+        nil,
+        nil,
+        true
+    )
+}
+
+// MARK: - App Intents for Music Control
+
+@available(iOS 16.0, *)
+struct PlayPauseIntent: AppIntent {
+    static var title: LocalizedStringResource = "播放/暂停"
+    static var description = IntentDescription("切换音乐播放状态")
+
+    func perform() async throws -> some IntentResult {
+        sendMusicControlCommand("toggle")
+        return .result()
+    }
+}
+
+@available(iOS 16.0, *)
+struct PreviousTrackIntent: AppIntent {
+    static var title: LocalizedStringResource = "上一首"
+    static var description = IntentDescription("播放上一首")
+
+    func perform() async throws -> some IntentResult {
+        sendMusicControlCommand("previous")
+        return .result()
+    }
+}
+
+@available(iOS 16.0, *)
+struct NextTrackIntent: AppIntent {
+    static var title: LocalizedStringResource = "下一首"
+    static var description = IntentDescription("播放下一首")
+
+    func perform() async throws -> some IntentResult {
+        sendMusicControlCommand("next")
+        return .result()
+    }
+}
+
+@available(iOS 16.0, *)
+struct FavoriteIntent: AppIntent {
+    static var title: LocalizedStringResource = "收藏"
+    static var description = IntentDescription("收藏当前歌曲")
+
+    func perform() async throws -> some IntentResult {
+        sendMusicControlCommand("favorite")
+        return .result()
+    }
+}
 
 // MARK: - Music Live Activity Widget
 
@@ -102,8 +175,15 @@ struct MusicActivityWidgetLiveActivity: Widget {
                 }
 
                 DynamicIslandExpandedRegion(.trailing) {
-                    // 收藏按钮
-                    Link(destination: URL(string: "mynas://music/favorite")!) {
+                    // 收藏按钮 - 使用 AppIntent 直接执行
+                    if #available(iOS 17.0, *) {
+                        Button(intent: FavoriteIntent()) {
+                            Image(systemName: "heart")
+                                .font(.system(size: 18))
+                                .foregroundColor(.white)
+                        }
+                        .buttonStyle(.plain)
+                    } else {
                         Image(systemName: "heart")
                             .font(.system(size: 18))
                             .foregroundColor(.white)
@@ -133,27 +213,54 @@ struct MusicActivityWidgetLiveActivity: Widget {
                             }
                         }
 
-                        // 播放控制按钮
+                        // 播放控制按钮 - 使用 AppIntent 直接在灵动岛中执行
                         HStack(spacing: 32) {
                             // 上一首
-                            Link(destination: URL(string: "mynas://music/previous")!) {
-                                Image(systemName: "backward.fill")
-                                    .font(.system(size: 20))
-                                    .foregroundColor(.white)
+                            if #available(iOS 17.0, *) {
+                                Button(intent: PreviousTrackIntent()) {
+                                    Image(systemName: "backward.fill")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(.white)
+                                }
+                                .buttonStyle(.plain)
+                            } else {
+                                Link(destination: URL(string: "mynas://music/previous")!) {
+                                    Image(systemName: "backward.fill")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(.white)
+                                }
                             }
 
                             // 播放/暂停
-                            Link(destination: URL(string: "mynas://music/toggle")!) {
-                                Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                                    .font(.system(size: 36))
-                                    .foregroundColor(.white)
+                            if #available(iOS 17.0, *) {
+                                Button(intent: PlayPauseIntent()) {
+                                    Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                                        .font(.system(size: 36))
+                                        .foregroundColor(.white)
+                                }
+                                .buttonStyle(.plain)
+                            } else {
+                                Link(destination: URL(string: "mynas://music/toggle")!) {
+                                    Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                                        .font(.system(size: 36))
+                                        .foregroundColor(.white)
+                                }
                             }
 
                             // 下一首
-                            Link(destination: URL(string: "mynas://music/next")!) {
-                                Image(systemName: "forward.fill")
-                                    .font(.system(size: 20))
-                                    .foregroundColor(.white)
+                            if #available(iOS 17.0, *) {
+                                Button(intent: NextTrackIntent()) {
+                                    Image(systemName: "forward.fill")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(.white)
+                                }
+                                .buttonStyle(.plain)
+                            } else {
+                                Link(destination: URL(string: "mynas://music/next")!) {
+                                    Image(systemName: "forward.fill")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(.white)
+                                }
                             }
                         }
                     }
@@ -168,7 +275,7 @@ struct MusicActivityWidgetLiveActivity: Widget {
                 // Compact 模式显示音乐波形动效
                 let isPlaying = defaults.bool(forKey: context.attributes.prefixedKey("isPlaying"))
                 if isPlaying {
-                    MusicWaveformView()
+                    AnimatedMusicBars()
                         .frame(width: 24, height: 16)
                 } else {
                     Image(systemName: "play.fill")
@@ -179,7 +286,7 @@ struct MusicActivityWidgetLiveActivity: Widget {
                 // 最小模式显示音乐波形动效
                 let isPlaying = defaults.bool(forKey: context.attributes.prefixedKey("isPlaying"))
                 if isPlaying {
-                    MusicWaveformView()
+                    AnimatedMusicBars()
                         .frame(width: 16, height: 12)
                 } else {
                     Image(systemName: "play.fill")
@@ -198,37 +305,36 @@ struct MusicActivityWidgetLiveActivity: Widget {
     }
 }
 
-// MARK: - Music Waveform Animation View (for Dynamic Island minimal/compact modes)
+// MARK: - Animated Music Bars (更动态的音乐波形)
 
-struct MusicWaveformView: View {
+struct AnimatedMusicBars: View {
+    // 使用 TimelineView 实现持续动画
     var body: some View {
-        HStack(spacing: 2) {
-            ForEach(0..<3, id: \.self) { index in
-                WaveformBar(delay: Double(index) * 0.15)
+        TimelineView(.animation(minimumInterval: 0.1)) { timeline in
+            HStack(spacing: 2) {
+                ForEach(0..<3, id: \.self) { index in
+                    MusicBar(index: index, date: timeline.date)
+                }
             }
         }
     }
 }
 
-struct WaveformBar: View {
-    let delay: Double
-
-    @State private var isAnimating = false
+struct MusicBar: View {
+    let index: Int
+    let date: Date
 
     var body: some View {
-        RoundedRectangle(cornerRadius: 1)
+        // 使用正弦函数创建波动效果，每个条使用不同的相位
+        let phase = Double(index) * 0.8
+        let time = date.timeIntervalSinceReferenceDate
+        // 使用不同频率创建更自然的动画
+        let height = 0.4 + 0.6 * abs(sin(time * 3.0 + phase))
+
+        RoundedRectangle(cornerRadius: 1.5)
             .fill(Color.white)
             .frame(width: 3)
-            .scaleEffect(y: isAnimating ? 1.0 : 0.3, anchor: .bottom)
-            .animation(
-                Animation.easeInOut(duration: 0.4)
-                    .repeatForever(autoreverses: true)
-                    .delay(delay),
-                value: isAnimating
-            )
-            .onAppear {
-                isAnimating = true
-            }
+            .scaleEffect(y: height, anchor: .bottom)
     }
 }
 
@@ -266,9 +372,21 @@ struct LockScreenMusicView: View {
 
             Spacer()
 
-            Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                .font(.system(size: 36))
-                .foregroundColor(.white)
+            // 播放/暂停按钮 - 使用 AppIntent 直接执行
+            if #available(iOS 17.0, *) {
+                Button(intent: PlayPauseIntent()) {
+                    Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                        .font(.system(size: 36))
+                        .foregroundColor(.white)
+                }
+                .buttonStyle(.plain)
+            } else {
+                Link(destination: URL(string: "mynas://music/toggle")!) {
+                    Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                        .font(.system(size: 36))
+                        .foregroundColor(.white)
+                }
+            }
         }
         .padding(16)
         .activityBackgroundTint(Color.black.opacity(0.8))
@@ -283,37 +401,16 @@ struct MusicCoverView: View {
 
     var body: some View {
         let coverKey = context.attributes.prefixedKey("coverImage")
-        let imagePath = defaults.string(forKey: coverKey)
+        let filename = defaults.string(forKey: coverKey)
 
-        // 调试日志
-        let _ = {
-            print("MusicCoverView: Looking for cover with key: \(coverKey)")
-            print("MusicCoverView: Activity ID: \(context.attributes.id)")
-            if let path = imagePath {
-                print("MusicCoverView: Found image path: \(path)")
-                let fileExists = FileManager.default.fileExists(atPath: path)
-                print("MusicCoverView: File exists at path: \(fileExists)")
-                if fileExists {
-                    if let image = UIImage(contentsOfFile: path) {
-                        print("MusicCoverView: Successfully loaded image, size: \(image.size)")
-                    } else {
-                        print("MusicCoverView: Failed to create UIImage from file")
-                    }
-                }
-            } else {
-                print("MusicCoverView: No image path found in UserDefaults")
-                // 打印所有相关的 keys
-                let allKeys = defaults.dictionaryRepresentation().keys.filter { $0.contains("coverImage") }
-                print("MusicCoverView: All coverImage keys in defaults: \(allKeys)")
-            }
-        }()
-
-        if let path = imagePath,
-           let uiImage = UIImage(contentsOfFile: path) {
+        // 尝试加载图片 - 现在 UserDefaults 存储的是文件名，不是完整路径
+        if let name = filename, let uiImage = loadImage(filename: name) {
             Image(uiImage: uiImage)
                 .resizable()
                 .aspectRatio(contentMode: .fill)
+                .clipped()
         } else {
+            // 默认占位图
             ZStack {
                 Color.gray.opacity(0.3)
                 Image(systemName: "music.note")
@@ -321,6 +418,23 @@ struct MusicCoverView: View {
                     .foregroundColor(.gray)
             }
         }
+    }
+
+    /// 从 App Group container 加载图片
+    /// - Parameter filename: 文件名（不是完整路径）
+    private func loadImage(filename: String) -> UIImage? {
+        // 从 App Group container 加载
+        guard let containerURL = getAppGroupContainerURL() else {
+            return nil
+        }
+
+        let fileURL = containerURL.appendingPathComponent(filename)
+
+        if FileManager.default.fileExists(atPath: fileURL.path) {
+            return UIImage(contentsOfFile: fileURL.path)
+        }
+
+        return nil
     }
 }
 

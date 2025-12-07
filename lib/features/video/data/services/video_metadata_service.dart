@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/video/data/services/nfo_scraper_service.dart';
 import 'package:my_nas/features/video/data/services/tmdb_service.dart';
@@ -201,6 +203,8 @@ class VideoMetadataService {
   }
 
   /// 获取或刷新元数据
+  ///
+  /// [skipThumbnail] 为 true 时跳过缩略图生成（用于批量刮削时提高速度）
   Future<VideoMetadata> getOrFetch({
     required String sourceId,
     required String filePath,
@@ -208,6 +212,7 @@ class VideoMetadataService {
     NasFileSystem? fileSystem,
     String? videoUrl,
     bool forceRefresh = false,
+    bool skipThumbnail = false,
   }) async {
     if (!_initialized) await init();
 
@@ -241,15 +246,34 @@ class VideoMetadataService {
       await _fetchFromTmdb(metadata);
     }
 
-    // 如果没有封面图，尝试生成缩略图
-    if (metadata.displayPosterUrl == null && videoUrl != null) {
-      await _tryGenerateThumbnail(metadata, videoUrl, fileSystem);
+    // 如果没有封面图，尝试生成缩略图（可跳过以加速刮削）
+    if (!skipThumbnail && metadata.displayPosterUrl == null && videoUrl != null) {
+      // 在后台异步生成缩略图，不阻塞刮削流程
+      unawaited(_tryGenerateThumbnailAndSave(metadata, videoUrl, fileSystem));
     }
 
     // 保存到缓存
     await save(metadata);
 
     return metadata;
+  }
+
+  /// 异步生成缩略图并保存（后台执行，不阻塞）
+  Future<void> _tryGenerateThumbnailAndSave(
+    VideoMetadata metadata,
+    String videoUrl,
+    NasFileSystem? fileSystem,
+  ) async {
+    try {
+      await _tryGenerateThumbnail(metadata, videoUrl, fileSystem);
+      // 如果成功生成了缩略图，更新数据库
+      if (metadata.generatedThumbnailUrl != null) {
+        await save(metadata);
+        logger.d('VideoMetadataService: 后台缩略图生成完成 "${metadata.fileName}"');
+      }
+    } on Exception catch (e) {
+      logger.w('VideoMetadataService: 后台缩略图生成失败 "${metadata.fileName}"', e);
+    }
   }
 
   /// 尝试为视频生成缩略图

@@ -7,6 +7,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:my_nas/core/services/media_proxy_server.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/data/services/live_activity_service.dart';
+import 'package:my_nas/features/music/data/services/music_audio_cache_service.dart';
 import 'package:my_nas/features/music/data/services/music_cover_cache_service.dart';
 import 'package:my_nas/features/music/data/services/music_metadata_service.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
@@ -171,6 +172,9 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   final LiveActivityService _liveActivityService = LiveActivityService();
   Timer? _liveActivityUpdateTimer;
 
+  // 音频缓存服务（用于持久化缓存，避免重复下载）
+  final MusicAudioCacheService _audioCacheService = MusicAudioCacheService();
+
   AudioPlayer get player => _player;
 
   /// 初始化媒体代理服务器
@@ -256,7 +260,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
     await _liveActivityService.init();
 
-    // 设置控制命令回调
+    // 设置控制命令回调（来自灵动岛按钮点击）
     _liveActivityService.onControlAction = (action) {
       logger.i('MusicPlayer: 收到 Live Activity 控制命令: $action');
       switch (action) {
@@ -264,10 +268,21 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
           resume();
         case 'pause':
           pause();
+        case 'toggle':
+          // 切换播放/暂停
+          if (state.isPlaying) {
+            pause();
+          } else {
+            resume();
+          }
         case 'previous':
           playPrevious();
         case 'next':
           playNext();
+        case 'favorite':
+          // 收藏功能需要外部处理，这里只记录日志
+          // 实际收藏功能通过 ref.read(musicFavoritesProvider.notifier) 处理
+          logger.i('MusicPlayer: 收藏命令需要在外部处理');
         default:
           logger.w('MusicPlayer: 未知的控制命令: $action');
       }
@@ -387,36 +402,53 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       AudioSource audioSource;
 
       if (music.sourceId != null) {
-        // NAS 源：使用代理服务器 + LockCachingAudioSource 实现边下边播
+        // NAS 源：优先检查本地缓存，避免重复下载
         logger.d('MusicPlayer: 检测到 NAS 源 (sourceId=${music.sourceId})');
 
-        final connections = _ref.read(activeConnectionsProvider);
-        final connection = connections[music.sourceId];
+        // 检查是否已有完整缓存
+        final cacheFile = await _audioCacheService.getCacheFile(music.sourceId, music.path);
+        final isCached = await _audioCacheService.isCached(music.sourceId, music.path);
 
-        if (connection == null) {
-          throw Exception('源未连接，请先连接到 NAS: ${music.sourceId}');
+        if (isCached) {
+          // 已有缓存，直接播放本地文件
+          logger.i('MusicPlayer: 使用本地缓存播放 ${cacheFile.path}');
+          audioSource = AudioSource.uri(Uri.file(cacheFile.path));
+        } else {
+          // 无缓存，使用流式播放并缓存
+          final connections = _ref.read(activeConnectionsProvider);
+          final connection = connections[music.sourceId];
+
+          if (connection == null) {
+            throw Exception('源未连接，请先连接到 NAS: ${music.sourceId}');
+          }
+
+          // 获取文件大小
+          final fileInfo = await connection.adapter.fileSystem.getFileInfo(music.path);
+          final fileSize = fileInfo.size;
+
+          // 确保缓存配额足够
+          await _audioCacheService.ensureCacheQuota(newFileSize: fileSize);
+
+          // 注册文件到代理服务器
+          final proxyUrl = await _mediaProxyServer.registerFile(
+            sourceId: music.sourceId!,
+            filePath: music.path,
+            fileSize: fileSize,
+          );
+
+          // 保存代理 ID 以便清理
+          _currentProxyId = proxyUrl.split('/').last;
+
+          logger..i('MusicPlayer: 使用流式播放模式 (边下边播并缓存到 ${cacheFile.path})')
+          ..d('MusicPlayer: 代理URL => $proxyUrl');
+
+          // 使用 LockCachingAudioSource 实现边下边播并自动缓存到指定文件
+          // 这样下次播放相同歌曲时可以直接使用缓存
+          audioSource = LockCachingAudioSource(
+            Uri.parse(proxyUrl),
+            cacheFile: cacheFile,
+          );
         }
-
-        // 获取文件大小
-        final fileInfo = await connection.adapter.fileSystem.getFileInfo(music.path);
-        final fileSize = fileInfo.size;
-
-        // 注册文件到代理服务器
-        final proxyUrl = await _mediaProxyServer.registerFile(
-          sourceId: music.sourceId!,
-          filePath: music.path,
-          fileSize: fileSize,
-        );
-
-        // 保存代理 ID 以便清理
-        _currentProxyId = proxyUrl.split('/').last;
-
-        logger..i('MusicPlayer: 使用流式播放模式 (边下边播)')
-        ..d('MusicPlayer: 代理URL => $proxyUrl');
-
-        // 使用 LockCachingAudioSource 实现边下边播并自动缓存
-        // 这是 just_audio 提供的实验性功能，支持渐进式下载
-        audioSource = LockCachingAudioSource(Uri.parse(proxyUrl));
       } else if (uri.scheme == 'file') {
         // 本地文件：直接使用 URI
         logger.d('MusicPlayer: 本地文件');
