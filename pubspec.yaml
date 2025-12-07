@@ -102,6 +102,7 @@ dependencies:
   wakelock_plus: ^1.4.0
   epub_plus: ^5.1.0
   flutter_html: ^3.0.0
+  flutter_epub_viewer: ^1.2.6
 
 dev_dependencies:
   flutter_test:

@@ -14,6 +14,7 @@ class ReadingProgress {
     this.chapterTitle,
     this.lastReadAt,
     this.scrollOffset = 0,
+    this.cfi,
   });
 
   factory ReadingProgress.fromMap(Map<dynamic, dynamic> map) => ReadingProgress(
@@ -27,6 +28,7 @@ class ReadingProgress {
           ? DateTime.tryParse(map['lastReadAt'] as String)
           : null,
       scrollOffset: (map['scrollOffset'] as num?)?.toDouble() ?? 0,
+      cfi: map['cfi'] as String?,
     );
 
   /// 唯一标识（路径+sourceId）
@@ -53,6 +55,9 @@ class ReadingProgress {
   /// 滚动偏移（用于精确恢复位置）
   final double scrollOffset;
 
+  /// EPUB CFI 位置标识（用于精确恢复 EPUB 阅读位置）
+  final String? cfi;
+
   /// 阅读进度百分比
   double get progressPercent {
     if (totalPositions <= 0) return 0;
@@ -74,6 +79,7 @@ class ReadingProgress {
         'chapterTitle': chapterTitle,
         'lastReadAt': lastReadAt?.toIso8601String(),
         'scrollOffset': scrollOffset,
+        'cfi': cfi,
       };
 
   ReadingProgress copyWith({
@@ -85,6 +91,7 @@ class ReadingProgress {
     String? chapterTitle,
     DateTime? lastReadAt,
     double? scrollOffset,
+    String? cfi,
   }) => ReadingProgress(
       itemId: itemId ?? this.itemId,
       itemType: itemType ?? this.itemType,
@@ -94,6 +101,7 @@ class ReadingProgress {
       chapterTitle: chapterTitle ?? this.chapterTitle,
       lastReadAt: lastReadAt ?? this.lastReadAt,
       scrollOffset: scrollOffset ?? this.scrollOffset,
+      cfi: cfi ?? this.cfi,
     );
 }
 

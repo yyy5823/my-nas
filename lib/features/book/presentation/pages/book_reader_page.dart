@@ -8,6 +8,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/network/http_client.dart';
+import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/book/data/services/book_file_cache_service.dart';
 import 'package:my_nas/features/book/data/services/mobi_parser_service.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
 import 'package:my_nas/features/reading/data/services/reader_settings_service.dart';
@@ -19,7 +21,6 @@ import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
 import 'package:my_nas/shared/widgets/loading_widget.dart';
 import 'package:path/path.dart' as path;
-import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
@@ -77,6 +78,7 @@ class TxtReaderNotifier extends StateNotifier<TxtReaderState> {
   final BookItem book;
   final Ref _ref;
   final ReadingProgressService _progressService = ReadingProgressService();
+  final BookFileCacheService _cacheService = BookFileCacheService();
 
   /// 获取文件系统（如果有 sourceId）
   NasFileSystem? _getFileSystem() {
@@ -93,6 +95,9 @@ class TxtReaderNotifier extends StateNotifier<TxtReaderState> {
     state = TxtReaderLoading();
 
     try {
+      // 初始化缓存服务
+      await _cacheService.init();
+
       String content;
       String? htmlContent;
 
@@ -100,9 +105,12 @@ class TxtReaderNotifier extends StateNotifier<TxtReaderState> {
         case BookFormat.txt:
           content = await _loadTxtBook();
         case BookFormat.epub:
-          content = await _loadEpubBook();
+          // EPUB 使用专门的 EpubReaderPage
+          state = TxtReaderError('请使用 EPUB 阅读器');
+          return;
         case BookFormat.pdf:
-          state = TxtReaderError('PDF 阅读器正在开发中\n请使用系统应用打开');
+          // PDF 使用专门的 PdfReaderPage
+          state = TxtReaderError('请使用 PDF 阅读器');
           return;
         case BookFormat.mobi:
         case BookFormat.azw3:
@@ -189,32 +197,51 @@ class TxtReaderNotifier extends StateNotifier<TxtReaderState> {
 
   /// 加载 MOBI/AZW3 电子书
   Future<({String content, String? htmlContent})> _loadMobiBook() async {
-    final uri = Uri.parse(book.url);
     Uint8List bytes;
 
-    // 优先使用流式加载
-    final fileSystem = _getFileSystem();
-    if (fileSystem != null) {
-      state = TxtReaderLoading(message: '流式加载中...');
-      final stream = await fileSystem.getFileStream(book.path);
-      bytes = await _readStreamBytes(stream);
-    } else if (uri.scheme == 'file') {
-      final localFile = File(uri.toFilePath());
-      if (!await localFile.exists()) {
-        throw Exception('文件不存在');
-      }
-      bytes = await localFile.readAsBytes();
-    } else if (uri.scheme == 'http' || uri.scheme == 'https') {
-      final response = await InsecureHttpClient.get(uri);
-      if (response.statusCode != 200) {
-        throw Exception('加载失败: ${response.statusCode}');
-      }
-      bytes = response.bodyBytes;
+    // 检查是否有缓存
+    final cachedFile = await _cacheService.getCachedFile(
+      book.sourceId,
+      book.path,
+    );
+
+    if (cachedFile != null) {
+      state = TxtReaderLoading(message: '使用缓存...');
+      bytes = await cachedFile.readAsBytes();
+      logger.i('MOBI 使用缓存: ${cachedFile.path}');
     } else {
-      throw Exception('不支持的协议: ${uri.scheme}');
+      // 需要下载文件
+      final uri = Uri.parse(book.url);
+
+      final fileSystem = _getFileSystem();
+      if (fileSystem != null) {
+        state = TxtReaderLoading(message: '加载文件中...');
+        final stream = await fileSystem.getFileStream(book.path);
+        bytes = await _readStreamBytes(stream);
+      } else if (uri.scheme == 'file') {
+        final localFile = File(uri.toFilePath());
+        if (!await localFile.exists()) {
+          throw Exception('文件不存在');
+        }
+        bytes = await localFile.readAsBytes();
+      } else if (uri.scheme == 'http' || uri.scheme == 'https') {
+        state = TxtReaderLoading(message: '下载中...');
+        final response = await InsecureHttpClient.get(uri);
+        if (response.statusCode != 200) {
+          throw Exception('加载失败: ${response.statusCode}');
+        }
+        bytes = response.bodyBytes;
+      } else {
+        throw Exception('不支持的协议: ${uri.scheme}');
+      }
+
+      // 保存到缓存
+      state = TxtReaderLoading(message: '缓存文件...');
+      await _cacheService.saveToCache(book.sourceId, book.path, bytes);
     }
 
     // 使用 MOBI 解析器
+    state = TxtReaderLoading(message: '解析中...');
     final parser = MobiParserService();
     final fileName = path.basename(book.path);
     final result = await parser.parse(bytes, fileName);
@@ -224,41 +251,6 @@ class TxtReaderNotifier extends StateNotifier<TxtReaderState> {
     }
 
     return (content: result.content ?? '', htmlContent: result.htmlContent);
-  }
-
-  Future<String> _loadEpubBook() async {
-    final uri = Uri.parse(book.url);
-    final tempDir = await getTemporaryDirectory();
-    final epubFile = File('${tempDir.path}/${book.name}');
-
-    // 优先使用流式加载
-    final fileSystem = _getFileSystem();
-    if (fileSystem != null) {
-      state = TxtReaderLoading(message: '流式加载中...');
-      final stream = await fileSystem.getFileStream(book.path);
-      final bytes = await _readStreamBytes(stream);
-      await epubFile.writeAsBytes(bytes);
-    } else if (uri.scheme == 'file') {
-      final localFile = File(uri.toFilePath());
-      if (!await localFile.exists()) {
-        throw Exception('文件不存在');
-      }
-      await localFile.copy(epubFile.path);
-    } else if (uri.scheme == 'http' || uri.scheme == 'https') {
-      final response = await InsecureHttpClient.get(uri);
-      if (response.statusCode != 200) {
-        throw Exception('下载失败: ${response.statusCode}');
-      }
-      await epubFile.writeAsBytes(response.bodyBytes);
-    } else {
-      throw Exception('不支持的协议: ${uri.scheme}');
-    }
-
-    // TODO: 使用 epubx 或 epub_view 解析 EPUB
-    // 暂时返回提示信息
-    return '《${book.displayName}》\n\nEPUB 完整阅读器正在开发中...\n\n'
-        '文件已下载: ${epubFile.path}\n\n'
-        '提示: 您可以使用系统应用打开此文件进行阅读。';
   }
 
   void setScrollPosition(double position) {

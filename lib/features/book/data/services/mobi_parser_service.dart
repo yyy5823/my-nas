@@ -495,4 +495,163 @@ class MobiParserService {
           '或从 https://calibre-ebook.com 下载';
     }
   }
+
+  /// 提取 MOBI/AZW3 封面图片
+  ///
+  /// 返回封面图片的字节数据，如果没有封面则返回 null
+  Future<Uint8List?> extractCover(Uint8List bytes) async {
+    try {
+      // 验证 Palm Database 格式
+      if (bytes.length < 78) {
+        return null;
+      }
+
+      // 检查类型和创建者 ID
+      final type = String.fromCharCodes(bytes.sublist(60, 64));
+      final creator = String.fromCharCodes(bytes.sublist(64, 68));
+
+      if (type != 'BOOK' || creator != 'MOBI') {
+        return null;
+      }
+
+      // 读取记录数量
+      final numRecords = _readUint16(bytes, 76);
+      if (numRecords == 0) {
+        return null;
+      }
+
+      // 读取记录偏移量
+      final recordOffsets = <int>[];
+      for (var i = 0; i < numRecords; i++) {
+        final offset = _readUint32(bytes, 78 + i * 8);
+        recordOffsets.add(offset);
+      }
+
+      // 读取第一个记录（包含 MOBI 头部）
+      final record0Start = recordOffsets[0];
+      final record0End =
+          recordOffsets.length > 1 ? recordOffsets[1] : bytes.length;
+      final record0 = bytes.sublist(record0Start, record0End);
+
+      // 检查是否有 MOBI 头部
+      if (record0.length < 132) {
+        return null;
+      }
+
+      final mobiId = String.fromCharCodes(record0.sublist(16, 20));
+      if (mobiId != 'MOBI') {
+        return null;
+      }
+
+      // 读取第一个图片记录索引
+      final firstImageIndex = _readUint32(record0, 108);
+      if (firstImageIndex == 0 || firstImageIndex >= numRecords) {
+        return null;
+      }
+
+      // 检查 EXTH 头部获取封面偏移量
+      final exthFlags = _readUint32(record0, 128);
+      int? coverOffset;
+
+      if ((exthFlags & 0x40) != 0) {
+        // 有 EXTH 头部
+        final mobiHeaderLength = _readUint32(record0, 20);
+        final exthStart = 16 + mobiHeaderLength;
+        if (record0.length > exthStart + 12) {
+          coverOffset = _parseExthCoverOffset(record0, exthStart);
+        }
+      }
+
+      // 计算封面记录索引
+      int coverRecordIndex;
+      if (coverOffset != null) {
+        coverRecordIndex = firstImageIndex + coverOffset;
+      } else {
+        // 没有 EXTH 封面偏移量，使用第一张图片
+        coverRecordIndex = firstImageIndex;
+      }
+
+      if (coverRecordIndex >= numRecords) {
+        return null;
+      }
+
+      // 读取封面记录
+      final coverStart = recordOffsets[coverRecordIndex];
+      final coverEnd = coverRecordIndex + 1 < recordOffsets.length
+          ? recordOffsets[coverRecordIndex + 1]
+          : bytes.length;
+      final coverData = bytes.sublist(coverStart, coverEnd);
+
+      // 验证是否是有效的图片数据
+      if (_isValidImageData(coverData)) {
+        return Uint8List.fromList(coverData);
+      }
+
+      return null;
+    } on Exception catch (e) {
+      logger.w('MOBI 封面提取失败', e);
+      return null;
+    }
+  }
+
+  /// 解析 EXTH 头部中的封面偏移量
+  int? _parseExthCoverOffset(List<int> record, int exthStart) {
+    try {
+      final exthId =
+          String.fromCharCodes(record.sublist(exthStart, exthStart + 4));
+      if (exthId != 'EXTH') return null;
+
+      final recordCount = _readUint32(record, exthStart + 8);
+
+      var offset = exthStart + 12;
+      for (var i = 0; i < recordCount; i++) {
+        if (offset + 8 > record.length) break;
+
+        final recordType = _readUint32(record, offset);
+        final recordLength = _readUint32(record, offset + 4);
+
+        if (recordType == 201) {
+          // 封面偏移量
+          if (offset + 8 + 4 <= record.length) {
+            return _readUint32(record, offset + 8);
+          }
+        }
+
+        offset += recordLength;
+      }
+    } on Exception catch (_) {
+      // 忽略解析错误
+    }
+    return null;
+  }
+
+  /// 检查是否是有效的图片数据
+  bool _isValidImageData(List<int> data) {
+    if (data.length < 8) return false;
+
+    // 检查 JPEG 魔数
+    if (data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF) {
+      return true;
+    }
+
+    // 检查 PNG 魔数
+    if (data[0] == 0x89 &&
+        data[1] == 0x50 &&
+        data[2] == 0x4E &&
+        data[3] == 0x47) {
+      return true;
+    }
+
+    // 检查 GIF 魔数
+    if (data[0] == 0x47 && data[1] == 0x49 && data[2] == 0x46) {
+      return true;
+    }
+
+    // 检查 BMP 魔数
+    if (data[0] == 0x42 && data[1] == 0x4D) {
+      return true;
+    }
+
+    return false;
+  }
 }

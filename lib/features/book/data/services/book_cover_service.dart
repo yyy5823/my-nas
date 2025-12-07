@@ -8,6 +8,7 @@ import 'package:epub_plus/epub_plus.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:image/image.dart' as img;
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/book/data/services/mobi_parser_service.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:path/path.dart' as path;
@@ -83,9 +84,10 @@ class BookCoverService {
           coverBytes = await _extractEpubCover(bookPath, fileSystem);
         case BookFormat.pdf:
           coverBytes = await _extractPdfCover(bookPath, fileSystem);
-        case BookFormat.txt:
         case BookFormat.mobi:
         case BookFormat.azw3:
+          coverBytes = await _extractMobiCover(bookPath, fileSystem);
+        case BookFormat.txt:
         case BookFormat.unknown:
           return null;
       }
@@ -165,6 +167,38 @@ class BookCoverService {
       return null;
     } on Exception catch (e) {
       logger.w('提取 EPUB 封面失败: $bookPath', e);
+      return null;
+    }
+  }
+
+  /// 从 MOBI/AZW3 文件提取封面
+  Future<Uint8List?> _extractMobiCover(
+    String bookPath,
+    NasFileSystem fileSystem,
+  ) async {
+    try {
+      final stream = await fileSystem.getFileStream(bookPath);
+      final bytes = <int>[];
+      await for (final chunk in stream) {
+        bytes.addAll(chunk);
+        if (bytes.length > 50 * 1024 * 1024) {
+          logger.w('MOBI 文件过大，跳过封面提取: $bookPath');
+          return null;
+        }
+      }
+
+      // 使用 MobiParserService 提取封面
+      final parser = MobiParserService();
+      final coverBytes = await parser.extractCover(Uint8List.fromList(bytes));
+
+      if (coverBytes != null && _isValidImageData(coverBytes)) {
+        return coverBytes;
+      }
+
+      logger.d('MOBI 没有封面: $bookPath');
+      return null;
+    } on Exception catch (e) {
+      logger.w('提取 MOBI 封面失败: $bookPath', e);
       return null;
     }
   }

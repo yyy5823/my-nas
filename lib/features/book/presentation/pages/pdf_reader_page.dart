@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -6,14 +7,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/network/http_client.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/book/data/services/book_file_cache_service.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
 import 'package:my_nas/features/reading/data/services/reading_progress_service.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/loading_widget.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:pdfrx/pdfrx.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 /// PDF 阅读器状态
 final pdfReaderProvider =
@@ -71,6 +73,7 @@ class PdfReaderNotifier extends StateNotifier<PdfReaderState> {
   final BookItem book;
   final Ref _ref;
   final ReadingProgressService _progressService = ReadingProgressService();
+  final BookFileCacheService _cacheService = BookFileCacheService();
 
   /// 获取文件系统（如果有 sourceId）
   NasFileSystem? _getFileSystem() {
@@ -103,36 +106,63 @@ class PdfReaderNotifier extends StateNotifier<PdfReaderState> {
     try {
       state = PdfReaderLoading();
 
-      final uri = Uri.parse(book.url);
-      final tempDir = await getTemporaryDirectory();
-      final pdfFile = File('${tempDir.path}/${book.name}');
+      // 初始化缓存服务
+      await _cacheService.init();
 
-      // 优先使用流式加载（支持 SMB/WebDAV 等协议）
-      final fileSystem = _getFileSystem();
-      if (fileSystem != null) {
-        state = PdfReaderLoading(message: '流式加载中...');
-        final stream = await fileSystem.getFileStream(book.path);
-        final bytes = await _readStreamBytes(stream);
-        await pdfFile.writeAsBytes(bytes);
-      } else if (uri.scheme == 'file') {
-        state = PdfReaderLoading(message: '读取本地文件...');
-        final localFile = File(uri.toFilePath());
-        if (!await localFile.exists()) {
-          state = PdfReaderError('文件不存在');
-          return;
-        }
-        await localFile.copy(pdfFile.path);
-      } else if (uri.scheme == 'http' || uri.scheme == 'https') {
-        state = PdfReaderLoading(message: '下载中...');
-        final response = await InsecureHttpClient.get(uri);
-        if (response.statusCode != 200) {
-          state = PdfReaderError('下载失败: ${response.statusCode}');
-          return;
-        }
-        await pdfFile.writeAsBytes(response.bodyBytes);
+      // 检查是否有缓存
+      final cachedFile = await _cacheService.getCachedFile(
+        book.sourceId,
+        book.path,
+      );
+
+      File pdfFile;
+      if (cachedFile != null) {
+        state = PdfReaderLoading(message: '使用缓存...');
+        pdfFile = cachedFile;
+        logger.i('PDF 使用缓存: ${cachedFile.path}');
       } else {
-        state = PdfReaderError('不支持的协议: ${uri.scheme}');
-        return;
+        // 需要下载文件
+        final uri = Uri.parse(book.url);
+        Uint8List bytes;
+
+        final fileSystem = _getFileSystem();
+        if (fileSystem != null) {
+          state = PdfReaderLoading(message: '加载文件中...');
+          final stream = await fileSystem.getFileStream(book.path);
+          bytes = await _readStreamBytes(stream);
+        } else if (uri.scheme == 'file') {
+          state = PdfReaderLoading(message: '读取本地文件...');
+          final localFile = File(uri.toFilePath());
+          if (!await localFile.exists()) {
+            state = PdfReaderError('文件不存在');
+            return;
+          }
+          bytes = await localFile.readAsBytes();
+        } else if (uri.scheme == 'http' || uri.scheme == 'https') {
+          state = PdfReaderLoading(message: '下载中...');
+          final response = await InsecureHttpClient.get(uri);
+          if (response.statusCode != 200) {
+            state = PdfReaderError('下载失败: ${response.statusCode}');
+            return;
+          }
+          bytes = response.bodyBytes;
+        } else {
+          state = PdfReaderError('不支持的协议: ${uri.scheme}');
+          return;
+        }
+
+        // 保存到缓存
+        state = PdfReaderLoading(message: '缓存文件...');
+        final savedFile = await _cacheService.saveToCache(
+          book.sourceId,
+          book.path,
+          bytes,
+        );
+        if (savedFile == null) {
+          state = PdfReaderError('缓存文件失败');
+          return;
+        }
+        pdfFile = savedFile;
       }
 
       state = PdfReaderLoading(message: '解析中...');
@@ -215,11 +245,17 @@ class _PdfReaderPageState extends ConsumerState<PdfReaderPage> {
   void initState() {
     super.initState();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    _initWakelock();
+  }
+
+  Future<void> _initWakelock() async {
+    await WakelockPlus.enable();
   }
 
   @override
   void dispose() {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    WakelockPlus.disable();
     super.dispose();
   }
 
@@ -279,11 +315,27 @@ class _PdfReaderPageState extends ConsumerState<PdfReaderPage> {
                 blurRadius: 8,
                 offset: const Offset(2, 2),
               ),
+              // 性能优化参数
+              maxImageBytesCachedOnMemory: 150 * 1024 * 1024, // 150MB 缓存
+              horizontalCacheExtent: 2.0, // 预加载左右各2页
+              verticalCacheExtent: 2.0, // 预加载上下各2页
+              // 限制渲染分辨率以提高性能
+              getPageRenderingScale: (context, page, controller, estimatedScale) {
+                // 限制最大渲染尺寸为 4000 像素
+                final width = page.width * estimatedScale;
+                final height = page.height * estimatedScale;
+                if (width > 4000 || height > 4000) {
+                  return min(4000 / page.width, 4000 / page.height);
+                }
+                return estimatedScale;
+              },
               onPageChanged: (pageNumber) {
                 if (pageNumber != null) {
                   ref.read(pdfReaderProvider(widget.book).notifier).setPage(pageNumber);
                 }
               },
+              // 初始页码
+              calculateInitialPageNumber: (_, controller) => state.currentPage,
             ),
           ),
         ),

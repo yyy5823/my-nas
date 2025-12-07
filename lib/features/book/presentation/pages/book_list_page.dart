@@ -1439,8 +1439,11 @@ class _BookGridItemState extends ConsumerState<_BookGridItem> {
   Future<void> _loadCover() async {
     final format = BookItem.formatFromExtension(widget.book.file.name);
 
-    // 只有 EPUB 和 PDF 支持封面提取
-    if (format != BookFormat.epub && format != BookFormat.pdf) {
+    // 支持封面提取的格式：EPUB、PDF、MOBI、AZW3
+    if (format != BookFormat.epub &&
+        format != BookFormat.pdf &&
+        format != BookFormat.mobi &&
+        format != BookFormat.azw3) {
       return;
     }
 
