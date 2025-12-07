@@ -26,6 +26,8 @@ class MusicHomeContent extends ConsumerWidget {
     this.yearCount = 0,
     this.folderCount = 0,
     this.playlistCount = 0,
+    this.favoritesCount = 0,
+    this.recentCount = 0,
     super.key,
   });
 
@@ -39,6 +41,8 @@ class MusicHomeContent extends ConsumerWidget {
   final int yearCount;
   final int folderCount;
   final int playlistCount;
+  final int favoritesCount; // 收藏总数（直接从 provider 获取）
+  final int recentCount; // 最近播放总数（直接从 provider 获取）
 
   /// 点击播放曲目的回调
   final void Function(MusicFileWithSource track, List<MusicFileWithSource> allTracks) onTrackTap;
@@ -81,8 +85,8 @@ class MusicHomeContent extends ConsumerWidget {
           const SizedBox(height: 8),
           QuickAccessGrid(
             isDark: isDark,
-            favoritesCount: favoriteTracks.length,
-            recentCount: recentTracks.length,
+            favoritesCount: favoritesCount > 0 ? favoritesCount : favoriteTracks.length,
+            recentCount: recentCount > 0 ? recentCount : recentTracks.length,
             totalCount: totalCount > 0 ? totalCount : tracks.length,
             playlistCount: playlistCount,
             onFavoritesTap: () => onCategoryTap(MusicCategory.favorites),
@@ -213,7 +217,7 @@ class MusicHomeContent extends ConsumerWidget {
                 _buildSidebarItem(
                   icon: Icons.favorite_rounded,
                   label: '我喜欢',
-                  count: favoriteTracks.length,
+                  count: favoritesCount > 0 ? favoritesCount : favoriteTracks.length,
                   color: const Color(0xFFE91E63),
                   isDark: isDark,
                   onTap: () => onCategoryTap(MusicCategory.favorites),
@@ -221,7 +225,7 @@ class MusicHomeContent extends ConsumerWidget {
                 _buildSidebarItem(
                   icon: Icons.history_rounded,
                   label: '最近播放',
-                  count: recentTracks.length,
+                  count: recentCount > 0 ? recentCount : recentTracks.length,
                   color: const Color(0xFF2196F3),
                   isDark: isDark,
                   onTap: () => onCategoryTap(MusicCategory.recent),
@@ -229,7 +233,7 @@ class MusicHomeContent extends ConsumerWidget {
                 _buildSidebarItem(
                   icon: Icons.queue_music_rounded,
                   label: '全部歌曲',
-                  count: tracks.length,
+                  count: totalCount > 0 ? totalCount : tracks.length,
                   color: AppColors.primary,
                   isDark: isDark,
                   onTap: () => onCategoryTap(MusicCategory.all),
@@ -384,8 +388,8 @@ class MusicHomeContent extends ConsumerWidget {
                 QuickAccessGrid(
                   isDark: isDark,
                   isDesktop: true,
-                  favoritesCount: favoriteTracks.length,
-                  recentCount: recentTracks.length,
+                  favoritesCount: favoritesCount > 0 ? favoritesCount : favoriteTracks.length,
+                  recentCount: recentCount > 0 ? recentCount : recentTracks.length,
                   totalCount: totalCount > 0 ? totalCount : tracks.length,
                   playlistCount: playlistCount,
                   onFavoritesTap: () => onCategoryTap(MusicCategory.favorites),
@@ -527,20 +531,6 @@ class _PlaylistsSection extends ConsumerWidget {
             children: [
               Row(
                 children: [
-                  Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF9C27B0).withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(
-                      Icons.playlist_play_rounded,
-                      color: Color(0xFF9C27B0),
-                      size: 18,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
                   Text(
                     '歌单',
                     style: TextStyle(

@@ -52,17 +52,38 @@ class BrowseCategoryGrid extends StatelessWidget {
     ).toList();
 
     final categories = isDesktop ? desktopCategories : mobileCategories;
-    final crossAxisCount = isDesktop ? 5 : 3;
 
+    // 移动端使用横向滚动列表
+    if (!isDesktop) {
+      return SizedBox(
+        height: 100,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          itemCount: categories.length,
+          separatorBuilder: (_, _) => const SizedBox(width: 12),
+          itemBuilder: (context, index) {
+            final category = categories[index];
+            return _CategoryCard(
+              category: category,
+              count: counts[category] ?? 0,
+              isDark: isDark,
+              onTap: () => onCategoryTap(category),
+            );
+          },
+        ),
+      );
+    }
+
+    // 桌面端保持网格布局
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      padding: EdgeInsets.symmetric(horizontal: isDesktop ? 0 : 16),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: crossAxisCount,
-        mainAxisSpacing: isDesktop ? 16 : 12,
-        crossAxisSpacing: isDesktop ? 16 : 12,
-        childAspectRatio: isDesktop ? 1.2 : 1.0,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 5,
+        mainAxisSpacing: 16,
+        crossAxisSpacing: 16,
+        childAspectRatio: 1.2,
       ),
       itemCount: categories.length,
       itemBuilder: (context, index) {
@@ -71,7 +92,7 @@ class BrowseCategoryGrid extends StatelessWidget {
           category: category,
           count: counts[category] ?? 0,
           isDark: isDark,
-          isDesktop: isDesktop,
+          isDesktop: true,
           onTap: () => onCategoryTap(category),
         );
       },
@@ -95,7 +116,99 @@ class _CategoryCard extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => Material(
+  Widget build(BuildContext context) {
+    // 移动端：现代化的正方形卡片
+    if (!isDesktop) {
+      return Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Container(
+            width: 100,
+            height: 100,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  category.color,
+                  category.color.withValues(alpha: 0.7),
+                ],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: category.color.withValues(alpha: 0.3),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Stack(
+              children: [
+                // 装饰性大图标
+                Positioned(
+                  right: -15,
+                  top: -15,
+                  child: Icon(
+                    category.icon,
+                    size: 70,
+                    color: Colors.white.withValues(alpha: 0.15),
+                  ),
+                ),
+                // 内容
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 主图标
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.25),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(
+                          category.icon,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                      const Spacer(),
+                      // 标题
+                      Text(
+                        category.label,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                      // 数量
+                      if (count > 0)
+                        Text(
+                          '$count',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white.withValues(alpha: 0.8),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    // 桌面端：保持原有样式但优化
+    return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
@@ -123,19 +236,19 @@ class _CategoryCard extends StatelessWidget {
                 bottom: -10,
                 child: Icon(
                   category.icon,
-                  size: isDesktop ? 60 : 50,
+                  size: 60,
                   color: category.color.withValues(alpha: 0.15),
                 ),
               ),
               // 内容
               Padding(
-                padding: EdgeInsets.all(isDesktop ? 16 : 12),
+                padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Container(
-                      width: isDesktop ? 40 : 36,
-                      height: isDesktop ? 40 : 36,
+                      width: 40,
+                      height: 40,
                       decoration: BoxDecoration(
                         color: category.color.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(10),
@@ -143,14 +256,14 @@ class _CategoryCard extends StatelessWidget {
                       child: Icon(
                         category.icon,
                         color: category.color,
-                        size: isDesktop ? 22 : 20,
+                        size: 22,
                       ),
                     ),
                     const Spacer(),
                     Text(
                       category.label,
                       style: TextStyle(
-                        fontSize: isDesktop ? 14 : 13,
+                        fontSize: 14,
                         fontWeight: FontWeight.w600,
                         color: isDark ? Colors.white : Colors.black87,
                       ),
@@ -160,7 +273,7 @@ class _CategoryCard extends StatelessWidget {
                       Text(
                         '$count',
                         style: TextStyle(
-                          fontSize: isDesktop ? 12 : 11,
+                          fontSize: 12,
                           color: isDark ? Colors.white60 : Colors.black45,
                         ),
                       ),
@@ -173,6 +286,7 @@ class _CategoryCard extends StatelessWidget {
         ),
       ),
     );
+  }
 }
 
 /// 快捷访问卡片网格（我喜欢、最近播放、歌单、全部）
@@ -238,16 +352,14 @@ class QuickAccessGrid extends StatelessWidget {
       ),
     ];
 
-    // 移动端使用横向滚动列表，更紧凑
+    // 移动端使用2列网格布局，类似Spotify风格
     if (!isDesktop) {
-      return SizedBox(
-        height: 56,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          itemCount: cards.length,
-          separatorBuilder: (_, _) => const SizedBox(width: 10),
-          itemBuilder: (_, index) => cards[index],
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: cards,
         ),
       );
     }
@@ -286,55 +398,100 @@ class _QuickCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 移动端：紧凑的胶囊样式
+    // 移动端：Spotify风格的紧凑卡片
     if (!isDesktop) {
+      // 计算卡片宽度：(屏幕宽度 - 左右padding - 中间间距) / 2
+      final screenWidth = MediaQuery.of(context).size.width;
+      final cardWidth = (screenWidth - 32 - 10) / 2;
+
       return Material(
         color: Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+        clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(28),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            width: cardWidth,
+            height: 56,
             decoration: BoxDecoration(
-              color: color.withValues(alpha: isDark ? 0.2 : 0.12),
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(
-                color: color.withValues(alpha: isDark ? 0.3 : 0.2),
-              ),
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.08)
+                  : Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              boxShadow: isDark
+                  ? null
+                  : [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.04),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
             ),
             child: Row(
-              mainAxisSize: MainAxisSize.min,
               children: [
+                // 左侧彩色图标区域
                 Container(
-                  width: 36,
-                  height: 36,
+                  width: 56,
+                  height: 56,
                   decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.2),
-                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        color,
+                        color.withValues(alpha: 0.8),
+                      ],
+                    ),
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(8),
+                      bottomLeft: Radius.circular(8),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: color.withValues(alpha: 0.3),
+                        blurRadius: 8,
+                        offset: const Offset(2, 0),
+                      ),
+                    ],
                   ),
-                  child: Icon(icon, color: color, size: 18),
+                  child: Icon(
+                    icon,
+                    color: Colors.white,
+                    size: 24,
+                  ),
                 ),
-                const SizedBox(width: 10),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      label,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: isDark ? Colors.white : Colors.black87,
-                      ),
+                // 右侧文字区域
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          label,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isDark ? Colors.white54 : Colors.black45,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
                     ),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: isDark ? Colors.white60 : Colors.black45,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ],
             ),

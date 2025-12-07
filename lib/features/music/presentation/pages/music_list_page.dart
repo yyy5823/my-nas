@@ -1385,6 +1385,8 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
       yearCount: state.yearCount,
       folderCount: state.folderCount,
       playlistCount: playlistCount,
+      favoritesCount: favoritesState.favorites.length, // 直接使用收藏列表长度
+      recentCount: historyState.history.length, // 直接使用历史列表长度
       onTrackTap: (track, allTracks) => _playTrack(context, ref, track, allTracks),
       onCategoryTap: (category) => _navigateToCategory(context, category, state),
       onShuffleTap: () => _shufflePlay(context, ref, state.tracks),
