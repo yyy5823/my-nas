@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:logger/logger.dart' as pkg_logger;
+import 'package:my_nas/core/services/error_report/error_report.dart';
 import 'package:path_provider/path_provider.dart';
 
 final logger = AppLogger();
@@ -143,10 +144,25 @@ Platform: ${Platform.operatingSystem}
   void e(String message, [Object? error, StackTrace? stackTrace]) {
     _logger.e(message, error: error, stackTrace: stackTrace);
     _writeToFile('ERROR', message, error, stackTrace);
+    _reportError(message, error, stackTrace, ErrorLevel.error);
   }
 
   void f(String message, [Object? error, StackTrace? stackTrace]) {
     _logger.f(message, error: error, stackTrace: stackTrace);
     _writeToFile('FATAL', message, error, stackTrace);
+    _reportError(message, error, stackTrace, ErrorLevel.fatal);
+  }
+
+  /// 上报错误到远程服务
+  void _reportError(String message, Object? error, StackTrace? stackTrace, ErrorLevel level) {
+    final errorType = error?.runtimeType.toString() ?? 'LoggedError';
+    final errorMessage = error != null ? '$message: $error' : message;
+
+    ErrorReportService.instance.reportError(
+      errorType: errorType,
+      errorMessage: errorMessage,
+      stackTrace: stackTrace?.toString(),
+      errorLevel: level,
+    );
   }
 }

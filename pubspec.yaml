@@ -103,6 +103,8 @@ dependencies:
   epub_plus: ^5.1.0
   flutter_html: ^3.0.0
   flutter_epub_viewer: ^1.2.6
+  dart_amqp: ^0.3.1
+  device_info_plus: ^12.3.0
 
 dev_dependencies:
   flutter_test:
