@@ -58,16 +58,27 @@ extension LiveActivitiesAppAttributes {
 /// App Group ID - 必须与 Flutter 端和 entitlements 配置一致
 private let appGroupId = "group.com.kkape.mynas"
 
-/// 共享的 UserDefaults 实例
-let sharedDefault: UserDefaults = {
+/// 共享的 UserDefaults 实例（内部使用，外部应调用 getSharedDefaults() 获取同步后的实例）
+private let _sharedDefault: UserDefaults = {
     if let defaults = UserDefaults(suiteName: appGroupId) {
-        // 同步以确保获取最新数据
-        defaults.synchronize()
         return defaults
     }
     // 如果 App Group 不可用，使用标准 UserDefaults（数据不会跨进程共享）
     return UserDefaults.standard
 }()
+
+/// 获取同步后的 UserDefaults 实例
+/// 每次调用都会 synchronize() 确保获取最新数据
+/// 这对于 Widget Extension 从主 App 读取更新后的数据很重要
+func getSharedDefaults() -> UserDefaults {
+    _sharedDefault.synchronize()
+    return _sharedDefault
+}
+
+/// 保持向后兼容，但不推荐直接使用
+var sharedDefault: UserDefaults {
+    return getSharedDefaults()
+}
 
 /// 获取 App Group Container URL
 func getAppGroupContainerURL() -> URL? {
@@ -150,7 +161,10 @@ struct MusicActivityWidgetLiveActivity: Widget {
             // 锁屏/通知中心的 Live Activity 视图
             LockScreenMusicView(context: context)
         } dynamicIsland: { context in
-            // 使用共享的 UserDefaults
+            // 使用 updateTimestamp 触发视图刷新
+            let _ = context.state.updateTimestamp
+
+            // 使用共享的 UserDefaults（每次访问都会同步）
             let defaults = sharedDefault
 
             return DynamicIsland {
@@ -344,7 +358,11 @@ struct LockScreenMusicView: View {
     let context: ActivityViewContext<LiveActivitiesAppAttributes>
 
     var body: some View {
-        // 使用共享的 UserDefaults
+        // 使用 updateTimestamp 触发视图刷新
+        // 当 ContentState 更新时，SwiftUI 会重新渲染这个视图
+        let _ = context.state.updateTimestamp
+
+        // 使用共享的 UserDefaults（每次访问都会同步）
         let defaults = sharedDefault
         let title = defaults.string(forKey: context.attributes.prefixedKey("title")) ?? "Unknown"
         let artist = defaults.string(forKey: context.attributes.prefixedKey("artist")) ?? "Unknown Artist"

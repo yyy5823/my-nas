@@ -279,10 +279,16 @@ class MusicLiveActivityManager {
             // 处理图片数据
             if key == "coverImage" {
                 print("MusicLiveActivityManager: Processing coverImage, type: \(type(of: value))")
+                // 使用时间戳作为文件名的一部分，确保每次更新都使用新文件，避免缓存问题
+                let timestamp = Int(Date().timeIntervalSince1970 * 1000)
+                let filename = "cover_\(prefix.hashValue)_\(timestamp).jpg"
+
                 // Flutter 发送的 Uint8List 会被转换为 FlutterStandardTypedData
                 if let typedData = value as? FlutterStandardTypedData {
                     print("MusicLiveActivityManager: coverImage is FlutterStandardTypedData, size: \(typedData.data.count)")
-                    if let imagePath = saveImageToFile(data: typedData.data, filename: "cover_\(prefix.hashValue).jpg") {
+                    // 删除旧的封面文件
+                    deleteOldCoverFiles(prefix: prefix)
+                    if let imagePath = saveImageToFile(data: typedData.data, filename: filename) {
                         print("MusicLiveActivityManager: coverImage saved to: \(imagePath), key: \(prefixedKey)")
                         defaults.set(imagePath, forKey: prefixedKey)
                     } else {
@@ -291,7 +297,9 @@ class MusicLiveActivityManager {
                 } else if let data = value as? Data {
                     // 直接作为 Data 类型
                     print("MusicLiveActivityManager: coverImage is Data, size: \(data.count)")
-                    if let imagePath = saveImageToFile(data: data, filename: "cover_\(prefix.hashValue).jpg") {
+                    // 删除旧的封面文件
+                    deleteOldCoverFiles(prefix: prefix)
+                    if let imagePath = saveImageToFile(data: data, filename: filename) {
                         print("MusicLiveActivityManager: coverImage saved to: \(imagePath)")
                         defaults.set(imagePath, forKey: prefixedKey)
                     } else {
@@ -317,6 +325,29 @@ class MusicLiveActivityManager {
             defaults.removeObject(forKey: "\(prefix)_\(key)")
         }
         defaults.synchronize()
+    }
+
+    /// 删除旧的封面文件（匹配 cover_<hashValue>_*.jpg 模式）
+    private func deleteOldCoverFiles(prefix: UUID) {
+        guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupId) else {
+            return
+        }
+
+        let fileManager = FileManager.default
+        let pattern = "cover_\(prefix.hashValue)_"
+
+        do {
+            let files = try fileManager.contentsOfDirectory(at: containerURL, includingPropertiesForKeys: nil)
+            for fileURL in files {
+                let filename = fileURL.lastPathComponent
+                if filename.hasPrefix(pattern) && filename.hasSuffix(".jpg") {
+                    try? fileManager.removeItem(at: fileURL)
+                    print("MusicLiveActivityManager: Deleted old cover file: \(filename)")
+                }
+            }
+        } catch {
+            print("MusicLiveActivityManager: Failed to list directory for cleanup: \(error)")
+        }
     }
 
     /// 保存图片到 App Group 目录

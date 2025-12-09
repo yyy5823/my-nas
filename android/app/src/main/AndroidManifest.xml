@@ -7,6 +7,16 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
 
+    <!-- 前台服务权限 (后台刮削/扫描任务) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
+    <!-- 请求忽略电池优化 -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
+    <!-- 保持唤醒锁 -->
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <!-- 开机自启动 (恢复未完成任务) -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+
     <application
         android:label="MyNAS"
         android:name="${applicationName}"
@@ -38,6 +48,12 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- 前台服务 (用于后台刮削/扫描任务) -->
+        <service
+            android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
+            android:foregroundServiceType="dataSync"
+            android:exported="false" />
 
         <!-- FileProvider for APK installation (Android 7.0+) -->
         <provider

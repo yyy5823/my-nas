@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
@@ -17,6 +18,13 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 Future<void> main() async {
   final widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
+
+  // 初始化前台服务通信端口（必须在 runApp 之前调用）
+  // 这允许后台任务与主 UI 进行通信
+  if (Platform.isAndroid || Platform.isIOS) {
+    FlutterForegroundTask.initCommunicationPort();
+  }
+
   // 保持 native splash 直到手动移除
   FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
 

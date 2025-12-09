@@ -1,5 +1,8 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:my_nas/core/services/background_task_service.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
@@ -93,13 +96,17 @@ enum VideoScanPhase {
 class VideoScannerService {
   factory VideoScannerService() => _instance ??= VideoScannerService._();
 
-  VideoScannerService._();
+  VideoScannerService._() {
+    // 监听来自后台任务的命令
+    _setupBackgroundTaskListener();
+  }
 
   static VideoScannerService? _instance;
 
   final VideoLibraryCacheService _cacheService = VideoLibraryCacheService();
   final VideoMetadataService _metadataService = VideoMetadataService();
   final VideoDatabaseService _dbService = VideoDatabaseService();
+  final BackgroundTaskService _backgroundTaskService = BackgroundTaskService();
 
   bool _isScanning = false;
 
@@ -114,6 +121,25 @@ class VideoScannerService {
   // 用于恢复刮削的 connections 缓存（预留用于源断开重连场景）
   // ignore: unused_field
   Map<String, SourceConnection>? _cachedConnections;
+
+  /// 设置后台任务监听器
+  void _setupBackgroundTaskListener() {
+    // 仅在移动平台设置监听
+    if (!Platform.isAndroid && !Platform.isIOS) return;
+
+    FlutterForegroundTask.addTaskDataCallback(_onBackgroundTaskData);
+  }
+
+  /// 处理来自后台任务的数据
+  void _onBackgroundTaskData(Object data) {
+    if (data is Map<String, dynamic>) {
+      final command = data['command'] as String?;
+      if (command == 'stop') {
+        logger.i('VideoScannerService: 收到停止命令');
+        stopScraping();
+      }
+    }
+  }
 
   /// 扫描进度流
   final _progressController = StreamController<VideoScanProgress>.broadcast();
@@ -178,6 +204,13 @@ class VideoScannerService {
     _isScanning = true;
     final allVideos = <_ScannedVideo>[];
     final sourceIds = <String>{};
+
+    // 启动后台服务（移动平台）
+    await _backgroundTaskService.init();
+    await _backgroundTaskService.startService(
+      taskType: BackgroundTaskType.videoScan,
+      initialMessage: '正在扫描媒体库...',
+    );
 
     try {
       // 初始化服务
@@ -248,13 +281,35 @@ class VideoScannerService {
         ),
       );
 
+      // 更新后台服务为完成状态
+      await _backgroundTaskService.updateProgress(
+        BackgroundTaskProgress(
+          taskType: BackgroundTaskType.videoScan,
+          state: BackgroundTaskState.completed,
+          current: allVideos.length,
+          total: allVideos.length,
+          message: '扫描完成，共 ${allVideos.length} 个视频',
+        ),
+      );
+
       return allVideos.length;
     } catch (e, st) {
       logger.e('VideoScannerService: 扫描失败', e, st);
       _emitProgress(const VideoScanProgress(phase: VideoScanPhase.error));
+
+      // 更新后台服务为错误状态
+      await _backgroundTaskService.updateProgress(
+        BackgroundTaskProgress(
+          taskType: BackgroundTaskType.videoScan,
+          state: BackgroundTaskState.error,
+          message: '扫描失败: $e',
+        ),
+      );
       rethrow;
     } finally {
       _isScanning = false;
+      // 扫描完成后停止后台服务（刮削会重新启动）
+      await _backgroundTaskService.stopService();
     }
   }
 
@@ -348,6 +403,7 @@ class VideoScannerService {
   /// 后台刮削元数据
   ///
   /// 可以随时调用，会自动处理待刮削的视频
+  /// 在移动平台会自动启动前台服务以支持后台运行
   Future<void> scrapeMetadata({
     required Map<String, SourceConnection> connections,
     int batchSize = 20,
@@ -359,6 +415,13 @@ class VideoScannerService {
 
     _isScraping = true;
     _shouldStopScraping = false;
+
+    // 启动后台服务（移动平台）
+    await _backgroundTaskService.init();
+    await _backgroundTaskService.startService(
+      taskType: BackgroundTaskType.videoScrape,
+      initialMessage: '正在准备刮削...',
+    );
 
     try {
       await _metadataService.init();
@@ -387,12 +450,22 @@ class VideoScannerService {
 
           // 获取当前进度（每个视频开始前）
           final currentStats = await _dbService.getScrapeStats();
-          _emitProgress(
-            VideoScanProgress(
-              phase: VideoScanPhase.scraping,
-              scannedCount: currentStats.processed,
-              totalCount: currentStats.total,
-              currentFile: video.fileName,
+          final progress = VideoScanProgress(
+            phase: VideoScanPhase.scraping,
+            scannedCount: currentStats.processed,
+            totalCount: currentStats.total,
+            currentFile: video.fileName,
+          );
+          _emitProgress(progress);
+
+          // 更新后台服务进度
+          await _backgroundTaskService.updateProgress(
+            BackgroundTaskProgress(
+              taskType: BackgroundTaskType.videoScrape,
+              state: BackgroundTaskState.running,
+              current: currentStats.processed,
+              total: currentStats.total,
+              message: '正在刮削: ${video.fileName}',
             ),
           );
 
@@ -413,11 +486,31 @@ class VideoScannerService {
           scannedCount: (await _dbService.getScrapeStats()).total,
         ),
       );
+
+      // 更新后台服务为完成状态
+      await _backgroundTaskService.updateProgress(
+        BackgroundTaskProgress(
+          taskType: BackgroundTaskType.videoScrape,
+          state: BackgroundTaskState.completed,
+          message: '刮削完成',
+        ),
+      );
     } on Exception catch (e, st) {
       logger.e('VideoScannerService: 刮削失败', e, st);
       _emitProgress(const VideoScanProgress(phase: VideoScanPhase.error));
+
+      // 更新后台服务为错误状态
+      await _backgroundTaskService.updateProgress(
+        BackgroundTaskProgress(
+          taskType: BackgroundTaskType.videoScrape,
+          state: BackgroundTaskState.error,
+          message: '刮削失败: $e',
+        ),
+      );
     } finally {
       _isScraping = false;
+      // 停止后台服务
+      await _backgroundTaskService.stopService();
     }
   }
 
