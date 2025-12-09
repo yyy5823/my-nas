@@ -8,6 +8,7 @@ import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/photo/data/services/photo_database_service.dart';
 import 'package:my_nas/features/photo/data/services/photo_library_cache_service.dart';
 import 'package:my_nas/features/photo/domain/entities/photo_item.dart';
+import 'package:my_nas/features/photo/presentation/pages/photo_duplicates_page.dart';
 import 'package:my_nas/features/photo/presentation/pages/photo_viewer_page.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
@@ -19,6 +20,33 @@ import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/animated_list_item.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
 import 'package:my_nas/shared/widgets/stream_image.dart';
+
+/// 时间线项目类型 - 用于单一 SliverList 渲染
+sealed class TimelineItem {
+  const TimelineItem();
+}
+
+/// 时间线头部项
+class TimelineHeader extends TimelineItem {
+  const TimelineHeader({
+    required this.title,
+    required this.count,
+  });
+
+  final String title;
+  final int count;
+}
+
+/// 时间线照片行项
+class TimelinePhotoRow extends TimelineItem {
+  const TimelinePhotoRow({
+    required this.photos,
+    required this.globalIndices,
+  });
+
+  final List<PhotoFileWithSource> photos;
+  final List<int> globalIndices;
+}
 
 /// 照片文件及其来源
 class PhotoFileWithSource {
@@ -207,14 +235,45 @@ class PhotoListLoaded extends PhotoListState {
     return _computeGroupedPhotos();
   }
 
-  /// 计算分组数据（内部方法）
+  /// 根据照片数量自动选择分组粒度
+  /// - < 1000 张：按天分组
+  /// - 1000-5000 张：按月分组
+  /// - > 5000 张：按年分组
+  PhotoGroupGranularity get autoGranularity {
+    final count = displayPhotos.length;
+    if (count < 1000) return PhotoGroupGranularity.day;
+    if (count < 5000) return PhotoGroupGranularity.month;
+    return PhotoGroupGranularity.year;
+  }
+
+  /// 根据粒度获取日期键
+  static DateTime _getDateKey(PhotoEntity photo, PhotoGroupGranularity granularity) {
+    final date = photo.modifiedTime;
+    if (date == null || date.year <= 1970) return DateTime(1970);
+    return switch (granularity) {
+      PhotoGroupGranularity.day => DateTime(date.year, date.month, date.day),
+      PhotoGroupGranularity.month => DateTime(date.year, date.month),
+      PhotoGroupGranularity.year => DateTime(date.year),
+    };
+  }
+
+  /// 计算分组数据（内部方法）- 使用自适应粒度
   List<PhotoGroup<PhotoEntity>> _computeGroupedPhotos() {
+    final granularity = autoGranularity;
+    return _computeGroupedPhotosWithGranularity(displayPhotos, granularity);
+  }
+
+  /// 按指定粒度计算分组
+  static List<PhotoGroup<PhotoEntity>> _computeGroupedPhotosWithGranularity(
+    List<PhotoEntity> photos,
+    PhotoGroupGranularity granularity,
+  ) {
     final result = <PhotoGroup<PhotoEntity>>[];
     final photosByDate = <DateTime, List<PhotoEntity>>{};
 
     // 直接使用 PhotoEntity，避免创建新对象
-    for (final photo in displayPhotos) {
-      final dateKey = photo.dateKey;
+    for (final photo in photos) {
+      final dateKey = _getDateKey(photo, granularity);
       photosByDate.putIfAbsent(dateKey, () => []);
       photosByDate[dateKey]!.add(photo);
     }
@@ -228,7 +287,11 @@ class PhotoListLoaded extends PhotoListState {
       });
 
     for (final date in sortedDates) {
-      result.add(PhotoGroup<PhotoEntity>(date: date, photos: photosByDate[date]!));
+      result.add(PhotoGroup<PhotoEntity>(
+        date: date,
+        photos: photosByDate[date]!,
+        granularity: granularity,
+      ));
     }
 
     return result;
@@ -236,27 +299,55 @@ class PhotoListLoaded extends PhotoListState {
 
   /// 静态方法：预计算分组数据（用于在状态创建时调用）
   static List<PhotoGroup<PhotoEntity>> computeGroupedPhotos(List<PhotoEntity> photos) {
-    final result = <PhotoGroup<PhotoEntity>>[];
-    final photosByDate = <DateTime, List<PhotoEntity>>{};
+    // 根据数量自动选择粒度
+    final PhotoGroupGranularity granularity;
+    if (photos.length < 1000) {
+      granularity = PhotoGroupGranularity.day;
+    } else if (photos.length < 5000) {
+      granularity = PhotoGroupGranularity.month;
+    } else {
+      granularity = PhotoGroupGranularity.year;
+    }
+    return _computeGroupedPhotosWithGranularity(photos, granularity);
+  }
 
-    for (final photo in photos) {
-      final dateKey = photo.dateKey;
-      photosByDate.putIfAbsent(dateKey, () => []);
-      photosByDate[dateKey]!.add(photo);
+  /// 计算扁平化的时间线项目列表（用于单一 SliverList 渲染）
+  /// 将分组数据转换为：[Header, PhotoRow, PhotoRow, ..., Header, PhotoRow, ...]
+  List<TimelineItem> computeTimelineItems(int crossAxisCount) {
+    final groups = groupedPhotos;
+    final allFilteredPhotos = filteredPhotos;
+    final items = <TimelineItem>[];
+
+    for (final group in groups) {
+      // 添加头部
+      items.add(TimelineHeader(
+        title: group.dateTitle,
+        count: group.photos.length,
+      ));
+
+      // 将组内照片按行分组
+      final groupPhotos = <PhotoFileWithSource>[];
+      final groupIndices = <int>[];
+
+      for (final photo in group.photos) {
+        final globalIndex = getGlobalIndex(photo.filePath);
+        if (globalIndex >= 0 && globalIndex < allFilteredPhotos.length) {
+          groupPhotos.add(allFilteredPhotos[globalIndex]);
+          groupIndices.add(globalIndex);
+        }
+      }
+
+      // 按 crossAxisCount 分行
+      for (var i = 0; i < groupPhotos.length; i += crossAxisCount) {
+        final endIndex = (i + crossAxisCount).clamp(0, groupPhotos.length);
+        items.add(TimelinePhotoRow(
+          photos: groupPhotos.sublist(i, endIndex),
+          globalIndices: groupIndices.sublist(i, endIndex),
+        ));
+      }
     }
 
-    final sortedDates = photosByDate.keys.toList()
-      ..sort((a, b) {
-        if (a.year <= 1970) return 1;
-        if (b.year <= 1970) return -1;
-        return b.compareTo(a);
-      });
-
-    for (final date in sortedDates) {
-      result.add(PhotoGroup<PhotoEntity>(date: date, photos: photosByDate[date]!));
-    }
-
-    return result;
+    return items;
   }
 
   /// 获取路径到索引的 Map（惰性构建）
@@ -946,6 +1037,19 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
+              leading: const Icon(Icons.content_copy_rounded),
+              title: const Text('重复照片'),
+              subtitle: const Text('查找并清理重复的照片'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (context) => const PhotoDuplicatesPage(),
+                  ),
+                );
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.settings_rounded),
               title: const Text('媒体库设置'),
               onTap: () {
@@ -1364,7 +1468,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
           if (state.viewMode == PhotoViewMode.grid)
             _buildGridView(context, ref, state, isDark)
           else
-            ..._buildTimelineView(context, ref, state, isDark),
+            _buildTimelineView(context, ref, state, isDark),
         ],
       ),
     );
@@ -1403,96 +1507,130 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
     );
   }
 
-  List<Widget> _buildTimelineView(
+  /// 构建单一 Sliver 的时间线视图
+  /// 使用扁平化的项目列表，将分组头部和照片行合并为单一 SliverList
+  /// 大幅减少 Sliver 数量，提升性能
+  Widget _buildTimelineView(
     BuildContext context,
     WidgetRef ref,
     PhotoListLoaded state,
     bool isDark,
   ) {
-    final groups = state.groupedPhotos;
     final crossAxisCount = context.isDesktop ? 6 : 3;
-    final slivers = <Widget>[];
+    final allPhotos = state.filteredPhotos;
+    final timelineItems = state.computeTimelineItems(crossAxisCount);
+    final screenWidth = MediaQuery.of(context).size.width;
+    final itemSize = (screenWidth - 8 - (crossAxisCount - 1) * 4) / crossAxisCount;
 
-    for (final group in groups) {
-      slivers..add(
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(
-                    Icons.calendar_today_rounded,
-                    color: AppColors.primary,
-                    size: 16,
-                  ),
+    return SliverPadding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      sliver: SliverList(
+        delegate: SliverChildBuilderDelegate(
+          (context, index) {
+            final item = timelineItems[index];
+            return switch (item) {
+              TimelineHeader(:final title, :final count) => _buildTimelineHeader(
+                  context,
+                  title,
+                  count,
+                  isDark,
                 ),
-                const SizedBox(width: 12),
-                Text(
-                  group.dateTitle,
-                  style: context.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: isDark ? AppColors.darkOnSurface : null,
-                  ),
+              TimelinePhotoRow(:final photos, :final globalIndices) => _buildTimelinePhotoRow(
+                  context,
+                  photos,
+                  globalIndices,
+                  allPhotos,
+                  itemSize,
+                  crossAxisCount,
+                  isDark,
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  '${group.photos.length} 张',
-                  style: context.textTheme.bodySmall?.copyWith(
-                    color: isDark
-                        ? AppColors.darkOnSurfaceVariant
-                        : context.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
+            };
+          },
+          childCount: timelineItems.length,
         ),
-      )
-      ..add(
-        SliverPadding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          sliver: SliverGrid(
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: crossAxisCount,
-              mainAxisSpacing: 4,
-              crossAxisSpacing: 4,
-            ),
-            delegate: SliverChildBuilderDelegate(
-              (context, index) {
-                final photo = group.photos[index];
-                final allPhotos = state.filteredPhotos;
-                // 使用 O(1) 查找替代 O(n) indexWhere
-                // PhotoEntity 使用 filePath 而非 path
-                final globalIndex = state.getGlobalIndex(photo.filePath);
-                if (globalIndex < 0) return const SizedBox.shrink();
+      ),
+    );
+  }
 
-                return AnimatedGridItem(
-                  index: index,
-                  delay: const Duration(milliseconds: 20),
-                  child: _PhotoGridItem(
-                    photo: allPhotos[globalIndex],
-                    index: globalIndex,
-                    allPhotos: allPhotos,
-                    isDark: isDark,
-                  ),
-                );
-              },
-              childCount: group.photos.length,
+  /// 构建时间线头部
+  Widget _buildTimelineHeader(
+    BuildContext context,
+    String title,
+    int count,
+    bool isDark,
+  ) =>
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 16, 12, 8),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                Icons.calendar_today_rounded,
+                color: AppColors.primary,
+                size: 16,
+              ),
             ),
-          ),
+            const SizedBox(width: 12),
+            Text(
+              title,
+              style: context.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: isDark ? AppColors.darkOnSurface : null,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '$count 张',
+              style: context.textTheme.bodySmall?.copyWith(
+                color: isDark
+                    ? AppColors.darkOnSurfaceVariant
+                    : context.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
         ),
       );
-    }
 
-    slivers.add(const SliverToBoxAdapter(child: SizedBox(height: 16)));
-    return slivers;
-  }
+  /// 构建时间线照片行
+  Widget _buildTimelinePhotoRow(
+    BuildContext context,
+    List<PhotoFileWithSource> photos,
+    List<int> globalIndices,
+    List<PhotoFileWithSource> allPhotos,
+    double itemSize,
+    int crossAxisCount,
+    bool isDark,
+  ) =>
+      Padding(
+        padding: const EdgeInsets.only(bottom: 4),
+        child: Row(
+          children: [
+            for (var i = 0; i < photos.length; i++) ...[
+              if (i > 0) const SizedBox(width: 4),
+              SizedBox(
+                width: itemSize,
+                height: itemSize,
+                child: _PhotoGridItem(
+                  photo: photos[i],
+                  index: globalIndices[i],
+                  allPhotos: allPhotos,
+                  isDark: isDark,
+                ),
+              ),
+            ],
+            // 如果行未满，用空白填充以保持对齐
+            if (photos.length < crossAxisCount) ...[
+              const SizedBox(width: 4),
+              Expanded(child: SizedBox(height: itemSize)),
+            ],
+          ],
+        ),
+      );
 }
 
 class _PhotoGridItem extends ConsumerWidget {

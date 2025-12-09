@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -87,8 +88,8 @@ Future<void> _initApp() async {
 
   logger.i('Initializing MyNAS...');
 
-  // 初始化错误报告服务
-  await ErrorReportService.instance.initialize();
+  // 初始化错误报告服务（非阻塞，在后台连接）
+  unawaited(ErrorReportService.instance.initialize());
 
   // Initialize sqflite_common_ffi for desktop platforms (Windows, macOS, Linux)
   if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {

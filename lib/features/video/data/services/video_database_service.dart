@@ -617,6 +617,11 @@ class VideoDatabaseService {
         'SELECT COUNT(*) FROM $_tableMetadata WHERE $_colCategory = 1${pathFilter.andWhere}',
         pathFilter.args));
 
+    // 其他视频（未识别为电影或剧集，category = 2 即 MediaCategory.unknown）
+    final othersCount = Sqflite.firstIntValue(await _db!.rawQuery(
+        'SELECT COUNT(*) FROM $_tableMetadata WHERE $_colCategory = 2${pathFilter.andWhere}',
+        pathFilter.args));
+
     final withMetadataCount = Sqflite.firstIntValue(await _db!.rawQuery(
         'SELECT COUNT(*) FROM $_tableMetadata WHERE $_colTmdbId IS NOT NULL${pathFilter.andWhere}',
         pathFilter.args));
@@ -625,6 +630,7 @@ class VideoDatabaseService {
       'total': totalCount ?? 0,
       'movies': movieCount ?? 0,
       'tvShows': tvShowCount ?? 0,
+      'others': othersCount ?? 0,
       'withMetadata': withMetadataCount ?? 0,
     };
   }

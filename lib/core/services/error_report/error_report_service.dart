@@ -17,8 +17,8 @@ class ErrorReportService {
   static ErrorReportService get instance => _instance;
 
   // RabbitMQ 配置
-  static const String _host = 'queue.welape.com';
-  static const int _port = 25672;
+  static const String _host = '192.168.0.120';
+  static const int _port = 5672;
   static const String _exchangeName = 'app.error.log.exchange';
   static const String _routingKey = 'app.error.log.flutter';
 
@@ -48,10 +48,34 @@ class ErrorReportService {
   static const int _maxReconnectAttempts = 5;
   static const Duration _reconnectDelay = Duration(seconds: 5);
 
-  /// 初始化服务
+  /// 初始化服务（非阻塞）
   Future<void> initialize() async {
     await DeviceInfoHelper.instance.initialize();
-    await _connect();
+    // 异步连接，不阻塞应用启动
+    unawaited(_connectWithTimeout());
+  }
+
+  // 连接超时时间
+  static const Duration _connectTimeout = Duration(seconds: 10);
+
+  /// 带超时的连接方法
+  Future<void> _connectWithTimeout() async {
+    try {
+      await _connect().timeout(
+        _connectTimeout,
+        onTimeout: () {
+          if (kDebugMode) {
+            print('[ErrorReportService] Connection timeout');
+          }
+          _isConnecting = false;
+          _scheduleReconnect();
+        },
+      );
+    } on Exception catch (e) {
+      if (kDebugMode) {
+        print('[ErrorReportService] Connect with timeout failed: $e');
+      }
+    }
   }
 
   /// 连接到 RabbitMQ
@@ -78,8 +102,8 @@ class ErrorReportService {
         print('[ErrorReportService] Connected to RabbitMQ');
       }
 
-      // 发送缓存的错误
-      await _flushPendingQueue();
+      // 发送缓存的错误（异步，不阻塞）
+      unawaited(_flushPendingQueue());
     } on Exception catch (e) {
       _isConnecting = false;
       _isConnected = false;
@@ -154,11 +178,12 @@ class ErrorReportService {
     await _sendReport(report);
   }
 
-  /// 发送错误报告
+  /// 发送错误报告（非阻塞）
   Future<void> _sendReport(ErrorReportModel report) async {
     if (!_isConnected) {
       _addToPendingQueue(report);
-      await _connect();
+      // 异步尝试连接，不阻塞
+      unawaited(_connectWithTimeout());
       return;
     }
 

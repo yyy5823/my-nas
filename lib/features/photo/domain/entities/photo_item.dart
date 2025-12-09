@@ -113,18 +113,23 @@ class PhotoItem {
       );
 }
 
+/// 时间线分组粒度
+enum PhotoGroupGranularity { day, month, year }
+
 /// 照片分组（按日期）
 /// 支持泛型以兼容 PhotoItem 和 PhotoEntity
 class PhotoGroup<T> {
   const PhotoGroup({
     required this.date,
     required this.photos,
+    this.granularity = PhotoGroupGranularity.day,
   });
 
   final DateTime date;
   final List<T> photos;
+  final PhotoGroupGranularity granularity;
 
-  /// 格式化日期标题
+  /// 格式化日期标题（根据粒度显示不同格式）
   String get dateTitle {
     // 1970 年表示未知日期
     if (date.year <= 1970) {
@@ -132,6 +137,21 @@ class PhotoGroup<T> {
     }
 
     final now = DateTime.now();
+
+    // 按年分组
+    if (granularity == PhotoGroupGranularity.year) {
+      if (date.year == now.year) return '今年';
+      return '${date.year}年';
+    }
+
+    // 按月分组
+    if (granularity == PhotoGroupGranularity.month) {
+      if (date.year == now.year && date.month == now.month) return '本月';
+      if (date.year == now.year) return '${date.month}月';
+      return '${date.year}年${date.month}月';
+    }
+
+    // 按天分组（原有逻辑）
     final today = DateTime(now.year, now.month, now.day);
     final groupDate = DateTime(date.year, date.month, date.day);
     final diff = today.difference(groupDate).inDays;

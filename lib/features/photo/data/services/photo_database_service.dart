@@ -13,6 +13,8 @@ class PhotoEntity {
     this.size = 0,
     this.modifiedTime,
     this.lastUpdated,
+    this.fileHash,
+    this.perceptualHash,
   });
 
   final String sourceId;
@@ -22,6 +24,10 @@ class PhotoEntity {
   final int size;
   final DateTime? modifiedTime;
   final DateTime? lastUpdated;
+  /// 文件内容哈希（MD5），用于精确匹配完全相同的文件
+  final String? fileHash;
+  /// 感知哈希（pHash），用于检测视觉相似的图片
+  final String? perceptualHash;
 
   String get uniqueKey => '${sourceId}_$filePath';
 
@@ -63,6 +69,8 @@ class PhotoEntity {
     int? size,
     DateTime? modifiedTime,
     DateTime? lastUpdated,
+    String? fileHash,
+    String? perceptualHash,
   }) =>
       PhotoEntity(
         sourceId: sourceId ?? this.sourceId,
@@ -72,6 +80,8 @@ class PhotoEntity {
         size: size ?? this.size,
         modifiedTime: modifiedTime ?? this.modifiedTime,
         lastUpdated: lastUpdated ?? this.lastUpdated,
+        fileHash: fileHash ?? this.fileHash,
+        perceptualHash: perceptualHash ?? this.perceptualHash,
       );
 }
 
@@ -93,6 +103,8 @@ class PhotoDatabaseService {
   static const String _colSize = 'size';
   static const String _colModifiedTime = 'modified_time';
   static const String _colLastUpdated = 'last_updated';
+  static const String _colFileHash = 'file_hash';
+  static const String _colPerceptualHash = 'perceptual_hash';
 
   /// 初始化数据库
   Future<void> init() async {
@@ -104,7 +116,7 @@ class PhotoDatabaseService {
 
       _db = await openDatabase(
         dbPath,
-        version: 1,
+        version: 2, // 升级版本以支持哈希字段
         onCreate: (db, version) async {
           await db.execute('''
             CREATE TABLE $_tablePhotos (
@@ -115,6 +127,8 @@ class PhotoDatabaseService {
               $_colSize INTEGER DEFAULT 0,
               $_colModifiedTime INTEGER,
               $_colLastUpdated INTEGER,
+              $_colFileHash TEXT,
+              $_colPerceptualHash TEXT,
               PRIMARY KEY ($_colSourceId, $_colFilePath)
             )
           ''');
@@ -126,6 +140,23 @@ class PhotoDatabaseService {
               'CREATE INDEX idx_photos_filename ON $_tablePhotos ($_colFileName)');
           await db.execute(
               'CREATE INDEX idx_photos_size ON $_tablePhotos ($_colSize DESC)');
+          // 哈希索引用于去重查询
+          await db.execute(
+              'CREATE INDEX idx_photos_file_hash ON $_tablePhotos ($_colFileHash)');
+          await db.execute(
+              'CREATE INDEX idx_photos_perceptual_hash ON $_tablePhotos ($_colPerceptualHash)');
+        },
+        onUpgrade: (db, oldVersion, newVersion) async {
+          // 从版本1升级到版本2：添加哈希字段
+          if (oldVersion < 2) {
+            await db.execute('ALTER TABLE $_tablePhotos ADD COLUMN $_colFileHash TEXT');
+            await db.execute('ALTER TABLE $_tablePhotos ADD COLUMN $_colPerceptualHash TEXT');
+            await db.execute(
+                'CREATE INDEX idx_photos_file_hash ON $_tablePhotos ($_colFileHash)');
+            await db.execute(
+                'CREATE INDEX idx_photos_perceptual_hash ON $_tablePhotos ($_colPerceptualHash)');
+            logger.i('PhotoDatabaseService: 数据库升级到版本2，添加哈希字段');
+          }
         },
       );
 
@@ -447,6 +478,8 @@ class PhotoDatabaseService {
         _colModifiedTime: p.modifiedTime?.millisecondsSinceEpoch,
         _colLastUpdated:
             p.lastUpdated?.millisecondsSinceEpoch ?? DateTime.now().millisecondsSinceEpoch,
+        _colFileHash: p.fileHash,
+        _colPerceptualHash: p.perceptualHash,
       };
 
   /// 从数据库行转换
@@ -462,5 +495,167 @@ class PhotoDatabaseService {
         lastUpdated: row[_colLastUpdated] != null
             ? DateTime.fromMillisecondsSinceEpoch(row[_colLastUpdated] as int)
             : null,
+        fileHash: row[_colFileHash] as String?,
+        perceptualHash: row[_colPerceptualHash] as String?,
       );
+
+  /// 更新照片的哈希值
+  Future<void> updateHash(
+    String sourceId,
+    String filePath, {
+    String? fileHash,
+    String? perceptualHash,
+  }) async {
+    if (!_initialized) await init();
+
+    final updates = <String, dynamic>{};
+    if (fileHash != null) updates[_colFileHash] = fileHash;
+    if (perceptualHash != null) updates[_colPerceptualHash] = perceptualHash;
+
+    if (updates.isEmpty) return;
+
+    await _db!.update(
+      _tablePhotos,
+      updates,
+      where: '$_colSourceId = ? AND $_colFilePath = ?',
+      whereArgs: [sourceId, filePath],
+    );
+  }
+
+  /// 批量更新哈希值
+  Future<void> updateHashBatch(List<PhotoEntity> photos) async {
+    if (!_initialized) await init();
+    if (photos.isEmpty) return;
+
+    final batch = _db!.batch();
+    for (final photo in photos) {
+      if (photo.fileHash != null || photo.perceptualHash != null) {
+        final updates = <String, dynamic>{};
+        if (photo.fileHash != null) updates[_colFileHash] = photo.fileHash;
+        if (photo.perceptualHash != null) updates[_colPerceptualHash] = photo.perceptualHash;
+
+        batch.update(
+          _tablePhotos,
+          updates,
+          where: '$_colSourceId = ? AND $_colFilePath = ?',
+          whereArgs: [photo.sourceId, photo.filePath],
+        );
+      }
+    }
+    await batch.commit(noResult: true);
+  }
+
+  /// 获取没有哈希值的照片（用于增量计算）
+  Future<List<PhotoEntity>> getPhotosWithoutHash({int limit = 100}) async {
+    if (!_initialized) await init();
+
+    final results = await _db!.query(
+      _tablePhotos,
+      where: '$_colFileHash IS NULL OR $_colPerceptualHash IS NULL',
+      limit: limit,
+    );
+
+    return results.map(_fromRow).toList();
+  }
+
+  /// 获取重复的照片组（基于文件哈希）
+  /// 返回 Map<哈希值, 照片列表>
+  Future<Map<String, List<PhotoEntity>>> getDuplicatesByFileHash() async {
+    if (!_initialized) await init();
+
+    // 先找出有重复的哈希值
+    final duplicateHashes = await _db!.rawQuery('''
+      SELECT $_colFileHash, COUNT(*) as cnt
+      FROM $_tablePhotos
+      WHERE $_colFileHash IS NOT NULL AND $_colFileHash != ''
+      GROUP BY $_colFileHash
+      HAVING cnt > 1
+      ORDER BY cnt DESC
+    ''');
+
+    if (duplicateHashes.isEmpty) return {};
+
+    final result = <String, List<PhotoEntity>>{};
+    for (final row in duplicateHashes) {
+      final hash = row[_colFileHash] as String;
+      final photos = await _db!.query(
+        _tablePhotos,
+        where: '$_colFileHash = ?',
+        whereArgs: [hash],
+        orderBy: '$_colModifiedTime DESC',
+      );
+      result[hash] = photos.map(_fromRow).toList();
+    }
+
+    return result;
+  }
+
+  /// 获取重复的照片组（基于感知哈希）
+  /// 返回 Map<哈希值, 照片列表>
+  Future<Map<String, List<PhotoEntity>>> getDuplicatesByPerceptualHash() async {
+    if (!_initialized) await init();
+
+    // 先找出有重复的哈希值
+    final duplicateHashes = await _db!.rawQuery('''
+      SELECT $_colPerceptualHash, COUNT(*) as cnt
+      FROM $_tablePhotos
+      WHERE $_colPerceptualHash IS NOT NULL AND $_colPerceptualHash != ''
+      GROUP BY $_colPerceptualHash
+      HAVING cnt > 1
+      ORDER BY cnt DESC
+    ''');
+
+    if (duplicateHashes.isEmpty) return {};
+
+    final result = <String, List<PhotoEntity>>{};
+    for (final row in duplicateHashes) {
+      final hash = row[_colPerceptualHash] as String;
+      final photos = await _db!.query(
+        _tablePhotos,
+        where: '$_colPerceptualHash = ?',
+        whereArgs: [hash],
+        orderBy: '$_colModifiedTime DESC',
+      );
+      result[hash] = photos.map(_fromRow).toList();
+    }
+
+    return result;
+  }
+
+  /// 获取重复照片统计
+  Future<({int fileHashDuplicates, int perceptualHashDuplicates, int totalDuplicatePhotos})>
+      getDuplicateStats() async {
+    if (!_initialized) await init();
+
+    final fileHashCount = Sqflite.firstIntValue(await _db!.rawQuery('''
+      SELECT COUNT(*) FROM (
+        SELECT $_colFileHash FROM $_tablePhotos
+        WHERE $_colFileHash IS NOT NULL AND $_colFileHash != ''
+        GROUP BY $_colFileHash HAVING COUNT(*) > 1
+      )
+    ''')) ?? 0;
+
+    final perceptualHashCount = Sqflite.firstIntValue(await _db!.rawQuery('''
+      SELECT COUNT(*) FROM (
+        SELECT $_colPerceptualHash FROM $_tablePhotos
+        WHERE $_colPerceptualHash IS NOT NULL AND $_colPerceptualHash != ''
+        GROUP BY $_colPerceptualHash HAVING COUNT(*) > 1
+      )
+    ''')) ?? 0;
+
+    final totalDuplicatePhotos = Sqflite.firstIntValue(await _db!.rawQuery('''
+      SELECT COUNT(*) FROM $_tablePhotos
+      WHERE $_colFileHash IN (
+        SELECT $_colFileHash FROM $_tablePhotos
+        WHERE $_colFileHash IS NOT NULL AND $_colFileHash != ''
+        GROUP BY $_colFileHash HAVING COUNT(*) > 1
+      )
+    ''')) ?? 0;
+
+    return (
+      fileHashDuplicates: fileHashCount,
+      perceptualHashDuplicates: perceptualHashCount,
+      totalDuplicatePhotos: totalDuplicatePhotos,
+    );
+  }
 }
