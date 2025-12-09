@@ -30,6 +30,7 @@ import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/animated_list_item.dart';
+import 'package:my_nas/shared/widgets/context_menu_region.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
 import 'package:my_nas/shared/widgets/media_setup_widget.dart';
 
@@ -1045,6 +1046,41 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
     await _db.clearAll();
     await _coverCache.clearAll();
     await loadMusic(forceRefresh: true);
+  }
+
+  /// 从媒体库移除音乐（只删除数据库记录，不删除源文件）
+  Future<bool> removeFromLibrary(String sourceId, String filePath, String displayTitle) async {
+    try {
+      await _db.delete(sourceId, filePath);
+      await _loadCategorizedData();
+      logger.i('MusicListNotifier: 已从媒体库移除 $displayTitle');
+      return true;
+    } on Exception catch (e) {
+      logger.e('MusicListNotifier: 移除音乐失败', e);
+      return false;
+    }
+  }
+
+  /// 删除音乐源文件（同时删除数据库记录和源文件）
+  Future<bool> deleteFromSource(String sourceId, String filePath, String displayTitle) async {
+    try {
+      final connections = _ref.read(activeConnectionsProvider);
+      final connection = connections[sourceId];
+      if (connection == null || connection.status != SourceStatus.connected) {
+        logger.w('MusicListNotifier: 无法删除，源未连接');
+        return false;
+      }
+
+      await connection.adapter.fileSystem.delete(filePath);
+      await _db.delete(sourceId, filePath);
+      await _loadCategorizedData();
+
+      logger.i('MusicListNotifier: 已删除源文件 $displayTitle');
+      return true;
+    } on Exception catch (e) {
+      logger.e('MusicListNotifier: 删除音乐源文件失败', e);
+      return false;
+    }
   }
 }
 
@@ -3209,6 +3245,43 @@ class _MusicListTile extends ConsumerWidget {
                         ],
                       ),
                     ),
+                    const PopupMenuDivider(),
+                    PopupMenuItem(
+                      value: 'remove_from_library',
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.visibility_off_rounded,
+                            color: isDark ? AppColors.darkOnSurface : null,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            '从媒体库移除',
+                            style: TextStyle(
+                              color: isDark ? AppColors.darkOnSurface : null,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'delete_from_source',
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.delete_forever_rounded,
+                            color: AppColors.error,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            '删除源文件',
+                            style: TextStyle(
+                              color: AppColors.error,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -3389,6 +3462,50 @@ class _MusicListTile extends ConsumerWidget {
           // 使用 sourceId_path 格式唯一标识歌曲
           final trackId = '${track.sourceId}_${track.path}';
           _showAddToPlaylistDialog(context, ref, trackId);
+        }
+
+      case 'remove_from_library':
+        if (context.mounted) {
+          final confirmed = await showDeleteConfirmDialog(
+            context: context,
+            title: '从媒体库移除',
+            content: '确定要从媒体库移除「${track.displayTitle}」吗？\n\n这只会移除索引记录，源文件不会被删除。',
+            confirmText: '移除',
+            isDestructive: false,
+          );
+          if (confirmed && context.mounted) {
+            final success = await ref.read(musicListProvider.notifier).removeFromLibrary(
+              track.sourceId,
+              track.path,
+              track.displayTitle,
+            );
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(success ? '已从媒体库移除' : '移除失败')),
+              );
+            }
+          }
+        }
+
+      case 'delete_from_source':
+        if (context.mounted) {
+          final confirmed = await showDeleteConfirmDialog(
+            context: context,
+            title: '删除源文件',
+            content: '确定要删除「${track.displayTitle}」的源文件吗？\n\n⚠️ 此操作不可恢复！文件将从 NAS 中永久删除。',
+          );
+          if (confirmed && context.mounted) {
+            final success = await ref.read(musicListProvider.notifier).deleteFromSource(
+              track.sourceId,
+              track.path,
+              track.displayTitle,
+            );
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(success ? '已删除源文件' : '删除失败，请检查连接状态')),
+              );
+            }
+          }
         }
     }
   }

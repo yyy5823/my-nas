@@ -14,6 +14,7 @@ import 'package:my_nas/features/sources/presentation/pages/media_library_page.da
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
+import 'package:my_nas/shared/widgets/context_menu_region.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
 import 'package:my_nas/shared/widgets/media_setup_widget.dart';
 import 'package:my_nas/shared/widgets/stream_image.dart';
@@ -435,6 +436,92 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
     await _cacheService.clearCache();
     await loadComics(forceRefresh: true);
   }
+
+  /// 从媒体库移除（只删除缓存数据）
+  Future<bool> removeFromLibrary(
+    String sourceId,
+    String folderPath,
+    String displayTitle,
+  ) async {
+    try {
+      // 从缓存中移除
+      final cache = _cacheService.getCache();
+      if (cache != null) {
+        final updatedComics = cache.comics
+            .where((c) => !(c.sourceId == sourceId && c.folderPath == folderPath))
+            .toList();
+        await _cacheService.saveCache(ComicLibraryCache(
+          comics: updatedComics,
+          lastUpdated: cache.lastUpdated,
+          sourceIds: cache.sourceIds,
+        ));
+      }
+
+      // 更新状态
+      final current = state;
+      if (current is ComicListLoaded) {
+        final updatedComics = current.comics
+            .where((c) => !(c.sourceId == sourceId && c.folderPath == folderPath))
+            .toList();
+        state = current.copyWith(comics: updatedComics);
+      }
+
+      logger.i('从媒体库移除漫画: $displayTitle');
+      return true;
+    } on Exception catch (e) {
+      logger.e('从媒体库移除漫画失败: $displayTitle', e);
+      return false;
+    }
+  }
+
+  /// 从源删除（同时删除源文件）
+  Future<bool> deleteFromSource(
+    String sourceId,
+    String folderPath,
+    String displayTitle,
+  ) async {
+    try {
+      // 获取连接
+      final connections = _ref.read(activeConnectionsProvider);
+      final connection = connections[sourceId];
+      if (connection == null) {
+        logger.e('删除漫画失败: 连接不存在 - $sourceId');
+        return false;
+      }
+
+      // 删除源文件/文件夹
+      final fs = connection.adapter.fileSystem;
+      await fs.delete(folderPath);
+
+      // 从缓存中移除
+      final cache = _cacheService.getCache();
+      if (cache != null) {
+        final updatedComics = cache.comics
+            .where((c) => !(c.sourceId == sourceId && c.folderPath == folderPath))
+            .toList();
+        await _cacheService.saveCache(ComicLibraryCache(
+          comics: updatedComics,
+          lastUpdated: cache.lastUpdated,
+          sourceIds: cache.sourceIds,
+        ));
+      }
+
+      // 更新状态
+      final current = state;
+      if (current is ComicListLoaded) {
+        final updatedComics = current.comics
+            .where((c) => !(c.sourceId == sourceId && c.folderPath == folderPath))
+            .toList();
+        state = current.copyWith(comics: updatedComics);
+      }
+
+      logger.i('删除漫画源文件: $displayTitle');
+      return true;
+    } on Exception catch (e) {
+      logger.e('删除漫画源文件失败: $displayTitle', e);
+      return false;
+    }
+  }
 }
 
 /// 漫画列表内容（供 ReadingPage 使用）
@@ -642,10 +729,13 @@ class _ComicCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) => Material(
       color: Colors.transparent,
-      child: InkWell(
-        onTap: () => _openComic(context, ref),
-        borderRadius: BorderRadius.circular(12),
-        child: DecoratedBox(
+      child: GestureDetector(
+        onLongPress: () => _showContextMenu(context, ref),
+        onSecondaryTap: () => _showContextMenu(context, ref),
+        child: InkWell(
+          onTap: () => _openComic(context, ref),
+          borderRadius: BorderRadius.circular(12),
+          child: DecoratedBox(
           decoration: BoxDecoration(
             color: isDark ? AppColors.darkSurfaceVariant : Colors.grey[100],
             borderRadius: BorderRadius.circular(12),
@@ -718,6 +808,7 @@ class _ComicCard extends ConsumerWidget {
             ],
           ),
         ),
+        ),
       ),
     );
 
@@ -752,5 +843,51 @@ class _ComicCard extends ConsumerWidget {
         builder: (_) => ComicReaderPage(comic: comic),
       ),
     );
+  }
+
+  Future<void> _showContextMenu(BuildContext context, WidgetRef ref) async {
+    final action = await showMediaFileContextMenu(
+      context: context,
+      fileName: comic.folderName,
+    );
+
+    if (action == null || !context.mounted) return;
+
+    switch (action) {
+      case MediaFileAction.removeFromLibrary:
+        final confirmed = await showDeleteConfirmDialog(
+          context: context,
+          title: '从媒体库移除',
+          content: '确定要将"${comic.folderName}"从媒体库中移除吗？这只会删除缓存数据，不会影响源文件。',
+          confirmText: '移除',
+          isDestructive: false,
+        );
+        if (confirmed && context.mounted) {
+          await ref.read(comicListProvider.notifier).removeFromLibrary(
+                comic.sourceId,
+                comic.folderPath,
+                comic.folderName,
+              );
+        }
+      case MediaFileAction.deleteFromSource:
+        final confirmed = await showDeleteConfirmDialog(
+          context: context,
+          title: '删除源文件',
+          content: '确定要删除"${comic.folderName}"吗？此操作将同时删除源文件，无法恢复！',
+        );
+        if (confirmed && context.mounted) {
+          await ref.read(comicListProvider.notifier).deleteFromSource(
+                comic.sourceId,
+                comic.folderPath,
+                comic.folderName,
+              );
+        }
+      case MediaFileAction.addToFavorites:
+      case MediaFileAction.removeFromFavorites:
+      case MediaFileAction.share:
+      case MediaFileAction.viewDetails:
+      case MediaFileAction.download:
+        break;
+    }
   }
 }

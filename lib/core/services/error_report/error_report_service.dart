@@ -86,7 +86,6 @@ class ErrorReportService {
     try {
       final settings = ConnectionSettings(
         host: _host,
-        port: _port,
         authProvider: const PlainAuthenticator('flutter', 'flutter_client'),
       );
 

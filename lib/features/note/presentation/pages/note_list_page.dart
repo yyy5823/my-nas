@@ -20,6 +20,7 @@ import 'package:my_nas/features/sources/presentation/pages/media_library_page.da
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
+import 'package:my_nas/shared/widgets/context_menu_region.dart';
 import 'package:my_nas/shared/widgets/empty_widget.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
 import 'package:my_nas/shared/widgets/media_setup_widget.dart';
@@ -477,6 +478,55 @@ class NotePageNotifier extends StateNotifier<NotePageState> {
 
     return lines.join('\n');
   }
+
+  /// 从媒体库移除笔记（刷新树以隐藏该笔记）
+  Future<bool> removeFromLibrary(
+    String sourceId,
+    String filePath,
+    String displayTitle,
+  ) async {
+    try {
+      // 对于笔记，"从媒体库移除"只是刷新树结构
+      // 由于没有本地缓存数据库，重新加载树即可
+      await loadTree();
+
+      logger.i('从媒体库移除笔记: $displayTitle');
+      return true;
+    } on Exception catch (e) {
+      logger.e('从媒体库移除笔记失败: $displayTitle', e);
+      return false;
+    }
+  }
+
+  /// 从源删除笔记（删除源文件）
+  Future<bool> deleteFromSource(
+    String sourceId,
+    String filePath,
+    String displayTitle,
+  ) async {
+    try {
+      // 获取连接
+      final connections = _ref.read(activeConnectionsProvider);
+      final connection = connections[sourceId];
+      if (connection == null) {
+        logger.e('删除笔记失败: 连接不存在 - $sourceId');
+        return false;
+      }
+
+      // 删除源文件
+      final fs = connection.adapter.fileSystem;
+      await fs.delete(filePath);
+
+      // 刷新树
+      await loadTree();
+
+      logger.i('删除笔记源文件: $displayTitle');
+      return true;
+    } on Exception catch (e) {
+      logger.e('删除笔记源文件失败: $displayTitle', e);
+      return false;
+    }
+  }
 }
 
 class NoteListPage extends ConsumerStatefulWidget {
@@ -516,6 +566,42 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
   void _closeDrawer() {
     if (_isDrawerOpen) {
       setState(() => _isDrawerOpen = false);
+    }
+  }
+
+  /// 显示笔记上下文菜单
+  Future<void> _showNoteContextMenu(NoteTreeNode node) async {
+    final action = await showMediaFileContextMenu(
+      context: context,
+      fileName: node.displayName,
+      showRemoveFromLibrary: false, // 笔记没有本地缓存，不支持"从媒体库移除"
+    );
+
+    if (action == null || !context.mounted) return;
+
+    switch (action) {
+      case MediaFileAction.removeFromLibrary:
+        // 笔记不支持此操作
+        break;
+      case MediaFileAction.deleteFromSource:
+        final confirmed = await showDeleteConfirmDialog(
+          context: context,
+          title: '删除笔记',
+          content: '确定要删除"${node.displayName}"吗？此操作将删除源文件，无法恢复！',
+        );
+        if (confirmed && context.mounted) {
+          await ref.read(notePageProvider.notifier).deleteFromSource(
+                node.sourceId,
+                node.path,
+                node.displayName,
+              );
+        }
+      case MediaFileAction.addToFavorites:
+      case MediaFileAction.removeFromFavorites:
+      case MediaFileAction.share:
+      case MediaFileAction.viewDetails:
+      case MediaFileAction.download:
+        break;
     }
   }
 
@@ -838,6 +924,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
         ref.read(notePageProvider.notifier).toggleFolder(node),
     onFolderLoad: (node) =>
         ref.read(notePageProvider.notifier).toggleFolder(node),
+    onContextMenu: _showNoteContextMenu,
     isDark: isDark,
   );
 
@@ -1148,6 +1235,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
                   ref.read(notePageProvider.notifier).toggleFolder(node),
               onFolderLoad: (node) =>
                   ref.read(notePageProvider.notifier).toggleFolder(node),
+              onContextMenu: _showNoteContextMenu,
               isDark: isDark,
             ),
           ),
@@ -1955,6 +2043,42 @@ class _NoteListContentState extends ConsumerState<NoteListContent> {
     }
   }
 
+  /// 显示笔记上下文菜单
+  Future<void> _showNoteContextMenu(NoteTreeNode node) async {
+    final action = await showMediaFileContextMenu(
+      context: context,
+      fileName: node.displayName,
+      showRemoveFromLibrary: false, // 笔记没有本地缓存，不支持"从媒体库移除"
+    );
+
+    if (action == null || !context.mounted) return;
+
+    switch (action) {
+      case MediaFileAction.removeFromLibrary:
+        // 笔记不支持此操作
+        break;
+      case MediaFileAction.deleteFromSource:
+        final confirmed = await showDeleteConfirmDialog(
+          context: context,
+          title: '删除笔记',
+          content: '确定要删除"${node.displayName}"吗？此操作将删除源文件，无法恢复！',
+        );
+        if (confirmed && context.mounted) {
+          await ref.read(notePageProvider.notifier).deleteFromSource(
+                node.sourceId,
+                node.path,
+                node.displayName,
+              );
+        }
+      case MediaFileAction.addToFavorites:
+      case MediaFileAction.removeFromFavorites:
+      case MediaFileAction.share:
+      case MediaFileAction.viewDetails:
+      case MediaFileAction.download:
+        break;
+    }
+  }
+
   @override
   void dispose() {
     _previewScrollController.dispose();
@@ -2160,6 +2284,7 @@ class _NoteListContentState extends ConsumerState<NoteListContent> {
                   ref.read(notePageProvider.notifier).toggleFolder(node),
               onFolderLoad: (node) =>
                   ref.read(notePageProvider.notifier).toggleFolder(node),
+              onContextMenu: _showNoteContextMenu,
               isDark: isDark,
             ),
           ),

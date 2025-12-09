@@ -24,6 +24,7 @@ import 'package:my_nas/features/sources/presentation/pages/media_library_page.da
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
+import 'package:my_nas/shared/widgets/context_menu_region.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
 import 'package:my_nas/shared/widgets/media_setup_widget.dart';
 
@@ -544,6 +545,41 @@ class BookListNotifier extends StateNotifier<BookListState> {
     await _db.clear();
     await _cacheService.clearCache();
     await loadBooks(forceRefresh: true);
+  }
+
+  /// 从媒体库移除图书（只删除数据库记录，不删除源文件）
+  Future<bool> removeFromLibrary(String sourceId, String filePath, String displayTitle) async {
+    try {
+      await _db.delete(sourceId, filePath);
+      await _loadFromSqlite();
+      logger.i('BookListNotifier: 已从媒体库移除 $displayTitle');
+      return true;
+    } on Exception catch (e) {
+      logger.e('BookListNotifier: 移除图书失败', e);
+      return false;
+    }
+  }
+
+  /// 删除图书源文件（同时删除数据库记录和源文件）
+  Future<bool> deleteFromSource(String sourceId, String filePath, String displayTitle) async {
+    try {
+      final connections = _ref.read(activeConnectionsProvider);
+      final connection = connections[sourceId];
+      if (connection == null || connection.status != SourceStatus.connected) {
+        logger.w('BookListNotifier: 无法删除，源未连接');
+        return false;
+      }
+
+      await connection.adapter.fileSystem.delete(filePath);
+      await _db.delete(sourceId, filePath);
+      await _loadFromSqlite();
+
+      logger.i('BookListNotifier: 已删除源文件 $displayTitle');
+      return true;
+    } on Exception catch (e) {
+      logger.e('BookListNotifier: 删除图书源文件失败', e);
+      return false;
+    }
   }
 
   /// 后台提取元数据
@@ -1637,6 +1673,8 @@ class _BookGridItemState extends ConsumerState<_BookGridItem> {
 
     return GestureDetector(
       onTap: () => _openBook(context, ref),
+      onLongPress: () => _showContextMenu(context, ref),
+      onSecondaryTap: () => _showContextMenu(context, ref),
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: widget.isDark ? AppColors.darkSurfaceVariant : context.colorScheme.surface,
@@ -1867,5 +1905,54 @@ class _BookGridItemState extends ConsumerState<_BookGridItem> {
         builder: (context) => readerPage,
       ),
     );
+  }
+
+  Future<void> _showContextMenu(BuildContext context, WidgetRef ref) async {
+    final book = widget.book;
+    final displayName = _getDisplayName(book.file.name);
+
+    final action = await showMediaFileContextMenu(
+      context: context,
+      fileName: displayName,
+    );
+
+    if (action == null || !context.mounted) return;
+
+    switch (action) {
+      case MediaFileAction.removeFromLibrary:
+        final confirmed = await showDeleteConfirmDialog(
+          context: context,
+          title: '从媒体库移除',
+          content: '确定要将"$displayName"从媒体库中移除吗？这只会删除缓存数据，不会影响源文件。',
+          confirmText: '移除',
+          isDestructive: false,
+        );
+        if (confirmed && context.mounted) {
+          await ref.read(bookListProvider.notifier).removeFromLibrary(
+                book.sourceId,
+                book.file.path,
+                displayName,
+              );
+        }
+      case MediaFileAction.deleteFromSource:
+        final confirmed = await showDeleteConfirmDialog(
+          context: context,
+          title: '删除源文件',
+          content: '确定要删除"$displayName"吗？此操作将同时删除源文件，无法恢复！',
+        );
+        if (confirmed && context.mounted) {
+          await ref.read(bookListProvider.notifier).deleteFromSource(
+                book.sourceId,
+                book.file.path,
+                displayName,
+              );
+        }
+      case MediaFileAction.addToFavorites:
+      case MediaFileAction.removeFromFavorites:
+      case MediaFileAction.share:
+      case MediaFileAction.viewDetails:
+      case MediaFileAction.download:
+        break;
+    }
   }
 }

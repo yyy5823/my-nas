@@ -27,6 +27,7 @@ import 'package:my_nas/features/video/presentation/providers/video_history_provi
 import 'package:my_nas/features/video/presentation/widgets/hero_banner.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/adaptive_image.dart';
+import 'package:my_nas/shared/widgets/context_menu_region.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
 
 /// 视频文件及其来源
@@ -635,6 +636,47 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     normalized = normalized.replaceAll(RegExp(r'[\(\[\s]\d{4}[\)\]\s]?'), '');
     normalized = normalized.replaceAll(RegExp(r'\s+'), ' ').trim();
     return 'title_$normalized';
+  }
+
+  /// 从媒体库移除视频（只删除数据库记录，不删除源文件）
+  Future<bool> removeFromLibrary(VideoMetadata video) async {
+    try {
+      await _db.delete(video.sourceId, video.filePath);
+      await _loadCategorizedData(silent: true);
+      logger.i('VideoListNotifier: 已从媒体库移除 ${video.displayTitle}');
+      return true;
+    } on Exception catch (e) {
+      logger.e('VideoListNotifier: 移除视频失败', e);
+      return false;
+    }
+  }
+
+  /// 删除视频源文件（同时删除数据库记录和源文件）
+  Future<bool> deleteFromSource(VideoMetadata video) async {
+    try {
+      // 获取连接
+      final connections = _ref.read(activeConnectionsProvider);
+      final connection = connections[video.sourceId];
+      if (connection == null || connection.status != SourceStatus.connected) {
+        logger.w('VideoListNotifier: 无法删除，源未连接');
+        return false;
+      }
+
+      // 删除源文件
+      await connection.adapter.fileSystem.delete(video.filePath);
+
+      // 删除数据库记录
+      await _db.delete(video.sourceId, video.filePath);
+
+      // 刷新列表
+      await _loadCategorizedData(silent: true);
+
+      logger.i('VideoListNotifier: 已删除源文件 ${video.displayTitle}');
+      return true;
+    } on Exception catch (e) {
+      logger.e('VideoListNotifier: 删除视频源文件失败', e);
+      return false;
+    }
   }
 }
 
@@ -1295,6 +1337,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               title: '最近添加',
               items: recentVideos,
               onItemTap: (m) => _openVideoDetail(context, ref, m),
+              onItemContextMenu: (m) => _showVideoContextMenu(context, ref, m),
               isDark: isDark,
               icon: Icons.schedule_rounded,
               iconColor: Colors.blue,
@@ -1311,6 +1354,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               title: '电影',
               items: movies,
               onItemTap: (m) => _openVideoDetail(context, ref, m),
+              onItemContextMenu: (m) => _showVideoContextMenu(context, ref, m),
               isDark: isDark,
               icon: Icons.movie_rounded,
               iconColor: AppColors.primary,
@@ -1345,6 +1389,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               title: '其他',
               items: state.others,
               onItemTap: (m) => _openVideoDetail(context, ref, m),
+              onItemContextMenu: (m) => _showVideoContextMenu(context, ref, m),
               isDark: isDark,
               icon: Icons.video_file_rounded,
               iconColor: Colors.grey,
@@ -1375,6 +1420,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               title: '高分推荐',
               items: topRated.skip(5).toList(), // 跳过 Hero Banner 中已显示的
               onItemTap: (m) => _openVideoDetail(context, ref, m),
+              onItemContextMenu: (m) => _showVideoContextMenu(context, ref, m),
               isDark: isDark,
               icon: Icons.star_rounded,
               iconColor: Colors.amber,
@@ -1566,6 +1612,69 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
       ),
     );
     ref.invalidate(continueWatchingProvider);
+  }
+
+  /// 显示视频上下文菜单
+  Future<void> _showVideoContextMenu(
+    BuildContext context,
+    WidgetRef ref,
+    VideoMetadata metadata,
+  ) async {
+    final action = await showMediaFileContextMenu(
+      context: context,
+      fileName: metadata.displayTitle,
+      showRemoveFromLibrary: true,
+      showDeleteFromSource: true,
+    );
+
+    if (action == null || !context.mounted) return;
+
+    switch (action) {
+      case MediaFileAction.removeFromLibrary:
+        final confirmed = await showDeleteConfirmDialog(
+          context: context,
+          title: '从媒体库移除',
+          content: '确定要从媒体库移除「${metadata.displayTitle}」吗？\n\n这只会移除索引记录，源文件不会被删除。',
+          confirmText: '移除',
+          isDestructive: false,
+        );
+        if (confirmed && context.mounted) {
+          final success = await ref.read(videoListProvider.notifier).removeFromLibrary(metadata);
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(success ? '已从媒体库移除' : '移除失败'),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        }
+      case MediaFileAction.deleteFromSource:
+        final confirmed = await showDeleteConfirmDialog(
+          context: context,
+          title: '删除源文件',
+          content: '确定要删除「${metadata.displayTitle}」的源文件吗？\n\n⚠️ 此操作不可恢复！文件将从 NAS 中永久删除。',
+          confirmText: '删除',
+        );
+        if (confirmed && context.mounted) {
+          final success = await ref.read(videoListProvider.notifier).deleteFromSource(metadata);
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(success ? '已删除源文件' : '删除失败，请检查连接状态'),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        }
+      case MediaFileAction.addToFavorites:
+      case MediaFileAction.removeFromFavorites:
+      case MediaFileAction.share:
+      case MediaFileAction.viewDetails:
+      case MediaFileAction.download:
+        // 暂未实现
+        break;
+    }
   }
 }
 
@@ -2253,6 +2362,7 @@ class _CategoryRow extends StatelessWidget {
     this.onViewAll,
     this.useVerticalPosters = true,
     this.totalCount,
+    this.onItemContextMenu,
   });
 
   final String title;
@@ -2266,6 +2376,8 @@ class _CategoryRow extends StatelessWidget {
   final bool useVerticalPosters;
   /// 实际总数量（用于显示在"查看全部"按钮上，如果不传则使用 items.length）
   final int? totalCount;
+  /// 长按/右键点击时的上下文菜单回调
+  final void Function(VideoMetadata)? onItemContextMenu;
 
   @override
   Widget build(BuildContext context) {
@@ -2368,12 +2480,14 @@ class _CategoryRow extends StatelessWidget {
                   metadata: metadata,
                   onTap: () => onItemTap(metadata),
                   isDark: isDark,
+                  onContextMenu: onItemContextMenu,
                 );
               } else {
                 return _HorizontalVideoCard(
                   metadata: metadata,
                   onTap: () => onItemTap(metadata),
                   isDark: isDark,
+                  onContextMenu: onItemContextMenu,
                 );
               }
             },
@@ -2693,12 +2807,14 @@ class _VerticalPosterCard extends ConsumerStatefulWidget {
     required this.onTap,
     required this.isDark,
     this.width = 130,
+    this.onContextMenu,
   });
 
   final VideoMetadata metadata;
   final VoidCallback onTap;
   final bool isDark;
   final double width;
+  final void Function(VideoMetadata metadata)? onContextMenu;
 
   @override
   ConsumerState<_VerticalPosterCard> createState() => _VerticalPosterCardState();
@@ -2749,6 +2865,12 @@ class _VerticalPosterCardState extends ConsumerState<_VerticalPosterCard> {
         onExit: (_) => setState(() => _isHovered = false),
         child: GestureDetector(
           onTap: widget.onTap,
+          onLongPress: widget.onContextMenu != null
+              ? () => widget.onContextMenu!(widget.metadata)
+              : null,
+          onSecondaryTap: widget.onContextMenu != null
+              ? () => widget.onContextMenu!(widget.metadata)
+              : null,
           child: AnimatedScale(
             scale: _isHovered ? 1.05 : 1.0,
             duration: const Duration(milliseconds: 150),
@@ -3004,11 +3126,13 @@ class _HorizontalVideoCard extends ConsumerStatefulWidget {
     required this.metadata,
     required this.onTap,
     required this.isDark,
+    this.onContextMenu,
   });
 
   final VideoMetadata metadata;
   final VoidCallback onTap;
   final bool isDark;
+  final void Function(VideoMetadata metadata)? onContextMenu;
 
   @override
   ConsumerState<_HorizontalVideoCard> createState() => _HorizontalVideoCardState();
@@ -3056,6 +3180,12 @@ class _HorizontalVideoCardState extends ConsumerState<_HorizontalVideoCard> {
         onExit: (_) => setState(() => _isHovered = false),
         child: GestureDetector(
           onTap: widget.onTap,
+          onLongPress: widget.onContextMenu != null
+              ? () => widget.onContextMenu!(widget.metadata)
+              : null,
+          onSecondaryTap: widget.onContextMenu != null
+              ? () => widget.onContextMenu!(widget.metadata)
+              : null,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             transform: Matrix4.identity()..scaleByDouble(_isHovered ? 1.03 : 1.0, _isHovered ? 1.03 : 1.0, 1, 1),

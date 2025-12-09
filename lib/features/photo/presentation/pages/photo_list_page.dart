@@ -18,6 +18,7 @@ import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/animated_list_item.dart';
+import 'package:my_nas/shared/widgets/context_menu_region.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
 import 'package:my_nas/shared/widgets/stream_image.dart';
 
@@ -798,6 +799,41 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
     await _cacheService.clearCache();
     await loadPhotos(forceRefresh: true);
   }
+
+  /// 从媒体库移除照片（只删除数据库记录，不删除源文件）
+  Future<bool> removeFromLibrary(PhotoEntity photo) async {
+    try {
+      await _db.delete(photo.sourceId, photo.filePath);
+      await _loadFromSqlite();
+      logger.i('PhotoListNotifier: 已从媒体库移除 ${photo.fileName}');
+      return true;
+    } on Exception catch (e) {
+      logger.e('PhotoListNotifier: 移除照片失败', e);
+      return false;
+    }
+  }
+
+  /// 删除照片源文件（同时删除数据库记录和源文件）
+  Future<bool> deleteFromSource(PhotoEntity photo) async {
+    try {
+      final connections = _ref.read(activeConnectionsProvider);
+      final connection = connections[photo.sourceId];
+      if (connection == null || connection.status != SourceStatus.connected) {
+        logger.w('PhotoListNotifier: 无法删除，源未连接');
+        return false;
+      }
+
+      await connection.adapter.fileSystem.delete(photo.filePath);
+      await _db.delete(photo.sourceId, photo.filePath);
+      await _loadFromSqlite();
+
+      logger.i('PhotoListNotifier: 已删除源文件 ${photo.fileName}');
+      return true;
+    } on Exception catch (e) {
+      logger.e('PhotoListNotifier: 删除照片源文件失败', e);
+      return false;
+    }
+  }
 }
 
 class PhotoListPage extends ConsumerStatefulWidget {
@@ -1491,16 +1527,24 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
           crossAxisSpacing: 4,
         ),
         delegate: SliverChildBuilderDelegate(
-          (context, index) => AnimatedGridItem(
-            index: index,
-            delay: const Duration(milliseconds: 20),
-            child: _PhotoGridItem(
-              photo: photos[index],
+          (context, index) {
+            final photo = photos[index];
+            // 获取对应的 PhotoEntity 用于删除操作
+            final key = '${photo.sourceId}:${photo.path}';
+            final entity = state.photoByPath[key];
+
+            return AnimatedGridItem(
               index: index,
-              allPhotos: photos,
-              isDark: isDark,
-            ),
-          ),
+              delay: const Duration(milliseconds: 20),
+              child: _PhotoGridItem(
+                photo: photo,
+                index: index,
+                allPhotos: photos,
+                isDark: isDark,
+                photoEntity: entity,
+              ),
+            );
+          },
           childCount: photos.length,
         ),
       ),
@@ -1543,6 +1587,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
                   itemSize,
                   crossAxisCount,
                   isDark,
+                  state.photoByPath,
                 ),
             };
           },
@@ -1605,6 +1650,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
     double itemSize,
     int crossAxisCount,
     bool isDark,
+    Map<String, PhotoEntity> photoByPath,
   ) =>
       Padding(
         padding: const EdgeInsets.only(bottom: 4),
@@ -1620,6 +1666,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
                   index: globalIndices[i],
                   allPhotos: allPhotos,
                   isDark: isDark,
+                  photoEntity: photoByPath['${photos[i].sourceId}:${photos[i].path}'],
                 ),
               ),
             ],
@@ -1639,12 +1686,14 @@ class _PhotoGridItem extends ConsumerWidget {
     required this.index,
     required this.allPhotos,
     required this.isDark,
+    required this.photoEntity,
   });
 
   final PhotoFileWithSource photo;
   final int index;
   final List<PhotoFileWithSource> allPhotos;
   final bool isDark;
+  final PhotoEntity? photoEntity;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1664,6 +1713,8 @@ class _PhotoGridItem extends ConsumerWidget {
             debugPrint('PhotoGridItem: onTap called for ${photo.name}');
             _openPhotoViewer(context, ref);
           },
+          onLongPress: () => _showContextMenu(context, ref),
+          onSecondaryTap: () => _showContextMenu(context, ref),
           child: StreamImage(
             url: photo.thumbnailUrl,
             path: photo.path,
@@ -1675,6 +1726,63 @@ class _PhotoGridItem extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _showContextMenu(BuildContext context, WidgetRef ref) async {
+    if (photoEntity == null) return;
+
+    final action = await showMediaFileContextMenu(
+      context: context,
+      fileName: photo.name,
+    );
+
+    if (action == null || !context.mounted) return;
+
+    switch (action) {
+      case MediaFileAction.removeFromLibrary:
+        final confirmed = await showDeleteConfirmDialog(
+          context: context,
+          title: '从媒体库移除',
+          content: '确定要从媒体库移除「${photo.name}」吗？\n\n这只会移除索引记录，源文件不会被删除。',
+          confirmText: '移除',
+          isDestructive: false,
+        );
+        if (confirmed && context.mounted) {
+          final success = await ref.read(photoListProvider.notifier).removeFromLibrary(photoEntity!);
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(success ? '已从媒体库移除' : '移除失败'),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        }
+      case MediaFileAction.deleteFromSource:
+        final confirmed = await showDeleteConfirmDialog(
+          context: context,
+          title: '删除源文件',
+          content: '确定要删除「${photo.name}」的源文件吗？\n\n⚠️ 此操作不可恢复！文件将从 NAS 中永久删除。',
+        );
+        if (confirmed && context.mounted) {
+          final success = await ref.read(photoListProvider.notifier).deleteFromSource(photoEntity!);
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(success ? '已删除源文件' : '删除失败，请检查连接状态'),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        }
+      case MediaFileAction.addToFavorites:
+      case MediaFileAction.removeFromFavorites:
+      case MediaFileAction.share:
+      case MediaFileAction.viewDetails:
+      case MediaFileAction.download:
+        // 暂未实现
+        break;
+    }
   }
 
   Widget _buildPlaceholder() => Center(

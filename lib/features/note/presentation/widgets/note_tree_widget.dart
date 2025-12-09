@@ -69,6 +69,7 @@ class NoteTreeWidget extends StatelessWidget {
     required this.onFolderToggle,
     required this.onFolderLoad,
     required this.isDark,
+    this.onContextMenu,
     super.key,
   });
 
@@ -77,6 +78,7 @@ class NoteTreeWidget extends StatelessWidget {
   final void Function(NoteTreeNode node) onNodeSelected;
   final void Function(NoteTreeNode node) onFolderToggle;
   final void Function(NoteTreeNode node) onFolderLoad;
+  final void Function(NoteTreeNode node)? onContextMenu;
   final bool isDark;
 
   @override
@@ -123,6 +125,7 @@ class NoteTreeWidget extends StatelessWidget {
               onNodeSelected(node);
             }
           },
+          onContextMenu: isFolder ? null : () => onContextMenu?.call(node),
         ),
         // 展开的子节点
         if (isFolder && node.isExpanded)
@@ -139,6 +142,7 @@ class _NoteTreeItem extends StatelessWidget {
     required this.isSelected,
     required this.isDark,
     required this.onTap,
+    this.onContextMenu,
   });
 
   final NoteTreeNode node;
@@ -146,6 +150,7 @@ class _NoteTreeItem extends StatelessWidget {
   final bool isSelected;
   final bool isDark;
   final VoidCallback onTap;
+  final VoidCallback? onContextMenu;
 
   @override
   Widget build(BuildContext context) {
@@ -153,9 +158,12 @@ class _NoteTreeItem extends StatelessWidget {
 
     return Material(
       color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
+      child: GestureDetector(
+        onLongPress: onContextMenu,
+        onSecondaryTap: onContextMenu,
+        child: InkWell(
+          onTap: onTap,
+          child: Container(
           height: 36,
           padding: EdgeInsets.only(left: 12 + depth * 16.0, right: 8),
           decoration: BoxDecoration(
@@ -228,6 +236,7 @@ class _NoteTreeItem extends StatelessWidget {
                 ),
             ],
           ),
+        ),
         ),
       ),
     );
