@@ -10,7 +10,6 @@ import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/network/http_client.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/note/data/services/markdown_parser.dart';
-import 'package:my_nas/features/note/data/services/note_layout_service.dart';
 import 'package:my_nas/features/note/domain/entities/note_item.dart';
 import 'package:my_nas/features/note/presentation/widgets/note_tree_widget.dart';
 import 'package:my_nas/features/note/presentation/widgets/task_list_widget.dart';
@@ -491,51 +490,33 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
   final TextEditingController _editController = TextEditingController();
   final ScrollController _previewScrollController = ScrollController();
 
-  // 侧边栏宽度
-  double _sidebarWidth = 280;
-  static const double _minSidebarWidth = 200;
-  static const double _maxSidebarWidth = 400;
-
   // 响应式布局断点
   static const double _mobileBreakpoint = 600;
 
-  // 侧边栏是否收起
-  bool _isSidebarCollapsed = false;
-
-  // 布局服务
-  final _layoutService = NoteLayoutService();
+  // 目录抽屉是否显示
+  bool _isDrawerOpen = false;
 
   /// 判断是否为移动端布局
   bool _isMobileLayout(BuildContext context) =>
       MediaQuery.of(context).size.width < _mobileBreakpoint;
 
-  @override
-  void initState() {
-    super.initState();
-    _loadLayoutPrefs();
+  /// 切换抽屉显示状态
+  void _toggleDrawer() {
+    setState(() => _isDrawerOpen = !_isDrawerOpen);
   }
 
-  Future<void> _loadLayoutPrefs() async {
-    await _layoutService.init();
-    setState(() {
-      _isSidebarCollapsed = _layoutService.isSidebarCollapsed;
-      _sidebarWidth = _layoutService.sidebarWidth.clamp(
-        _minSidebarWidth,
-        _maxSidebarWidth,
-      );
-    });
+  /// 打开抽屉
+  void _openDrawer() {
+    if (!_isDrawerOpen) {
+      setState(() => _isDrawerOpen = true);
+    }
   }
 
-  void _setSidebarCollapsed(bool collapsed) {
-    setState(() => _isSidebarCollapsed = collapsed);
-    _layoutService.setSidebarCollapsed(collapsed: collapsed);
-  }
-
-  void _setSidebarWidth(double width) {
-    setState(() {
-      _sidebarWidth = width.clamp(_minSidebarWidth, _maxSidebarWidth);
-    });
-    _layoutService.setSidebarWidth(_sidebarWidth);
+  /// 关闭抽屉
+  void _closeDrawer() {
+    if (_isDrawerOpen) {
+      setState(() => _isDrawerOpen = false);
+    }
   }
 
   @override
@@ -714,6 +695,14 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
                   ),
                 ),
               const Spacer(),
+              // 目录按钮（非移动端且已加载时显示）
+              if (state is NotePageLoaded && !_isMobileLayout(context))
+                _buildIconButton(
+                  icon: _isDrawerOpen ? Icons.menu_open_rounded : Icons.menu_rounded,
+                  onTap: _toggleDrawer,
+                  isDark: isDark,
+                  tooltip: _isDrawerOpen ? '关闭目录' : '打开目录',
+                ),
               _buildIconButton(
                 icon: Icons.refresh_rounded,
                 onTap: () => ref.read(notePageProvider.notifier).loadTree(),
@@ -777,20 +766,46 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
       return _buildMobileLayout(context, state, isDark);
     }
 
-    // 平板/桌面布局：使用分栏布局
-    return Row(
-      children: [
-        // 左侧目录树（可收起）
-        if (!_isSidebarCollapsed) ...[
-          _buildSidebar(context, state, isDark),
-          // 可拖动分隔线
-          _buildResizeHandle(isDark),
+    // 当没有选中笔记时，自动打开抽屉
+    final shouldAutoOpenDrawer = state.selectedNode == null && !_isDrawerOpen;
+    if (shouldAutoOpenDrawer) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _openDrawer();
+      });
+    }
+
+    // 平板/桌面布局：使用抽屉式目录
+    return GestureDetector(
+      // 支持从左侧向右滑动打开抽屉
+      onHorizontalDragEnd: (details) {
+        if (details.primaryVelocity != null && details.primaryVelocity! > 300) {
+          _openDrawer();
+        }
+      },
+      child: Stack(
+        children: [
+          // 主内容区
+          _buildContentArea(context, state, isDark),
+          // 抽屉遮罩层
+          if (_isDrawerOpen)
+            GestureDetector(
+              onTap: _closeDrawer,
+              child: Container(
+                color: Colors.black.withValues(alpha: 0.3),
+              ),
+            ),
+          // 抽屉目录
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOutCubic,
+            left: _isDrawerOpen ? 0 : -360,
+            top: 0,
+            bottom: 0,
+            width: 360,
+            child: _buildDrawer(context, state, isDark),
+          ),
         ],
-        // 展开按钮（当侧边栏收起时显示）
-        if (_isSidebarCollapsed) _buildExpandButton(isDark),
-        // 右侧内容区
-        Expanded(child: _buildContentArea(context, state, isDark)),
-      ],
+      ),
     );
   }
 
@@ -1097,47 +1112,57 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
     );
   }
 
-  Widget _buildSidebar(
+  /// 抽屉式目录
+  Widget _buildDrawer(
     BuildContext context,
     NotePageLoaded state,
     bool isDark,
-  ) => Container(
-    width: _sidebarWidth,
-    decoration: BoxDecoration(
-      color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
-      border: Border(
-        right: BorderSide(
-          color: isDark
-              ? AppColors.darkOutline.withValues(alpha: 0.2)
-              : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
-        ),
-      ),
-    ),
-    child: Column(
-      children: [
-        // 标题栏
-        _buildSidebarHeader(context, isDark),
-        // 目录树
-        Expanded(
-          child: NoteTreeWidget(
-            nodes: state.treeNodes,
-            selectedPath: state.selectedNode?.path,
-            onNodeSelected: (node) =>
-                ref.read(notePageProvider.notifier).selectFile(node),
-            onFolderToggle: (node) =>
-                ref.read(notePageProvider.notifier).toggleFolder(node),
-            onFolderLoad: (node) =>
-                ref.read(notePageProvider.notifier).toggleFolder(node),
-            isDark: isDark,
+  ) => Material(
+    elevation: 8,
+    color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
+    child: DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border(
+          right: BorderSide(
+            color: isDark
+                ? AppColors.darkOutline.withValues(alpha: 0.3)
+                : context.colorScheme.outlineVariant,
           ),
         ),
-      ],
+      ),
+      child: Column(
+        children: [
+          // 抽屉标题栏
+          _buildDrawerHeader(context, isDark),
+          // 目录树
+          Expanded(
+            child: NoteTreeWidget(
+              nodes: state.treeNodes,
+              selectedPath: state.selectedNode?.path,
+              onNodeSelected: (node) {
+                ref.read(notePageProvider.notifier).selectFile(node);
+                // 选中文件后自动关闭抽屉
+                _closeDrawer();
+              },
+              onFolderToggle: (node) =>
+                  ref.read(notePageProvider.notifier).toggleFolder(node),
+              onFolderLoad: (node) =>
+                  ref.read(notePageProvider.notifier).toggleFolder(node),
+              isDark: isDark,
+            ),
+          ),
+        ],
+      ),
     ),
   );
 
-  Widget _buildSidebarHeader(BuildContext context, bool isDark) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+  /// 抽屉标题栏
+  Widget _buildDrawerHeader(BuildContext context, bool isDark) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
     decoration: BoxDecoration(
+      color: isDark
+          ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
+          : context.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
       border: Border(
         bottom: BorderSide(
           color: isDark
@@ -1152,81 +1177,30 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
         children: [
           Icon(
             Icons.folder_rounded,
-            size: 20,
-            color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey,
+            size: 22,
+            color: AppColors.primary,
           ),
-          const SizedBox(width: 8),
-          Text(
-            '笔记',
-            style: context.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: isDark ? AppColors.darkOnSurface : null,
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '笔记目录',
+              style: context.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: isDark ? AppColors.darkOnSurface : null,
+              ),
             ),
           ),
-          const Spacer(),
-          // 收起按钮
+          // 关闭按钮
           IconButton(
-            onPressed: () => _setSidebarCollapsed(true),
+            onPressed: _closeDrawer,
             icon: Icon(
-              Icons.chevron_left_rounded,
-              size: 20,
-              color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey,
+              Icons.close_rounded,
+              size: 22,
+              color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[700],
             ),
-            tooltip: '收起侧边栏',
-          ),
-          IconButton(
-            onPressed: () => ref.read(notePageProvider.notifier).loadTree(),
-            icon: Icon(
-              Icons.refresh_rounded,
-              size: 20,
-              color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey,
-            ),
-            tooltip: '刷新',
-            splashRadius: 18,
+            tooltip: '关闭目录',
           ),
         ],
-      ),
-    ),
-  );
-
-  Widget _buildExpandButton(bool isDark) => Container(
-    width: 48,
-    decoration: BoxDecoration(
-      color: isDark ? AppColors.darkSurface : Colors.grey[100],
-      border: Border(
-        right: BorderSide(
-          color: isDark
-              ? AppColors.darkOutline.withValues(alpha: 0.2)
-              : Colors.grey.withValues(alpha: 0.3),
-        ),
-      ),
-    ),
-    child: Column(
-      children: [
-        const SizedBox(height: 8),
-        IconButton(
-          onPressed: () => _setSidebarCollapsed(false),
-          icon: Icon(
-            Icons.chevron_right_rounded,
-            color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[700],
-          ),
-          tooltip: '展开侧边栏',
-        ),
-      ],
-    ),
-  );
-
-  Widget _buildResizeHandle(bool isDark) => GestureDetector(
-    onHorizontalDragUpdate: (details) {
-      _setSidebarWidth(_sidebarWidth + details.delta.dx);
-    },
-    child: MouseRegion(
-      cursor: SystemMouseCursors.resizeColumn,
-      child: Container(
-        width: 4,
-        color: isDark
-            ? AppColors.darkOutline.withValues(alpha: 0.1)
-            : Colors.grey.withValues(alpha: 0.1),
       ),
     ),
   );
@@ -1957,51 +1931,32 @@ class NoteListContent extends ConsumerStatefulWidget {
 }
 
 class _NoteListContentState extends ConsumerState<NoteListContent> {
-  final TextEditingController _editController = TextEditingController();
   final ScrollController _previewScrollController = ScrollController();
 
-  double _sidebarWidth = 280;
-  static const double _minSidebarWidth = 200;
-  static const double _maxSidebarWidth = 400;
+  // 目录抽屉是否显示
+  bool _isDrawerOpen = false;
 
-  // 侧边栏是否收起
-  bool _isSidebarCollapsed = false;
-
-  // 布局服务
-  final _layoutService = NoteLayoutService();
-
-  @override
-  void initState() {
-    super.initState();
-    _loadLayoutPrefs();
+  /// 切换抽屉显示状态
+  void _toggleDrawer() {
+    setState(() => _isDrawerOpen = !_isDrawerOpen);
   }
 
-  Future<void> _loadLayoutPrefs() async {
-    await _layoutService.init();
-    setState(() {
-      _isSidebarCollapsed = _layoutService.isSidebarCollapsed;
-      _sidebarWidth = _layoutService.sidebarWidth.clamp(
-        _minSidebarWidth,
-        _maxSidebarWidth,
-      );
-    });
+  /// 打开抽屉
+  void _openDrawer() {
+    if (!_isDrawerOpen) {
+      setState(() => _isDrawerOpen = true);
+    }
   }
 
-  void _setSidebarCollapsed(bool collapsed) {
-    setState(() => _isSidebarCollapsed = collapsed);
-    _layoutService.setSidebarCollapsed(collapsed: collapsed);
-  }
-
-  void _setSidebarWidth(double width) {
-    setState(() {
-      _sidebarWidth = width.clamp(_minSidebarWidth, _maxSidebarWidth);
-    });
-    _layoutService.setSidebarWidth(_sidebarWidth);
+  /// 关闭抽屉
+  void _closeDrawer() {
+    if (_isDrawerOpen) {
+      setState(() => _isDrawerOpen = false);
+    }
   }
 
   @override
   void dispose() {
-    _editController.dispose();
     _previewScrollController.dispose();
     super.dispose();
   }
@@ -2043,62 +1998,183 @@ class _NoteListContentState extends ConsumerState<NoteListContent> {
     BuildContext context,
     NotePageLoaded state,
     bool isDark,
-  ) => Row(
-    children: [
-      // 左侧目录树（可收起）
-      if (!_isSidebarCollapsed) ...[
-        _buildSidebar(context, state, isDark),
-        // 可拖动分隔线
-        _buildResizeHandle(isDark),
-      ],
-      // 展开按钮（当侧边栏收起时显示）
-      if (_isSidebarCollapsed) _buildExpandButton(isDark),
-      // 右侧内容区
-      Expanded(child: _buildContentArea(context, state, isDark)),
-    ],
-  );
+  ) {
+    // 当没有选中笔记时，自动打开抽屉
+    final shouldAutoOpenDrawer = state.selectedNode == null && !_isDrawerOpen;
+    if (shouldAutoOpenDrawer) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _openDrawer();
+      });
+    }
 
-  Widget _buildSidebar(
+    // 使用抽屉式目录
+    return GestureDetector(
+      // 支持从左侧向右滑动打开抽屉
+      onHorizontalDragEnd: (details) {
+        if (details.primaryVelocity != null && details.primaryVelocity! > 300) {
+          _openDrawer();
+        }
+      },
+      child: Stack(
+        children: [
+          // 主内容区
+          Column(
+            children: [
+              // 顶部工具栏
+              _buildToolbar(context, state, isDark),
+              // 内容区
+              Expanded(child: _buildContentArea(context, state, isDark)),
+            ],
+          ),
+          // 抽屉遮罩层
+          if (_isDrawerOpen)
+            GestureDetector(
+              onTap: _closeDrawer,
+              child: Container(
+                color: Colors.black.withValues(alpha: 0.3),
+              ),
+            ),
+          // 抽屉目录
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOutCubic,
+            left: _isDrawerOpen ? 0 : -360,
+            top: 0,
+            bottom: 0,
+            width: 360,
+            child: _buildDrawer(context, state, isDark),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 工具栏
+  Widget _buildToolbar(
     BuildContext context,
     NotePageLoaded state,
     bool isDark,
   ) => Container(
-    width: _sidebarWidth,
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
     decoration: BoxDecoration(
       color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
       border: Border(
-        right: BorderSide(
+        bottom: BorderSide(
           color: isDark
               ? AppColors.darkOutline.withValues(alpha: 0.2)
               : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
         ),
       ),
     ),
-    child: Column(
+    child: Row(
       children: [
-        // 标题栏
-        _buildSidebarHeader(context, isDark),
-        // 目录树
-        Expanded(
-          child: NoteTreeWidget(
-            nodes: state.treeNodes,
-            selectedPath: state.selectedNode?.path,
-            onNodeSelected: (node) =>
-                ref.read(notePageProvider.notifier).selectFile(node),
-            onFolderToggle: (node) =>
-                ref.read(notePageProvider.notifier).toggleFolder(node),
-            onFolderLoad: (node) =>
-                ref.read(notePageProvider.notifier).toggleFolder(node),
-            isDark: isDark,
+        // 目录按钮
+        IconButton(
+          onPressed: _toggleDrawer,
+          icon: Icon(
+            _isDrawerOpen ? Icons.menu_open_rounded : Icons.menu_rounded,
+            color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[700],
           ),
+          tooltip: _isDrawerOpen ? '关闭目录' : '打开目录',
+        ),
+        const SizedBox(width: 8),
+        // 当前选中的文件名
+        if (state.selectedNode != null) ...[
+          Icon(
+            state.selectedNode!.isTaskFile
+                ? Icons.checklist_rounded
+                : Icons.article_outlined,
+            size: 18,
+            color: state.selectedNode!.isTaskFile
+                ? Colors.orange
+                : AppColors.primary,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              state.selectedNode!.displayName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: context.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: isDark ? AppColors.darkOnSurface : null,
+              ),
+            ),
+          ),
+        ] else
+          Expanded(
+            child: Text(
+              '笔记',
+              style: context.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: isDark ? AppColors.darkOnSurface : null,
+              ),
+            ),
+          ),
+        // 刷新按钮
+        IconButton(
+          onPressed: () => ref.read(notePageProvider.notifier).loadTree(),
+          icon: Icon(
+            Icons.refresh_rounded,
+            color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[700],
+          ),
+          tooltip: '刷新',
         ),
       ],
     ),
   );
 
-  Widget _buildSidebarHeader(BuildContext context, bool isDark) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+  /// 抽屉式目录
+  Widget _buildDrawer(
+    BuildContext context,
+    NotePageLoaded state,
+    bool isDark,
+  ) => Material(
+    elevation: 8,
+    color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
+    child: DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border(
+          right: BorderSide(
+            color: isDark
+                ? AppColors.darkOutline.withValues(alpha: 0.3)
+                : context.colorScheme.outlineVariant,
+          ),
+        ),
+      ),
+      child: Column(
+        children: [
+          // 抽屉标题栏
+          _buildDrawerHeader(context, isDark),
+          // 目录树
+          Expanded(
+            child: NoteTreeWidget(
+              nodes: state.treeNodes,
+              selectedPath: state.selectedNode?.path,
+              onNodeSelected: (node) {
+                ref.read(notePageProvider.notifier).selectFile(node);
+                // 选中文件后自动关闭抽屉
+                _closeDrawer();
+              },
+              onFolderToggle: (node) =>
+                  ref.read(notePageProvider.notifier).toggleFolder(node),
+              onFolderLoad: (node) =>
+                  ref.read(notePageProvider.notifier).toggleFolder(node),
+              isDark: isDark,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  /// 抽屉标题栏
+  Widget _buildDrawerHeader(BuildContext context, bool isDark) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
     decoration: BoxDecoration(
+      color: isDark
+          ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
+          : context.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
       border: Border(
         bottom: BorderSide(
           color: isDark
@@ -2110,75 +2186,31 @@ class _NoteListContentState extends ConsumerState<NoteListContent> {
     child: Row(
       children: [
         Icon(
-          Icons.folder_outlined,
-          size: 20,
-          color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[600],
+          Icons.folder_rounded,
+          size: 22,
+          color: AppColors.primary,
         ),
-        const SizedBox(width: 8),
-        Text(
-          '笔记目录',
-          style: context.textTheme.titleSmall?.copyWith(
-            color: isDark ? AppColors.darkOnSurface : null,
-            fontWeight: FontWeight.w600,
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            '笔记目录',
+            style: context.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: isDark ? AppColors.darkOnSurface : null,
+            ),
           ),
         ),
-        const Spacer(),
-        // 收起按钮
+        // 关闭按钮
         IconButton(
-          onPressed: () => _setSidebarCollapsed(true),
+          onPressed: _closeDrawer,
           icon: Icon(
-            Icons.chevron_left_rounded,
-            color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[600],
+            Icons.close_rounded,
+            size: 22,
+            color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[700],
           ),
-          iconSize: 20,
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-          tooltip: '收起侧边栏',
+          tooltip: '关闭目录',
         ),
       ],
-    ),
-  );
-
-  Widget _buildExpandButton(bool isDark) => Container(
-    width: 40,
-    decoration: BoxDecoration(
-      color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
-      border: Border(
-        right: BorderSide(
-          color: isDark
-              ? AppColors.darkOutline.withValues(alpha: 0.2)
-              : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
-        ),
-      ),
-    ),
-    child: Column(
-      children: [
-        const SizedBox(height: 8),
-        IconButton(
-          onPressed: () => _setSidebarCollapsed(false),
-          icon: Icon(
-            Icons.chevron_right_rounded,
-            color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[600],
-          ),
-          iconSize: 20,
-          tooltip: '展开侧边栏',
-        ),
-      ],
-    ),
-  );
-
-  Widget _buildResizeHandle(bool isDark) => GestureDetector(
-    onHorizontalDragUpdate: (details) {
-      _setSidebarWidth(_sidebarWidth + details.delta.dx);
-    },
-    child: MouseRegion(
-      cursor: SystemMouseCursors.resizeColumn,
-      child: Container(
-        width: 4,
-        color: isDark
-            ? AppColors.darkOutline.withValues(alpha: 0.1)
-            : Colors.grey.withValues(alpha: 0.1),
-      ),
     ),
   );
 
