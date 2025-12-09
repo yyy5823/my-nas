@@ -513,10 +513,12 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
       }
     }
 
+    // 使用 translucent 行为让滑动手势可以穿透到 PageView
+    // 只响应点击（tap）事件，不会拦截滑动手势
     return Positioned.fill(
       child: Row(
         children: [
-          // 左侧区域
+          // 左侧区域 - 点击翻页
           Expanded(
             child: GestureDetector(
               onTap: () {
@@ -526,8 +528,9 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
                   goToPrevious();
                 }
               },
+              // translucent 允许手势穿透，但仍然响应点击
               behavior: HitTestBehavior.translucent,
-              child: Container(),
+              child: const SizedBox.expand(),
             ),
           ),
           // 中间区域 - 显示/隐藏控制栏
@@ -536,10 +539,10 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
             child: GestureDetector(
               onTap: notifier.toggleControls,
               behavior: HitTestBehavior.translucent,
-              child: Container(),
+              child: const SizedBox.expand(),
             ),
           ),
-          // 右侧区域
+          // 右侧区域 - 点击翻页
           Expanded(
             child: GestureDetector(
               onTap: () {
@@ -550,7 +553,7 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
                 }
               },
               behavior: HitTestBehavior.translucent,
-              child: Container(),
+              child: const SizedBox.expand(),
             ),
           ),
         ],

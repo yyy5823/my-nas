@@ -304,9 +304,12 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       }
     }
 
+    // 当正在缓冲（切换歌曲）时，也显示播放动效
+    final showPlayingAnimation = state.isPlaying || state.isBuffering;
+
     await _liveActivityService.startMusicActivity(
       music: music,
-      isPlaying: state.isPlaying,
+      isPlaying: showPlayingAnimation,
       position: state.position,
       duration: state.duration,
       coverData: coverData,
@@ -340,9 +343,13 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     final currentMusic = _ref.read(currentMusicProvider);
     if (currentMusic == null) return;
 
+    // 当正在缓冲（切换歌曲）时，也显示播放动效，避免动效停止
+    // isPlaying 为 true 或者 isBuffering 为 true（正在加载新歌曲）时都显示动效
+    final showPlayingAnimation = state.isPlaying || state.isBuffering;
+
     await _liveActivityService.updateActivity(
       music: currentMusic,
-      isPlaying: state.isPlaying,
+      isPlaying: showPlayingAnimation,
       position: state.position,
       duration: state.duration,
     );
@@ -722,6 +729,11 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   /// 继续播放
   Future<void> resume() async {
     await _player.play();
+    // 如果 Live Activity 还没有运行，启动它
+    final currentMusic = _ref.read(currentMusicProvider);
+    if (currentMusic != null && !_liveActivityService.isActivityRunning) {
+      unawaited(_startLiveActivity(currentMusic));
+    }
   }
 
   /// 停止

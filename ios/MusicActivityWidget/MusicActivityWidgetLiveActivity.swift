@@ -324,9 +324,9 @@ struct MusicActivityWidgetLiveActivity: Widget {
 struct AnimatedMusicBars: View {
     // 使用 TimelineView 实现持续动画
     var body: some View {
-        TimelineView(.animation(minimumInterval: 0.1)) { timeline in
-            HStack(spacing: 2) {
-                ForEach(0..<3, id: \.self) { index in
+        TimelineView(.animation(minimumInterval: 0.08)) { timeline in
+            HStack(spacing: 1.5) {
+                ForEach(0..<6, id: \.self) { index in
                     MusicBar(index: index, date: timeline.date)
                 }
             }
@@ -339,15 +339,19 @@ struct MusicBar: View {
     let date: Date
 
     var body: some View {
-        // 使用正弦函数创建波动效果，每个条使用不同的相位
-        let phase = Double(index) * 0.8
+        // 使用正弦函数创建波动效果，每个条使用不同的相位和频率
+        let phase = Double(index) * 1.2
         let time = date.timeIntervalSinceReferenceDate
-        // 使用不同频率创建更自然的动画
-        let height = 0.4 + 0.6 * abs(sin(time * 3.0 + phase))
+        // 使用多个正弦波叠加创建更随机、更明显的动画效果
+        let wave1 = sin(time * 4.0 + phase)
+        let wave2 = sin(time * 2.5 + phase * 0.7) * 0.5
+        let combinedWave = abs(wave1 + wave2) / 1.5
+        // 高度范围从 0.15 到 1.0，变化更明显
+        let height = 0.15 + 0.85 * combinedWave
 
-        RoundedRectangle(cornerRadius: 1.5)
+        RoundedRectangle(cornerRadius: 1)
             .fill(Color.white)
-            .frame(width: 3)
+            .frame(width: 2.5)
             .scaleEffect(y: height, anchor: .bottom)
     }
 }

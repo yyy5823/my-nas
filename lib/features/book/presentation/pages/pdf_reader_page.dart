@@ -96,21 +96,6 @@ class PdfReaderNotifier extends StateNotifier<PdfReaderState> {
     return connection.adapter.fileSystem;
   }
 
-  /// 从流中读取所有字节
-  Future<Uint8List> _readStreamBytes(Stream<List<int>> stream) async {
-    final chunks = <List<int>>[];
-    await for (final chunk in stream) {
-      chunks.add(chunk);
-    }
-    final totalLength = chunks.fold<int>(0, (sum, chunk) => sum + chunk.length);
-    final result = Uint8List(totalLength);
-    var offset = 0;
-    for (final chunk in chunks) {
-      result.setRange(offset, offset + chunk.length, chunk);
-      offset += chunk.length;
-    }
-    return result;
-  }
 
   Future<void> _loadPdf() async {
     try {

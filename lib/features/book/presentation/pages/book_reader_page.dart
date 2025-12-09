@@ -300,6 +300,12 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
   String _currentChapterTitle = '';
   final ScrollController _scrollController = ScrollController();
 
+  // 分页相关
+  PageController? _pageController;
+  List<String> _pages = []; // 分页后的内容
+  int _currentPage = 0;
+  bool _isPaginationReady = false;
+
   @override
   void initState() {
     super.initState();
@@ -364,8 +370,10 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
   void dispose() {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     WakelockPlus.disable();
-    _scrollController..removeListener(_onScroll)
-    ..dispose();
+    _scrollController
+      ..removeListener(_onScroll)
+      ..dispose();
+    _pageController?.dispose();
     super.dispose();
   }
 
@@ -416,21 +424,46 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
 
   /// 跳转到章节
   void _jumpToChapter(BookChapter chapter) {
-    if (!_scrollController.hasClients) return;
-
-    // 计算目标滚动位置（基于章节在内容中的相对位置）
-    final maxScroll = _scrollController.position.maxScrollExtent;
     final state = ref.read(txtReaderProvider(widget.book));
+    final settings = ref.read(bookReaderSettingsProvider);
 
-    if (state is TxtReaderLoaded && state.hasHtml) {
-      final totalLength = state.htmlContent!.length.toDouble();
-      final targetPosition = (chapter.offset / totalLength * maxScroll).clamp(0.0, maxScroll);
+    // 判断是否使用分页模式
+    final usePageMode = state is TxtReaderLoaded &&
+        state.hasHtml &&
+        settings.pageTurnMode != BookPageTurnMode.scroll;
 
-      _scrollController.animateTo(
-        targetPosition,
+    if (usePageMode && _isPaginationReady && _pages.isNotEmpty) {
+      // 分页模式：根据章节位置跳转到对应页
+      final loadedState = state as TxtReaderLoaded;
+      final totalLength = loadedState.htmlContent!.length.toDouble();
+      final chapterProgress = chapter.offset / totalLength;
+      final targetPage = (chapterProgress * _pages.length).floor().clamp(0, _pages.length - 1);
+
+      _pageController?.animateToPage(
+        targetPage,
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOut,
       );
+
+      setState(() {
+        _currentPage = targetPage;
+        _currentChapterTitle = chapter.title;
+      });
+    } else {
+      // 滚动模式
+      if (!_scrollController.hasClients) return;
+
+      final maxScroll = _scrollController.position.maxScrollExtent;
+      if (state is TxtReaderLoaded && state.hasHtml) {
+        final totalLength = state.htmlContent!.length.toDouble();
+        final targetPosition = (chapter.offset / totalLength * maxScroll).clamp(0.0, maxScroll);
+
+        _scrollController.animateTo(
+          targetPosition,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
     }
 
     setState(() {
@@ -479,6 +512,16 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
   ) {
     final theme = settings.theme;
 
+    // 对于 MOBI/AZW3 等长文档，使用分页模式以提高性能
+    final usePageMode = state.hasHtml && settings.pageTurnMode != BookPageTurnMode.scroll;
+
+    // 初始化分页（如果需要且尚未完成）
+    if (usePageMode && !_isPaginationReady && state.hasHtml) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _paginateContent(state.htmlContent!, settings);
+      });
+    }
+
     return Stack(
       children: [
         // 阅读内容
@@ -490,15 +533,9 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
                 // 固定顶栏 - 避免摄像头遮挡内容
                 _buildFixedHeader(theme, settings),
                 Expanded(
-                  // 移除 GestureDetector，改用 _buildTapZones 处理所有点击
-                  child: SingleChildScrollView(
-                    controller: _scrollController,
-                    padding: EdgeInsets.symmetric(
-                      horizontal: settings.horizontalPadding,
-                      vertical: settings.verticalPadding,
-                    ),
-                    child: _buildContent(state, settings),
-                  ),
+                  child: usePageMode
+                      ? _buildPagedContent(state, settings)
+                      : _buildScrollContent(state, settings),
                 ),
                 // 进度指示器
                 if (settings.showProgress)
@@ -521,7 +558,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
                           overflow: TextOverflow.ellipsis,
                         ),
                         Text(
-                          _getProgressText(state),
+                          usePageMode ? _getPageProgressText() : _getProgressText(state),
                           style: TextStyle(
                             color: theme.textColor.withValues(alpha: 0.5),
                             fontSize: 11,
@@ -555,6 +592,218 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
         if (_showToc) _buildTocDrawer(context, settings),
       ],
     );
+  }
+
+  /// 滚动模式内容
+  Widget _buildScrollContent(TxtReaderLoaded state, BookReaderSettings settings) =>
+      SingleChildScrollView(
+        controller: _scrollController,
+        padding: EdgeInsets.symmetric(
+          horizontal: settings.horizontalPadding,
+          vertical: settings.verticalPadding,
+        ),
+        child: _buildContent(state, settings),
+      );
+
+  /// 分页模式内容 - 用于 MOBI/AZW3 等长文档，提高性能
+  Widget _buildPagedContent(TxtReaderLoaded state, BookReaderSettings settings) {
+    final theme = settings.theme;
+
+    // 如果分页尚未完成，显示加载中
+    if (!_isPaginationReady || _pages.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: theme.textColor.withValues(alpha: 0.5)),
+            const SizedBox(height: 16),
+            Text(
+              '正在分页...',
+              style: TextStyle(color: theme.textColor.withValues(alpha: 0.5)),
+            ),
+          ],
+        ),
+      );
+    }
+
+    _pageController ??= PageController(initialPage: _currentPage);
+
+    return PageView.builder(
+      controller: _pageController,
+      itemCount: _pages.length,
+      onPageChanged: (page) {
+        setState(() {
+          _currentPage = page;
+          // 更新当前章节标题
+          _updateChapterFromPage(page);
+        });
+        // 保存进度
+        _savePageProgress(page);
+      },
+      itemBuilder: (context, index) => Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: settings.horizontalPadding,
+          vertical: settings.verticalPadding,
+        ),
+        child: _buildPageContent(_pages[index], settings),
+      ),
+    );
+  }
+
+  /// 构建单页内容
+  Widget _buildPageContent(String pageHtml, BookReaderSettings settings) {
+    final theme = settings.theme;
+
+    // 清理 HTML 中的无效 CSS 颜色值
+    final cleanedHtml = _cleanInvalidCssColors(pageHtml);
+
+    return Html(
+      data: cleanedHtml,
+      style: _buildHtmlStyles(settings, theme),
+    );
+  }
+
+  /// 将 HTML 内容分割成多个页面
+  void _paginateContent(String htmlContent, BookReaderSettings settings) {
+    if (_isPaginationReady) return;
+
+    // 首先提取章节
+    if (_chapters.isEmpty) {
+      _extractChapters(htmlContent);
+    }
+
+    // 按段落分割内容
+    final paragraphs = _splitHtmlIntoParagraphs(htmlContent);
+
+    // 估算每页可容纳的内容量（基于字符数）
+    // 这是一个估算值，实际渲染时可能略有差异
+    const charsPerPage = 1500; // 每页约 1500 字符
+
+    final pages = <String>[];
+    var currentPageContent = StringBuffer();
+    var currentCharCount = 0;
+
+    for (final paragraph in paragraphs) {
+      final paragraphLength = paragraph.length;
+
+      // 如果当前页已经有足够内容，开始新页
+      if (currentCharCount > 0 && currentCharCount + paragraphLength > charsPerPage) {
+        pages.add(currentPageContent.toString());
+        currentPageContent = StringBuffer();
+        currentCharCount = 0;
+      }
+
+      currentPageContent.write(paragraph);
+      currentCharCount += paragraphLength;
+    }
+
+    // 添加最后一页
+    if (currentCharCount > 0) {
+      pages.add(currentPageContent.toString());
+    }
+
+    // 确保至少有一页
+    if (pages.isEmpty && htmlContent.isNotEmpty) {
+      pages.add(htmlContent);
+    }
+
+    setState(() {
+      _pages = pages;
+      _isPaginationReady = true;
+      // 恢复之前的页码进度
+      _restorePageProgress();
+    });
+
+    logger.i('内容分页完成: ${pages.length} 页');
+  }
+
+  /// 将 HTML 分割成段落
+  List<String> _splitHtmlIntoParagraphs(String html) {
+    final paragraphs = <String>[];
+
+    // 按常见的块级元素分割
+    final blockTags = RegExp(
+      '(<(?:p|div|h[1-6]|blockquote|li|tr)[^>]*>.*?</(?:p|div|h[1-6]|blockquote|li|tr)>)',
+      caseSensitive: false,
+      dotAll: true,
+    );
+
+    final matches = blockTags.allMatches(html);
+    if (matches.isEmpty) {
+      // 没有块级元素，按换行分割
+      final lines = html.split(RegExp(r'<br\s*/?>\s*'));
+      for (final line in lines) {
+        if (line.trim().isNotEmpty) {
+          paragraphs.add('<p>$line</p>');
+        }
+      }
+    } else {
+      for (final match in matches) {
+        paragraphs.add(match.group(0)!);
+      }
+    }
+
+    return paragraphs;
+  }
+
+  /// 保存分页进度
+  Future<void> _savePageProgress(int page) async {
+    final state = ref.read(txtReaderProvider(widget.book));
+    if (state is! TxtReaderLoaded) return;
+
+    final itemId = ReadingProgressService().generateItemId(
+      widget.book.sourceId ?? 'local',
+      widget.book.path,
+    );
+    await ReadingProgressService().saveProgress(ReadingProgress(
+      itemId: itemId,
+      itemType: 'txt',
+      position: page.toDouble(),
+      totalPositions: _pages.length,
+      lastReadAt: DateTime.now(),
+    ));
+  }
+
+  /// 恢复分页进度
+  void _restorePageProgress() {
+    final itemId = ReadingProgressService().generateItemId(
+      widget.book.sourceId ?? 'local',
+      widget.book.path,
+    );
+    final progress = ReadingProgressService().getProgress(itemId);
+    if (progress != null && _pages.isNotEmpty) {
+      _currentPage = progress.position.toInt().clamp(0, _pages.length - 1);
+      _pageController?.jumpToPage(_currentPage);
+    }
+  }
+
+  /// 从页码更新当前章节
+  void _updateChapterFromPage(int page) {
+    if (_chapters.isEmpty || _pages.isEmpty) return;
+
+    // 计算当前进度百分比
+    final progress = page / _pages.length;
+
+    // 找到对应的章节
+    String? title;
+    for (var i = _chapters.length - 1; i >= 0; i--) {
+      if (_chapters[i].offset <= progress) {
+        title = _chapters[i].title;
+        break;
+      }
+    }
+
+    if (title != null && title != _currentChapterTitle) {
+      setState(() {
+        _currentChapterTitle = title!;
+      });
+    }
+  }
+
+  /// 获取分页进度文本
+  String _getPageProgressText() {
+    if (_pages.isEmpty) return '';
+    return '${_currentPage + 1} / ${_pages.length}';
   }
 
   /// 构建固定顶栏，显示章节标题或书名
@@ -802,6 +1051,91 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
       },
     );
   }
+
+  /// 构建 HTML 样式（复用于分页和滚动模式）
+  Map<String, Style> _buildHtmlStyles(BookReaderSettings settings, BookReaderTheme theme) => {
+    'body': Style(
+      fontSize: FontSize(settings.fontSize),
+      lineHeight: LineHeight(settings.lineHeight),
+      color: theme.textColor,
+      fontFamily: settings.fontFamily,
+      margin: Margins.zero,
+      padding: HtmlPaddings.zero,
+    ),
+    'p': Style(
+      margin: Margins.only(bottom: settings.paragraphSpacing * 16),
+      textAlign: TextAlign.justify,
+    ),
+    'h1': Style(
+      fontSize: FontSize(settings.fontSize * 1.5),
+      fontWeight: FontWeight.bold,
+      margin: Margins.only(top: 24, bottom: 16),
+    ),
+    'h2': Style(
+      fontSize: FontSize(settings.fontSize * 1.3),
+      fontWeight: FontWeight.bold,
+      margin: Margins.only(top: 20, bottom: 12),
+    ),
+    'h3': Style(
+      fontSize: FontSize(settings.fontSize * 1.15),
+      fontWeight: FontWeight.bold,
+      margin: Margins.only(top: 16, bottom: 8),
+    ),
+    'h4': Style(
+      fontSize: FontSize(settings.fontSize * 1.05),
+      fontWeight: FontWeight.bold,
+      margin: Margins.only(top: 12, bottom: 6),
+    ),
+    'h5': Style(
+      fontSize: FontSize(settings.fontSize),
+      fontWeight: FontWeight.bold,
+      margin: Margins.only(top: 8, bottom: 4),
+    ),
+    'h6': Style(
+      fontSize: FontSize(settings.fontSize * 0.9),
+      fontWeight: FontWeight.bold,
+      margin: Margins.only(top: 8, bottom: 4),
+    ),
+    'blockquote': Style(
+      margin: Margins.symmetric(vertical: 12, horizontal: 16),
+      padding: HtmlPaddings.only(left: 12),
+      border: Border(
+        left: BorderSide(
+          color: theme.textColor.withValues(alpha: 0.3),
+          width: 3,
+        ),
+      ),
+      fontStyle: FontStyle.italic,
+    ),
+    'a': Style(
+      color: Colors.blue,
+      textDecoration: TextDecoration.underline,
+    ),
+    'img': Style(
+      display: Display.none, // 隐藏图片，避免加载问题
+    ),
+    'ul': Style(
+      margin: Margins.only(bottom: 12),
+      padding: HtmlPaddings.only(left: 20),
+    ),
+    'ol': Style(
+      margin: Margins.only(bottom: 12),
+      padding: HtmlPaddings.only(left: 20),
+    ),
+    'li': Style(
+      margin: Margins.only(bottom: 4),
+    ),
+    'pre': Style(
+      backgroundColor: theme.textColor.withValues(alpha: 0.05),
+      padding: HtmlPaddings.all(12),
+      margin: Margins.symmetric(vertical: 8),
+    ),
+    'code': Style(
+      backgroundColor: theme.textColor.withValues(alpha: 0.05),
+      fontFamily: 'monospace',
+      fontSize: FontSize(settings.fontSize * 0.9),
+    ),
+  };
 
   /// 修复 HTML 中的无效 CSS 颜色值
   /// flutter_html 无法解析某些格式不正确的颜色值（如 0x0000c 应该是 #0000cc）
@@ -1169,61 +1503,93 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     return '${progress.toStringAsFixed(0)}%';
   }
 
-  Widget _buildTapZones(BookReaderSettings settings) => Positioned.fill(
-    child: Row(
-      children: [
-        // 左侧 - 向上滚动（如果 tapToTurn 开启）或切换控制栏
-        Expanded(
-          child: GestureDetector(
-            onTap: () {
-              if (settings.tapToTurn && _scrollController.hasClients) {
-                _scrollController.animateTo(
-                  (_scrollController.offset -
-                          MediaQuery.of(context).size.height * 0.8)
-                      .clamp(0, _scrollController.position.maxScrollExtent),
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeOut,
-                );
-              } else {
-                _toggleControls();
-              }
-            },
-            behavior: HitTestBehavior.translucent,
-            child: Container(),
+  Widget _buildTapZones(BookReaderSettings settings) {
+    // 判断是否使用分页模式
+    final state = ref.read(txtReaderProvider(widget.book));
+    final usePageMode = state is TxtReaderLoaded &&
+        state.hasHtml &&
+        settings.pageTurnMode != BookPageTurnMode.scroll;
+
+    return Positioned.fill(
+      child: Row(
+        children: [
+          // 左侧 - 上一页/向上滚动（如果 tapToTurn 开启）
+          Expanded(
+            child: GestureDetector(
+              onTap: () {
+                if (!settings.tapToTurn) {
+                  _toggleControls();
+                  return;
+                }
+
+                if (usePageMode && _isPaginationReady) {
+                  // 分页模式：上一页
+                  if (_pageController != null && _currentPage > 0) {
+                    _pageController!.previousPage(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeOut,
+                    );
+                  }
+                } else if (_scrollController.hasClients) {
+                  // 滚动模式：向上滚动
+                  _scrollController.animateTo(
+                    (_scrollController.offset -
+                            MediaQuery.of(context).size.height * 0.8)
+                        .clamp(0.0, _scrollController.position.maxScrollExtent),
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOut,
+                  );
+                }
+              },
+              behavior: HitTestBehavior.translucent,
+              child: Container(),
+            ),
           ),
-        ),
-        // 中间 - 显示/隐藏控制栏
-        Expanded(
-          flex: 2,
-          child: GestureDetector(
-            onTap: _toggleControls,
-            behavior: HitTestBehavior.translucent,
-            child: Container(),
+          // 中间 - 显示/隐藏控制栏（只响应点击，不响应滑动）
+          Expanded(
+            flex: 2,
+            child: GestureDetector(
+              onTap: _toggleControls,
+              behavior: HitTestBehavior.translucent,
+              child: Container(),
+            ),
           ),
-        ),
-        // 右侧 - 向下滚动（如果 tapToTurn 开启）或切换控制栏
-        Expanded(
-          child: GestureDetector(
-            onTap: () {
-              if (settings.tapToTurn && _scrollController.hasClients) {
-                _scrollController.animateTo(
-                  (_scrollController.offset +
-                          MediaQuery.of(context).size.height * 0.8)
-                      .clamp(0, _scrollController.position.maxScrollExtent),
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeOut,
-                );
-              } else {
-                _toggleControls();
-              }
-            },
-            behavior: HitTestBehavior.translucent,
-            child: Container(),
+          // 右侧 - 下一页/向下滚动（如果 tapToTurn 开启）
+          Expanded(
+            child: GestureDetector(
+              onTap: () {
+                if (!settings.tapToTurn) {
+                  _toggleControls();
+                  return;
+                }
+
+                if (usePageMode && _isPaginationReady) {
+                  // 分页模式：下一页
+                  if (_pageController != null && _currentPage < _pages.length - 1) {
+                    _pageController!.nextPage(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeOut,
+                    );
+                  }
+                } else if (_scrollController.hasClients) {
+                  // 滚动模式：向下滚动
+                  _scrollController.animateTo(
+                    (_scrollController.offset +
+                            MediaQuery.of(context).size.height * 0.8)
+                        .clamp(0.0, _scrollController.position.maxScrollExtent),
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOut,
+                  );
+                }
+              },
+              behavior: HitTestBehavior.translucent,
+              child: Container(),
+            ),
           ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 
   Widget _buildTopBar(BuildContext context) => DecoratedBox(
     decoration: BoxDecoration(
