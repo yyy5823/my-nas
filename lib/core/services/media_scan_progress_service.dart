@@ -123,9 +123,7 @@ class MediaScanProgressService {
   }
 
   /// 检查指定媒体类型是否有任何目录正在扫描
-  bool isAnyScanning(MediaType mediaType) {
-    return _scanningPaths[mediaType]?.isNotEmpty ?? false;
-  }
+  bool isAnyScanning(MediaType mediaType) => _scanningPaths[mediaType]?.isNotEmpty ?? false;
 
   /// 开始扫描（标记目录为扫描中）
   void startScan(MediaType mediaType, String sourceId, String pathPrefix) {

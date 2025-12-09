@@ -519,10 +519,7 @@ class _PathCardState extends ConsumerState<_PathCard> {
   /// 获取非视频类型的扫描进度信息（已废弃，现在使用 MediaScanProgressService）
   /// 保留用于兼容性，但不再监听 provider 状态
   /// 返回: (是否正在扫描, 进度, 描述, 已扫描数量)
-  (bool isLoading, double progress, String? description, int scannedCount) _getOtherMediaScanState() {
-    // 现在使用 _isScanning 等本地状态，不再依赖 provider
-    return (_isScanning, _scanProgress, _scanDescription, _scannedCount);
-  }
+  (bool isLoading, double progress, String? description, int scannedCount) _getOtherMediaScanState() => (_isScanning, _scanProgress, _scanDescription, _scannedCount);
 
   // 以下代码保留用于引用但不再使用
   // ignore: unused_element
