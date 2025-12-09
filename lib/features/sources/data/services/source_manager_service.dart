@@ -530,15 +530,21 @@ class SourceManagerService {
   }
 
   /// 自动连接单个源（带超时处理和重试机制）
+  ///
+  /// 优化：减少超时时间，避免在网络不可用时长时间阻塞
+  /// 用户可以在应用启动后手动重新连接
   Future<void> _autoConnectSource(SourceEntity source) async {
-    // SMB 和 WebDAV 需要更长的超时时间，因为涉及网络协议协商
+    // 减少超时时间，避免非内网环境下等待过久
+    // 如果网络可用，这个时间足够完成连接
+    // 如果网络不可用，快速失败让用户可以正常使用本地数据
     final timeout = switch (source.type) {
-      SourceType.smb || SourceType.webdav => const Duration(seconds: 45),
-      _ => const Duration(seconds: 20),
+      SourceType.smb || SourceType.webdav => const Duration(seconds: 10),
+      _ => const Duration(seconds: 6),
     };
 
-    // SMB 连接可能在网络刚初始化时不稳定，允许重试
-    final maxRetries = source.type == SourceType.smb ? 2 : 1;
+    // 减少重试次数，避免在网络不可用时等待过久
+    // 用户可以稍后手动重新连接
+    const maxRetries = 1;
 
     try {
       // 本地存储不需要凭证，直接连接

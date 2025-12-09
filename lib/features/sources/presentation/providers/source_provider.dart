@@ -105,8 +105,9 @@ class ActiveConnectionsNotifier
     // 通过监听源列表变化来触发自动连接
     _ref.listen<AsyncValue<List<SourceEntity>>>(sourcesProvider, (previous, next) {
       if (next.hasValue && !_isAutoConnecting) {
-        // 延迟执行，确保网络栈完全初始化（iOS 启动后网络可能需要时间就绪）
-        Future.delayed(const Duration(seconds: 2), autoConnectAll);
+        // 减少延迟时间，加快启动速度
+        // 500ms 足够让网络栈初始化，同时不会明显延迟用户体验
+        Future.delayed(const Duration(milliseconds: 500), autoConnectAll);
       }
     }, fireImmediately: true);
   }

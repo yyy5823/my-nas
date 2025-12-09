@@ -287,19 +287,33 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     try {
       logger.d('VideoListNotifier: 开始初始化...');
 
-      // 并行初始化服务
+      // 关键优化：先显示空状态UI，让用户立即看到界面
+      // 这样即使数据库查询较慢，用户也不会看到黑屏
+      state = VideoListLoaded(totalCount: 0);
+
+      // 并行初始化服务，添加超时机制防止无限等待
       await Future.wait([
         _metadataService.init(),
         _cacheService.init(),
-      ]);
+      ]).timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {
+          logger.w('VideoListNotifier: 服务初始化超时，继续加载数据');
+          return <void>[];
+        },
+      );
 
       logger.d('VideoListNotifier: 服务初始化完成，开始加载数据');
 
       // 从 SQLite 加载分类数据（高性能分页查询）
-      await _loadCategorizedData();
+      // 使用 silent: true 避免重置状态导致闪烁
+      await _loadCategorizedData(silent: true);
     } on Exception catch (e) {
       logger.e('VideoListNotifier: 初始化失败', e);
-      state = VideoListLoaded(totalCount: 0);
+      // 即使初始化失败，也保持空列表状态，让用户可以配置
+      if (state is! VideoListLoaded) {
+        state = VideoListLoaded(totalCount: 0);
+      }
     }
   }
 
@@ -317,15 +331,41 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
 
     // 并行查询各分类数据（使用 SQLite 索引，O(log N) 复杂度）
     // 首页只加载少量数据用于展示，查看全部页面支持分页懒加载
-    final results = await Future.wait([
-      _db.getStats(enabledPaths: enabledPaths),
-      _db.getTvShowGroupCount(enabledPaths: enabledPaths), // 获取不同电视剧总数
-      _db.getTopRated(limit: 200, enabledPaths: enabledPaths), // 获取足够多的高分视频
-      _db.getRecentlyUpdated(limit: 100, enabledPaths: enabledPaths), // 获取足够多的最近更新
-      _db.getByCategory(MediaCategory.movie, enabledPaths: enabledPaths), // 首页只需要少量电影
-      _db.getTvShowGroupRepresentatives(enabledPaths: enabledPaths), // 首页只需要少量剧集代表
-      _db.getMovieCollections(), // 获取电影系列（至少2部）
-    ]);
+    // 添加超时机制，防止数据库查询阻塞过久
+    List<Object?> results;
+    try {
+      results = await Future.wait([
+        _db.getStats(enabledPaths: enabledPaths),
+        _db.getTvShowGroupCount(enabledPaths: enabledPaths),
+        _db.getTopRated(limit: 200, enabledPaths: enabledPaths),
+        _db.getRecentlyUpdated(limit: 100, enabledPaths: enabledPaths),
+        _db.getByCategory(MediaCategory.movie, enabledPaths: enabledPaths),
+        _db.getTvShowGroupRepresentatives(enabledPaths: enabledPaths),
+        _db.getMovieCollections(),
+      ]).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          logger.w('VideoListNotifier: 数据库查询超时，显示空列表');
+          // 返回空结果，避免阻塞
+          return [
+            <String, dynamic>{'total': 0, 'movies': 0, 'tvShows': 0},
+            0,
+            <VideoMetadata>[],
+            <VideoMetadata>[],
+            <VideoMetadata>[],
+            <VideoMetadata>[],
+            <MovieCollection>[],
+          ];
+        },
+      );
+    } on Exception catch (e) {
+      logger.e('VideoListNotifier: 数据库查询失败', e);
+      // 查询失败时保持当前状态或显示空列表
+      if (state is! VideoListLoaded) {
+        state = VideoListLoaded(totalCount: 0);
+      }
+      return;
+    }
 
     final stats = results[0] as Map<String, dynamic>;
     final tvShowGroupCount = results[1] as int;
