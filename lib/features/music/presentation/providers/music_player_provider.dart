@@ -191,13 +191,11 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
     // 监听播放状态
     _player.playingStream.listen((playing) {
-      logger.i('MusicPlayer: playingStream => $playing');
       state = state.copyWith(isPlaying: playing);
     });
 
     // 监听缓冲状态
     _player.processingStateStream.listen((processingState) {
-      logger.d('MusicPlayer: processingState => $processingState');
       state = state.copyWith(
         isBuffering: processingState == ProcessingState.buffering ||
             processingState == ProcessingState.loading,
@@ -211,16 +209,11 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
     // 监听播放位置（使用播放器原生的 positionStream，无需定时器）
     _player.positionStream.listen((position) {
-      // 只在位置变化超过1秒时记录日志，避免日志过多
-      if ((position.inSeconds - state.position.inSeconds).abs() >= 1) {
-        logger.d('MusicPlayer: positionStream => $position (duration: ${state.duration})');
-      }
       state = state.copyWith(position: position);
     });
 
     // 监听总时长
     _player.durationStream.listen((duration) {
-      logger.i('MusicPlayer: durationStream => $duration');
       if (duration != null && duration > Duration.zero) {
         state = state.copyWith(duration: duration);
       }
@@ -231,11 +224,9 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       state = state.copyWith(bufferedPosition: bufferedPosition);
     });
 
-    // 监听播放错误
+    // 监听播放错误（仅处理错误，不记录正常事件）
     _player.playbackEventStream.listen(
-      (event) {
-        logger.d('MusicPlayer: playbackEvent => ${event.processingState}');
-      },
+      null, // 正常事件无需处理，processingStateStream 已处理
       onError: (Object e, StackTrace stackTrace) {
         logger.e('MusicPlayer: playbackEventStream 错误', e, stackTrace);
         state = state.copyWith(errorMessage: e.toString());

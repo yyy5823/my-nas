@@ -823,6 +823,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     final videoCount = state is VideoListLoaded ? state.totalCount : 0;
     final movieCount = state is VideoListLoaded ? state.movieCount : 0;
     final tvShowCount = state is VideoListLoaded ? state.tvShowGroups.length : 0;
+    final otherCount = state is VideoListLoaded ? state.otherCount : 0;
 
     // 判断是否正在刮削
     final isScraping = _scrapeStats != null && !_scrapeStats!.isAllDone && _scrapeStats!.total > 0;
@@ -857,6 +858,16 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
                       color: AppColors.accent,
                       isDark: isDark,
                     ),
+                    // 其他视频
+                    if (otherCount > 0) ...[
+                      const SizedBox(width: 12),
+                      _buildStatChip(
+                        icon: Icons.video_file_rounded,
+                        label: '$otherCount 其他',
+                        color: Colors.grey,
+                        isDark: isDark,
+                      ),
+                    ],
                     // 刮削进度指示器
                     if (isScraping) ...[
                       const SizedBox(width: 12),
