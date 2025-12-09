@@ -17,6 +17,8 @@ import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 class VideoScanProgress {
   const VideoScanProgress({
     required this.phase,
+    this.sourceId,
+    this.pathPrefix,
     this.currentPath,
     this.scannedCount = 0,
     this.totalCount = 0,
@@ -25,6 +27,12 @@ class VideoScanProgress {
 
   /// 扫描阶段
   final VideoScanPhase phase;
+
+  /// 源ID（用于区分不同目录的进度）
+  final String? sourceId;
+
+  /// 目录路径前缀（用于区分不同目录的进度）
+  final String? pathPrefix;
 
   /// 当前扫描的路径
   final String? currentPath;
@@ -218,7 +226,8 @@ class VideoScannerService {
       await _dbService.init();
 
       // 阶段1：扫描文件系统
-      _emitProgress(const VideoScanProgress(phase: VideoScanPhase.scanning));
+      // 记录每个目录的扫描结果，用于后续发送各目录的进度
+      final pathVideoCounts = <(String sourceId, String pathPrefix, int count)>[];
 
       for (final path in paths) {
         if (!path.isEnabled) continue;
@@ -232,12 +241,26 @@ class VideoScannerService {
         sourceIds.add(path.sourceId);
         final fileSystem = conn.adapter.fileSystem;
 
+        // 为每个目录单独发送扫描开始事件（包含目录标识）
+        _emitProgress(VideoScanProgress(
+          phase: VideoScanPhase.scanning,
+          sourceId: path.sourceId,
+          pathPrefix: path.path,
+        ));
+
+        // 创建当前目录的视频列表（用于计算单目录进度）
+        final pathVideos = <_ScannedVideo>[];
         await _scanDirectory(
           fileSystem: fileSystem,
           sourceId: path.sourceId,
           path: path.path,
-          videos: allVideos,
+          rootPathPrefix: path.path,
+          videos: pathVideos,
         );
+        allVideos.addAll(pathVideos);
+
+        // 记录该目录的扫描数量
+        pathVideoCounts.add((path.sourceId, path.path, pathVideos.length));
       }
 
       logger.i('VideoScannerService: 文件扫描完成，共 ${allVideos.length} 个视频');
@@ -264,22 +287,31 @@ class VideoScannerService {
       await _cacheService.saveCache(cache);
 
       // 阶段2：保存基础记录到 SQLite
-      _emitProgress(
-        VideoScanProgress(
-          phase: VideoScanPhase.savingToDb,
-          totalCount: allVideos.length,
-        ),
-      );
+      // 为每个目录发送 savingToDb 阶段进度
+      for (final (sourceId, pathPrefix, count) in pathVideoCounts) {
+        _emitProgress(
+          VideoScanProgress(
+            phase: VideoScanPhase.savingToDb,
+            sourceId: sourceId,
+            pathPrefix: pathPrefix,
+            totalCount: count,
+          ),
+        );
+      }
 
       await _saveBasicMetadataToDb(allVideos);
 
-      // 完成文件扫描
-      _emitProgress(
-        VideoScanProgress(
-          phase: VideoScanPhase.completed,
-          scannedCount: allVideos.length,
-        ),
-      );
+      // 完成文件扫描 - 为每个目录发送 completed 阶段进度
+      for (final (sourceId, pathPrefix, count) in pathVideoCounts) {
+        _emitProgress(
+          VideoScanProgress(
+            phase: VideoScanPhase.completed,
+            sourceId: sourceId,
+            pathPrefix: pathPrefix,
+            scannedCount: count,
+          ),
+        );
+      }
 
       // 更新后台服务为完成状态
       await _backgroundTaskService.updateProgress(
@@ -705,11 +737,14 @@ class VideoScannerService {
     required NasFileSystem fileSystem,
     required String sourceId,
     required String path,
+    required String rootPathPrefix,
     required List<_ScannedVideo> videos,
   }) async {
     _emitProgress(
       VideoScanProgress(
         phase: VideoScanPhase.scanning,
+        sourceId: sourceId,
+        pathPrefix: rootPathPrefix,
         currentPath: path,
         scannedCount: videos.length,
       ),
@@ -737,6 +772,7 @@ class VideoScannerService {
             fileSystem: fileSystem,
             sourceId: sourceId,
             path: item.path,
+            rootPathPrefix: rootPathPrefix,
             videos: videos,
           );
         } else if (item.type == FileType.video) {
@@ -751,6 +787,8 @@ class VideoScannerService {
             _emitProgress(
               VideoScanProgress(
                 phase: VideoScanPhase.scanning,
+                sourceId: sourceId,
+                pathPrefix: rootPathPrefix,
                 currentPath: path,
                 scannedCount: videos.length,
               ),

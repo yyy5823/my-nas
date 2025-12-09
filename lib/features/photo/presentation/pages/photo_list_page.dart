@@ -4,6 +4,7 @@ import 'package:my_nas/app/router/app_router.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/core/services/media_scan_progress_service.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/photo/data/services/photo_database_service.dart';
 import 'package:my_nas/features/photo/data/services/photo_library_cache_service.dart';
@@ -667,6 +668,172 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
 
     // 重新从 SQLite 加载（确保状态一致）
     await _loadFromSqlite();
+  }
+
+  /// 扫描单个目录（用于媒体库页面的单目录扫描）
+  ///
+  /// 与 loadPhotos 不同，此方法：
+  /// 1. 只扫描指定的单个目录
+  /// 2. 通过 MediaScanProgressService 发送独立进度
+  /// 3. 不改变全局 state（避免影响其他目录的显示）
+  Future<int> scanSinglePath({
+    required MediaLibraryPath path,
+    required Map<String, SourceConnection> connections,
+  }) async {
+    final progressService = MediaScanProgressService();
+    final sourceId = path.sourceId;
+    final pathPrefix = path.path;
+
+    final connection = connections[sourceId];
+    if (connection == null || connection.status != SourceStatus.connected) {
+      logger.w('PhotoListNotifier: 源 $sourceId 未连接，跳过扫描');
+      return 0;
+    }
+
+    // 标记开始扫描
+    progressService.startScan(MediaType.photo, sourceId, pathPrefix);
+
+    try {
+      await _db.init();
+
+      // 扫描文件系统
+      final photos = <PhotoFileWithSource>[];
+      var lastUpdateCount = 0;
+
+      await _scanFolderRecursivelyWithProgress(
+        connection.adapter.fileSystem,
+        pathPrefix,
+        photos,
+        sourceId: sourceId,
+        rootPathPrefix: pathPrefix,
+        progressService: progressService,
+        onBatchFound: () {
+          if (photos.length - lastUpdateCount >= 5) {
+            lastUpdateCount = photos.length;
+            progressService.emitProgress(MediaScanProgress(
+              mediaType: MediaType.photo,
+              phase: MediaScanPhase.scanning,
+              sourceId: sourceId,
+              pathPrefix: pathPrefix,
+              scannedCount: photos.length,
+              currentPath: '$pathPrefix (${photos.length})',
+            ));
+          }
+        },
+      );
+
+      logger.i('PhotoListNotifier: 目录 $pathPrefix 扫描完成，找到 ${photos.length} 张照片');
+
+      // 保存到数据库
+      if (photos.isNotEmpty) {
+        progressService.emitProgress(MediaScanProgress(
+          mediaType: MediaType.photo,
+          phase: MediaScanPhase.saving,
+          sourceId: sourceId,
+          pathPrefix: pathPrefix,
+          scannedCount: photos.length,
+          totalCount: photos.length,
+        ));
+
+        final entities = photos
+            .map((p) => PhotoEntity(
+                  sourceId: p.sourceId,
+                  filePath: p.path,
+                  fileName: p.name,
+                  thumbnailUrl: p.thumbnailUrl,
+                  size: p.size,
+                  modifiedTime: p.modifiedTime,
+                  lastUpdated: DateTime.now(),
+                ))
+            .toList();
+
+        await _db.upsertBatch(entities);
+      }
+
+      // 完成扫描
+      progressService.endScan(MediaType.photo, sourceId, pathPrefix, success: true);
+
+      // 重新加载数据
+      await _loadFromSqlite();
+
+      return photos.length;
+    } on Exception catch (e) {
+      logger.e('PhotoListNotifier: 扫描目录 $pathPrefix 失败', e);
+      progressService.endScan(MediaType.photo, sourceId, pathPrefix, success: false);
+      rethrow;
+    }
+  }
+
+  /// 带进度的递归扫描照片文件
+  Future<void> _scanFolderRecursivelyWithProgress(
+    NasFileSystem fileSystem,
+    String path,
+    List<PhotoFileWithSource> photos, {
+    required String sourceId,
+    required String rootPathPrefix,
+    required MediaScanProgressService progressService,
+    VoidCallback? onBatchFound,
+  }) async {
+    try {
+      final files = await fileSystem.listDirectory(path);
+
+      for (final file in files) {
+        if (file.type == FileType.image) {
+          var thumbnailUrl = file.thumbnailUrl;
+          if (thumbnailUrl == null || thumbnailUrl.isEmpty) {
+            try {
+              thumbnailUrl = await fileSystem.getThumbnailUrl(
+                file.path,
+                size: ThumbnailSize.medium,
+              );
+            } on Exception {
+              // ignore
+            }
+          }
+
+          if (thumbnailUrl == null || thumbnailUrl.isEmpty) {
+            try {
+              thumbnailUrl = await fileSystem.getFileUrl(file.path);
+            } on Exception {
+              // ignore
+            }
+          }
+
+          final fileWithThumbnail = FileItem(
+            name: file.name,
+            path: file.path,
+            isDirectory: file.isDirectory,
+            size: file.size,
+            modifiedTime: file.modifiedTime,
+            createdTime: file.createdTime,
+            mimeType: file.mimeType,
+            extension: file.extension,
+            thumbnailUrl: thumbnailUrl,
+            isHidden: file.isHidden,
+            isReadOnly: file.isReadOnly,
+          );
+
+          photos.add(PhotoFileWithSource(file: fileWithThumbnail, sourceId: sourceId));
+          onBatchFound?.call();
+        } else if (file.isDirectory) {
+          if (_shouldSkipDirectory(file.name)) {
+            continue;
+          }
+
+          await _scanFolderRecursivelyWithProgress(
+            fileSystem,
+            file.path,
+            photos,
+            sourceId: sourceId,
+            rootPathPrefix: rootPathPrefix,
+            progressService: progressService,
+            onBatchFound: onBatchFound,
+          );
+        }
+      }
+    } on Exception catch (e) {
+      logger.w('扫描子文件夹失败: $path - $e');
+    }
   }
 
   /// 递归扫描照片文件（无深度限制）

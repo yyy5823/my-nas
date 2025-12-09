@@ -7,6 +7,7 @@ import 'package:my_nas/app/router/app_router.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/core/services/media_scan_progress_service.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/book/data/services/book_database_service.dart';
 import 'package:my_nas/features/book/data/services/book_library_cache_service.dart';
@@ -463,6 +464,129 @@ class BookListNotifier extends StateNotifier<BookListState> {
 
     // 重新从 SQLite 加载（确保状态一致）
     await _loadFromSqlite();
+  }
+
+  /// 扫描单个目录（用于媒体库页面的单目录扫描）
+  Future<int> scanSinglePath({
+    required MediaLibraryPath path,
+    required Map<String, SourceConnection> connections,
+  }) async {
+    final progressService = MediaScanProgressService();
+    final sourceId = path.sourceId;
+    final pathPrefix = path.path;
+
+    final connection = connections[sourceId];
+    if (connection == null || connection.status != SourceStatus.connected) {
+      logger.w('BookListNotifier: 源 $sourceId 未连接，跳过扫描');
+      return 0;
+    }
+
+    progressService.startScan(MediaType.book, sourceId, pathPrefix);
+
+    try {
+      await _db.init();
+
+      final books = <BookFileWithSource>[];
+      var lastUpdateCount = 0;
+
+      await _scanForBooksWithProgress(
+        connection.adapter.fileSystem,
+        pathPrefix,
+        books,
+        sourceId: sourceId,
+        rootPathPrefix: pathPrefix,
+        progressService: progressService,
+        onBatchFound: () {
+          if (books.length - lastUpdateCount >= 5) {
+            lastUpdateCount = books.length;
+            progressService.emitProgress(MediaScanProgress(
+              mediaType: MediaType.book,
+              phase: MediaScanPhase.scanning,
+              sourceId: sourceId,
+              pathPrefix: pathPrefix,
+              scannedCount: books.length,
+              currentPath: '$pathPrefix (${books.length})',
+            ));
+          }
+        },
+      );
+
+      logger.i('BookListNotifier: 目录 $pathPrefix 扫描完成，找到 ${books.length} 本书');
+
+      // 保存到数据库
+      if (books.isNotEmpty) {
+        progressService.emitProgress(MediaScanProgress(
+          mediaType: MediaType.book,
+          phase: MediaScanPhase.saving,
+          sourceId: sourceId,
+          pathPrefix: pathPrefix,
+          scannedCount: books.length,
+          totalCount: books.length,
+        ));
+
+        final entities = books
+            .map((b) => BookEntity(
+                  sourceId: b.sourceId,
+                  filePath: b.path,
+                  fileName: b.name,
+                  format: BookItem.formatFromExtension(b.name),
+                  size: b.size,
+                  modifiedTime: b.modifiedTime,
+                  lastUpdated: DateTime.now(),
+                ))
+            .toList();
+
+        await _db.upsertBatch(entities);
+      }
+
+      progressService.endScan(MediaType.book, sourceId, pathPrefix, success: true);
+
+      // 重新加载数据
+      await _loadFromSqlite();
+
+      return books.length;
+    } on Exception catch (e) {
+      logger.e('BookListNotifier: 扫描目录 $pathPrefix 失败', e);
+      progressService.endScan(MediaType.book, sourceId, pathPrefix, success: false);
+      rethrow;
+    }
+  }
+
+  /// 带进度的递归扫描书籍文件
+  Future<void> _scanForBooksWithProgress(
+    NasFileSystem fs,
+    String path,
+    List<BookFileWithSource> books, {
+    required String sourceId,
+    required String rootPathPrefix,
+    required MediaScanProgressService progressService,
+    VoidCallback? onBatchFound,
+  }) async {
+    try {
+      final items = await fs.listDirectory(path);
+      for (final item in items) {
+        if (_shouldSkipDirectory(item.name)) {
+          continue;
+        }
+
+        if (item.isDirectory) {
+          await _scanForBooksWithProgress(
+            fs,
+            item.path,
+            books,
+            sourceId: sourceId,
+            rootPathPrefix: rootPathPrefix,
+            progressService: progressService,
+            onBatchFound: onBatchFound,
+          );
+        } else if (_isBookFile(item.name)) {
+          books.add(BookFileWithSource(file: item, sourceId: sourceId));
+          onBatchFound?.call();
+        }
+      }
+    } on Exception catch (e) {
+      logger.w('扫描子文件夹失败: $path - $e');
+    }
   }
 
   /// 递归扫描书籍文件（无深度限制）

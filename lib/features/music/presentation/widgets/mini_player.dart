@@ -221,6 +221,7 @@ class MiniPlayer extends ConsumerWidget {
     MusicPlayerState playerState,
     MusicPlayerNotifier playerNotifier,
   ) => GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: playerNotifier.playOrPause,
       child: Container(
         width: 42,

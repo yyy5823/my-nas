@@ -4,6 +4,7 @@ import 'package:my_nas/app/router/app_router.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/core/services/media_scan_progress_service.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/comic/data/services/comic_library_cache_service.dart';
 import 'package:my_nas/features/comic/presentation/pages/comic_reader_page.dart';
@@ -310,6 +311,157 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
     ));
 
     state = ComicListLoaded(comics: comics);
+  }
+
+  /// 扫描单个目录（用于媒体库页面的单目录扫描）
+  Future<int> scanSinglePath({
+    required MediaLibraryPath path,
+    required Map<String, SourceConnection> connections,
+  }) async {
+    final progressService = MediaScanProgressService();
+    final sourceId = path.sourceId;
+    final pathPrefix = path.path;
+
+    final connection = connections[sourceId];
+    if (connection == null || connection.status != SourceStatus.connected) {
+      logger.w('ComicListNotifier: 源 $sourceId 未连接，跳过扫描');
+      return 0;
+    }
+
+    progressService.startScan(MediaType.comic, sourceId, pathPrefix);
+
+    try {
+      final comics = <ComicItem>[];
+      var lastUpdateCount = 0;
+
+      await _scanForComicsWithProgress(
+        connection.adapter.fileSystem,
+        pathPrefix,
+        comics,
+        sourceId: sourceId,
+        rootPathPrefix: pathPrefix,
+        progressService: progressService,
+        onBatchFound: () {
+          if (comics.length - lastUpdateCount >= 5) {
+            lastUpdateCount = comics.length;
+            progressService.emitProgress(MediaScanProgress(
+              mediaType: MediaType.comic,
+              phase: MediaScanPhase.scanning,
+              sourceId: sourceId,
+              pathPrefix: pathPrefix,
+              scannedCount: comics.length,
+              currentPath: '$pathPrefix (${comics.length})',
+            ));
+          }
+        },
+      );
+
+      logger.i('ComicListNotifier: 目录 $pathPrefix 扫描完成，找到 ${comics.length} 本漫画');
+
+      // 保存到缓存
+      if (comics.isNotEmpty) {
+        progressService.emitProgress(MediaScanProgress(
+          mediaType: MediaType.comic,
+          phase: MediaScanPhase.saving,
+          sourceId: sourceId,
+          pathPrefix: pathPrefix,
+          scannedCount: comics.length,
+          totalCount: comics.length,
+        ));
+
+        // 更新缓存（合并现有缓存）
+        final existingCache = _cacheService.getCache();
+        final existingComics = existingCache?.comics
+            .where((c) => !(c.sourceId == sourceId && c.folderPath.startsWith(pathPrefix)))
+            .toList() ?? [];
+
+        final newCacheEntries = comics.map((c) => c.toCacheEntry()).toList();
+        final allSourceIds = {...?existingCache?.sourceIds, sourceId}.toList();
+
+        await _cacheService.saveCache(ComicLibraryCache(
+          comics: [...existingComics, ...newCacheEntries],
+          lastUpdated: DateTime.now(),
+          sourceIds: allSourceIds,
+        ));
+      }
+
+      progressService.endScan(MediaType.comic, sourceId, pathPrefix, success: true);
+
+      // 重新加载（从缓存）
+      final cache = _cacheService.getCache();
+      if (cache != null) {
+        final allComics = cache.comics.map(ComicItem.fromCacheEntry).toList();
+        state = ComicListLoaded(comics: allComics);
+      }
+
+      return comics.length;
+    } on Exception catch (e) {
+      logger.e('ComicListNotifier: 扫描目录 $pathPrefix 失败', e);
+      progressService.endScan(MediaType.comic, sourceId, pathPrefix, success: false);
+      rethrow;
+    }
+  }
+
+  /// 带进度的递归扫描漫画文件
+  Future<void> _scanForComicsWithProgress(
+    NasFileSystem fs,
+    String path,
+    List<ComicItem> comics, {
+    required String sourceId,
+    required String rootPathPrefix,
+    required MediaScanProgressService progressService,
+    VoidCallback? onBatchFound,
+  }) async {
+    try {
+      final items = await fs.listDirectory(path);
+
+      for (final item in items) {
+        if (_shouldSkipDirectory(item.name)) {
+          continue;
+        }
+
+        if (item.isDirectory) {
+          final comicInfo = await _checkIfComicFolder(fs, item.path);
+          if (comicInfo != null) {
+            comics.add(ComicItem(
+              folderPath: item.path,
+              folderName: item.name,
+              sourceId: sourceId,
+              coverPath: comicInfo.coverPath,
+              pageCount: comicInfo.pageCount,
+              modifiedTime: item.modifiedTime,
+            ));
+            onBatchFound?.call();
+          } else {
+            await _scanForComicsWithProgress(
+              fs,
+              item.path,
+              comics,
+              sourceId: sourceId,
+              rootPathPrefix: rootPathPrefix,
+              progressService: progressService,
+              onBatchFound: onBatchFound,
+            );
+          }
+        } else {
+          final comicType = ComicItem.typeFromExtension(item.name);
+          if (comicType != null) {
+            final nameWithoutExt = _removeExtension(item.name);
+            comics.add(ComicItem(
+              folderPath: item.path,
+              folderName: nameWithoutExt,
+              sourceId: sourceId,
+              modifiedTime: item.modifiedTime,
+              type: comicType,
+              fileSize: item.size,
+            ));
+            onBatchFound?.call();
+          }
+        }
+      }
+    } on Exception catch (e) {
+      logger.w('扫描漫画目录失败: $path - $e');
+    }
   }
 
   /// 递归扫描漫画文件（无深度限制）

@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/core/services/media_scan_progress_service.dart';
 import 'package:my_nas/features/book/data/services/book_database_service.dart';
 import 'package:my_nas/features/book/presentation/pages/book_list_page.dart';
 import 'package:my_nas/features/comic/data/services/comic_library_cache_service.dart';
@@ -351,11 +352,11 @@ class _PathCard extends ConsumerStatefulWidget {
 }
 
 class _PathCardState extends ConsumerState<_PathCard> {
-  // 扫描状态（仅用于视频，其他媒体类型通过 provider 监听）
+  // 扫描状态（所有媒体类型统一使用）
   bool _isScanning = false;
   double _scanProgress = 0;
   String? _scanDescription;
-  int _videoScannedCount = 0;  // 视频扫描时的实时数量
+  int _scannedCount = 0;  // 扫描时的实时数量
 
   // 视频专用：刮削状态
   bool _isScraping = false;
@@ -369,6 +370,7 @@ class _PathCardState extends ConsumerState<_PathCard> {
 
   StreamSubscription<VideoScanProgress>? _videoProgressSub;
   StreamSubscription<ScrapeStats>? _scrapeStatsSub;
+  StreamSubscription<MediaScanProgress>? _mediaScanProgressSub;
 
   @override
   void initState() {
@@ -376,33 +378,41 @@ class _PathCardState extends ConsumerState<_PathCard> {
     _loadStats();
 
     if (widget.mediaType == MediaType.video) {
-      // 检查初始刮削状态
+      // 视频类型：使用 VideoScannerService
       _isScraping = VideoScannerService().isScraping;
       _isScanning = VideoScannerService().isScanning;
 
-      // 如果正在刮削，异步获取当前统计
       if (_isScraping) {
         _loadInitialScrapeStats();
       }
 
       _videoProgressSub = VideoScannerService().progressStream.listen((progress) {
         if (mounted) {
-          setState(() {
-            _isScanning = VideoScannerService().isScanning;
-            _scanProgress = progress.progress;
-            _scanDescription = progress.description;
-            _videoScannedCount = progress.scannedCount;
-          });
+          final isMyProgress = progress.sourceId == widget.path.sourceId &&
+              progress.pathPrefix == widget.path.path;
+
+          if (isMyProgress) {
+            setState(() {
+              _isScanning = progress.phase == VideoScanPhase.scanning ||
+                  progress.phase == VideoScanPhase.savingToDb;
+              _scanProgress = progress.progress;
+              _scanDescription = progress.description;
+              _scannedCount = progress.scannedCount;
+
+              if (progress.phase == VideoScanPhase.completed ||
+                  progress.phase == VideoScanPhase.error) {
+                _isScanning = false;
+              }
+            });
+          }
         }
       });
       _scrapeStatsSub = VideoScannerService().scrapeStatsStream.listen((globalStats) async {
         if (mounted) {
-          // 进度条使用全局统计（合并所有目录）
           final globalProgress = globalStats.total > 0
               ? globalStats.processed / globalStats.total
               : 0.0;
 
-          // 单独获取当前目录的统计数据
           final sourceId = widget.path.sourceId;
           final pathPrefix = widget.path.path;
           final pathStats = await VideoScannerService().getScrapeStats(
@@ -417,16 +427,48 @@ class _PathCardState extends ConsumerState<_PathCard> {
           if (mounted) {
             setState(() {
               _isScraping = VideoScannerService().isScraping;
-              // 使用当前目录的统计数据
               _itemCount = pathStats.total;
               _scrapedCount = pathStats.completed;
               _pendingScrapeCount = pathStats.pending;
               _retryableCount = retryable;
-              // 进度条显示全局进度（合并所有目录的进度）
               _scrapeProgress = globalProgress;
-              // 当全局刮削完成时，确保关闭进度条
               if (globalStats.isAllDone) {
                 _isScraping = false;
+              }
+            });
+          }
+        }
+      });
+    } else {
+      // 其他媒体类型：使用 MediaScanProgressService
+      final progressService = MediaScanProgressService();
+      _isScanning = progressService.isScanning(
+        widget.mediaType,
+        widget.path.sourceId,
+        widget.path.path,
+      );
+
+      _mediaScanProgressSub = progressService.progressStream.listen((progress) {
+        if (mounted) {
+          // 只处理属于当前目录和媒体类型的进度事件
+          final isMyProgress = progress.mediaType == widget.mediaType &&
+              progress.sourceId == widget.path.sourceId &&
+              progress.pathPrefix == widget.path.path;
+
+          if (isMyProgress) {
+            setState(() {
+              _isScanning = progress.phase == MediaScanPhase.scanning ||
+                  progress.phase == MediaScanPhase.processing ||
+                  progress.phase == MediaScanPhase.saving;
+              _scanProgress = progress.progress;
+              _scanDescription = progress.description;
+              _scannedCount = progress.scannedCount;
+
+              if (progress.phase == MediaScanPhase.completed ||
+                  progress.phase == MediaScanPhase.error) {
+                _isScanning = false;
+                // 完成后重新加载统计
+                _loadStats();
               }
             });
           }
@@ -470,17 +512,25 @@ class _PathCardState extends ConsumerState<_PathCard> {
   void dispose() {
     _videoProgressSub?.cancel();
     _scrapeStatsSub?.cancel();
+    _mediaScanProgressSub?.cancel();
     super.dispose();
   }
 
-  /// 获取非视频类型的扫描进度信息
+  /// 获取非视频类型的扫描进度信息（已废弃，现在使用 MediaScanProgressService）
+  /// 保留用于兼容性，但不再监听 provider 状态
   /// 返回: (是否正在扫描, 进度, 描述, 已扫描数量)
   (bool isLoading, double progress, String? description, int scannedCount) _getOtherMediaScanState() {
+    // 现在使用 _isScanning 等本地状态，不再依赖 provider
+    return (_isScanning, _scanProgress, _scanDescription, _scannedCount);
+  }
+
+  // 以下代码保留用于引用但不再使用
+  // ignore: unused_element
+  (bool, double, String?, int) _legacyGetOtherMediaScanState() {
     switch (widget.mediaType) {
       case MediaType.music:
         final state = ref.watch(musicListProvider);
         if (state is MusicListLoading) {
-          // currentFolder 已包含完整描述，直接使用
           final desc = state.currentFolder ??
               (state.phase == MusicScanPhase.metadata ? '提取元数据...' : '扫描文件...');
           return (true, state.metadataProgress > 0 ? state.metadataProgress : state.progress, desc, state.scannedCount);
@@ -515,9 +565,9 @@ class _PathCardState extends ConsumerState<_PathCard> {
   /// 获取实时的媒体数量（扫描中使用扫描数量，否则使用数据库数量）
   int _getDisplayCount(bool isScanning, int scannedCount) {
     if (isScanning) {
-      // 视频类型使用 _videoScannedCount，其他类型使用传入的 scannedCount
-      final count = widget.mediaType == MediaType.video ? _videoScannedCount : scannedCount;
-      if (count > 0) return count;
+      // 所有类型统一使用 _scannedCount
+      if (_scannedCount > 0) return _scannedCount;
+      if (scannedCount > 0) return scannedCount;
     }
     return _itemCount;
   }
@@ -1017,12 +1067,14 @@ class _PathCardState extends ConsumerState<_PathCard> {
   }
 
   Future<void> _scanPath() async {
-    setState(() => _isScanning = true);
+    // 注意：不在这里设置 _isScanning = true
+    // 因为进度会通过 progressStream 实时更新
 
     try {
+      int count = 0;
       switch (widget.mediaType) {
         case MediaType.video:
-          final count = await VideoScannerService().scanFilesOnly(
+          count = await VideoScannerService().scanFilesOnly(
             paths: [widget.path],
             connections: widget.connections,
           );
@@ -1038,25 +1090,52 @@ class _PathCardState extends ConsumerState<_PathCard> {
             unawaited(VideoScannerService().scrapeMetadata(connections: widget.connections));
           }
         case MediaType.music:
-          await ref.read(musicListProvider.notifier).loadMusic(forceRefresh: true);
+          // 使用单目录扫描
+          count = await ref.read(musicListProvider.notifier).scanSinglePath(
+            path: widget.path,
+            connections: widget.connections,
+          );
           await _loadStats();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('扫描完成，共 $count 首音乐')),
+            );
+          }
         case MediaType.photo:
-          await ref.read(photoListProvider.notifier).loadPhotos(forceRefresh: true);
+          count = await ref.read(photoListProvider.notifier).scanSinglePath(
+            path: widget.path,
+            connections: widget.connections,
+          );
           await _loadStats();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('扫描完成，共 $count 张照片')),
+            );
+          }
         case MediaType.comic:
-          await ref.read(comicListProvider.notifier).loadComics(forceRefresh: true);
+          count = await ref.read(comicListProvider.notifier).scanSinglePath(
+            path: widget.path,
+            connections: widget.connections,
+          );
           await _loadStats();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('扫描完成，共 $count 本漫画')),
+            );
+          }
         case MediaType.book:
-          await ref.read(bookListProvider.notifier).loadBooks(forceRefresh: true);
+          count = await ref.read(bookListProvider.notifier).scanSinglePath(
+            path: widget.path,
+            connections: widget.connections,
+          );
           await _loadStats();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('扫描完成，共 $count 本书')),
+            );
+          }
         case MediaType.note:
           break;
-      }
-
-      if (mounted && widget.mediaType != MediaType.video) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${widget.mediaType.displayName}扫描完成')),
-        );
       }
     } on Exception catch (e) {
       if (mounted) {
@@ -1064,11 +1143,8 @@ class _PathCardState extends ConsumerState<_PathCard> {
           SnackBar(content: Text('扫描失败: $e')),
         );
       }
-    } finally {
-      if (mounted) {
-        setState(() => _isScanning = false);
-      }
     }
+    // 不需要在 finally 中重置 _isScanning，因为它通过 progressStream 管理
   }
 
   Future<void> _startScraping() async {

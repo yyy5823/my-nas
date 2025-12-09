@@ -8,7 +8,9 @@ class MusicFavoriteItem {
     required this.musicPath,
     required this.musicName,
     required this.musicUrl,
-    required this.addedAt, this.artist,
+    required this.addedAt,
+    this.sourceId,
+    this.artist,
     this.album,
     this.coverUrl,
     this.duration,
@@ -19,6 +21,7 @@ class MusicFavoriteItem {
         musicPath: map['musicPath'] as String,
         musicName: map['musicName'] as String,
         musicUrl: map['musicUrl'] as String,
+        sourceId: map['sourceId'] as String?,
         artist: map['artist'] as String?,
         album: map['album'] as String?,
         coverUrl: map['coverUrl'] as String?,
@@ -32,6 +35,7 @@ class MusicFavoriteItem {
         musicPath: item.path,
         musicName: item.name,
         musicUrl: item.url,
+        sourceId: item.sourceId,
         artist: item.artist,
         album: item.album,
         coverUrl: item.coverUrl,
@@ -42,6 +46,7 @@ class MusicFavoriteItem {
   final String musicPath;
   final String musicName;
   final String musicUrl;
+  final String? sourceId;
   final String? artist;
   final String? album;
   final String? coverUrl;
@@ -52,6 +57,7 @@ class MusicFavoriteItem {
         'musicPath': musicPath,
         'musicName': musicName,
         'musicUrl': musicUrl,
+        'sourceId': sourceId,
         'artist': artist,
         'album': album,
         'coverUrl': coverUrl,
@@ -64,6 +70,7 @@ class MusicFavoriteItem {
         name: musicName,
         path: musicPath,
         url: musicUrl,
+        sourceId: sourceId,
         artist: artist,
         album: album,
         coverUrl: coverUrl,
@@ -77,7 +84,9 @@ class MusicHistoryItem {
     required this.musicPath,
     required this.musicName,
     required this.musicUrl,
-    required this.playedAt, this.artist,
+    required this.playedAt,
+    this.sourceId,
+    this.artist,
     this.album,
     this.coverUrl,
     this.duration,
@@ -88,6 +97,7 @@ class MusicHistoryItem {
         musicPath: item.path,
         musicName: item.name,
         musicUrl: item.url,
+        sourceId: item.sourceId,
         artist: item.artist,
         album: item.album,
         coverUrl: item.coverUrl,
@@ -101,6 +111,7 @@ class MusicHistoryItem {
         musicPath: map['musicPath'] as String,
         musicName: map['musicName'] as String,
         musicUrl: map['musicUrl'] as String,
+        sourceId: map['sourceId'] as String?,
         artist: map['artist'] as String?,
         album: map['album'] as String?,
         coverUrl: map['coverUrl'] as String?,
@@ -116,6 +127,7 @@ class MusicHistoryItem {
   final String musicPath;
   final String musicName;
   final String musicUrl;
+  final String? sourceId;
   final String? artist;
   final String? album;
   final String? coverUrl;
@@ -127,6 +139,7 @@ class MusicHistoryItem {
         'musicPath': musicPath,
         'musicName': musicName,
         'musicUrl': musicUrl,
+        'sourceId': sourceId,
         'artist': artist,
         'album': album,
         'coverUrl': coverUrl,
@@ -140,6 +153,7 @@ class MusicHistoryItem {
         name: musicName,
         path: musicPath,
         url: musicUrl,
+        sourceId: sourceId,
         artist: artist,
         album: album,
         coverUrl: coverUrl,

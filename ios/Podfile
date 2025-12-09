@@ -44,4 +44,39 @@ post_install do |installer|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
     end
   end
+
+  # 添加脚本阶段来重新签名嵌入的 framework
+  # 解决 Xcode 14+ / iOS 16+ 中 sqlite3 framework 签名验证失败问题
+  main_project = installer.aggregate_targets.first.user_project
+  main_target = main_project.targets.find { |t| t.name == 'Runner' }
+
+  if main_target
+    # 检查是否已存在签名脚本
+    existing_script = main_target.shell_script_build_phases.find { |p| p.name == 'Codesign Embedded Frameworks' }
+
+    unless existing_script
+      phase = main_target.new_shell_script_build_phase('Codesign Embedded Frameworks')
+      phase.shell_script = <<-SCRIPT
+#!/bin/bash
+# 重新签名所有嵌入的 framework（解决预编译 framework 签名问题）
+FRAMEWORKS_DIR="${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}"
+if [ -d "$FRAMEWORKS_DIR" ]; then
+  find "$FRAMEWORKS_DIR" -name '*.framework' -type d | while read FRAMEWORK; do
+    echo "Signing: $FRAMEWORK"
+    /usr/bin/codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY}" --preserve-metadata=identifier,entitlements --timestamp=none "$FRAMEWORK" || true
+  done
+fi
+      SCRIPT
+      phase.show_env_vars_in_log = '0'
+
+      # 将脚本移动到 Embed Frameworks 之后
+      embed_phase = main_target.build_phases.find { |p| p.display_name == 'Embed Frameworks' }
+      if embed_phase
+        embed_index = main_target.build_phases.index(embed_phase)
+        main_target.build_phases.move(phase, embed_index + 1)
+      end
+
+      main_project.save
+    end
+  end
 end

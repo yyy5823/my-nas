@@ -336,6 +336,7 @@ class HeroPlayerCard extends ConsumerWidget {
     );
 
   Widget _buildShuffleButton() => GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: onShuffleTap,
       child: Container(
         width: 44,
@@ -419,6 +420,7 @@ class HeroPlayerCard extends ConsumerWidget {
     );
 
   Widget _buildPlayButton(BuildContext context, WidgetRef ref, bool isPlaying) => GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () {
         if (isPlaying) {
           ref.read(musicPlayerControllerProvider.notifier).pause();

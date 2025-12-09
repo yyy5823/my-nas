@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/core/services/media_scan_progress_service.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/data/services/music_cover_cache_service.dart';
 import 'package:my_nas/features/music/data/services/music_database_service.dart';
@@ -874,6 +875,224 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
     // 重新加载数据
     await _loadCategorizedData();
     logger.i('音乐库加载完成');
+  }
+
+  /// 扫描单个目录（用于媒体库页面的单目录扫描）
+  ///
+  /// 与 loadMusic 不同，此方法：
+  /// 1. 只扫描指定的单个目录
+  /// 2. 通过 MediaScanProgressService 发送独立进度
+  /// 3. 不改变全局 state（避免影响其他目录的显示）
+  Future<int> scanSinglePath({
+    required MediaLibraryPath path,
+    required Map<String, SourceConnection> connections,
+  }) async {
+    final progressService = MediaScanProgressService();
+    final sourceId = path.sourceId;
+    final pathPrefix = path.path;
+
+    final connection = connections[sourceId];
+    if (connection == null || connection.status != SourceStatus.connected) {
+      logger.w('MusicListNotifier: 源 $sourceId 未连接，跳过扫描');
+      return 0;
+    }
+
+    // 标记开始扫描
+    progressService.startScan(MediaType.music, sourceId, pathPrefix);
+
+    try {
+      await _db.init();
+      await _metadataService.init();
+      await _coverCache.init();
+
+      // 阶段1：扫描文件系统
+      final tracks = <MusicFileWithSource>[];
+      var lastUpdateCount = 0;
+
+      await _scanForMusicWithProgress(
+        connection.adapter.fileSystem,
+        pathPrefix,
+        tracks,
+        sourceId: sourceId,
+        rootPathPrefix: pathPrefix,
+        progressService: progressService,
+        onBatchFound: () {
+          if (tracks.length - lastUpdateCount >= 5) {
+            lastUpdateCount = tracks.length;
+            progressService.emitProgress(MediaScanProgress(
+              mediaType: MediaType.music,
+              phase: MediaScanPhase.scanning,
+              sourceId: sourceId,
+              pathPrefix: pathPrefix,
+              scannedCount: tracks.length,
+              currentPath: '$pathPrefix (${tracks.length})',
+            ));
+          }
+        },
+      );
+
+      logger.i('MusicListNotifier: 目录 $pathPrefix 扫描完成，找到 ${tracks.length} 首音乐');
+
+      // 阶段2：提取元数据并保存
+      if (tracks.isNotEmpty) {
+        await _extractAndSaveMetadataWithProgress(
+          tracks,
+          connections,
+          sourceId: sourceId,
+          pathPrefix: pathPrefix,
+          progressService: progressService,
+        );
+      }
+
+      // 完成扫描
+      progressService.endScan(MediaType.music, sourceId, pathPrefix, success: true);
+
+      // 重新加载数据（更新全局状态）
+      await _loadCategorizedData();
+
+      return tracks.length;
+    } on Exception catch (e) {
+      logger.e('MusicListNotifier: 扫描目录 $pathPrefix 失败', e);
+      progressService.endScan(MediaType.music, sourceId, pathPrefix, success: false);
+      rethrow;
+    }
+  }
+
+  /// 带进度的递归扫描音乐文件
+  Future<void> _scanForMusicWithProgress(
+    NasFileSystem fs,
+    String path,
+    List<MusicFileWithSource> tracks, {
+    required String sourceId,
+    required String rootPathPrefix,
+    required MediaScanProgressService progressService,
+    VoidCallback? onBatchFound,
+  }) async {
+    try {
+      final items = await fs.listDirectory(path);
+      for (final item in items) {
+        if (_shouldSkipDirectory(item.name)) {
+          continue;
+        }
+
+        if (item.isDirectory) {
+          await _scanForMusicWithProgress(
+            fs,
+            item.path,
+            tracks,
+            sourceId: sourceId,
+            rootPathPrefix: rootPathPrefix,
+            progressService: progressService,
+            onBatchFound: onBatchFound,
+          );
+        } else if (item.type == FileType.audio) {
+          tracks.add(MusicFileWithSource(file: item, sourceId: sourceId));
+          onBatchFound?.call();
+        }
+      }
+    } on Exception catch (e) {
+      logger.w('扫描子文件夹失败: $path - $e');
+    }
+  }
+
+  /// 带进度的元数据提取和保存
+  Future<void> _extractAndSaveMetadataWithProgress(
+    List<MusicFileWithSource> tracks,
+    Map<String, SourceConnection> connections, {
+    required String sourceId,
+    required String pathPrefix,
+    required MediaScanProgressService progressService,
+  }) async {
+    final totalTracks = tracks.length;
+    var processedCount = 0;
+    final metadataList = <MusicTrackEntity>[];
+
+    progressService.emitProgress(MediaScanProgress(
+      mediaType: MediaType.music,
+      phase: MediaScanPhase.processing,
+      sourceId: sourceId,
+      pathPrefix: pathPrefix,
+      scannedCount: 0,
+      totalCount: totalTracks,
+      currentFile: '准备提取元数据...',
+    ));
+
+    for (var i = 0; i < tracks.length; i++) {
+      final track = tracks[i];
+      final connection = connections[track.sourceId];
+
+      if (connection == null || connection.status != SourceStatus.connected) {
+        processedCount++;
+        continue;
+      }
+
+      try {
+        final metadata = await _metadataService.extractFromNasFile(
+          connection.adapter.fileSystem,
+          track.path,
+          skipLyrics: true,
+        );
+
+        String? coverPath;
+        if (metadata?.coverData != null && metadata!.coverData!.isNotEmpty) {
+          final uniqueKey = '${track.sourceId}_${track.path}';
+          coverPath = await _coverCache.saveCover(
+            uniqueKey,
+            Uint8List.fromList(metadata.coverData!),
+          );
+        }
+
+        metadataList.add(MusicTrackEntity(
+          sourceId: track.sourceId,
+          filePath: track.path,
+          fileName: track.name,
+          title: metadata?.title,
+          artist: metadata?.artist,
+          album: metadata?.album,
+          duration: metadata?.duration?.inMilliseconds,
+          trackNumber: metadata?.trackNumber,
+          year: metadata?.year,
+          genre: metadata?.genre,
+          coverPath: coverPath,
+          size: track.size,
+          modifiedTime: track.modifiedTime,
+          lastUpdated: DateTime.now(),
+        ));
+      } on Exception catch (e) {
+        logger.w('提取元数据失败 ${track.path}: $e');
+        metadataList.add(MusicTrackEntity(
+          sourceId: track.sourceId,
+          filePath: track.path,
+          fileName: track.name,
+          size: track.size,
+          modifiedTime: track.modifiedTime,
+          lastUpdated: DateTime.now(),
+        ));
+      }
+
+      processedCount++;
+
+      if (processedCount % 10 == 0 || processedCount == totalTracks) {
+        await _db.upsertBatch(metadataList);
+        metadataList.clear();
+
+        progressService.emitProgress(MediaScanProgress(
+          mediaType: MediaType.music,
+          phase: MediaScanPhase.processing,
+          sourceId: sourceId,
+          pathPrefix: pathPrefix,
+          scannedCount: processedCount,
+          totalCount: totalTracks,
+          currentFile: '提取元数据 ($processedCount/$totalTracks)',
+        ));
+      }
+    }
+
+    if (metadataList.isNotEmpty) {
+      await _db.upsertBatch(metadataList);
+    }
+
+    logger.i('目录 $pathPrefix 元数据提取完成，处理了 $processedCount 首音乐');
   }
 
   /// 提取元数据并保存到 SQLite（优化：封面保存到磁盘）
@@ -4657,16 +4876,32 @@ class _RecentTrackTile extends ConsumerWidget {
     }
 
     // 其次使用封面 URL
-    if (item.coverUrl != null) {
+    if (item.coverUrl != null && item.coverUrl!.isNotEmpty) {
+      final coverUrl = item.coverUrl!;
+      Widget coverImage;
+
+      // 支持 file:// URL 和网络 URL
+      if (coverUrl.startsWith('file://')) {
+        final filePath = coverUrl.substring(7); // 移除 'file://' 前缀
+        coverImage = Image.file(
+          File(filePath),
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+          errorBuilder: (_, _, _) => _buildPlaceholder(isPlaying),
+        );
+      } else {
+        coverImage = Image.network(
+          coverUrl,
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+          errorBuilder: (_, _, _) => _buildPlaceholder(isPlaying),
+        );
+      }
+
       return Stack(
         fit: StackFit.expand,
         children: [
-          Image.network(
-            item.coverUrl!,
-            fit: BoxFit.cover,
-            gaplessPlayback: true,
-            errorBuilder: (_, _, _) => _buildPlaceholder(isPlaying),
-          ),
+          coverImage,
           if (isPlaying) _buildPlayingOverlay(),
         ],
       );
