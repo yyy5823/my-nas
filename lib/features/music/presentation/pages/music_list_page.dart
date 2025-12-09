@@ -1734,10 +1734,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
       // 记录最近播放
       await historyNotifier.addToHistory(musicItem);
 
-      // 导航到播放器页面
-      if (context.mounted) {
-        unawaited(MusicPlayerPage.open(context));
-      }
+      // 推荐列表不跳转到播放器页面，在顶部 HeroPlayerCard 播放即可
 
       // 在后台构建完整播放队列（使用提前获取的 notifier）
       unawaited(_buildPlayQueue(playQueueNotifier, playerNotifier, connections, track, allTracks, trackIndex));
@@ -4708,20 +4705,22 @@ class _FavoriteTrackTile extends ConsumerWidget {
           width: 48,
           height: 48,
           decoration: BoxDecoration(
-            gradient: isPlaying
-                ? const LinearGradient(
-                    colors: [AppColors.fileAudio, AppColors.secondary],
+            gradient: item.coverData == null && item.coverUrl == null
+                ? LinearGradient(
+                    colors: isPlaying
+                        ? [AppColors.fileAudio, AppColors.secondary]
+                        : [
+                            AppColors.primary.withValues(alpha: 0.7),
+                            AppColors.secondary.withValues(alpha: 0.7),
+                          ],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   )
                 : null,
-            color: isPlaying ? null : (isDark ? Colors.grey[800] : Colors.grey[200]),
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Icon(
-            isPlaying ? Icons.equalizer_rounded : Icons.music_note_rounded,
-            color: isPlaying ? Colors.white : (isDark ? Colors.grey[600] : Colors.grey[400]),
-          ),
+          clipBehavior: Clip.antiAlias,
+          child: _buildCover(isPlaying),
         ),
         title: Text(
           item.displayTitle,
@@ -4748,6 +4747,51 @@ class _FavoriteTrackTile extends ConsumerWidget {
       ),
     );
   }
+
+  Widget _buildCover(bool isPlaying) {
+    // 优先使用内嵌封面数据
+    if (item.coverData != null && item.coverData!.isNotEmpty) {
+      return Image.memory(
+        Uint8List.fromList(item.coverData!),
+        fit: BoxFit.cover,
+        gaplessPlayback: true,
+        errorBuilder: (_, _, _) => _buildPlaceholder(isPlaying),
+      );
+    }
+
+    // 其次使用封面 URL
+    if (item.coverUrl != null && item.coverUrl!.isNotEmpty) {
+      final coverUrl = item.coverUrl!;
+      Widget coverImage;
+
+      // 支持 file:// URL 和网络 URL
+      if (coverUrl.startsWith('file://')) {
+        final filePath = coverUrl.substring(7); // 移除 'file://' 前缀
+        coverImage = Image.file(
+          File(filePath),
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+          errorBuilder: (_, _, _) => _buildPlaceholder(isPlaying),
+        );
+      } else {
+        coverImage = Image.network(
+          coverUrl,
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+          errorBuilder: (_, _, _) => _buildPlaceholder(isPlaying),
+        );
+      }
+      return coverImage;
+    }
+
+    return _buildPlaceholder(isPlaying);
+  }
+
+  Widget _buildPlaceholder(bool isPlaying) => Icon(
+        isPlaying ? Icons.equalizer_rounded : Icons.music_note_rounded,
+        color: Colors.white.withValues(alpha: 0.8),
+        size: 24,
+      );
 }
 
 /// 最近播放视图

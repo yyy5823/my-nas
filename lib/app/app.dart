@@ -100,7 +100,11 @@ class _MyNasAppState extends ConsumerState<MyNasApp> with WidgetsBindingObserver
 
   /// 检查并恢复后台任务
   Future<void> _checkAndResumeBackgroundTask() async {
-    // 仅在移动平台检查
+    // 强制广播当前刮削统计，确保 UI 同步最新进度
+    // 这解决了从后台切回前台时进度不更新的问题
+    await VideoScannerService().broadcastCurrentStats();
+
+    // 仅在移动平台检查后台服务状态
     if (!Platform.isAndroid && !Platform.isIOS) return;
 
     final backgroundService = BackgroundTaskService();

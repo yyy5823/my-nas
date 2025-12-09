@@ -194,6 +194,21 @@ class VideoScannerService {
     _cachedConnections = connections;
   }
 
+  /// 广播当前刮削统计到 Stream
+  ///
+  /// 用于应用从后台恢复时强制刷新 UI 进度
+  /// 这确保 UI 显示的进度与实际后台执行的进度同步
+  Future<void> broadcastCurrentStats() async {
+    try {
+      await _dbService.init();
+      final stats = await _dbService.getScrapeStats();
+      _scrapeStatsController.add(stats);
+      logger.d('VideoScannerService: 已广播当前统计 - completed: ${stats.completed}, pending: ${stats.pending}');
+    } on Exception catch (e) {
+      logger.w('VideoScannerService: 广播统计失败', e);
+    }
+  }
+
   /// 仅扫描文件（快速，不刮削元数据）
   ///
   /// 扫描完成后立即返回，视频可以在影院页面展示
