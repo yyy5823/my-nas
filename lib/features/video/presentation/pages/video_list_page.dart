@@ -1623,8 +1623,6 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     final action = await showMediaFileContextMenu(
       context: context,
       fileName: metadata.displayTitle,
-      showRemoveFromLibrary: true,
-      showDeleteFromSource: true,
     );
 
     if (action == null || !context.mounted) return;
@@ -1654,7 +1652,6 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
           context: context,
           title: '删除源文件',
           content: '确定要删除「${metadata.displayTitle}」的源文件吗？\n\n⚠️ 此操作不可恢复！文件将从 NAS 中永久删除。',
-          confirmText: '删除',
         );
         if (confirmed && context.mounted) {
           final success = await ref.read(videoListProvider.notifier).deleteFromSource(metadata);

@@ -19,7 +19,7 @@ class StartupPage extends ConsumerStatefulWidget {
 }
 
 class _StartupPageState extends ConsumerState<StartupPage> {
-  String _statusMessage = '正在启动...';
+  final String _statusMessage = '正在启动...';
   final bool _isLoading = true;
 
   @override
