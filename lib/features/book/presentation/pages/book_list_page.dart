@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/router/app_router.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
@@ -194,7 +195,10 @@ class BookListError extends BookListState {
 
 class BookListNotifier extends StateNotifier<BookListState> {
   BookListNotifier(this._ref) : super(BookListLoading()) {
-    _init();
+    // 使用 addPostFrameCallback 推迟初始化，确保导航动画不被阻塞
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _init();
+    });
   }
 
   final Ref _ref;
@@ -215,11 +219,34 @@ class BookListNotifier extends StateNotifier<BookListState> {
     '.azw3',
   ];
 
-  Future<void> _init() async {
+  void _init() {
+    logger.d('BookListNotifier: 开始初始化...');
+
+    // 关键优化：立即显示空状态UI，让用户立即看到界面
+    state = BookListLoaded(totalCount: 0);
+
+    // 在后台初始化服务并加载数据，不阻塞UI
+    unawaited(_initAndLoadInBackground());
+  }
+
+  /// 后台初始化服务并加载数据
+  Future<void> _initAndLoadInBackground() async {
     try {
-      await _db.init();
-      await _cacheService.init();
-      await _preloadService.init();
+      // 并行初始化服务（使用较短超时保护）
+      await Future.wait([
+        _db.init(),
+        _cacheService.init(),
+        _preloadService.init(),
+      ]).timeout(
+        const Duration(seconds: 2),
+        onTimeout: () {
+          logger.w('BookListNotifier: 服务初始化超时');
+          return <void>[];
+        },
+      );
+
+      logger.d('BookListNotifier: 服务初始化完成');
+
       await _loadFromSqlite();
 
       // 监听连接状态变化
@@ -233,7 +260,7 @@ class BookListNotifier extends StateNotifier<BookListState> {
       });
     } on Exception catch (e) {
       logger.e('BookListNotifier: 初始化失败', e);
-      state = BookListLoaded(totalCount: 0);
+      // 保持空列表状态，让用户可以正常使用界面
     }
   }
 

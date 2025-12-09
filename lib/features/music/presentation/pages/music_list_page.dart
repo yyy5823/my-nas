@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
@@ -482,7 +483,10 @@ class MusicListError extends MusicListState {
 
 class MusicListNotifier extends StateNotifier<MusicListState> {
   MusicListNotifier(this._ref) : super(MusicListLoading()) {
-    _init();
+    // 使用 addPostFrameCallback 推迟初始化，确保导航动画不被阻塞
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _init();
+    });
   }
 
   final Ref _ref;
@@ -491,14 +495,31 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
   final MusicDatabaseService _db = MusicDatabaseService();
   final MusicCoverCacheService _coverCache = MusicCoverCacheService();
 
-  Future<void> _init() async {
+  void _init() {
+    logger.d('MusicListNotifier: 开始初始化...');
+
+    // 关键优化：立即显示空状态UI，让用户立即看到界面
+    state = MusicListLoaded(totalCount: 0);
+
+    // 在后台初始化服务并加载数据，不阻塞UI
+    unawaited(_initAndLoadInBackground());
+  }
+
+  /// 后台初始化服务并加载数据
+  Future<void> _initAndLoadInBackground() async {
     try {
-      // 并行初始化服务
+      // 并行初始化服务（使用较短超时保护）
       await Future.wait([
         _cacheService.init(),
         _db.init(),
         _coverCache.init(),
-      ]);
+      ]).timeout(
+        const Duration(seconds: 2),
+        onTimeout: () {
+          logger.w('MusicListNotifier: 服务初始化超时');
+          return <void>[];
+        },
+      );
 
       logger.d('MusicListNotifier: 服务初始化完成');
 
@@ -516,7 +537,7 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
       });
     } on Exception catch (e) {
       logger.e('MusicListNotifier: 初始化失败', e);
-      state = MusicListLoaded(totalCount: 0);
+      // 保持空列表状态，让用户可以正常使用界面
     }
   }
 

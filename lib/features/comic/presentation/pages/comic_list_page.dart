@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/router/app_router.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
@@ -160,7 +163,10 @@ class ComicListError extends ComicListState {
 
 class ComicListNotifier extends StateNotifier<ComicListState> {
   ComicListNotifier(this._ref) : super(ComicListLoading()) {
-    _init();
+    // 使用 addPostFrameCallback 推迟初始化，确保导航动画不被阻塞
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _init();
+    });
   }
 
   final Ref _ref;
@@ -169,9 +175,28 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
   // 支持的图片格式
   static const _imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
 
-  Future<void> _init() async {
+  void _init() {
+    logger.d('ComicListNotifier: 开始初始化...');
+
+    // 关键优化：立即显示空状态UI，让用户立即看到界面
+    state = ComicListLoaded(comics: []);
+
+    // 在后台初始化服务并加载数据，不阻塞UI
+    unawaited(_initAndLoadInBackground());
+  }
+
+  /// 后台初始化服务并加载数据
+  Future<void> _initAndLoadInBackground() async {
     try {
-      await _cacheService.init();
+      await _cacheService.init().timeout(
+        const Duration(seconds: 2),
+        onTimeout: () {
+          logger.w('ComicListNotifier: 服务初始化超时');
+        },
+      );
+
+      logger.d('ComicListNotifier: 服务初始化完成');
+
       await _loadFromCacheImmediately();
 
       _ref.listen<Map<String, SourceConnection>>(activeConnectionsProvider, (previous, next) {
@@ -184,7 +209,7 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
       });
     } on Exception catch (e) {
       logger.e('ComicListNotifier: 初始化失败', e);
-      state = ComicListLoaded(comics: []);
+      // 保持空列表状态，让用户可以正常使用界面
     }
   }
 

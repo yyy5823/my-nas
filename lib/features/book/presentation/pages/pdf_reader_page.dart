@@ -204,57 +204,71 @@ class PdfReaderNotifier extends StateNotifier<PdfReaderState> {
   }
 
   /// 从 NAS 加载 PDF
-  /// 优先下载完整文件到本地缓存，因为大多数 NAS 协议不支持 HTTP Range 请求
-  /// 流式加载虽然理论上更快，但实际效果取决于服务器支持
+  /// 策略：边下载边显示，先加载前几页让用户可以开始阅读
   Future<void> _loadFromUrl(NasFileSystem fileSystem, int startPage) async {
-    state = PdfReaderLoading(message: '下载中...');
+    state = PdfReaderLoading(message: '连接中...');
 
     try {
-      // 直接下载完整文件到缓存（比流式加载更可靠）
-      logger.i('PDF 开始下载: ${book.path}');
+      logger.i('PDF 开始加载: ${book.path}');
       final stopwatch = Stopwatch()..start();
 
       final stream = await fileSystem.getFileStream(book.path);
 
-      // 收集所有数据块并计算进度
+      // 使用分块策略：收集足够数据后立即尝试解析
       final chunks = <List<int>>[];
       var totalBytes = 0;
+      var hasTriedEarlyLoad = false;
+      PdfDocumentRef? documentRef;
 
       await for (final chunk in stream) {
         chunks.add(chunk);
         totalBytes += chunk.length;
 
-        // 更新下载进度（估算，因为不知道总大小）
-        // 显示已下载的大小
         final sizeMB = (totalBytes / 1024 / 1024).toStringAsFixed(1);
-        state = PdfReaderLoading(message: '下载中... $sizeMB MB');
+        state = PdfReaderLoading(message: '加载中... $sizeMB MB');
+
+        // 当收集到至少 500KB 数据时，尝试早期解析（PDF 头部通常足够显示第一页）
+        if (!hasTriedEarlyLoad && totalBytes > 512 * 1024) {
+          hasTriedEarlyLoad = true;
+          // 尝试用已有数据解析，不阻塞继续下载
+          try {
+            final partialBytes = _mergeChunks(chunks, totalBytes);
+            final tempRef = PdfDocumentRefData(
+              partialBytes,
+              sourceName: '${book.name}_partial',
+            );
+            final tempListenable = tempRef.resolveListenable();
+            // 非阻塞检查
+            if (tempListenable.document != null) {
+              documentRef = tempRef;
+              final doc = tempListenable.document!;
+              state = PdfReaderLoaded(
+                documentRef: documentRef,
+                currentPage: startPage.clamp(1, doc.pages.length),
+                totalPages: doc.pages.length,
+                isStreaming: true,
+              );
+              logger.i('PDF 早期加载成功: ${doc.pages.length} 页 (已下载 $sizeMB MB)');
+            }
+          } on Exception catch (_) {
+            // 早期解析失败，继续下载
+          }
+        }
       }
 
       stopwatch.stop();
       logger.i('PDF 下载完成: $totalBytes 字节, 耗时 ${stopwatch.elapsedMilliseconds}ms');
 
       // 合并所有数据块
-      final bytes = Uint8List(totalBytes);
-      var offset = 0;
-      for (final chunk in chunks) {
-        bytes.setRange(offset, offset + chunk.length, chunk);
-        offset += chunk.length;
-      }
+      final bytes = _mergeChunks(chunks, totalBytes);
 
-      // 保存到缓存
-      state = PdfReaderLoading(message: '保存缓存...');
-      final cachedFile = await _cacheService.saveToCache(book.sourceId, book.path, bytes);
+      // 保存到缓存（后台执行，不阻塞）
+      unawaited(_cacheService.saveToCache(book.sourceId, book.path, bytes));
 
-      if (cachedFile != null) {
-        // 从本地文件加载
-        await _loadFromFile(cachedFile, startPage);
-      } else {
-        // 缓存失败，尝试直接从内存加载
+      // 如果还没有成功加载，使用完整数据
+      if (documentRef == null || state is PdfReaderLoading) {
         state = PdfReaderLoading(message: '解析中...');
-        final documentRef = PdfDocumentRefData(
-          bytes,
-          sourceName: book.name,
-        );
+        documentRef = PdfDocumentRefData(bytes, sourceName: book.name);
         final document = await _waitForDocument(documentRef);
 
         state = PdfReaderLoaded(
@@ -262,44 +276,36 @@ class PdfReaderNotifier extends StateNotifier<PdfReaderState> {
           currentPage: startPage.clamp(1, document.pages.length),
           totalPages: document.pages.length,
         );
-        logger.i('PDF 内存加载完成: ${book.name}, ${document.pages.length} 页');
+        logger.i('PDF 完整加载完成: ${book.name}, ${document.pages.length} 页');
+      } else {
+        // 已经早期加载成功，用完整数据替换以确保所有页面可用
+        final fullRef = PdfDocumentRefData(bytes, sourceName: book.name);
+        final fullDoc = await _waitForDocument(fullRef);
+        final currentState = state;
+        if (currentState is PdfReaderLoaded) {
+          state = currentState.copyWith(
+            documentRef: fullRef,
+            totalPages: fullDoc.pages.length,
+            isStreaming: false,
+          );
+        }
+        logger.i('PDF 替换为完整文档: ${fullDoc.pages.length} 页');
       }
     } on Exception catch (e, stackTrace) {
-      logger.e('PDF 下载失败，尝试流式加载', e, stackTrace);
-
-      // 回退到流式加载（可能更慢但仍有机会成功）
-      await _loadFromUrlFallback(fileSystem, startPage);
+      logger.e('PDF 加载失败', e, stackTrace);
+      state = PdfReaderError('加载失败: $e');
     }
   }
 
-  /// 流式加载回退方案（当下载失败时使用）
-  Future<void> _loadFromUrlFallback(NasFileSystem fileSystem, int startPage) async {
-    state = PdfReaderLoading(message: '流式加载中...');
-
-    // 获取文件 URL
-    final url = await fileSystem.getFileUrl(book.path);
-    final uri = Uri.parse(url);
-
-    logger.i('PDF 流式加载(回退): $url');
-
-    final documentRef = PdfDocumentRefUri(
-      uri,
-      preferRangeAccess: true,
-    );
-
-    final document = await _waitForDocument(documentRef);
-
-    state = PdfReaderLoaded(
-      documentRef: documentRef,
-      currentPage: startPage.clamp(1, document.pages.length),
-      totalPages: document.pages.length,
-      isStreaming: true,
-    );
-
-    logger.i('PDF 流式加载完成: ${book.name}, ${document.pages.length} 页');
-
-    // 后台缓存文件
-    unawaited(_cacheInBackground(fileSystem));
+  /// 合并数据块
+  Uint8List _mergeChunks(List<List<int>> chunks, int totalBytes) {
+    final bytes = Uint8List(totalBytes);
+    var offset = 0;
+    for (final chunk in chunks) {
+      bytes.setRange(offset, offset + chunk.length, chunk);
+      offset += chunk.length;
+    }
+    return bytes;
   }
 
   /// 从 HTTP URL 加载（无文件系统）
@@ -345,22 +351,6 @@ class PdfReaderNotifier extends StateNotifier<PdfReaderState> {
     return document;
   }
 
-  /// 后台缓存文件
-  Future<void> _cacheInBackground(NasFileSystem fileSystem) async {
-    try {
-      // 检查是否已缓存
-      final cached = await _cacheService.getCachedFile(book.sourceId, book.path);
-      if (cached != null) return;
-
-      logger.d('PDF 后台缓存开始: ${book.path}');
-      final stream = await fileSystem.getFileStream(book.path);
-      final bytes = await _readStreamBytes(stream);
-      await _cacheService.saveToCache(book.sourceId, book.path, bytes);
-      logger.i('PDF 后台缓存完成: ${book.path}');
-    } on Exception catch (e) {
-      logger.w('PDF 后台缓存失败', e);
-    }
-  }
 
   void setPage(int page) {
     final current = state;

@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/router/app_router.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
@@ -416,17 +419,43 @@ class PhotoListNotConnected extends PhotoListState {}
 
 class PhotoListNotifier extends StateNotifier<PhotoListState> {
   PhotoListNotifier(this._ref) : super(PhotoListLoading()) {
-    _init();
+    // 使用 addPostFrameCallback 推迟初始化，确保导航动画不被阻塞
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _init();
+    });
   }
 
   final Ref _ref;
   final PhotoLibraryCacheService _cacheService = PhotoLibraryCacheService();
   final PhotoDatabaseService _db = PhotoDatabaseService();
 
-  Future<void> _init() async {
+  void _init() {
+    logger.d('PhotoListNotifier: 开始初始化...');
+
+    // 关键优化：立即显示空状态UI，让用户立即看到界面
+    state = PhotoListLoaded(totalCount: 0);
+
+    // 在后台初始化服务并加载数据，不阻塞UI
+    unawaited(_initAndLoadInBackground());
+  }
+
+  /// 后台初始化服务并加载数据
+  Future<void> _initAndLoadInBackground() async {
     try {
-      await _db.init();
-      await _cacheService.init();
+      // 并行初始化服务（使用较短超时保护）
+      await Future.wait([
+        _db.init(),
+        _cacheService.init(),
+      ]).timeout(
+        const Duration(seconds: 2),
+        onTimeout: () {
+          logger.w('PhotoListNotifier: 服务初始化超时');
+          return <void>[];
+        },
+      );
+
+      logger.d('PhotoListNotifier: 服务初始化完成');
+
       await _loadFromSqlite();
 
       // 监听连接状态变化
@@ -440,7 +469,7 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
       });
     } on Exception catch (e) {
       logger.e('PhotoListNotifier: 初始化失败', e);
-      state = PhotoListLoaded(totalCount: 0);
+      // 保持空列表状态，让用户可以正常使用界面
     }
   }
 
