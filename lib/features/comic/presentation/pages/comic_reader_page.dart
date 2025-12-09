@@ -399,6 +399,45 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
   ) {
     final isRtl = settings.readingDirection == ComicReadingDirection.rtl;
 
+    // 翻页逻辑：只更新 PageController，由 onPageChanged 回调更新 notifier 状态
+    void goToPrevious() {
+      if (_pageController != null && _pageController!.hasClients) {
+        _pageController!.previousPage(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      } else if (_scrollController != null && _scrollController!.hasClients) {
+        // webtoon 模式：向上滚动一屏
+        final offset = (_scrollController!.offset -
+                MediaQuery.of(context).size.height * 0.8)
+            .clamp(0.0, _scrollController!.position.maxScrollExtent);
+        _scrollController!.animateTo(
+          offset,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    }
+
+    void goToNext() {
+      if (_pageController != null && _pageController!.hasClients) {
+        _pageController!.nextPage(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      } else if (_scrollController != null && _scrollController!.hasClients) {
+        // webtoon 模式：向下滚动一屏
+        final offset = (_scrollController!.offset +
+                MediaQuery.of(context).size.height * 0.8)
+            .clamp(0.0, _scrollController!.position.maxScrollExtent);
+        _scrollController!.animateTo(
+          offset,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    }
+
     return Positioned.fill(
       child: Row(
         children: [
@@ -407,17 +446,9 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
             child: GestureDetector(
               onTap: () {
                 if (isRtl) {
-                  notifier.nextPage(settings.readingMode);
-                  _pageController?.nextPage(
-                    duration: const Duration(milliseconds: 300),
-                    curve: Curves.easeOut,
-                  );
+                  goToNext();
                 } else {
-                  notifier.previousPage(settings.readingMode);
-                  _pageController?.previousPage(
-                    duration: const Duration(milliseconds: 300),
-                    curve: Curves.easeOut,
-                  );
+                  goToPrevious();
                 }
               },
               behavior: HitTestBehavior.translucent,
@@ -438,17 +469,9 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
             child: GestureDetector(
               onTap: () {
                 if (isRtl) {
-                  notifier.previousPage(settings.readingMode);
-                  _pageController?.previousPage(
-                    duration: const Duration(milliseconds: 300),
-                    curve: Curves.easeOut,
-                  );
+                  goToPrevious();
                 } else {
-                  notifier.nextPage(settings.readingMode);
-                  _pageController?.nextPage(
-                    duration: const Duration(milliseconds: 300),
-                    curve: Curves.easeOut,
-                  );
+                  goToNext();
                 }
               },
               behavior: HitTestBehavior.translucent,
@@ -868,11 +891,12 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
                     ),
                     onPressed: state.currentPage > 0
                         ? () {
-                            notifier.previousPage(settings.readingMode);
-                            _pageController?.previousPage(
-                              duration: const Duration(milliseconds: 300),
-                              curve: Curves.easeOut,
-                            );
+                            if (_pageController != null && _pageController!.hasClients) {
+                              _pageController!.previousPage(
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.easeOut,
+                              );
+                            }
                           }
                         : null,
                   ),
@@ -887,11 +911,12 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
                     ),
                     onPressed: state.currentPage < state.pages.length - 1
                         ? () {
-                            notifier.nextPage(settings.readingMode);
-                            _pageController?.nextPage(
-                              duration: const Duration(milliseconds: 300),
-                              curve: Curves.easeOut,
-                            );
+                            if (_pageController != null && _pageController!.hasClients) {
+                              _pageController!.nextPage(
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.easeOut,
+                              );
+                            }
                           }
                         : null,
                   ),

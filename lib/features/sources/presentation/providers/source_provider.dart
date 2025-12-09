@@ -7,6 +7,7 @@ import 'package:my_nas/features/sources/data/services/source_manager_service.dar
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/video/data/services/video_database_service.dart';
+import 'package:my_nas/features/video/data/services/video_library_cache_service.dart';
 
 /// 源管理服务 Provider
 final sourceManagerProvider = Provider<SourceManagerService>((ref) => SourceManagerService());
@@ -66,9 +67,10 @@ class SourcesNotifier extends StateNotifier<AsyncValue<List<SourceEntity>>> {
     final manager = _ref.read(sourceManagerProvider);
     await manager.removeSource(sourceId);
 
-    // 删除该源的所有媒体数据
+    // 删除该源的所有媒体数据（包括 SQLite 数据库和 Hive 缓存）
     await Future.wait([
       VideoDatabaseService().deleteBySourceId(sourceId),
+      VideoLibraryCacheService().deleteBySourceId(sourceId),
       MusicDatabaseService().deleteBySourceId(sourceId),
       PhotoDatabaseService().deleteBySourceId(sourceId),
       BookDatabaseService().deleteBySourceId(sourceId),
@@ -245,7 +247,11 @@ class MediaLibraryConfigNotifier
 
       switch (type) {
         case MediaType.video:
-          await VideoDatabaseService().deleteByPath(sourceId, path);
+          // 同时删除 SQLite 数据库和 Hive 缓存
+          await Future.wait([
+            VideoDatabaseService().deleteByPath(sourceId, path),
+            VideoLibraryCacheService().deleteByPath(sourceId, path),
+          ]);
         case MediaType.music:
           await MusicDatabaseService().deleteByPath(sourceId, path);
         case MediaType.photo:

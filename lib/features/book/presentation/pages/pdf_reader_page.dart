@@ -203,26 +203,90 @@ class PdfReaderNotifier extends StateNotifier<PdfReaderState> {
     logger.i('PDF 加载完成（缓存）: ${book.name}, ${document.pages.length} 页');
   }
 
-  /// 从 NAS URL 流式加载
+  /// 从 NAS 加载 PDF
+  /// 优先下载完整文件到本地缓存，因为大多数 NAS 协议不支持 HTTP Range 请求
+  /// 流式加载虽然理论上更快，但实际效果取决于服务器支持
   Future<void> _loadFromUrl(NasFileSystem fileSystem, int startPage) async {
-    state = PdfReaderLoading(message: '获取文件地址...');
+    state = PdfReaderLoading(message: '下载中...');
+
+    try {
+      // 直接下载完整文件到缓存（比流式加载更可靠）
+      logger.i('PDF 开始下载: ${book.path}');
+      final stopwatch = Stopwatch()..start();
+
+      final stream = await fileSystem.getFileStream(book.path);
+
+      // 收集所有数据块并计算进度
+      final chunks = <List<int>>[];
+      var totalBytes = 0;
+
+      await for (final chunk in stream) {
+        chunks.add(chunk);
+        totalBytes += chunk.length;
+
+        // 更新下载进度（估算，因为不知道总大小）
+        // 显示已下载的大小
+        final sizeMB = (totalBytes / 1024 / 1024).toStringAsFixed(1);
+        state = PdfReaderLoading(message: '下载中... $sizeMB MB');
+      }
+
+      stopwatch.stop();
+      logger.i('PDF 下载完成: $totalBytes 字节, 耗时 ${stopwatch.elapsedMilliseconds}ms');
+
+      // 合并所有数据块
+      final bytes = Uint8List(totalBytes);
+      var offset = 0;
+      for (final chunk in chunks) {
+        bytes.setRange(offset, offset + chunk.length, chunk);
+        offset += chunk.length;
+      }
+
+      // 保存到缓存
+      state = PdfReaderLoading(message: '保存缓存...');
+      final cachedFile = await _cacheService.saveToCache(book.sourceId, book.path, bytes);
+
+      if (cachedFile != null) {
+        // 从本地文件加载
+        await _loadFromFile(cachedFile, startPage);
+      } else {
+        // 缓存失败，尝试直接从内存加载
+        state = PdfReaderLoading(message: '解析中...');
+        final documentRef = PdfDocumentRefData(
+          bytes,
+          sourceName: book.name,
+        );
+        final document = await _waitForDocument(documentRef);
+
+        state = PdfReaderLoaded(
+          documentRef: documentRef,
+          currentPage: startPage.clamp(1, document.pages.length),
+          totalPages: document.pages.length,
+        );
+        logger.i('PDF 内存加载完成: ${book.name}, ${document.pages.length} 页');
+      }
+    } on Exception catch (e, stackTrace) {
+      logger.e('PDF 下载失败，尝试流式加载', e, stackTrace);
+
+      // 回退到流式加载（可能更慢但仍有机会成功）
+      await _loadFromUrlFallback(fileSystem, startPage);
+    }
+  }
+
+  /// 流式加载回退方案（当下载失败时使用）
+  Future<void> _loadFromUrlFallback(NasFileSystem fileSystem, int startPage) async {
+    state = PdfReaderLoading(message: '流式加载中...');
 
     // 获取文件 URL
     final url = await fileSystem.getFileUrl(book.path);
     final uri = Uri.parse(url);
 
-    logger.i('PDF 流式加载: $url');
-    state = PdfReaderLoading(message: '流式加载中...');
+    logger.i('PDF 流式加载(回退): $url');
 
-    // 使用 PdfDocumentRefUri 流式加载
-    // preferRangeAccess: 使用 HTTP Range 请求，只下载需要的部分
-    // useProgressiveLoading: 渐进式加载，先加载第一页
     final documentRef = PdfDocumentRefUri(
       uri,
       preferRangeAccess: true,
     );
 
-    // 等待文档加载
     final document = await _waitForDocument(documentRef);
 
     state = PdfReaderLoaded(
@@ -234,7 +298,7 @@ class PdfReaderNotifier extends StateNotifier<PdfReaderState> {
 
     logger.i('PDF 流式加载完成: ${book.name}, ${document.pages.length} 页');
 
-    // 后台缓存文件（不阻塞 UI）
+    // 后台缓存文件
     unawaited(_cacheInBackground(fileSystem));
   }
 

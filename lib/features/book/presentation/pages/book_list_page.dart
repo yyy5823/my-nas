@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -9,6 +10,7 @@ import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/book/data/services/book_database_service.dart';
 import 'package:my_nas/features/book/data/services/book_library_cache_service.dart';
+import 'package:my_nas/features/book/data/services/book_metadata_service.dart';
 import 'package:my_nas/features/book/data/services/book_preload_service.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
 import 'package:my_nas/features/book/presentation/pages/book_reader_page.dart';
@@ -197,6 +199,10 @@ class BookListNotifier extends StateNotifier<BookListState> {
   final BookLibraryCacheService _cacheService = BookLibraryCacheService();
   final BookDatabaseService _db = BookDatabaseService();
   final BookPreloadService _preloadService = BookPreloadService();
+  final BookMetadataService _metadataService = BookMetadataService();
+
+  /// 后台元数据提取是否正在运行
+  bool _isExtractingMetadata = false;
 
   /// 支持的电子书扩展名
   static const _supportedExtensions = [
@@ -276,6 +282,9 @@ class BookListNotifier extends StateNotifier<BookListState> {
     );
 
     logger.i('BookListNotifier: 从 SQLite 加载了 ${allBooks.length} 本图书');
+
+    // 启动后台元数据提取（不阻塞 UI）
+    unawaited(_extractMetadataInBackground());
 
     // 启动后台预加载（只预加载前 20 本）
     _startPreloading(allBooks.take(20).toList());
@@ -535,6 +544,117 @@ class BookListNotifier extends StateNotifier<BookListState> {
     await _db.clear();
     await _cacheService.clearCache();
     await loadBooks(forceRefresh: true);
+  }
+
+  /// 后台提取元数据
+  /// 从数据库中查找未提取元数据的图书，逐个提取并更新
+  Future<void> _extractMetadataInBackground() async {
+    if (_isExtractingMetadata) return;
+    _isExtractingMetadata = true;
+
+    try {
+      await _metadataService.init();
+
+      final connections = _ref.read(activeConnectionsProvider);
+
+      // 分批获取未提取元数据的图书
+      while (mounted) {
+        final unextracted = await _db.getUnextractedMetadata(limit: 10);
+        if (unextracted.isEmpty) {
+          logger.i('BookListNotifier: 元数据提取完成');
+          break;
+        }
+
+        logger.d('BookListNotifier: 发现 ${unextracted.length} 本书待提取元数据');
+
+        for (final book in unextracted) {
+          if (!mounted) break;
+
+          // 获取对应的文件系统
+          final connection = connections[book.sourceId];
+          if (connection?.status != SourceStatus.connected) {
+            // 标记为已处理（避免重复尝试）
+            await _db.upsert(book.copyWith(metadataExtracted: true));
+            continue;
+          }
+
+          final fileSystem = connection!.adapter.fileSystem;
+
+          try {
+            // 提取元数据
+            final metadata = await _metadataService.extractFromNasFile(
+              fileSystem,
+              book.filePath,
+              book.format,
+            );
+
+            if (metadata != null) {
+              // 保存封面到本地
+              String? coverPath;
+              if (metadata.hasCover) {
+                coverPath = await _metadataService.saveCoverToCache(
+                  book.sourceId,
+                  book.filePath,
+                  metadata.coverData!,
+                );
+              }
+
+              // 更新数据库
+              final updatedBook = book.copyWith(
+                title: metadata.title,
+                author: metadata.author,
+                description: metadata.description,
+                coverPath: coverPath,
+                totalPages: metadata.totalPages,
+                metadataExtracted: true,
+              );
+
+              await _db.upsert(updatedBook);
+
+              // 更新 UI 状态
+              _updateBookInState(updatedBook);
+
+              logger.d('BookListNotifier: 提取元数据成功: ${metadata.title ?? book.fileName}');
+            } else {
+              // 元数据提取失败，标记为已处理
+              await _db.upsert(book.copyWith(metadataExtracted: true));
+            }
+          } on Exception catch (e) {
+            logger.w('BookListNotifier: 提取元数据失败: ${book.fileName}', e);
+            // 标记为已处理，避免无限重试
+            await _db.upsert(book.copyWith(metadataExtracted: true));
+          }
+
+          // 添加短暂延迟，避免过于频繁的 IO 操作
+          await Future<void>.delayed(const Duration(milliseconds: 100));
+        }
+      }
+    } on Exception catch (e) {
+      logger.e('BookListNotifier: 后台元数据提取出错', e);
+    } finally {
+      _isExtractingMetadata = false;
+    }
+  }
+
+  /// 更新状态中的单本图书（用于元数据提取后刷新 UI）
+  void _updateBookInState(BookEntity updatedBook) {
+    final current = state;
+    if (current is BookListLoaded) {
+      final updatedBooks = current.allBooks.map((b) {
+        if (b.sourceId == updatedBook.sourceId && b.filePath == updatedBook.filePath) {
+          return updatedBook;
+        }
+        return b;
+      }).toList();
+
+      final updatedByPath = Map<String, BookEntity>.from(current.bookByPath);
+      updatedByPath[updatedBook.uniqueKey] = updatedBook;
+
+      state = current.copyWith(
+        allBooks: updatedBooks,
+        bookByPath: updatedByPath,
+      );
+    }
   }
 }
 

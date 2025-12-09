@@ -196,6 +196,52 @@ class VideoLibraryCacheService {
 
     return '${cache.videos.length} 个视频 · $sizeText · $ageText更新';
   }
+
+  /// 根据 sourceId 删除所有视频缓存
+  Future<int> deleteBySourceId(String sourceId) async {
+    final cache = getCache();
+    if (cache == null) return 0;
+
+    final originalCount = cache.videos.length;
+    final filteredVideos = cache.videos
+        .where((v) => v.sourceId != sourceId)
+        .toList();
+    final deletedCount = originalCount - filteredVideos.length;
+
+    if (deletedCount > 0) {
+      final newCache = VideoLibraryCache(
+        videos: filteredVideos,
+        lastUpdated: cache.lastUpdated,
+        sourceIds: cache.sourceIds.where((id) => id != sourceId).toList(),
+      );
+      await saveCache(newCache);
+      logger.i('VideoLibraryCacheService: 已删除 $deletedCount 个视频缓存 (sourceId: $sourceId)');
+    }
+    return deletedCount;
+  }
+
+  /// 根据 sourceId 和路径前缀删除（用于移除文件夹）
+  Future<int> deleteByPath(String sourceId, String pathPrefix) async {
+    final cache = getCache();
+    if (cache == null) return 0;
+
+    final originalCount = cache.videos.length;
+    final filteredVideos = cache.videos
+        .where((v) => !(v.sourceId == sourceId && v.filePath.startsWith(pathPrefix)))
+        .toList();
+    final deletedCount = originalCount - filteredVideos.length;
+
+    if (deletedCount > 0) {
+      final newCache = VideoLibraryCache(
+        videos: filteredVideos,
+        lastUpdated: cache.lastUpdated,
+        sourceIds: cache.sourceIds,
+      );
+      await saveCache(newCache);
+      logger.i('VideoLibraryCacheService: 已删除 $deletedCount 个视频缓存 (sourceId: $sourceId, path: $pathPrefix)');
+    }
+    return deletedCount;
+  }
 }
 
 /// 在 isolate 中解析缓存数据（顶级函数，供 compute 使用）
