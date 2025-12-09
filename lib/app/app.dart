@@ -41,7 +41,15 @@ class _MyNasAppState extends ConsumerState<MyNasApp> with WidgetsBindingObserver
   void _initDeepLinkService() {
     if (_deepLinkInitialized || !Platform.isIOS) return;
     _deepLinkInitialized = true;
-    DeepLinkService().init(ref);
+
+    // 添加错误处理，防止初始化失败导致应用崩溃
+    try {
+      DeepLinkService().init(ref);
+      logger.i('MyNasApp: DeepLinkService 初始化成功');
+    } catch (e, stackTrace) {
+      logger.e('MyNasApp: DeepLinkService 初始化失败', e, stackTrace);
+      // 不抛出异常，允许应用继续运行
+    }
   }
 
   @override

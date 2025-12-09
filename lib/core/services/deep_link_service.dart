@@ -26,24 +26,34 @@ class DeepLinkService {
     // 仅在 iOS 上监听 deep links（灵动岛功能）
     if (!Platform.isIOS) return;
 
-    _appLinks = AppLinks();
+    try {
+      _appLinks = AppLinks();
 
-    // 监听后续的链接
-    _linkSubscription = _appLinks!.uriLinkStream.listen(
-      _handleDeepLink,
-      onError: (Object err) {
-        logger.e('DeepLinkService: Error listening to links', err);
-      },
-    );
+      // 监听后续的链接
+      _linkSubscription = _appLinks!.uriLinkStream.listen(
+        _handleDeepLink,
+        onError: (Object err) {
+          logger.e('DeepLinkService: Error listening to links', err);
+        },
+      );
 
-    // 获取初始链接（如果应用是通过 deep link 启动的）
-    _appLinks!.getInitialLink().then((uri) {
-      if (uri != null) {
-        _handleDeepLink(uri);
-      }
-    });
+      // 获取初始链接（如果应用是通过 deep link 启动的）
+      _appLinks!.getInitialLink().then((uri) {
+        if (uri != null) {
+          _handleDeepLink(uri);
+        }
+      }).catchError((Object error) {
+        logger.e('DeepLinkService: Error getting initial link', error);
+      });
 
-    logger.i('DeepLinkService: Initialized');
+      logger.i('DeepLinkService: Initialized');
+    } catch (e, stackTrace) {
+      logger.e('DeepLinkService: Failed to initialize', e, stackTrace);
+      // 清理资源
+      _appLinks = null;
+      _linkSubscription = null;
+      rethrow; // 重新抛出异常，让上层处理
+    }
   }
 
   /// 处理 deep link
