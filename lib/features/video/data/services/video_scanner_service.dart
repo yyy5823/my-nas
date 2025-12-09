@@ -545,17 +545,28 @@ class VideoScannerService {
   }
 
   /// 获取刮削统计
-  Future<ScrapeStats> getScrapeStats() async {
+  ///
+  /// [sourceId] 可选，按源ID筛选
+  /// [pathPrefix] 可选，按路径前缀筛选（需要同时提供 sourceId）
+  Future<ScrapeStats> getScrapeStats({
+    String? sourceId,
+    String? pathPrefix,
+  }) async {
     await _dbService.init();
-    return _dbService.getScrapeStats();
+    return _dbService.getScrapeStats(sourceId: sourceId, pathPrefix: pathPrefix);
   }
 
   /// 获取需要重试的视频数量
   ///
   /// 包括刮削失败的和刮削完成但没有 TMDB 数据的
-  Future<int> getRetryableCount() async {
+  /// [sourceId] 可选，按源ID筛选
+  /// [pathPrefix] 可选，按路径前缀筛选（需要同时提供 sourceId）
+  Future<int> getRetryableCount({
+    String? sourceId,
+    String? pathPrefix,
+  }) async {
     await _dbService.init();
-    return _dbService.getRetryableCount();
+    return _dbService.getRetryableCount(sourceId: sourceId, pathPrefix: pathPrefix);
   }
 
   /// 重试刮削失败和无 TMDB 数据的视频

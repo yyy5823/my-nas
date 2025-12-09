@@ -857,39 +857,67 @@ class VideoDatabaseService {
       );
 
   /// 获取刮削统计信息
-  Future<ScrapeStats> getScrapeStats() async {
+  ///
+  /// [sourceId] 可选，按源ID筛选
+  /// [pathPrefix] 可选，按路径前缀筛选（需要同时提供 sourceId）
+  Future<ScrapeStats> getScrapeStats({
+    String? sourceId,
+    String? pathPrefix,
+  }) async {
     if (!_initialized) await init();
 
-    final total = Sqflite.firstIntValue(
-            await _db!.rawQuery('SELECT COUNT(*) FROM $_tableMetadata')) ??
+    // 构建路径过滤条件
+    var whereClause = '';
+    var andWhereClause = '';
+    final args = <Object>[];
+
+    if (sourceId != null && pathPrefix != null) {
+      whereClause = ' WHERE $_colSourceId = ? AND $_colFilePath LIKE ?';
+      andWhereClause = ' AND $_colSourceId = ? AND $_colFilePath LIKE ?';
+      args.addAll([sourceId, '$pathPrefix%']);
+    } else if (sourceId != null) {
+      whereClause = ' WHERE $_colSourceId = ?';
+      andWhereClause = ' AND $_colSourceId = ?';
+      args.add(sourceId);
+    }
+
+    final total = Sqflite.firstIntValue(await _db!.rawQuery(
+            'SELECT COUNT(*) FROM $_tableMetadata$whereClause', args)) ??
         0;
 
     final pending = Sqflite.firstIntValue(await _db!.rawQuery(
-            'SELECT COUNT(*) FROM $_tableMetadata WHERE $_colScrapeStatus = 0')) ??
+            'SELECT COUNT(*) FROM $_tableMetadata WHERE $_colScrapeStatus = 0$andWhereClause',
+            args)) ??
         0;
 
     final scraping = Sqflite.firstIntValue(await _db!.rawQuery(
-            'SELECT COUNT(*) FROM $_tableMetadata WHERE $_colScrapeStatus = 1')) ??
+            'SELECT COUNT(*) FROM $_tableMetadata WHERE $_colScrapeStatus = 1$andWhereClause',
+            args)) ??
         0;
 
     final completed = Sqflite.firstIntValue(await _db!.rawQuery(
-            'SELECT COUNT(*) FROM $_tableMetadata WHERE $_colScrapeStatus = 2')) ??
+            'SELECT COUNT(*) FROM $_tableMetadata WHERE $_colScrapeStatus = 2$andWhereClause',
+            args)) ??
         0;
 
     final failed = Sqflite.firstIntValue(await _db!.rawQuery(
-            'SELECT COUNT(*) FROM $_tableMetadata WHERE $_colScrapeStatus = 3')) ??
+            'SELECT COUNT(*) FROM $_tableMetadata WHERE $_colScrapeStatus = 3$andWhereClause',
+            args)) ??
         0;
 
     final skipped = Sqflite.firstIntValue(await _db!.rawQuery(
-            'SELECT COUNT(*) FROM $_tableMetadata WHERE $_colScrapeStatus = 4')) ??
+            'SELECT COUNT(*) FROM $_tableMetadata WHERE $_colScrapeStatus = 4$andWhereClause',
+            args)) ??
         0;
 
     final movies = Sqflite.firstIntValue(await _db!.rawQuery(
-            'SELECT COUNT(*) FROM $_tableMetadata WHERE $_colCategory = 0')) ??
+            'SELECT COUNT(*) FROM $_tableMetadata WHERE $_colCategory = 0$andWhereClause',
+            args)) ??
         0;
 
     final tvShows = Sqflite.firstIntValue(await _db!.rawQuery(
-            'SELECT COUNT(*) FROM $_tableMetadata WHERE $_colCategory = 1')) ??
+            'SELECT COUNT(*) FROM $_tableMetadata WHERE $_colCategory = 1$andWhereClause',
+            args)) ??
         0;
 
     return ScrapeStats(
@@ -1010,14 +1038,32 @@ class VideoDatabaseService {
   }
 
   /// 获取需要重试的视频数量
-  Future<int> getRetryableCount() async {
+  ///
+  /// [sourceId] 可选，按源ID筛选
+  /// [pathPrefix] 可选，按路径前缀筛选（需要同时提供 sourceId）
+  Future<int> getRetryableCount({
+    String? sourceId,
+    String? pathPrefix,
+  }) async {
     if (!_initialized) await init();
+
+    // 构建路径过滤条件
+    var pathFilter = '';
+    final args = <Object>[ScrapeStatus.failed.index, ScrapeStatus.completed.index];
+
+    if (sourceId != null && pathPrefix != null) {
+      pathFilter = ' AND $_colSourceId = ? AND $_colFilePath LIKE ?';
+      args.addAll([sourceId, '$pathPrefix%']);
+    } else if (sourceId != null) {
+      pathFilter = ' AND $_colSourceId = ?';
+      args.add(sourceId);
+    }
 
     final count = Sqflite.firstIntValue(await _db!.rawQuery('''
       SELECT COUNT(*) FROM $_tableMetadata
-      WHERE $_colScrapeStatus = ?
-        OR ($_colScrapeStatus = ? AND $_colTmdbId IS NULL)
-    ''', [ScrapeStatus.failed.index, ScrapeStatus.completed.index]));
+      WHERE ($_colScrapeStatus = ?
+        OR ($_colScrapeStatus = ? AND $_colTmdbId IS NULL))$pathFilter
+    ''', args));
 
     return count ?? 0;
   }

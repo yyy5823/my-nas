@@ -395,22 +395,37 @@ class _PathCardState extends ConsumerState<_PathCard> {
           });
         }
       });
-      _scrapeStatsSub = VideoScannerService().scrapeStatsStream.listen((stats) async {
+      _scrapeStatsSub = VideoScannerService().scrapeStatsStream.listen((globalStats) async {
         if (mounted) {
-          // 获取最新的可重试数量
-          final retryable = await VideoScannerService().getRetryableCount();
+          // 进度条使用全局统计（合并所有目录）
+          final globalProgress = globalStats.total > 0
+              ? globalStats.processed / globalStats.total
+              : 0.0;
+
+          // 单独获取当前目录的统计数据
+          final sourceId = widget.path.sourceId;
+          final pathPrefix = widget.path.path;
+          final pathStats = await VideoScannerService().getScrapeStats(
+            sourceId: sourceId,
+            pathPrefix: pathPrefix,
+          );
+          final retryable = await VideoScannerService().getRetryableCount(
+            sourceId: sourceId,
+            pathPrefix: pathPrefix,
+          );
+
           if (mounted) {
             setState(() {
               _isScraping = VideoScannerService().isScraping;
-              _itemCount = stats.total;
-              _scrapedCount = stats.completed;
-              _pendingScrapeCount = stats.pending;
+              // 使用当前目录的统计数据
+              _itemCount = pathStats.total;
+              _scrapedCount = pathStats.completed;
+              _pendingScrapeCount = pathStats.pending;
               _retryableCount = retryable;
-              if (stats.total > 0) {
-                _scrapeProgress = stats.processed / stats.total;
-              }
-              // 当刮削完成时（pending 和 scraping 都为 0），确保关闭进度条
-              if (stats.isAllDone) {
+              // 进度条显示全局进度（合并所有目录的进度）
+              _scrapeProgress = globalProgress;
+              // 当全局刮削完成时，确保关闭进度条
+              if (globalStats.isAllDone) {
                 _isScraping = false;
               }
             });
@@ -421,16 +436,31 @@ class _PathCardState extends ConsumerState<_PathCard> {
   }
 
   Future<void> _loadInitialScrapeStats() async {
-    final stats = await VideoScannerService().getScrapeStats();
-    final retryable = await VideoScannerService().getRetryableCount();
+    final sourceId = widget.path.sourceId;
+    final pathPrefix = widget.path.path;
+
+    // 获取当前目录的统计数据
+    final pathStats = await VideoScannerService().getScrapeStats(
+      sourceId: sourceId,
+      pathPrefix: pathPrefix,
+    );
+    final retryable = await VideoScannerService().getRetryableCount(
+      sourceId: sourceId,
+      pathPrefix: pathPrefix,
+    );
+
+    // 获取全局统计数据用于进度条
+    final globalStats = await VideoScannerService().getScrapeStats();
+
     if (mounted) {
       setState(() {
-        _itemCount = stats.total;
-        _scrapedCount = stats.completed;
-        _pendingScrapeCount = stats.pending;
+        _itemCount = pathStats.total;
+        _scrapedCount = pathStats.completed;
+        _pendingScrapeCount = pathStats.pending;
         _retryableCount = retryable;
-        if (stats.total > 0) {
-          _scrapeProgress = stats.processed / stats.total;
+        // 进度条显示全局进度（合并所有目录的进度）
+        if (globalStats.total > 0) {
+          _scrapeProgress = globalStats.processed / globalStats.total;
         }
       });
     }
@@ -494,10 +524,19 @@ class _PathCardState extends ConsumerState<_PathCard> {
 
   Future<void> _loadStats() async {
     try {
+      final sourceId = widget.path.sourceId;
+      final pathPrefix = widget.path.path;
+
       switch (widget.mediaType) {
         case MediaType.video:
-          final stats = await VideoScannerService().getScrapeStats();
-          final retryable = await VideoScannerService().getRetryableCount();
+          final stats = await VideoScannerService().getScrapeStats(
+            sourceId: sourceId,
+            pathPrefix: pathPrefix,
+          );
+          final retryable = await VideoScannerService().getRetryableCount(
+            sourceId: sourceId,
+            pathPrefix: pathPrefix,
+          );
           if (mounted) {
             setState(() {
               _itemCount = stats.total;
@@ -507,18 +546,29 @@ class _PathCardState extends ConsumerState<_PathCard> {
             });
           }
         case MediaType.music:
-          final count = await MusicDatabaseService().getCount();
+          final count = await MusicDatabaseService().getCount(
+            sourceId: sourceId,
+            pathPrefix: pathPrefix,
+          );
           if (mounted) setState(() => _itemCount = count);
         case MediaType.photo:
-          final count = await PhotoDatabaseService().getCount();
+          final count = await PhotoDatabaseService().getCount(
+            sourceId: sourceId,
+            pathPrefix: pathPrefix,
+          );
           if (mounted) setState(() => _itemCount = count);
         case MediaType.book:
-          final count = await BookDatabaseService().getCount();
+          final count = await BookDatabaseService().getCount(
+            sourceId: sourceId,
+            pathPrefix: pathPrefix,
+          );
           if (mounted) setState(() => _itemCount = count);
         case MediaType.comic:
-          await ComicLibraryCacheService().init();
-          final cache = ComicLibraryCacheService().getCache();
-          if (mounted) setState(() => _itemCount = cache?.comics.length ?? 0);
+          final count = await ComicLibraryCacheService().getCount(
+            sourceId: sourceId,
+            pathPrefix: pathPrefix,
+          );
+          if (mounted) setState(() => _itemCount = count);
         case MediaType.note:
           break;
       }

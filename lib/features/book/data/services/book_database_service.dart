@@ -324,10 +324,29 @@ class BookDatabaseService {
   }
 
   /// 获取总数量
-  Future<int> getCount() async {
+  ///
+  /// [sourceId] 可选，按源ID筛选
+  /// [pathPrefix] 可选，按路径前缀筛选（需要同时提供 sourceId）
+  Future<int> getCount({
+    String? sourceId,
+    String? pathPrefix,
+  }) async {
     if (!_initialized) await init();
+
+    // 构建路径过滤条件
+    var whereClause = '';
+    final args = <Object>[];
+
+    if (sourceId != null && pathPrefix != null) {
+      whereClause = ' WHERE $_colSourceId = ? AND $_colFilePath LIKE ?';
+      args.addAll([sourceId, '$pathPrefix%']);
+    } else if (sourceId != null) {
+      whereClause = ' WHERE $_colSourceId = ?';
+      args.add(sourceId);
+    }
+
     return Sqflite.firstIntValue(
-            await _db!.rawQuery('SELECT COUNT(*) FROM $_tableBooks')) ??
+            await _db!.rawQuery('SELECT COUNT(*) FROM $_tableBooks$whereClause', args)) ??
         0;
   }
 

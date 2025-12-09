@@ -224,4 +224,26 @@ class ComicLibraryCacheService {
 
     return '${cache.comics.length} 本漫画 · $sizeText · $ageText更新';
   }
+
+  /// 获取漫画数量
+  ///
+  /// [sourceId] 可选，按源ID筛选
+  /// [pathPrefix] 可选，按路径前缀筛选（需要同时提供 sourceId）
+  Future<int> getCount({
+    String? sourceId,
+    String? pathPrefix,
+  }) async {
+    if (_cache == null) await init();
+    if (_cache == null) return 0;
+
+    if (sourceId != null && pathPrefix != null) {
+      return _cache!.comics
+          .where((c) => c.sourceId == sourceId && c.folderPath.startsWith(pathPrefix))
+          .length;
+    } else if (sourceId != null) {
+      return _cache!.comics.where((c) => c.sourceId == sourceId).length;
+    }
+
+    return _cache!.comics.length;
+  }
 }

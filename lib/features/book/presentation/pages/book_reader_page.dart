@@ -286,8 +286,17 @@ class BookReaderPage extends ConsumerStatefulWidget {
   ConsumerState<BookReaderPage> createState() => _BookReaderPageState();
 }
 
+/// 从 HTML 中提取的章节信息
+class BookChapter {
+  BookChapter({required this.title, required this.offset});
+  final String title;
+  final double offset; // 滚动位置
+}
+
 class _BookReaderPageState extends ConsumerState<BookReaderPage> {
   bool _showControls = false;
+  bool _showToc = false;
+  List<BookChapter> _chapters = [];
   final ScrollController _scrollController = ScrollController();
 
   @override
@@ -334,6 +343,69 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
   void _toggleControls() {
     setState(() {
       _showControls = !_showControls;
+      if (!_showControls) {
+        _showToc = false;
+      }
+    });
+  }
+
+  /// 从 HTML 内容中提取章节标题
+  void _extractChapters(String htmlContent) {
+    final chapters = <BookChapter>[];
+
+    // 匹配 h1-h6 标题标签
+    final regex = RegExp(
+      r'<h([1-6])[^>]*>(.*?)</h\1>',
+      caseSensitive: false,
+      dotAll: true,
+    );
+
+    final matches = regex.allMatches(htmlContent);
+    var estimatedOffset = 0.0;
+
+    for (final match in matches) {
+      // 清理标题中的 HTML 标签
+      final title = match.group(2)
+          ?.replaceAll(RegExp('<[^>]*>'), '')
+          .trim() ?? '';
+
+      if (title.isNotEmpty && title.length < 100) {
+        // 估算位置（基于前面内容的长度）
+        final beforeContent = htmlContent.substring(0, match.start);
+        estimatedOffset = beforeContent.length.toDouble();
+
+        chapters.add(BookChapter(title: title, offset: estimatedOffset));
+      }
+    }
+
+    if (chapters.isNotEmpty && mounted) {
+      setState(() {
+        _chapters = chapters;
+      });
+    }
+  }
+
+  /// 跳转到章节
+  void _jumpToChapter(BookChapter chapter) {
+    if (!_scrollController.hasClients) return;
+
+    // 计算目标滚动位置（基于章节在内容中的相对位置）
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final state = ref.read(txtReaderProvider(widget.book));
+
+    if (state is TxtReaderLoaded && state.hasHtml) {
+      final totalLength = state.htmlContent!.length.toDouble();
+      final targetPosition = (chapter.offset / totalLength * maxScroll).clamp(0.0, maxScroll);
+
+      _scrollController.animateTo(
+        targetPosition,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
+
+    setState(() {
+      _showToc = false;
     });
   }
 
@@ -387,16 +459,14 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
             child: Column(
               children: [
                 Expanded(
-                  child: GestureDetector(
-                    onTap: _toggleControls,
-                    child: SingleChildScrollView(
-                      controller: _scrollController,
-                      padding: EdgeInsets.symmetric(
-                        horizontal: settings.horizontalPadding,
-                        vertical: settings.verticalPadding,
-                      ),
-                      child: _buildContent(state, settings),
+                  // 移除 GestureDetector，改用 _buildTapZones 处理所有点击
+                  child: SingleChildScrollView(
+                    controller: _scrollController,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: settings.horizontalPadding,
+                      vertical: settings.verticalPadding,
                     ),
+                    child: _buildContent(state, settings),
                   ),
                 ),
                 // 进度指示器
@@ -434,8 +504,8 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
           ),
         ),
 
-        // 点击翻页区域
-        if (settings.tapToTurn) _buildTapZones(settings),
+        // 点击交互区域（始终显示，根据 tapToTurn 设置决定是否翻页）
+        _buildTapZones(settings),
 
         // 顶部控制栏
         if (_showControls)
@@ -449,13 +519,108 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
             right: 0,
             child: _buildBottomBar(context, settings),
           ),
+
+        // 目录抽屉
+        if (_showToc) _buildTocDrawer(context, settings),
       ],
+    );
+  }
+
+  /// 构建目录抽屉
+  Widget _buildTocDrawer(BuildContext context, BookReaderSettings settings) {
+    final theme = settings.theme;
+    final isDark = theme == BookReaderTheme.dark || theme == BookReaderTheme.black;
+
+    return Positioned(
+      top: 0,
+      bottom: 0,
+      left: 0,
+      child: GestureDetector(
+        onTap: () {}, // 防止点击穿透
+        child: Container(
+          width: MediaQuery.of(context).size.width * 0.75,
+          color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+          child: SafeArea(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 标题
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(
+                        color: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
+                      ),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Text(
+                        '目录',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        icon: Icon(
+                          Icons.close,
+                          color: isDark ? Colors.white70 : Colors.black54,
+                        ),
+                        onPressed: () => setState(() => _showToc = false),
+                      ),
+                    ],
+                  ),
+                ),
+                // 章节列表
+                Expanded(
+                  child: _chapters.isEmpty
+                      ? Center(
+                          child: Text(
+                            '暂无目录',
+                            style: TextStyle(
+                              color: isDark ? Colors.grey[500] : Colors.grey[600],
+                            ),
+                          ),
+                        )
+                      : ListView.builder(
+                          itemCount: _chapters.length,
+                          itemBuilder: (context, index) {
+                            final chapter = _chapters[index];
+                            return ListTile(
+                              title: Text(
+                                chapter.title,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: isDark ? Colors.white : Colors.black87,
+                                ),
+                              ),
+                              onTap: () => _jumpToChapter(chapter),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
   Widget _buildContent(TxtReaderLoaded state, BookReaderSettings settings) {
     // 如果有 HTML 内容，使用 flutter_html 渲染
     if (state.hasHtml) {
+      // 首次加载时提取章节（异步执行，不阻塞渲染）
+      if (_chapters.isEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _extractChapters(state.htmlContent!);
+        });
+      }
       return _buildHtmlContent(state.htmlContent!, settings);
     }
 
@@ -935,11 +1100,11 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
   Widget _buildTapZones(BookReaderSettings settings) => Positioned.fill(
     child: Row(
       children: [
-        // 左侧 - 向上滚动
+        // 左侧 - 向上滚动（如果 tapToTurn 开启）或切换控制栏
         Expanded(
           child: GestureDetector(
             onTap: () {
-              if (_scrollController.hasClients) {
+              if (settings.tapToTurn && _scrollController.hasClients) {
                 _scrollController.animateTo(
                   (_scrollController.offset -
                           MediaQuery.of(context).size.height * 0.8)
@@ -947,6 +1112,8 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
                   duration: const Duration(milliseconds: 300),
                   curve: Curves.easeOut,
                 );
+              } else {
+                _toggleControls();
               }
             },
             behavior: HitTestBehavior.translucent,
@@ -962,11 +1129,11 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
             child: Container(),
           ),
         ),
-        // 右侧 - 向下滚动
+        // 右侧 - 向下滚动（如果 tapToTurn 开启）或切换控制栏
         Expanded(
           child: GestureDetector(
             onTap: () {
-              if (_scrollController.hasClients) {
+              if (settings.tapToTurn && _scrollController.hasClients) {
                 _scrollController.animateTo(
                   (_scrollController.offset +
                           MediaQuery.of(context).size.height * 0.8)
@@ -974,6 +1141,8 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
                   duration: const Duration(milliseconds: 300),
                   curve: Curves.easeOut,
                 );
+              } else {
+                _toggleControls();
               }
             },
             behavior: HitTestBehavior.translucent,
@@ -1021,7 +1190,15 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
                 ],
               ),
             ),
-            const SizedBox(width: 48), // 平衡布局
+            // 目录按钮（仅当有章节时显示）
+            if (_chapters.isNotEmpty)
+              IconButton(
+                icon: const Icon(Icons.list_rounded, color: Colors.white),
+                onPressed: () => setState(() => _showToc = !_showToc),
+                tooltip: '目录',
+              )
+            else
+              const SizedBox(width: 48), // 平衡布局
           ],
         ),
       ),

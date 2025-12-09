@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -26,26 +28,19 @@ class _StartupPageState extends ConsumerState<StartupPage> {
     _initializeApp();
   }
 
-  Future<void> _initializeApp() async {
-    // 短暂延迟让 UI 先渲染（减少延迟时间）
-    await Future<void>.delayed(const Duration(milliseconds: 100));
-
-    if (!mounted) return;
-
-    setState(() {
-      _statusMessage = '初始化中...';
-    });
-
-    // 关键优化：不阻塞跳转，让服务在后台初始化
-    // 视频页面会自行处理服务初始化状态
+  void _initializeApp() {
+    // 关键优化：完全不等待，立即跳转到主界面
+    // 服务初始化在后台进行，视频页面会自行处理
     _initServicesInBackground();
 
-    // 立即进入主界面，不等待初始化完成
-    // 这样即使网络不可用或初始化较慢，用户也能立即看到界面
-    logger.i('StartupPage: 立即进入主界面，服务在后台初始化');
-    if (mounted) {
-      context.go(Routes.video);
-    }
+    // 使用 microtask 确保在当前帧结束后立即跳转
+    // 这样用户几乎感觉不到 StartupPage 的存在
+    unawaited(Future.microtask(() {
+      if (mounted) {
+        logger.i('StartupPage: 立即进入主界面');
+        context.go(Routes.video);
+      }
+    }));
   }
 
   /// 在后台初始化服务，不阻塞UI

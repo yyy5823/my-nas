@@ -283,37 +283,41 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     }
   }
 
-  Future<void> _init() async {
+  void _init() {
+    logger.d('VideoListNotifier: 开始初始化...');
+
+    // 关键优化：立即显示空状态UI，让用户立即看到界面
+    // 用户不会看到黑屏或loading状态
+    state = VideoListLoaded(totalCount: 0);
+
+    // 在后台初始化服务并加载数据，不阻塞UI
+    unawaited(_initAndLoadInBackground());
+  }
+
+  /// 后台初始化服务并加载数据
+  Future<void> _initAndLoadInBackground() async {
     try {
-      logger.d('VideoListNotifier: 开始初始化...');
-
-      // 关键优化：先显示空状态UI，让用户立即看到界面
-      // 这样即使数据库查询较慢，用户也不会看到黑屏
-      state = VideoListLoaded(totalCount: 0);
-
-      // 并行初始化服务，添加超时机制防止无限等待
+      // 快速初始化服务（SQLite和Hive都是本地操作，应该很快）
+      // 使用较短的超时，避免异常情况下长时间等待
       await Future.wait([
         _metadataService.init(),
         _cacheService.init(),
       ]).timeout(
-        const Duration(seconds: 5),
+        const Duration(seconds: 2),
         onTimeout: () {
-          logger.w('VideoListNotifier: 服务初始化超时，继续加载数据');
+          logger.w('VideoListNotifier: 服务初始化超时');
           return <void>[];
         },
       );
 
-      logger.d('VideoListNotifier: 服务初始化完成，开始加载数据');
+      logger.d('VideoListNotifier: 服务初始化完成，加载SQLite数据');
 
-      // 从 SQLite 加载分类数据（高性能分页查询）
-      // 使用 silent: true 避免重置状态导致闪烁
+      // 从 SQLite 加载分类数据
+      // SQLite是本地数据库，查询应该非常快
       await _loadCategorizedData(silent: true);
     } on Exception catch (e) {
-      logger.e('VideoListNotifier: 初始化失败', e);
-      // 即使初始化失败，也保持空列表状态，让用户可以配置
-      if (state is! VideoListLoaded) {
-        state = VideoListLoaded(totalCount: 0);
-      }
+      logger.e('VideoListNotifier: 后台初始化失败', e);
+      // 保持空列表状态，让用户可以正常使用界面
     }
   }
 
@@ -331,19 +335,20 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
 
     // 并行查询各分类数据（使用 SQLite 索引，O(log N) 复杂度）
     // 首页只加载少量数据用于展示，查看全部页面支持分页懒加载
-    // 添加超时机制，防止数据库查询阻塞过久
+    // SQLite是本地数据库，查询应该非常快（<1秒），使用3秒超时作为保护
     List<Object?> results;
     try {
       results = await Future.wait([
         _db.getStats(enabledPaths: enabledPaths),
         _db.getTvShowGroupCount(enabledPaths: enabledPaths),
-        _db.getTopRated(limit: 200, enabledPaths: enabledPaths),
-        _db.getRecentlyUpdated(limit: 100, enabledPaths: enabledPaths),
-        _db.getByCategory(MediaCategory.movie, enabledPaths: enabledPaths),
-        _db.getTvShowGroupRepresentatives(enabledPaths: enabledPaths),
+        // 减少首页加载量，加快初始显示速度
+        _db.getTopRated(limit: 30, enabledPaths: enabledPaths),
+        _db.getRecentlyUpdated(limit: 20, enabledPaths: enabledPaths),
+        _db.getByCategory(MediaCategory.movie, limit: 30, enabledPaths: enabledPaths),
+        _db.getTvShowGroupRepresentatives(limit: 30, enabledPaths: enabledPaths),
         _db.getMovieCollections(),
       ]).timeout(
-        const Duration(seconds: 10),
+        const Duration(seconds: 3),
         onTimeout: () {
           logger.w('VideoListNotifier: 数据库查询超时，显示空列表');
           // 返回空结果，避免阻塞
@@ -360,20 +365,18 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       );
     } on Exception catch (e) {
       logger.e('VideoListNotifier: 数据库查询失败', e);
-      // 查询失败时保持当前状态或显示空列表
-      if (state is! VideoListLoaded) {
-        state = VideoListLoaded(totalCount: 0);
-      }
+      // 查询失败时保持当前状态
       return;
     }
 
-    final stats = results[0] as Map<String, dynamic>;
-    final tvShowGroupCount = results[1] as int;
-    final topRatedRaw = results[2] as List<VideoMetadata>;
-    final recentRaw = results[3] as List<VideoMetadata>;
-    final moviesList = results[4] as List<VideoMetadata>;
-    final tvShowRepresentatives = results[5] as List<VideoMetadata>;
-    final movieCollections = results[6] as List<MovieCollection>;
+    // 安全地转换结果类型，处理可能的null值
+    final stats = (results[0] as Map<String, dynamic>?) ?? <String, dynamic>{};
+    final tvShowGroupCount = (results[1] as int?) ?? 0;
+    final topRatedRaw = (results[2] as List<VideoMetadata>?) ?? <VideoMetadata>[];
+    final recentRaw = (results[3] as List<VideoMetadata>?) ?? <VideoMetadata>[];
+    final moviesList = (results[4] as List<VideoMetadata>?) ?? <VideoMetadata>[];
+    final tvShowRepresentatives = (results[5] as List<VideoMetadata>?) ?? <VideoMetadata>[];
+    final movieCollections = (results[6] as List<MovieCollection>?) ?? <MovieCollection>[];
 
     // 首页剧集直接使用代表性数据，不需要再分组
     // 但为了兼容性，仍然构建 TvShowGroup（用于高分推荐和最近添加的去重）

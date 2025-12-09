@@ -243,6 +243,25 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
     });
   }
 
+  /// 处理点击区域（使用规范化坐标 0-1）
+  /// 左侧 1/4: 上一页
+  /// 右侧 1/4: 下一页
+  /// 中间 1/2: 切换控制栏
+  void _handleTapZone(Offset normalizedPosition) {
+    final tapX = normalizedPosition.dx;
+
+    if (tapX < 0.25) {
+      // 左侧区域 - 上一页
+      _epubController.prev();
+    } else if (tapX > 0.75) {
+      // 右侧区域 - 下一页
+      _epubController.next();
+    } else {
+      // 中间区域 - 切换控制栏
+      _toggleControls();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(epubReaderProvider(widget.book));
@@ -284,36 +303,37 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
   Widget _buildReader(BuildContext context, EpubReaderLoaded state) => Stack(
     children: [
       // EPUB 阅读器
-      GestureDetector(
-        onTap: _toggleControls,
-        child: EpubViewer(
-          epubSource: EpubSource.fromFile(File(state.filePath)),
-          epubController: _epubController,
-          initialCfi: state.initialCfi,
-          displaySettings: EpubDisplaySettings(
-
-          ),
-          onChaptersLoaded: (chapters) {
-            setState(() {
-              _chapters = chapters;
-            });
-            ref
-                .read(epubReaderProvider(widget.book).notifier)
-                .updateChapters(chapters);
-          },
-          onEpubLoaded: () {
-            logger.i('EPUB 渲染完成');
-          },
-          onRelocated: (location) {
-            setState(() {
-              _progress = location.progress;
-            });
-            // 保存阅读进度
-            ref
-                .read(epubReaderProvider(widget.book).notifier)
-                .saveProgress(location);
-          },
+      EpubViewer(
+        epubSource: EpubSource.fromFile(File(state.filePath)),
+        epubController: _epubController,
+        initialCfi: state.initialCfi,
+        displaySettings: EpubDisplaySettings(
+          allowScriptedContent: true,
         ),
+        onChaptersLoaded: (chapters) {
+          setState(() {
+            _chapters = chapters;
+          });
+          ref
+              .read(epubReaderProvider(widget.book).notifier)
+              .updateChapters(chapters);
+        },
+        onEpubLoaded: () {
+          logger.i('EPUB 渲染完成');
+        },
+        onRelocated: (location) {
+          setState(() {
+            _progress = location.progress;
+          });
+          // 保存阅读进度
+          ref
+              .read(epubReaderProvider(widget.book).notifier)
+              .saveProgress(location);
+        },
+        // 使用原生触摸事件处理，避免 GestureDetector 拦截手势
+        onTouchUp: (x, y) {
+          _handleTapZone(Offset(x, y));
+        },
       ),
 
       // 顶部控制栏
