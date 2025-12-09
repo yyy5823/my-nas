@@ -42,10 +42,6 @@ post_install do |installer|
     target.build_configurations.each do |config|
       # 强制所有 Pod 使用 iOS 13.0 作为最低部署目标
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
-
-      # 修复框架头文件引用格式问题(SDWebImage 等第三方库)
-      config.build_settings['USE_HEADERMAP'] = 'NO'
-      config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
     end
   end
 
