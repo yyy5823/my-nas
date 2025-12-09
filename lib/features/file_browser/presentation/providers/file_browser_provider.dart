@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
@@ -126,7 +128,16 @@ class FileListNotifier extends StateNotifier<FileListState> {
     }
 
     try {
-      final files = await adapter.fileSystem.listDirectory(path);
+      // 添加超时保护,防止长时间卡住
+      final files = await adapter.fileSystem
+          .listDirectory(path)
+          .timeout(
+            const Duration(seconds: 30),
+            onTimeout: () => throw TimeoutException(
+              '加载目录超时 (30秒)',
+              const Duration(seconds: 30),
+            ),
+          );
 
       // 排序
       final sortMode = _ref.read(sortModeProvider);
@@ -135,8 +146,12 @@ class FileListNotifier extends StateNotifier<FileListState> {
 
       _ref.read(currentPathProvider.notifier).state = path;
       state = FileListLoaded(files: sortedFiles, path: path);
-    } on Exception catch (e) {
-      state = FileListError(message: e.toString());
+    } on Exception catch (e, stack) {
+      // 捕获所有类型的错误(包括Error和Exception)
+      final errorMessage = e is TimeoutException
+          ? '加载目录超时，请检查网络连接或目录访问权限'
+          : '加载目录失败: $e $stack';
+      state = FileListError(message: errorMessage);
     }
   }
 
