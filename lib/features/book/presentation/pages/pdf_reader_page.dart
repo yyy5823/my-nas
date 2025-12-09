@@ -469,51 +469,59 @@ class _PdfReaderPageState extends ConsumerState<PdfReaderPage> {
 
   Widget _buildReader(BuildContext context, PdfReaderLoaded state) => Stack(
       children: [
-        // PDF 内容
-        GestureDetector(
-          onTap: () => setState(() {
-            _showControls = !_showControls;
-            _showThumbnails = false;
-          }),
-          child: PdfViewer(
-            state.documentRef,
-            controller: _controller,
-            params: PdfViewerParams(
-              backgroundColor: state.isDarkMode ? Colors.black : Colors.grey.shade200,
-              pageDropShadow: BoxShadow(
-                color: Colors.black.withValues(alpha: 0.3),
-                blurRadius: 8,
-                offset: const Offset(2, 2),
+        // PDF 内容（带固定顶栏）
+        Column(
+          children: [
+            // 固定顶栏 - 避免摄像头遮挡内容
+            _buildFixedHeader(state),
+            Expanded(
+              child: GestureDetector(
+                onTap: () => setState(() {
+                  _showControls = !_showControls;
+                  _showThumbnails = false;
+                }),
+                child: PdfViewer(
+                  state.documentRef,
+                  controller: _controller,
+                  params: PdfViewerParams(
+                    backgroundColor: state.isDarkMode ? Colors.black : Colors.grey.shade200,
+                    pageDropShadow: BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.3),
+                      blurRadius: 8,
+                      offset: const Offset(2, 2),
+                    ),
+                    // 性能优化参数
+                    maxImageBytesCachedOnMemory: 150 * 1024 * 1024, // 150MB 缓存
+                    horizontalCacheExtent: 2, // 预加载左右各2页
+                    verticalCacheExtent: 2, // 预加载上下各2页
+                    // 限制渲染分辨率以提高性能
+                    getPageRenderingScale: (context, page, controller, estimatedScale) {
+                      // 限制最大渲染尺寸为 4000 像素
+                      final width = page.width * estimatedScale;
+                      final height = page.height * estimatedScale;
+                      if (width > 4000 || height > 4000) {
+                        return min(4000 / page.width, 4000 / page.height);
+                      }
+                      return estimatedScale;
+                    },
+                    onPageChanged: (pageNumber) {
+                      if (pageNumber != null) {
+                        ref.read(pdfReaderProvider(widget.book).notifier).setPage(pageNumber);
+                      }
+                    },
+                    // 初始页码
+                    calculateInitialPageNumber: (_, controller) => state.currentPage,
+                  ),
+                ),
               ),
-              // 性能优化参数
-              maxImageBytesCachedOnMemory: 150 * 1024 * 1024, // 150MB 缓存
-              horizontalCacheExtent: 2, // 预加载左右各2页
-              verticalCacheExtent: 2, // 预加载上下各2页
-              // 限制渲染分辨率以提高性能
-              getPageRenderingScale: (context, page, controller, estimatedScale) {
-                // 限制最大渲染尺寸为 4000 像素
-                final width = page.width * estimatedScale;
-                final height = page.height * estimatedScale;
-                if (width > 4000 || height > 4000) {
-                  return min(4000 / page.width, 4000 / page.height);
-                }
-                return estimatedScale;
-              },
-              onPageChanged: (pageNumber) {
-                if (pageNumber != null) {
-                  ref.read(pdfReaderProvider(widget.book).notifier).setPage(pageNumber);
-                }
-              },
-              // 初始页码
-              calculateInitialPageNumber: (_, controller) => state.currentPage,
             ),
-          ),
+          ],
         ),
 
         // 流式加载指示器
         if (state.isStreaming)
           Positioned(
-            top: MediaQuery.of(context).padding.top + 8,
+            top: MediaQuery.of(context).padding.top + 40, // 调整位置避开顶栏
             right: 8,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -564,6 +572,53 @@ class _PdfReaderPageState extends ConsumerState<PdfReaderPage> {
         if (_showThumbnails) _buildThumbnailPanel(context, state),
       ],
     );
+
+  /// 构建固定顶栏，显示书名和页码
+  Widget _buildFixedHeader(PdfReaderLoaded state) {
+    final isDark = state.isDarkMode;
+    final bgColor = isDark ? Colors.grey.shade900 : Colors.grey.shade100;
+    final textColor = isDark ? Colors.grey.shade400 : Colors.grey.shade600;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: bgColor,
+        border: Border(
+          bottom: BorderSide(
+            color: isDark ? Colors.grey.shade800 : Colors.grey.shade300,
+            width: 0.5,
+          ),
+        ),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                widget.book.displayName,
+                style: TextStyle(
+                  color: textColor,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '${state.currentPage}/${state.totalPages}',
+              style: TextStyle(
+                color: textColor,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _buildTopBar(BuildContext context, PdfReaderLoaded state) => DecoratedBox(
       decoration: BoxDecoration(

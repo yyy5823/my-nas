@@ -7,6 +7,7 @@ import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
+import 'package:my_nas/features/video/data/services/nfo_scraper_service.dart';
 import 'package:my_nas/features/video/data/services/video_database_service.dart';
 import 'package:my_nas/features/video/data/services/video_library_cache_service.dart';
 import 'package:my_nas/features/video/data/services/video_metadata_service.dart';
@@ -115,6 +116,7 @@ class VideoScannerService {
   final VideoMetadataService _metadataService = VideoMetadataService();
   final VideoDatabaseService _dbService = VideoDatabaseService();
   final BackgroundTaskService _backgroundTaskService = BackgroundTaskService();
+  final NfoScraperService _nfoService = NfoScraperService();
 
   bool _isScanning = false;
 
@@ -361,6 +363,9 @@ class VideoScannerService {
   }
 
   /// 保存基础元数据到数据库（不刮削）
+  ///
+  /// 优化：如果扫描阶段已解析 NFO 基础信息，会一并保存
+  /// 这样用户在扫描完成后就能看到有标题和海报的内容
   Future<void> _saveBasicMetadataToDb(List<_ScannedVideo> videos) async {
     final total = videos.length;
     const batchSize = 50;
@@ -385,7 +390,8 @@ class VideoScannerService {
           continue;
         }
 
-        // 创建基础元数据
+        // 创建基础元数据（包含 NFO 基础信息，如果有的话）
+        final nfoInfo = video.nfoBasicInfo;
         final metadata = VideoMetadata(
           sourceId: video.sourceId,
           filePath: video.file.path,
@@ -393,6 +399,21 @@ class VideoScannerService {
           thumbnailUrl: video.file.thumbnailUrl,
           fileSize: video.file.size,
           fileModifiedTime: video.file.modifiedTime,
+          // NFO 基础信息（扫描阶段快速解析）
+          title: nfoInfo?.title,
+          originalTitle: nfoInfo?.originalTitle,
+          year: nfoInfo?.year,
+          rating: nfoInfo?.rating,
+          tmdbId: nfoInfo?.tmdbId,
+          genres: nfoInfo?.genres,
+          seasonNumber: nfoInfo?.seasonNumber,
+          episodeNumber: nfoInfo?.episodeNumber,
+          // 如果有 NFO 信息，设置分类
+          category: _inferCategory(nfoInfo),
+          // 海报路径（本地 NAS 路径，需要后续转换为 URL）
+          posterUrl: nfoInfo?.posterPath,
+          // 状态：仍需完整刮削以获取更多信息（如完整剧情、演员等）
+          scrapeStatus: ScrapeStatus.pending,
         );
         metadataList.add(metadata);
 
@@ -423,6 +444,23 @@ class VideoScannerService {
         ),
       );
     }
+  }
+
+  /// 根据 NFO 信息推断媒体分类
+  MediaCategory _inferCategory(NfoBasicInfo? nfoInfo) {
+    if (nfoInfo == null) return MediaCategory.unknown;
+
+    // 如果有季集信息，是剧集
+    if (nfoInfo.seasonNumber != null || nfoInfo.episodeNumber != null) {
+      return MediaCategory.tvShow;
+    }
+
+    // 默认为电影
+    if (nfoInfo.hasData) {
+      return MediaCategory.movie;
+    }
+
+    return MediaCategory.unknown;
   }
 
   /// 完整扫描（扫描文件 + 刮削元数据）
@@ -748,6 +786,8 @@ class VideoScannerService {
   /// 会跳过以下目录：
   /// - 隐藏目录（以 . 开头）
   /// - 系统目录（以 @ 开头、#recycle、eaDir）
+  ///
+  /// 优化：对于有 NFO 文件的目录，会快速解析基础信息
   Future<void> _scanDirectory({
     required NasFileSystem fileSystem,
     required String sourceId,
@@ -775,6 +815,9 @@ class VideoScannerService {
            item.name.toLowerCase() == 'movie.nfo' ||
            item.name.toLowerCase() == 'tvshow.nfo'));
 
+      // 收集当前目录的视频文件，稍后批量处理 NFO
+      final videoItems = <FileItem>[];
+
       for (final item in items) {
         if (item.isDirectory) {
           // 跳过隐藏目录和系统目录
@@ -791,29 +834,75 @@ class VideoScannerService {
             videos: videos,
           );
         } else if (item.type == FileType.video) {
-          videos.add(_ScannedVideo(
-            sourceId: sourceId,
-            file: item,
-            hasNfoInDirectory: hasNfo,
-          ));
+          videoItems.add(item);
+        }
+      }
 
-          // 每扫描到一定数量更新进度
-          if (videos.length % 10 == 0) {
-            _emitProgress(
-              VideoScanProgress(
-                phase: VideoScanPhase.scanning,
-                sourceId: sourceId,
-                pathPrefix: rootPathPrefix,
-                currentPath: path,
-                scannedCount: videos.length,
-              ),
+      // 处理当前目录的视频文件
+      for (final videoItem in videoItems) {
+        NfoBasicInfo? nfoInfo;
+
+        // 如果目录有 NFO 文件，尝试快速解析基础信息
+        if (hasNfo) {
+          try {
+            final videoBaseName = _getBaseName(videoItem.name);
+            final nfoMetadata = await _nfoService.quickParseFromDirectory(
+              fileSystem: fileSystem,
+              directoryItems: items,
+              videoDir: path,
+              videoBaseName: videoBaseName,
             );
+
+            if (nfoMetadata != null && nfoMetadata.hasData) {
+              nfoInfo = NfoBasicInfo(
+                title: nfoMetadata.title,
+                originalTitle: nfoMetadata.originalTitle,
+                year: nfoMetadata.year,
+                rating: nfoMetadata.rating,
+                tmdbId: nfoMetadata.tmdbId,
+                genres: nfoMetadata.genres?.join(', '),
+                seasonNumber: nfoMetadata.seasonNumber,
+                episodeNumber: nfoMetadata.episodeNumber,
+                posterPath: nfoMetadata.posterPath,
+              );
+            }
+          } on Exception catch (e) {
+            logger.w('VideoScannerService: 快速解析 NFO 失败 ${videoItem.name}', e);
           }
+        }
+
+        videos.add(_ScannedVideo(
+          sourceId: sourceId,
+          file: videoItem,
+          hasNfoInDirectory: hasNfo,
+          nfoBasicInfo: nfoInfo,
+        ));
+
+        // 每扫描到一定数量更新进度
+        if (videos.length % 10 == 0) {
+          _emitProgress(
+            VideoScanProgress(
+              phase: VideoScanPhase.scanning,
+              sourceId: sourceId,
+              pathPrefix: rootPathPrefix,
+              currentPath: path,
+              scannedCount: videos.length,
+            ),
+          );
         }
       }
     } on Exception catch (e) {
       logger.w('VideoScannerService: 扫描目录失败 $path', e);
     }
+  }
+
+  /// 获取文件基础名（不含扩展名）
+  String _getBaseName(String fileName) {
+    final dotIndex = fileName.lastIndexOf('.');
+    if (dotIndex > 0) {
+      return fileName.substring(0, dotIndex);
+    }
+    return fileName;
   }
 
   /// 判断是否应该跳过该目录
@@ -840,9 +929,38 @@ class _ScannedVideo {
     required this.sourceId,
     required this.file,
     this.hasNfoInDirectory = false,
+    this.nfoBasicInfo,
   });
 
   final String sourceId;
   final FileItem file;
   final bool hasNfoInDirectory; // 同目录下是否有 NFO 文件
+  final NfoBasicInfo? nfoBasicInfo; // NFO 基础信息（扫描阶段快速解析）
+}
+
+/// NFO 基础信息（轻量级，用于扫描阶段）
+class NfoBasicInfo {
+  const NfoBasicInfo({
+    this.title,
+    this.originalTitle,
+    this.year,
+    this.rating,
+    this.tmdbId,
+    this.genres,
+    this.seasonNumber,
+    this.episodeNumber,
+    this.posterPath,
+  });
+
+  final String? title;
+  final String? originalTitle;
+  final int? year;
+  final double? rating;
+  final int? tmdbId;
+  final String? genres;
+  final int? seasonNumber;
+  final int? episodeNumber;
+  final String? posterPath;
+
+  bool get hasData => title != null || tmdbId != null;
 }

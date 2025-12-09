@@ -277,6 +277,11 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
   }
 
   /// 刮削统计变化时刷新数据
+  ///
+  /// 使用自适应刷新策略：
+  /// - 初期（< 20 个）：每 3 个刷新一次，让用户快速看到效果
+  /// - 中期（20-100 个）：每 5 个刷新一次
+  /// - 后期（> 100 个）：每 10 个刷新一次，减少 UI 压力
   void _onScrapeStatsChanged(ScrapeStats stats) {
     // 当刮削全部完成时，强制刷新
     if (stats.isAllDone && _lastCompletedCount > 0) {
@@ -287,12 +292,29 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
 
     // 只有当有新的刮削完成时才刷新
     if (stats.completed > _lastCompletedCount) {
+      final delta = stats.completed - _lastCompletedCount;
       _lastCompletedCount = stats.completed;
-      // 每刮削完成 10 个视频刷新一次，避免频繁刷新
+
+      // 自适应刷新间隔
+      final refreshInterval = _getRefreshInterval(stats.completed);
+
       // 使用 silent: true 避免页面闪烁
-      if (stats.completed % 10 == 0 || stats.pending == 0) {
+      if (stats.completed % refreshInterval == 0 ||
+          stats.pending == 0 ||
+          delta >= refreshInterval) {
         _loadCategorizedData(silent: true);
       }
+    }
+  }
+
+  /// 根据已完成数量计算刷新间隔
+  int _getRefreshInterval(int completed) {
+    if (completed < 20) {
+      return 3; // 初期快速刷新，让用户看到效果
+    } else if (completed < 100) {
+      return 5; // 中期适中刷新
+    } else {
+      return 10; // 后期降低刷新频率
     }
   }
 

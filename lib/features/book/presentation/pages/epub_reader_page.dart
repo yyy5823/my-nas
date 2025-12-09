@@ -215,6 +215,7 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
   bool _showToc = false;
   List<EpubChapter> _chapters = [];
   double _progress = 0;
+  String _currentChapterTitle = '';
 
   @override
   void initState() {
@@ -302,38 +303,48 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
 
   Widget _buildReader(BuildContext context, EpubReaderLoaded state) => Stack(
     children: [
-      // EPUB 阅读器
-      EpubViewer(
-        epubSource: EpubSource.fromFile(File(state.filePath)),
-        epubController: _epubController,
-        initialCfi: state.initialCfi,
-        displaySettings: EpubDisplaySettings(
-          allowScriptedContent: true,
-        ),
-        onChaptersLoaded: (chapters) {
-          setState(() {
-            _chapters = chapters;
-          });
-          ref
-              .read(epubReaderProvider(widget.book).notifier)
-              .updateChapters(chapters);
-        },
-        onEpubLoaded: () {
-          logger.i('EPUB 渲染完成');
-        },
-        onRelocated: (location) {
-          setState(() {
-            _progress = location.progress;
-          });
-          // 保存阅读进度
-          ref
-              .read(epubReaderProvider(widget.book).notifier)
-              .saveProgress(location);
-        },
-        // 使用原生触摸事件处理，避免 GestureDetector 拦截手势
-        onTouchUp: (x, y) {
-          _handleTapZone(Offset(x, y));
-        },
+      // EPUB 阅读器（带固定顶栏）
+      Column(
+        children: [
+          // 固定顶栏 - 避免摄像头遮挡内容
+          _buildFixedHeader(),
+          Expanded(
+            child: EpubViewer(
+              epubSource: EpubSource.fromFile(File(state.filePath)),
+              epubController: _epubController,
+              initialCfi: state.initialCfi,
+              displaySettings: EpubDisplaySettings(
+                allowScriptedContent: true,
+              ),
+              onChaptersLoaded: (chapters) {
+                setState(() {
+                  _chapters = chapters;
+                });
+                ref
+                    .read(epubReaderProvider(widget.book).notifier)
+                    .updateChapters(chapters);
+              },
+              onEpubLoaded: () {
+                logger.i('EPUB 渲染完成');
+              },
+              onRelocated: (location) {
+                setState(() {
+                  _progress = location.progress;
+                  // 更新当前章节标题
+                  _updateCurrentChapter(location);
+                });
+                // 保存阅读进度
+                ref
+                    .read(epubReaderProvider(widget.book).notifier)
+                    .saveProgress(location);
+              },
+              // 使用原生触摸事件处理，避免 GestureDetector 拦截手势
+              onTouchUp: (x, y) {
+                _handleTapZone(Offset(x, y));
+              },
+            ),
+          ),
+        ],
       ),
 
       // 顶部控制栏
@@ -358,6 +369,63 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
       if (_showToc) _buildTocDrawer(context),
     ],
   );
+
+  /// 根据位置更新当前章节标题
+  void _updateCurrentChapter(EpubLocation location) {
+    // 尝试从章节列表中找到当前章节
+    if (_chapters.isEmpty) return;
+
+    // EpubLocation 包含 startCfi，我们可以通过它来匹配章节
+    // 简单策略：通过进度估算当前章节
+    final estimatedChapterIndex = (_progress * _chapters.length).floor();
+    if (estimatedChapterIndex >= 0 && estimatedChapterIndex < _chapters.length) {
+      final chapter = _chapters[estimatedChapterIndex];
+      if (chapter.title != _currentChapterTitle) {
+        _currentChapterTitle = chapter.title;
+      }
+    }
+  }
+
+  /// 构建固定顶栏，显示章节标题或书名
+  Widget _buildFixedHeader() {
+    // 显示当前章节标题，如果没有则显示书名
+    final displayTitle = _currentChapterTitle.isNotEmpty
+        ? _currentChapterTitle
+        : widget.book.name;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          bottom: BorderSide(
+            color: Colors.grey.shade200,
+            width: 0.5,
+          ),
+        ),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                displayTitle,
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _buildTopBar(BuildContext context) => DecoratedBox(
     decoration: BoxDecoration(

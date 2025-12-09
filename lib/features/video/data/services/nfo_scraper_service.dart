@@ -105,6 +105,81 @@ class NfoScraperService {
   /// 缩略图文件名模式
   static const _thumbPatterns = ['thumb', 'thumbnail'];
 
+  /// 快速解析目录中的 NFO 基础信息（用于扫描阶段）
+  ///
+  /// 只解析当前目录的 NFO 文件，不向上查找父目录
+  /// 返回基础信息：标题、年份、评分、海报路径
+  /// 这是轻量级操作，适合在扫描阶段批量调用
+  Future<NfoMetadata?> quickParseFromDirectory({
+    required NasFileSystem fileSystem,
+    required List<FileItem> directoryItems,
+    required String videoDir,
+    required String videoBaseName,
+  }) async {
+    try {
+      // 1. 查找视频同名 NFO 或 movie.nfo/tvshow.nfo
+      NfoMetadata? nfoData;
+
+      for (final file in directoryItems) {
+        if (file.isDirectory) continue;
+
+        final fileName = file.name.toLowerCase();
+
+        // 优先视频同名 NFO
+        if (_isMatchingNfo(fileName, videoBaseName)) {
+          try {
+            final content = await _readFileAsString(fileSystem, file.path);
+            nfoData = _parseNfoContent(content);
+            break;
+          } on Exception catch (e) {
+            logger.w('NfoScraperService: 快速解析 NFO 失败 ${file.name}', e);
+          }
+        }
+
+        // 其次 movie.nfo 或 tvshow.nfo
+        if (nfoData == null &&
+            (fileName == 'movie.nfo' || fileName == 'tvshow.nfo')) {
+          try {
+            final content = await _readFileAsString(fileSystem, file.path);
+            nfoData = _parseNfoContent(content);
+          } on Exception catch (e) {
+            logger.w('NfoScraperService: 快速解析 $fileName 失败', e);
+          }
+        }
+      }
+
+      if (nfoData == null || !nfoData.hasData) {
+        return null;
+      }
+
+      // 2. 查找本地海报图片
+      final images = await _findLocalImages(
+        directoryItems,
+        videoBaseName,
+        fileSystem,
+        videoDir,
+      );
+
+      // 返回合并后的数据
+      return NfoMetadata(
+        title: nfoData.title,
+        originalTitle: nfoData.originalTitle,
+        year: nfoData.year,
+        rating: nfoData.rating,
+        tmdbId: nfoData.tmdbId,
+        genres: nfoData.genres,
+        seasonNumber: nfoData.seasonNumber,
+        episodeNumber: nfoData.episodeNumber,
+        posterPath: images['poster'],
+        fanartPath: images['fanart'],
+        thumbPath: images['thumb'],
+      );
+    } on Exception catch (e) {
+      logger.w('NfoScraperService: 快速解析目录失败', e);
+      return null;
+    }
+  }
+
   /// 获取视频同级目录下的刮削信息
   ///
   /// 查找顺序：

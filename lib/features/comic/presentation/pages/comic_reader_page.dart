@@ -331,40 +331,16 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
       backgroundColor: settings.backgroundColor.color,
       body: Stack(
         children: [
-          // 主内容
-          if (state.isLoading)
-            const Center(
-              child: CircularProgressIndicator(color: Colors.white),
-            )
-          else if (state.error != null)
-            Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.error_outline, size: 48, color: Colors.white54),
-                  const SizedBox(height: 16),
-                  Text(
-                    state.error!,
-                    style: const TextStyle(color: Colors.white70),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 24),
-                  ElevatedButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('返回'),
-                  ),
-                ],
+          // 主内容（带固定顶栏）
+          Column(
+            children: [
+              // 固定顶栏 - 避免摄像头遮挡内容
+              _buildFixedHeader(state, settings),
+              Expanded(
+                child: _buildMainContent(state, notifier, settings),
               ),
-            )
-          else if (state.pages.isEmpty)
-            const Center(
-              child: Text(
-                '没有找到图片',
-                style: TextStyle(color: Colors.white70),
-              ),
-            )
-          else
-            _buildReader(state, notifier, settings),
+            ],
+          ),
 
           // 点击翻页区域
           if (settings.tapToTurn && !state.isLoading && state.pages.isNotEmpty)
@@ -390,6 +366,105 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
         ],
       ),
     );
+  }
+
+  /// 构建固定顶栏，显示漫画名和页码
+  Widget _buildFixedHeader(ComicReaderState state, ComicReaderSettings settings) {
+    final bgColor = settings.backgroundColor.color;
+    // 根据背景颜色选择文字颜色
+    final isDarkBg = settings.backgroundColor == ComicBackgroundColor.black ||
+        settings.backgroundColor == ComicBackgroundColor.darkGray ||
+        settings.backgroundColor == ComicBackgroundColor.gray;
+    final textColor = isDarkBg ? Colors.grey.shade400 : Colors.grey.shade600;
+    final borderColor = isDarkBg ? Colors.grey.shade800 : Colors.grey.shade300;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: bgColor,
+        border: Border(
+          bottom: BorderSide(
+            color: borderColor,
+            width: 0.5,
+          ),
+        ),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                widget.comic.folderName,
+                style: TextStyle(
+                  color: textColor,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (state.pages.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              Text(
+                '${state.currentPage + 1}/${state.pages.length}',
+                style: TextStyle(
+                  color: textColor,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 构建主内容区域
+  Widget _buildMainContent(
+    ComicReaderState state,
+    ComicReaderNotifier notifier,
+    ComicReaderSettings settings,
+  ) {
+    if (state.isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(color: Colors.white),
+      );
+    }
+
+    if (state.error != null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline, size: 48, color: Colors.white54),
+            const SizedBox(height: 16),
+            Text(
+              state.error!,
+              style: const TextStyle(color: Colors.white70),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('返回'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (state.pages.isEmpty) {
+      return const Center(
+        child: Text(
+          '没有找到图片',
+          style: TextStyle(color: Colors.white70),
+        ),
+      );
+    }
+
+    return _buildReader(state, notifier, settings);
   }
 
   Widget _buildTapZones(

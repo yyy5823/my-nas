@@ -297,6 +297,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
   bool _showControls = false;
   bool _showToc = false;
   List<BookChapter> _chapters = [];
+  String _currentChapterTitle = '';
   final ScrollController _scrollController = ScrollController();
 
   @override
@@ -328,6 +329,34 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
             .read(txtReaderProvider(widget.book).notifier)
             .saveProgress(position, maxPosition);
       }
+      // 更新当前章节标题
+      _updateCurrentChapter(position, maxPosition);
+    }
+  }
+
+  /// 根据滚动位置更新当前章节标题
+  void _updateCurrentChapter(double position, double maxPosition) {
+    if (_chapters.isEmpty || maxPosition <= 0) return;
+
+    final state = ref.read(txtReaderProvider(widget.book));
+    if (state is! TxtReaderLoaded || !state.hasHtml) return;
+
+    final totalLength = state.htmlContent!.length.toDouble();
+
+    // 找到当前位置对应的章节
+    String? currentTitle;
+    for (var i = _chapters.length - 1; i >= 0; i--) {
+      final chapterPosition = _chapters[i].offset / totalLength * maxPosition;
+      if (position >= chapterPosition - 50) {
+        currentTitle = _chapters[i].title;
+        break;
+      }
+    }
+
+    if (currentTitle != null && currentTitle != _currentChapterTitle) {
+      setState(() {
+        _currentChapterTitle = currentTitle!;
+      });
     }
   }
 
@@ -458,6 +487,8 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
           child: SafeArea(
             child: Column(
               children: [
+                // 固定顶栏 - 避免摄像头遮挡内容
+                _buildFixedHeader(theme, settings),
                 Expanded(
                   // 移除 GestureDetector，改用 _buildTapZones 处理所有点击
                   child: SingleChildScrollView(
@@ -523,6 +554,47 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
         // 目录抽屉
         if (_showToc) _buildTocDrawer(context, settings),
       ],
+    );
+  }
+
+  /// 构建固定顶栏，显示章节标题或书名
+  Widget _buildFixedHeader(BookReaderTheme theme, BookReaderSettings settings) {
+    // 显示当前章节标题，如果没有则显示书名
+    final displayTitle = _currentChapterTitle.isNotEmpty
+        ? _currentChapterTitle
+        : widget.book.displayName;
+
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: settings.horizontalPadding,
+        vertical: 8,
+      ),
+      decoration: BoxDecoration(
+        color: theme.backgroundColor,
+        border: Border(
+          bottom: BorderSide(
+            color: theme.textColor.withValues(alpha: 0.1),
+            width: 0.5,
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              displayTitle,
+              style: TextStyle(
+                color: theme.textColor.withValues(alpha: 0.6),
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
