@@ -156,7 +156,9 @@ class PlayQueueNotifier extends StateNotifier<List<MusicItem>> {
 class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   MusicPlayerNotifier(this._ref) : super(const MusicPlayerState()) {
     _initPlayer();
-    _initLiveActivity();
+    // 注意：_initLiveActivity 是异步的，但我们不在构造函数中等待它
+    // 它会在后台初始化，如果首次播放时未初始化完成，会在 _startLiveActivity 中重试
+    unawaited(_initLiveActivity());
     _initMediaProxy();
   }
 

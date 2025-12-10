@@ -143,16 +143,23 @@ class MusicLiveActivityManager {
 
         // 如果已有活动，先结束它
         if currentActivityId != nil {
+            print("MusicLiveActivityManager: Ending existing activity before creating new one")
             endActivity()
         }
 
         // 创建属性
         let activityUUID = UUID()
         let attributes = LiveActivitiesAppAttributes(id: activityUUID)
-        let contentState = LiveActivitiesAppAttributes.ContentState(appGroupId: appGroupId, updateTimestamp: Date().timeIntervalSince1970)
 
-        // 保存数据到 UserDefaults
+        // 1. 先保存数据到 UserDefaults
         saveDataToDefaults(data: data, prefix: activityUUID)
+
+        // 2. 确保 UserDefaults 已同步到磁盘
+        sharedDefaults?.synchronize()
+
+        // 3. 使用毫秒级时间戳
+        let timestamp = Date().timeIntervalSince1970 * 1000
+        let contentState = LiveActivitiesAppAttributes.ContentState(appGroupId: appGroupId, updateTimestamp: timestamp)
 
         do {
             let activity: Activity<LiveActivitiesAppAttributes>
@@ -177,7 +184,7 @@ class MusicLiveActivityManager {
             currentActivityId = activity.id
             currentActivityUUID = activityUUID
 
-            print("MusicLiveActivityManager: Activity created with ID: \(activity.id), UUID: \(activityUUID)")
+            print("MusicLiveActivityManager: Activity created with ID: \(activity.id), UUID: \(activityUUID), data keys: \(data.keys)")
             return activity.id
         } catch {
             print("MusicLiveActivityManager: Failed to create activity: \(error.localizedDescription)")
@@ -195,10 +202,16 @@ class MusicLiveActivityManager {
             return
         }
 
-        // 更新 UserDefaults 中的数据
+        // 1. 先更新 UserDefaults 中的数据并确保同步
         saveDataToDefaults(data: data, prefix: activityUUID)
 
-        // 找到当前活动并更新
+        // 2. 确保 UserDefaults 已同步到磁盘
+        sharedDefaults?.synchronize()
+
+        // 3. 使用唯一的时间戳确保每次更新都被识别为新状态
+        let timestamp = Date().timeIntervalSince1970 * 1000
+
+        // 4. 找到当前活动并更新
         Task {
             let activities = Activity<LiveActivitiesAppAttributes>.activities
             guard let activity = activities.first(where: { $0.id == activityId }) else {
@@ -206,17 +219,15 @@ class MusicLiveActivityManager {
                 return
             }
 
-            // 使用唯一的时间戳确保每次更新都被识别为新状态
             // ActivityKit 会比较 ContentState，如果相同则不会触发 Widget 刷新
             // 使用高精度时间戳（毫秒级）确保每次更新都是唯一的
-            let timestamp = Date().timeIntervalSince1970 * 1000
             let contentState = LiveActivitiesAppAttributes.ContentState(appGroupId: appGroupId, updateTimestamp: timestamp)
 
             if #available(iOS 16.2, *) {
                 // iOS 16.2+ 使用 ActivityContent，可以设置 staleDate
                 let activityContent = ActivityContent(state: contentState, staleDate: nil)
                 await activity.update(activityContent)
-                print("MusicLiveActivityManager: Activity updated with iOS 16.2+ API, timestamp: \(timestamp)")
+                print("MusicLiveActivityManager: Activity updated with iOS 16.2+ API, timestamp: \(timestamp), data keys: \(data.keys)")
             } else {
                 // iOS 16.1 使用旧 API
                 await activity.update(using: contentState)
@@ -366,6 +377,7 @@ class MusicLiveActivityManager {
 
     /// 保存图片到 App Group 目录
     /// 返回文件名（不是完整路径），Widget Extension 会使用自己的 App Group container URL 拼接
+    /// 注意：会压缩图片以适应 Widget Extension 的内存限制
     private func saveImageToFile(data: Data, filename: String) -> String? {
         guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupId) else {
             print("MusicLiveActivityManager: Cannot access App Group container for appGroupId: \(appGroupId)")
@@ -374,15 +386,97 @@ class MusicLiveActivityManager {
 
         print("MusicLiveActivityManager: App Group container URL: \(containerURL.path)")
 
+        // 尝试将数据解析为图片并压缩
+        // Widget Extension 有内存限制，大图片可能无法正确显示
+        guard let originalImage = UIImage(data: data) else {
+            print("MusicLiveActivityManager: Failed to create UIImage from data, size: \(data.count)")
+            return nil
+        }
+
+        print("MusicLiveActivityManager: Original image size: \(originalImage.size), data size: \(data.count)")
+
+        // Live Activity 有严格的内存限制
+        // 根据 Apple Developer Forums 建议，图片应压缩到约 84px
+        // 参考: https://developer.apple.com/forums/thread/716902
+        // 参考: https://www.fabrizioduroni.it/blog/post/2023/01/10/widget-ios-swiftui-image-problem
+        let maxSize: CGFloat = 80  // 使用 80px 以确保在所有设备上都能渲染
+        let targetWidth: CGFloat
+        let targetHeight: CGFloat
+
+        // 保持正方形以简化 Live Activity 显示
+        targetWidth = maxSize
+        targetHeight = maxSize
+
+        // 使用原图的 imageRendererFormat 确保正确的色彩空间
+        let format = originalImage.imageRendererFormat
+        format.scale = 1.0  // 使用 1x 避免生成过大的图片
+        format.opaque = true  // 不需要透明度，避免内存问题
+
+        let targetSize = CGSize(width: targetWidth, height: targetHeight)
+        let renderer = UIGraphicsImageRenderer(size: targetSize, format: format)
+
+        let resizedImage = renderer.image { context in
+            // 填充黑色背景（音乐封面通常是深色背景）
+            UIColor.black.setFill()
+            context.fill(CGRect(origin: .zero, size: targetSize))
+
+            // 计算居中裁剪的区域（保持宽高比，居中裁剪为正方形）
+            let sourceAspect = originalImage.size.width / originalImage.size.height
+            var drawRect: CGRect
+
+            if sourceAspect > 1 {
+                // 宽图：垂直填满，水平居中裁剪
+                let scaledWidth = targetHeight * sourceAspect
+                let xOffset = (targetWidth - scaledWidth) / 2
+                drawRect = CGRect(x: xOffset, y: 0, width: scaledWidth, height: targetHeight)
+            } else {
+                // 高图或正方形：水平填满，垂直居中裁剪
+                let scaledHeight = targetWidth / sourceAspect
+                let yOffset = (targetHeight - scaledHeight) / 2
+                drawRect = CGRect(x: 0, y: yOffset, width: targetWidth, height: scaledHeight)
+            }
+
+            originalImage.draw(in: drawRect)
+        }
+
+        // 使用 PNG 格式保存（PNG 在 Widget 中更可靠）
+        // 根据多个开发者的经验，PNG 比 JPEG 在 Live Activity 中更稳定
+        guard let compressedData = resizedImage.pngData() else {
+            print("MusicLiveActivityManager: Failed to create PNG data, trying JPEG")
+            // 如果 PNG 失败，尝试 JPEG
+            guard let jpegData = resizedImage.jpegData(compressionQuality: 0.8) else {
+                print("MusicLiveActivityManager: Failed to compress image")
+                return nil
+            }
+            print("MusicLiveActivityManager: Using JPEG fallback - targetSize: \(targetSize), dataSize: \(jpegData.count) bytes")
+            return saveCompressedImage(jpegData, filename: filename, containerURL: containerURL)
+        }
+
+        print("MusicLiveActivityManager: Compressed to PNG - targetSize: \(targetSize), dataSize: \(compressedData.count) bytes")
+
+        return saveCompressedImage(compressedData, filename: filename, containerURL: containerURL)
+    }
+
+    /// 保存压缩后的图片数据到文件
+    private func saveCompressedImage(_ imageData: Data, filename: String, containerURL: URL) -> String? {
         let fileURL = containerURL.appendingPathComponent(filename)
 
         do {
-            try data.write(to: fileURL)
-            print("MusicLiveActivityManager: Image saved successfully, path: \(fileURL.path), size: \(data.count) bytes")
+            // 保存压缩后的图片数据
+            try imageData.write(to: fileURL)
+            print("MusicLiveActivityManager: Image saved successfully, path: \(fileURL.path), size: \(imageData.count) bytes")
 
-            // 验证文件是否存在
+            // 验证文件是否存在并可读
             let exists = FileManager.default.fileExists(atPath: fileURL.path)
             print("MusicLiveActivityManager: File exists after save: \(exists)")
+
+            // 验证图片可以被正确加载
+            if let savedData = try? Data(contentsOf: fileURL),
+               let verifyImage = UIImage(data: savedData) {
+                print("MusicLiveActivityManager: Image verification passed, size: \(verifyImage.size)")
+            } else {
+                print("MusicLiveActivityManager: Image verification failed!")
+            }
 
             // 返回文件名而不是完整路径，Widget Extension 会使用自己的 container URL 拼接
             return filename

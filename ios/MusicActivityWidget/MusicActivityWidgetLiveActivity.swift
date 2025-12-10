@@ -481,84 +481,72 @@ struct MusicCoverView: View {
 
     var body: some View {
         // 同步 UserDefaults 确保获取最新数据
-        let _ = defaults.synchronize()
+        defaults.synchronize()
+
         let coverKey = context.attributes.prefixedKey("coverImage")
         let filename = defaults.string(forKey: coverKey) ?? ""
 
-        if let uiImage = loadImage(filename: filename) {
-            Image(uiImage: uiImage)
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .clipped()
-        } else {
-            // 默认占位图 - 使用渐变背景增强视觉效果
-            ZStack {
-                LinearGradient(
-                    gradient: Gradient(colors: [
-                        Color(red: 0.3, green: 0.3, blue: 0.4),
-                        Color(red: 0.2, green: 0.2, blue: 0.3)
-                    ]),
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                Image(systemName: "music.note")
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundColor(.white.opacity(0.7))
+        // 尝试加载图片
+        let loadedImage = Self.loadCoverImage(filename: filename)
+
+        return Group {
+            if let uiImage = loadedImage {
+                // 成功加载图片
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } else {
+                // 默认占位图 - 使用渐变背景增强视觉效果
+                ZStack {
+                    LinearGradient(
+                        gradient: Gradient(colors: [
+                            Color(red: 0.3, green: 0.3, blue: 0.4),
+                            Color(red: 0.2, green: 0.2, blue: 0.3)
+                        ]),
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    Image(systemName: "music.note")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundColor(.white.opacity(0.7))
+                }
             }
         }
     }
 
-    /// 从 App Group container 加载图片
+    /// 从 App Group container 加载图片（静态方法，避免 self 捕获问题）
     /// - Parameter filename: 文件名（不是完整路径）
-    private func loadImage(filename: String) -> UIImage? {
+    private static func loadCoverImage(filename: String) -> UIImage? {
         // 确保文件名不为空
         guard !filename.isEmpty else {
-            #if DEBUG
-            print("MusicCoverView: No cover filename provided")
-            #endif
             return nil
         }
 
         // 从 App Group container 加载
         guard let containerURL = getAppGroupContainerURL() else {
-            #if DEBUG
-            print("MusicCoverView: Cannot get App Group container URL")
-            #endif
             return nil
         }
 
         let fileURL = containerURL.appendingPathComponent(filename)
 
-        #if DEBUG
-        print("MusicCoverView: Attempting to load image from: \(fileURL.path)")
-        #endif
-
         // 检查文件是否存在
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
-            #if DEBUG
-            print("MusicCoverView: File not found: \(fileURL.path)")
-            // 列出目录内容以便调试
-            if let files = try? FileManager.default.contentsOfDirectory(at: containerURL, includingPropertiesForKeys: nil) {
-                let coverFiles = files.filter { $0.lastPathComponent.hasPrefix("cover_") }
-                print("MusicCoverView: Available cover files: \(coverFiles.map { $0.lastPathComponent })")
-            }
-            #endif
             return nil
         }
 
-        // 尝试加载图片
-        if let imageData = try? Data(contentsOf: fileURL),
-           let image = UIImage(data: imageData) {
-            #if DEBUG
-            print("MusicCoverView: Successfully loaded image, size: \(image.size)")
-            #endif
-            return image
-        } else {
-            #if DEBUG
-            print("MusicCoverView: Failed to create UIImage from file: \(fileURL.path)")
-            #endif
+        // 使用 Data(contentsOf:) + UIImage(data:) 的方式加载
+        // 根据 Apple Developer Forums，这种方式在 Widget Extension 中更可靠
+        // 参考: https://developer.apple.com/forums/thread/716902
+        guard let imageData = try? Data(contentsOf: fileURL) else {
             return nil
         }
+
+        // 创建 UIImage
+        guard let image = UIImage(data: imageData) else {
+            return nil
+        }
+
+        return image
     }
 }
 
