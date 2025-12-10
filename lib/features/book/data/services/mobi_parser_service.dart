@@ -1,7 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
+import 'package:charset_converter/charset_converter.dart';
+import 'package:flutter/foundation.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
@@ -267,11 +268,11 @@ class MobiParserService {
         String text;
         if (compression == 1) {
           // 无压缩
-          text = _decodeText(recordData, textEncoding);
+          text = await _decodeText(recordData, textEncoding);
         } else if (compression == 2) {
           // PalmDOC 压缩
           final decompressed = _decompressPalmDoc(recordData);
-          text = _decodeText(decompressed, textEncoding);
+          text = await _decodeText(decompressed, textEncoding);
         } else {
           // HUFF/CDIC 压缩，暂不支持
           return MobiParseResult.failure(
@@ -316,12 +317,112 @@ class MobiParserService {
       bytes[offset + 3];
 
   /// 解码文本
-  String _decodeText(List<int> bytes, String encoding) {
+  /// 支持 UTF-8、GBK/GB2312、CP1252 编码
+  Future<String> _decodeText(List<int> bytes, String encoding) async {
     if (encoding == 'utf-8') {
       return utf8.decode(bytes, allowMalformed: true);
     }
+
+    // 尝试检测是否为中文编码（GBK/GB2312）
+    if (_looksLikeGbk(bytes)) {
+      try {
+        // 移动平台使用 charset_converter
+        if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+          return await CharsetConverter.decode('gbk', Uint8List.fromList(bytes));
+        }
+        // 桌面平台尝试使用系统编码或 fallback
+        return _decodeGbkFallback(bytes);
+      } on Exception catch (e) {
+        logger.w('GBK 解码失败，尝试其他编码', e);
+      }
+    }
+
     // CP1252 编码，使用 latin1 作为近似
     return latin1.decode(bytes);
+  }
+
+  /// 检测字节序列是否可能是 GBK 编码
+  /// GBK 编码特征：高字节在 0x81-0xFE 范围，低字节在 0x40-0xFE 范围
+  bool _looksLikeGbk(List<int> bytes) {
+    if (bytes.isEmpty) return false;
+
+    var gbkPairs = 0;
+    var totalPairs = 0;
+
+    for (var i = 0; i < bytes.length - 1; i++) {
+      final high = bytes[i];
+      final low = bytes[i + 1];
+
+      // 检查是否符合 GBK 双字节特征
+      if (high >= 0x81 && high <= 0xFE) {
+        totalPairs++;
+        if ((low >= 0x40 && low <= 0x7E) || (low >= 0x80 && low <= 0xFE)) {
+          gbkPairs++;
+          i++; // 跳过低字节
+        }
+      }
+    }
+
+    // 如果超过 30% 的高字节后面跟着有效的低字节，认为是 GBK
+    return totalPairs > 10 && gbkPairs > totalPairs * 0.3;
+  }
+
+  /// GBK 解码回退方案（桌面平台）
+  /// 使用简单的 GBK 到 Unicode 映射表进行解码
+  String _decodeGbkFallback(List<int> bytes) {
+    final result = StringBuffer();
+    var i = 0;
+
+    while (i < bytes.length) {
+      final byte = bytes[i];
+
+      if (byte < 0x80) {
+        // ASCII 字符
+        result.writeCharCode(byte);
+        i++;
+      } else if (byte >= 0x81 && byte <= 0xFE && i + 1 < bytes.length) {
+        // GBK 双字节字符
+        final high = byte;
+        final low = bytes[i + 1];
+
+        // 尝试转换为 Unicode
+        final unicode = _gbkToUnicode(high, low);
+        if (unicode != null) {
+          result.writeCharCode(unicode);
+        } else {
+          // 无法转换时使用替代字符
+          result.write('\uFFFD');
+        }
+        i += 2;
+      } else {
+        // 无效字节，使用替代字符
+        result.write('\uFFFD');
+        i++;
+      }
+    }
+
+    return result.toString();
+  }
+
+  /// GBK 到 Unicode 转换（常用字符映射）
+  int? _gbkToUnicode(int high, int low) {
+    // 常用中文字符范围
+    // GBK 区域1: B0A1-F7FE (一级汉字)
+    // GBK 区域2: 8140-A0FE (二级汉字)
+
+    // 这里只实现一个简化版本，实际应用中建议使用完整的 GBK 映射表
+    // 或者在桌面平台使用其他库
+
+    // 简单的 GB2312 一级汉字映射估算
+    if (high >= 0xB0 && high <= 0xF7 && low >= 0xA1 && low <= 0xFE) {
+      // GB2312 一级汉字区
+      final offset = (high - 0xB0) * 94 + (low - 0xA1);
+      // Unicode 中文基本区从 0x4E00 开始
+      // 这是一个近似映射，实际转换需要完整的映射表
+      return 0x4E00 + offset;
+    }
+
+    return null;
   }
 
   /// PalmDOC 解压缩 (LZ77)

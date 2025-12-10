@@ -309,6 +309,8 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
   int _currentPage = 0;
   bool _isPaginationReady = false;
   bool _isProcessing = false; // 内容处理中
+  bool _isContentProcessed = false; // 内容是否已处理完成
+  bool _isScrollPositionRestored = false; // 滚动位置是否已恢复
 
   @override
   void initState() {
@@ -392,16 +394,18 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
       setState(() {
         _chapters = result.chapters;
         _isProcessing = false;
+        _isContentProcessed = true;
       });
 
       logger.i(
         '内容处理完成: ${result.chapters.length} 个章节, '
         '${result.removedTocSection ? "已移除目录页" : "无目录页"}',
       );
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('内容处理失败', e);
       setState(() {
         _isProcessing = false;
+        _isContentProcessed = true; // 即使失败也标记为已处理，避免重复
       });
     }
   }
@@ -519,7 +523,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     final theme = settings.theme;
 
     // 首次加载时处理内容（提取章节、移除目录）
-    if (state.hasHtml && _chapters.isEmpty && !_isProcessing) {
+    if (state.hasHtml && !_isContentProcessed && !_isProcessing) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _processContentAsync(state.htmlContent!);
       });
@@ -529,7 +533,8 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     final usePageMode = state.hasHtml && settings.pageTurnMode != BookPageTurnMode.scroll;
 
     // 初始化分页（如果需要且尚未完成）
-    if (usePageMode && !_isPaginationReady && state.hasHtml && _chapters.isNotEmpty) {
+    // 需要等内容处理完成后再分页，因为分页依赖清理后的 HTML
+    if (usePageMode && !_isPaginationReady && state.hasHtml && _isContentProcessed) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _paginateContentAsync(state.htmlContent!, settings);
       });
@@ -608,15 +613,43 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
   }
 
   /// 滚动模式内容
-  Widget _buildScrollContent(TxtReaderLoaded state, BookReaderSettings settings) =>
-      SingleChildScrollView(
-        controller: _scrollController,
-        padding: EdgeInsets.symmetric(
-          horizontal: settings.horizontalPadding,
-          vertical: settings.verticalPadding,
-        ),
-        child: _buildContent(state, settings),
-      );
+  Widget _buildScrollContent(TxtReaderLoaded state, BookReaderSettings settings) {
+    // 在第一帧渲染后恢复滚动位置
+    if (!_isScrollPositionRestored && state.scrollPosition > 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _restoreScrollPosition(state.scrollPosition);
+      });
+    }
+
+    return SingleChildScrollView(
+      controller: _scrollController,
+      padding: EdgeInsets.symmetric(
+        horizontal: settings.horizontalPadding,
+        vertical: settings.verticalPadding,
+      ),
+      child: _buildContent(state, settings),
+    );
+  }
+
+  /// 恢复滚动位置
+  void _restoreScrollPosition(double savedPosition) {
+    if (_isScrollPositionRestored) return;
+    _isScrollPositionRestored = true;
+
+    // 等待内容完全渲染后再恢复
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+
+      final maxScroll = _scrollController.position.maxScrollExtent;
+      if (maxScroll <= 0) return;
+
+      // savedPosition 是百分比位置 (0-1)，需要转换为实际像素
+      final targetPosition = (savedPosition * maxScroll).clamp(0.0, maxScroll);
+
+      _scrollController.jumpTo(targetPosition);
+      logger.d('恢复滚动位置: $savedPosition -> $targetPosition px');
+    });
+  }
 
   /// 分页模式内容 - 用于 MOBI/AZW3 等长文档，提高性能
   Widget _buildPagedContent(TxtReaderLoaded state, BookReaderSettings settings) {
@@ -1423,7 +1456,18 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
           valueLabel: '${settings.fontSize.toInt()}',
           onChanged: settingsNotifier.setFontSize,
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 24),
+
+        // 字体选择
+        SettingSectionTitle(
+          title: '字体',
+          trailing: AvailableFonts.getDisplayName(settings.fontFamily),
+        ),
+        SettingFontPicker(
+          selectedFont: settings.fontFamily,
+          onSelect: settingsNotifier.setFontFamily,
+        ),
+        const SizedBox(height: 24),
 
         // 行高
         SettingSliderRow(

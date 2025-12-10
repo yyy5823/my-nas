@@ -216,6 +216,7 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
   List<EpubChapter> _chapters = [];
   double _progress = 0;
   String _currentChapterTitle = '';
+  bool _isEpubReady = false; // 标记 EPUB 是否已完全加载
 
   @override
   void initState() {
@@ -249,17 +250,72 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
   /// 右侧 1/4: 下一页
   /// 中间 1/2: 切换控制栏
   void _handleTapZone(Offset normalizedPosition) {
+    // 如果 EPUB 还没准备好，只允许切换控制栏
+    if (!_isEpubReady) {
+      _toggleControls();
+      return;
+    }
+
     final tapX = normalizedPosition.dx;
 
-    if (tapX < 0.25) {
-      // 左侧区域 - 上一页
+    try {
+      if (tapX < 0.25) {
+        // 左侧区域 - 上一页
+        _epubController.prev();
+      } else if (tapX > 0.75) {
+        // 右侧区域 - 下一页
+        _epubController.next();
+      } else {
+        // 中间区域 - 切换控制栏
+        _toggleControls();
+      }
+    } on Exception catch (e) {
+      logger.w('EPUB 翻页操作失败', e);
+    }
+  }
+
+  /// 安全的上一页操作
+  void _safePrev() {
+    try {
       _epubController.prev();
-    } else if (tapX > 0.75) {
-      // 右侧区域 - 下一页
+    } on Exception catch (e) {
+      logger.w('EPUB 上一页操作失败', e);
+    }
+  }
+
+  /// 安全的下一页操作
+  void _safeNext() {
+    try {
       _epubController.next();
-    } else {
-      // 中间区域 - 切换控制栏
-      _toggleControls();
+    } on Exception catch (e) {
+      logger.w('EPUB 下一页操作失败', e);
+    }
+  }
+
+  /// 安全的跳转到第一页操作
+  void _safeFirst() {
+    try {
+      _epubController.moveToFistPage();
+    } on Exception catch (e) {
+      logger.w('EPUB 跳转第一页操作失败', e);
+    }
+  }
+
+  /// 安全的跳转到最后一页操作
+  void _safeLast() {
+    try {
+      _epubController.moveToLastPage();
+    } on Exception catch (e) {
+      logger.w('EPUB 跳转最后一页操作失败', e);
+    }
+  }
+
+  /// 安全的进度跳转操作
+  void _safeProgressChange(double progress) {
+    try {
+      _epubController.toProgressPercentage(progress);
+    } on Exception catch (e) {
+      logger.w('EPUB 进度跳转操作失败', e);
     }
   }
 
@@ -326,6 +382,9 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
               },
               onEpubLoaded: () {
                 logger.i('EPUB 渲染完成');
+                setState(() {
+                  _isEpubReady = true;
+                });
               },
               onRelocated: (location) {
                 setState(() {
@@ -499,7 +558,7 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
                 Expanded(
                   child: Slider(
                     value: _progress.clamp(0.0, 1.0),
-                    onChanged: _epubController.toProgressPercentage,
+                    onChanged: _isEpubReady ? _safeProgressChange : null,
                     activeColor: AppColors.primary,
                     inactiveColor: Colors.white30,
                   ),
@@ -512,22 +571,22 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
               children: [
                 IconButton(
                   icon: const Icon(Icons.skip_previous, color: Colors.white),
-                  onPressed: _epubController.prev,
+                  onPressed: _isEpubReady ? _safePrev : null,
                   tooltip: '上一页',
                 ),
                 IconButton(
                   icon: const Icon(Icons.first_page, color: Colors.white),
-                  onPressed: _epubController.moveToFistPage,
+                  onPressed: _isEpubReady ? _safeFirst : null,
                   tooltip: '第一页',
                 ),
                 IconButton(
                   icon: const Icon(Icons.last_page, color: Colors.white),
-                  onPressed: _epubController.moveToLastPage,
+                  onPressed: _isEpubReady ? _safeLast : null,
                   tooltip: '最后一页',
                 ),
                 IconButton(
                   icon: const Icon(Icons.skip_next, color: Colors.white),
-                  onPressed: _epubController.next,
+                  onPressed: _isEpubReady ? _safeNext : null,
                   tooltip: '下一页',
                 ),
               ],
@@ -591,8 +650,13 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
                               overflow: TextOverflow.ellipsis,
                             ),
                             onTap: () {
-                              _epubController.display(cfi: chapter.href);
-                              setState(() => _showToc = false);
+                              if (!_isEpubReady) return;
+                              try {
+                                _epubController.display(cfi: chapter.href);
+                                setState(() => _showToc = false);
+                              } on Exception catch (e) {
+                                logger.w('跳转章节失败: ${chapter.title}', e);
+                              }
                             },
                           );
                         },

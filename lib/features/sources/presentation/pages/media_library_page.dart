@@ -1068,7 +1068,7 @@ class _PathCardState extends ConsumerState<_PathCard> {
     // 因为进度会通过 progressStream 实时更新
 
     try {
-      int count = 0;
+      var count = 0;
       switch (widget.mediaType) {
         case MediaType.video:
           count = await VideoScannerService().scanFilesOnly(

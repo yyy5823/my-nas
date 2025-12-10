@@ -577,7 +577,7 @@ class PhotoDatabaseService {
 
     final result = <String, List<PhotoEntity>>{};
     for (final row in duplicateHashes) {
-      final hash = row[_colFileHash] as String;
+      final hash = row[_colFileHash]! as String;
       final photos = await _db!.query(
         _tablePhotos,
         where: '$_colFileHash = ?',
@@ -609,7 +609,7 @@ class PhotoDatabaseService {
 
     final result = <String, List<PhotoEntity>>{};
     for (final row in duplicateHashes) {
-      final hash = row[_colPerceptualHash] as String;
+      final hash = row[_colPerceptualHash]! as String;
       final photos = await _db!.query(
         _tablePhotos,
         where: '$_colPerceptualHash = ?',

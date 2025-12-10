@@ -46,6 +46,7 @@ class ComicReaderState {
     this.error,
     this.showControls = false,
     this.showSettings = false,
+    this.isProgressRestored = false,
   });
 
   final List<ComicPage> pages;
@@ -54,6 +55,7 @@ class ComicReaderState {
   final String? error;
   final bool showControls;
   final bool showSettings;
+  final bool isProgressRestored; // 进度是否已恢复
 
   ComicReaderState copyWith({
     List<ComicPage>? pages,
@@ -62,6 +64,7 @@ class ComicReaderState {
     String? error,
     bool? showControls,
     bool? showSettings,
+    bool? isProgressRestored,
   }) =>
       ComicReaderState(
         pages: pages ?? this.pages,
@@ -70,6 +73,7 @@ class ComicReaderState {
         error: error,
         showControls: showControls ?? this.showControls,
         showSettings: showSettings ?? this.showSettings,
+        isProgressRestored: isProgressRestored ?? this.isProgressRestored,
       );
 }
 
@@ -207,7 +211,9 @@ class ComicReaderNotifier extends StateNotifier<ComicReaderState> {
     final progress = _progressService.getProgress(itemId);
     if (progress != null && state.pages.isNotEmpty) {
       final page = progress.position.toInt().clamp(0, state.pages.length - 1);
-      state = state.copyWith(currentPage: page);
+      state = state.copyWith(currentPage: page, isProgressRestored: true);
+    } else {
+      state = state.copyWith(isProgressRestored: true);
     }
   }
 
@@ -275,6 +281,8 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
   late final StateNotifierProvider<ComicReaderNotifier, ComicReaderState> _provider;
   PageController? _pageController;
   ScrollController? _scrollController;
+  int? _lastInitializedPage; // 记录 PageController 初始化的页码
+  bool _hasJumpedToRestoredPage = false; // 是否已跳转到恢复的页面
 
   @override
   void initState() {
@@ -581,7 +589,24 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
     ComicReaderNotifier notifier,
     ComicReaderSettings settings,
   ) {
-    _pageController ??= PageController(initialPage: state.currentPage);
+    // 初始化 PageController
+    if (_pageController == null) {
+      _pageController = PageController(initialPage: state.currentPage);
+      _lastInitializedPage = state.currentPage;
+    }
+
+    // 进度恢复后，跳转到正确的页面
+    if (state.isProgressRestored &&
+        !_hasJumpedToRestoredPage &&
+        _lastInitializedPage != state.currentPage) {
+      _hasJumpedToRestoredPage = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_pageController?.hasClients ?? false) {
+          _pageController!.jumpToPage(state.currentPage);
+        }
+      });
+    }
+
     final isRtl = settings.readingDirection == ComicReadingDirection.rtl;
 
     // 检查是否有需要流式加载的页面（文件夹类型漫画）
@@ -713,7 +738,23 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
     final currentDoublePage = state.currentPage ~/ 2;
     final isRtl = settings.readingDirection == ComicReadingDirection.rtl;
 
-    _pageController ??= PageController(initialPage: currentDoublePage);
+    // 初始化 PageController
+    if (_pageController == null) {
+      _pageController = PageController(initialPage: currentDoublePage);
+      _lastInitializedPage = state.currentPage;
+    }
+
+    // 进度恢复后，跳转到正确的页面
+    if (state.isProgressRestored &&
+        !_hasJumpedToRestoredPage &&
+        _lastInitializedPage != state.currentPage) {
+      _hasJumpedToRestoredPage = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_pageController?.hasClients ?? false) {
+          _pageController!.jumpToPage(currentDoublePage);
+        }
+      });
+    }
 
     return PageView.builder(
       controller: _pageController,

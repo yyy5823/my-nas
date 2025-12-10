@@ -393,6 +393,90 @@ class SettingSliderRow extends StatelessWidget {
   }
 }
 
+/// 可用字体列表
+class AvailableFonts {
+  AvailableFonts._();
+
+  /// 字体选项列表 (fontFamily, displayName)
+  static const List<(String?, String)> fonts = [
+    (null, '系统默认'),
+    ('serif', '衬线体'),
+    ('sans-serif', '无衬线'),
+    ('monospace', '等宽字体'),
+    ('STKaiti', '楷体'),
+    ('STSong', '宋体'),
+    ('STFangsong', '仿宋'),
+    ('STHeiti', '黑体'),
+    ('Noto Serif SC', 'Noto衬线'),
+    ('Noto Sans SC', 'Noto无衬'),
+    ('LXGW WenKai', '霞鹜文楷'),
+    ('Source Han Serif SC', '思源宋体'),
+    ('Source Han Sans SC', '思源黑体'),
+  ];
+
+  /// 获取字体显示名称
+  static String getDisplayName(String? fontFamily) {
+    for (final (family, name) in fonts) {
+      if (family == fontFamily) return name;
+    }
+    return fontFamily ?? '系统默认';
+  }
+}
+
+/// 字体选择器
+class SettingFontPicker extends StatelessWidget {
+  const SettingFontPicker({
+    required this.selectedFont,
+    required this.onSelect,
+    super.key,
+  });
+
+  final String? selectedFont;
+  final ValueChanged<String?> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: AvailableFonts.fonts.map((fontInfo) {
+        final (fontFamily, displayName) = fontInfo;
+        final isSelected = selectedFont == fontFamily;
+
+        return GestureDetector(
+          onTap: () => onSelect(fontFamily),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? AppColors.primary.withValues(alpha: 0.15)
+                  : (isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.04)),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: isSelected ? AppColors.primary : Colors.transparent,
+                width: 1.5,
+              ),
+            ),
+            child: Text(
+              displayName,
+              style: TextStyle(
+                fontFamily: fontFamily,
+                fontSize: 13,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                color: isSelected
+                    ? AppColors.primary
+                    : (isDark ? Colors.white70 : Colors.black54),
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+}
+
 /// 颜色选择器
 class SettingColorPicker extends StatelessWidget {
   const SettingColorPicker({
