@@ -20,7 +20,7 @@ class ErrorReportService {
   static const String _host = '192.168.0.120';
   static const int _port = 5672;
   static const String _exchangeName = 'app.error.log.exchange';
-  static const String _routingKey = 'app.error.log.flutter';
+  static const String _routingKey = 'app.error.log.mynas';
 
   Client? _client;
   Channel? _channel;
@@ -86,12 +86,14 @@ class ErrorReportService {
     try {
       final settings = ConnectionSettings(
         host: _host,
+        port: _port,
         authProvider: const PlainAuthenticator('flutter', 'flutter_client'),
       );
 
       _client = Client(settings: settings);
       _channel = await _client!.channel();
-      _exchange = await _channel!.exchange(_exchangeName, ExchangeType.DIRECT, durable: true);
+      // 使用 TOPIC 类型，与服务器已有的 exchange 类型保持一致
+      _exchange = await _channel!.exchange(_exchangeName, ExchangeType.TOPIC, durable: true);
 
       _isConnected = true;
       _isConnecting = false;

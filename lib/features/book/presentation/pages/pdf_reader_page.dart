@@ -160,32 +160,24 @@ class PdfReaderNotifier extends StateNotifier<PdfReaderState> {
   Future<void> _loadFromFile(File file, int startPage) async {
     state = PdfReaderLoading(message: '解析中...');
     final documentRef = PdfDocumentRefFile(file.path);
-    final listenable = documentRef.resolveListenable();
 
-    // 等待文档加载完成
-    var document = listenable.document;
-    if (document == null) {
-      // 等待文档加载
-      final completer = Completer<PdfDocument>();
-      void listener() {
-        final doc = listenable.document;
-        if (doc != null && !completer.isCompleted) {
-          completer.complete(doc);
-        }
-      }
+    try {
+      final document = await _waitForDocument(documentRef);
 
-      listenable.addListener(listener);
-      document = await completer.future;
-      listenable.removeListener(listener);
+      state = PdfReaderLoaded(
+        documentRef: documentRef,
+        filePath: file.path,
+        currentPage: startPage.clamp(1, document.pages.length),
+        totalPages: document.pages.length,
+      );
+      logger.i('PDF 加载完成（缓存）: ${book.name}, ${document.pages.length} 页');
+    } on TimeoutException catch (e) {
+      logger.e('PDF 解析超时', e);
+      state = PdfReaderError('PDF 解析超时，请重试');
+    } on Exception catch (e) {
+      logger.e('PDF 解析失败', e);
+      state = PdfReaderError('PDF 解析失败: $e');
     }
-
-    state = PdfReaderLoaded(
-      documentRef: documentRef,
-      filePath: file.path,
-      currentPage: startPage.clamp(1, document.pages.length),
-      totalPages: document.pages.length,
-    );
-    logger.i('PDF 加载完成（缓存）: ${book.name}, ${document.pages.length} 页');
   }
 
   /// 从 NAS 加载 PDF
@@ -297,43 +289,61 @@ class PdfReaderNotifier extends StateNotifier<PdfReaderState> {
   Future<void> _loadFromHttpUrl(Uri uri, int startPage) async {
     state = PdfReaderLoading(message: '流式加载中...');
 
-    final documentRef = PdfDocumentRefUri(
-      uri,
-      preferRangeAccess: true,
-    );
+    try {
+      final documentRef = PdfDocumentRefUri(
+        uri,
+        preferRangeAccess: true,
+      );
 
-    final document = await _waitForDocument(documentRef);
+      final document = await _waitForDocument(documentRef);
 
-    state = PdfReaderLoaded(
-      documentRef: documentRef,
-      currentPage: startPage.clamp(1, document.pages.length),
-      totalPages: document.pages.length,
-      isStreaming: true,
-    );
+      state = PdfReaderLoaded(
+        documentRef: documentRef,
+        currentPage: startPage.clamp(1, document.pages.length),
+        totalPages: document.pages.length,
+        isStreaming: true,
+      );
 
-    logger.i('PDF HTTP 加载完成: ${book.name}, ${document.pages.length} 页');
+      logger.i('PDF HTTP 加载完成: ${book.name}, ${document.pages.length} 页');
+    } on TimeoutException catch (e) {
+      logger.e('PDF HTTP 加载超时', e);
+      state = PdfReaderError('PDF 加载超时，请重试');
+    } on Exception catch (e, stackTrace) {
+      logger.e('PDF HTTP 加载失败', e, stackTrace);
+      state = PdfReaderError('加载失败: $e');
+    }
   }
 
-  /// 等待文档加载完成
+  /// 等待文档加载完成（带超时）
   Future<PdfDocument> _waitForDocument(PdfDocumentRef documentRef) async {
     final listenable = documentRef.resolveListenable();
-    var document = listenable.document;
 
+    // 如果文档已加载，直接返回
+    var document = listenable.document;
     if (document != null) return document;
 
-    // 等待文档加载
-    final completer = Completer<PdfDocument>();
-    void listener() {
-      final doc = listenable.document;
-      if (doc != null && !completer.isCompleted) {
-        completer.complete(doc);
+    // 触发加载并等待完成
+    await listenable.load().timeout(
+      const Duration(seconds: 30),
+      onTimeout: () {
+        throw TimeoutException('PDF 解析超时，请重试');
+      },
+    );
+
+    // 检查加载结果
+    document = listenable.document;
+    if (document != null) return document;
+
+    // 检查是否有错误
+    final error = listenable.error;
+    if (error != null) {
+      if (error is Exception || error is Error) {
+        throw error;
       }
+      throw Exception('PDF 加载失败: $error');
     }
 
-    listenable.addListener(listener);
-    document = await completer.future;
-    listenable.removeListener(listener);
-    return document;
+    throw StateError('PDF 加载失败：未知错误');
   }
 
 
