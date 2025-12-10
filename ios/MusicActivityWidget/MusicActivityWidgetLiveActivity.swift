@@ -161,11 +161,18 @@ struct MusicActivityWidgetLiveActivity: Widget {
             // 锁屏/通知中心的 Live Activity 视图
             LockScreenMusicView(context: context)
         } dynamicIsland: { context in
-            // 使用 updateTimestamp 触发视图刷新
-            let _ = context.state.updateTimestamp
+            // 重要：使用 updateTimestamp 触发视图刷新
+            // 当 ContentState 变化时，SwiftUI 会重新渲染整个 DynamicIsland
+            let timestamp = context.state.updateTimestamp
 
-            // 使用共享的 UserDefaults（每次访问都会同步）
-            let defaults = sharedDefault
+            // 每次重新渲染时强制同步并获取最新的 UserDefaults 数据
+            // 使用 getSharedDefaults() 确保读取到主 App 写入的最新数据
+            let defaults = getSharedDefaults()
+
+            // 调试日志（发布版本会被优化掉）
+            #if DEBUG
+            print("DynamicIsland: Rendering with timestamp: \(timestamp)")
+            #endif
 
             return DynamicIsland {
                 // 展开状态 - 长按灵动岛时显示
@@ -282,36 +289,37 @@ struct MusicActivityWidgetLiveActivity: Widget {
                 }
             } compactLeading: {
                 // Compact 模式显示封面
-                // 每次渲染都重新获取最新的 defaults 数据
-                let freshDefaults = getSharedDefaults()
-                MusicCoverView(context: context, defaults: freshDefaults)
+                // 使用已同步的 defaults（在 dynamicIsland 闭包顶部已获取）
+                // 注意：不能在这里使用 let _ = timestamp 因为会导致编译错误
+                // 通过传递 defaults 来确保数据一致性
+                MusicCoverView(context: context, defaults: defaults)
                     .frame(width: 24, height: 24)
                     .cornerRadius(4)
             } compactTrailing: {
                 // Compact 模式显示音乐波形动效
-                // 每次渲染都重新获取最新状态
-                let freshDefaults = getSharedDefaults()
-                let isPlaying = freshDefaults.bool(forKey: context.attributes.prefixedKey("isPlaying"))
+                // 使用已同步的 defaults
+                let isPlaying = defaults.bool(forKey: context.attributes.prefixedKey("isPlaying"))
+                let progress = defaults.double(forKey: context.attributes.prefixedKey("progress"))
                 if isPlaying {
-                    AnimatedMusicBars()
-                        .frame(width: 24, height: 16)
+                    AnimatedMusicBars(progress: progress)
+                        .frame(width: 16, height: 14)
                 } else {
                     // 暂停时显示静态波形图标
                     StaticMusicBars()
-                        .frame(width: 24, height: 16)
+                        .frame(width: 16, height: 14)
                 }
             } minimal: {
                 // 最小模式显示音乐波形动效
-                // 每次渲染都重新获取最新状态
-                let freshDefaults = getSharedDefaults()
-                let isPlaying = freshDefaults.bool(forKey: context.attributes.prefixedKey("isPlaying"))
+                // 使用已同步的 defaults
+                let isPlaying = defaults.bool(forKey: context.attributes.prefixedKey("isPlaying"))
+                let progress = defaults.double(forKey: context.attributes.prefixedKey("progress"))
                 if isPlaying {
-                    AnimatedMusicBars()
-                        .frame(width: 16, height: 12)
+                    AnimatedMusicBars(progress: progress)
+                        .frame(width: 12, height: 10)
                 } else {
                     // 暂停时显示静态波形图标
                     StaticMusicBars()
-                        .frame(width: 16, height: 12)
+                        .frame(width: 12, height: 10)
                 }
             }
             .widgetURL(URL(string: "mynas://music/player"))
@@ -325,16 +333,17 @@ struct MusicActivityWidgetLiveActivity: Widget {
     }
 }
 
-// MARK: - Animated Music Bars (彩色渐变音乐波形，垂直居中)
+// MARK: - Animated Music Bars (彩色渐变音乐波形，垂直居中，基于播放进度)
 
 struct AnimatedMusicBars: View {
+    var progress: Double = 0  // 播放进度 0.0-1.0，用于影响波形
+
     // 使用 TimelineView 实现持续动画
-    // 使用 .periodic 代替 .animation，确保动画持续更新
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 0.08)) { timeline in
-            HStack(alignment: .center, spacing: 1.5) {
-                ForEach(0..<5, id: \.self) { index in
-                    MusicBar(index: index, date: timeline.date, totalBars: 5)
+        TimelineView(.periodic(from: .now, by: 0.1)) { timeline in
+            HStack(alignment: .center, spacing: 1) {
+                ForEach(0..<4, id: \.self) { index in
+                    MusicBar(index: index, date: timeline.date, progress: progress)
                 }
             }
         }
@@ -345,31 +354,24 @@ struct AnimatedMusicBars: View {
 
 struct StaticMusicBars: View {
     // 静态波形，不同高度
-    private let heights: [CGFloat] = [0.4, 0.7, 0.5, 0.8, 0.3]
+    private let heights: [CGFloat] = [0.5, 0.8, 0.6, 0.4]
 
     // 彩色渐变颜色数组
     private let colors: [Color] = [
-        Color(red: 0.0, green: 0.8, blue: 1.0),   // 青色
-        Color(red: 0.4, green: 0.6, blue: 1.0),   // 蓝色
-        Color(red: 0.8, green: 0.4, blue: 1.0),   // 紫色
-        Color(red: 1.0, green: 0.4, blue: 0.6),   // 粉色
-        Color(red: 1.0, green: 0.6, blue: 0.2),   // 橙色
+        Color(red: 0.4, green: 0.8, blue: 1.0),   // 青色
+        Color(red: 0.6, green: 0.5, blue: 1.0),   // 蓝紫色
+        Color(red: 1.0, green: 0.5, blue: 0.7),   // 粉色
+        Color(red: 1.0, green: 0.7, blue: 0.3),   // 橙色
     ]
 
     var body: some View {
-        HStack(alignment: .center, spacing: 1.5) {
-            ForEach(0..<5, id: \.self) { index in
-                RoundedRectangle(cornerRadius: 1.5)
-                    .fill(
-                        LinearGradient(
-                            gradient: Gradient(colors: [colors[index], colors[index].opacity(0.6)]),
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                    .frame(width: 3)
+        HStack(alignment: .center, spacing: 1) {
+            ForEach(0..<4, id: \.self) { index in
+                RoundedRectangle(cornerRadius: 0.5)
+                    .fill(colors[index])
+                    .frame(width: 2)
                     .scaleEffect(y: heights[index], anchor: .center)
-                    .opacity(0.6)  // 稍微降低透明度表示暂停状态
+                    .opacity(0.5)  // 降低透明度表示暂停状态
             }
         }
     }
@@ -378,41 +380,36 @@ struct StaticMusicBars: View {
 struct MusicBar: View {
     let index: Int
     let date: Date
-    let totalBars: Int
+    var progress: Double = 0
 
     // 彩色渐变颜色数组（从左到右）
     private var barColor: Color {
         let colors: [Color] = [
-            Color(red: 0.0, green: 0.8, blue: 1.0),   // 青色
-            Color(red: 0.4, green: 0.6, blue: 1.0),   // 蓝色
-            Color(red: 0.8, green: 0.4, blue: 1.0),   // 紫色
-            Color(red: 1.0, green: 0.4, blue: 0.6),   // 粉色
-            Color(red: 1.0, green: 0.6, blue: 0.2),   // 橙色
+            Color(red: 0.4, green: 0.8, blue: 1.0),   // 青色
+            Color(red: 0.6, green: 0.5, blue: 1.0),   // 蓝紫色
+            Color(red: 1.0, green: 0.5, blue: 0.7),   // 粉色
+            Color(red: 1.0, green: 0.7, blue: 0.3),   // 橙色
         ]
         return colors[index % colors.count]
     }
 
     var body: some View {
-        // 使用正弦函数创建波动效果，每个条使用不同的相位和频率
-        let phase = Double(index) * 1.3
+        // 使用播放进度来影响波形的基础相位
+        let progressPhase = progress * 20.0  // 进度影响相位
+        let phase = Double(index) * 1.5 + progressPhase
         let time = date.timeIntervalSinceReferenceDate
-        // 使用多个正弦波叠加创建更随机、更明显的动画效果
-        let wave1 = sin(time * 5.0 + phase)
-        let wave2 = sin(time * 3.0 + phase * 0.8) * 0.4
-        let wave3 = sin(time * 7.0 + phase * 1.5) * 0.2
-        let combinedWave = abs(wave1 + wave2 + wave3) / 1.6
-        // 高度范围从 0.2 到 1.0，变化更明显
-        let height = 0.2 + 0.8 * combinedWave
 
-        RoundedRectangle(cornerRadius: 1.5)
-            .fill(
-                LinearGradient(
-                    gradient: Gradient(colors: [barColor, barColor.opacity(0.6)]),
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
-            .frame(width: 3)
+        // 基于时间和进度的波形动画
+        let wave1 = sin(time * 4.0 + phase)
+        let wave2 = sin(time * 2.5 + phase * 0.7) * 0.5
+        let combinedWave = abs(wave1 + wave2) / 1.5
+
+        // 高度范围从 0.25 到 1.0
+        let height = 0.25 + 0.75 * combinedWave
+
+        RoundedRectangle(cornerRadius: 0.5)
+            .fill(barColor)
+            .frame(width: 2)  // 更细的竖线
             .scaleEffect(y: height, anchor: .center)  // 垂直居中对齐
     }
 }
@@ -482,20 +479,13 @@ struct MusicCoverView: View {
     let context: ActivityViewContext<LiveActivitiesAppAttributes>
     let defaults: UserDefaults
 
-    /// 获取封面图片（同步 UserDefaults 并加载）
-    private var coverImage: UIImage? {
-        // 同步以获取最新数据
-        defaults.synchronize()
-        let coverKey = context.attributes.prefixedKey("coverImage")
-        guard let filename = defaults.string(forKey: coverKey),
-              !filename.isEmpty else {
-            return nil
-        }
-        return loadImage(filename: filename)
-    }
-
     var body: some View {
-        if let uiImage = coverImage {
+        // 同步 UserDefaults 确保获取最新数据
+        let _ = defaults.synchronize()
+        let coverKey = context.attributes.prefixedKey("coverImage")
+        let filename = defaults.string(forKey: coverKey) ?? ""
+
+        if let uiImage = loadImage(filename: filename) {
             Image(uiImage: uiImage)
                 .resizable()
                 .aspectRatio(contentMode: .fill)
@@ -521,25 +511,54 @@ struct MusicCoverView: View {
     /// 从 App Group container 加载图片
     /// - Parameter filename: 文件名（不是完整路径）
     private func loadImage(filename: String) -> UIImage? {
+        // 确保文件名不为空
+        guard !filename.isEmpty else {
+            #if DEBUG
+            print("MusicCoverView: No cover filename provided")
+            #endif
+            return nil
+        }
+
         // 从 App Group container 加载
         guard let containerURL = getAppGroupContainerURL() else {
+            #if DEBUG
             print("MusicCoverView: Cannot get App Group container URL")
+            #endif
             return nil
         }
 
         let fileURL = containerURL.appendingPathComponent(filename)
 
-        if FileManager.default.fileExists(atPath: fileURL.path) {
-            if let image = UIImage(contentsOfFile: fileURL.path) {
-                return image
-            } else {
-                print("MusicCoverView: Failed to create UIImage from file: \(fileURL.path)")
-            }
-        } else {
+        #if DEBUG
+        print("MusicCoverView: Attempting to load image from: \(fileURL.path)")
+        #endif
+
+        // 检查文件是否存在
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            #if DEBUG
             print("MusicCoverView: File not found: \(fileURL.path)")
+            // 列出目录内容以便调试
+            if let files = try? FileManager.default.contentsOfDirectory(at: containerURL, includingPropertiesForKeys: nil) {
+                let coverFiles = files.filter { $0.lastPathComponent.hasPrefix("cover_") }
+                print("MusicCoverView: Available cover files: \(coverFiles.map { $0.lastPathComponent })")
+            }
+            #endif
+            return nil
         }
 
-        return nil
+        // 尝试加载图片
+        if let imageData = try? Data(contentsOf: fileURL),
+           let image = UIImage(data: imageData) {
+            #if DEBUG
+            print("MusicCoverView: Successfully loaded image, size: \(image.size)")
+            #endif
+            return image
+        } else {
+            #if DEBUG
+            print("MusicCoverView: Failed to create UIImage from file: \(fileURL.path)")
+            #endif
+            return nil
+        }
     }
 }
 

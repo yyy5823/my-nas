@@ -206,8 +206,22 @@ class MusicLiveActivityManager {
                 return
             }
 
-            let contentState = LiveActivitiesAppAttributes.ContentState(appGroupId: appGroupId, updateTimestamp: Date().timeIntervalSince1970)
-            await activity.update(using: contentState)
+            // 使用唯一的时间戳确保每次更新都被识别为新状态
+            // ActivityKit 会比较 ContentState，如果相同则不会触发 Widget 刷新
+            // 使用高精度时间戳（毫秒级）确保每次更新都是唯一的
+            let timestamp = Date().timeIntervalSince1970 * 1000
+            let contentState = LiveActivitiesAppAttributes.ContentState(appGroupId: appGroupId, updateTimestamp: timestamp)
+
+            if #available(iOS 16.2, *) {
+                // iOS 16.2+ 使用 ActivityContent，可以设置 staleDate
+                let activityContent = ActivityContent(state: contentState, staleDate: nil)
+                await activity.update(activityContent)
+                print("MusicLiveActivityManager: Activity updated with iOS 16.2+ API, timestamp: \(timestamp)")
+            } else {
+                // iOS 16.1 使用旧 API
+                await activity.update(using: contentState)
+                print("MusicLiveActivityManager: Activity updated with iOS 16.1 API, timestamp: \(timestamp)")
+            }
         }
     }
 
