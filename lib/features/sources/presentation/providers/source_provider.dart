@@ -41,7 +41,8 @@ class SourcesNotifier extends StateNotifier<AsyncValue<List<SourceEntity>>> {
       await manager.init();
       final sources = await manager.getSources();
       state = AsyncValue.data(sources);
-    } on Exception catch (e, st) {
+    } catch (e, st) {
+      // 捕获所有错误，包括 TypeError
       state = AsyncValue.error(e, st);
     }
   }
@@ -107,9 +108,8 @@ class ActiveConnectionsNotifier
     // 通过监听源列表变化来触发自动连接
     _ref.listen<AsyncValue<List<SourceEntity>>>(sourcesProvider, (previous, next) {
       if (next.hasValue && !_isAutoConnecting) {
-        // 减少延迟时间，加快启动速度
-        // 500ms 足够让网络栈初始化，同时不会明显延迟用户体验
-        Future.delayed(const Duration(milliseconds: 500), autoConnectAll);
+        // 数据已准备好，立即开始自动连接（使用 microtask 避免在 listen 回调中直接调用）
+        Future.microtask(autoConnectAll);
       }
     }, fireImmediately: true);
   }
@@ -217,7 +217,8 @@ class MediaLibraryConfigNotifier
       await manager.init();
       final config = await manager.getMediaLibraryConfig();
       state = AsyncValue.data(config);
-    } on Exception catch (e, st) {
+    } catch (e, st) {
+      // 捕获所有错误，包括 TypeError
       state = AsyncValue.error(e, st);
     }
   }

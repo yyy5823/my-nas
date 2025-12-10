@@ -29,8 +29,8 @@ class _StartupPageState extends ConsumerState<StartupPage> {
   }
 
   void _initializeApp() {
-    // 关键优化：完全不等待，立即跳转到主界面
-    // 服务初始化在后台进行，视频页面会自行处理
+    // 在后台初始化服务，不阻塞 UI
+    // 用户体验优先：立即进入主界面，服务初始化和网络连接在后台进行
     _initServicesInBackground();
 
     // 使用 microtask 确保在当前帧结束后立即跳转
@@ -44,10 +44,13 @@ class _StartupPageState extends ConsumerState<StartupPage> {
   }
 
   /// 在后台初始化服务，不阻塞UI
+  ///
+  /// 注意：SourceManagerService.init() 有锁机制，
+  /// 即使被多个地方调用也只会初始化一次
   void _initServicesInBackground() {
     // 使用 Future.wait 但不 await，让初始化在后台进行
     Future.wait([
-      // 初始化源管理服务
+      // 初始化源管理服务（Hive 存储）
       ref.read(sourceManagerProvider).init(),
       // 预初始化视频相关服务
       VideoLibraryCacheService().init(),

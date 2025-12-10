@@ -78,6 +78,9 @@ class SourceManagerService {
   late Box<dynamic> _libraryBox;
   bool _initialized = false;
 
+  /// 初始化锁，防止并发初始化
+  Future<void>? _initFuture;
+
   /// 安全存储（用于凭证和设备ID，不受应用沙箱影响）
   static const _secureStorage = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
@@ -114,7 +117,29 @@ class SourceManagerService {
   }
 
   /// 初始化
+  ///
+  /// 使用锁机制防止并发初始化，确保多个调用者等待同一个初始化过程
   Future<void> init() async {
+    // 已初始化，直接返回
+    if (_initialized) return;
+
+    // 如果正在初始化中，等待现有的初始化完成
+    if (_initFuture != null) {
+      await _initFuture;
+      return;
+    }
+
+    // 开始初始化，设置锁
+    _initFuture = _doInit();
+    try {
+      await _initFuture;
+    } finally {
+      _initFuture = null;
+    }
+  }
+
+  /// 实际执行初始化
+  Future<void> _doInit() async {
     if (_initialized) return;
 
     // Hive.initFlutter() 已在 main.dart 中调用，这里直接打开 box
@@ -138,8 +163,9 @@ class SourceManagerService {
       return data
           .map((e) => SourceEntity.fromJson(Map<String, dynamic>.from(e as Map)))
           .toList();
-    } on Exception catch (e) {
-      logger.e('SourceManagerService: 解析源列表失败', e);
+    } catch (e, st) {
+      // 捕获所有错误，包括 TypeError（类型转换失败）
+      logger.e('SourceManagerService: 解析源列表失败', e, st);
       return [];
     }
   }
@@ -622,8 +648,9 @@ class SourceManagerService {
       } else {
         logger.d('SourceManagerService: ${source.name} 没有保存的凭证，跳过自动连接');
       }
-    } on Exception catch (e) {
-      logger.e('SourceManagerService: 自动连接异常 ${source.name}', e);
+    } catch (e, st) {
+      // 捕获所有错误，包括 TypeError
+      logger.e('SourceManagerService: 自动连接异常 ${source.name}', e, st);
     }
   }
 
@@ -686,8 +713,9 @@ class SourceManagerService {
       final config = MediaLibraryConfig.fromJson(Map<String, dynamic>.from(data as Map));
       logger.i('SourceManagerService: 解析媒体库配置成功 - 视频路径: ${config.videoPaths.length}, 音乐路径: ${config.musicPaths.length}');
       return config;
-    } on Exception catch (e) {
-      logger.e('SourceManagerService: 解析媒体库配置失败', e);
+    } catch (e, st) {
+      // 捕获所有错误，包括 TypeError（类型转换失败）
+      logger.e('SourceManagerService: 解析媒体库配置失败', e, st);
       return const MediaLibraryConfig();
     }
   }

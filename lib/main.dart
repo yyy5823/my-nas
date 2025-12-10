@@ -36,14 +36,17 @@ Future<void> main() async {
   // Initialize dependencies
   await _initApp();
 
-  // 移除 native splash，立即显示 StartupPage
-  FlutterNativeSplash.remove();
-
   runApp(
     const ProviderScope(
       child: MyNasApp(),
     ),
   );
+
+  // 等待首帧渲染完成后再移除 native splash
+  // 这样可以避免用户在 UI 未完全布局时触摸屏幕导致的 "Cannot hit test" 错误
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    FlutterNativeSplash.remove();
+  });
 }
 
 /// 设置全局错误处理
@@ -83,6 +86,9 @@ void _reportPlatformError(Object error, StackTrace stack) {
   final errorType = error.runtimeType.toString();
   final errorMessage = error.toString();
   final stackTrace = stack.toString();
+
+  // 打印详细错误信息到日志，便于调试
+  logger.e('Platform Error [$errorType]: $errorMessage', error, stack);
 
   ErrorReportService.instance.reportError(
     errorType: errorType,
