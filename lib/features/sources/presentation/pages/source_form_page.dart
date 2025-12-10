@@ -122,6 +122,7 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
 
     return Scaffold(
       appBar: AppBar(
@@ -143,78 +144,21 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
       ),
       body: Form(
         key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          children: [
-            // 源类型信息卡片
-            _buildSourceTypeCard(theme),
+        child: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + bottomInset),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 表单字段（扁平化，不使用分组卡片）
+              for (final section in _formConfig.sections)
+                _buildFormSection(section, theme),
 
-            const SizedBox(height: 16),
+              const SizedBox(height: 24),
 
-            // 表单分组
-            for (final section in _formConfig.sections)
-              _buildFormSection(section, theme),
-
-            const SizedBox(height: 24),
-
-            // 提交按钮
-            _buildSubmitButton(theme),
-
-            const SizedBox(height: 32),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSourceTypeCard(ThemeData theme) {
-    final colorScheme = theme.colorScheme;
-
-    return Card(
-      elevation: 0,
-      color: colorScheme.primaryContainer.withValues(alpha: 0.3),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: colorScheme.primary.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                widget.sourceType.icon,
-                color: colorScheme.primary,
-                size: 24,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    widget.sourceType.displayName,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    widget.sourceType.description,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+              // 提交按钮
+              _buildSubmitButton(theme),
+            ],
+          ),
         ),
       ),
     );
@@ -233,104 +177,70 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
       return const SizedBox.shrink();
     }
 
-    Widget content = Column(
+    // 如果是可折叠的高级设置区块
+    if (section.collapsible) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: ExpansionTile(
+          title: Text(
+            section.title,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          subtitle: section.description != null
+              ? Text(
+                  section.description!,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                )
+              : null,
+          initiallyExpanded: section.defaultExpanded,
+          tilePadding: EdgeInsets.zero,
+          childrenPadding: const EdgeInsets.only(bottom: 8),
+          onExpansionChanged: (expanded) {
+            setState(() {
+              if (expanded) {
+                _expandedSections.add(section.title);
+              } else {
+                _expandedSections.remove(section.title);
+              }
+            });
+          },
+          children: [
+            for (int i = 0; i < visibleFields.length; i++) ...[
+              _buildFormField(visibleFields[i], theme),
+              if (i < visibleFields.length - 1) const SizedBox(height: 16),
+            ],
+          ],
+        ),
+      );
+    }
+
+    // 普通区块 - 只显示分组标题（如果有多个区块）
+    final showTitle = _formConfig.sections.length > 1 && !section.collapsible;
+
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (showTitle) ...[
+          Padding(
+            padding: const EdgeInsets.only(top: 16, bottom: 8),
+            child: Text(
+              section.title,
+              style: theme.textTheme.titleSmall?.copyWith(
+                color: colorScheme.primary,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
         for (int i = 0; i < visibleFields.length; i++) ...[
           _buildFormField(visibleFields[i], theme),
           if (i < visibleFields.length - 1) const SizedBox(height: 16),
         ],
       ],
-    );
-
-    if (section.collapsible) {
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 16),
-        child: Card(
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: BorderSide(
-              color: colorScheme.outlineVariant.withValues(alpha: 0.5),
-            ),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: ExpansionTile(
-            title: Text(
-              section.title,
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            subtitle: section.description != null
-                ? Text(
-                    section.description!,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  )
-                : null,
-            initiallyExpanded: section.defaultExpanded,
-            onExpansionChanged: (expanded) {
-              setState(() {
-                if (expanded) {
-                  _expandedSections.add(section.title);
-                } else {
-                  _expandedSections.remove(section.title);
-                }
-              });
-            },
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: content,
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(left: 4, bottom: 8),
-            child: Text(
-              section.title,
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: colorScheme.primary,
-              ),
-            ),
-          ),
-          if (section.description != null)
-            Padding(
-              padding: const EdgeInsets.only(left: 4, bottom: 12),
-              child: Text(
-                section.description!,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-          Card(
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: BorderSide(
-                color: colorScheme.outlineVariant.withValues(alpha: 0.5),
-              ),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: content,
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -349,14 +259,15 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
     }
   }
 
-  Widget _buildTextField(SourceFormField field, ThemeData theme) => TextFormField(
+  Widget _buildTextField(SourceFormField field, ThemeData theme) {
+    return TextFormField(
       controller: _controllers[field.key],
       decoration: InputDecoration(
         labelText: field.label,
         hintText: field.placeholder,
         helperText: field.helpText,
         helperMaxLines: 2,
-        border: const OutlineInputBorder(),
+        prefixIcon: _getFieldIcon(field.key),
       ),
       validator: (value) {
         if (field.required && (value == null || value.isEmpty)) {
@@ -370,19 +281,25 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
         });
       },
     );
+  }
 
-  Widget _buildPasswordField(SourceFormField field, ThemeData theme) => TextFormField(
+  Widget _buildPasswordField(SourceFormField field, ThemeData theme) {
+    return TextFormField(
       controller: _controllers[field.key],
       obscureText: _obscurePasswords,
       decoration: InputDecoration(
-        labelText: field.label,
+        labelText: widget.mode == SourceFormMode.edit
+            ? '${field.label}（留空保持不变）'
+            : field.label,
         hintText: field.placeholder,
         helperText: field.helpText,
         helperMaxLines: 2,
-        border: const OutlineInputBorder(),
+        prefixIcon: _getFieldIcon(field.key),
         suffixIcon: IconButton(
           icon: Icon(
-            _obscurePasswords ? Icons.visibility_off : Icons.visibility,
+            _obscurePasswords
+                ? Icons.visibility_outlined
+                : Icons.visibility_off_outlined,
           ),
           onPressed: () {
             setState(() {
@@ -407,8 +324,10 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
         });
       },
     );
+  }
 
-  Widget _buildNumberField(SourceFormField field, ThemeData theme) => TextFormField(
+  Widget _buildNumberField(SourceFormField field, ThemeData theme) {
+    return TextFormField(
       controller: _controllers[field.key],
       keyboardType: TextInputType.number,
       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
@@ -417,7 +336,7 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
         hintText: field.placeholder,
         helperText: field.helpText,
         helperMaxLines: 2,
-        border: const OutlineInputBorder(),
+        prefixIcon: _getFieldIcon(field.key),
       ),
       validator: (value) {
         if (field.required && (value == null || value.isEmpty)) {
@@ -437,6 +356,7 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
         });
       },
     );
+  }
 
   Widget _buildToggleField(SourceFormField field, ThemeData theme) {
     final value = _formValues[field.key] == 'true';
@@ -455,7 +375,8 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
   }
 
   Widget _buildSelectField(SourceFormField field, ThemeData theme) {
-    final currentValue = (_formValues[field.key] as String?) ?? field.options?.first ?? '';
+    final currentValue =
+        (_formValues[field.key] as String?) ?? field.options?.first ?? '';
 
     return DropdownButtonFormField<String>(
       initialValue: currentValue.isNotEmpty ? currentValue : null,
@@ -463,12 +384,14 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
         labelText: field.label,
         helperText: field.helpText,
         helperMaxLines: 2,
-        border: const OutlineInputBorder(),
+        prefixIcon: _getFieldIcon(field.key),
       ),
-      items: field.options?.map((option) => DropdownMenuItem(
-          value: option,
-          child: Text(option),
-        )).toList(),
+      items: field.options
+          ?.map((option) => DropdownMenuItem(
+                value: option,
+                child: Text(option),
+              ))
+          .toList(),
       onChanged: (value) {
         if (value != null) {
           setState(() {
@@ -479,28 +402,40 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
     );
   }
 
+  /// 根据字段 key 获取对应的图标
+  Icon? _getFieldIcon(String key) {
+    final iconData = switch (key) {
+      'name' => Icons.label_outline,
+      'host' => Icons.dns_outlined,
+      'port' => Icons.numbers,
+      'username' => Icons.person_outline,
+      'password' => Icons.lock_outline,
+      'apiKey' || 'apiToken' => Icons.key,
+      'clientId' => Icons.apps,
+      'clientSecret' => Icons.vpn_key,
+      _ => null,
+    };
+    return iconData != null ? Icon(iconData) : null;
+  }
+
   Widget _buildSubmitButton(ThemeData theme) {
-    return FilledButton(
-      onPressed: _isSubmitting || _isTesting ? null : _submit,
-      style: FilledButton.styleFrom(
-        minimumSize: const Size(double.infinity, 56),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-      ),
-      child: _isSubmitting
-          ? const SizedBox(
-              width: 24,
-              height: 24,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: Colors.white,
+    return SizedBox(
+      width: double.infinity,
+      child: FilledButton(
+        onPressed: _isSubmitting || _isTesting ? null : _submit,
+        child: _isSubmitting
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              )
+            : Text(
+                widget.mode == SourceFormMode.edit ? '保存' : '添加并连接',
               ),
-            )
-          : Text(
-              widget.mode == SourceFormMode.edit ? '保存更改' : '保存并连接',
-              style: const TextStyle(fontSize: 16),
-            ),
+      ),
     );
   }
 

@@ -898,12 +898,12 @@ class _PathCardState extends ConsumerState<_PathCard> {
     children: [
       Row(
         children: [
+          // 圆形指示器：始终显示为不停转动的 loading 效果
           SizedBox(
             width: 14,
             height: 14,
             child: CircularProgressIndicator(
               strokeWidth: 2,
-              value: progress > 0 ? progress : null,
               color: color,
             ),
           ),
