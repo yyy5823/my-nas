@@ -359,6 +359,8 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     // 当正在缓冲（切换歌曲）时，也显示播放动效
     final showPlayingAnimation = state.isPlaying || state.isBuffering;
 
+    // 切歌时需要强制更新灵动岛的歌曲信息（标题、艺术家、封面等）
+    // 不能仅依赖定时更新，因为定时更新可能不会立即触发
     await _liveActivityService.startMusicActivity(
       music: music,
       isPlaying: showPlayingAnimation,
@@ -366,6 +368,8 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       duration: state.duration,
       coverData: coverData,
     );
+
+    logger.i('LiveActivity: 切歌更新完成 - title=${music.displayTitle}, artist=${music.displayArtist}');
 
     // 启动定时更新
     _startLiveActivityUpdateTimer();

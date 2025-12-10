@@ -133,17 +133,19 @@ class LiveActivityService {
       // 如果已有 Activity，更新它而不是重新创建
       // 这样可以避免在后台时创建新 Activity 失败导致灵动岛被清除
       if (_currentActivityId != null) {
-        logger.d('LiveActivity: 已有活动存在，更新它: $_currentActivityId');
+        logger.i('LiveActivity: 已有活动存在，强制更新歌曲信息: $_currentActivityId');
+        logger.d('LiveActivity: 更新内容 - title=${music.displayTitle}, artist=${music.displayArtist}, hasCover=${coverData != null}');
         // 更新封面数据
         if (coverData != null) {
           _currentCoverData = coverData;
         }
-        await updateActivity(
+        // 强制传递完整的歌曲信息（包括封面），确保切歌时灵动岛内容同步更新
+        await _forceUpdateActivity(
           music: music,
           isPlaying: isPlaying,
           position: position,
           duration: duration,
-          coverData: coverData,
+          coverData: coverData ?? _currentCoverData,
         );
         return;
       }
@@ -219,6 +221,38 @@ class LiveActivityService {
       logger.e('LiveActivity: 更新失败 (PlatformException)', e, stackTrace);
     } on Exception catch (e, stackTrace) {
       logger.e('LiveActivity: 更新失败', e, stackTrace);
+    }
+  }
+
+  /// 强制更新 Live Activity（切歌时使用）
+  /// 与 updateActivity 不同，此方法会强制传递所有信息包括封面
+  Future<void> _forceUpdateActivity({
+    required MusicItem music,
+    required bool isPlaying,
+    required Duration position,
+    required Duration duration,
+    Uint8List? coverData,
+  }) async {
+    if (!isSupported || !_initialized || _currentActivityId == null) return;
+
+    try {
+      // 强制构建完整的更新数据，包含封面
+      final activityData = _buildActivityData(
+        music: music,
+        isPlaying: isPlaying,
+        position: position,
+        duration: duration,
+        coverData: coverData, // 强制传递封面
+      );
+
+      // 使用自定义 Method Channel 更新
+      await _channel.invokeMethod('updateActivity', {'data': activityData});
+
+      logger.i('LiveActivity: 强制更新完成 - title=${music.displayTitle}, artist=${music.displayArtist}');
+    } on PlatformException catch (e, stackTrace) {
+      logger.e('LiveActivity: 强制更新失败 (PlatformException)', e, stackTrace);
+    } on Exception catch (e, stackTrace) {
+      logger.e('LiveActivity: 强制更新失败', e, stackTrace);
     }
   }
 
