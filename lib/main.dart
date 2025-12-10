@@ -21,7 +21,8 @@ Future<void> main() async {
 
   // 初始化前台服务通信端口（必须在 runApp 之前调用）
   // 这允许后台任务与主 UI 进行通信
-  if (Platform.isAndroid || Platform.isIOS) {
+  // 注意：仅 Android 支持 Foreground Service，iOS 不支持此机制
+  if (Platform.isAndroid) {
     FlutterForegroundTask.initCommunicationPort();
   }
 

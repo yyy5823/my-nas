@@ -317,7 +317,9 @@ class BackgroundTaskService {
   }
 
   /// 是否是移动平台
-  bool get _isMobilePlatform => Platform.isAndroid || Platform.isIOS;
+  /// 注意：仅 Android 支持 Foreground Service，iOS 的后台任务有严格的时间限制
+  /// 因此只在 Android 上使用前台服务
+  bool get _isMobilePlatform => Platform.isAndroid;
 
   String _getNotificationTitle(BackgroundTaskType taskType) {
     switch (taskType) {
