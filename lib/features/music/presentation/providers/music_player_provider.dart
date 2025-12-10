@@ -175,6 +175,12 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   final LiveActivityService _liveActivityService = LiveActivityService();
   Timer? _liveActivityUpdateTimer;
 
+  // Live Activity 位置更新订阅（使用播放器的 positionStream，在后台也能工作）
+  StreamSubscription<Duration>? _liveActivityPositionSubscription;
+
+  // 上次 Live Activity 更新的秒数（避免每帧都更新）
+  int _lastLiveActivityUpdateSecond = -1;
+
   // 音频缓存服务（用于持久化缓存，避免重复下载）
   final MusicAudioCacheService _audioCacheService = MusicAudioCacheService();
 
@@ -377,21 +383,35 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     _startLiveActivityUpdateTimer();
   }
 
-  /// 启动 Live Activity 定时更新
+  /// 启动 Live Activity 更新
+  /// 使用播放器的 positionStream 来触发更新，这样在后台也能正常工作
+  /// Timer 在 iOS 后台会被暂停，但 AudioPlayer 的流在后台音频播放时仍然活跃
   void _startLiveActivityUpdateTimer() {
     _stopLiveActivityUpdateTimer();
 
-    // 每秒更新一次 Live Activity
-    _liveActivityUpdateTimer = Timer.periodic(
-      const Duration(seconds: 1),
-      (_) => _updateLiveActivity(),
-    );
+    // 重置上次更新时间
+    _lastLiveActivityUpdateSecond = -1;
+
+    // 订阅播放器的位置流，每秒更新一次 Live Activity
+    _liveActivityPositionSubscription = _player.positionStream.listen((position) {
+      final currentSecond = position.inSeconds;
+      // 只在秒数变化时更新，避免过于频繁的更新
+      if (currentSecond != _lastLiveActivityUpdateSecond) {
+        _lastLiveActivityUpdateSecond = currentSecond;
+        _updateLiveActivity();
+      }
+    });
+
+    logger.d('LiveActivity: 使用 positionStream 启动更新（支持后台）');
   }
 
-  /// 停止 Live Activity 定时更新
+  /// 停止 Live Activity 更新
   void _stopLiveActivityUpdateTimer() {
     _liveActivityUpdateTimer?.cancel();
     _liveActivityUpdateTimer = null;
+    _liveActivityPositionSubscription?.cancel();
+    _liveActivityPositionSubscription = null;
+    _lastLiveActivityUpdateSecond = -1;
   }
 
   /// 更新 Live Activity 状态
@@ -565,7 +585,9 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       unawaited(_extractMetadataInBackground(music));
 
       // 启动 Live Activity（iOS 灵动岛）
-      unawaited(_startLiveActivity(music));
+      // 重要：必须 await 确保在 app 进入后台前完成创建
+      // 否则首次播放时如果立即切到后台，Live Activity 可能创建失败
+      await _startLiveActivity(music);
     } on Exception catch (e, stackTrace) {
       logger.e('MusicPlayer: 播放失败', e, stackTrace);
       state = state.copyWith(errorMessage: '播放失败: $e', isBuffering: false);
