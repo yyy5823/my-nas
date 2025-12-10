@@ -268,8 +268,10 @@ class SourceEntity {
             : null,
         // API Key 相关字段
         apiKey: json['apiKey'] as String?,
-        // 额外配置
-        extraConfig: json['extraConfig'] as Map<String, dynamic>?,
+        // 额外配置 - 从 Hive 读取时需要安全转换类型
+        extraConfig: json['extraConfig'] != null
+            ? Map<String, dynamic>.from(json['extraConfig'] as Map)
+            : null,
       );
 
   final String id;
