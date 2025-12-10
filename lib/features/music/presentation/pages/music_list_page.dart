@@ -1104,7 +1104,7 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
           pathPrefix: pathPrefix,
           scannedCount: processedCount,
           totalCount: totalTracks,
-          currentFile: '提取元数据 ($processedCount/$totalTracks)',
+          currentFile: '提取元数据',
         ));
       }
     }
