@@ -731,7 +731,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
       });
 
       logger.i('内容分页完成: ${result.pages.length} 页');
-    } catch (e) {
+    } on Exception catch (e) {
       logger.e('分页失败', e);
       // 失败时使用整个内容作为单页
       setState(() {

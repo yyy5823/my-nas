@@ -5,7 +5,8 @@ import 'package:my_nas/features/file_browser/presentation/pages/file_browser_pag
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
-import 'package:my_nas/features/sources/presentation/widgets/add_source_sheet.dart';
+import 'package:my_nas/features/sources/presentation/pages/source_form_page.dart';
+import 'package:my_nas/features/sources/presentation/pages/source_type_selection_page.dart';
 
 class SourcesPage extends ConsumerWidget {
   const SourcesPage({super.key});
@@ -109,12 +110,12 @@ class SourcesPage extends ConsumerWidget {
     );
 
   void _showAddSourceSheet(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      enableDrag: false, // 禁用拖动关闭，防止顶栏被拖动
-      builder: (context) => const AddSourceSheet(),
+    // 使用新的源类型选择页面
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const SourceTypeSelectionPage(),
+      ),
     );
   }
 }
@@ -259,15 +260,7 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
     );
   }
 
-  IconData _getSourceIcon() => switch (widget.source.type) {
-      SourceType.synology => Icons.storage,
-      SourceType.ugreen => Icons.storage,
-      SourceType.fnos => Icons.storage,
-      SourceType.qnap => Icons.storage,
-      SourceType.webdav => Icons.cloud,
-      SourceType.smb => Icons.folder_shared,
-      SourceType.local => Icons.phone_android,
-    };
+  IconData _getSourceIcon() => widget.source.type.icon;
 
   Color _getStatusColor() => switch (_status) {
       SourceStatus.connected => Colors.green,
@@ -519,12 +512,15 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
   }
 
   void _editSource() {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      enableDrag: false, // 禁用拖动关闭，防止顶栏被拖动
-      builder: (context) => AddSourceSheet(source: widget.source),
+    // 使用新的表单页面进行编辑
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SourceFormPage(
+          sourceType: widget.source.type,
+          existingSource: widget.source,
+        ),
+      ),
     );
   }
 

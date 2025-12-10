@@ -227,7 +227,7 @@ class BookContentProcessor {
     }
 
     // 查找目录区域后的第一个长段落
-    final paragraphPattern = RegExp(r'<p[^>]*>(.{200,}?)</p>', dotAll: true);
+    final paragraphPattern = RegExp('<p[^>]*>(.{200,}?)</p>', dotAll: true);
     final match = paragraphPattern.firstMatch(
       htmlContent.substring(sectionEnd, searchEnd),
     );
@@ -430,7 +430,7 @@ class BookContentProcessor {
 
     // 匹配块级元素
     final blockPattern = RegExp(
-      r'<(?:p|div|h[1-6]|blockquote|li|tr)[^>]*>.*?</(?:p|div|h[1-6]|blockquote|li|tr)>',
+      '<(?:p|div|h[1-6]|blockquote|li|tr)[^>]*>.*?</(?:p|div|h[1-6]|blockquote|li|tr)>',
       caseSensitive: false,
       dotAll: true,
     );

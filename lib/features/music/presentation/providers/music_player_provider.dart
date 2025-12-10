@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:audio_session/audio_session.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:my_nas/core/services/media_proxy_server.dart';
@@ -189,6 +190,9 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     // 应用保存的设置
     _applySettings();
 
+    // 初始化音频会话中断处理
+    _initAudioSessionHandling();
+
     // 监听播放状态
     _player.playingStream.listen((playing) {
       state = state.copyWith(isPlaying: playing);
@@ -233,6 +237,54 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       },
     );
 
+  }
+
+  /// 初始化音频会话中断处理
+  /// 处理来电、其他应用播放音频等中断事件
+  Future<void> _initAudioSessionHandling() async {
+    try {
+      final session = await AudioSession.instance;
+
+      // 监听音频中断事件（如来电、其他应用播放等）
+      session.interruptionEventStream.listen((event) {
+        logger.d('MusicPlayer: 音频中断事件 - begin=${event.begin}, type=${event.type}');
+        if (event.begin) {
+          // 中断开始
+          switch (event.type) {
+            case AudioInterruptionType.duck:
+              // 降低音量（其他应用短暂播放）
+              _player.setVolume(state.volume * 0.3);
+            case AudioInterruptionType.pause:
+            case AudioInterruptionType.unknown:
+              // 暂停播放
+              _player.pause();
+          }
+        } else {
+          // 中断结束
+          switch (event.type) {
+            case AudioInterruptionType.duck:
+              // 恢复音量
+              _player.setVolume(state.volume);
+            case AudioInterruptionType.pause:
+              // 可选：恢复播放（某些应用可能不希望自动恢复）
+              // _player.play();
+              break;
+            case AudioInterruptionType.unknown:
+              break;
+          }
+        }
+      });
+
+      // 监听音频设备变化（如耳机拔出）
+      session.becomingNoisyEventStream.listen((_) {
+        logger.d('MusicPlayer: 音频设备变化（耳机拔出），暂停播放');
+        _player.pause();
+      });
+
+      logger.i('MusicPlayer: 音频会话中断处理已初始化');
+    } on Exception catch (e) {
+      logger.w('MusicPlayer: 初始化音频会话中断处理失败: $e');
+    }
   }
 
   /// 应用保存的设置

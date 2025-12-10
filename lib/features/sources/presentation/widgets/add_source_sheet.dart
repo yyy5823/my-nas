@@ -386,15 +386,7 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
     );
   }
 
-  IconData _getSourceTypeIcon(SourceType type) => switch (type) {
-        SourceType.synology => Icons.storage,
-        SourceType.ugreen => Icons.storage,
-        SourceType.fnos => Icons.storage,
-        SourceType.qnap => Icons.storage,
-        SourceType.webdav => Icons.cloud,
-        SourceType.smb => Icons.folder_shared,
-        SourceType.local => Icons.folder_open,
-      };
+  IconData _getSourceTypeIcon(SourceType type) => type.icon;
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;

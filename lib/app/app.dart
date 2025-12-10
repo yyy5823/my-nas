@@ -46,7 +46,7 @@ class _MyNasAppState extends ConsumerState<MyNasApp> with WidgetsBindingObserver
     try {
       DeepLinkService().init(ref);
       logger.i('MyNasApp: DeepLinkService 初始化成功');
-    } catch (e, stackTrace) {
+    } on Exception catch (e, stackTrace) {
       logger.e('MyNasApp: DeepLinkService 初始化失败', e, stackTrace);
       // 不抛出异常，允许应用继续运行
     }

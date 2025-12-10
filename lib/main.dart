@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
@@ -114,6 +115,10 @@ Future<void> _initApp() async {
   // This fixes the just_audio_windows threading issue on Windows
   JustAudioMediaKit.ensureInitialized();
 
+  // Initialize AudioSession for proper audio playback on iOS/Android
+  // This is critical for just_audio to work correctly
+  await _initAudioSession();
+
   // Initialize Hive for local storage
   await Hive.initFlutter();
 
@@ -138,5 +143,33 @@ Future<void> _loadTmdbApiKey() async {
     }
   } on Exception catch (e) {
     logger.w('Failed to load TMDB API key: $e');
+  }
+}
+
+/// 初始化音频会话
+/// 这是 just_audio 在 iOS/Android 上正常播放音频的关键配置
+Future<void> _initAudioSession() async {
+  try {
+    final session = await AudioSession.instance;
+    await session.configure(const AudioSessionConfiguration(
+      // 音频类型：音乐（适合音乐播放器）
+      avAudioSessionCategory: AVAudioSessionCategory.playback,
+      avAudioSessionCategoryOptions: AVAudioSessionCategoryOptions.none,
+      avAudioSessionMode: AVAudioSessionMode.defaultMode,
+      avAudioSessionRouteSharingPolicy:
+          AVAudioSessionRouteSharingPolicy.defaultPolicy,
+      avAudioSessionSetActiveOptions: AVAudioSessionSetActiveOptions.none,
+      // Android 音频属性
+      androidAudioAttributes: AndroidAudioAttributes(
+        contentType: AndroidAudioContentType.music,
+        usage: AndroidAudioUsage.media,
+      ),
+      // Android 音频焦点
+      androidAudioFocusGainType: AndroidAudioFocusGainType.gain,
+      androidWillPauseWhenDucked: true,
+    ));
+    logger.i('AudioSession initialized for music playback');
+  } on Exception catch (e) {
+    logger.w('Failed to initialize AudioSession: $e');
   }
 }

@@ -344,7 +344,16 @@ class VideoScannerService {
       return allVideos.length;
     } catch (e, st) {
       logger.e('VideoScannerService: 扫描失败', e, st);
-      _emitProgress(const VideoScanProgress(phase: VideoScanPhase.error));
+
+      // 为所有正在扫描的路径发送错误进度
+      for (final path in paths) {
+        if (!path.isEnabled) continue;
+        _emitProgress(VideoScanProgress(
+          phase: VideoScanPhase.error,
+          sourceId: path.sourceId,
+          pathPrefix: path.path,
+        ));
+      }
 
       // 更新后台服务为错误状态
       await _backgroundTaskService.updateProgress(
@@ -367,7 +376,6 @@ class VideoScannerService {
   /// 优化：如果扫描阶段已解析 NFO 基础信息，会一并保存
   /// 这样用户在扫描完成后就能看到有标题和海报的内容
   Future<void> _saveBasicMetadataToDb(List<_ScannedVideo> videos) async {
-    final total = videos.length;
     const batchSize = 50;
 
     for (var i = 0; i < videos.length; i += batchSize) {
@@ -436,13 +444,9 @@ class VideoScannerService {
         await _dbService.updateNfoFlagBatch(nfoFlags);
       }
 
-      _emitProgress(
-        VideoScanProgress(
-          phase: VideoScanPhase.savingToDb,
-          scannedCount: (i + batch.length).clamp(0, total),
-          totalCount: total,
-        ),
-      );
+      // 注意：不在这里发送进度，因为批量保存处理的是所有目录的视频
+      // 进度事件需要 sourceId/pathPrefix 才能被对应的卡片匹配
+      // 调用方在调用前后会发送正确的 savingToDb 开始和 completed 事件
     }
   }
 
@@ -515,6 +519,10 @@ class VideoScannerService {
       // 重置可能中断的刮削状态
       await _dbService.resetScrapingToPending();
 
+      // 立即广播初始统计，确保 UI 能及时更新刮削状态
+      final initialStats = await _dbService.getScrapeStats();
+      _scrapeStatsController.add(initialStats);
+
       while (!_shouldStopScraping) {
         // 获取待刮削的视频
         final pendingVideos = await _dbService.getPendingScrape(
@@ -565,10 +573,14 @@ class VideoScannerService {
         }
       }
 
+      // 刮削完成，广播最终统计
+      final finalStats = await _dbService.getScrapeStats();
+      _scrapeStatsController.add(finalStats);
+
       _emitProgress(
         VideoScanProgress(
           phase: VideoScanPhase.completed,
-          scannedCount: (await _dbService.getScrapeStats()).total,
+          scannedCount: finalStats.total,
         ),
       );
 
@@ -584,6 +596,14 @@ class VideoScannerService {
       logger.e('VideoScannerService: 刮削失败', e, st);
       _emitProgress(const VideoScanProgress(phase: VideoScanPhase.error));
 
+      // 广播统计以更新 UI
+      try {
+        final errorStats = await _dbService.getScrapeStats();
+        _scrapeStatsController.add(errorStats);
+      } on Exception {
+        // 忽略获取统计时的错误
+      }
+
       // 更新后台服务为错误状态
       await _backgroundTaskService.updateProgress(
         BackgroundTaskProgress(
@@ -594,6 +614,13 @@ class VideoScannerService {
       );
     } finally {
       _isScraping = false;
+      // 广播最终统计以确保 UI 更新 _isScraping 状态
+      try {
+        final endStats = await _dbService.getScrapeStats();
+        _scrapeStatsController.add(endStats);
+      } on Exception {
+        // 忽略错误
+      }
       // 停止后台服务
       await _backgroundTaskService.stopService();
     }

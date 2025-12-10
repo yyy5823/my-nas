@@ -635,6 +635,17 @@ class SourceManagerService {
       SourceType.webdav => WebDavAdapter(),
       SourceType.smb => SmbAdapter(),
       SourceType.local => LocalAdapter(),
+      // 服务类源不使用 NasAdapter，需要使用各自的 ServiceAdapter
+      SourceType.qbittorrent ||
+      SourceType.transmission ||
+      SourceType.aria2 ||
+      SourceType.trakt ||
+      SourceType.nastool ||
+      SourceType.moviepilot ||
+      SourceType.jellyfin ||
+      SourceType.emby ||
+      SourceType.plex =>
+        throw UnsupportedError('服务类源 ${type.displayName} 不支持 NasAdapter，请使用对应的 ServiceAdapter'),
     };
 
   NasAdapterType _getAdapterType(SourceType type) => switch (type) {
@@ -645,6 +656,17 @@ class SourceManagerService {
       SourceType.webdav => NasAdapterType.webdav,
       SourceType.smb => NasAdapterType.smb,
       SourceType.local => NasAdapterType.local,
+      // 服务类源不使用 NasAdapterType
+      SourceType.qbittorrent ||
+      SourceType.transmission ||
+      SourceType.aria2 ||
+      SourceType.trakt ||
+      SourceType.nastool ||
+      SourceType.moviepilot ||
+      SourceType.jellyfin ||
+      SourceType.emby ||
+      SourceType.plex =>
+        throw UnsupportedError('服务类源 ${type.displayName} 不支持 NasAdapterType'),
     };
 
   // ============ 媒体库配置 ============

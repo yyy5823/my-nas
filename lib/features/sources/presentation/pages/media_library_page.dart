@@ -379,8 +379,10 @@ class _PathCardState extends ConsumerState<_PathCard> {
 
     if (widget.mediaType == MediaType.video) {
       // 视频类型：使用 VideoScannerService
+      // 注意：刮削是全局的，所以使用全局状态
       _isScraping = VideoScannerService().isScraping;
-      _isScanning = VideoScannerService().isScanning;
+      // 初始扫描状态：默认为 false，依赖 progressStream 更新
+      _isScanning = false;
 
       if (_isScraping) {
         _loadInitialScrapeStats();
@@ -388,6 +390,7 @@ class _PathCardState extends ConsumerState<_PathCard> {
 
       _videoProgressSub = VideoScannerService().progressStream.listen((progress) {
         if (mounted) {
+          // 检查进度事件是否属于当前目录
           final isMyProgress = progress.sourceId == widget.path.sourceId &&
               progress.pathPrefix == widget.path.path;
 

@@ -69,9 +69,7 @@ class MediaScanProgress {
   }
 
   /// 检查进度是否属于指定目录
-  bool belongsTo(String sourceId, String pathPrefix) {
-    return this.sourceId == sourceId && this.pathPrefix == pathPrefix;
-  }
+  bool belongsTo(String sourceId, String pathPrefix) => this.sourceId == sourceId && this.pathPrefix == pathPrefix;
 }
 
 /// 扫描阶段

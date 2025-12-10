@@ -1,0 +1,774 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:http/http.dart' as http;
+
+/// Trakt API 客户端
+///
+/// 支持 Trakt API v2
+/// 文档: https://trakt.docs.apiary.io/
+class TraktApi {
+  TraktApi({
+    required this.clientId,
+    required this.clientSecret,
+    this.accessToken,
+    this.refreshToken,
+    this.tokenExpiresAt,
+  });
+
+  static const String apiUrl = 'https://api.trakt.tv';
+  static const String authUrl = 'https://trakt.tv';
+  static const String apiVersion = '2';
+  static const String redirectUri = 'urn:ietf:wg:oauth:2.0:oob';
+
+  final String clientId;
+  final String clientSecret;
+  String? accessToken;
+  String? refreshToken;
+  DateTime? tokenExpiresAt;
+
+  http.Client? _client;
+
+  /// 获取 HTTP 客户端
+  http.Client get client {
+    _client ??= http.Client();
+    return _client!;
+  }
+
+  /// 是否已认证
+  bool get isAuthenticated =>
+      accessToken != null && accessToken!.isNotEmpty && !isTokenExpired;
+
+  /// Token 是否已过期
+  bool get isTokenExpired {
+    if (tokenExpiresAt == null) return false;
+    return DateTime.now().isAfter(tokenExpiresAt!);
+  }
+
+  /// Token 是否需要刷新（提前 1 小时）
+  bool get needsTokenRefresh {
+    if (tokenExpiresAt == null) return false;
+    final expiresIn = tokenExpiresAt!.difference(DateTime.now());
+    return expiresIn.inHours < 1;
+  }
+
+  /// 获取 OAuth 授权 URL
+  String getAuthorizationUrl() {
+    return '$authUrl/oauth/authorize'
+        '?response_type=code'
+        '&client_id=$clientId'
+        '&redirect_uri=$redirectUri';
+  }
+
+  /// 使用授权码获取 Token
+  Future<TraktTokenResponse> exchangeCodeForToken(String code) async {
+    final url = Uri.parse('$apiUrl/oauth/token');
+
+    try {
+      final response = await client.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'code': code,
+          'client_id': clientId,
+          'client_secret': clientSecret,
+          'redirect_uri': redirectUri,
+          'grant_type': 'authorization_code',
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final tokenResponse = TraktTokenResponse.fromJson(data);
+
+        // 更新本地 token
+        accessToken = tokenResponse.accessToken;
+        refreshToken = tokenResponse.refreshToken;
+        tokenExpiresAt = DateTime.now().add(
+          Duration(seconds: tokenResponse.expiresIn),
+        );
+
+        return tokenResponse;
+      }
+
+      throw TraktApiException('获取 Token 失败: ${response.statusCode}');
+    } on SocketException catch (e) {
+      throw TraktApiException('无法连接到 Trakt: ${e.message}');
+    } on http.ClientException catch (e) {
+      throw TraktApiException('网络错误: ${e.message}');
+    }
+  }
+
+  /// 刷新 Token
+  Future<TraktTokenResponse> refreshAccessToken() async {
+    if (refreshToken == null) {
+      throw const TraktApiException('没有可用的 Refresh Token');
+    }
+
+    final url = Uri.parse('$apiUrl/oauth/token');
+
+    try {
+      final response = await client.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'refresh_token': refreshToken,
+          'client_id': clientId,
+          'client_secret': clientSecret,
+          'redirect_uri': redirectUri,
+          'grant_type': 'refresh_token',
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final tokenResponse = TraktTokenResponse.fromJson(data);
+
+        // 更新本地 token
+        accessToken = tokenResponse.accessToken;
+        refreshToken = tokenResponse.refreshToken;
+        tokenExpiresAt = DateTime.now().add(
+          Duration(seconds: tokenResponse.expiresIn),
+        );
+
+        return tokenResponse;
+      }
+
+      throw TraktApiException('刷新 Token 失败: ${response.statusCode}');
+    } on SocketException catch (e) {
+      throw TraktApiException('无法连接到 Trakt: ${e.message}');
+    } on http.ClientException catch (e) {
+      throw TraktApiException('网络错误: ${e.message}');
+    }
+  }
+
+  /// 撤销 Token
+  Future<void> revokeToken() async {
+    if (accessToken == null) return;
+
+    final url = Uri.parse('$apiUrl/oauth/revoke');
+
+    try {
+      await client.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'token': accessToken,
+          'client_id': clientId,
+          'client_secret': clientSecret,
+        }),
+      );
+    } finally {
+      accessToken = null;
+      refreshToken = null;
+      tokenExpiresAt = null;
+    }
+  }
+
+  /// 获取用户设置
+  Future<TraktUserSettings> getUserSettings() async {
+    final response = await _makeAuthenticatedRequest('GET', '/users/settings');
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return TraktUserSettings.fromJson(data);
+  }
+
+  /// 获取观看历史
+  Future<List<TraktHistoryItem>> getWatchedHistory({
+    String type = 'movies,shows',
+    int page = 1,
+    int limit = 20,
+  }) async {
+    final response = await _makeAuthenticatedRequest(
+      'GET',
+      '/users/me/history/$type',
+      queryParams: {
+        'page': page.toString(),
+        'limit': limit.toString(),
+      },
+    );
+
+    final List<dynamic> data = jsonDecode(response.body) as List<dynamic>;
+    return data
+        .map((e) => TraktHistoryItem.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// 获取待看列表
+  Future<List<TraktWatchlistItem>> getWatchlist({
+    String type = 'movies,shows',
+    String sort = 'added',
+    int page = 1,
+    int limit = 20,
+  }) async {
+    final response = await _makeAuthenticatedRequest(
+      'GET',
+      '/users/me/watchlist/$type/$sort',
+      queryParams: {
+        'page': page.toString(),
+        'limit': limit.toString(),
+      },
+    );
+
+    final List<dynamic> data = jsonDecode(response.body) as List<dynamic>;
+    return data
+        .map((e) => TraktWatchlistItem.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// 获取收藏列表
+  Future<List<TraktCollectionItem>> getCollection({
+    String type = 'movies',
+  }) async {
+    final response = await _makeAuthenticatedRequest(
+      'GET',
+      '/users/me/collection/$type',
+    );
+
+    final List<dynamic> data = jsonDecode(response.body) as List<dynamic>;
+    return data
+        .map((e) => TraktCollectionItem.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// 获取用户评分
+  Future<List<TraktRatingItem>> getRatings({
+    String type = 'movies,shows',
+  }) async {
+    final response = await _makeAuthenticatedRequest(
+      'GET',
+      '/users/me/ratings/$type',
+    );
+
+    final List<dynamic> data = jsonDecode(response.body) as List<dynamic>;
+    return data
+        .map((e) => TraktRatingItem.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// 添加到观看历史
+  Future<void> addToHistory(List<TraktMediaItem> items) async {
+    await _makeAuthenticatedRequest(
+      'POST',
+      '/sync/history',
+      body: {
+        'movies': items
+            .where((i) => i.type == 'movie')
+            .map((i) => i.toJson())
+            .toList(),
+        'shows': items
+            .where((i) => i.type == 'show')
+            .map((i) => i.toJson())
+            .toList(),
+        'episodes': items
+            .where((i) => i.type == 'episode')
+            .map((i) => i.toJson())
+            .toList(),
+      },
+    );
+  }
+
+  /// 添加到待看列表
+  Future<void> addToWatchlist(List<TraktMediaItem> items) async {
+    await _makeAuthenticatedRequest(
+      'POST',
+      '/sync/watchlist',
+      body: {
+        'movies': items
+            .where((i) => i.type == 'movie')
+            .map((i) => i.toJson())
+            .toList(),
+        'shows': items
+            .where((i) => i.type == 'show')
+            .map((i) => i.toJson())
+            .toList(),
+      },
+    );
+  }
+
+  /// 添加评分
+  Future<void> addRating(TraktMediaItem item, int rating) async {
+    await _makeAuthenticatedRequest(
+      'POST',
+      '/sync/ratings',
+      body: {
+        '${item.type}s': [
+          {
+            ...item.toJson(),
+            'rating': rating,
+          }
+        ],
+      },
+    );
+  }
+
+  /// 搜索媒体
+  Future<List<TraktSearchResult>> search(
+    String query, {
+    String type = 'movie,show',
+    int page = 1,
+    int limit = 10,
+  }) async {
+    final response = await _makeRequest(
+      'GET',
+      '/search/$type',
+      queryParams: {
+        'query': query,
+        'page': page.toString(),
+        'limit': limit.toString(),
+      },
+    );
+
+    final List<dynamic> data = jsonDecode(response.body) as List<dynamic>;
+    return data
+        .map((e) => TraktSearchResult.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// 发起认证请求
+  Future<http.Response> _makeAuthenticatedRequest(
+    String method,
+    String path, {
+    Map<String, String>? queryParams,
+    Map<String, dynamic>? body,
+  }) async {
+    // 检查 token 是否需要刷新
+    if (needsTokenRefresh && refreshToken != null) {
+      await refreshAccessToken();
+    }
+
+    if (!isAuthenticated) {
+      throw const TraktApiException('未认证，请先登录');
+    }
+
+    return _makeRequest(
+      method,
+      path,
+      queryParams: queryParams,
+      body: body,
+      authenticated: true,
+    );
+  }
+
+  /// 发起请求
+  Future<http.Response> _makeRequest(
+    String method,
+    String path, {
+    Map<String, String>? queryParams,
+    Map<String, dynamic>? body,
+    bool authenticated = false,
+  }) async {
+    var url = Uri.parse('$apiUrl$path');
+    if (queryParams != null && queryParams.isNotEmpty) {
+      url = url.replace(queryParameters: queryParams);
+    }
+
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+      'trakt-api-version': apiVersion,
+      'trakt-api-key': clientId,
+    };
+
+    if (authenticated && accessToken != null) {
+      headers['Authorization'] = 'Bearer $accessToken';
+    }
+
+    http.Response response;
+
+    try {
+      if (method == 'GET') {
+        response = await client.get(url, headers: headers);
+      } else if (method == 'POST') {
+        response = await client.post(
+          url,
+          headers: headers,
+          body: body != null ? jsonEncode(body) : null,
+        );
+      } else if (method == 'DELETE') {
+        response = await client.delete(url, headers: headers);
+      } else {
+        throw TraktApiException('不支持的 HTTP 方法: $method');
+      }
+
+      if (response.statusCode == 401) {
+        accessToken = null;
+        throw const TraktApiException('认证已过期，请重新登录');
+      }
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw TraktApiException(
+          '请求失败: ${response.statusCode} ${response.reasonPhrase}',
+        );
+      }
+
+      return response;
+    } on SocketException catch (e) {
+      throw TraktApiException('无法连接到 Trakt: ${e.message}');
+    } on http.ClientException catch (e) {
+      throw TraktApiException('网络错误: ${e.message}');
+    }
+  }
+
+  /// 释放资源
+  void dispose() {
+    _client?.close();
+    _client = null;
+  }
+}
+
+/// Trakt API 异常
+class TraktApiException implements Exception {
+  const TraktApiException(this.message);
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+/// Token 响应
+class TraktTokenResponse {
+  const TraktTokenResponse({
+    required this.accessToken,
+    required this.tokenType,
+    required this.expiresIn,
+    required this.refreshToken,
+    required this.scope,
+    required this.createdAt,
+  });
+
+  factory TraktTokenResponse.fromJson(Map<String, dynamic> json) {
+    return TraktTokenResponse(
+      accessToken: json['access_token'] as String,
+      tokenType: json['token_type'] as String,
+      expiresIn: json['expires_in'] as int,
+      refreshToken: json['refresh_token'] as String,
+      scope: json['scope'] as String,
+      createdAt: json['created_at'] as int,
+    );
+  }
+
+  final String accessToken;
+  final String tokenType;
+  final int expiresIn;
+  final String refreshToken;
+  final String scope;
+  final int createdAt;
+}
+
+/// 用户设置
+class TraktUserSettings {
+  const TraktUserSettings({
+    required this.username,
+    this.name,
+    this.vip,
+    this.avatarUrl,
+  });
+
+  factory TraktUserSettings.fromJson(Map<String, dynamic> json) {
+    final user = json['user'] as Map<String, dynamic>?;
+    final images = user?['images'] as Map<String, dynamic>?;
+    final avatar = images?['avatar'] as Map<String, dynamic>?;
+
+    return TraktUserSettings(
+      username: user?['username'] as String? ?? '',
+      name: user?['name'] as String?,
+      vip: user?['vip'] as bool?,
+      avatarUrl: avatar?['full'] as String?,
+    );
+  }
+
+  final String username;
+  final String? name;
+  final bool? vip;
+  final String? avatarUrl;
+}
+
+/// 观看历史项
+class TraktHistoryItem {
+  const TraktHistoryItem({
+    required this.id,
+    required this.watchedAt,
+    required this.action,
+    required this.type,
+    this.movie,
+    this.show,
+    this.episode,
+  });
+
+  factory TraktHistoryItem.fromJson(Map<String, dynamic> json) {
+    return TraktHistoryItem(
+      id: json['id'] as int,
+      watchedAt: DateTime.parse(json['watched_at'] as String),
+      action: json['action'] as String,
+      type: json['type'] as String,
+      movie: json['movie'] != null
+          ? TraktMovie.fromJson(json['movie'] as Map<String, dynamic>)
+          : null,
+      show: json['show'] != null
+          ? TraktShow.fromJson(json['show'] as Map<String, dynamic>)
+          : null,
+      episode: json['episode'] != null
+          ? TraktEpisode.fromJson(json['episode'] as Map<String, dynamic>)
+          : null,
+    );
+  }
+
+  final int id;
+  final DateTime watchedAt;
+  final String action;
+  final String type;
+  final TraktMovie? movie;
+  final TraktShow? show;
+  final TraktEpisode? episode;
+}
+
+/// 待看列表项
+class TraktWatchlistItem {
+  const TraktWatchlistItem({
+    required this.id,
+    required this.listedAt,
+    required this.type,
+    this.movie,
+    this.show,
+  });
+
+  factory TraktWatchlistItem.fromJson(Map<String, dynamic> json) {
+    return TraktWatchlistItem(
+      id: json['id'] as int,
+      listedAt: DateTime.parse(json['listed_at'] as String),
+      type: json['type'] as String,
+      movie: json['movie'] != null
+          ? TraktMovie.fromJson(json['movie'] as Map<String, dynamic>)
+          : null,
+      show: json['show'] != null
+          ? TraktShow.fromJson(json['show'] as Map<String, dynamic>)
+          : null,
+    );
+  }
+
+  final int id;
+  final DateTime listedAt;
+  final String type;
+  final TraktMovie? movie;
+  final TraktShow? show;
+}
+
+/// 收藏项
+class TraktCollectionItem {
+  const TraktCollectionItem({
+    required this.collectedAt,
+    this.movie,
+    this.show,
+  });
+
+  factory TraktCollectionItem.fromJson(Map<String, dynamic> json) {
+    return TraktCollectionItem(
+      collectedAt: DateTime.parse(json['collected_at'] as String),
+      movie: json['movie'] != null
+          ? TraktMovie.fromJson(json['movie'] as Map<String, dynamic>)
+          : null,
+      show: json['show'] != null
+          ? TraktShow.fromJson(json['show'] as Map<String, dynamic>)
+          : null,
+    );
+  }
+
+  final DateTime collectedAt;
+  final TraktMovie? movie;
+  final TraktShow? show;
+}
+
+/// 评分项
+class TraktRatingItem {
+  const TraktRatingItem({
+    required this.rating,
+    required this.ratedAt,
+    required this.type,
+    this.movie,
+    this.show,
+  });
+
+  factory TraktRatingItem.fromJson(Map<String, dynamic> json) {
+    return TraktRatingItem(
+      rating: json['rating'] as int,
+      ratedAt: DateTime.parse(json['rated_at'] as String),
+      type: json['type'] as String,
+      movie: json['movie'] != null
+          ? TraktMovie.fromJson(json['movie'] as Map<String, dynamic>)
+          : null,
+      show: json['show'] != null
+          ? TraktShow.fromJson(json['show'] as Map<String, dynamic>)
+          : null,
+    );
+  }
+
+  final int rating;
+  final DateTime ratedAt;
+  final String type;
+  final TraktMovie? movie;
+  final TraktShow? show;
+}
+
+/// 搜索结果
+class TraktSearchResult {
+  const TraktSearchResult({
+    required this.type,
+    required this.score,
+    this.movie,
+    this.show,
+  });
+
+  factory TraktSearchResult.fromJson(Map<String, dynamic> json) {
+    return TraktSearchResult(
+      type: json['type'] as String,
+      score: (json['score'] as num?)?.toDouble() ?? 0.0,
+      movie: json['movie'] != null
+          ? TraktMovie.fromJson(json['movie'] as Map<String, dynamic>)
+          : null,
+      show: json['show'] != null
+          ? TraktShow.fromJson(json['show'] as Map<String, dynamic>)
+          : null,
+    );
+  }
+
+  final String type;
+  final double score;
+  final TraktMovie? movie;
+  final TraktShow? show;
+}
+
+/// 电影
+class TraktMovie {
+  const TraktMovie({
+    required this.title,
+    required this.year,
+    required this.ids,
+  });
+
+  factory TraktMovie.fromJson(Map<String, dynamic> json) {
+    return TraktMovie(
+      title: json['title'] as String? ?? '',
+      year: json['year'] as int?,
+      ids: TraktIds.fromJson(json['ids'] as Map<String, dynamic>? ?? {}),
+    );
+  }
+
+  final String title;
+  final int? year;
+  final TraktIds ids;
+}
+
+/// 剧集
+class TraktShow {
+  const TraktShow({
+    required this.title,
+    required this.year,
+    required this.ids,
+  });
+
+  factory TraktShow.fromJson(Map<String, dynamic> json) {
+    return TraktShow(
+      title: json['title'] as String? ?? '',
+      year: json['year'] as int?,
+      ids: TraktIds.fromJson(json['ids'] as Map<String, dynamic>? ?? {}),
+    );
+  }
+
+  final String title;
+  final int? year;
+  final TraktIds ids;
+}
+
+/// 单集
+class TraktEpisode {
+  const TraktEpisode({
+    required this.season,
+    required this.number,
+    required this.title,
+    required this.ids,
+  });
+
+  factory TraktEpisode.fromJson(Map<String, dynamic> json) {
+    return TraktEpisode(
+      season: json['season'] as int? ?? 0,
+      number: json['number'] as int? ?? 0,
+      title: json['title'] as String? ?? '',
+      ids: TraktIds.fromJson(json['ids'] as Map<String, dynamic>? ?? {}),
+    );
+  }
+
+  final int season;
+  final int number;
+  final String title;
+  final TraktIds ids;
+}
+
+/// Trakt IDs
+class TraktIds {
+  const TraktIds({
+    this.trakt,
+    this.slug,
+    this.imdb,
+    this.tmdb,
+    this.tvdb,
+  });
+
+  factory TraktIds.fromJson(Map<String, dynamic> json) {
+    return TraktIds(
+      trakt: json['trakt'] as int?,
+      slug: json['slug'] as String?,
+      imdb: json['imdb'] as String?,
+      tmdb: json['tmdb'] as int?,
+      tvdb: json['tvdb'] as int?,
+    );
+  }
+
+  final int? trakt;
+  final String? slug;
+  final String? imdb;
+  final int? tmdb;
+  final int? tvdb;
+}
+
+/// 媒体项（用于同步操作）
+class TraktMediaItem {
+  const TraktMediaItem({
+    required this.type,
+    this.traktId,
+    this.imdbId,
+    this.tmdbId,
+    this.season,
+    this.episode,
+    this.watchedAt,
+  });
+
+  final String type; // 'movie', 'show', 'episode'
+  final int? traktId;
+  final String? imdbId;
+  final int? tmdbId;
+  final int? season;
+  final int? episode;
+  final DateTime? watchedAt;
+
+  Map<String, dynamic> toJson() {
+    final ids = <String, dynamic>{};
+    if (traktId != null) ids['trakt'] = traktId;
+    if (imdbId != null) ids['imdb'] = imdbId;
+    if (tmdbId != null) ids['tmdb'] = tmdbId;
+
+    final result = <String, dynamic>{
+      'ids': ids,
+    };
+
+    if (watchedAt != null) {
+      result['watched_at'] = watchedAt!.toUtc().toIso8601String();
+    }
+
+    return result;
+  }
+}
