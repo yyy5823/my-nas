@@ -81,8 +81,8 @@ enum SourceType {
         SourceType.local => true,
         // 下载工具
         SourceType.qbittorrent => true,
-        SourceType.transmission => false,
-        SourceType.aria2 => false,
+        SourceType.transmission => true,
+        SourceType.aria2 => true,
         // 媒体追踪
         SourceType.trakt => true,
         // 媒体管理

@@ -12,8 +12,7 @@ class SourceTypeSelectionPage extends ConsumerWidget {
   const SourceTypeSelectionPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Scaffold(
+  Widget build(BuildContext context, WidgetRef ref) => Scaffold(
       appBar: AppBar(
         title: const Text('添加连接源'),
         centerTitle: true,
@@ -62,7 +61,6 @@ class SourceTypeSelectionPage extends ConsumerWidget {
         ],
       ),
     );
-  }
 
   /// 构建分组标题
   Widget _buildSectionHeader(BuildContext context, String title) {

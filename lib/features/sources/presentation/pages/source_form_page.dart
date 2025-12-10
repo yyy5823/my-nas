@@ -259,8 +259,7 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
     }
   }
 
-  Widget _buildTextField(SourceFormField field, ThemeData theme) {
-    return TextFormField(
+  Widget _buildTextField(SourceFormField field, ThemeData theme) => TextFormField(
       controller: _controllers[field.key],
       decoration: InputDecoration(
         labelText: field.label,
@@ -281,10 +280,8 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
         });
       },
     );
-  }
 
-  Widget _buildPasswordField(SourceFormField field, ThemeData theme) {
-    return TextFormField(
+  Widget _buildPasswordField(SourceFormField field, ThemeData theme) => TextFormField(
       controller: _controllers[field.key],
       obscureText: _obscurePasswords,
       decoration: InputDecoration(
@@ -324,10 +321,8 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
         });
       },
     );
-  }
 
-  Widget _buildNumberField(SourceFormField field, ThemeData theme) {
-    return TextFormField(
+  Widget _buildNumberField(SourceFormField field, ThemeData theme) => TextFormField(
       controller: _controllers[field.key],
       keyboardType: TextInputType.number,
       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
@@ -356,7 +351,6 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
         });
       },
     );
-  }
 
   Widget _buildToggleField(SourceFormField field, ThemeData theme) {
     final value = _formValues[field.key] == 'true';
@@ -418,8 +412,7 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
     return iconData != null ? Icon(iconData) : null;
   }
 
-  Widget _buildSubmitButton(ThemeData theme) {
-    return SizedBox(
+  Widget _buildSubmitButton(ThemeData theme) => SizedBox(
       width: double.infinity,
       child: FilledButton(
         onPressed: _isSubmitting || _isTesting ? null : _submit,
@@ -437,7 +430,6 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
               ),
       ),
     );
-  }
 
   Future<void> _testConnection() async {
     if (!_formKey.currentState!.validate()) {
