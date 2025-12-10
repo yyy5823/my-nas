@@ -208,10 +208,26 @@ class MobiParserService {
       }
 
       // 读取记录偏移表
+      // Palm Database 格式：每条记录 8 字节（4字节偏移 + 4字节属性）
+      // 某些 MOBI 文件可能包含超出文件范围的偏移（如被截断或含 DRM）
       final recordOffsets = <int>[];
       for (var i = 0; i < numRecords; i++) {
-        final offset = _readUint32(bytes, 78 + i * 8);
-        recordOffsets.add(offset);
+        final tableOffset = 78 + i * 8;
+        // 确保记录表本身不超出文件范围
+        if (tableOffset + 4 > bytes.length) break;
+
+        final offset = _readUint32(bytes, tableOffset);
+        // 只添加有效的偏移（在文件范围内）
+        if (offset < bytes.length) {
+          recordOffsets.add(offset);
+        } else {
+          // 遇到无效偏移后停止读取，后续记录可能都无效
+          break;
+        }
+      }
+
+      if (recordOffsets.isEmpty) {
+        return MobiParseResult.failure('MOBI 文件记录偏移无效');
       }
 
       // 读取第一个记录（PalmDOC 头部）
@@ -621,18 +637,34 @@ class MobiParserService {
         return null;
       }
 
-      // 读取记录偏移量
+      // 读取记录偏移量（验证边界）
       final recordOffsets = <int>[];
       for (var i = 0; i < numRecords; i++) {
-        final offset = _readUint32(bytes, 78 + i * 8);
-        recordOffsets.add(offset);
+        final tableOffset = 78 + i * 8;
+        if (tableOffset + 4 > bytes.length) break;
+
+        final offset = _readUint32(bytes, tableOffset);
+        if (offset < bytes.length) {
+          recordOffsets.add(offset);
+        } else {
+          break;
+        }
+      }
+
+      if (recordOffsets.isEmpty) {
+        return null;
       }
 
       // 读取第一个记录（包含 MOBI 头部）
       final record0Start = recordOffsets[0];
       final record0End =
           recordOffsets.length > 1 ? recordOffsets[1] : bytes.length;
-      final record0 = bytes.sublist(record0Start, record0End);
+      // 确保 record0End 不超出文件边界
+      final safeRecord0End = record0End.clamp(record0Start, bytes.length);
+      if (safeRecord0End <= record0Start) {
+        return null;
+      }
+      final record0 = bytes.sublist(record0Start, safeRecord0End);
 
       // 检查是否有 MOBI 头部
       if (record0.length < 132) {
@@ -672,16 +704,25 @@ class MobiParserService {
         coverRecordIndex = firstImageIndex;
       }
 
-      if (coverRecordIndex >= numRecords) {
+      // 使用 recordOffsets.length 而非 numRecords（因为可能有无效记录被过滤）
+      if (coverRecordIndex >= recordOffsets.length) {
         return null;
       }
 
       // 读取封面记录
       final coverStart = recordOffsets[coverRecordIndex];
+      if (coverStart >= bytes.length) {
+        return null;
+      }
       final coverEnd = coverRecordIndex + 1 < recordOffsets.length
           ? recordOffsets[coverRecordIndex + 1]
           : bytes.length;
-      final coverData = bytes.sublist(coverStart, coverEnd);
+      // 确保 coverEnd 不超出文件边界
+      final safeCoverEnd = coverEnd.clamp(coverStart, bytes.length);
+      if (safeCoverEnd <= coverStart) {
+        return null;
+      }
+      final coverData = bytes.sublist(coverStart, safeCoverEnd);
 
       // 验证是否是有效的图片数据
       if (_isValidImageData(coverData)) {
