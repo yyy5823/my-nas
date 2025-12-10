@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/network/http_client.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/book/data/services/book_content_processor.dart';
 import 'package:my_nas/features/book/data/services/book_file_cache_service.dart';
 import 'package:my_nas/features/book/data/services/mobi_parser_service.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
@@ -260,6 +261,14 @@ class TxtReaderNotifier extends StateNotifier<TxtReaderState> {
     }
   }
 
+  /// 更新清理后的 HTML 内容
+  void updateCleanedHtml(String cleanedHtml) {
+    final current = state;
+    if (current is TxtReaderLoaded) {
+      state = current.copyWith(htmlContent: cleanedHtml);
+    }
+  }
+
   Future<void> saveProgress(double position, double maxPosition) async {
     final current = state;
     if (current is TxtReaderLoaded) {
@@ -286,13 +295,6 @@ class BookReaderPage extends ConsumerStatefulWidget {
   ConsumerState<BookReaderPage> createState() => _BookReaderPageState();
 }
 
-/// 从 HTML 中提取的章节信息
-class BookChapter {
-  BookChapter({required this.title, required this.offset});
-  final String title;
-  final double offset; // 滚动位置
-}
-
 class _BookReaderPageState extends ConsumerState<BookReaderPage> {
   bool _showControls = false;
   bool _showToc = false;
@@ -303,8 +305,10 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
   // 分页相关
   PageController? _pageController;
   List<String> _pages = []; // 分页后的内容
+  Map<int, int> _chapterPageMap = {}; // 章节索引 -> 页码映射
   int _currentPage = 0;
   bool _isPaginationReady = false;
+  bool _isProcessing = false; // 内容处理中
 
   @override
   void initState() {
@@ -366,6 +370,42 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     }
   }
 
+  /// 异步处理内容（提取章节、移除目录）
+  Future<void> _processContentAsync(String htmlContent) async {
+    if (_isProcessing) return;
+
+    setState(() {
+      _isProcessing = true;
+    });
+
+    try {
+      // 在 Isolate 中处理内容
+      final result = await BookContentProcessor.processContent(htmlContent);
+
+      if (!mounted) return;
+
+      // 更新清理后的 HTML 内容
+      ref
+          .read(txtReaderProvider(widget.book).notifier)
+          .updateCleanedHtml(result.cleanedHtml);
+
+      setState(() {
+        _chapters = result.chapters;
+        _isProcessing = false;
+      });
+
+      logger.i(
+        '内容处理完成: ${result.chapters.length} 个章节, '
+        '${result.removedTocSection ? "已移除目录页" : "无目录页"}',
+      );
+    } catch (e) {
+      logger.e('内容处理失败', e);
+      setState(() {
+        _isProcessing = false;
+      });
+    }
+  }
+
   @override
   void dispose() {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -386,44 +426,12 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     });
   }
 
-  /// 从 HTML 内容中提取章节标题
-  void _extractChapters(String htmlContent) {
-    final chapters = <BookChapter>[];
-
-    // 匹配 h1-h6 标题标签
-    final regex = RegExp(
-      r'<h([1-6])[^>]*>(.*?)</h\1>',
-      caseSensitive: false,
-      dotAll: true,
-    );
-
-    final matches = regex.allMatches(htmlContent);
-    var estimatedOffset = 0.0;
-
-    for (final match in matches) {
-      // 清理标题中的 HTML 标签
-      final title = match.group(2)
-          ?.replaceAll(RegExp('<[^>]*>'), '')
-          .trim() ?? '';
-
-      if (title.isNotEmpty && title.length < 100) {
-        // 估算位置（基于前面内容的长度）
-        final beforeContent = htmlContent.substring(0, match.start);
-        estimatedOffset = beforeContent.length.toDouble();
-
-        chapters.add(BookChapter(title: title, offset: estimatedOffset));
-      }
-    }
-
-    if (chapters.isNotEmpty && mounted) {
-      setState(() {
-        _chapters = chapters;
-      });
-    }
-  }
 
   /// 跳转到章节
-  void _jumpToChapter(BookChapter chapter) {
+  void _jumpToChapter(int chapterIndex) {
+    if (chapterIndex < 0 || chapterIndex >= _chapters.length) return;
+
+    final chapter = _chapters[chapterIndex];
     final state = ref.read(txtReaderProvider(widget.book));
     final settings = ref.read(bookReaderSettingsProvider);
 
@@ -433,14 +441,11 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
         settings.pageTurnMode != BookPageTurnMode.scroll;
 
     if (usePageMode && _isPaginationReady && _pages.isNotEmpty) {
-      // 分页模式：根据章节位置跳转到对应页
-      final loadedState = state as TxtReaderLoaded;
-      final totalLength = loadedState.htmlContent!.length.toDouble();
-      final chapterProgress = chapter.offset / totalLength;
-      final targetPage = (chapterProgress * _pages.length).floor().clamp(0, _pages.length - 1);
+      // 分页模式：使用章节页码映射
+      final targetPage = _chapterPageMap[chapterIndex] ?? 0;
 
       _pageController?.animateToPage(
-        targetPage,
+        targetPage.clamp(0, _pages.length - 1),
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOut,
       );
@@ -456,7 +461,8 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
       final maxScroll = _scrollController.position.maxScrollExtent;
       if (state is TxtReaderLoaded && state.hasHtml) {
         final totalLength = state.htmlContent!.length.toDouble();
-        final targetPosition = (chapter.offset / totalLength * maxScroll).clamp(0.0, maxScroll);
+        final targetPosition =
+            (chapter.offset / totalLength * maxScroll).clamp(0.0, maxScroll);
 
         _scrollController.animateTo(
           targetPosition,
@@ -512,13 +518,20 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
   ) {
     final theme = settings.theme;
 
+    // 首次加载时处理内容（提取章节、移除目录）
+    if (state.hasHtml && _chapters.isEmpty && !_isProcessing) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _processContentAsync(state.htmlContent!);
+      });
+    }
+
     // 对于 MOBI/AZW3 等长文档，使用分页模式以提高性能
     final usePageMode = state.hasHtml && settings.pageTurnMode != BookPageTurnMode.scroll;
 
     // 初始化分页（如果需要且尚未完成）
-    if (usePageMode && !_isPaginationReady && state.hasHtml) {
+    if (usePageMode && !_isPaginationReady && state.hasHtml && _chapters.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _paginateContent(state.htmlContent!, settings);
+        _paginateContentAsync(state.htmlContent!, settings);
       });
     }
 
@@ -653,97 +666,46 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
   /// 构建单页内容
   Widget _buildPageContent(String pageHtml, BookReaderSettings settings) {
     final theme = settings.theme;
-
-    // 清理 HTML 中的无效 CSS 颜色值
-    final cleanedHtml = _cleanInvalidCssColors(pageHtml);
-
     return Html(
-      data: cleanedHtml,
+      data: pageHtml,
       style: _buildHtmlStyles(settings, theme),
     );
   }
 
-  /// 将 HTML 内容分割成多个页面
-  void _paginateContent(String htmlContent, BookReaderSettings settings) {
+  /// 异步分页（在 Isolate 中处理）
+  Future<void> _paginateContentAsync(
+    String htmlContent,
+    BookReaderSettings settings,
+  ) async {
     if (_isPaginationReady) return;
 
-    // 首先提取章节
-    if (_chapters.isEmpty) {
-      _extractChapters(htmlContent);
+    try {
+      // 在 Isolate 中执行分页
+      final result = await BookContentProcessor.paginateContent(
+        htmlContent: htmlContent,
+        chapters: _chapters,
+        charsPerPage: 1500,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _pages = result.pages;
+        _chapterPageMap = result.chapterPageMap;
+        _isPaginationReady = true;
+        // 恢复之前的页码进度
+        _restorePageProgress();
+      });
+
+      logger.i('内容分页完成: ${result.pages.length} 页');
+    } catch (e) {
+      logger.e('分页失败', e);
+      // 失败时使用整个内容作为单页
+      setState(() {
+        _pages = [htmlContent];
+        _isPaginationReady = true;
+      });
     }
-
-    // 按段落分割内容
-    final paragraphs = _splitHtmlIntoParagraphs(htmlContent);
-
-    // 估算每页可容纳的内容量（基于字符数）
-    // 这是一个估算值，实际渲染时可能略有差异
-    const charsPerPage = 1500; // 每页约 1500 字符
-
-    final pages = <String>[];
-    var currentPageContent = StringBuffer();
-    var currentCharCount = 0;
-
-    for (final paragraph in paragraphs) {
-      final paragraphLength = paragraph.length;
-
-      // 如果当前页已经有足够内容，开始新页
-      if (currentCharCount > 0 && currentCharCount + paragraphLength > charsPerPage) {
-        pages.add(currentPageContent.toString());
-        currentPageContent = StringBuffer();
-        currentCharCount = 0;
-      }
-
-      currentPageContent.write(paragraph);
-      currentCharCount += paragraphLength;
-    }
-
-    // 添加最后一页
-    if (currentCharCount > 0) {
-      pages.add(currentPageContent.toString());
-    }
-
-    // 确保至少有一页
-    if (pages.isEmpty && htmlContent.isNotEmpty) {
-      pages.add(htmlContent);
-    }
-
-    setState(() {
-      _pages = pages;
-      _isPaginationReady = true;
-      // 恢复之前的页码进度
-      _restorePageProgress();
-    });
-
-    logger.i('内容分页完成: ${pages.length} 页');
-  }
-
-  /// 将 HTML 分割成段落
-  List<String> _splitHtmlIntoParagraphs(String html) {
-    final paragraphs = <String>[];
-
-    // 按常见的块级元素分割
-    final blockTags = RegExp(
-      '(<(?:p|div|h[1-6]|blockquote|li|tr)[^>]*>.*?</(?:p|div|h[1-6]|blockquote|li|tr)>)',
-      caseSensitive: false,
-      dotAll: true,
-    );
-
-    final matches = blockTags.allMatches(html);
-    if (matches.isEmpty) {
-      // 没有块级元素，按换行分割
-      final lines = html.split(RegExp(r'<br\s*/?>\s*'));
-      for (final line in lines) {
-        if (line.trim().isNotEmpty) {
-          paragraphs.add('<p>$line</p>');
-        }
-      }
-    } else {
-      for (final match in matches) {
-        paragraphs.add(match.group(0)!);
-      }
-    }
-
-    return paragraphs;
   }
 
   /// 保存分页进度
@@ -920,7 +882,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
                                   color: isDark ? Colors.white : Colors.black87,
                                 ),
                               ),
-                              onTap: () => _jumpToChapter(chapter),
+                              onTap: () => _jumpToChapter(index),
                             );
                           },
                         ),
@@ -936,12 +898,6 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
   Widget _buildContent(TxtReaderLoaded state, BookReaderSettings settings) {
     // 如果有 HTML 内容，使用 flutter_html 渲染
     if (state.hasHtml) {
-      // 首次加载时提取章节（异步执行，不阻塞渲染）
-      if (_chapters.isEmpty) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _extractChapters(state.htmlContent!);
-        });
-      }
       return _buildHtmlContent(state.htmlContent!, settings);
     }
 
@@ -952,9 +908,6 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
   /// 使用 flutter_html 渲染 HTML 内容
   Widget _buildHtmlContent(String htmlContent, BookReaderSettings settings) {
     final theme = settings.theme;
-
-    // 清理 HTML 中的无效 CSS 颜色值
-    final cleanedHtml = _cleanInvalidCssColors(htmlContent);
 
     // 构建 HTML 样式
     final style = {
@@ -1042,7 +995,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     };
 
     return Html(
-      data: cleanedHtml,
+      data: htmlContent,
       style: style,
       onLinkTap: (url, attributes, element) {
         if (url != null) {
@@ -1137,246 +1090,6 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     ),
   };
 
-  /// 修复 HTML 中的无效 CSS 颜色值
-  /// flutter_html 无法解析某些格式不正确的颜色值（如 0x0000c 应该是 #0000cc）
-  String _cleanInvalidCssColors(String html) {
-    var cleaned = html;
-
-    // 修复 style 属性中的颜色值
-    cleaned = cleaned.replaceAllMapped(
-      RegExp(r'style\s*=\s*"([^"]*)"', caseSensitive: false),
-      (match) {
-        final styleContent = match.group(1) ?? '';
-        final fixedStyle = _fixColorValuesInStyle(styleContent);
-        if (fixedStyle.isEmpty) {
-          return '';
-        }
-        return 'style="$fixedStyle"';
-      },
-    );
-
-    // 同样处理单引号的 style 属性
-    cleaned = cleaned.replaceAllMapped(
-      RegExp(r"style\s*=\s*'([^']*)'", caseSensitive: false),
-      (match) {
-        final styleContent = match.group(1) ?? '';
-        final fixedStyle = _fixColorValuesInStyle(styleContent);
-        if (fixedStyle.isEmpty) {
-          return '';
-        }
-        return "style='$fixedStyle'";
-      },
-    );
-
-    // 修复 <font color="..."> 标签的 color 属性
-    cleaned = cleaned.replaceAllMapped(
-      RegExp(r'color\s*=\s*"([^"]*)"', caseSensitive: false),
-      (match) {
-        final colorValue = match.group(1) ?? '';
-        final fixedColor = _fixColorValue(colorValue);
-        if (fixedColor == null) {
-          return '';
-        }
-        return 'color="$fixedColor"';
-      },
-    );
-
-    cleaned = cleaned.replaceAllMapped(
-      RegExp(r"color\s*=\s*'([^']*)'", caseSensitive: false),
-      (match) {
-        final colorValue = match.group(1) ?? '';
-        final fixedColor = _fixColorValue(colorValue);
-        if (fixedColor == null) {
-          return '';
-        }
-        return "color='$fixedColor'";
-      },
-    );
-
-    // 修复 bgcolor 属性
-    cleaned = cleaned.replaceAllMapped(
-      RegExp(r'bgcolor\s*=\s*"([^"]*)"', caseSensitive: false),
-      (match) {
-        final colorValue = match.group(1) ?? '';
-        final fixedColor = _fixColorValue(colorValue);
-        if (fixedColor == null) {
-          return '';
-        }
-        return 'bgcolor="$fixedColor"';
-      },
-    );
-
-    cleaned = cleaned.replaceAllMapped(
-      RegExp(r"bgcolor\s*=\s*'([^']*)'", caseSensitive: false),
-      (match) {
-        final colorValue = match.group(1) ?? '';
-        final fixedColor = _fixColorValue(colorValue);
-        if (fixedColor == null) {
-          return '';
-        }
-        return "bgcolor='$fixedColor'";
-      },
-    );
-
-    return cleaned;
-  }
-
-  /// 修复 style 属性中的颜色值
-  String _fixColorValuesInStyle(String style) =>
-      // 匹配 color: xxx 或 background-color: xxx 或 background: xxx
-      style.replaceAllMapped(
-        RegExp(
-          r'((?:background-)?color)\s*:\s*([^;]+)',
-          caseSensitive: false,
-        ),
-        (match) {
-          final property = match.group(1) ?? 'color';
-          final colorValue = match.group(2)?.trim() ?? '';
-          final fixedColor = _fixColorValue(colorValue);
-          if (fixedColor == null) {
-            return ''; // 移除无法修复的颜色
-          }
-          return '$property: $fixedColor';
-        },
-      );
-
-  /// 修复单个颜色值，返回 null 表示无法修复
-  String? _fixColorValue(String value) {
-    final trimmed = value.trim().toLowerCase();
-    if (trimmed.isEmpty) return null;
-
-    // 已经是有效的颜色名称
-    if (_isValidColorName(trimmed)) {
-      return trimmed;
-    }
-
-    // 已经是有效的 # 格式
-    if (trimmed.startsWith('#')) {
-      final hex = trimmed.substring(1);
-      if (_isValidHexColor(hex)) {
-        return trimmed;
-      }
-      // 尝试修复不完整的 hex
-      final fixed = _fixHexColor(hex);
-      return fixed != null ? '#$fixed' : null;
-    }
-
-    // 0x 格式转换为 # 格式
-    if (trimmed.startsWith('0x')) {
-      final hex = trimmed.substring(2);
-      final fixed = _fixHexColor(hex);
-      return fixed != null ? '#$fixed' : null;
-    }
-
-    // rgb/rgba 格式
-    if (trimmed.startsWith('rgb')) {
-      return value; // 假设 rgb/rgba 格式是有效的
-    }
-
-    // 其他格式尝试当作 hex 处理
-    if (RegExp(r'^[0-9a-f]+$').hasMatch(trimmed)) {
-      final fixed = _fixHexColor(trimmed);
-      return fixed != null ? '#$fixed' : null;
-    }
-
-    return null;
-  }
-
-  /// 修复不完整的 hex 颜色值
-  String? _fixHexColor(String hex) {
-    // 移除可能的前缀
-    var cleaned = hex.replaceAll(RegExp('^[0x#]+'), '');
-
-    // 只保留有效的 hex 字符
-    cleaned = cleaned.replaceAll(RegExp('[^0-9a-fA-F]'), '');
-
-    if (cleaned.isEmpty) return null;
-
-    // 3位 -> 有效
-    if (cleaned.length == 3) {
-      return cleaned;
-    }
-
-    // 4位 -> 补齐到6位（可能是 RGBA 的缩写，取前3位扩展）
-    if (cleaned.length == 4) {
-      return '${cleaned[0]}${cleaned[0]}${cleaned[1]}${cleaned[1]}${cleaned[2]}${cleaned[2]}';
-    }
-
-    // 5位 -> 补齐到6位
-    if (cleaned.length == 5) {
-      return '${cleaned}0';
-    }
-
-    // 6位 -> 有效
-    if (cleaned.length == 6) {
-      return cleaned;
-    }
-
-    // 7位 -> 补齐到8位
-    if (cleaned.length == 7) {
-      return '${cleaned}0';
-    }
-
-    // 8位 -> 有效 (RRGGBBAA)
-    if (cleaned.length == 8) {
-      return cleaned;
-    }
-
-    // 超过8位，截取前6位
-    if (cleaned.length > 8) {
-      return cleaned.substring(0, 6);
-    }
-
-    // 少于3位，无法修复
-    return null;
-  }
-
-  /// 检查是否是有效的 hex 颜色
-  bool _isValidHexColor(String hex) {
-    final length = hex.length;
-    if (length != 3 && length != 4 && length != 6 && length != 8) {
-      return false;
-    }
-    return RegExp(r'^[0-9a-fA-F]+$').hasMatch(hex);
-  }
-
-  /// 检查是否是有效的颜色名称
-  bool _isValidColorName(String name) {
-    const validColors = {
-      'transparent', 'currentcolor', 'inherit',
-      // 基本颜色
-      'black', 'white', 'red', 'green', 'blue', 'yellow', 'cyan', 'magenta',
-      'gray', 'grey', 'silver', 'maroon', 'olive', 'lime', 'aqua', 'teal',
-      'navy', 'fuchsia', 'purple', 'orange', 'pink', 'brown', 'gold',
-      // 扩展颜色
-      'aliceblue', 'antiquewhite', 'aquamarine', 'azure', 'beige', 'bisque',
-      'blanchedalmond', 'blueviolet', 'burlywood', 'cadetblue', 'chartreuse',
-      'chocolate', 'coral', 'cornflowerblue', 'cornsilk', 'crimson',
-      'darkblue', 'darkcyan', 'darkgoldenrod', 'darkgray', 'darkgreen',
-      'darkgrey', 'darkkhaki', 'darkmagenta', 'darkolivegreen', 'darkorange',
-      'darkorchid', 'darkred', 'darksalmon', 'darkseagreen', 'darkslateblue',
-      'darkslategray', 'darkslategrey', 'darkturquoise', 'darkviolet',
-      'deeppink', 'deepskyblue', 'dimgray', 'dimgrey', 'dodgerblue',
-      'firebrick', 'floralwhite', 'forestgreen', 'gainsboro', 'ghostwhite',
-      'goldenrod', 'greenyellow', 'honeydew', 'hotpink', 'indianred',
-      'indigo', 'ivory', 'khaki', 'lavender', 'lavenderblush', 'lawngreen',
-      'lemonchiffon', 'lightblue', 'lightcoral', 'lightcyan',
-      'lightgoldenrodyellow', 'lightgray', 'lightgreen', 'lightgrey',
-      'lightpink', 'lightsalmon', 'lightseagreen', 'lightskyblue',
-      'lightslategray', 'lightslategrey', 'lightsteelblue', 'lightyellow',
-      'limegreen', 'linen', 'mediumaquamarine', 'mediumblue', 'mediumorchid',
-      'mediumpurple', 'mediumseagreen', 'mediumslateblue', 'mediumspringgreen',
-      'mediumturquoise', 'mediumvioletred', 'midnightblue', 'mintcream',
-      'mistyrose', 'moccasin', 'navajowhite', 'oldlace', 'olivedrab',
-      'orangered', 'orchid', 'palegoldenrod', 'palegreen', 'paleturquoise',
-      'palevioletred', 'papayawhip', 'peachpuff', 'peru', 'plum', 'powderblue',
-      'rosybrown', 'royalblue', 'saddlebrown', 'salmon', 'sandybrown',
-      'seagreen', 'seashell', 'sienna', 'skyblue', 'slateblue', 'slategray',
-      'slategrey', 'snow', 'springgreen', 'steelblue', 'tan', 'thistle',
-      'tomato', 'turquoise', 'violet', 'wheat', 'whitesmoke', 'yellowgreen',
-    };
-    return validColors.contains(name.toLowerCase());
-  }
 
   /// 使用纯文本渲染
   Widget _buildTextContent(String content, BookReaderSettings settings) {
