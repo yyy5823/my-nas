@@ -101,26 +101,17 @@ class _QBittorrentDetailPageState extends ConsumerState<QBittorrentDetailPage> {
                     onPressed: () => Navigator.pop(context),
                   ),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.source.displayName,
-                          style: context.textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: isDark ? AppColors.darkOnSurface : null,
-                          ),
+                    child: GestureDetector(
+                      onTap: connection?.status == QBConnectionStatus.connected
+                          ? () => _showVersionInfoDialog(context, connection!)
+                          : null,
+                      child: Text(
+                        widget.source.displayName,
+                        style: context.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? AppColors.darkOnSurface : null,
                         ),
-                        if (connection?.adapter.info.version != null)
-                          Text(
-                            'qBittorrent ${connection!.adapter.info.version}',
-                            style: context.textTheme.bodySmall?.copyWith(
-                              color: isDark
-                                  ? AppColors.darkOnSurfaceVariant
-                                  : AppColors.lightOnSurfaceVariant,
-                            ),
-                          ),
-                      ],
+                      ),
                     ),
                   ),
                   // 备用速度限制按钮（带文字切换）
@@ -302,8 +293,10 @@ class _QBittorrentDetailPageState extends ConsumerState<QBittorrentDetailPage> {
   }
 
   void _showAddTorrentDialog(BuildContext context) {
-    showDialog<void>(
+    showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (context) => _AddTorrentDialog(sourceId: widget.source.id),
     );
   }
@@ -328,6 +321,61 @@ class _QBittorrentDetailPageState extends ConsumerState<QBittorrentDetailPage> {
       context: context,
       isScrollControlled: true,
       builder: (context) => _SortOptionsSheet(sourceId: widget.source.id),
+    );
+  }
+
+  void _showVersionInfoDialog(BuildContext context, QBittorrentConnection connection) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final info = connection.adapter.info;
+
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: isDark ? AppColors.darkSurface : null,
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.info_outline, color: AppColors.primary),
+            ),
+            const SizedBox(width: 12),
+            const Text('版本信息'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _InfoRow(
+              label: '服务名称',
+              value: widget.source.displayName,
+              isDark: isDark,
+            ),
+            const SizedBox(height: 12),
+            _InfoRow(
+              label: '版本',
+              value: info.version ?? '未知',
+              isDark: isDark,
+            ),
+            const SizedBox(height: 12),
+            _InfoRow(
+              label: '服务器地址',
+              value: '${widget.source.host}:${widget.source.port}',
+              isDark: isDark,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -400,6 +448,48 @@ class _SpeedCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 信息行组件（用于版本信息弹框）
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({
+    required this.label,
+    required this.value,
+    required this.isDark,
+  });
+
+  final String label;
+  final String value;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 100,
+          child: Text(
+            label,
+            style: TextStyle(
+              color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+              fontSize: 14,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: TextStyle(
+              color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1296,7 +1386,7 @@ class _DetailItem extends StatelessWidget {
   }
 }
 
-/// 备用速度限制按钮（带文字切换）
+/// 备用速度限制按钮（只显示图标，切换时改变图标样式）
 class _AltSpeedButton extends StatelessWidget {
   const _AltSpeedButton({
     required this.isEnabled,
@@ -1310,45 +1400,26 @@ class _AltSpeedButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          decoration: BoxDecoration(
-            color: isEnabled
-                ? AppColors.warning.withValues(alpha: 0.15)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-            border: isEnabled
-                ? Border.all(color: AppColors.warning.withValues(alpha: 0.3))
-                : null,
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                isEnabled ? Icons.speed : Icons.speed_outlined,
-                size: 18,
-                color: isEnabled
-                    ? AppColors.warning
-                    : (isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface),
-              ),
-              const SizedBox(width: 4),
-              Text(
-                isEnabled ? '恢复全局' : '备用限速',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: isEnabled
-                      ? AppColors.warning
-                      : (isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface),
-                ),
-              ),
-            ],
-          ),
+    return IconButton(
+      onPressed: onPressed,
+      tooltip: isEnabled ? '恢复全局速度' : '启用备用限速',
+      icon: Container(
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: isEnabled
+              ? AppColors.warning.withValues(alpha: 0.15)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          border: isEnabled
+              ? Border.all(color: AppColors.warning.withValues(alpha: 0.4))
+              : null,
+        ),
+        child: Icon(
+          isEnabled ? Icons.rocket_launch : Icons.speed_outlined,
+          size: 20,
+          color: isEnabled
+              ? AppColors.warning
+              : (isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface),
         ),
       ),
     );
@@ -1821,7 +1892,7 @@ class _SpeedLimitDialogState extends ConsumerState<_SpeedLimitDialog> {
   }
 }
 
-/// 添加 Torrent 底部弹框
+/// 添加 Torrent 底部弹框（可拖动）
 class _AddTorrentDialog extends ConsumerStatefulWidget {
   const _AddTorrentDialog({required this.sourceId});
 
@@ -1850,20 +1921,19 @@ class _AddTorrentDialogState extends ConsumerState<_AddTorrentDialog> {
     final categoriesAsync = ref.watch(qbCategoriesProvider(widget.sourceId));
     final categories = categoriesAsync.valueOrNull?.keys.toList() ?? [];
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bottomPadding = MediaQuery.of(context).viewInsets.bottom;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : Colors.white,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: Padding(
-        padding: EdgeInsets.only(bottom: bottomPadding),
+    return DraggableScrollableSheet(
+      initialChildSize: 0.7,
+      minChildSize: 0.3,
+      maxChildSize: 0.95,
+      builder: (context, scrollController) => Container(
+        decoration: BoxDecoration(
+          color: isDark ? AppColors.darkSurface : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
         child: Form(
           key: _formKey,
           child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // 拖动指示器
               Center(
@@ -1877,7 +1947,7 @@ class _AddTorrentDialogState extends ConsumerState<_AddTorrentDialog> {
                   ),
                 ),
               ),
-              // 标题
+              // 标题（固定）
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
                 child: Row(
@@ -1917,24 +1987,15 @@ class _AddTorrentDialogState extends ConsumerState<_AddTorrentDialog> {
                         ],
                       ),
                     ),
-                    IconButton(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.close),
-                      style: IconButton.styleFrom(
-                        backgroundColor: isDark
-                            ? AppColors.darkSurfaceVariant
-                            : AppColors.lightSurfaceVariant,
-                      ),
-                    ),
                   ],
                 ),
               ),
               const Divider(height: 1),
-              // 内容区域
-              Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              // 内容区域（可滚动）
+              Expanded(
+                child: ListView(
+                  controller: scrollController,
+                  padding: const EdgeInsets.all(20),
                   children: [
                     // 链接输入框
                     Text(
@@ -2040,30 +2101,25 @@ class _AddTorrentDialogState extends ConsumerState<_AddTorrentDialog> {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      SizedBox(
-                        height: 36,
-                        child: ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: categories.length + 1,
-                          separatorBuilder: (_, __) => const SizedBox(width: 8),
-                          itemBuilder: (context, index) {
-                            if (index == 0) {
-                              return _buildCategoryChip(
-                                context,
-                                label: '无',
-                                isSelected: _selectedCategory == null,
-                                onTap: () => setState(() => _selectedCategory = null),
-                              );
-                            }
-                            final category = categories[index - 1];
-                            return _buildCategoryChip(
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _buildCategoryChip(
+                            context,
+                            label: '无',
+                            isSelected: _selectedCategory == null,
+                            onTap: () => setState(() => _selectedCategory = null),
+                          ),
+                          ...categories.map(
+                            (category) => _buildCategoryChip(
                               context,
                               label: category.isEmpty ? '(未分类)' : category,
                               isSelected: _selectedCategory == category,
                               onTap: () => setState(() => _selectedCategory = category),
-                            );
-                          },
-                        ),
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 16),
                     ],
@@ -2128,16 +2184,28 @@ class _AddTorrentDialogState extends ConsumerState<_AddTorrentDialog> {
                         ),
                       ),
                     ),
+                    // 底部空白，为按钮留出空间
+                    const SizedBox(height: 80),
                   ],
                 ),
               ),
-              // 底部按钮
-              Padding(
+              // 底部按钮（固定）
+              Container(
                 padding: EdgeInsets.fromLTRB(
                   20,
-                  0,
+                  12,
                   20,
-                  20 + MediaQuery.of(context).padding.bottom,
+                  12 + MediaQuery.of(context).padding.bottom,
+                ),
+                decoration: BoxDecoration(
+                  color: isDark ? AppColors.darkSurface : Colors.white,
+                  border: Border(
+                    top: BorderSide(
+                      color: isDark
+                          ? AppColors.darkOutline.withValues(alpha: 0.2)
+                          : AppColors.lightOutline.withValues(alpha: 0.2),
+                    ),
+                  ),
                 ),
                 child: FilledButton(
                   onPressed: _isLoading ? null : _submit,
