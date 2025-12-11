@@ -217,6 +217,11 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       _init();
     });
 
+    // 监听扫描进度变化，实现扫描过程中的实时更新
+    _scanProgressSubscription = VideoScannerService().progressStream.listen(
+      _onScanProgressChanged,
+    );
+
     // 监听刮削统计变化，实现渐进式更新
     _scrapeStatsSubscription = VideoScannerService().scrapeStatsStream.listen(
       _onScrapeStatsChanged,
@@ -235,9 +240,11 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
   final VideoLibraryCacheService _cacheService = VideoLibraryCacheService();
   final VideoDatabaseService _db = VideoDatabaseService();
 
+  StreamSubscription<VideoScanProgress>? _scanProgressSubscription;
   StreamSubscription<ScrapeStats>? _scrapeStatsSubscription;
   ProviderSubscription<Map<String, SourceConnection>>? _connectionsSubscription;
   int _lastCompletedCount = 0;
+  int _lastTotalCount = 0; // 跟踪总数变化，用于扫描完成时刷新
   bool _hasCheckedResume = false;
   Timer? _debounceTimer;
 
@@ -259,10 +266,35 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
 
   @override
   void dispose() {
+    _scanProgressSubscription?.cancel();
     _scrapeStatsSubscription?.cancel();
     _connectionsSubscription?.close();
     _debounceTimer?.cancel();
     super.dispose();
+  }
+
+  /// 扫描进度变化时的处理
+  ///
+  /// 当扫描完成（savingToDb 或 completed 阶段）时刷新数据，
+  /// 确保用户在扫描完成后立即看到视频列表
+  void _onScanProgressChanged(VideoScanProgress progress) {
+    switch (progress.phase) {
+      case VideoScanPhase.completed:
+        // 扫描完成，立即刷新数据
+        logger.d('VideoListNotifier: 扫描完成，刷新视频列表');
+        _debounceTimer?.cancel();
+        _loadCategorizedData(silent: true);
+      case VideoScanPhase.savingToDb:
+        // 正在保存到数据库，使用防抖刷新以显示部分数据
+        if (progress.scannedCount > 0 && progress.scannedCount % 50 == 0) {
+          _scheduleRefresh();
+        }
+      case VideoScanPhase.scanning:
+      case VideoScanPhase.scraping:
+      case VideoScanPhase.error:
+        // 其他阶段不需要特殊处理
+        break;
+    }
   }
 
   /// 连接状态变化时检查是否需要恢复刮削
@@ -288,11 +320,22 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
   /// - 在防抖间隔内如果有新的完成，重置计时器
   /// - 防抖时间到期后执行一次刷新
   /// - 刮削全部完成时立即刷新
+  /// - 当总数变化时也触发刷新（说明扫描完成有新视频加入）
   void _onScrapeStatsChanged(ScrapeStats stats) {
     // 当刮削全部完成时，立即刷新（取消防抖等待）
     if (stats.isAllDone && _lastCompletedCount > 0) {
       _debounceTimer?.cancel();
       _lastCompletedCount = 0;
+      _lastTotalCount = stats.total;
+      _loadCategorizedData(silent: true);
+      return;
+    }
+
+    // 当总数变化时（新扫描完成），立即刷新
+    if (stats.total != _lastTotalCount) {
+      logger.d('VideoListNotifier: 视频总数变化 $_lastTotalCount -> ${stats.total}，刷新列表');
+      _lastTotalCount = stats.total;
+      _debounceTimer?.cancel();
       _loadCategorizedData(silent: true);
       return;
     }

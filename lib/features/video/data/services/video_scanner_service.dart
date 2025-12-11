@@ -330,6 +330,17 @@ class VideoScannerService {
         );
       }
 
+      // 扫描完成后立即广播刮削统计，确保影视页面能及时刷新
+      // 这一步非常关键：VideoListNotifier 监听 scrapeStatsStream
+      // 当 total 变化时会触发页面刷新
+      try {
+        final stats = await _dbService.getScrapeStats();
+        _scrapeStatsController.add(stats);
+        logger.i('VideoScannerService: 扫描完成，广播统计 - total: ${stats.total}, pending: ${stats.pending}');
+      } on Exception catch (e) {
+        logger.w('VideoScannerService: 广播扫描完成统计失败', e);
+      }
+
       // 更新后台服务为完成状态
       await _backgroundTaskService.updateProgress(
         BackgroundTaskProgress(
