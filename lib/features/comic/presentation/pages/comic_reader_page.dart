@@ -313,6 +313,150 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
     super.dispose();
   }
 
+  /// 显示页面列表抽屉
+  void _showPageListDrawer(BuildContext context, ComicReaderState state) {
+    final settings = ref.read(comicReaderSettingsProvider);
+    final isDarkBg = settings.backgroundColor == ComicBackgroundColor.black ||
+        settings.backgroundColor == ComicBackgroundColor.darkGray ||
+        settings.backgroundColor == ComicBackgroundColor.gray;
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: isDarkBg ? const Color(0xFF1A1A1A) : Colors.white,
+      isScrollControlled: true,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.3,
+        maxChildSize: 0.9,
+        expand: false,
+        builder: (context, scrollController) => Column(
+          children: [
+            // 拖拽指示器
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 8),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: isDarkBg ? Colors.grey.shade600 : Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            // 标题
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  Text(
+                    '页面列表',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: isDarkBg ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    '${state.currentPage + 1}/${state.pages.length}',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: isDarkBg ? Colors.grey.shade400 : Colors.grey.shade600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            // 页面网格
+            Expanded(
+              child: GridView.builder(
+                controller: scrollController,
+                padding: const EdgeInsets.all(8),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 4,
+                  childAspectRatio: 0.7,
+                  crossAxisSpacing: 8,
+                  mainAxisSpacing: 8,
+                ),
+                itemCount: state.pages.length,
+                itemBuilder: (context, index) {
+                  final isCurrentPage = index == state.currentPage;
+                  return GestureDetector(
+                    onTap: () {
+                      Navigator.pop(context);
+                      ref.read(_provider.notifier).goToPage(index);
+                      _pageController?.jumpToPage(
+                        settings.readingMode == ComicReadingMode.doublePage
+                            ? index ~/ 2
+                            : index,
+                      );
+                    },
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: isCurrentPage
+                              ? AppColors.primary
+                              : (isDarkBg ? Colors.grey.shade700 : Colors.grey.shade300),
+                          width: isCurrentPage ? 2 : 1,
+                        ),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Stack(
+                        children: [
+                          // 页面缩略图占位符
+                          Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.image_outlined,
+                                  color: isDarkBg ? Colors.grey.shade600 : Colors.grey.shade400,
+                                  size: 24,
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '${index + 1}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: isCurrentPage ? FontWeight.bold : FontWeight.normal,
+                                    color: isCurrentPage
+                                        ? AppColors.primary
+                                        : (isDarkBg ? Colors.grey.shade400 : Colors.grey.shade600),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          // 当前页标记
+                          if (isCurrentPage)
+                            Positioned(
+                              top: 4,
+                              right: 4,
+                              child: Container(
+                                padding: const EdgeInsets.all(2),
+                                decoration: BoxDecoration(
+                                  color: AppColors.primary,
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                                child: const Icon(
+                                  Icons.check,
+                                  size: 10,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showSettingsSheet() {
     showReaderSettingsSheet(
       context,
@@ -932,10 +1076,13 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                // 设置按钮
+                // 目录按钮（显示页面列表）
                 IconButton(
-                  icon: const Icon(Icons.settings_outlined, color: Colors.white),
-                  onPressed: _showSettingsSheet,
+                  icon: const Icon(Icons.list, color: Colors.white),
+                  onPressed: state.pages.isNotEmpty
+                      ? () => _showPageListDrawer(context, state)
+                      : null,
+                  tooltip: '页面列表',
                 ),
               ],
             ),
@@ -1018,10 +1165,33 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
                             }
                           }
                         : null,
+                    tooltip: '上一页',
                   ),
-                  Text(
-                    '${state.currentPage + 1} / ${state.pages.length}',
-                    style: const TextStyle(color: Colors.white, fontSize: 16),
+                  IconButton(
+                    icon: const Icon(Icons.first_page, color: Colors.white),
+                    onPressed: () {
+                      notifier.goToPage(0);
+                      _pageController?.jumpToPage(0);
+                    },
+                    tooltip: '第一页',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.settings_outlined, color: Colors.white),
+                    onPressed: _showSettingsSheet,
+                    tooltip: '设置',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.last_page, color: Colors.white),
+                    onPressed: () {
+                      final lastPage = state.pages.length - 1;
+                      notifier.goToPage(lastPage);
+                      _pageController?.jumpToPage(
+                        settings.readingMode == ComicReadingMode.doublePage
+                            ? lastPage ~/ 2
+                            : lastPage,
+                      );
+                    },
+                    tooltip: '最后一页',
                   ),
                   IconButton(
                     icon: Icon(
@@ -1038,6 +1208,7 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
                             }
                           }
                         : null,
+                    tooltip: '下一页',
                   ),
                 ],
               ),

@@ -1350,7 +1350,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     return false;
   }
 
-  String _getProgressText(TxtReaderLoaded state) {
+  String _getProgressText(TxtReaderLoaded? state) {
     if (!_scrollController.hasClients) return '0%';
     final position = _scrollController.position.pixels;
     final maxPosition = _scrollController.position.maxScrollExtent;
@@ -1458,41 +1458,34 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     child: SafeArea(
       bottom: false,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         child: Row(
           children: [
             IconButton(
               onPressed: () => Navigator.pop(context),
-              icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+              icon: const Icon(Icons.arrow_back, color: Colors.white),
               tooltip: '返回',
             ),
             Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    widget.book.displayName,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                  ),
-                ],
+              child: Text(
+                widget.book.displayName,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
-            // 目录按钮（仅当有章节时显示）
-            if (_chapters.isNotEmpty)
-              IconButton(
-                icon: const Icon(Icons.list_rounded, color: Colors.white),
-                onPressed: () => setState(() => _showToc = !_showToc),
-                tooltip: '目录',
-              )
-            else
-              const SizedBox(width: 48), // 平衡布局
+            // 目录按钮
+            IconButton(
+              icon: const Icon(Icons.list, color: Colors.white),
+              onPressed: _chapters.isNotEmpty
+                  ? () => setState(() => _showToc = !_showToc)
+                  : null,
+              tooltip: '目录',
+            ),
           ],
         ),
       ),
@@ -1500,7 +1493,10 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
   );
 
   Widget _buildBottomBar(BuildContext context, BookReaderSettings settings) {
-    final settingsNotifier = ref.read(bookReaderSettingsProvider.notifier);
+    final state = ref.read(txtReaderProvider(widget.book));
+    final usePageMode = state is TxtReaderLoaded &&
+        state.hasHtml &&
+        settings.pageTurnMode != BookPageTurnMode.scroll;
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -1513,35 +1509,123 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              IconButton(
-                onPressed: () =>
-                    settingsNotifier.setFontSize(settings.fontSize - 2),
-                icon: const Icon(
-                  Icons.text_decrease_rounded,
-                  color: Colors.white,
-                ),
-                tooltip: '缩小字体',
+              // 进度条
+              Row(
+                children: [
+                  Text(
+                    usePageMode
+                        ? '${_currentPage + 1}'
+                        : _getProgressText(state is TxtReaderLoaded ? state : null),
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+                  Expanded(
+                    child: Slider(
+                      value: usePageMode
+                          ? _currentPage.toDouble().clamp(0, (_pages.length - 1).toDouble().clamp(0, double.infinity))
+                          : (_scrollController.hasClients
+                              ? (_scrollController.position.pixels /
+                                      _scrollController.position.maxScrollExtent)
+                                  .clamp(0.0, 1.0)
+                              : 0.0),
+                      max: usePageMode
+                          ? (_pages.length - 1).toDouble().clamp(0, double.infinity)
+                          : 1.0,
+                      onChanged: (value) {
+                        if (usePageMode && _pages.isNotEmpty) {
+                          final page = value.round().clamp(0, _pages.length - 1);
+                          _pageController?.jumpToPage(page);
+                          setState(() => _currentPage = page);
+                        } else if (_scrollController.hasClients) {
+                          final target = value * _scrollController.position.maxScrollExtent;
+                          _scrollController.jumpTo(target);
+                        }
+                      },
+                      activeColor: AppColors.primary,
+                      inactiveColor: Colors.white30,
+                    ),
+                  ),
+                  Text(
+                    usePageMode ? '${_pages.length}' : '100%',
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+                ],
               ),
-              IconButton(
-                onPressed: () =>
-                    settingsNotifier.setFontSize(settings.fontSize + 2),
-                icon: const Icon(
-                  Icons.text_increase_rounded,
-                  color: Colors.white,
-                ),
-                tooltip: '放大字体',
-              ),
-              IconButton(
-                onPressed: _showSettingsSheet,
-                icon: const Icon(
-                  Icons.settings_outlined,
-                  color: Colors.white70,
-                ),
-                tooltip: '设置',
+              // 控制按钮
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.skip_previous, color: Colors.white),
+                    onPressed: () {
+                      if (usePageMode && _pageController != null && _currentPage > 0) {
+                        _pageController!.previousPage(
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeOut,
+                        );
+                      } else if (_scrollController.hasClients) {
+                        _scrollController.animateTo(
+                          (_scrollController.offset - MediaQuery.of(context).size.height * 0.8)
+                              .clamp(0.0, _scrollController.position.maxScrollExtent),
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeOut,
+                        );
+                      }
+                    },
+                    tooltip: '上一页',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.first_page, color: Colors.white),
+                    onPressed: () {
+                      if (usePageMode && _pageController != null) {
+                        _pageController!.jumpToPage(0);
+                        setState(() => _currentPage = 0);
+                      } else if (_scrollController.hasClients) {
+                        _scrollController.jumpTo(0);
+                      }
+                    },
+                    tooltip: '第一页',
+                  ),
+                  IconButton(
+                    onPressed: _showSettingsSheet,
+                    icon: const Icon(Icons.settings_outlined, color: Colors.white),
+                    tooltip: '设置',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.last_page, color: Colors.white),
+                    onPressed: () {
+                      if (usePageMode && _pageController != null && _pages.isNotEmpty) {
+                        _pageController!.jumpToPage(_pages.length - 1);
+                        setState(() => _currentPage = _pages.length - 1);
+                      } else if (_scrollController.hasClients) {
+                        _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+                      }
+                    },
+                    tooltip: '最后一页',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.skip_next, color: Colors.white),
+                    onPressed: () {
+                      if (usePageMode && _pageController != null && _currentPage < _pages.length - 1) {
+                        _pageController!.nextPage(
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeOut,
+                        );
+                      } else if (_scrollController.hasClients) {
+                        _scrollController.animateTo(
+                          (_scrollController.offset + MediaQuery.of(context).size.height * 0.8)
+                              .clamp(0.0, _scrollController.position.maxScrollExtent),
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeOut,
+                        );
+                      }
+                    },
+                    tooltip: '下一页',
+                  ),
+                ],
               ),
             ],
           ),
