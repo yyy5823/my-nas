@@ -4,9 +4,9 @@ import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/file_browser/presentation/pages/file_browser_page.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
-import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/features/sources/presentation/pages/source_form_page.dart';
 import 'package:my_nas/features/sources/presentation/pages/source_type_selection_page.dart';
+import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 
 class SourcesPage extends ConsumerWidget {
   const SourcesPage({super.key});

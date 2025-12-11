@@ -44,6 +44,14 @@ class BackgroundTaskProgress {
     this.message,
   });
 
+  factory BackgroundTaskProgress.fromJson(Map<String, dynamic> json) => BackgroundTaskProgress(
+      taskType: BackgroundTaskType.values[json['taskType'] as int],
+      state: BackgroundTaskState.values[json['state'] as int],
+      current: json['current'] as int? ?? 0,
+      total: json['total'] as int? ?? 0,
+      message: json['message'] as String?,
+    );
+
   final BackgroundTaskType taskType;
   final BackgroundTaskState state;
   final int current;
@@ -59,14 +67,6 @@ class BackgroundTaskProgress {
         'total': total,
         'message': message,
       };
-
-  factory BackgroundTaskProgress.fromJson(Map<String, dynamic> json) => BackgroundTaskProgress(
-      taskType: BackgroundTaskType.values[json['taskType'] as int],
-      state: BackgroundTaskState.values[json['state'] as int],
-      current: json['current'] as int? ?? 0,
-      total: json['total'] as int? ?? 0,
-      message: json['message'] as String?,
-    );
 }
 
 /// 后台任务服务

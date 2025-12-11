@@ -48,12 +48,6 @@ class ServiceConnectionConfig {
     this.extraConfig,
   });
 
-  final String baseUrl;
-  final String? username;
-  final String? password;
-  final String? apiKey;
-  final Map<String, dynamic>? extraConfig;
-
   /// 从 SourceEntity 创建配置
   factory ServiceConnectionConfig.fromSource(
     SourceEntity source, {
@@ -65,6 +59,12 @@ class ServiceConnectionConfig {
       apiKey: source.apiKey,
       extraConfig: source.extraConfig,
     );
+
+  final String baseUrl;
+  final String? username;
+  final String? password;
+  final String? apiKey;
+  final Map<String, dynamic>? extraConfig;
 }
 
 /// 服务连接结果（sealed class 用于类型安全的错误处理）
