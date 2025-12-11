@@ -114,30 +114,21 @@ class NativeLogBridgeService {
     final line = log['line'] as int? ?? 0;
     final timestamp = log['timestamp'] as String?;
 
-    // 构建错误报告
-    final report = ErrorReportModel(
+    // 上传到 RabbitMQ
+    await ErrorReportService.instance.reportError(
       errorType: 'NativeLog',
-      errorCode: level.name.toUpperCase(),
       errorMessage: '[$source] $message',
       stackTrace: 'at $function ($file:$line)',
       errorLevel: level,
-      errorTime: timestamp != null ? DateTime.tryParse(timestamp) ?? DateTime.now() : DateTime.now(),
-      extra: {
+      action: 'NativeLogBridge',
+      extraData: {
         'source': source,
         'file': file,
         'function': function,
         'line': line,
         'platform': 'iOS-Native',
+        'nativeTimestamp': timestamp,
       },
-    );
-
-    // 上传到 RabbitMQ
-    await ErrorReportService.instance.reportError(
-      errorType: report.errorType,
-      errorMessage: report.errorMessage,
-      stackTrace: report.stackTrace,
-      errorLevel: report.errorLevel,
-      extra: report.extra,
     );
   }
 

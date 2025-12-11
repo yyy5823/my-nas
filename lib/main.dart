@@ -75,9 +75,11 @@ void _reportFlutterError(FlutterErrorDetails details) {
     errorType: errorType,
     errorMessage: errorMessage,
     stackTrace: stackTrace,
-    extra: {
+    action: 'FlutterFrameworkError',
+    extraData: {
       'library': details.library,
       'context': details.context?.toString(),
+      'informationCollector': details.informationCollector?.call().map((e) => e.toString()).toList(),
     },
   );
 }
@@ -85,17 +87,18 @@ void _reportFlutterError(FlutterErrorDetails details) {
 /// 报告平台错误
 void _reportPlatformError(Object error, StackTrace stack) {
   final errorType = error.runtimeType.toString();
-  final errorMessage = error.toString();
+  final errorMessage = 'Platform Error [$errorType]: $error';
   final stackTrace = stack.toString();
 
   // 打印详细错误信息到日志，便于调试
-  logger.e('Platform Error [$errorType]: $errorMessage', error, stack);
+  logger.e(errorMessage, error, stack);
 
   ErrorReportService.instance.reportError(
     errorType: errorType,
     errorMessage: errorMessage,
     stackTrace: stackTrace,
     errorLevel: ErrorLevel.fatal,
+    action: 'PlatformDispatcherError',
   );
 }
 

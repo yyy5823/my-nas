@@ -6,6 +6,7 @@ import 'package:dart_amqp/dart_amqp.dart';
 import 'package:flutter/foundation.dart';
 import 'package:my_nas/core/services/error_report/device_info_helper.dart';
 import 'package:my_nas/core/services/error_report/error_report_model.dart';
+import 'package:my_nas/core/services/error_report/route_tracker.dart';
 
 /// 错误报告服务
 /// @author cq
@@ -141,8 +142,13 @@ class ErrorReportService {
     String? stackTrace,
     ErrorLevel errorLevel = ErrorLevel.error,
     String? userId,
-    Map<String, dynamic>? extra,
+    String? userName,
+    String? action,
+    Map<String, dynamic>? extraData,
   }) async {
+    // 获取网络类型（异步但不阻塞）
+    final networkType = await DeviceInfoHelper.instance.getNetworkType();
+
     final report = ErrorReportModel(
       errorType: errorType,
       errorMessage: errorMessage,
@@ -151,12 +157,18 @@ class ErrorReportService {
       errorLevel: errorLevel,
       deviceId: DeviceInfoHelper.instance.deviceId,
       deviceModel: DeviceInfoHelper.instance.deviceModel,
+      deviceBrand: DeviceInfoHelper.instance.deviceBrand,
       osName: DeviceInfoHelper.instance.osName,
       osVersion: DeviceInfoHelper.instance.osVersion,
+      screenResolution: DeviceInfoHelper.instance.screenResolution,
       appVersion: DeviceInfoHelper.instance.appVersion,
       userId: userId,
+      userName: userName,
+      networkType: networkType,
+      pageRoute: RouteTracker.instance.currentRoute,
+      action: action,
       errorTime: DateTime.now(),
-      extra: extra,
+      extraData: extraData,
     );
 
     // 检查是否为重复错误
@@ -269,6 +281,8 @@ class ErrorReportService {
 
   /// 发送死循环警告
   Future<void> _sendLoopWarning(ErrorReportModel originalReport) async {
+    final networkType = await DeviceInfoHelper.instance.getNetworkType();
+
     final warningReport = ErrorReportModel(
       errorType: 'LoopDetected',
       errorMessage: '检测到重复执行: ${originalReport.errorType} - ${originalReport.errorMessage}',
@@ -277,11 +291,15 @@ class ErrorReportService {
       errorLevel: ErrorLevel.warning,
       deviceId: DeviceInfoHelper.instance.deviceId,
       deviceModel: DeviceInfoHelper.instance.deviceModel,
+      deviceBrand: DeviceInfoHelper.instance.deviceBrand,
       osName: DeviceInfoHelper.instance.osName,
       osVersion: DeviceInfoHelper.instance.osVersion,
+      screenResolution: DeviceInfoHelper.instance.screenResolution,
       appVersion: DeviceInfoHelper.instance.appVersion,
+      networkType: networkType,
+      pageRoute: RouteTracker.instance.currentRoute,
       errorTime: DateTime.now(),
-      extra: {
+      extraData: {
         'originalErrorType': originalReport.errorType,
         'loopCount': _loopThreshold,
         'loopWindowSeconds': _loopWindow.inSeconds,

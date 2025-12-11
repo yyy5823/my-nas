@@ -26,30 +26,49 @@ class ErrorReportModel {
     this.stackTrace,
     this.deviceId,
     this.deviceModel,
+    this.deviceBrand,
     this.osName,
     this.osVersion,
+    this.screenResolution,
     this.userId,
+    this.userName,
+    this.networkType,
+    this.pageRoute,
+    this.action,
     this.appVersion,
-    this.extra,
+    this.extraData,
   });
 
   static const String appId = 'com.kkape.mynas';
   static const String appName = 'MyNas';
   static const String platform = 'flutter';
 
+  // 错误信息
   final String errorType;
   final String? errorCode;
   final String errorMessage;
   final String? stackTrace;
   final ErrorLevel errorLevel;
+  final DateTime errorTime;
+
+  // 设备信息
   final String? deviceId;
   final String? deviceModel;
+  final String? deviceBrand;
   final String? osName;
   final String? osVersion;
+  final String? screenResolution;
+
+  // 用户信息
   final String? userId;
+  final String? userName;
+
+  // 上下文信息
+  final String? networkType;
+  final String? pageRoute;
+  final String? action;
   final String? appVersion;
-  final DateTime errorTime;
-  final Map<String, dynamic>? extra;
+  final Map<String, dynamic>? extraData;
 
   Map<String, dynamic> toJson() => {
         'appId': appId,
@@ -63,11 +82,17 @@ class ErrorReportModel {
         'errorLevel': errorLevel.value,
         'deviceId': deviceId,
         'deviceModel': deviceModel,
+        'deviceBrand': deviceBrand,
         'osName': osName,
         'osVersion': osVersion,
+        'screenResolution': screenResolution,
         'userId': userId,
+        'userName': userName,
+        'networkType': networkType,
+        'pageRoute': pageRoute,
+        'action': action,
         'errorTime': errorTime.toIso8601String(),
-        if (extra != null) ...extra!,
+        'extraData': extraData,
       };
 
   /// 生成错误签名用于去重

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:my_nas/app/router/routes.dart';
+import 'package:my_nas/core/services/error_report/route_tracker.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/connection/presentation/pages/connection_page.dart';
 import 'package:my_nas/features/mine/presentation/pages/mine_page.dart';
@@ -31,6 +32,7 @@ final appRouter = GoRouter(
   navigatorKey: rootNavigatorKey,
   initialLocation: Routes.startup,
   debugLogDiagnostics: kDebugMode,
+  observers: [RouteTracker.instance],
   // 错误处理 - 当导航失败时显示错误页面
   errorBuilder: (context, state) {
     logger.e('GoRouter error: ${state.error}');

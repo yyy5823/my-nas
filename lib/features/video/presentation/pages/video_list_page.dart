@@ -239,6 +239,10 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
   ProviderSubscription<Map<String, SourceConnection>>? _connectionsSubscription;
   int _lastCompletedCount = 0;
   bool _hasCheckedResume = false;
+  Timer? _debounceTimer;
+
+  /// 防抖间隔（毫秒）- 避免频繁刷新导致UI卡顿
+  static const int _debounceMs = 500;
 
   /// 获取启用的路径列表（用于 SQLite 过滤）
   List<({String sourceId, String path})>? _getEnabledPaths() {
@@ -257,6 +261,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
   void dispose() {
     _scrapeStatsSubscription?.cancel();
     _connectionsSubscription?.close();
+    _debounceTimer?.cancel();
     super.dispose();
   }
 
@@ -278,44 +283,37 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
 
   /// 刮削统计变化时刷新数据
   ///
-  /// 使用自适应刷新策略：
-  /// - 初期（< 20 个）：每 3 个刷新一次，让用户快速看到效果
-  /// - 中期（20-100 个）：每 5 个刷新一次
-  /// - 后期（> 100 个）：每 10 个刷新一次，减少 UI 压力
+  /// 使用防抖机制实现实时更新：
+  /// - 每次刮削完成触发防抖计时器
+  /// - 在防抖间隔内如果有新的完成，重置计时器
+  /// - 防抖时间到期后执行一次刷新
+  /// - 刮削全部完成时立即刷新
   void _onScrapeStatsChanged(ScrapeStats stats) {
-    // 当刮削全部完成时，强制刷新
+    // 当刮削全部完成时，立即刷新（取消防抖等待）
     if (stats.isAllDone && _lastCompletedCount > 0) {
-      _lastCompletedCount = 0; // 重置计数器
+      _debounceTimer?.cancel();
+      _lastCompletedCount = 0;
       _loadCategorizedData(silent: true);
       return;
     }
 
-    // 只有当有新的刮削完成时才刷新
+    // 只有当有新的刮削完成时才触发刷新
     if (stats.completed > _lastCompletedCount) {
-      final delta = stats.completed - _lastCompletedCount;
       _lastCompletedCount = stats.completed;
-
-      // 自适应刷新间隔
-      final refreshInterval = _getRefreshInterval(stats.completed);
-
-      // 使用 silent: true 避免页面闪烁
-      if (stats.completed % refreshInterval == 0 ||
-          stats.pending == 0 ||
-          delta >= refreshInterval) {
-        _loadCategorizedData(silent: true);
-      }
+      _scheduleRefresh();
     }
   }
 
-  /// 根据已完成数量计算刷新间隔
-  int _getRefreshInterval(int completed) {
-    if (completed < 20) {
-      return 3; // 初期快速刷新，让用户看到效果
-    } else if (completed < 100) {
-      return 5; // 中期适中刷新
-    } else {
-      return 10; // 后期降低刷新频率
-    }
+  /// 使用防抖机制调度刷新
+  ///
+  /// 防抖可以确保在连续刮削时不会频繁刷新UI，
+  /// 同时又能在刮削间隙及时更新显示新数据
+  void _scheduleRefresh() {
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(
+      const Duration(milliseconds: _debounceMs),
+      () => _loadCategorizedData(silent: true),
+    );
   }
 
   void _init() {
@@ -716,6 +714,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
   // 刮削进度状态
   StreamSubscription<ScrapeStats>? _scrapeSubscription;
   ScrapeStats? _scrapeStats;
+  bool _showScrapeDetails = false;
 
   @override
   void initState() {
@@ -927,31 +926,44 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     final progress = stats.progress;
     final percentage = (progress * 100).toInt();
 
-    return Tooltip(
-      message: '刮削进度: ${stats.processed}/${stats.total}',
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            width: 14,
-            height: 14,
-            child: CircularProgressIndicator(
-              value: progress,
-              strokeWidth: 2,
-              backgroundColor: isDark ? Colors.grey[700] : Colors.grey[300],
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.orange),
+    return GestureDetector(
+      onTap: () => setState(() => _showScrapeDetails = !_showScrapeDetails),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeInOut,
+        padding: _showScrapeDetails
+            ? const EdgeInsets.symmetric(horizontal: 8, vertical: 4)
+            : EdgeInsets.zero,
+        decoration: _showScrapeDetails
+            ? BoxDecoration(
+                color: Colors.orange.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(12),
+              )
+            : null,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                value: progress,
+                strokeWidth: 2,
+                backgroundColor: isDark ? Colors.grey[700] : Colors.grey[300],
+                valueColor: const AlwaysStoppedAnimation<Color>(Colors.orange),
+              ),
             ),
-          ),
-          const SizedBox(width: 4),
-          Text(
-            '$percentage%',
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.orange,
-              fontWeight: FontWeight.w500,
+            const SizedBox(width: 4),
+            Text(
+              _showScrapeDetails ? '${stats.processed}/${stats.total}' : '$percentage%',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.orange,
+                fontWeight: FontWeight.w500,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

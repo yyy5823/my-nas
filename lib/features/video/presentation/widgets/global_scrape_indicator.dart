@@ -180,6 +180,7 @@ class CompactScrapeIndicator extends StatefulWidget {
 class _CompactScrapeIndicatorState extends State<CompactScrapeIndicator> {
   StreamSubscription<ScrapeStats>? _subscription;
   ScrapeStats? _stats;
+  bool _showDetails = false;
 
   @override
   void initState() {
@@ -209,6 +210,8 @@ class _CompactScrapeIndicatorState extends State<CompactScrapeIndicator> {
     super.dispose();
   }
 
+  void _toggleDetails() => setState(() => _showDetails = !_showDetails);
+
   @override
   Widget build(BuildContext context) {
     if (_stats == null || _stats!.isAllDone) {
@@ -217,35 +220,76 @@ class _CompactScrapeIndicatorState extends State<CompactScrapeIndicator> {
 
     final stats = _stats!;
     final progress = stats.progress;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Tooltip(
-      message: '刮削进度: ${stats.processed}/${stats.total}',
-      child: Container(
-        width: 32,
-        height: 32,
+    return GestureDetector(
+      onTap: _toggleDetails,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeInOut,
         margin: const EdgeInsets.symmetric(horizontal: 4),
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            SizedBox(
-              width: 24,
-              height: 24,
-              child: CircularProgressIndicator(
-                value: progress,
-                strokeWidth: 2.5,
-                backgroundColor: Colors.grey.withValues(alpha: 0.3),
-                valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+        padding: _showDetails
+            ? const EdgeInsets.symmetric(horizontal: 8, vertical: 4)
+            : EdgeInsets.zero,
+        decoration: _showDetails
+            ? BoxDecoration(
+                color: isDark
+                    ? Colors.grey[800]!.withValues(alpha: 0.9)
+                    : Colors.grey[200]!.withValues(alpha: 0.9),
+                borderRadius: BorderRadius.circular(16),
+              )
+            : null,
+        child: _showDetails
+            ? Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      value: progress,
+                      strokeWidth: 2.5,
+                      backgroundColor: Colors.grey.withValues(alpha: 0.3),
+                      valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    '${stats.processed}/${stats.total}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                ],
+              )
+            : SizedBox(
+                width: 32,
+                height: 32,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        value: progress,
+                        strokeWidth: 2.5,
+                        backgroundColor: Colors.grey.withValues(alpha: 0.3),
+                        valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+                      ),
+                    ),
+                    Text(
+                      '${(progress * 100).toInt()}',
+                      style: const TextStyle(
+                        fontSize: 8,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            Text(
-              '${(progress * 100).toInt()}',
-              style: const TextStyle(
-                fontSize: 8,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
