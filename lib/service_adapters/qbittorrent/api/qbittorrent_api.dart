@@ -244,6 +244,194 @@ class QBittorrentApi {
     return QBTransferInfo.fromJson(data);
   }
 
+  // ============ 分类管理 ============
+
+  /// 获取所有分类
+  Future<Map<String, QBCategory>> getCategories() async {
+    final url = Uri.parse('$baseUrl$apiPrefix/torrents/categories');
+    final response = await _makeRequest('GET', url);
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return data.map(
+      (key, value) => MapEntry(
+        key,
+        QBCategory.fromJson(value as Map<String, dynamic>),
+      ),
+    );
+  }
+
+  /// 创建分类
+  Future<void> createCategory(String category, {String? savePath}) async {
+    final url = Uri.parse('$baseUrl$apiPrefix/torrents/createCategory');
+    await _makeRequest('POST', url, body: {
+      'category': category,
+      if (savePath != null) 'savePath': savePath,
+    });
+  }
+
+  /// 删除分类
+  Future<void> removeCategories(List<String> categories) async {
+    final url = Uri.parse('$baseUrl$apiPrefix/torrents/removeCategories');
+    await _makeRequest('POST', url, body: {
+      'categories': categories.join('\n'),
+    });
+  }
+
+  /// 设置 Torrent 分类
+  Future<void> setTorrentCategory(List<String> hashes, String category) async {
+    final url = Uri.parse('$baseUrl$apiPrefix/torrents/setCategory');
+    await _makeRequest('POST', url, body: {
+      'hashes': hashes.join('|'),
+      'category': category,
+    });
+  }
+
+  // ============ 标签管理 ============
+
+  /// 获取所有标签
+  Future<List<String>> getTags() async {
+    final url = Uri.parse('$baseUrl$apiPrefix/torrents/tags');
+    final response = await _makeRequest('GET', url);
+    final data = jsonDecode(response.body) as List<dynamic>;
+    return data.cast<String>();
+  }
+
+  /// 创建标签
+  Future<void> createTags(List<String> tags) async {
+    final url = Uri.parse('$baseUrl$apiPrefix/torrents/createTags');
+    await _makeRequest('POST', url, body: {
+      'tags': tags.join(','),
+    });
+  }
+
+  /// 删除标签
+  Future<void> deleteTags(List<String> tags) async {
+    final url = Uri.parse('$baseUrl$apiPrefix/torrents/deleteTags');
+    await _makeRequest('POST', url, body: {
+      'tags': tags.join(','),
+    });
+  }
+
+  /// 添加标签到 Torrent
+  Future<void> addTorrentTags(List<String> hashes, List<String> tags) async {
+    final url = Uri.parse('$baseUrl$apiPrefix/torrents/addTags');
+    await _makeRequest('POST', url, body: {
+      'hashes': hashes.join('|'),
+      'tags': tags.join(','),
+    });
+  }
+
+  /// 从 Torrent 移除标签
+  Future<void> removeTorrentTags(List<String> hashes, List<String> tags) async {
+    final url = Uri.parse('$baseUrl$apiPrefix/torrents/removeTags');
+    await _makeRequest('POST', url, body: {
+      'hashes': hashes.join('|'),
+      'tags': tags.join(','),
+    });
+  }
+
+  // ============ Torrent 管理 ============
+
+  /// 重命名 Torrent
+  Future<void> renameTorrent(String hash, String name) async {
+    final url = Uri.parse('$baseUrl$apiPrefix/torrents/rename');
+    await _makeRequest('POST', url, body: {
+      'hash': hash,
+      'name': name,
+    });
+  }
+
+  /// 设置 Torrent 保存位置
+  Future<void> setTorrentLocation(List<String> hashes, String location) async {
+    final url = Uri.parse('$baseUrl$apiPrefix/torrents/setLocation');
+    await _makeRequest('POST', url, body: {
+      'hashes': hashes.join('|'),
+      'location': location,
+    });
+  }
+
+  /// 设置 Torrent 下载限速
+  Future<void> setTorrentDlLimit(List<String> hashes, int limit) async {
+    final url = Uri.parse('$baseUrl$apiPrefix/torrents/setDownloadLimit');
+    await _makeRequest('POST', url, body: {
+      'hashes': hashes.join('|'),
+      'limit': limit.toString(),
+    });
+  }
+
+  /// 设置 Torrent 上传限速
+  Future<void> setTorrentUpLimit(List<String> hashes, int limit) async {
+    final url = Uri.parse('$baseUrl$apiPrefix/torrents/setUploadLimit');
+    await _makeRequest('POST', url, body: {
+      'hashes': hashes.join('|'),
+      'limit': limit.toString(),
+    });
+  }
+
+  // ============ 全局速度限制 ============
+
+  /// 获取全局下载限速
+  Future<int> getGlobalDlLimit() async {
+    final url = Uri.parse('$baseUrl$apiPrefix/transfer/downloadLimit');
+    final response = await _makeRequest('GET', url);
+    return int.tryParse(response.body) ?? 0;
+  }
+
+  /// 设置全局下载限速
+  Future<void> setGlobalDlLimit(int limit) async {
+    final url = Uri.parse('$baseUrl$apiPrefix/transfer/setDownloadLimit');
+    await _makeRequest('POST', url, body: {
+      'limit': limit.toString(),
+    });
+  }
+
+  /// 获取全局上传限速
+  Future<int> getGlobalUpLimit() async {
+    final url = Uri.parse('$baseUrl$apiPrefix/transfer/uploadLimit');
+    final response = await _makeRequest('GET', url);
+    return int.tryParse(response.body) ?? 0;
+  }
+
+  /// 设置全局上传限速
+  Future<void> setGlobalUpLimit(int limit) async {
+    final url = Uri.parse('$baseUrl$apiPrefix/transfer/setUploadLimit');
+    await _makeRequest('POST', url, body: {
+      'limit': limit.toString(),
+    });
+  }
+
+  // ============ 备用速度限制 ============
+
+  /// 获取备用速度限制状态
+  Future<bool> getAlternativeSpeedLimitsEnabled() async {
+    final url = Uri.parse('$baseUrl$apiPrefix/transfer/speedLimitsMode');
+    final response = await _makeRequest('GET', url);
+    return response.body == '1';
+  }
+
+  /// 切换备用速度限制
+  Future<void> toggleAlternativeSpeedLimits() async {
+    final url = Uri.parse('$baseUrl$apiPrefix/transfer/toggleSpeedLimitsMode');
+    await _makeRequest('POST', url);
+  }
+
+  // ============ 应用偏好设置 ============
+
+  /// 获取应用偏好设置
+  Future<QBPreferences> getPreferences() async {
+    final url = Uri.parse('$baseUrl$apiPrefix/app/preferences');
+    final response = await _makeRequest('GET', url);
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return QBPreferences.fromJson(data);
+  }
+
+  /// 设置应用偏好
+  Future<void> setPreferences(Map<String, dynamic> prefs) async {
+    final url = Uri.parse('$baseUrl$apiPrefix/app/setPreferences');
+    await _makeRequest('POST', url, body: {
+      'json': jsonEncode(prefs),
+    });
+  }
+
   /// 发起 HTTP 请求
   Future<http.Response> _makeRequest(
     String method,
@@ -454,6 +642,7 @@ class QBTransferInfo {
     required this.upRateLimit,
     required this.dhtNodes,
     required this.connectionStatus,
+    this.useAltSpeedLimits = false,
   });
 
   factory QBTransferInfo.fromJson(Map<String, dynamic> json) => QBTransferInfo(
@@ -465,6 +654,7 @@ class QBTransferInfo {
       upRateLimit: json['up_rate_limit'] as int? ?? 0,
       dhtNodes: json['dht_nodes'] as int? ?? 0,
       connectionStatus: json['connection_status'] as String? ?? 'disconnected',
+      useAltSpeedLimits: json['use_alt_speed_limits'] as bool? ?? false,
     );
 
   final int dlInfoSpeed;
@@ -475,4 +665,60 @@ class QBTransferInfo {
   final int upRateLimit;
   final int dhtNodes;
   final String connectionStatus;
+  final bool useAltSpeedLimits;
+}
+
+/// 分类信息
+class QBCategory {
+  const QBCategory({
+    required this.name,
+    required this.savePath,
+  });
+
+  factory QBCategory.fromJson(Map<String, dynamic> json) => QBCategory(
+      name: json['name'] as String? ?? '',
+      savePath: json['savePath'] as String? ?? '',
+    );
+
+  final String name;
+  final String savePath;
+}
+
+/// 应用偏好设置
+class QBPreferences {
+  const QBPreferences({
+    this.dlLimit = 0,
+    this.upLimit = 0,
+    this.altDlLimit = 0,
+    this.altUpLimit = 0,
+    this.schedulerEnabled = false,
+    this.savePath = '',
+  });
+
+  factory QBPreferences.fromJson(Map<String, dynamic> json) => QBPreferences(
+      dlLimit: json['dl_limit'] as int? ?? 0,
+      upLimit: json['up_limit'] as int? ?? 0,
+      altDlLimit: json['alt_dl_limit'] as int? ?? 0,
+      altUpLimit: json['alt_up_limit'] as int? ?? 0,
+      schedulerEnabled: json['scheduler_enabled'] as bool? ?? false,
+      savePath: json['save_path'] as String? ?? '',
+    );
+
+  /// 全局下载限速 (bytes/s)，0 表示无限制
+  final int dlLimit;
+
+  /// 全局上传限速 (bytes/s)，0 表示无限制
+  final int upLimit;
+
+  /// 备用下载限速 (bytes/s)
+  final int altDlLimit;
+
+  /// 备用上传限速 (bytes/s)
+  final int altUpLimit;
+
+  /// 是否启用计划任务
+  final bool schedulerEnabled;
+
+  /// 默认保存路径
+  final String savePath;
 }

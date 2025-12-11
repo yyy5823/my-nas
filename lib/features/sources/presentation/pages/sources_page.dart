@@ -9,11 +9,18 @@ import 'package:my_nas/features/sources/presentation/pages/source_form_page.dart
 import 'package:my_nas/features/sources/presentation/pages/source_type_selection_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 
-class SourcesPage extends ConsumerWidget {
+class SourcesPage extends ConsumerStatefulWidget {
   const SourcesPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SourcesPage> createState() => _SourcesPageState();
+}
+
+class _SourcesPageState extends ConsumerState<SourcesPage> {
+  bool _isReorderMode = false;
+
+  @override
+  Widget build(BuildContext context) {
     final sourcesAsync = ref.watch(sourcesProvider);
     final connections = ref.watch(activeConnectionsProvider);
 
@@ -21,6 +28,16 @@ class SourcesPage extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('连接源'),
         actions: [
+          // 排序模式切换按钮
+          IconButton(
+            icon: Icon(_isReorderMode ? Icons.done : Icons.reorder),
+            onPressed: () {
+              setState(() {
+                _isReorderMode = !_isReorderMode;
+              });
+            },
+            tooltip: _isReorderMode ? '完成排序' : '调整顺序',
+          ),
           IconButton(
             icon: const Icon(Icons.add),
             onPressed: () => _showAddSourceSheet(context),
@@ -50,6 +67,10 @@ class SourcesPage extends ConsumerWidget {
             return _buildEmptyState(context);
           }
 
+          if (_isReorderMode) {
+            return _buildReorderableList(sources, connections);
+          }
+
           return ListView.builder(
             padding: const EdgeInsets.all(16),
             itemCount: sources.length,
@@ -64,6 +85,42 @@ class SourcesPage extends ConsumerWidget {
           );
         },
       ),
+    );
+  }
+
+  Widget _buildReorderableList(
+    List<SourceEntity> sources,
+    Map<String, SourceConnection> connections,
+  ) {
+    return ReorderableListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: sources.length,
+      onReorder: (oldIndex, newIndex) {
+        ref.read(sourcesProvider.notifier).reorderSources(oldIndex, newIndex);
+      },
+      proxyDecorator: (child, index, animation) {
+        return AnimatedBuilder(
+          animation: animation,
+          builder: (context, child) {
+            final elevation = Tween<double>(begin: 0, end: 8).evaluate(animation);
+            return Material(
+              elevation: elevation,
+              borderRadius: BorderRadius.circular(12),
+              child: child,
+            );
+          },
+          child: child,
+        );
+      },
+      itemBuilder: (context, index) {
+        final source = sources[index];
+        final connection = connections[source.id];
+        return _ReorderableSourceCard(
+          key: ValueKey(source.id),
+          source: source,
+          connection: connection,
+        );
+      },
     );
   }
 
@@ -118,6 +175,157 @@ class SourcesPage extends ConsumerWidget {
         builder: (context) => const SourceTypeSelectionPage(),
       ),
     );
+  }
+}
+
+/// 排序模式下的源卡片（带拖动手柄）
+class _ReorderableSourceCard extends StatelessWidget {
+  const _ReorderableSourceCard({
+    super.key,
+    required this.source,
+    this.connection,
+  });
+
+  final SourceEntity source;
+  final SourceConnection? connection;
+
+  SourceStatus get _status =>
+      connection?.status ?? SourceStatus.disconnected;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            // 拖动手柄
+            ReorderableDragStartListener(
+              index: 0, // 会被 ReorderableListView 覆盖
+              child: Icon(
+                Icons.drag_handle,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(width: 12),
+
+            // 图标
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: _getStatusColor().withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                source.type.icon,
+                color: _getStatusColor(),
+              ),
+            ),
+            const SizedBox(width: 16),
+
+            // 信息
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    source.displayName,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${source.type.displayName} • ${source.host}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // 状态
+            _buildStatusChip(theme),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusChip(ThemeData theme) {
+    // 服务类源显示不同的状态
+    if (source.type.isServiceSource) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.blue.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.touch_app,
+              size: 14,
+              color: Colors.blue,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              '点击进入',
+              style: TextStyle(
+                color: Colors.blue,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final (label, color) = switch (_status) {
+      SourceStatus.connected => ('已连接', Colors.green),
+      SourceStatus.connecting => ('连接中', Colors.orange),
+      SourceStatus.requires2FA => ('需要验证', Colors.amber),
+      SourceStatus.error => ('错误', Colors.red),
+      SourceStatus.disconnected => ('未连接', Colors.grey),
+    };
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    );
+  }
+
+  Color _getStatusColor() {
+    // 服务类源使用特殊颜色
+    if (source.type.isServiceSource) {
+      return Colors.blue;
+    }
+
+    return switch (_status) {
+      SourceStatus.connected => Colors.green,
+      SourceStatus.connecting => Colors.orange,
+      SourceStatus.requires2FA => Colors.amber,
+      SourceStatus.error => Colors.red,
+      SourceStatus.disconnected => Colors.grey,
+    };
   }
 }
 
@@ -240,6 +448,36 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
   }
 
   Widget _buildStatusChip(ThemeData theme) {
+    // 服务类源显示特殊状态
+    if (widget.source.type.isServiceSource) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.blue.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.touch_app,
+              size: 14,
+              color: Colors.blue,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              '点击进入',
+              style: TextStyle(
+                color: Colors.blue,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     final (label, color) = switch (_status) {
       SourceStatus.connected => ('已连接', Colors.green),
       SourceStatus.connecting => ('连接中', Colors.orange),
@@ -267,16 +505,24 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
 
   IconData _getSourceIcon() => widget.source.type.icon;
 
-  Color _getStatusColor() => switch (_status) {
+  Color _getStatusColor() {
+    // 服务类源使用特殊颜色
+    if (widget.source.type.isServiceSource) {
+      return Colors.blue;
+    }
+
+    return switch (_status) {
       SourceStatus.connected => Colors.green,
       SourceStatus.connecting => Colors.orange,
       SourceStatus.requires2FA => Colors.amber,
       SourceStatus.error => Colors.red,
       SourceStatus.disconnected => Colors.grey,
     };
+  }
 
   void _showSourceOptions(BuildContext context) {
     final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
+    final isServiceSource = widget.source.type.isServiceSource;
 
     showModalBottomSheet<void>(
       context: context,
@@ -296,24 +542,35 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
               borderRadius: BorderRadius.circular(2),
             ),
           ),
-          ListTile(
-            leading: Icon(
-              _status == SourceStatus.connected
-                  ? Icons.link_off
-                  : Icons.link,
+          // 服务类源显示"打开"选项，文件系统源显示"连接/断开"
+          if (isServiceSource)
+            ListTile(
+              leading: const Icon(Icons.open_in_new),
+              title: const Text('打开'),
+              onTap: () {
+                Navigator.pop(context);
+                _openServicePage(context);
+              },
+            )
+          else
+            ListTile(
+              leading: Icon(
+                _status == SourceStatus.connected
+                    ? Icons.link_off
+                    : Icons.link,
+              ),
+              title: Text(
+                _status == SourceStatus.connected ? '断开连接' : '连接',
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                if (_status == SourceStatus.connected) {
+                  _disconnect();
+                } else {
+                  _connect();
+                }
+              },
             ),
-            title: Text(
-              _status == SourceStatus.connected ? '断开连接' : '连接',
-            ),
-            onTap: () {
-              Navigator.pop(context);
-              if (_status == SourceStatus.connected) {
-                _disconnect();
-              } else {
-                _connect();
-              }
-            },
-          ),
           ListTile(
             leading: const Icon(Icons.edit),
             title: const Text('编辑'),
@@ -554,15 +811,17 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
     // 根据源类型打开对应的详情页
     switch (widget.source.type) {
       case SourceType.qbittorrent:
-        await Navigator.push(
-          context,
-          MaterialPageRoute<void>(
-            builder: (_) => QBittorrentDetailPage(
-              source: widget.source,
-              password: password,
+        if (context.mounted) {
+          await Navigator.push(
+            context,
+            MaterialPageRoute<void>(
+              builder: (_) => QBittorrentDetailPage(
+                source: widget.source,
+                password: password,
+              ),
             ),
-          ),
-        );
+          );
+        }
       case SourceType.transmission:
       case SourceType.aria2:
       case SourceType.trakt:

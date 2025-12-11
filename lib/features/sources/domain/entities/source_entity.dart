@@ -240,6 +240,8 @@ class SourceEntity {
     this.apiKey,
     // 额外配置
     this.extraConfig,
+    // 排序顺序
+    this.sortOrder = 0,
   }) : id = id ?? const Uuid().v4();
 
   factory SourceEntity.fromJson(Map<String, dynamic> json) => SourceEntity(
@@ -271,6 +273,8 @@ class SourceEntity {
         extraConfig: json['extraConfig'] != null
             ? Map<String, dynamic>.from(json['extraConfig'] as Map)
             : null,
+        // 排序顺序
+        sortOrder: json['sortOrder'] as int? ?? 0,
       );
 
   final String id;
@@ -310,6 +314,11 @@ class SourceEntity {
   /// 额外配置（JSON 格式，用于特殊配置）
   /// 例如：Trakt 的 Client ID/Secret，qBittorrent 的认证类型等
   final Map<String, dynamic>? extraConfig;
+
+  // === 排序相关 ===
+
+  /// 排序顺序（数值越小越靠前）
+  final int sortOrder;
 
   String get displayName => name.isNotEmpty ? name : host;
 
@@ -363,6 +372,7 @@ class SourceEntity {
     DateTime? tokenExpiresAt,
     String? apiKey,
     Map<String, dynamic>? extraConfig,
+    int? sortOrder,
   }) =>
       SourceEntity(
         id: id ?? this.id,
@@ -381,6 +391,7 @@ class SourceEntity {
         tokenExpiresAt: tokenExpiresAt ?? this.tokenExpiresAt,
         apiKey: apiKey ?? this.apiKey,
         extraConfig: extraConfig ?? this.extraConfig,
+        sortOrder: sortOrder ?? this.sortOrder,
       );
 
   Map<String, dynamic> toJson() => {
@@ -400,5 +411,6 @@ class SourceEntity {
         'tokenExpiresAt': tokenExpiresAt?.toIso8601String(),
         'apiKey': apiKey,
         'extraConfig': extraConfig,
+        'sortOrder': sortOrder,
       };
 }

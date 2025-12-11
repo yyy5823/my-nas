@@ -279,13 +279,17 @@ class QBittorrentActions {
   QBittorrentAdapter? get _adapter =>
       _ref.read(qbittorrentConnectionProvider(_sourceId))?.adapter;
 
+  void _invalidate() {
+    _ref.invalidate(qbittorrentAutoRefreshProvider(_sourceId));
+  }
+
   /// 暂停 Torrent
   Future<void> pause(List<String> hashes) async {
     final adapter = _adapter;
     if (adapter == null) return;
 
     await adapter.pauseTorrents(hashes);
-    _ref.invalidate(qbittorrentAutoRefreshProvider(_sourceId));
+    _invalidate();
   }
 
   /// 暂停所有 Torrent
@@ -294,7 +298,7 @@ class QBittorrentActions {
     if (adapter == null) return;
 
     await adapter.pauseAllTorrents();
-    _ref.invalidate(qbittorrentAutoRefreshProvider(_sourceId));
+    _invalidate();
   }
 
   /// 恢复 Torrent
@@ -303,7 +307,7 @@ class QBittorrentActions {
     if (adapter == null) return;
 
     await adapter.resumeTorrents(hashes);
-    _ref.invalidate(qbittorrentAutoRefreshProvider(_sourceId));
+    _invalidate();
   }
 
   /// 恢复所有 Torrent
@@ -312,7 +316,7 @@ class QBittorrentActions {
     if (adapter == null) return;
 
     await adapter.resumeAllTorrents();
-    _ref.invalidate(qbittorrentAutoRefreshProvider(_sourceId));
+    _invalidate();
   }
 
   /// 删除 Torrent
@@ -321,7 +325,7 @@ class QBittorrentActions {
     if (adapter == null) return;
 
     await adapter.deleteTorrents(hashes, deleteFiles: deleteFiles);
-    _ref.invalidate(qbittorrentAutoRefreshProvider(_sourceId));
+    _invalidate();
   }
 
   /// 添加 Torrent（通过 URL 或 Magnet 链接）
@@ -340,6 +344,220 @@ class QBittorrentActions {
       category: category,
       paused: paused,
     );
-    _ref.invalidate(qbittorrentAutoRefreshProvider(_sourceId));
+    _invalidate();
+  }
+
+  /// 重命名 Torrent
+  Future<void> rename(String hash, String name) async {
+    final adapter = _adapter;
+    if (adapter == null) return;
+
+    await adapter.renameTorrent(hash, name);
+    _invalidate();
+  }
+
+  /// 设置 Torrent 保存位置
+  Future<void> setLocation(List<String> hashes, String location) async {
+    final adapter = _adapter;
+    if (adapter == null) return;
+
+    await adapter.setTorrentLocation(hashes, location);
+    _invalidate();
+  }
+
+  /// 设置 Torrent 分类
+  Future<void> setCategory(List<String> hashes, String category) async {
+    final adapter = _adapter;
+    if (adapter == null) return;
+
+    await adapter.setTorrentCategory(hashes, category);
+    _invalidate();
+  }
+
+  /// 添加标签到 Torrent
+  Future<void> addTags(List<String> hashes, List<String> tags) async {
+    final adapter = _adapter;
+    if (adapter == null) return;
+
+    await adapter.addTorrentTags(hashes, tags);
+    _invalidate();
+  }
+
+  /// 从 Torrent 移除标签
+  Future<void> removeTags(List<String> hashes, List<String> tags) async {
+    final adapter = _adapter;
+    if (adapter == null) return;
+
+    await adapter.removeTorrentTags(hashes, tags);
+    _invalidate();
+  }
+
+  /// 切换备用速度限制
+  Future<void> toggleAlternativeSpeedLimits() async {
+    final adapter = _adapter;
+    if (adapter == null) return;
+
+    await adapter.toggleAlternativeSpeedLimits();
+    _ref.invalidate(qbPreferencesProvider(_sourceId));
+    _ref.invalidate(qbTransferInfoAutoRefreshProvider(_sourceId));
+  }
+
+  /// 设置全局限速
+  Future<void> setGlobalSpeedLimits({int? dlLimit, int? upLimit}) async {
+    final adapter = _adapter;
+    if (adapter == null) return;
+
+    await adapter.setGlobalSpeedLimits(dlLimit: dlLimit, upLimit: upLimit);
+    _ref.invalidate(qbPreferencesProvider(_sourceId));
+  }
+
+  /// 设置备用速度限速
+  Future<void> setAlternativeSpeedLimits({int? dlLimit, int? upLimit}) async {
+    final adapter = _adapter;
+    if (adapter == null) return;
+
+    await adapter.setAlternativeSpeedLimits(dlLimit: dlLimit, upLimit: upLimit);
+    _ref.invalidate(qbPreferencesProvider(_sourceId));
+  }
+
+  /// 创建分类
+  Future<void> createCategory(String category, {String? savePath}) async {
+    final adapter = _adapter;
+    if (adapter == null) return;
+
+    await adapter.createCategory(category, savePath: savePath);
+    _ref.invalidate(qbCategoriesProvider(_sourceId));
+  }
+
+  /// 创建标签
+  Future<void> createTags(List<String> tags) async {
+    final adapter = _adapter;
+    if (adapter == null) return;
+
+    await adapter.createTags(tags);
+    _ref.invalidate(qbTagsProvider(_sourceId));
   }
 }
+
+/// qBittorrent 分类 Provider
+final qbCategoriesProvider = FutureProvider.family
+    .autoDispose<Map<String, QBCategory>, String>((ref, sourceId) async {
+  final connection = ref.watch(qbittorrentConnectionProvider(sourceId));
+  if (connection == null ||
+      connection.status != QBConnectionStatus.connected) {
+    return {};
+  }
+
+  try {
+    return await connection.adapter.getCategories();
+  } on Exception catch (e) {
+    logger.e('QBittorrentProvider: 获取分类失败', e);
+    return {};
+  }
+});
+
+/// qBittorrent 标签 Provider
+final qbTagsProvider = FutureProvider.family
+    .autoDispose<List<String>, String>((ref, sourceId) async {
+  final connection = ref.watch(qbittorrentConnectionProvider(sourceId));
+  if (connection == null ||
+      connection.status != QBConnectionStatus.connected) {
+    return [];
+  }
+
+  try {
+    return await connection.adapter.getTags();
+  } on Exception catch (e) {
+    logger.e('QBittorrentProvider: 获取标签失败', e);
+    return [];
+  }
+});
+
+/// qBittorrent 偏好设置 Provider
+final qbPreferencesProvider = FutureProvider.family
+    .autoDispose<QBPreferences?, String>((ref, sourceId) async {
+  final connection = ref.watch(qbittorrentConnectionProvider(sourceId));
+  if (connection == null ||
+      connection.status != QBConnectionStatus.connected) {
+    return null;
+  }
+
+  try {
+    return await connection.adapter.getPreferences();
+  } on Exception catch (e) {
+    logger.e('QBittorrentProvider: 获取偏好设置失败', e);
+    return null;
+  }
+});
+
+/// Torrent 排序方式
+enum QBSortMode {
+  name('name', '名称'),
+  size('size', '大小'),
+  progress('progress', '进度'),
+  dlSpeed('dlspeed', '下载速度'),
+  upSpeed('upspeed', '上传速度'),
+  addedOn('added_on', '添加时间'),
+  ratio('ratio', '分享率'),
+  eta('eta', '剩余时间');
+
+  const QBSortMode(this.value, this.label);
+
+  final String value;
+  final String label;
+}
+
+/// 排序设置 Provider
+class QBSortSettingsNotifier extends StateNotifier<QBSortSettings> {
+  QBSortSettingsNotifier() : super(const QBSortSettings());
+
+  void setSortMode(QBSortMode mode) {
+    state = state.copyWith(sortMode: mode);
+  }
+
+  void toggleReverse() {
+    state = state.copyWith(reverse: !state.reverse);
+  }
+
+  void setFilterCategory(String? category) {
+    state = state.copyWith(filterCategory: category, clearCategory: category == null);
+  }
+
+  void setFilterTag(String? tag) {
+    state = state.copyWith(filterTag: tag, clearTag: tag == null);
+  }
+}
+
+class QBSortSettings {
+  const QBSortSettings({
+    this.sortMode = QBSortMode.addedOn,
+    this.reverse = true,
+    this.filterCategory,
+    this.filterTag,
+  });
+
+  final QBSortMode sortMode;
+  final bool reverse;
+  final String? filterCategory;
+  final String? filterTag;
+
+  QBSortSettings copyWith({
+    QBSortMode? sortMode,
+    bool? reverse,
+    String? filterCategory,
+    String? filterTag,
+    bool clearCategory = false,
+    bool clearTag = false,
+  }) =>
+      QBSortSettings(
+        sortMode: sortMode ?? this.sortMode,
+        reverse: reverse ?? this.reverse,
+        filterCategory: clearCategory ? null : (filterCategory ?? this.filterCategory),
+        filterTag: clearTag ? null : (filterTag ?? this.filterTag),
+      );
+}
+
+final qbSortSettingsProvider = StateNotifierProvider.family<
+    QBSortSettingsNotifier, QBSortSettings, String>(
+  (ref, sourceId) => QBSortSettingsNotifier(),
+);

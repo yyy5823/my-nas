@@ -17,6 +17,7 @@ import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/loading_widget.dart';
+import 'package:my_nas/shared/widgets/reader_settings_sheet.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 /// EPUB 阅读器状态
@@ -367,6 +368,44 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
     }
   }
 
+  /// 显示设置面板
+  void _showSettingsSheet() {
+    showReaderSettingsSheet(
+      context,
+      title: 'EPUB 设置',
+      icon: Icons.menu_book_rounded,
+      iconColor: AppColors.info,
+      contentBuilder: (context) => _buildSettingsContent(),
+    );
+  }
+
+  /// 构建设置内容
+  Widget _buildSettingsContent() => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SettingSectionTitle(title: '显示设置'),
+          SettingSwitchRow(
+            title: '屏幕常亮',
+            value: true, // EPUB 默认开启屏幕常亮
+            onChanged: (value) {
+              if (value) {
+                WakelockPlus.enable();
+              } else {
+                WakelockPlus.disable();
+              }
+            },
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'EPUB 格式使用系统字体渲染，字体大小和样式请在系统设置中调整。',
+            style: TextStyle(
+              fontSize: 13,
+              color: Colors.grey.shade600,
+            ),
+          ),
+        ],
+      );
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(epubReaderProvider(widget.book));
@@ -710,6 +749,11 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
                   icon: const Icon(Icons.first_page, color: Colors.white),
                   onPressed: _isEpubReady ? _safeFirst : null,
                   tooltip: '第一页',
+                ),
+                IconButton(
+                  icon: const Icon(Icons.settings_outlined, color: Colors.white),
+                  onPressed: _showSettingsSheet,
+                  tooltip: '设置',
                 ),
                 IconButton(
                   icon: const Icon(Icons.last_page, color: Colors.white),

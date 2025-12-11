@@ -224,6 +224,108 @@ class QBittorrentAdapter implements ServiceAdapter {
     );
   }
 
+  // === 分类管理 ===
+
+  /// 获取所有分类
+  Future<Map<String, QBCategory>> getCategories() async {
+    _ensureConnected();
+    return _api!.getCategories();
+  }
+
+  /// 创建分类
+  Future<void> createCategory(String category, {String? savePath}) async {
+    _ensureConnected();
+    await _api!.createCategory(category, savePath: savePath);
+  }
+
+  /// 设置 Torrent 分类
+  Future<void> setTorrentCategory(List<String> hashes, String category) async {
+    _ensureConnected();
+    await _api!.setTorrentCategory(hashes, category);
+  }
+
+  // === 标签管理 ===
+
+  /// 获取所有标签
+  Future<List<String>> getTags() async {
+    _ensureConnected();
+    return _api!.getTags();
+  }
+
+  /// 创建标签
+  Future<void> createTags(List<String> tags) async {
+    _ensureConnected();
+    await _api!.createTags(tags);
+  }
+
+  /// 添加标签到 Torrent
+  Future<void> addTorrentTags(List<String> hashes, List<String> tags) async {
+    _ensureConnected();
+    await _api!.addTorrentTags(hashes, tags);
+  }
+
+  /// 从 Torrent 移除标签
+  Future<void> removeTorrentTags(List<String> hashes, List<String> tags) async {
+    _ensureConnected();
+    await _api!.removeTorrentTags(hashes, tags);
+  }
+
+  // === Torrent 管理 ===
+
+  /// 重命名 Torrent
+  Future<void> renameTorrent(String hash, String name) async {
+    _ensureConnected();
+    await _api!.renameTorrent(hash, name);
+  }
+
+  /// 设置 Torrent 保存位置
+  Future<void> setTorrentLocation(List<String> hashes, String location) async {
+    _ensureConnected();
+    await _api!.setTorrentLocation(hashes, location);
+  }
+
+  // === 速度限制 ===
+
+  /// 获取备用速度限制状态
+  Future<bool> getAlternativeSpeedLimitsEnabled() async {
+    _ensureConnected();
+    return _api!.getAlternativeSpeedLimitsEnabled();
+  }
+
+  /// 切换备用速度限制
+  Future<void> toggleAlternativeSpeedLimits() async {
+    _ensureConnected();
+    await _api!.toggleAlternativeSpeedLimits();
+  }
+
+  /// 获取应用偏好设置
+  Future<QBPreferences> getPreferences() async {
+    _ensureConnected();
+    return _api!.getPreferences();
+  }
+
+  /// 设置全局限速
+  Future<void> setGlobalSpeedLimits({int? dlLimit, int? upLimit}) async {
+    _ensureConnected();
+    final prefs = <String, dynamic>{};
+    if (dlLimit != null) prefs['dl_limit'] = dlLimit;
+    if (upLimit != null) prefs['up_limit'] = upLimit;
+    if (prefs.isNotEmpty) {
+      await _api!.setPreferences(prefs);
+    }
+  }
+
+  /// 设置备用速度限速
+  Future<void> setAlternativeSpeedLimits({int? dlLimit, int? upLimit}) async {
+    _ensureConnected();
+    final prefs = <String, dynamic>{};
+    if (dlLimit != null) prefs['alt_dl_limit'] = dlLimit;
+    if (upLimit != null) prefs['alt_up_limit'] = upLimit;
+    if (prefs.isNotEmpty) {
+      await _api!.setPreferences(prefs);
+    }
+  }
+
   void _ensureConnected() {
     if (!isConnected) {
       throw const QBittorrentApiException('未连接到 qBittorrent');

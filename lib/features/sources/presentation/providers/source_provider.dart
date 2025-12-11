@@ -40,6 +40,8 @@ class SourcesNotifier extends StateNotifier<AsyncValue<List<SourceEntity>>> {
       final manager = _ref.read(sourceManagerProvider);
       await manager.init();
       final sources = await manager.getSources();
+      // 按 sortOrder 排序
+      sources.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
       state = AsyncValue.data(sources);
     } on Exception catch (e, st) {
       // 捕获所有错误，包括 TypeError
@@ -81,6 +83,37 @@ class SourcesNotifier extends StateNotifier<AsyncValue<List<SourceEntity>>> {
     // 同时刷新连接状态
     _ref.read(activeConnectionsProvider.notifier).refresh();
     await _load();
+  }
+
+  /// 重新排序源列表
+  Future<void> reorderSources(int oldIndex, int newIndex) async {
+    final sources = state.valueOrNull;
+    if (sources == null) return;
+
+    // 创建可变副本
+    final mutableSources = List<SourceEntity>.from(sources);
+
+    // 调整新索引（如果是向后移动）
+    final adjustedNewIndex = oldIndex < newIndex ? newIndex - 1 : newIndex;
+
+    // 移动元素
+    final item = mutableSources.removeAt(oldIndex);
+    mutableSources.insert(adjustedNewIndex, item);
+
+    // 更新排序顺序
+    final updatedSources = <SourceEntity>[];
+    for (var i = 0; i < mutableSources.length; i++) {
+      updatedSources.add(mutableSources[i].copyWith(sortOrder: i));
+    }
+
+    // 保存到存储
+    final manager = _ref.read(sourceManagerProvider);
+    for (final source in updatedSources) {
+      await manager.updateSource(source);
+    }
+
+    // 立即更新状态（不需要等待 _load）
+    state = AsyncValue.data(updatedSources);
   }
 }
 
