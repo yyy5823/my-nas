@@ -2,11 +2,13 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:my_nas/app/router/app_router.dart';
 import 'package:my_nas/app/theme/app_theme.dart';
 import 'package:my_nas/core/services/background_task_service.dart';
 import 'package:my_nas/core/services/deep_link_service.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/video/data/services/video_database_service.dart';
 import 'package:my_nas/features/video/data/services/video_scanner_service.dart';
 import 'package:my_nas/shared/providers/theme_provider.dart';
 import 'package:my_nas/shared/widgets/stream_image.dart';
@@ -98,8 +100,25 @@ class _MyNasAppState extends ConsumerState<MyNasApp> with WidgetsBindingObserver
     }
   }
 
-  /// 停止后台服务（如果需要）
+  /// 停止后台服务并安全关闭数据库
+  ///
+  /// 在应用被销毁时调用，确保：
+  /// 1. 所有数据库写入完成（WAL checkpoint）
+  /// 2. Hive 缓存刷新到磁盘
+  /// 3. 后台服务正常停止
   Future<void> _stopBackgroundServiceIfNeeded() async {
+    try {
+      // 安全关闭视频数据库（执行 WAL checkpoint）
+      await VideoDatabaseService().close();
+
+      // 关闭所有 Hive boxes
+      await Hive.close();
+
+      logger.i('MyNasApp: 所有数据库已安全关闭');
+    } on Exception catch (e) {
+      logger.e('MyNasApp: 关闭数据库时发生错误', e);
+    }
+
     // 当应用被销毁时，我们选择让服务继续运行
     // 因为用户可能希望任务在后台完成
     // 如果需要强制停止，取消下面的注释：

@@ -122,6 +122,7 @@ class VideoDatabaseService {
         version: 4, // 升级版本以添加刮削优先级字段
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
+        onConfigure: _onConfigure,
       );
 
       _initialized = true;
@@ -130,6 +131,25 @@ class VideoDatabaseService {
       logger.e('VideoDatabaseService: 数据库初始化失败', e);
       rethrow;
     }
+  }
+
+  /// 数据库配置 - 启用 WAL 模式和安全设置
+  ///
+  /// WAL (Write-Ahead Logging) 模式的优势：
+  /// - 更好的并发性能：读写可以同时进行
+  /// - 更安全的写入：写入中断时自动回滚到一致状态
+  /// - 更快的恢复：应用崩溃后恢复更快
+  Future<void> _onConfigure(Database db) async {
+    // 启用 WAL 模式
+    await db.execute('PRAGMA journal_mode=WAL');
+    // 设置同步模式为 NORMAL（平衡安全性和性能）
+    // FULL 更安全但性能较低，NORMAL 在大多数情况下足够安全
+    await db.execute('PRAGMA synchronous=NORMAL');
+    // 设置忙等待超时（5秒），避免锁冲突时立即失败
+    await db.execute('PRAGMA busy_timeout=5000');
+    // 启用外键约束
+    await db.execute('PRAGMA foreign_keys=ON');
+    logger.d('VideoDatabaseService: 数据库配置完成 (WAL模式)');
   }
 
   /// 创建表和索引
@@ -270,19 +290,25 @@ class VideoDatabaseService {
   }
 
   /// 批量插入或更新
+  ///
+  /// 使用事务保护确保原子性：要么全部成功，要么全部回滚
+  /// 这样即使应用在写入过程中被终止，数据库也不会处于不一致状态
   Future<void> upsertBatch(List<VideoMetadata> metadataList) async {
     if (!_initialized) await init();
     if (metadataList.isEmpty) return;
 
-    final batch = _db!.batch();
-    for (final metadata in metadataList) {
-      batch.insert(
-        _tableMetadata,
-        _toRow(metadata),
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
-    }
-    await batch.commit(noResult: true);
+    // 在事务中执行批量操作，确保原子性
+    await _db!.transaction((txn) async {
+      final batch = txn.batch();
+      for (final metadata in metadataList) {
+        batch.insert(
+          _tableMetadata,
+          _toRow(metadata),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+      await batch.commit(noResult: true);
+    });
     logger.d('VideoDatabaseService: 批量插入 ${metadataList.length} 条');
   }
 
@@ -784,11 +810,24 @@ class VideoDatabaseService {
     logger.i('VideoDatabaseService: 已清空所有数据');
   }
 
-  /// 关闭数据库
+  /// 安全关闭数据库
+  ///
+  /// 在应用终止前调用，确保所有写入操作完成
+  /// WAL 模式下会执行 checkpoint，确保数据安全持久化
   Future<void> close() async {
-    await _db?.close();
-    _db = null;
-    _initialized = false;
+    if (_db != null && _db!.isOpen) {
+      // WAL checkpoint - 确保所有写入都持久化到主数据库文件
+      try {
+        await _db!.execute('PRAGMA wal_checkpoint(TRUNCATE)');
+        logger.d('VideoDatabaseService: WAL checkpoint 完成');
+      } on Exception catch (e) {
+        logger.w('VideoDatabaseService: WAL checkpoint 失败', e);
+      }
+      await _db!.close();
+      _db = null;
+      _initialized = false;
+      logger.i('VideoDatabaseService: 数据库已安全关闭');
+    }
   }
 
   /// 转换为数据库行
@@ -1001,20 +1040,24 @@ class VideoDatabaseService {
   /// 批量更新 NFO 检测标志
   Future<void> updateNfoFlagBatch(List<({String sourceId, String filePath, bool hasNfo})> items) async {
     if (!_initialized) await init();
+    if (items.isEmpty) return;
 
-    final batch = _db!.batch();
-    for (final item in items) {
-      batch.update(
-        _tableMetadata,
-        {
-          _colHasNfo: item.hasNfo ? 1 : 0,
-          _colScrapePriority: item.hasNfo ? 0 : 2,
-        },
-        where: '$_colSourceId = ? AND $_colFilePath = ?',
-        whereArgs: [item.sourceId, item.filePath],
-      );
-    }
-    await batch.commit(noResult: true);
+    // 在事务中执行批量操作，确保原子性
+    await _db!.transaction((txn) async {
+      final batch = txn.batch();
+      for (final item in items) {
+        batch.update(
+          _tableMetadata,
+          {
+            _colHasNfo: item.hasNfo ? 1 : 0,
+            _colScrapePriority: item.hasNfo ? 0 : 2,
+          },
+          where: '$_colSourceId = ? AND $_colFilePath = ?',
+          whereArgs: [item.sourceId, item.filePath],
+        );
+      }
+      await batch.commit(noResult: true);
+    });
   }
 
   /// 获取需要重试的视频列表
@@ -1117,16 +1160,19 @@ class VideoDatabaseService {
     if (!_initialized) await init();
     if (items.isEmpty) return;
 
-    final batch = _db!.batch();
-    for (final item in items) {
-      batch.update(
-        _tableMetadata,
-        {_colScrapeStatus: status.index},
-        where: '$_colSourceId = ? AND $_colFilePath = ?',
-        whereArgs: [item.sourceId, item.filePath],
-      );
-    }
-    await batch.commit(noResult: true);
+    // 在事务中执行批量操作，确保原子性
+    await _db!.transaction((txn) async {
+      final batch = txn.batch();
+      for (final item in items) {
+        batch.update(
+          _tableMetadata,
+          {_colScrapeStatus: status.index},
+          where: '$_colSourceId = ? AND $_colFilePath = ?',
+          whereArgs: [item.sourceId, item.filePath],
+        );
+      }
+      await batch.commit(noResult: true);
+    });
   }
 
   /// 重置所有刮削中状态为待刮削（用于应用重启后恢复）

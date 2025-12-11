@@ -92,10 +92,13 @@ class QBittorrentApi {
   }
 
   /// 使用 API Key 认证
+  ///
+  /// qBittorrent v5.2+ 的 API Key 通常以 'qbt_' 开头
+  /// 但为了兼容性，我们不强制检查格式，而是直接尝试认证
   Future<bool> _authenticateWithApiKey() async {
-    // 验证 API Key 格式
-    if (!apiKey!.startsWith('qbt_') || apiKey!.length != 32) {
-      throw const QBittorrentApiException('无效的 API Key 格式');
+    // 基本长度检查（API Key 应该有一定长度）
+    if (apiKey!.length < 8) {
+      throw const QBittorrentApiException('API Key 格式无效（长度过短）');
     }
 
     // 尝试获取应用版本来验证 API Key
@@ -106,7 +109,7 @@ class QBittorrentApi {
         return true;
       }
     } on QBittorrentApiException {
-      throw const QBittorrentApiException('API Key 认证失败');
+      throw const QBittorrentApiException('API Key 认证失败，请检查 API Key 是否正确');
     }
 
     return false;

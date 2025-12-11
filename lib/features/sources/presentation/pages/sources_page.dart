@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/file_browser/presentation/pages/file_browser_page.dart';
+import 'package:my_nas/features/qbittorrent/presentation/pages/qbittorrent_detail_page.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/pages/source_form_page.dart';
@@ -111,9 +112,9 @@ class SourcesPage extends ConsumerWidget {
 
   void _showAddSourceSheet(BuildContext context) {
     // 使用新的源类型选择页面
-    Navigator.push(
+    Navigator.push<void>(
       context,
-      MaterialPageRoute(
+      MaterialPageRoute<void>(
         builder: (context) => const SourceTypeSelectionPage(),
       ),
     );
@@ -148,8 +149,12 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
       margin: const EdgeInsets.only(bottom: 12),
       child: InkWell(
         onTap: () {
-          if (_status == SourceStatus.connected) {
-            // 已连接时，直接打开文件浏览器
+          // 根据源类型决定打开什么页面
+          if (widget.source.type.isServiceSource) {
+            // 服务类源，打开对应的详情页
+            _openServicePage(context);
+          } else if (_status == SourceStatus.connected) {
+            // 文件系统类源，已连接时打开文件浏览器
             Navigator.push(
               context,
               MaterialPageRoute<void>(
@@ -513,15 +518,71 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
 
   void _editSource() {
     // 使用新的表单页面进行编辑
-    Navigator.push(
+    Navigator.push<void>(
       context,
-      MaterialPageRoute(
+      MaterialPageRoute<void>(
         builder: (context) => SourceFormPage(
           sourceType: widget.source.type,
           existingSource: widget.source,
         ),
       ),
     );
+  }
+
+  /// 打开服务类源的详情页
+  Future<void> _openServicePage(BuildContext context) async {
+    // 获取密码（服务类源可能需要）
+    String? password;
+    final manager = ref.read(sourceManagerProvider);
+    final credential = await manager.getCredential(widget.source.id);
+    password = credential?.password;
+
+    // 如果没有保存的密码且源需要密码，提示输入
+    if (password == null &&
+        widget.source.apiKey == null &&
+        widget.source.username.isNotEmpty) {
+      if (mounted) {
+        password = await _showPasswordDialog();
+        if (password == null || password.isEmpty) {
+          return;
+        }
+      }
+    }
+
+    if (!mounted) return;
+
+    // 根据源类型打开对应的详情页
+    switch (widget.source.type) {
+      case SourceType.qbittorrent:
+        await Navigator.push(
+          context,
+          MaterialPageRoute<void>(
+            builder: (_) => QBittorrentDetailPage(
+              source: widget.source,
+              password: password,
+            ),
+          ),
+        );
+      case SourceType.transmission:
+      case SourceType.aria2:
+      case SourceType.trakt:
+      case SourceType.nastool:
+      case SourceType.moviepilot:
+      case SourceType.jellyfin:
+      case SourceType.emby:
+      case SourceType.plex:
+        // 其他服务类源暂未实现，显示提示
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('${widget.source.type.displayName} 详情页暂未实现'),
+            ),
+          );
+        }
+      default:
+        // 不应该走到这里
+        break;
+    }
   }
 
   Future<void> _deleteSource() async {
