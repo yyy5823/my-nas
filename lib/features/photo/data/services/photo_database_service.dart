@@ -117,6 +117,7 @@ class PhotoDatabaseService {
       _db = await openDatabase(
         dbPath,
         version: 2, // 升级版本以支持哈希字段
+        onConfigure: _onConfigure,
         onCreate: (db, version) async {
           await db.execute('''
             CREATE TABLE $_tablePhotos (
@@ -168,6 +169,15 @@ class PhotoDatabaseService {
     }
   }
 
+  /// 数据库配置 - 启用 WAL 模式和安全设置
+  Future<void> _onConfigure(Database db) async {
+    await db.execute('PRAGMA journal_mode=WAL');
+    await db.execute('PRAGMA synchronous=NORMAL');
+    await db.execute('PRAGMA busy_timeout=5000');
+    await db.execute('PRAGMA foreign_keys=ON');
+    logger.d('PhotoDatabaseService: 数据库配置完成 (WAL模式)');
+  }
+
   /// 插入或更新照片
   Future<void> upsert(PhotoEntity photo) async {
     if (!_initialized) await init();
@@ -180,19 +190,23 @@ class PhotoDatabaseService {
   }
 
   /// 批量插入或更新
+  ///
+  /// 使用事务保护确保原子性
   Future<void> upsertBatch(List<PhotoEntity> photos) async {
     if (!_initialized) await init();
     if (photos.isEmpty) return;
 
-    final batch = _db!.batch();
-    for (final photo in photos) {
-      batch.insert(
-        _tablePhotos,
-        _toRow(photo),
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
-    }
-    await batch.commit(noResult: true);
+    await _db!.transaction((txn) async {
+      final batch = txn.batch();
+      for (final photo in photos) {
+        batch.insert(
+          _tablePhotos,
+          _toRow(photo),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+      await batch.commit(noResult: true);
+    });
   }
 
   /// 获取单张照片
@@ -461,11 +475,22 @@ class PhotoDatabaseService {
     return count;
   }
 
-  /// 关闭数据库
+  /// 安全关闭数据库
+  ///
+  /// 执行 WAL checkpoint 确保数据安全持久化
   Future<void> close() async {
-    await _db?.close();
-    _db = null;
-    _initialized = false;
+    if (_db != null && _db!.isOpen) {
+      try {
+        await _db!.execute('PRAGMA wal_checkpoint(TRUNCATE)');
+        logger.d('PhotoDatabaseService: WAL checkpoint 完成');
+      } on Exception catch (e) {
+        logger.w('PhotoDatabaseService: WAL checkpoint 失败', e);
+      }
+      await _db!.close();
+      _db = null;
+      _initialized = false;
+      logger.i('PhotoDatabaseService: 数据库已安全关闭');
+    }
   }
 
   /// 转换为数据库行

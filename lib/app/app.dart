@@ -8,6 +8,9 @@ import 'package:my_nas/app/theme/app_theme.dart';
 import 'package:my_nas/core/services/background_task_service.dart';
 import 'package:my_nas/core/services/deep_link_service.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/book/data/services/book_database_service.dart';
+import 'package:my_nas/features/music/data/services/music_database_service.dart';
+import 'package:my_nas/features/photo/data/services/photo_database_service.dart';
 import 'package:my_nas/features/video/data/services/video_database_service.dart';
 import 'package:my_nas/features/video/data/services/video_scanner_service.dart';
 import 'package:my_nas/shared/providers/theme_provider.dart';
@@ -108,8 +111,13 @@ class _MyNasAppState extends ConsumerState<MyNasApp> with WidgetsBindingObserver
   /// 3. 后台服务正常停止
   Future<void> _stopBackgroundServiceIfNeeded() async {
     try {
-      // 安全关闭视频数据库（执行 WAL checkpoint）
-      await VideoDatabaseService().close();
+      // 并行安全关闭所有 SQLite 数据库（执行 WAL checkpoint）
+      await Future.wait([
+        VideoDatabaseService().close(),
+        MusicDatabaseService().close(),
+        PhotoDatabaseService().close(),
+        BookDatabaseService().close(),
+      ]);
 
       // 关闭所有 Hive boxes
       await Hive.close();

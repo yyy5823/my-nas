@@ -165,6 +165,7 @@ class MusicDatabaseService {
         version: 1,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
+        onConfigure: _onConfigure,
       );
 
       _initialized = true;
@@ -173,6 +174,15 @@ class MusicDatabaseService {
       logger.e('MusicDatabaseService: 数据库初始化失败', e);
       rethrow;
     }
+  }
+
+  /// 数据库配置 - 启用 WAL 模式和安全设置
+  Future<void> _onConfigure(Database db) async {
+    await db.execute('PRAGMA journal_mode=WAL');
+    await db.execute('PRAGMA synchronous=NORMAL');
+    await db.execute('PRAGMA busy_timeout=5000');
+    await db.execute('PRAGMA foreign_keys=ON');
+    logger.d('MusicDatabaseService: 数据库配置完成 (WAL模式)');
   }
 
   /// 创建表和索引
@@ -236,19 +246,23 @@ class MusicDatabaseService {
   }
 
   /// 批量插入或更新
+  ///
+  /// 使用事务保护确保原子性
   Future<void> upsertBatch(List<MusicTrackEntity> metadataList) async {
     if (!_initialized) await init();
     if (metadataList.isEmpty) return;
 
-    final batch = _db!.batch();
-    for (final metadata in metadataList) {
-      batch.insert(
-        _tableMetadata,
-        _toRow(metadata),
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
-    }
-    await batch.commit(noResult: true);
+    await _db!.transaction((txn) async {
+      final batch = txn.batch();
+      for (final metadata in metadataList) {
+        batch.insert(
+          _tableMetadata,
+          _toRow(metadata),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+      await batch.commit(noResult: true);
+    });
     logger.d('MusicDatabaseService: 批量插入 ${metadataList.length} 条');
   }
 
@@ -662,11 +676,22 @@ class MusicDatabaseService {
     logger.i('MusicDatabaseService: 已清空所有数据');
   }
 
-  /// 关闭数据库
+  /// 安全关闭数据库
+  ///
+  /// 执行 WAL checkpoint 确保数据安全持久化
   Future<void> close() async {
-    await _db?.close();
-    _db = null;
-    _initialized = false;
+    if (_db != null && _db!.isOpen) {
+      try {
+        await _db!.execute('PRAGMA wal_checkpoint(TRUNCATE)');
+        logger.d('MusicDatabaseService: WAL checkpoint 完成');
+      } on Exception catch (e) {
+        logger.w('MusicDatabaseService: WAL checkpoint 失败', e);
+      }
+      await _db!.close();
+      _db = null;
+      _initialized = false;
+      logger.i('MusicDatabaseService: 数据库已安全关闭');
+    }
   }
 
   Map<String, dynamic> _toRow(MusicTrackEntity m) => {
