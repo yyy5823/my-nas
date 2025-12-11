@@ -135,9 +135,7 @@ class TransmissionApi {
   }
 
   /// 获取会话信息
-  Future<Map<String, dynamic>> sessionGet({List<String>? fields}) async {
-    return _call('session-get', arguments: fields != null ? {'fields': fields} : null);
-  }
+  Future<Map<String, dynamic>> sessionGet({List<String>? fields}) async => _call('session-get', arguments: fields != null ? {'fields': fields} : null);
 
   /// 获取会话统计
   Future<TransmissionSessionStats> sessionStats() async {
@@ -434,8 +432,7 @@ class TransmissionTorrent {
   /// 4 = downloading
   /// 5 = seeding queue
   /// 6 = seeding
-  TransmissionTorrentStatus get statusEnum {
-    return switch (status) {
+  TransmissionTorrentStatus get statusEnum => switch (status) {
       0 => TransmissionTorrentStatus.stopped,
       1 => TransmissionTorrentStatus.checkWait,
       2 => TransmissionTorrentStatus.check,
@@ -445,7 +442,6 @@ class TransmissionTorrent {
       6 => TransmissionTorrentStatus.seed,
       _ => TransmissionTorrentStatus.stopped,
     };
-  }
 
   /// 是否正在下载
   bool get isDownloading =>

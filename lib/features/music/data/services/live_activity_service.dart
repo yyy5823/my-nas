@@ -133,8 +133,8 @@ class LiveActivityService {
       // 如果已有 Activity，更新它而不是重新创建
       // 这样可以避免在后台时创建新 Activity 失败导致灵动岛被清除
       if (_currentActivityId != null) {
-        logger.i('LiveActivity: 已有活动存在，强制更新歌曲信息: $_currentActivityId');
-        logger.d('LiveActivity: 更新内容 - title=${music.displayTitle}, artist=${music.displayArtist}, hasCover=${coverData != null}');
+        logger..i('LiveActivity: 已有活动存在，强制更新歌曲信息: $_currentActivityId')
+        ..d('LiveActivity: 更新内容 - title=${music.displayTitle}, artist=${music.displayArtist}, hasCover=${coverData != null}');
         // 更新封面数据
         if (coverData != null) {
           _currentCoverData = coverData;

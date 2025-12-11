@@ -328,7 +328,7 @@ class BookContentProcessor {
 
   /// 修复 hex 颜色值
   static String? _fixHexColor(String hex) {
-    var cleaned = hex.replaceAll(RegExp('[^0-9a-fA-F]'), '');
+    final cleaned = hex.replaceAll(RegExp('[^0-9a-fA-F]'), '');
     if (cleaned.isEmpty) return null;
 
     final length = cleaned.length;

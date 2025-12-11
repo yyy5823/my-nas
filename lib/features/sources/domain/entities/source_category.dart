@@ -20,11 +20,9 @@ enum SourceCategory {
   final IconData icon;
 
   /// 是否为服务类源分组
-  bool get isServiceCategory {
-    return this == downloadTools ||
+  bool get isServiceCategory => this == downloadTools ||
         this == mediaTracking ||
         this == mediaManagement;
-  }
 
   /// 是否为存储类源分组
   bool get isStorageCategory => !isServiceCategory;

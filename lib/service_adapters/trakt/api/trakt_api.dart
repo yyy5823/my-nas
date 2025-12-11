@@ -53,12 +53,10 @@ class TraktApi {
   }
 
   /// 获取 OAuth 授权 URL
-  String getAuthorizationUrl() {
-    return '$authUrl/oauth/authorize'
+  String getAuthorizationUrl() => '$authUrl/oauth/authorize'
         '?response_type=code'
         '&client_id=$clientId'
         '&redirect_uri=$redirectUri';
-  }
 
   /// 使用授权码获取 Token
   Future<TraktTokenResponse> exchangeCodeForToken(String code) async {
@@ -193,7 +191,7 @@ class TraktApi {
       },
     );
 
-    final List<dynamic> data = jsonDecode(response.body) as List<dynamic>;
+    final data = jsonDecode(response.body) as List<dynamic>;
     return data
         .map((e) => TraktHistoryItem.fromJson(e as Map<String, dynamic>))
         .toList();
@@ -215,7 +213,7 @@ class TraktApi {
       },
     );
 
-    final List<dynamic> data = jsonDecode(response.body) as List<dynamic>;
+    final data = jsonDecode(response.body) as List<dynamic>;
     return data
         .map((e) => TraktWatchlistItem.fromJson(e as Map<String, dynamic>))
         .toList();
@@ -230,7 +228,7 @@ class TraktApi {
       '/users/me/collection/$type',
     );
 
-    final List<dynamic> data = jsonDecode(response.body) as List<dynamic>;
+    final data = jsonDecode(response.body) as List<dynamic>;
     return data
         .map((e) => TraktCollectionItem.fromJson(e as Map<String, dynamic>))
         .toList();
@@ -245,7 +243,7 @@ class TraktApi {
       '/users/me/ratings/$type',
     );
 
-    final List<dynamic> data = jsonDecode(response.body) as List<dynamic>;
+    final data = jsonDecode(response.body) as List<dynamic>;
     return data
         .map((e) => TraktRatingItem.fromJson(e as Map<String, dynamic>))
         .toList();
@@ -308,8 +306,7 @@ class TraktApi {
   }
 
   /// 搜索媒体
-  Future<List<TraktSearchResult>> search(
-    String query, {
+  Future<List<TraktSearchResult>> search(String query, {
     String type = 'movie,show',
     int page = 1,
     int limit = 10,
@@ -324,19 +321,18 @@ class TraktApi {
       },
     );
 
-    final List<dynamic> data = jsonDecode(response.body) as List<dynamic>;
+    final data = jsonDecode(response.body) as List<dynamic>;
     return data
         .map((e) => TraktSearchResult.fromJson(e as Map<String, dynamic>))
         .toList();
   }
 
   /// 发起认证请求
-  Future<http.Response> _makeAuthenticatedRequest(
-    String method,
-    String path, {
-    Map<String, String>? queryParams,
-    Map<String, dynamic>? body,
-  }) async {
+  Future<http.Response> _makeAuthenticatedRequest(String method,
+      String path, {
+        Map<String, String>? queryParams,
+        Map<String, dynamic>? body,
+      }) async {
     // 检查 token 是否需要刷新
     if (needsTokenRefresh && refreshToken != null) {
       await refreshAccessToken();
@@ -356,13 +352,12 @@ class TraktApi {
   }
 
   /// 发起请求
-  Future<http.Response> _makeRequest(
-    String method,
-    String path, {
-    Map<String, String>? queryParams,
-    Map<String, dynamic>? body,
-    bool authenticated = false,
-  }) async {
+  Future<http.Response> _makeRequest(String method,
+      String path, {
+        Map<String, String>? queryParams,
+        Map<String, dynamic>? body,
+        bool authenticated = false,
+      }) async {
     var url = Uri.parse('$apiUrl$path');
     if (queryParams != null && queryParams.isNotEmpty) {
       url = url.replace(queryParameters: queryParams);
@@ -424,6 +419,7 @@ class TraktApi {
 /// Trakt API 异常
 class TraktApiException implements Exception {
   const TraktApiException(this.message);
+
   final String message;
 
   @override
@@ -441,8 +437,7 @@ class TraktTokenResponse {
     required this.createdAt,
   });
 
-  factory TraktTokenResponse.fromJson(Map<String, dynamic> json) {
-    return TraktTokenResponse(
+  factory TraktTokenResponse.fromJson(Map<String, dynamic> json) => TraktTokenResponse(
       accessToken: json['access_token'] as String,
       tokenType: json['token_type'] as String,
       expiresIn: json['expires_in'] as int,
@@ -450,7 +445,6 @@ class TraktTokenResponse {
       scope: json['scope'] as String,
       createdAt: json['created_at'] as int,
     );
-  }
 
   final String accessToken;
   final String tokenType;
@@ -500,8 +494,7 @@ class TraktHistoryItem {
     this.episode,
   });
 
-  factory TraktHistoryItem.fromJson(Map<String, dynamic> json) {
-    return TraktHistoryItem(
+  factory TraktHistoryItem.fromJson(Map<String, dynamic> json) => TraktHistoryItem(
       id: json['id'] as int,
       watchedAt: DateTime.parse(json['watched_at'] as String),
       action: json['action'] as String,
@@ -516,7 +509,6 @@ class TraktHistoryItem {
           ? TraktEpisode.fromJson(json['episode'] as Map<String, dynamic>)
           : null,
     );
-  }
 
   final int id;
   final DateTime watchedAt;
@@ -537,8 +529,7 @@ class TraktWatchlistItem {
     this.show,
   });
 
-  factory TraktWatchlistItem.fromJson(Map<String, dynamic> json) {
-    return TraktWatchlistItem(
+  factory TraktWatchlistItem.fromJson(Map<String, dynamic> json) => TraktWatchlistItem(
       id: json['id'] as int,
       listedAt: DateTime.parse(json['listed_at'] as String),
       type: json['type'] as String,
@@ -549,7 +540,6 @@ class TraktWatchlistItem {
           ? TraktShow.fromJson(json['show'] as Map<String, dynamic>)
           : null,
     );
-  }
 
   final int id;
   final DateTime listedAt;
@@ -566,8 +556,7 @@ class TraktCollectionItem {
     this.show,
   });
 
-  factory TraktCollectionItem.fromJson(Map<String, dynamic> json) {
-    return TraktCollectionItem(
+  factory TraktCollectionItem.fromJson(Map<String, dynamic> json) => TraktCollectionItem(
       collectedAt: DateTime.parse(json['collected_at'] as String),
       movie: json['movie'] != null
           ? TraktMovie.fromJson(json['movie'] as Map<String, dynamic>)
@@ -576,7 +565,6 @@ class TraktCollectionItem {
           ? TraktShow.fromJson(json['show'] as Map<String, dynamic>)
           : null,
     );
-  }
 
   final DateTime collectedAt;
   final TraktMovie? movie;
@@ -593,8 +581,7 @@ class TraktRatingItem {
     this.show,
   });
 
-  factory TraktRatingItem.fromJson(Map<String, dynamic> json) {
-    return TraktRatingItem(
+  factory TraktRatingItem.fromJson(Map<String, dynamic> json) => TraktRatingItem(
       rating: json['rating'] as int,
       ratedAt: DateTime.parse(json['rated_at'] as String),
       type: json['type'] as String,
@@ -605,7 +592,6 @@ class TraktRatingItem {
           ? TraktShow.fromJson(json['show'] as Map<String, dynamic>)
           : null,
     );
-  }
 
   final int rating;
   final DateTime ratedAt;
@@ -623,8 +609,7 @@ class TraktSearchResult {
     this.show,
   });
 
-  factory TraktSearchResult.fromJson(Map<String, dynamic> json) {
-    return TraktSearchResult(
+  factory TraktSearchResult.fromJson(Map<String, dynamic> json) => TraktSearchResult(
       type: json['type'] as String,
       score: (json['score'] as num?)?.toDouble() ?? 0.0,
       movie: json['movie'] != null
@@ -634,7 +619,6 @@ class TraktSearchResult {
           ? TraktShow.fromJson(json['show'] as Map<String, dynamic>)
           : null,
     );
-  }
 
   final String type;
   final double score;
@@ -650,13 +634,11 @@ class TraktMovie {
     required this.ids,
   });
 
-  factory TraktMovie.fromJson(Map<String, dynamic> json) {
-    return TraktMovie(
+  factory TraktMovie.fromJson(Map<String, dynamic> json) => TraktMovie(
       title: json['title'] as String? ?? '',
       year: json['year'] as int?,
       ids: TraktIds.fromJson(json['ids'] as Map<String, dynamic>? ?? {}),
     );
-  }
 
   final String title;
   final int? year;
@@ -671,13 +653,11 @@ class TraktShow {
     required this.ids,
   });
 
-  factory TraktShow.fromJson(Map<String, dynamic> json) {
-    return TraktShow(
+  factory TraktShow.fromJson(Map<String, dynamic> json) => TraktShow(
       title: json['title'] as String? ?? '',
       year: json['year'] as int?,
       ids: TraktIds.fromJson(json['ids'] as Map<String, dynamic>? ?? {}),
     );
-  }
 
   final String title;
   final int? year;
@@ -693,14 +673,12 @@ class TraktEpisode {
     required this.ids,
   });
 
-  factory TraktEpisode.fromJson(Map<String, dynamic> json) {
-    return TraktEpisode(
+  factory TraktEpisode.fromJson(Map<String, dynamic> json) => TraktEpisode(
       season: json['season'] as int? ?? 0,
       number: json['number'] as int? ?? 0,
       title: json['title'] as String? ?? '',
       ids: TraktIds.fromJson(json['ids'] as Map<String, dynamic>? ?? {}),
     );
-  }
 
   final int season;
   final int number;
@@ -718,15 +696,13 @@ class TraktIds {
     this.tvdb,
   });
 
-  factory TraktIds.fromJson(Map<String, dynamic> json) {
-    return TraktIds(
+  factory TraktIds.fromJson(Map<String, dynamic> json) => TraktIds(
       trakt: json['trakt'] as int?,
       slug: json['slug'] as String?,
       imdb: json['imdb'] as String?,
       tmdb: json['tmdb'] as int?,
       tvdb: json['tvdb'] as int?,
     );
-  }
 
   final int? trakt;
   final String? slug;

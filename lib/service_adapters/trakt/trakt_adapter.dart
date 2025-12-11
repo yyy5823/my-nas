@@ -1,7 +1,7 @@
+import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/service_adapters/base/service_adapter.dart';
-
-import 'api/trakt_api.dart';
+import 'package:my_nas/service_adapters/trakt/api/trakt_api.dart';
 
 /// Trakt 服务适配器
 ///
@@ -16,10 +16,10 @@ class TraktAdapter implements ServiceAdapter {
 
   @override
   ServiceAdapterInfo get info => ServiceAdapterInfo(
-        name: 'Trakt',
-        type: SourceType.trakt,
-        description: '追踪观看记录和媒体状态',
-      );
+    name: 'Trakt',
+    type: SourceType.trakt,
+    description: '追踪观看记录和媒体状态',
+  );
 
   @override
   bool get isConnected => _api?.isAuthenticated ?? false;
@@ -38,10 +38,7 @@ class TraktAdapter implements ServiceAdapter {
 
   /// 获取授权 URL
   String getAuthorizationUrl(String clientId, String clientSecret) {
-    _api = TraktApi(
-      clientId: clientId,
-      clientSecret: clientSecret,
-    );
+    _api = TraktApi(clientId: clientId, clientSecret: clientSecret);
     return _api!.getAuthorizationUrl();
   }
 
@@ -52,17 +49,15 @@ class TraktAdapter implements ServiceAdapter {
     String clientSecret,
   ) async {
     try {
-      _api ??= TraktApi(
-        clientId: clientId,
-        clientSecret: clientSecret,
-      );
+      _api ??= TraktApi(clientId: clientId, clientSecret: clientSecret);
 
       final tokenResponse = await _api!.exchangeCodeForToken(code);
 
       // 获取用户信息
       try {
         _userSettings = await _api!.getUserSettings();
-      } catch (_) {
+      } on Exception catch (e, st) {
+        logger.e('Failed to get user settings', e, st);
         // 用户信息获取失败不影响连接
       }
 
@@ -80,13 +75,16 @@ class TraktAdapter implements ServiceAdapter {
       return ServiceConnectionSuccess(this);
     } on TraktApiException catch (e) {
       return ServiceConnectionFailure(e.message);
-    } catch (e) {
+    } on Exception catch (e, st) {
+      logger.e('Failed to authenticate with code', e, st);
       return ServiceConnectionFailure('认证失败: $e');
     }
   }
 
   @override
-  Future<ServiceConnectionResult> connect(ServiceConnectionConfig config) async {
+  Future<ServiceConnectionResult> connect(
+    ServiceConnectionConfig config,
+  ) async {
     try {
       final extraConfig = config.extraConfig;
       if (extraConfig == null) {
@@ -122,7 +120,8 @@ class TraktAdapter implements ServiceAdapter {
       // 验证连接
       try {
         _userSettings = await _api!.getUserSettings();
-      } catch (e) {
+      } on Exception catch (e, st) {
+        logger.e('Failed to get user settings', e, st);
         _api?.dispose();
         _api = null;
         return ServiceConnectionFailure('连接验证失败: $e');
@@ -134,7 +133,8 @@ class TraktAdapter implements ServiceAdapter {
       _api?.dispose();
       _api = null;
       return ServiceConnectionFailure(e.message);
-    } catch (e) {
+    } on Exception catch (e, st) {
+      logger.e('Failed to connect', e, st);
       _api?.dispose();
       _api = null;
       return ServiceConnectionFailure('连接失败: $e');
@@ -145,7 +145,8 @@ class TraktAdapter implements ServiceAdapter {
   Future<void> disconnect() async {
     try {
       await _api?.revokeToken();
-    } catch (_) {
+    } on Exception catch (e, st) {
+      logger.e('Failed to revoke token', e, st);
       // 忽略撤销错误
     }
     _api?.dispose();

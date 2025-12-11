@@ -262,9 +262,9 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
           });
         }
       });
-    } catch (e) {
+    } on Exception catch (e, st) {
       // 某些平台可能不支持电池API
-      logger.w('无法获取电池信息: $e');
+      logger.w('无法获取电池信息: $e $st');
     }
   }
 

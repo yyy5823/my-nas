@@ -41,7 +41,7 @@ class SourcesNotifier extends StateNotifier<AsyncValue<List<SourceEntity>>> {
       await manager.init();
       final sources = await manager.getSources();
       state = AsyncValue.data(sources);
-    } catch (e, st) {
+    } on Exception catch (e, st) {
       // 捕获所有错误，包括 TypeError
       state = AsyncValue.error(e, st);
     }
@@ -217,7 +217,7 @@ class MediaLibraryConfigNotifier
       await manager.init();
       final config = await manager.getMediaLibraryConfig();
       state = AsyncValue.data(config);
-    } catch (e, st) {
+    } on Exception catch (e, st) {
       // 捕获所有错误，包括 TypeError
       state = AsyncValue.error(e, st);
     }

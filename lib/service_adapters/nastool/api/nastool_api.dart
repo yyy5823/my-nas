@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'package:my_nas/core/utils/logger.dart';
 
 /// NASTool API 客户端
 ///
@@ -37,7 +38,8 @@ class NasToolApi {
         return true;
       }
       return false;
-    } catch (_) {
+    } on Exception catch (e, st) {
+      logger.e('Failed to validate connection', e, st);
       return false;
     }
   }
@@ -328,8 +330,7 @@ class NasToolSubscribe {
     this.lastUpdate,
   });
 
-  factory NasToolSubscribe.fromJson(Map<String, dynamic> json) {
-    return NasToolSubscribe(
+  factory NasToolSubscribe.fromJson(Map<String, dynamic> json) => NasToolSubscribe(
       id: json['id'] as int? ?? 0,
       name: json['name'] as String? ?? '',
       type: json['type'] as String? ?? '',
@@ -341,7 +342,6 @@ class NasToolSubscribe {
           ? DateTime.tryParse(json['last_update'] as String)
           : null,
     );
-  }
 
   final int id;
   final String name;
@@ -366,8 +366,7 @@ class NasToolSearchResult {
     this.resolution,
   });
 
-  factory NasToolSearchResult.fromJson(Map<String, dynamic> json) {
-    return NasToolSearchResult(
+  factory NasToolSearchResult.fromJson(Map<String, dynamic> json) => NasToolSearchResult(
       title: json['title'] as String? ?? '',
       size: json['size'] as int? ?? 0,
       seeders: json['seeders'] as int? ?? 0,
@@ -377,7 +376,6 @@ class NasToolSearchResult {
       mediaType: json['media_type'] as String?,
       resolution: json['resolution'] as String?,
     );
-  }
 
   final String title;
   final int size;
@@ -401,8 +399,7 @@ class NasToolDownloadTask {
     this.eta,
   });
 
-  factory NasToolDownloadTask.fromJson(Map<String, dynamic> json) {
-    return NasToolDownloadTask(
+  factory NasToolDownloadTask.fromJson(Map<String, dynamic> json) => NasToolDownloadTask(
       id: json['id'] as String? ?? '',
       name: json['name'] as String? ?? '',
       state: json['state'] as String? ?? '',
@@ -411,7 +408,6 @@ class NasToolDownloadTask {
       speed: json['speed'] as int?,
       eta: json['eta'] as int?,
     );
-  }
 
   final String id;
   final String name;
@@ -434,8 +430,7 @@ class NasToolTransferHistory {
     this.success,
   });
 
-  factory NasToolTransferHistory.fromJson(Map<String, dynamic> json) {
-    return NasToolTransferHistory(
+  factory NasToolTransferHistory.fromJson(Map<String, dynamic> json) => NasToolTransferHistory(
       id: json['id'] as int? ?? 0,
       title: json['title'] as String? ?? '',
       type: json['type'] as String? ?? '',
@@ -446,7 +441,6 @@ class NasToolTransferHistory {
           : null,
       success: json['success'] as bool?,
     );
-  }
 
   final int id;
   final String title;
@@ -470,8 +464,7 @@ class NasToolMediaInfo {
     this.backdrop,
   });
 
-  factory NasToolMediaInfo.fromJson(Map<String, dynamic> json) {
-    return NasToolMediaInfo(
+  factory NasToolMediaInfo.fromJson(Map<String, dynamic> json) => NasToolMediaInfo(
       title: json['title'] as String? ?? '',
       year: json['year'] as int?,
       type: json['type'] as String? ?? '',
@@ -481,7 +474,6 @@ class NasToolMediaInfo {
       poster: json['poster'] as String?,
       backdrop: json['backdrop'] as String?,
     );
-  }
 
   final String title;
   final int? year;

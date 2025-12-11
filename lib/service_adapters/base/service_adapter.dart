@@ -58,15 +58,13 @@ class ServiceConnectionConfig {
   factory ServiceConnectionConfig.fromSource(
     SourceEntity source, {
     String? password,
-  }) {
-    return ServiceConnectionConfig(
+  }) => ServiceConnectionConfig(
       baseUrl: source.baseUrl,
       username: source.username,
       password: password,
       apiKey: source.apiKey,
       extraConfig: source.extraConfig,
     );
-  }
 }
 
 /// 服务连接结果（sealed class 用于类型安全的错误处理）
@@ -77,12 +75,10 @@ sealed class ServiceConnectionResult {
   T when<T>({
     required T Function(ServiceAdapter adapter) success,
     required T Function(String error) failure,
-  }) {
-    return switch (this) {
+  }) => switch (this) {
       ServiceConnectionSuccess(:final adapter) => success(adapter),
       ServiceConnectionFailure(:final error) => failure(error),
     };
-  }
 }
 
 /// 连接成功

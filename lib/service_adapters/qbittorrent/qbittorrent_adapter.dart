@@ -1,3 +1,4 @@
+import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/service_adapters/base/service_adapter.dart';
 import 'package:my_nas/service_adapters/qbittorrent/api/qbittorrent_api.dart';
@@ -15,13 +16,13 @@ class QBittorrentAdapter implements ServiceAdapter {
 
   @override
   ServiceAdapterInfo get info => ServiceAdapterInfo(
-        name: 'qBittorrent',
-        type: SourceType.qbittorrent,
-        version: _appVersion != null && _apiVersion != null
-            ? '$_appVersion (API: $_apiVersion)'
-            : _appVersion,
-        description: '开源 BT 下载客户端',
-      );
+    name: 'qBittorrent',
+    type: SourceType.qbittorrent,
+    version: _appVersion != null && _apiVersion != null
+        ? '$_appVersion (API: $_apiVersion)'
+        : _appVersion,
+    description: '开源 BT 下载客户端',
+  );
 
   @override
   bool get isConnected => _api?.isAuthenticated ?? false;
@@ -33,7 +34,9 @@ class QBittorrentAdapter implements ServiceAdapter {
   QBittorrentApi? get api => _api;
 
   @override
-  Future<ServiceConnectionResult> connect(ServiceConnectionConfig config) async {
+  Future<ServiceConnectionResult> connect(
+    ServiceConnectionConfig config,
+  ) async {
     try {
       _api = QBittorrentApi(
         baseUrl: config.baseUrl,
@@ -54,7 +57,8 @@ class QBittorrentAdapter implements ServiceAdapter {
       try {
         _appVersion = await _api!.getAppVersion();
         _apiVersion = await _api!.getApiVersion();
-      } catch (_) {
+      } on Exception catch (e, st) {
+        logger.e('Failed to get version info', e, st);
         // 版本信息获取失败不影响连接
       }
 
@@ -64,10 +68,10 @@ class QBittorrentAdapter implements ServiceAdapter {
       _api?.dispose();
       _api = null;
       return ServiceConnectionFailure(e.message);
-    } catch (e) {
+    } on Exception catch (e, st) {
       _api?.dispose();
       _api = null;
-      return ServiceConnectionFailure('连接失败: $e');
+      return ServiceConnectionFailure('连接失败: $e $st');
     }
   }
 
@@ -75,7 +79,8 @@ class QBittorrentAdapter implements ServiceAdapter {
   Future<void> disconnect() async {
     try {
       await _api?.logout();
-    } catch (_) {
+    } on Exception catch (e, st) {
+      logger.e('Failed to logout', e, st);
       // 忽略登出错误
     }
     _api?.dispose();
@@ -184,11 +189,11 @@ class QBittorrentAdapter implements ServiceAdapter {
     final torrents = await _api!.getTorrents();
     final transferInfo = await _api!.getTransferInfo();
 
-    int downloading = 0;
-    int seeding = 0;
-    int paused = 0;
-    int completed = 0;
-    int error = 0;
+    var downloading = 0;
+    var seeding = 0;
+    var paused = 0;
+    var completed = 0;
+    var error = 0;
 
     for (final torrent in torrents) {
       if (torrent.hasError) {
@@ -242,6 +247,7 @@ enum TorrentFilter {
   errored('errored');
 
   const TorrentFilter(this.value);
+
   final String value;
 }
 
@@ -264,6 +270,7 @@ enum TorrentSort {
   completionOn('completion_on');
 
   const TorrentSort(this.value);
+
   final String value;
 }
 

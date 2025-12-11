@@ -163,7 +163,7 @@ class SourceManagerService {
       return data
           .map((e) => SourceEntity.fromJson(Map<String, dynamic>.from(e as Map)))
           .toList();
-    } catch (e, st) {
+    } on Exception catch (e, st) {
       // 捕获所有错误，包括 TypeError（类型转换失败）
       logger.e('SourceManagerService: 解析源列表失败', e, st);
       return [];
@@ -648,7 +648,7 @@ class SourceManagerService {
       } else {
         logger.d('SourceManagerService: ${source.name} 没有保存的凭证，跳过自动连接');
       }
-    } catch (e, st) {
+    } on Exception catch (e, st) {
       // 捕获所有错误，包括 TypeError
       logger.e('SourceManagerService: 自动连接异常 ${source.name}', e, st);
     }
@@ -713,7 +713,7 @@ class SourceManagerService {
       final config = MediaLibraryConfig.fromJson(Map<String, dynamic>.from(data as Map));
       logger.i('SourceManagerService: 解析媒体库配置成功 - 视频路径: ${config.videoPaths.length}, 音乐路径: ${config.musicPaths.length}');
       return config;
-    } catch (e, st) {
+    } on Exception catch (e, st) {
       // 捕获所有错误，包括 TypeError（类型转换失败）
       logger.e('SourceManagerService: 解析媒体库配置失败', e, st);
       return const MediaLibraryConfig();

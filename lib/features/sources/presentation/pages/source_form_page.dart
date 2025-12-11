@@ -659,7 +659,7 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
       useSsl: useSsl,
       autoConnect: autoConnect,
       rememberDevice: rememberDevice,
-      apiKey: apiKey?.isNotEmpty == true ? apiKey : null,
+      apiKey: apiKey?.isNotEmpty ?? false ? apiKey : null,
       extraConfig: extraConfig.isNotEmpty ? extraConfig : null,
       lastConnected: widget.existingSource?.lastConnected,
       quickConnectId: widget.existingSource?.quickConnectId,

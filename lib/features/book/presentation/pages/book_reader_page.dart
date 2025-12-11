@@ -60,12 +60,11 @@ class TxtReaderLoaded extends TxtReaderState {
     String? content,
     String? htmlContent,
     double? scrollPosition,
-  }) =>
-      TxtReaderLoaded(
-        content: content ?? this.content,
-        htmlContent: htmlContent ?? this.htmlContent,
-        scrollPosition: scrollPosition ?? this.scrollPosition,
-      );
+  }) => TxtReaderLoaded(
+    content: content ?? this.content,
+    htmlContent: htmlContent ?? this.htmlContent,
+    scrollPosition: scrollPosition ?? this.scrollPosition,
+  );
 }
 
 class TxtReaderError extends TxtReaderState {
@@ -336,7 +335,10 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     // 初始化时间
     _updateTime();
     // 每分钟更新一次时间
-    _timeTimer = Timer.periodic(const Duration(minutes: 1), (_) => _updateTime());
+    _timeTimer = Timer.periodic(
+      const Duration(minutes: 1),
+      (_) => _updateTime(),
+    );
 
     // 初始化电池信息
     try {
@@ -353,9 +355,9 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
           });
         }
       });
-    } catch (e) {
+    } on Exception catch (e, st) {
       // 某些平台可能不支持电池API
-      logger.w('无法获取电池信息: $e');
+      logger.w('无法获取电池信息: $e $st');
     }
   }
 
@@ -478,7 +480,6 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     });
   }
 
-
   /// 跳转到章节
   void _jumpToChapter(int chapterIndex) {
     if (chapterIndex < 0 || chapterIndex >= _chapters.length) return;
@@ -488,7 +489,8 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     final settings = ref.read(bookReaderSettingsProvider);
 
     // 判断是否使用分页模式
-    final usePageMode = state is TxtReaderLoaded &&
+    final usePageMode =
+        state is TxtReaderLoaded &&
         state.hasHtml &&
         settings.pageTurnMode != BookPageTurnMode.scroll;
 
@@ -513,8 +515,10 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
       final maxScroll = _scrollController.position.maxScrollExtent;
       if (state is TxtReaderLoaded && state.hasHtml) {
         final totalLength = state.htmlContent!.length.toDouble();
-        final targetPosition =
-            (chapter.offset / totalLength * maxScroll).clamp(0.0, maxScroll);
+        final targetPosition = (chapter.offset / totalLength * maxScroll).clamp(
+          0.0,
+          maxScroll,
+        );
 
         _scrollController.animateTo(
           targetPosition,
@@ -578,11 +582,15 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     }
 
     // 对于 MOBI/AZW3 等长文档，使用分页模式以提高性能
-    final usePageMode = state.hasHtml && settings.pageTurnMode != BookPageTurnMode.scroll;
+    final usePageMode =
+        state.hasHtml && settings.pageTurnMode != BookPageTurnMode.scroll;
 
     // 初始化分页（如果需要且尚未完成）
     // 需要等内容处理完成后再分页，因为分页依赖清理后的 HTML
-    if (usePageMode && !_isPaginationReady && state.hasHtml && _isContentProcessed) {
+    if (usePageMode &&
+        !_isPaginationReady &&
+        state.hasHtml &&
+        _isContentProcessed) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _paginateContentAsync(state.htmlContent!, settings);
       });
@@ -634,7 +642,10 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
   }
 
   /// 滚动模式内容
-  Widget _buildScrollContent(TxtReaderLoaded state, BookReaderSettings settings) {
+  Widget _buildScrollContent(
+    TxtReaderLoaded state,
+    BookReaderSettings settings,
+  ) {
     // 在第一帧渲染后恢复滚动位置
     if (!_isScrollPositionRestored && state.scrollPosition > 0) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -673,7 +684,10 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
   }
 
   /// 分页模式内容 - 用于 MOBI/AZW3 等长文档，提高性能
-  Widget _buildPagedContent(TxtReaderLoaded state, BookReaderSettings settings) {
+  Widget _buildPagedContent(
+    TxtReaderLoaded state,
+    BookReaderSettings settings,
+  ) {
     final theme = settings.theme;
 
     // 如果分页尚未完成，显示加载中
@@ -682,7 +696,9 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CircularProgressIndicator(color: theme.textColor.withValues(alpha: 0.5)),
+            CircularProgressIndicator(
+              color: theme.textColor.withValues(alpha: 0.5),
+            ),
             const SizedBox(height: 16),
             Text(
               '正在分页...',
@@ -720,10 +736,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
   /// 构建单页内容
   Widget _buildPageContent(String pageHtml, BookReaderSettings settings) {
     final theme = settings.theme;
-    return Html(
-      data: pageHtml,
-      style: _buildHtmlStyles(settings, theme),
-    );
+    return Html(data: pageHtml, style: _buildHtmlStyles(settings, theme));
   }
 
   /// 异步分页（在 Isolate 中处理）
@@ -771,13 +784,15 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
       widget.book.sourceId ?? 'local',
       widget.book.path,
     );
-    await ReadingProgressService().saveProgress(ReadingProgress(
-      itemId: itemId,
-      itemType: 'txt',
-      position: page.toDouble(),
-      totalPositions: _pages.length,
-      lastReadAt: DateTime.now(),
-    ));
+    await ReadingProgressService().saveProgress(
+      ReadingProgress(
+        itemId: itemId,
+        itemType: 'txt',
+        position: page.toDouble(),
+        totalPositions: _pages.length,
+        lastReadAt: DateTime.now(),
+      ),
+    );
   }
 
   /// 恢复分页进度
@@ -886,13 +901,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
       children: [
         Icon(batteryIcon, size: 14, color: color),
         const SizedBox(width: 2),
-        Text(
-          '$_batteryLevel%',
-          style: TextStyle(
-            color: color,
-            fontSize: 11,
-          ),
-        ),
+        Text('$_batteryLevel%', style: TextStyle(color: color, fontSize: 11)),
       ],
     );
   }
@@ -955,7 +964,8 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
   /// 构建目录抽屉
   Widget _buildTocDrawer(BuildContext context, BookReaderSettings settings) {
     final theme = settings.theme;
-    final isDark = theme == BookReaderTheme.dark || theme == BookReaderTheme.black;
+    final isDark =
+        theme == BookReaderTheme.dark || theme == BookReaderTheme.black;
 
     return Positioned(
       top: 0,
@@ -976,7 +986,9 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
                   decoration: BoxDecoration(
                     border: Border(
                       bottom: BorderSide(
-                        color: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
+                        color: isDark
+                            ? Colors.grey.shade800
+                            : Colors.grey.shade200,
                       ),
                     ),
                   ),
@@ -1008,7 +1020,9 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
                           child: Text(
                             '暂无目录',
                             style: TextStyle(
-                              color: isDark ? Colors.grey[500] : Colors.grey[600],
+                              color: isDark
+                                  ? Colors.grey[500]
+                                  : Colors.grey[600],
                             ),
                           ),
                         )
@@ -1107,10 +1121,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
         ),
         fontStyle: FontStyle.italic,
       ),
-      'a': Style(
-        color: Colors.blue,
-        textDecoration: TextDecoration.underline,
-      ),
+      'a': Style(color: Colors.blue, textDecoration: TextDecoration.underline),
       'img': Style(
         display: Display.none, // 隐藏图片，避免加载问题
       ),
@@ -1122,9 +1133,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
         margin: Margins.only(bottom: 12),
         padding: HtmlPaddings.only(left: 20),
       ),
-      'li': Style(
-        margin: Margins.only(bottom: 4),
-      ),
+      'li': Style(margin: Margins.only(bottom: 4)),
       'pre': Style(
         backgroundColor: theme.textColor.withValues(alpha: 0.05),
         padding: HtmlPaddings.all(12),
@@ -1149,7 +1158,10 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
   }
 
   /// 构建 HTML 样式（复用于分页和滚动模式）
-  Map<String, Style> _buildHtmlStyles(BookReaderSettings settings, BookReaderTheme theme) => {
+  Map<String, Style> _buildHtmlStyles(
+    BookReaderSettings settings,
+    BookReaderTheme theme,
+  ) => {
     'body': Style(
       fontSize: FontSize(settings.fontSize),
       lineHeight: LineHeight(settings.lineHeight),
@@ -1203,10 +1215,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
       ),
       fontStyle: FontStyle.italic,
     ),
-    'a': Style(
-      color: Colors.blue,
-      textDecoration: TextDecoration.underline,
-    ),
+    'a': Style(color: Colors.blue, textDecoration: TextDecoration.underline),
     'img': Style(
       display: Display.none, // 隐藏图片，避免加载问题
     ),
@@ -1218,9 +1227,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
       margin: Margins.only(bottom: 12),
       padding: HtmlPaddings.only(left: 20),
     ),
-    'li': Style(
-      margin: Margins.only(bottom: 4),
-    ),
+    'li': Style(margin: Margins.only(bottom: 4)),
     'pre': Style(
       backgroundColor: theme.textColor.withValues(alpha: 0.05),
       padding: HtmlPaddings.all(12),
@@ -1232,7 +1239,6 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
       fontSize: FontSize(settings.fontSize * 0.9),
     ),
   };
-
 
   /// 使用纯文本渲染
   Widget _buildTextContent(String content, BookReaderSettings settings) {
@@ -1337,8 +1343,10 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     }
 
     // 3. 以章节标题开头（第X章、Chapter X 等）
-    if (RegExp(r'^(第[一二三四五六七八九十百千万\d]+[章节回篇卷集部]|Chapter\s*\d+|CHAPTER\s*\d+)', caseSensitive: false)
-        .hasMatch(trimmedLine)) {
+    if (RegExp(
+      r'^(第[一二三四五六七八九十百千万\d]+[章节回篇卷集部]|Chapter\s*\d+|CHAPTER\s*\d+)',
+      caseSensitive: false,
+    ).hasMatch(trimmedLine)) {
       return true;
     }
 
@@ -1362,7 +1370,8 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
   Widget _buildTapZones(BookReaderSettings settings) {
     // 判断是否使用分页模式
     final state = ref.read(txtReaderProvider(widget.book));
-    final usePageMode = state is TxtReaderLoaded &&
+    final usePageMode =
+        state is TxtReaderLoaded &&
         state.hasHtml &&
         settings.pageTurnMode != BookPageTurnMode.scroll;
 
@@ -1421,7 +1430,8 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
 
                 if (usePageMode && _isPaginationReady) {
                   // 分页模式：下一页
-                  if (_pageController != null && _currentPage < _pages.length - 1) {
+                  if (_pageController != null &&
+                      _currentPage < _pages.length - 1) {
                     _pageController!.nextPage(
                       duration: const Duration(milliseconds: 300),
                       curve: Curves.easeOut,
@@ -1494,7 +1504,8 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
 
   Widget _buildBottomBar(BuildContext context, BookReaderSettings settings) {
     final state = ref.read(txtReaderProvider(widget.book));
-    final usePageMode = state is TxtReaderLoaded &&
+    final usePageMode =
+        state is TxtReaderLoaded &&
         state.hasHtml &&
         settings.pageTurnMode != BookPageTurnMode.scroll;
 
@@ -1519,28 +1530,46 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
                   Text(
                     usePageMode
                         ? '${_currentPage + 1}'
-                        : _getProgressText(state is TxtReaderLoaded ? state : null),
+                        : _getProgressText(
+                            state is TxtReaderLoaded ? state : null,
+                          ),
                     style: const TextStyle(color: Colors.white, fontSize: 12),
                   ),
                   Expanded(
                     child: Slider(
                       value: usePageMode
-                          ? _currentPage.toDouble().clamp(0, (_pages.length - 1).toDouble().clamp(0, double.infinity))
+                          ? _currentPage.toDouble().clamp(
+                              0,
+                              (_pages.length - 1).toDouble().clamp(
+                                0,
+                                double.infinity,
+                              ),
+                            )
                           : (_scrollController.hasClients
-                              ? (_scrollController.position.pixels /
-                                      _scrollController.position.maxScrollExtent)
-                                  .clamp(0.0, 1.0)
-                              : 0.0),
+                                ? (_scrollController.position.pixels /
+                                          _scrollController
+                                              .position
+                                              .maxScrollExtent)
+                                      .clamp(0.0, 1.0)
+                                : 0.0),
                       max: usePageMode
-                          ? (_pages.length - 1).toDouble().clamp(0, double.infinity)
+                          ? (_pages.length - 1).toDouble().clamp(
+                              0,
+                              double.infinity,
+                            )
                           : 1.0,
                       onChanged: (value) {
                         if (usePageMode && _pages.isNotEmpty) {
-                          final page = value.round().clamp(0, _pages.length - 1);
+                          final page = value.round().clamp(
+                            0,
+                            _pages.length - 1,
+                          );
                           _pageController?.jumpToPage(page);
                           setState(() => _currentPage = page);
                         } else if (_scrollController.hasClients) {
-                          final target = value * _scrollController.position.maxScrollExtent;
+                          final target =
+                              value *
+                              _scrollController.position.maxScrollExtent;
                           _scrollController.jumpTo(target);
                         }
                       },
@@ -1561,15 +1590,21 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
                   IconButton(
                     icon: const Icon(Icons.skip_previous, color: Colors.white),
                     onPressed: () {
-                      if (usePageMode && _pageController != null && _currentPage > 0) {
+                      if (usePageMode &&
+                          _pageController != null &&
+                          _currentPage > 0) {
                         _pageController!.previousPage(
                           duration: const Duration(milliseconds: 300),
                           curve: Curves.easeOut,
                         );
                       } else if (_scrollController.hasClients) {
                         _scrollController.animateTo(
-                          (_scrollController.offset - MediaQuery.of(context).size.height * 0.8)
-                              .clamp(0.0, _scrollController.position.maxScrollExtent),
+                          (_scrollController.offset -
+                                  MediaQuery.of(context).size.height * 0.8)
+                              .clamp(
+                                0.0,
+                                _scrollController.position.maxScrollExtent,
+                              ),
                           duration: const Duration(milliseconds: 300),
                           curve: Curves.easeOut,
                         );
@@ -1591,17 +1626,24 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
                   ),
                   IconButton(
                     onPressed: _showSettingsSheet,
-                    icon: const Icon(Icons.settings_outlined, color: Colors.white),
+                    icon: const Icon(
+                      Icons.settings_outlined,
+                      color: Colors.white,
+                    ),
                     tooltip: '设置',
                   ),
                   IconButton(
                     icon: const Icon(Icons.last_page, color: Colors.white),
                     onPressed: () {
-                      if (usePageMode && _pageController != null && _pages.isNotEmpty) {
+                      if (usePageMode &&
+                          _pageController != null &&
+                          _pages.isNotEmpty) {
                         _pageController!.jumpToPage(_pages.length - 1);
                         setState(() => _currentPage = _pages.length - 1);
                       } else if (_scrollController.hasClients) {
-                        _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+                        _scrollController.jumpTo(
+                          _scrollController.position.maxScrollExtent,
+                        );
                       }
                     },
                     tooltip: '最后一页',
@@ -1609,15 +1651,21 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
                   IconButton(
                     icon: const Icon(Icons.skip_next, color: Colors.white),
                     onPressed: () {
-                      if (usePageMode && _pageController != null && _currentPage < _pages.length - 1) {
+                      if (usePageMode &&
+                          _pageController != null &&
+                          _currentPage < _pages.length - 1) {
                         _pageController!.nextPage(
                           duration: const Duration(milliseconds: 300),
                           curve: Curves.easeOut,
                         );
                       } else if (_scrollController.hasClients) {
                         _scrollController.animateTo(
-                          (_scrollController.offset + MediaQuery.of(context).size.height * 0.8)
-                              .clamp(0.0, _scrollController.position.maxScrollExtent),
+                          (_scrollController.offset +
+                                  MediaQuery.of(context).size.height * 0.8)
+                              .clamp(
+                                0.0,
+                                _scrollController.position.maxScrollExtent,
+                              ),
                           duration: const Duration(milliseconds: 300),
                           curve: Curves.easeOut,
                         );
@@ -1790,7 +1838,9 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
               color: theme.backgroundColor,
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: isSelected ? AppColors.primary : (isDark ? Colors.grey.shade600 : Colors.grey.shade300),
+                color: isSelected
+                    ? AppColors.primary
+                    : (isDark ? Colors.grey.shade600 : Colors.grey.shade300),
                 width: isSelected ? 3 : 1,
               ),
               boxShadow: isSelected
@@ -1820,7 +1870,9 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
             style: TextStyle(
               fontSize: 12,
               fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-              color: isSelected ? AppColors.primary : (isDark ? Colors.white70 : Colors.black54),
+              color: isSelected
+                  ? AppColors.primary
+                  : (isDark ? Colors.white70 : Colors.black54),
             ),
           ),
         ],

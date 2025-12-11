@@ -164,11 +164,11 @@ class TransmissionAdapter implements ServiceAdapter {
     final torrents = await _api!.torrentGet();
     final stats = await _api!.sessionStats();
 
-    int downloading = 0;
-    int seeding = 0;
-    int stopped = 0;
-    int completed = 0;
-    int error = 0;
+    var downloading = 0;
+    var seeding = 0;
+    var stopped = 0;
+    var completed = 0;
+    var error = 0;
 
     for (final torrent in torrents) {
       if (torrent.hasError) {
