@@ -1222,101 +1222,59 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
   Widget _buildSettingsContent(ComicReaderSettings settings) {
     final settingsNotifier = ref.read(comicReaderSettingsProvider.notifier);
 
+    // 阅读模式选项
+    const readingModes = [
+      (icon: Icons.crop_portrait, label: '单页'),
+      (icon: Icons.menu_book, label: '双页'),
+      (icon: Icons.view_day, label: '长条'),
+    ];
+
+    // 阅读方向选项
+    const readingDirections = [
+      (icon: Icons.arrow_forward, label: '从左到右'),
+      (icon: Icons.arrow_back, label: '从右到左'),
+    ];
+
+    // 缩放模式选项
+    const scaleModes = [
+      (icon: Icons.width_normal, label: '适应宽度'),
+      (icon: Icons.height, label: '适应高度'),
+      (icon: Icons.fit_screen, label: '适应屏幕'),
+      (icon: Icons.crop_original, label: '原始大小'),
+    ];
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 阅读模式
+        // 阅读模式 - 横向滑动
         const SettingSectionTitle(title: '阅读模式'),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            SettingOptionButton(
-              icon: Icons.crop_portrait,
-              label: '单页',
-              isSelected: settings.readingMode == ComicReadingMode.singlePage,
-              onTap: () {
-                settingsNotifier.setReadingMode(ComicReadingMode.singlePage);
-                _resetControllers();
-              },
-            ),
-            SettingOptionButton(
-              icon: Icons.menu_book,
-              label: '双页',
-              isSelected: settings.readingMode == ComicReadingMode.doublePage,
-              onTap: () {
-                settingsNotifier.setReadingMode(ComicReadingMode.doublePage);
-                _resetControllers();
-              },
-            ),
-            SettingOptionButton(
-              icon: Icons.view_day,
-              label: '长条',
-              isSelected: settings.readingMode == ComicReadingMode.webtoon,
-              onTap: () {
-                settingsNotifier.setReadingMode(ComicReadingMode.webtoon);
-                _resetControllers();
-              },
-            ),
-          ],
+        SettingPageTurnModePicker(
+          modes: readingModes,
+          selectedIndex: settings.readingMode.index,
+          onSelect: (index) {
+            settingsNotifier.setReadingMode(ComicReadingMode.values[index]);
+            _resetControllers();
+          },
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 24),
 
-        // 阅读方向
+        // 阅读方向 - 横向滑动
         const SettingSectionTitle(title: '阅读方向'),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            SettingOptionButton(
-              icon: Icons.arrow_forward,
-              label: '从左到右',
-              isSelected: settings.readingDirection == ComicReadingDirection.ltr,
-              onTap: () => settingsNotifier.setReadingDirection(ComicReadingDirection.ltr),
-            ),
-            SettingOptionButton(
-              icon: Icons.arrow_back,
-              label: '从右到左',
-              isSelected: settings.readingDirection == ComicReadingDirection.rtl,
-              onTap: () => settingsNotifier.setReadingDirection(ComicReadingDirection.rtl),
-            ),
-          ],
+        SettingPageTurnModePicker(
+          modes: readingDirections,
+          selectedIndex: settings.readingDirection.index,
+          onSelect: (index) => settingsNotifier.setReadingDirection(ComicReadingDirection.values[index]),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 24),
 
-        // 缩放模式
+        // 缩放模式 - 横向滑动
         const SettingSectionTitle(title: '缩放模式'),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            SettingOptionButton(
-              icon: Icons.width_normal,
-              label: '适应宽度',
-              isSelected: settings.scaleMode == ComicScaleMode.fitWidth,
-              onTap: () => settingsNotifier.setScaleMode(ComicScaleMode.fitWidth),
-            ),
-            SettingOptionButton(
-              icon: Icons.height,
-              label: '适应高度',
-              isSelected: settings.scaleMode == ComicScaleMode.fitHeight,
-              onTap: () => settingsNotifier.setScaleMode(ComicScaleMode.fitHeight),
-            ),
-            SettingOptionButton(
-              icon: Icons.fit_screen,
-              label: '适应屏幕',
-              isSelected: settings.scaleMode == ComicScaleMode.fitScreen,
-              onTap: () => settingsNotifier.setScaleMode(ComicScaleMode.fitScreen),
-            ),
-            SettingOptionButton(
-              icon: Icons.crop_original,
-              label: '原始大小',
-              isSelected: settings.scaleMode == ComicScaleMode.original,
-              onTap: () => settingsNotifier.setScaleMode(ComicScaleMode.original),
-            ),
-          ],
+        SettingPageTurnModePicker(
+          modes: scaleModes,
+          selectedIndex: settings.scaleMode.index,
+          onSelect: (index) => settingsNotifier.setScaleMode(ComicScaleMode.values[index]),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 24),
 
         // 背景颜色
         const SettingSectionTitle(title: '背景颜色'),
@@ -1325,7 +1283,7 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
           selectedIndex: ComicBackgroundColor.values.indexOf(settings.backgroundColor),
           onSelect: (index) => settingsNotifier.setBackgroundColor(ComicBackgroundColor.values[index]),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 24),
 
         // 长条模式页间距
         if (settings.readingMode == ComicReadingMode.webtoon) ...[
@@ -1348,7 +1306,7 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
           onChanged: (value) => settingsNotifier.setShowPageNumber(value: value),
         ),
         SettingSwitchRow(
-          title: '保持屏幕常亮',
+          title: '屏幕常亮',
           value: settings.keepScreenOn,
           onChanged: (value) async {
             settingsNotifier.setKeepScreenOn(value: value);
@@ -1361,6 +1319,7 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
         ),
         SettingSwitchRow(
           title: '点击翻页',
+          subtitle: '左侧上翻，右侧下翻',
           value: settings.tapToTurn,
           onChanged: (value) => settingsNotifier.setTapToTurn(value: value),
         ),

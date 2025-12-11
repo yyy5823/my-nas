@@ -423,8 +423,8 @@ class AvailableFonts {
   }
 }
 
-/// 字体选择器
-class SettingFontPicker extends StatelessWidget {
+/// 字体选择器 - 横向滑动展示
+class SettingFontPicker extends StatefulWidget {
   const SettingFontPicker({
     required this.selectedFont,
     required this.onSelect,
@@ -435,44 +435,184 @@ class SettingFontPicker extends StatelessWidget {
   final ValueChanged<String?> onSelect;
 
   @override
+  State<SettingFontPicker> createState() => _SettingFontPickerState();
+}
+
+class _SettingFontPickerState extends State<SettingFontPicker> {
+  late final ScrollController _scrollController;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+    // 滚动到选中的字体位置
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToSelected());
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollToSelected() {
+    final selectedIndex = AvailableFonts.fonts.indexWhere(
+      (f) => f.$1 == widget.selectedFont,
+    );
+    if (selectedIndex > 0 && _scrollController.hasClients) {
+      // 估算每个字体卡片的宽度（约100px）
+      final targetOffset = (selectedIndex * 108.0 - 50).clamp(
+        0.0,
+        _scrollController.position.maxScrollExtent,
+      );
+      _scrollController.animateTo(
+        targetOffset,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: AvailableFonts.fonts.map((fontInfo) {
-        final (fontFamily, displayName) = fontInfo;
-        final isSelected = selectedFont == fontFamily;
+    return SizedBox(
+      height: 72,
+      child: ListView.separated(
+        controller: _scrollController,
+        scrollDirection: Axis.horizontal,
+        itemCount: AvailableFonts.fonts.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 12),
+        itemBuilder: (context, index) {
+          final (fontFamily, displayName) = AvailableFonts.fonts[index];
+          final isSelected = widget.selectedFont == fontFamily;
 
-        return GestureDetector(
-          onTap: () => onSelect(fontFamily),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: isSelected
-                  ? AppColors.primary.withValues(alpha: 0.15)
-                  : (isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.04)),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: isSelected ? AppColors.primary : Colors.transparent,
-                width: 1.5,
-              ),
-            ),
-            child: Text(
-              displayName,
-              style: TextStyle(
-                fontFamily: fontFamily,
-                fontSize: 13,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+          return GestureDetector(
+            onTap: () => widget.onSelect(fontFamily),
+            child: Container(
+              width: 96,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              decoration: BoxDecoration(
                 color: isSelected
-                    ? AppColors.primary
-                    : (isDark ? Colors.white70 : Colors.black54),
+                    ? AppColors.primary.withValues(alpha: 0.15)
+                    : (isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.04)),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: isSelected ? AppColors.primary : Colors.transparent,
+                  width: 2,
+                ),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // 字体预览
+                  Text(
+                    '永',
+                    style: TextStyle(
+                      fontFamily: fontFamily,
+                      fontSize: 24,
+                      fontWeight: FontWeight.w500,
+                      color: isSelected
+                          ? AppColors.primary
+                          : (isDark ? Colors.white : Colors.black87),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  // 字体名称
+                  Text(
+                    displayName,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                      color: isSelected
+                          ? AppColors.primary
+                          : (isDark ? Colors.white60 : Colors.black54),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ),
             ),
-          ),
-        );
-      }).toList(),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// 翻页方式选择器 - 横向滑动展示
+class SettingPageTurnModePicker extends StatelessWidget {
+  const SettingPageTurnModePicker({
+    required this.modes,
+    required this.selectedIndex,
+    required this.onSelect,
+    super.key,
+  });
+
+  final List<({IconData icon, String label})> modes;
+  final int selectedIndex;
+  final ValueChanged<int> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return SizedBox(
+      height: 72,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: modes.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 12),
+        itemBuilder: (context, index) {
+          final mode = modes[index];
+          final isSelected = index == selectedIndex;
+
+          return GestureDetector(
+            onTap: () => onSelect(index),
+            child: Container(
+              width: 80,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? AppColors.primary.withValues(alpha: 0.15)
+                    : (isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.04)),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: isSelected ? AppColors.primary : Colors.transparent,
+                  width: 2,
+                ),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    mode.icon,
+                    size: 24,
+                    color: isSelected
+                        ? AppColors.primary
+                        : (isDark ? Colors.white70 : Colors.black54),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    mode.label,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                      color: isSelected
+                          ? AppColors.primary
+                          : (isDark ? Colors.white60 : Colors.black54),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 }

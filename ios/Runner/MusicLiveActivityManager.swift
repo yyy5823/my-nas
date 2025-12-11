@@ -250,9 +250,10 @@ class MusicLiveActivityManager {
             }
         }
 
-        // 清理 UserDefaults
+        // 清理 UserDefaults 和封面文件
         if let uuid = currentActivityUUID {
             clearDefaultsData(prefix: uuid)
+            cleanupCoverFiles(prefix: uuid)
         }
 
         currentActivityId = nil
@@ -264,6 +265,12 @@ class MusicLiveActivityManager {
         // 使用信号量确保同步执行（对于 app 终止场景很重要）
         let semaphore = DispatchSemaphore(value: 0)
         let activities = Activity<LiveActivitiesAppAttributes>.activities
+
+        // 清理当前活动的封面文件和 UserDefaults
+        if let uuid = currentActivityUUID {
+            clearDefaultsData(prefix: uuid)
+            cleanupCoverFiles(prefix: uuid)
+        }
 
         if activities.isEmpty {
             print("MusicLiveActivityManager: No activities to end")
@@ -304,15 +311,13 @@ class MusicLiveActivityManager {
             // 处理图片数据
             if key == "coverImage" {
                 print("MusicLiveActivityManager: Processing coverImage, type: \(type(of: value))")
-                // 使用时间戳作为文件名的一部分，确保每次更新都使用新文件，避免缓存问题
-                let timestamp = Int(Date().timeIntervalSince1970 * 1000)
-                let filename = "cover_\(prefix.hashValue)_\(timestamp).jpg"
+                // 使用固定文件名，避免 Widget Extension 缓存问题
+                // Widget Extension 会根据文件名缓存图片，使用固定名称确保每次都能正确加载
+                let filename = "cover_\(prefix.hashValue).png"
 
                 // Flutter 发送的 Uint8List 会被转换为 FlutterStandardTypedData
                 if let typedData = value as? FlutterStandardTypedData {
                     print("MusicLiveActivityManager: coverImage is FlutterStandardTypedData, size: \(typedData.data.count)")
-                    // 删除旧的封面文件
-                    deleteOldCoverFiles(prefix: prefix)
                     if let imagePath = saveImageToFile(data: typedData.data, filename: filename) {
                         print("MusicLiveActivityManager: coverImage saved to: \(imagePath), key: \(prefixedKey)")
                         defaults.set(imagePath, forKey: prefixedKey)
@@ -322,8 +327,6 @@ class MusicLiveActivityManager {
                 } else if let data = value as? Data {
                     // 直接作为 Data 类型
                     print("MusicLiveActivityManager: coverImage is Data, size: \(data.count)")
-                    // 删除旧的封面文件
-                    deleteOldCoverFiles(prefix: prefix)
                     if let imagePath = saveImageToFile(data: data, filename: filename) {
                         print("MusicLiveActivityManager: coverImage saved to: \(imagePath)")
                         defaults.set(imagePath, forKey: prefixedKey)
@@ -352,26 +355,18 @@ class MusicLiveActivityManager {
         defaults.synchronize()
     }
 
-    /// 删除旧的封面文件（匹配 cover_<hashValue>_*.jpg 模式）
-    private func deleteOldCoverFiles(prefix: UUID) {
+    /// 清理旧的封面文件（在 Activity 结束时调用）
+    private func cleanupCoverFiles(prefix: UUID) {
         guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupId) else {
             return
         }
 
-        let fileManager = FileManager.default
-        let pattern = "cover_\(prefix.hashValue)_"
+        let filename = "cover_\(prefix.hashValue).png"
+        let fileURL = containerURL.appendingPathComponent(filename)
 
-        do {
-            let files = try fileManager.contentsOfDirectory(at: containerURL, includingPropertiesForKeys: nil)
-            for fileURL in files {
-                let filename = fileURL.lastPathComponent
-                if filename.hasPrefix(pattern) && filename.hasSuffix(".jpg") {
-                    try? fileManager.removeItem(at: fileURL)
-                    print("MusicLiveActivityManager: Deleted old cover file: \(filename)")
-                }
-            }
-        } catch {
-            print("MusicLiveActivityManager: Failed to list directory for cleanup: \(error)")
+        if FileManager.default.fileExists(atPath: fileURL.path) {
+            try? FileManager.default.removeItem(at: fileURL)
+            print("MusicLiveActivityManager: Deleted cover file: \(filename)")
         }
     }
 
@@ -442,14 +437,8 @@ class MusicLiveActivityManager {
         // 使用 PNG 格式保存（PNG 在 Widget 中更可靠）
         // 根据多个开发者的经验，PNG 比 JPEG 在 Live Activity 中更稳定
         guard let compressedData = resizedImage.pngData() else {
-            print("MusicLiveActivityManager: Failed to create PNG data, trying JPEG")
-            // 如果 PNG 失败，尝试 JPEG
-            guard let jpegData = resizedImage.jpegData(compressionQuality: 0.8) else {
-                print("MusicLiveActivityManager: Failed to compress image")
-                return nil
-            }
-            print("MusicLiveActivityManager: Using JPEG fallback - targetSize: \(targetSize), dataSize: \(jpegData.count) bytes")
-            return saveCompressedImage(jpegData, filename: filename, containerURL: containerURL)
+            print("MusicLiveActivityManager: Failed to create PNG data")
+            return nil
         }
 
         print("MusicLiveActivityManager: Compressed to PNG - targetSize: \(targetSize), dataSize: \(compressedData.count) bytes")

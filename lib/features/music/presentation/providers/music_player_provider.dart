@@ -204,14 +204,22 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     // 监听播放状态
     _player.playingStream.listen((playing) {
       state = state.copyWith(isPlaying: playing);
+      // 播放状态变化时立即更新 Live Activity，避免灵动岛停顿
+      unawaited(_updateLiveActivity());
     });
 
     // 监听缓冲状态
     _player.processingStateStream.listen((processingState) {
+      final wasBuffering = state.isBuffering;
       state = state.copyWith(
         isBuffering: processingState == ProcessingState.buffering ||
             processingState == ProcessingState.loading,
       );
+
+      // 缓冲状态变化时更新 Live Activity，保持灵动岛动效同步
+      if (wasBuffering != state.isBuffering) {
+        unawaited(_updateLiveActivity());
+      }
 
       // 播放完成时自动下一曲
       if (processingState == ProcessingState.completed) {

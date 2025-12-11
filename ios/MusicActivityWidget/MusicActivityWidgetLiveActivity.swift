@@ -486,6 +486,10 @@ struct MusicCoverView: View {
         let coverKey = context.attributes.prefixedKey("coverImage")
         let filename = defaults.string(forKey: coverKey) ?? ""
 
+        #if DEBUG
+        let _ = print("MusicCoverView: Loading cover with key=\(coverKey), filename=\(filename)")
+        #endif
+
         // 尝试加载图片
         let loadedImage = Self.loadCoverImage(filename: filename)
 
@@ -519,18 +523,36 @@ struct MusicCoverView: View {
     private static func loadCoverImage(filename: String) -> UIImage? {
         // 确保文件名不为空
         guard !filename.isEmpty else {
+            #if DEBUG
+            print("MusicCoverView: filename is empty")
+            #endif
             return nil
         }
 
         // 从 App Group container 加载
         guard let containerURL = getAppGroupContainerURL() else {
+            #if DEBUG
+            print("MusicCoverView: Cannot access App Group container")
+            #endif
             return nil
         }
 
         let fileURL = containerURL.appendingPathComponent(filename)
 
+        #if DEBUG
+        print("MusicCoverView: Trying to load image from: \(fileURL.path)")
+        #endif
+
         // 检查文件是否存在
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            #if DEBUG
+            print("MusicCoverView: File does not exist at: \(fileURL.path)")
+            // 列出目录中的文件用于调试
+            if let files = try? FileManager.default.contentsOfDirectory(at: containerURL, includingPropertiesForKeys: nil) {
+                let coverFiles = files.filter { $0.lastPathComponent.hasPrefix("cover_") }
+                print("MusicCoverView: Available cover files: \(coverFiles.map { $0.lastPathComponent })")
+            }
+            #endif
             return nil
         }
 
@@ -538,13 +560,27 @@ struct MusicCoverView: View {
         // 根据 Apple Developer Forums，这种方式在 Widget Extension 中更可靠
         // 参考: https://developer.apple.com/forums/thread/716902
         guard let imageData = try? Data(contentsOf: fileURL) else {
+            #if DEBUG
+            print("MusicCoverView: Failed to read data from file")
+            #endif
             return nil
         }
 
+        #if DEBUG
+        print("MusicCoverView: Image data loaded, size: \(imageData.count) bytes")
+        #endif
+
         // 创建 UIImage
         guard let image = UIImage(data: imageData) else {
+            #if DEBUG
+            print("MusicCoverView: Failed to create UIImage from data")
+            #endif
             return nil
         }
+
+        #if DEBUG
+        print("MusicCoverView: Image loaded successfully, size: \(image.size)")
+        #endif
 
         return image
     }

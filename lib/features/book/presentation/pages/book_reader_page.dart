@@ -1637,9 +1637,47 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
   Widget _buildSettingsContent(BookReaderSettings settings) {
     final settingsNotifier = ref.read(bookReaderSettingsProvider.notifier);
 
+    // 翻页方式选项
+    const pageTurnModes = [
+      (icon: Icons.swap_vert_rounded, label: '滚动'),
+      (icon: Icons.swipe_rounded, label: '滑动'),
+      (icon: Icons.auto_stories_rounded, label: '仿真'),
+      (icon: Icons.layers_rounded, label: '覆盖'),
+      (icon: Icons.article_rounded, label: '无动画'),
+    ];
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // 翻页方式
+        const SettingSectionTitle(title: '翻页方式'),
+        SettingPageTurnModePicker(
+          modes: pageTurnModes,
+          selectedIndex: settings.pageTurnMode.index,
+          onSelect: (index) {
+            settingsNotifier.setPageTurnMode(BookPageTurnMode.values[index]);
+            // 重置分页状态
+            setState(() {
+              _isPaginationReady = false;
+              _pages = [];
+              _pageController?.dispose();
+              _pageController = null;
+            });
+          },
+        ),
+        const SizedBox(height: 24),
+
+        // 字体选择 - 横向滑动
+        SettingSectionTitle(
+          title: '字体',
+          trailing: AvailableFonts.getDisplayName(settings.fontFamily),
+        ),
+        SettingFontPicker(
+          selectedFont: settings.fontFamily,
+          onSelect: settingsNotifier.setFontFamily,
+        ),
+        const SizedBox(height: 24),
+
         // 字体大小
         SettingSliderRow(
           label: '字体大小',
@@ -1650,18 +1688,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
           valueLabel: '${settings.fontSize.toInt()}',
           onChanged: settingsNotifier.setFontSize,
         ),
-        const SizedBox(height: 24),
-
-        // 字体选择
-        SettingSectionTitle(
-          title: '字体',
-          trailing: AvailableFonts.getDisplayName(settings.fontFamily),
-        ),
-        SettingFontPicker(
-          selectedFont: settings.fontFamily,
-          onSelect: settingsNotifier.setFontFamily,
-        ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
 
         // 行高
         SettingSliderRow(
