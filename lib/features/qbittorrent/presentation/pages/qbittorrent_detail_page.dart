@@ -123,24 +123,28 @@ class _QBittorrentDetailPageState extends ConsumerState<QBittorrentDetailPage> {
                       ],
                     ),
                   ),
-                  // 备用速度限制按钮
+                  // 备用速度限制按钮（带文字切换）
                   if (connection?.status == QBConnectionStatus.connected)
-                    IconButton(
-                      icon: Icon(
-                        transferInfo?.useAltSpeedLimits == true
-                            ? Icons.speed
-                            : Icons.speed_outlined,
-                        color: transferInfo?.useAltSpeedLimits == true
-                            ? AppColors.warning
-                            : null,
-                      ),
-                      tooltip: transferInfo?.useAltSpeedLimits == true
-                          ? '关闭备用速度限制'
-                          : '启用备用速度限制',
+                    _AltSpeedButton(
+                      isEnabled: transferInfo?.useAltSpeedLimits ?? false,
                       onPressed: () {
                         ref.read(qbittorrentActionsProvider(widget.source.id))
                             .toggleAlternativeSpeedLimits();
                       },
+                    ),
+                  // 筛选按钮
+                  if (connection?.status == QBConnectionStatus.connected)
+                    IconButton(
+                      icon: const Icon(Icons.filter_list),
+                      tooltip: '筛选',
+                      onPressed: () => _showFilterDialog(context),
+                    ),
+                  // 排序按钮
+                  if (connection?.status == QBConnectionStatus.connected)
+                    IconButton(
+                      icon: const Icon(Icons.sort),
+                      tooltip: '排序',
+                      onPressed: () => _showSortDialog(context),
                     ),
                   // 更多操作菜单
                   PopupMenuButton<String>(
@@ -172,14 +176,6 @@ class _QBittorrentDetailPageState extends ConsumerState<QBittorrentDetailPage> {
                         child: ListTile(
                           leading: Icon(Icons.tune),
                           title: Text('速度限制设置'),
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                      ),
-                      const PopupMenuItem(
-                        value: 'sort',
-                        child: ListTile(
-                          leading: Icon(Icons.sort),
-                          title: Text('排序'),
                           contentPadding: EdgeInsets.zero,
                         ),
                       ),
@@ -299,8 +295,6 @@ class _QBittorrentDetailPageState extends ConsumerState<QBittorrentDetailPage> {
         actions.resumeAll();
       case 'speed_limit':
         _showSpeedLimitDialog(context);
-      case 'sort':
-        _showSortDialog(context);
       case 'refresh':
         ref.invalidate(qbittorrentAutoRefreshProvider(widget.source.id));
         ref.invalidate(qbTransferInfoAutoRefreshProvider(widget.source.id));
@@ -321,9 +315,18 @@ class _QBittorrentDetailPageState extends ConsumerState<QBittorrentDetailPage> {
     );
   }
 
+  void _showFilterDialog(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => _FilterOptionsSheet(sourceId: widget.source.id),
+    );
+  }
+
   void _showSortDialog(BuildContext context) {
     showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
       builder: (context) => _SortOptionsSheet(sourceId: widget.source.id),
     );
   }
@@ -412,8 +415,6 @@ class _TorrentList extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final torrents = ref.watch(qbittorrentAutoRefreshProvider(sourceId));
     final sortSettings = ref.watch(qbSortSettingsProvider(sourceId));
-    final categoriesAsync = ref.watch(qbCategoriesProvider(sourceId));
-    final tagsAsync = ref.watch(qbTagsProvider(sourceId));
 
     if (torrents.isEmpty) {
       return _buildEmptyState(context);
@@ -440,6 +441,8 @@ class _TorrentList extends ConsumerWidget {
           result = a.size.compareTo(b.size);
         case QBSortMode.progress:
           result = a.progress.compareTo(b.progress);
+        case QBSortMode.state:
+          result = a.state.compareTo(b.state);
         case QBSortMode.dlSpeed:
           result = a.dlSpeed.compareTo(b.dlSpeed);
         case QBSortMode.upSpeed:
@@ -450,9 +453,14 @@ class _TorrentList extends ConsumerWidget {
           result = (a.ratio ?? 0).compareTo(b.ratio ?? 0);
         case QBSortMode.eta:
           result = (a.eta ?? 0).compareTo(b.eta ?? 0);
+        case QBSortMode.uploaded:
+          result = (a.uploaded ?? 0).compareTo(b.uploaded ?? 0);
       }
       return sortSettings.reverse ? -result : result;
     });
+
+    // 显示当前筛选状态
+    final hasFilter = sortSettings.filterCategory != null || sortSettings.filterTag != null;
 
     return RefreshIndicator(
       onRefresh: () async {
@@ -460,8 +468,9 @@ class _TorrentList extends ConsumerWidget {
       },
       child: Column(
         children: [
-          // 筛选条
-          _buildFilterBar(context, ref, sortSettings, categoriesAsync, tagsAsync),
+          // 筛选状态提示
+          if (hasFilter)
+            _buildFilterHint(context, ref, sortSettings),
           // 列表
           Expanded(
             child: ListView.builder(
@@ -484,126 +493,38 @@ class _TorrentList extends ConsumerWidget {
     );
   }
 
-  Widget _buildFilterBar(
-    BuildContext context,
-    WidgetRef ref,
-    QBSortSettings sortSettings,
-    AsyncValue<Map<String, QBCategory>> categoriesAsync,
-    AsyncValue<List<String>> tagsAsync,
-  ) {
-    final categories = categoriesAsync.valueOrNull ?? {};
-    final tags = tagsAsync.valueOrNull ?? [];
-
-    if (categories.isEmpty && tags.isEmpty) {
-      return const SizedBox.shrink();
+  Widget _buildFilterHint(BuildContext context, WidgetRef ref, QBSortSettings sortSettings) {
+    final filters = <String>[];
+    if (sortSettings.filterCategory != null) {
+      filters.add('分类: ${sortSettings.filterCategory!.isEmpty ? "(未分类)" : sortSettings.filterCategory}');
+    }
+    if (sortSettings.filterTag != null) {
+      filters.add('标签: ${sortSettings.filterTag}');
     }
 
     return Container(
-      height: 48,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: ListView(
-        scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      color: isDark
+          ? AppColors.primary.withValues(alpha: 0.1)
+          : AppColors.primary.withValues(alpha: 0.05),
+      child: Row(
         children: [
-          // 分类筛选
-          if (categories.isNotEmpty) ...[
-            FilterChip(
-              label: Text(sortSettings.filterCategory ?? '全部分类'),
-              selected: sortSettings.filterCategory != null,
-              onSelected: (_) {
-                _showCategoryFilter(context, ref, categories.keys.toList());
-              },
+          Icon(Icons.filter_alt, size: 16, color: AppColors.primary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              filters.join(' • '),
+              style: context.textTheme.bodySmall?.copyWith(color: AppColors.primary),
             ),
-            const SizedBox(width: 8),
-          ],
-          // 标签筛选
-          if (tags.isNotEmpty) ...[
-            FilterChip(
-              label: Text(sortSettings.filterTag ?? '全部标签'),
-              selected: sortSettings.filterTag != null,
-              onSelected: (_) {
-                _showTagFilter(context, ref, tags);
-              },
-            ),
-            const SizedBox(width: 8),
-          ],
-          // 排序
-          ActionChip(
-            avatar: Icon(
-              sortSettings.reverse ? Icons.arrow_downward : Icons.arrow_upward,
-              size: 16,
-            ),
-            label: Text(sortSettings.sortMode.label),
-            onPressed: () {
-              ref.read(qbSortSettingsProvider(sourceId).notifier).toggleReverse();
+          ),
+          GestureDetector(
+            onTap: () {
+              ref.read(qbSortSettingsProvider(sourceId).notifier).setFilterCategory(null);
+              ref.read(qbSortSettingsProvider(sourceId).notifier).setFilterTag(null);
             },
+            child: Icon(Icons.close, size: 16, color: AppColors.primary),
           ),
         ],
-      ),
-    );
-  }
-
-  void _showCategoryFilter(
-    BuildContext context,
-    WidgetRef ref,
-    List<String> categories,
-  ) {
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: const Text('全部分类'),
-              onTap: () {
-                ref.read(qbSortSettingsProvider(sourceId).notifier).setFilterCategory(null);
-                Navigator.pop(context);
-              },
-            ),
-            ...categories.map(
-              (c) => ListTile(
-                title: Text(c.isEmpty ? '(未分类)' : c),
-                onTap: () {
-                  ref.read(qbSortSettingsProvider(sourceId).notifier).setFilterCategory(c);
-                  Navigator.pop(context);
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showTagFilter(
-    BuildContext context,
-    WidgetRef ref,
-    List<String> tags,
-  ) {
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: const Text('全部标签'),
-              onTap: () {
-                ref.read(qbSortSettingsProvider(sourceId).notifier).setFilterTag(null);
-                Navigator.pop(context);
-              },
-            ),
-            ...tags.map(
-              (t) => ListTile(
-                title: Text(t),
-                onTap: () {
-                  ref.read(qbSortSettingsProvider(sourceId).notifier).setFilterTag(t);
-                  Navigator.pop(context);
-                },
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -654,12 +575,13 @@ class _TorrentTile extends ConsumerWidget {
     final (statusColor, statusIcon) = _getStatusInfo();
     final tagList = torrent.tags?.split(',').where((t) => t.isNotEmpty).toList() ?? [];
 
+    // 根据完成状态确定卡片背景色
+    final cardColor = _getCardColor();
+
     return Container(
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
       decoration: BoxDecoration(
-        color: isDark
-            ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
-            : AppColors.lightSurface,
+        color: cardColor,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: isDark
@@ -807,18 +729,20 @@ class _TorrentTile extends ConsumerWidget {
                   ],
                 ),
               ],
-              // 做种信息
-              if (torrent.isUploading && torrent.isCompleted) ...[
+              // 做种信息（完成后显示）
+              if (torrent.isCompleted) ...[
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    const Icon(Icons.arrow_upward, size: 14, color: AppColors.primary),
-                    const SizedBox(width: 4),
-                    Text(
-                      _formatSpeed(torrent.upSpeed),
-                      style: context.textTheme.bodySmall?.copyWith(color: AppColors.primary),
-                    ),
-                    const SizedBox(width: 16),
+                    if (torrent.upSpeed > 0) ...[
+                      const Icon(Icons.arrow_upward, size: 14, color: AppColors.primary),
+                      const SizedBox(width: 4),
+                      Text(
+                        _formatSpeed(torrent.upSpeed),
+                        style: context.textTheme.bodySmall?.copyWith(color: AppColors.primary),
+                      ),
+                      const SizedBox(width: 12),
+                    ],
                     const Icon(Icons.sync, size: 14),
                     const SizedBox(width: 4),
                     Text(
@@ -827,6 +751,17 @@ class _TorrentTile extends ConsumerWidget {
                         color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                       ),
                     ),
+                    if (torrent.uploaded != null && torrent.uploaded! > 0) ...[
+                      const SizedBox(width: 12),
+                      const Icon(Icons.cloud_upload_outlined, size: 14),
+                      const SizedBox(width: 4),
+                      Text(
+                        '已上传: ${_formatSize(torrent.uploaded!)}',
+                        style: context.textTheme.bodySmall?.copyWith(
+                          color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ],
@@ -844,6 +779,38 @@ class _TorrentTile extends ConsumerWidget {
     if (torrent.isUploading) return (AppColors.primary, Icons.upload);
     if (torrent.isCompleted) return (AppColors.success, Icons.check_circle);
     return (Colors.grey, Icons.help_outline);
+  }
+
+  /// 根据种子状态获取卡片背景色
+  Color _getCardColor() {
+    if (torrent.hasError) {
+      // 错误状态 - 红色调
+      return isDark
+          ? AppColors.error.withValues(alpha: 0.08)
+          : AppColors.error.withValues(alpha: 0.05);
+    }
+    if (torrent.isCompleted) {
+      // 已完成 - 绿色调
+      return isDark
+          ? AppColors.success.withValues(alpha: 0.08)
+          : AppColors.success.withValues(alpha: 0.05);
+    }
+    if (torrent.isDownloading) {
+      // 下载中 - 蓝色调
+      return isDark
+          ? AppColors.primary.withValues(alpha: 0.08)
+          : AppColors.primary.withValues(alpha: 0.05);
+    }
+    if (torrent.isPaused) {
+      // 暂停 - 橙色调
+      return isDark
+          ? AppColors.warning.withValues(alpha: 0.08)
+          : AppColors.warning.withValues(alpha: 0.05);
+    }
+    // 默认颜色
+    return isDark
+        ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
+        : AppColors.lightSurface;
   }
 
   Widget _buildQuickAction(BuildContext context, WidgetRef ref) {
@@ -1329,6 +1296,279 @@ class _DetailItem extends StatelessWidget {
   }
 }
 
+/// 备用速度限制按钮（带文字切换）
+class _AltSpeedButton extends StatelessWidget {
+  const _AltSpeedButton({
+    required this.isEnabled,
+    required this.onPressed,
+  });
+
+  final bool isEnabled;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          decoration: BoxDecoration(
+            color: isEnabled
+                ? AppColors.warning.withValues(alpha: 0.15)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            border: isEnabled
+                ? Border.all(color: AppColors.warning.withValues(alpha: 0.3))
+                : null,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                isEnabled ? Icons.speed : Icons.speed_outlined,
+                size: 18,
+                color: isEnabled
+                    ? AppColors.warning
+                    : (isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                isEnabled ? '恢复全局' : '备用限速',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: isEnabled
+                      ? AppColors.warning
+                      : (isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 筛选选项弹框
+class _FilterOptionsSheet extends ConsumerWidget {
+  const _FilterOptionsSheet({required this.sourceId});
+
+  final String sourceId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(qbSortSettingsProvider(sourceId));
+    final categoriesAsync = ref.watch(qbCategoriesProvider(sourceId));
+    final tagsAsync = ref.watch(qbTagsProvider(sourceId));
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final categories = categoriesAsync.valueOrNull?.keys.toList() ?? [];
+    final tags = tagsAsync.valueOrNull ?? [];
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      minChildSize: 0.3,
+      maxChildSize: 0.9,
+      expand: false,
+      builder: (context, scrollController) => Container(
+        decoration: BoxDecoration(
+          color: isDark ? AppColors.darkSurface : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          children: [
+            // 拖动指示器
+            Center(
+              child: Container(
+                margin: const EdgeInsets.only(top: 12, bottom: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.grey[600] : Colors.grey[400],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            // 标题
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  const Icon(Icons.filter_list, size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    '筛选',
+                    style: context.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                  const Spacer(),
+                  if (settings.filterCategory != null || settings.filterTag != null)
+                    TextButton(
+                      onPressed: () {
+                        ref.read(qbSortSettingsProvider(sourceId).notifier).setFilterCategory(null);
+                        ref.read(qbSortSettingsProvider(sourceId).notifier).setFilterTag(null);
+                      },
+                      child: const Text('清除'),
+                    ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            // 内容
+            Expanded(
+              child: ListView(
+                controller: scrollController,
+                padding: const EdgeInsets.all(16),
+                children: [
+                  // 分类筛选
+                  if (categories.isNotEmpty) ...[
+                    Text(
+                      '分类',
+                      style: context.textTheme.titleSmall?.copyWith(
+                        color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _FilterChip(
+                          label: '全部',
+                          isSelected: settings.filterCategory == null,
+                          onTap: () {
+                            ref.read(qbSortSettingsProvider(sourceId).notifier).setFilterCategory(null);
+                          },
+                        ),
+                        ...categories.map((c) => _FilterChip(
+                          label: c.isEmpty ? '(未分类)' : c,
+                          isSelected: settings.filterCategory == c,
+                          onTap: () {
+                            ref.read(qbSortSettingsProvider(sourceId).notifier).setFilterCategory(c);
+                          },
+                        )),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+                  // 标签筛选
+                  if (tags.isNotEmpty) ...[
+                    Text(
+                      '标签',
+                      style: context.textTheme.titleSmall?.copyWith(
+                        color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _FilterChip(
+                          label: '全部',
+                          isSelected: settings.filterTag == null,
+                          onTap: () {
+                            ref.read(qbSortSettingsProvider(sourceId).notifier).setFilterTag(null);
+                          },
+                        ),
+                        ...tags.map((t) => _FilterChip(
+                          label: t,
+                          isSelected: settings.filterTag == t,
+                          onTap: () {
+                            ref.read(qbSortSettingsProvider(sourceId).notifier).setFilterTag(t);
+                          },
+                        )),
+                      ],
+                    ),
+                  ],
+                  if (categories.isEmpty && tags.isEmpty)
+                    Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Column(
+                          children: [
+                            Icon(
+                              Icons.filter_alt_off,
+                              size: 48,
+                              color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              '暂无可用的筛选选项',
+                              style: context.textTheme.bodyMedium?.copyWith(
+                                color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              '添加分类或标签后可在此筛选',
+                              style: context.textTheme.bodySmall?.copyWith(
+                                color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 筛选选项 Chip
+class _FilterChip extends StatelessWidget {
+  const _FilterChip({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? AppColors.primary.withValues(alpha: 0.15)
+              : (isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant),
+          borderRadius: BorderRadius.circular(20),
+          border: isSelected
+              ? Border.all(color: AppColors.primary.withValues(alpha: 0.5))
+              : null,
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+            color: isSelected
+                ? AppColors.primary
+                : (isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// 排序选项
 class _SortOptionsSheet extends ConsumerWidget {
   const _SortOptionsSheet({required this.sourceId});
@@ -1338,40 +1578,104 @@ class _SortOptionsSheet extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(qbSortSettingsProvider(sourceId));
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Padding(
-            padding: EdgeInsets.all(16),
-            child: Text('排序方式', style: TextStyle(fontWeight: FontWeight.bold)),
-          ),
-          ...QBSortMode.values.map(
-            (mode) => RadioListTile<QBSortMode>(
-              title: Text(mode.label),
-              value: mode,
-              groupValue: settings.sortMode,
-              onChanged: (value) {
-                if (value != null) {
-                  ref.read(qbSortSettingsProvider(sourceId).notifier).setSortMode(value);
-                }
-              },
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      minChildSize: 0.3,
+      maxChildSize: 0.9,
+      expand: false,
+      builder: (context, scrollController) => Container(
+        decoration: BoxDecoration(
+          color: isDark ? AppColors.darkSurface : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          children: [
+            // 拖动指示器
+            Center(
+              child: Container(
+                margin: const EdgeInsets.only(top: 12, bottom: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.grey[600] : Colors.grey[400],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
             ),
-          ),
-          const Divider(),
-          SwitchListTile(
-            title: const Text('降序'),
-            value: settings.reverse,
-            onChanged: (_) {
-              ref.read(qbSortSettingsProvider(sourceId).notifier).toggleReverse();
-            },
-          ),
-          const SizedBox(height: 8),
-        ],
+            // 标题
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  const Icon(Icons.sort, size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    '排序',
+                    style: context.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                  const Spacer(),
+                  // 升序/降序切换
+                  TextButton.icon(
+                    onPressed: () {
+                      ref.read(qbSortSettingsProvider(sourceId).notifier).toggleReverse();
+                    },
+                    icon: Icon(
+                      settings.reverse ? Icons.arrow_downward : Icons.arrow_upward,
+                      size: 18,
+                    ),
+                    label: Text(settings.reverse ? '降序' : '升序'),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            // 排序选项列表
+            Expanded(
+              child: ListView(
+                controller: scrollController,
+                children: QBSortMode.values.map(
+                  (mode) => ListTile(
+                    leading: Icon(
+                      _getSortModeIcon(mode),
+                      color: settings.sortMode == mode ? AppColors.primary : null,
+                    ),
+                    title: Text(
+                      mode.label,
+                      style: TextStyle(
+                        fontWeight: settings.sortMode == mode ? FontWeight.w600 : null,
+                        color: settings.sortMode == mode ? AppColors.primary : null,
+                      ),
+                    ),
+                    trailing: settings.sortMode == mode
+                        ? Icon(Icons.check, color: AppColors.primary)
+                        : null,
+                    onTap: () {
+                      ref.read(qbSortSettingsProvider(sourceId).notifier).setSortMode(mode);
+                    },
+                  ),
+                ).toList(),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
+
+  IconData _getSortModeIcon(QBSortMode mode) => switch (mode) {
+        QBSortMode.name => Icons.sort_by_alpha,
+        QBSortMode.size => Icons.storage,
+        QBSortMode.progress => Icons.percent,
+        QBSortMode.state => Icons.circle,
+        QBSortMode.dlSpeed => Icons.download,
+        QBSortMode.upSpeed => Icons.upload,
+        QBSortMode.addedOn => Icons.schedule,
+        QBSortMode.ratio => Icons.sync,
+        QBSortMode.eta => Icons.timer,
+        QBSortMode.uploaded => Icons.cloud_upload,
+      };
 }
 
 /// 速度限制设置对话框
@@ -1517,7 +1821,7 @@ class _SpeedLimitDialogState extends ConsumerState<_SpeedLimitDialog> {
   }
 }
 
-/// 添加 Torrent 对话框
+/// 添加 Torrent 底部弹框
 class _AddTorrentDialog extends ConsumerStatefulWidget {
   const _AddTorrentDialog({required this.sourceId});
 
@@ -1533,6 +1837,7 @@ class _AddTorrentDialogState extends ConsumerState<_AddTorrentDialog> {
   bool _isLoading = false;
   bool _paused = false;
   String? _selectedCategory;
+  String? _errorMessage;
 
   @override
   void dispose() {
@@ -1544,76 +1849,370 @@ class _AddTorrentDialogState extends ConsumerState<_AddTorrentDialog> {
   Widget build(BuildContext context) {
     final categoriesAsync = ref.watch(qbCategoriesProvider(widget.sourceId));
     final categories = categoriesAsync.valueOrNull?.keys.toList() ?? [];
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bottomPadding = MediaQuery.of(context).viewInsets.bottom;
 
-    return AlertDialog(
-      title: const Text('添加 Torrent'),
-      content: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextFormField(
-              controller: _controller,
-              decoration: const InputDecoration(
-                labelText: 'URL / Magnet 链接',
-                hintText: 'magnet:?xt=urn:btih:...',
-                helperText: '支持 Magnet 链接或 Torrent 文件 URL',
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Padding(
+        padding: EdgeInsets.only(bottom: bottomPadding),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // 拖动指示器
+              Center(
+                child: Container(
+                  margin: const EdgeInsets.only(top: 12, bottom: 8),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.grey[600] : Colors.grey[400],
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
               ),
-              maxLines: 3,
-              validator: (value) {
-                if (value == null || value.isEmpty) return '请输入链接';
-                if (!value.startsWith('magnet:') &&
-                    !value.startsWith('http://') &&
-                    !value.startsWith('https://')) {
-                  return '请输入有效的 Magnet 链接或 HTTP URL';
-                }
-                return null;
-              },
-            ),
-            if (categories.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                value: _selectedCategory,
-                decoration: const InputDecoration(labelText: '分类'),
-                items: [
-                  const DropdownMenuItem(value: null, child: Text('无')),
-                  ...categories.map((c) => DropdownMenuItem(value: c, child: Text(c))),
-                ],
-                onChanged: (value) => setState(() => _selectedCategory = value),
+              // 标题
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.add_link,
+                        color: AppColors.primary,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '添加下载任务',
+                            style: context.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            '粘贴 Magnet 链接或 Torrent URL',
+                            style: context.textTheme.bodySmall?.copyWith(
+                              color: isDark
+                                  ? AppColors.darkOnSurfaceVariant
+                                  : AppColors.lightOnSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close),
+                      style: IconButton.styleFrom(
+                        backgroundColor: isDark
+                            ? AppColors.darkSurfaceVariant
+                            : AppColors.lightSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              // 内容区域
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 链接输入框
+                    Text(
+                      '下载链接',
+                      style: context.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _controller,
+                      decoration: InputDecoration(
+                        hintText: 'magnet:?xt=urn:btih:... 或 https://...',
+                        hintStyle: TextStyle(
+                          color: isDark
+                              ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.5)
+                              : AppColors.lightOnSurfaceVariant.withValues(alpha: 0.5),
+                        ),
+                        filled: true,
+                        fillColor: isDark
+                            ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
+                            : AppColors.lightSurfaceVariant.withValues(alpha: 0.5),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: AppColors.primary, width: 2),
+                        ),
+                        errorBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: AppColors.error),
+                        ),
+                        contentPadding: const EdgeInsets.all(16),
+                        suffixIcon: _controller.text.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear, size: 18),
+                                onPressed: () {
+                                  _controller.clear();
+                                  setState(() {});
+                                },
+                              )
+                            : IconButton(
+                                icon: const Icon(Icons.content_paste, size: 18),
+                                tooltip: '粘贴',
+                                onPressed: () async {
+                                  final data = await Clipboard.getData(Clipboard.kTextPlain);
+                                  if (data?.text != null) {
+                                    _controller.text = data!.text!;
+                                    setState(() {});
+                                  }
+                                },
+                              ),
+                      ),
+                      maxLines: 4,
+                      minLines: 3,
+                      style: context.textTheme.bodyMedium?.copyWith(
+                        fontFamily: 'monospace',
+                        fontSize: 13,
+                      ),
+                      onChanged: (_) => setState(() {}),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) return '请输入链接';
+                        if (!value.startsWith('magnet:') &&
+                            !value.startsWith('http://') &&
+                            !value.startsWith('https://')) {
+                          return '请输入有效的 Magnet 链接或 HTTP URL';
+                        }
+                        return null;
+                      },
+                    ),
+                    // 错误提示
+                    if (_errorMessage != null) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppColors.error.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.error_outline, color: AppColors.error, size: 18),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _errorMessage!,
+                                style: context.textTheme.bodySmall?.copyWith(color: AppColors.error),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 20),
+                    // 分类选择
+                    if (categories.isNotEmpty) ...[
+                      Text(
+                        '分类',
+                        style: context.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: 36,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: categories.length + 1,
+                          separatorBuilder: (_, __) => const SizedBox(width: 8),
+                          itemBuilder: (context, index) {
+                            if (index == 0) {
+                              return _buildCategoryChip(
+                                context,
+                                label: '无',
+                                isSelected: _selectedCategory == null,
+                                onTap: () => setState(() => _selectedCategory = null),
+                              );
+                            }
+                            final category = categories[index - 1];
+                            return _buildCategoryChip(
+                              context,
+                              label: category.isEmpty ? '(未分类)' : category,
+                              isSelected: _selectedCategory == category,
+                              onTap: () => setState(() => _selectedCategory = category),
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                    // 选项
+                    Container(
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
+                            : AppColors.lightSurfaceVariant.withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: () => setState(() => _paused = !_paused),
+                          borderRadius: BorderRadius.circular(12),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  _paused ? Icons.pause_circle : Icons.play_circle,
+                                  color: _paused ? AppColors.warning : AppColors.success,
+                                  size: 24,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        '添加后暂停',
+                                        style: context.textTheme.bodyMedium?.copyWith(
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      Text(
+                                        _paused ? '任务将不会自动开始下载' : '任务将立即开始下载',
+                                        style: context.textTheme.bodySmall?.copyWith(
+                                          color: isDark
+                                              ? AppColors.darkOnSurfaceVariant
+                                              : AppColors.lightOnSurfaceVariant,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Switch(
+                                  value: _paused,
+                                  onChanged: (value) => setState(() => _paused = value),
+                                  activeColor: AppColors.warning,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // 底部按钮
+              Padding(
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  0,
+                  20,
+                  20 + MediaQuery.of(context).padding.bottom,
+                ),
+                child: FilledButton(
+                  onPressed: _isLoading ? null : _submit,
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(double.infinity, 52),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: _isLoading
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.add, size: 20),
+                            SizedBox(width: 8),
+                            Text(
+                              '添加任务',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                ),
               ),
             ],
-            const SizedBox(height: 16),
-            CheckboxListTile(
-              value: _paused,
-              onChanged: (value) => setState(() => _paused = value ?? false),
-              title: const Text('添加后暂停'),
-              contentPadding: EdgeInsets.zero,
-              controlAffinity: ListTileControlAffinity.leading,
-            ),
-          ],
+          ),
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: _isLoading ? null : () => Navigator.pop(context),
-          child: const Text('取消'),
+    );
+  }
+
+  Widget _buildCategoryChip(
+    BuildContext context, {
+    required String label,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? AppColors.primary.withValues(alpha: 0.15)
+              : (isDark
+                  ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
+                  : AppColors.lightSurfaceVariant),
+          borderRadius: BorderRadius.circular(18),
+          border: isSelected
+              ? Border.all(color: AppColors.primary.withValues(alpha: 0.5))
+              : null,
         ),
-        FilledButton(
-          onPressed: _isLoading ? null : _submit,
-          child: _isLoading
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Text('添加'),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+            color: isSelected
+                ? AppColors.primary
+                : (isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface),
+          ),
         ),
-      ],
+      ),
     );
   }
 
   Future<void> _submit() async {
+    setState(() => _errorMessage = null);
+
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
@@ -1628,17 +2227,27 @@ class _AddTorrentDialogState extends ConsumerState<_AddTorrentDialog> {
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('已添加任务')),
+          SnackBar(
+            content: const Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white, size: 20),
+                SizedBox(width: 8),
+                Text('任务已添加'),
+              ],
+            ),
+            backgroundColor: AppColors.success,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
         );
       }
     } on Exception catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('添加失败: $e'), backgroundColor: Colors.red),
-        );
+        setState(() {
+          _isLoading = false;
+          _errorMessage = e.toString().replaceAll('Exception: ', '');
+        });
       }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
     }
   }
 }

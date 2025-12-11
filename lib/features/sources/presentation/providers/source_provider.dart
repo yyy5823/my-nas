@@ -5,6 +5,7 @@ import 'package:my_nas/features/music/data/services/music_database_service.dart'
 import 'package:my_nas/features/photo/data/services/photo_database_service.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
+import 'package:my_nas/features/sources/domain/entities/source_category.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/video/data/services/video_database_service.dart';
 import 'package:my_nas/features/video/data/services/video_library_cache_service.dart';
@@ -344,4 +345,34 @@ final mediaPathsWithSourceProvider =
 
   final paths = config.getEnabledPathsForType(type);
   return paths.map((p) => (p, connections[p.sourceId])).toList();
+});
+
+/// 存储类源列表（用于连接源页面）
+final storageSourcesProvider = Provider<List<SourceEntity>>((ref) {
+  final sources = ref.watch(sourcesProvider).valueOrNull ?? [];
+  return sources.where((s) => s.type.category.isStorageCategory).toList();
+});
+
+/// 下载工具源列表
+final downloadToolSourcesProvider = Provider<List<SourceEntity>>((ref) {
+  final sources = ref.watch(sourcesProvider).valueOrNull ?? [];
+  return sources
+      .where((s) => s.type.category == SourceCategory.downloadTools)
+      .toList();
+});
+
+/// 媒体追踪源列表
+final mediaTrackingSourcesProvider = Provider<List<SourceEntity>>((ref) {
+  final sources = ref.watch(sourcesProvider).valueOrNull ?? [];
+  return sources
+      .where((s) => s.type.category == SourceCategory.mediaTracking)
+      .toList();
+});
+
+/// 媒体管理源列表
+final mediaManagementSourcesProvider = Provider<List<SourceEntity>>((ref) {
+  final sources = ref.watch(sourcesProvider).valueOrNull ?? [];
+  return sources
+      .where((s) => s.type.category == SourceCategory.mediaManagement)
+      .toList();
 });

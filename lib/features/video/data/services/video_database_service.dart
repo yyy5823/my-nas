@@ -140,15 +140,16 @@ class VideoDatabaseService {
   /// - 更安全的写入：写入中断时自动回滚到一致状态
   /// - 更快的恢复：应用崩溃后恢复更快
   Future<void> _onConfigure(Database db) async {
+    // 使用 rawQuery 获取 PRAGMA 结果，避免 iOS 上 "not an error" 异常
     // 启用 WAL 模式
-    await db.execute('PRAGMA journal_mode=WAL');
+    await db.rawQuery('PRAGMA journal_mode=WAL');
     // 设置同步模式为 NORMAL（平衡安全性和性能）
     // FULL 更安全但性能较低，NORMAL 在大多数情况下足够安全
-    await db.execute('PRAGMA synchronous=NORMAL');
+    await db.rawQuery('PRAGMA synchronous=NORMAL');
     // 设置忙等待超时（5秒），避免锁冲突时立即失败
-    await db.execute('PRAGMA busy_timeout=5000');
+    await db.rawQuery('PRAGMA busy_timeout=5000');
     // 启用外键约束
-    await db.execute('PRAGMA foreign_keys=ON');
+    await db.rawQuery('PRAGMA foreign_keys=ON');
     logger.d('VideoDatabaseService: 数据库配置完成 (WAL模式)');
   }
 

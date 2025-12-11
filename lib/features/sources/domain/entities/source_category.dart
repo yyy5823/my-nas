@@ -8,11 +8,12 @@ enum SourceCategory {
   nasDevices('NAS 设备', 'nas_devices', Icons.storage),
   genericProtocols('通用协议', 'generic_protocols', Icons.link),
   localStorage('本地存储', 'local_storage', Icons.folder),
+  mediaServers('媒体服务器', 'media_servers', Icons.live_tv),
 
   // === 服务类源 ===
   downloadTools('下载工具', 'download_tools', Icons.download),
   mediaTracking('媒体追踪', 'media_tracking', Icons.track_changes),
-  mediaManagement('媒体管理', 'media_management', Icons.video_library);
+  mediaManagement('媒体管理', 'media_management', Icons.construction);
 
   const SourceCategory(this.displayName, this.id, this.icon);
   final String displayName;
@@ -24,7 +25,7 @@ enum SourceCategory {
         this == mediaTracking ||
         this == mediaManagement;
 
-  /// 是否为存储类源分组
+  /// 是否为存储类源分组（包括媒体服务器）
   bool get isStorageCategory => !isServiceCategory;
 
   /// 获取分组的描述文本
@@ -32,9 +33,10 @@ enum SourceCategory {
         nasDevices => '连接到 NAS 设备，访问存储的媒体文件',
         genericProtocols => '通过通用协议连接到远程存储',
         localStorage => '访问设备本地存储的文件',
+        mediaServers => '连接到媒体服务器，播放视频内容',
         downloadTools => '管理下载任务和种子',
         mediaTracking => '追踪观看记录和媒体状态',
-        mediaManagement => '管理媒体库和订阅',
+        mediaManagement => '自动化管理媒体库和订阅',
       };
 }
 
@@ -45,6 +47,7 @@ extension SourceCategoryExtension on SourceCategory {
         SourceCategory.nasDevices,
         SourceCategory.genericProtocols,
         SourceCategory.localStorage,
+        SourceCategory.mediaServers,
       ];
 
   /// 获取分组下的所有服务类分组

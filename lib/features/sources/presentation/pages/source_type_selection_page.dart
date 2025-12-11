@@ -9,58 +9,105 @@ import 'package:my_nas/features/sources/presentation/pages/source_form_page.dart
 /// 以分组列表形式展示所有可用的源类型，
 /// 用户点击后进入对应的表单页面进行配置
 class SourceTypeSelectionPage extends ConsumerWidget {
-  const SourceTypeSelectionPage({super.key});
+  const SourceTypeSelectionPage({
+    super.key,
+    this.allowedCategories,
+  });
+
+  /// 允许显示的分类列表
+  /// 如果为 null，则显示所有分类
+  final List<SourceCategory>? allowedCategories;
+
+  /// 检查分类是否应该显示
+  bool _shouldShowCategory(SourceCategory category) =>
+      allowedCategories == null || allowedCategories!.contains(category);
+
+  /// 检查是否有存储类分类
+  bool get _hasStorageCategories =>
+      allowedCategories == null ||
+      allowedCategories!.any((c) => c.isStorageCategory);
+
+  /// 检查是否有服务类分类
+  bool get _hasServiceCategories =>
+      allowedCategories == null ||
+      allowedCategories!.any((c) => !c.isStorageCategory);
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) => Scaffold(
+  Widget build(BuildContext context, WidgetRef ref) {
+    // 根据允许的分类动态生成标题
+    final title = allowedCategories == null
+        ? '添加连接源'
+        : _hasStorageCategories && !_hasServiceCategories
+            ? '添加连接源'
+            : !_hasStorageCategories && _hasServiceCategories
+                ? '添加服务'
+                : '添加连接源';
+
+    return Scaffold(
       appBar: AppBar(
-        title: const Text('添加连接源'),
+        title: Text(title),
         centerTitle: true,
       ),
       body: ListView(
         children: [
           // 存储类源
-          _buildSectionHeader(context, '存储类源'),
-          _buildCategorySection(
-            context,
-            SourceCategory.nasDevices,
-            SourceType.byCategory(SourceCategory.nasDevices),
-          ),
-          _buildCategorySection(
-            context,
-            SourceCategory.genericProtocols,
-            SourceType.byCategory(SourceCategory.genericProtocols),
-          ),
-          _buildCategorySection(
-            context,
-            SourceCategory.localStorage,
-            SourceType.byCategory(SourceCategory.localStorage),
-          ),
-
-          const SizedBox(height: 16),
+          if (_hasStorageCategories) ...[
+            _buildSectionHeader(context, '存储类源'),
+            if (_shouldShowCategory(SourceCategory.nasDevices))
+              _buildCategorySection(
+                context,
+                SourceCategory.nasDevices,
+                SourceType.byCategory(SourceCategory.nasDevices),
+              ),
+            if (_shouldShowCategory(SourceCategory.genericProtocols))
+              _buildCategorySection(
+                context,
+                SourceCategory.genericProtocols,
+                SourceType.byCategory(SourceCategory.genericProtocols),
+              ),
+            if (_shouldShowCategory(SourceCategory.localStorage))
+              _buildCategorySection(
+                context,
+                SourceCategory.localStorage,
+                SourceType.byCategory(SourceCategory.localStorage),
+              ),
+            if (_shouldShowCategory(SourceCategory.mediaServers))
+              _buildCategorySection(
+                context,
+                SourceCategory.mediaServers,
+                SourceType.byCategory(SourceCategory.mediaServers),
+              ),
+            const SizedBox(height: 16),
+          ],
 
           // 服务类源
-          _buildSectionHeader(context, '服务类源'),
-          _buildCategorySection(
-            context,
-            SourceCategory.downloadTools,
-            SourceType.byCategory(SourceCategory.downloadTools),
-          ),
-          _buildCategorySection(
-            context,
-            SourceCategory.mediaTracking,
-            SourceType.byCategory(SourceCategory.mediaTracking),
-          ),
-          _buildCategorySection(
-            context,
-            SourceCategory.mediaManagement,
-            SourceType.byCategory(SourceCategory.mediaManagement),
-          ),
+          if (_hasServiceCategories) ...[
+            _buildSectionHeader(context, '服务类源'),
+            if (_shouldShowCategory(SourceCategory.downloadTools))
+              _buildCategorySection(
+                context,
+                SourceCategory.downloadTools,
+                SourceType.byCategory(SourceCategory.downloadTools),
+              ),
+            if (_shouldShowCategory(SourceCategory.mediaTracking))
+              _buildCategorySection(
+                context,
+                SourceCategory.mediaTracking,
+                SourceType.byCategory(SourceCategory.mediaTracking),
+              ),
+            if (_shouldShowCategory(SourceCategory.mediaManagement))
+              _buildCategorySection(
+                context,
+                SourceCategory.mediaManagement,
+                SourceType.byCategory(SourceCategory.mediaManagement),
+              ),
+          ],
 
           const SizedBox(height: 32),
         ],
       ),
     );
+  }
 
   /// 构建分组标题
   Widget _buildSectionHeader(BuildContext context, String title) {

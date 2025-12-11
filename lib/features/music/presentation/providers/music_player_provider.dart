@@ -313,6 +313,24 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     );
   }
 
+  /// 显式激活 Audio Session
+  /// 这是确保 Live Activity 在后台正常工作的关键步骤
+  /// iOS 的 Live Activity 需要 Audio Session 在 App 进入后台前被激活
+  Future<void> _activateAudioSession() async {
+    if (!Platform.isIOS) return;
+
+    try {
+      final session = await AudioSession.instance;
+      // 显式激活 Audio Session
+      // 这会通知系统应用即将播放音频，允许后台音频播放
+      await session.setActive(true);
+      logger.i('MusicPlayer: Audio Session 已激活');
+    } on Exception catch (e) {
+      // 激活失败不应阻止播放
+      logger.w('MusicPlayer: Audio Session 激活失败: $e');
+    }
+  }
+
   /// 初始化 Live Activity 服务
   Future<void> _initLiveActivity() async {
     if (!_liveActivityService.isSupported) return;
@@ -469,6 +487,11 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     ..d('MusicPlayer: size=${music.size}, path=${music.path}, sourceId=${music.sourceId}');
 
     try {
+      // 重要：在播放开始前显式激活 Audio Session
+      // 这是确保 Live Activity 在后台正常工作的关键
+      // 如果 Audio Session 没有在 App 进入后台前激活，Live Activity 可能不会出现
+      await _activateAudioSession();
+
       // 先停止当前播放并清理之前的代理
       await _player.stop();
       _cleanupCurrentProxy();

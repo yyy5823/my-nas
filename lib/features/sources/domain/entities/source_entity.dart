@@ -104,6 +104,11 @@ enum SourceType {
         SourceType.webdav || SourceType.smb => SourceCategory.genericProtocols,
         // 本地存储
         SourceType.local => SourceCategory.localStorage,
+        // 媒体服务器
+        SourceType.jellyfin ||
+        SourceType.emby ||
+        SourceType.plex =>
+          SourceCategory.mediaServers,
         // 下载工具
         SourceType.qbittorrent ||
         SourceType.transmission ||
@@ -113,10 +118,7 @@ enum SourceType {
         SourceType.trakt => SourceCategory.mediaTracking,
         // 媒体管理
         SourceType.nastool ||
-        SourceType.moviepilot ||
-        SourceType.jellyfin ||
-        SourceType.emby ||
-        SourceType.plex =>
+        SourceType.moviepilot =>
           SourceCategory.mediaManagement,
       };
 

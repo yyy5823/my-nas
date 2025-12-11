@@ -10,6 +10,9 @@ import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/pages/media_library_page.dart';
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
+import 'package:my_nas/features/downloader/presentation/pages/downloader_list_page.dart';
+import 'package:my_nas/features/media_tracking/presentation/pages/media_tracking_list_page.dart';
+import 'package:my_nas/features/media_management/presentation/pages/media_management_list_page.dart';
 import 'package:my_nas/features/video/data/services/tmdb_service.dart';
 import 'package:my_nas/shared/providers/download_provider.dart';
 import 'package:my_nas/shared/providers/theme_provider.dart';
@@ -76,35 +79,11 @@ class MinePage extends ConsumerWidget {
                   children: [
                     _TmdbApiKeyTile(isDark: isDark),
                     _buildDivider(isDark),
-                    _buildSettingsTile(
-                      context,
-                      isDark,
-                      icon: Icons.movie_filter_rounded,
-                      iconColor: Colors.grey,
-                      title: 'Trakt',
-                      subtitle: '暂未实现',
-                      showChevron: false,
-                    ),
+                    _MediaTrackingTile(isDark: isDark),
                     _buildDivider(isDark),
-                    _buildSettingsTile(
-                      context,
-                      isDark,
-                      icon: Icons.construction_rounded,
-                      iconColor: Colors.grey,
-                      title: 'NASTool',
-                      subtitle: '暂未实现',
-                      showChevron: false,
-                    ),
+                    _MediaManagementTile(isDark: isDark),
                     _buildDivider(isDark),
-                    _buildSettingsTile(
-                      context,
-                      isDark,
-                      icon: Icons.download_for_offline_rounded,
-                      iconColor: Colors.grey,
-                      title: '下载器',
-                      subtitle: '暂未实现',
-                      showChevron: false,
-                    ),
+                    _DownloaderTile(isDark: isDark),
                   ],
                 ),
 
@@ -386,11 +365,17 @@ class MinePage extends ConsumerWidget {
     );
 
   Widget _buildSourcesTile(BuildContext context, WidgetRef ref, bool isDark) {
+    // 只统计存储类源的连接状态
+    final storageSources = ref.watch(storageSourcesProvider);
     final connections = ref.watch(activeConnectionsProvider);
-    final connectedCount = connections.values
-        .where((c) => c.status == SourceStatus.connected)
+    final storageConnections = storageSources
+        .map((s) => connections[s.id])
+        .where((c) => c != null)
+        .toList();
+    final connectedCount = storageConnections
+        .where((c) => c?.status == SourceStatus.connected)
         .length;
-    final totalCount = connections.length;
+    final totalCount = storageSources.length;
 
     final statusColor = connectedCount == 0
         ? AppColors.warning
@@ -1155,4 +1140,292 @@ class _TransferCard extends ConsumerWidget {
           ),
         ),
       );
+}
+
+/// 媒体追踪入口组件
+class _MediaTrackingTile extends ConsumerWidget {
+  const _MediaTrackingTile({required this.isDark});
+
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final trackingSources = ref.watch(mediaTrackingSourcesProvider);
+    final count = trackingSources.length;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute<void>(builder: (_) => const MediaTrackingListPage()),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.md,
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.purple.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.track_changes_rounded,
+                  color: Colors.purple,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '媒体追踪',
+                      style: context.textTheme.bodyLarge?.copyWith(
+                        color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '管理 Trakt 等媒体追踪工具',
+                      style: context.textTheme.bodySmall?.copyWith(
+                        color: isDark
+                            ? AppColors.darkOnSurfaceVariant
+                            : AppColors.lightOnSurfaceVariant,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              if (count > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.purple.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '$count 个',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.purple,
+                    ),
+                  ),
+                )
+              else
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: isDark
+                      ? AppColors.darkOnSurfaceVariant
+                      : AppColors.lightOnSurfaceVariant,
+                  size: 22,
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 媒体管理入口组件
+class _MediaManagementTile extends ConsumerWidget {
+  const _MediaManagementTile({required this.isDark});
+
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final managementSources = ref.watch(mediaManagementSourcesProvider);
+    final count = managementSources.length;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute<void>(builder: (_) => const MediaManagementListPage()),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.md,
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.teal.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.construction_rounded,
+                  color: Colors.teal,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '媒体管理',
+                      style: context.textTheme.bodyLarge?.copyWith(
+                        color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '管理 NASTool、MoviePilot 等工具',
+                      style: context.textTheme.bodySmall?.copyWith(
+                        color: isDark
+                            ? AppColors.darkOnSurfaceVariant
+                            : AppColors.lightOnSurfaceVariant,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              if (count > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.teal.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '$count 个',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.teal,
+                    ),
+                  ),
+                )
+              else
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: isDark
+                      ? AppColors.darkOnSurfaceVariant
+                      : AppColors.lightOnSurfaceVariant,
+                  size: 22,
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 下载器入口组件
+class _DownloaderTile extends ConsumerWidget {
+  const _DownloaderTile({required this.isDark});
+
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final downloaderSources = ref.watch(downloadToolSourcesProvider);
+    final count = downloaderSources.length;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute<void>(builder: (_) => const DownloaderListPage()),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.md,
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.download_for_offline_rounded,
+                  color: Colors.orange,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '下载器',
+                      style: context.textTheme.bodyLarge?.copyWith(
+                        color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '管理 qBittorrent、Transmission 等下载工具',
+                      style: context.textTheme.bodySmall?.copyWith(
+                        color: isDark
+                            ? AppColors.darkOnSurfaceVariant
+                            : AppColors.lightOnSurfaceVariant,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              if (count > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '$count 个',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.orange,
+                    ),
+                  ),
+                )
+              else
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: isDark
+                      ? AppColors.darkOnSurfaceVariant
+                      : AppColors.lightOnSurfaceVariant,
+                  size: 22,
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

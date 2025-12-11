@@ -495,11 +495,13 @@ enum QBSortMode {
   name('name', '名称'),
   size('size', '大小'),
   progress('progress', '进度'),
+  state('state', '状态'),
   dlSpeed('dlspeed', '下载速度'),
   upSpeed('upspeed', '上传速度'),
   addedOn('added_on', '添加时间'),
   ratio('ratio', '分享率'),
-  eta('eta', '剩余时间');
+  eta('eta', '剩余时间'),
+  uploaded('uploaded', '总上传量');
 
   const QBSortMode(this.value, this.label);
 

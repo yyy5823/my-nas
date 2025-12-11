@@ -25,20 +25,24 @@ class MusicPlayerPage extends ConsumerStatefulWidget {
   /// 全屏打开音乐播放器（隐藏底部导航栏）
   /// 包含防重复导航机制，避免快速连续点击导致多次打开
   static Future<void> open(BuildContext context) async {
+    // 检查 context 是否有效
+    if (!context.mounted) {
+      return;
+    }
+
     // 检查是否正在导航中
     if (_isNavigating) {
       return;
     }
 
-    // 检查上次导航时间，防止短时间内重复导航（500ms 防抖）
+    // 检查上次导航时间，防止短时间内重复导航（300ms 防抖，从 500ms 降低以提高响应性）
     final now = DateTime.now();
     if (_lastNavigationTime != null &&
-        now.difference(_lastNavigationTime!).inMilliseconds < 500) {
+        now.difference(_lastNavigationTime!).inMilliseconds < 300) {
       return;
     }
 
     // 检查当前路由是否已经是播放器页面
-    final navigator = Navigator.of(context, rootNavigator: true);
     final currentRoute = ModalRoute.of(context);
     if (currentRoute?.settings.name == '/music_player') {
       return;
@@ -48,12 +52,18 @@ class MusicPlayerPage extends ConsumerStatefulWidget {
     _lastNavigationTime = now;
 
     try {
+      // 使用 rootNavigator: true 确保在根导航器上打开
+      // 这样可以覆盖底部导航栏
+      final navigator = Navigator.of(context, rootNavigator: true);
       await navigator.push(
         MaterialPageRoute<void>(
           settings: const RouteSettings(name: '/music_player'),
           builder: (context) => const MusicPlayerPage(),
         ),
       );
+    } on Exception catch (e) {
+      // 导航失败时记录错误但不抛出异常
+      debugPrint('MusicPlayerPage.open: 导航失败 - $e');
     } finally {
       _isNavigating = false;
     }

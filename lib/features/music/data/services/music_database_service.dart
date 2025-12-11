@@ -178,10 +178,11 @@ class MusicDatabaseService {
 
   /// 数据库配置 - 启用 WAL 模式和安全设置
   Future<void> _onConfigure(Database db) async {
-    await db.execute('PRAGMA journal_mode=WAL');
-    await db.execute('PRAGMA synchronous=NORMAL');
-    await db.execute('PRAGMA busy_timeout=5000');
-    await db.execute('PRAGMA foreign_keys=ON');
+    // 使用 rawQuery 获取 PRAGMA 结果，避免 iOS 上 "not an error" 异常
+    await db.rawQuery('PRAGMA journal_mode=WAL');
+    await db.rawQuery('PRAGMA synchronous=NORMAL');
+    await db.rawQuery('PRAGMA busy_timeout=5000');
+    await db.rawQuery('PRAGMA foreign_keys=ON');
     logger.d('MusicDatabaseService: 数据库配置完成 (WAL模式)');
   }
 

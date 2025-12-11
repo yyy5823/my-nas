@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/file_browser/presentation/pages/file_browser_page.dart';
-import 'package:my_nas/features/qbittorrent/presentation/pages/qbittorrent_detail_page.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
+import 'package:my_nas/features/sources/domain/entities/source_category.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/pages/source_form_page.dart';
 import 'package:my_nas/features/sources/presentation/pages/source_type_selection_page.dart';
@@ -62,7 +62,12 @@ class _SourcesPageState extends ConsumerState<SourcesPage> {
             ],
           ),
         ),
-        data: (sources) {
+        data: (allSources) {
+          // 只显示存储类源（包括媒体服务器）
+          final sources = allSources
+              .where((s) => s.type.category.isStorageCategory)
+              .toList();
+
           if (sources.isEmpty) {
             return _buildEmptyState(context);
           }
@@ -168,11 +173,13 @@ class _SourcesPageState extends ConsumerState<SourcesPage> {
     );
 
   void _showAddSourceSheet(BuildContext context) {
-    // 使用新的源类型选择页面
+    // 使用新的源类型选择页面，只显示存储类分类
     Navigator.push<void>(
       context,
       MaterialPageRoute<void>(
-        builder: (context) => const SourceTypeSelectionPage(),
+        builder: (context) => SourceTypeSelectionPage(
+          allowedCategories: SourceCategoryExtension.storageCategories,
+        ),
       ),
     );
   }
@@ -258,36 +265,6 @@ class _ReorderableSourceCard extends StatelessWidget {
   }
 
   Widget _buildStatusChip(ThemeData theme) {
-    // 服务类源显示不同的状态
-    if (source.type.isServiceSource) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: Colors.blue.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.touch_app,
-              size: 14,
-              color: Colors.blue,
-            ),
-            const SizedBox(width: 4),
-            Text(
-              '点击进入',
-              style: TextStyle(
-                color: Colors.blue,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
     final (label, color) = switch (_status) {
       SourceStatus.connected => ('已连接', Colors.green),
       SourceStatus.connecting => ('连接中', Colors.orange),
@@ -313,20 +290,13 @@ class _ReorderableSourceCard extends StatelessWidget {
     );
   }
 
-  Color _getStatusColor() {
-    // 服务类源使用特殊颜色
-    if (source.type.isServiceSource) {
-      return Colors.blue;
-    }
-
-    return switch (_status) {
-      SourceStatus.connected => Colors.green,
-      SourceStatus.connecting => Colors.orange,
-      SourceStatus.requires2FA => Colors.amber,
-      SourceStatus.error => Colors.red,
-      SourceStatus.disconnected => Colors.grey,
-    };
-  }
+  Color _getStatusColor() => switch (_status) {
+        SourceStatus.connected => Colors.green,
+        SourceStatus.connecting => Colors.orange,
+        SourceStatus.requires2FA => Colors.amber,
+        SourceStatus.error => Colors.red,
+        SourceStatus.disconnected => Colors.grey,
+      };
 }
 
 class _SourceCard extends ConsumerStatefulWidget {
@@ -357,12 +327,9 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
       margin: const EdgeInsets.only(bottom: 12),
       child: InkWell(
         onTap: () {
-          // 根据源类型决定打开什么页面
-          if (widget.source.type.isServiceSource) {
-            // 服务类源，打开对应的详情页
-            _openServicePage(context);
-          } else if (_status == SourceStatus.connected) {
-            // 文件系统类源，已连接时打开文件浏览器
+          // 存储类源的处理
+          if (_status == SourceStatus.connected) {
+            // 已连接时打开文件浏览器
             Navigator.push(
               context,
               MaterialPageRoute<void>(
@@ -448,36 +415,6 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
   }
 
   Widget _buildStatusChip(ThemeData theme) {
-    // 服务类源显示特殊状态
-    if (widget.source.type.isServiceSource) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: Colors.blue.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.touch_app,
-              size: 14,
-              color: Colors.blue,
-            ),
-            const SizedBox(width: 4),
-            Text(
-              '点击进入',
-              style: TextStyle(
-                color: Colors.blue,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
     final (label, color) = switch (_status) {
       SourceStatus.connected => ('已连接', Colors.green),
       SourceStatus.connecting => ('连接中', Colors.orange),
@@ -505,24 +442,16 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
 
   IconData _getSourceIcon() => widget.source.type.icon;
 
-  Color _getStatusColor() {
-    // 服务类源使用特殊颜色
-    if (widget.source.type.isServiceSource) {
-      return Colors.blue;
-    }
-
-    return switch (_status) {
-      SourceStatus.connected => Colors.green,
-      SourceStatus.connecting => Colors.orange,
-      SourceStatus.requires2FA => Colors.amber,
-      SourceStatus.error => Colors.red,
-      SourceStatus.disconnected => Colors.grey,
-    };
-  }
+  Color _getStatusColor() => switch (_status) {
+        SourceStatus.connected => Colors.green,
+        SourceStatus.connecting => Colors.orange,
+        SourceStatus.requires2FA => Colors.amber,
+        SourceStatus.error => Colors.red,
+        SourceStatus.disconnected => Colors.grey,
+      };
 
   void _showSourceOptions(BuildContext context) {
     final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
-    final isServiceSource = widget.source.type.isServiceSource;
 
     showModalBottomSheet<void>(
       context: context,
@@ -542,35 +471,23 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
               borderRadius: BorderRadius.circular(2),
             ),
           ),
-          // 服务类源显示"打开"选项，文件系统源显示"连接/断开"
-          if (isServiceSource)
-            ListTile(
-              leading: const Icon(Icons.open_in_new),
-              title: const Text('打开'),
-              onTap: () {
-                Navigator.pop(context);
-                _openServicePage(context);
-              },
-            )
-          else
-            ListTile(
-              leading: Icon(
-                _status == SourceStatus.connected
-                    ? Icons.link_off
-                    : Icons.link,
-              ),
-              title: Text(
-                _status == SourceStatus.connected ? '断开连接' : '连接',
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                if (_status == SourceStatus.connected) {
-                  _disconnect();
-                } else {
-                  _connect();
-                }
-              },
+          // 存储类源显示"连接/断开"
+          ListTile(
+            leading: Icon(
+              _status == SourceStatus.connected ? Icons.link_off : Icons.link,
             ),
+            title: Text(
+              _status == SourceStatus.connected ? '断开连接' : '连接',
+            ),
+            onTap: () {
+              Navigator.pop(context);
+              if (_status == SourceStatus.connected) {
+                _disconnect();
+              } else {
+                _connect();
+              }
+            },
+          ),
           ListTile(
             leading: const Icon(Icons.edit),
             title: const Text('编辑'),
@@ -784,64 +701,6 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
         ),
       ),
     );
-  }
-
-  /// 打开服务类源的详情页
-  Future<void> _openServicePage(BuildContext context) async {
-    // 获取密码（服务类源可能需要）
-    String? password;
-    final manager = ref.read(sourceManagerProvider);
-    final credential = await manager.getCredential(widget.source.id);
-    password = credential?.password;
-
-    // 如果没有保存的密码且源需要密码，提示输入
-    if (password == null &&
-        widget.source.apiKey == null &&
-        widget.source.username.isNotEmpty) {
-      if (mounted) {
-        password = await _showPasswordDialog();
-        if (password == null || password.isEmpty) {
-          return;
-        }
-      }
-    }
-
-    if (!mounted) return;
-
-    // 根据源类型打开对应的详情页
-    switch (widget.source.type) {
-      case SourceType.qbittorrent:
-        if (context.mounted) {
-          await Navigator.push(
-            context,
-            MaterialPageRoute<void>(
-              builder: (_) => QBittorrentDetailPage(
-                source: widget.source,
-                password: password,
-              ),
-            ),
-          );
-        }
-      case SourceType.transmission:
-      case SourceType.aria2:
-      case SourceType.trakt:
-      case SourceType.nastool:
-      case SourceType.moviepilot:
-      case SourceType.jellyfin:
-      case SourceType.emby:
-      case SourceType.plex:
-        // 其他服务类源暂未实现，显示提示
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('${widget.source.type.displayName} 详情页暂未实现'),
-            ),
-          );
-        }
-      default:
-        // 不应该走到这里
-        break;
-    }
   }
 
   Future<void> _deleteSource() async {
