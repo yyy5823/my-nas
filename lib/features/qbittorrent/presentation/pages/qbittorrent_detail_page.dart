@@ -2114,7 +2114,13 @@ class _AddTorrentDialogState extends ConsumerState<_AddTorrentDialog> {
                                 Switch(
                                   value: _paused,
                                   onChanged: (value) => setState(() => _paused = value),
-                                  activeColor: AppColors.warning,
+                                  activeTrackColor: AppColors.warning.withValues(alpha: 0.5),
+                                  thumbColor: WidgetStateProperty.resolveWith((states) {
+                                    if (states.contains(WidgetState.selected)) {
+                                      return AppColors.warning;
+                                    }
+                                    return null;
+                                  }),
                                 ),
                               ],
                             ),
