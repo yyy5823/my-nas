@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:battery_plus/battery_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/network/http_client.dart';
 import 'package:my_nas/core/utils/logger.dart';
@@ -312,12 +315,56 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
   bool _isContentProcessed = false; // 内容是否已处理完成
   bool _isScrollPositionRestored = false; // 滚动位置是否已恢复
 
+  // 状态栏相关
+  final Battery _battery = Battery();
+  int _batteryLevel = 100;
+  BatteryState _batteryState = BatteryState.unknown;
+  String _currentTime = '';
+  Timer? _timeTimer;
+
   @override
   void initState() {
     super.initState();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _initWakelock();
     _scrollController.addListener(_onScroll);
+    _initStatusBar();
+  }
+
+  /// 初始化状态栏（电池和时间）
+  Future<void> _initStatusBar() async {
+    // 初始化时间
+    _updateTime();
+    // 每分钟更新一次时间
+    _timeTimer = Timer.periodic(const Duration(minutes: 1), (_) => _updateTime());
+
+    // 初始化电池信息
+    try {
+      _batteryLevel = await _battery.batteryLevel;
+      _batteryState = await _battery.batteryState;
+      if (mounted) setState(() {});
+
+      // 监听电池状态变化
+      _battery.onBatteryStateChanged.listen((state) {
+        if (mounted) {
+          setState(() => _batteryState = state);
+          _battery.batteryLevel.then((level) {
+            if (mounted) setState(() => _batteryLevel = level);
+          });
+        }
+      });
+    } catch (e) {
+      // 某些平台可能不支持电池API
+      logger.w('无法获取电池信息: $e');
+    }
+  }
+
+  void _updateTime() {
+    if (mounted) {
+      setState(() {
+        _currentTime = DateFormat('HH:mm').format(DateTime.now());
+      });
+    }
   }
 
   Future<void> _initWakelock() async {
@@ -418,6 +465,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
       ..removeListener(_onScroll)
       ..dispose();
     _pageController?.dispose();
+    _timeTimer?.cancel();
     super.dispose();
   }
 
@@ -555,36 +603,9 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
                       ? _buildPagedContent(state, settings)
                       : _buildScrollContent(state, settings),
                 ),
-                // 进度指示器
+                // 底部状态栏（进度、电池、时间）
                 if (settings.showProgress)
-                  Container(
-                    padding: EdgeInsets.symmetric(
-                      vertical: 8,
-                      horizontal: settings.horizontalPadding,
-                    ),
-                    color: theme.backgroundColor,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          widget.book.displayName,
-                          style: TextStyle(
-                            color: theme.textColor.withValues(alpha: 0.5),
-                            fontSize: 11,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        Text(
-                          usePageMode ? _getPageProgressText() : _getProgressText(state),
-                          style: TextStyle(
-                            color: theme.textColor.withValues(alpha: 0.5),
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  _buildBottomStatusBar(theme, settings, usePageMode, state),
               ],
             ),
           ),
@@ -801,7 +822,82 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     return '${_currentPage + 1} / ${_pages.length}';
   }
 
-  /// 构建固定顶栏，显示章节标题或书名
+  /// 构建底部状态栏（进度、电池、时间）
+  Widget _buildBottomStatusBar(
+    BookReaderTheme theme,
+    BookReaderSettings settings,
+    bool usePageMode,
+    TxtReaderLoaded state,
+  ) {
+    final textStyle = TextStyle(
+      color: theme.textColor.withValues(alpha: 0.5),
+      fontSize: 11,
+    );
+
+    return Container(
+      padding: EdgeInsets.symmetric(
+        vertical: 4,
+        horizontal: settings.horizontalPadding,
+      ),
+      color: theme.backgroundColor,
+      child: Row(
+        children: [
+          // 进度
+          Text(
+            usePageMode ? _getPageProgressText() : _getProgressText(state),
+            style: textStyle,
+          ),
+          const Spacer(),
+          // 电池图标和电量
+          _buildBatteryIndicator(theme),
+          const SizedBox(width: 8),
+          // 时间
+          Text(_currentTime, style: textStyle),
+        ],
+      ),
+    );
+  }
+
+  /// 构建电池指示器
+  Widget _buildBatteryIndicator(BookReaderTheme theme) {
+    final color = theme.textColor.withValues(alpha: 0.5);
+    final isCharging = _batteryState == BatteryState.charging;
+
+    // 根据电量选择图标
+    IconData batteryIcon;
+    if (isCharging) {
+      batteryIcon = Icons.battery_charging_full_rounded;
+    } else if (_batteryLevel >= 90) {
+      batteryIcon = Icons.battery_full_rounded;
+    } else if (_batteryLevel >= 70) {
+      batteryIcon = Icons.battery_6_bar_rounded;
+    } else if (_batteryLevel >= 50) {
+      batteryIcon = Icons.battery_5_bar_rounded;
+    } else if (_batteryLevel >= 30) {
+      batteryIcon = Icons.battery_3_bar_rounded;
+    } else if (_batteryLevel >= 15) {
+      batteryIcon = Icons.battery_2_bar_rounded;
+    } else {
+      batteryIcon = Icons.battery_1_bar_rounded;
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(batteryIcon, size: 14, color: color),
+        const SizedBox(width: 2),
+        Text(
+          '$_batteryLevel%',
+          style: TextStyle(
+            color: color,
+            fontSize: 11,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 构建固定顶栏，显示返回按钮和书名（左对齐）
   Widget _buildFixedHeader(BookReaderTheme theme, BookReaderSettings settings) {
     // 显示当前章节标题，如果没有则显示书名
     final displayTitle = _currentChapterTitle.isNotEmpty
@@ -809,9 +905,11 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
         : widget.book.displayName;
 
     return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: settings.horizontalPadding,
-        vertical: 8,
+      padding: EdgeInsets.only(
+        left: 4,
+        right: settings.horizontalPadding,
+        top: 4,
+        bottom: 4,
       ),
       decoration: BoxDecoration(
         color: theme.backgroundColor,
@@ -824,6 +922,19 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
       ),
       child: Row(
         children: [
+          // 返回按钮
+          GestureDetector(
+            onTap: () => Navigator.pop(context),
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: Icon(
+                Icons.arrow_back_ios_rounded,
+                size: 18,
+                color: theme.textColor.withValues(alpha: 0.6),
+              ),
+            ),
+          ),
+          // 书名（左对齐）
           Expanded(
             child: Text(
               displayTitle,
@@ -834,7 +945,6 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
             ),
           ),
         ],

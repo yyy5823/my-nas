@@ -1,9 +1,12 @@
+import 'dart:async';
 import 'dart:io';
 
+import 'package:battery_plus/battery_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_epub_viewer/flutter_epub_viewer.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/network/http_client.dart';
 import 'package:my_nas/core/utils/logger.dart';
@@ -218,21 +221,66 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
   String _currentChapterTitle = '';
   bool _isEpubReady = false; // 标记 EPUB 是否已完全加载
 
+  // 状态栏相关
+  final Battery _battery = Battery();
+  int _batteryLevel = 100;
+  BatteryState _batteryState = BatteryState.unknown;
+  String _currentTime = '';
+  Timer? _timeTimer;
+
   @override
   void initState() {
     super.initState();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _initWakelock();
+    _initStatusBar();
   }
 
   Future<void> _initWakelock() async {
     await WakelockPlus.enable();
   }
 
+  /// 初始化状态栏（电池和时间）
+  Future<void> _initStatusBar() async {
+    // 初始化时间
+    _updateTime();
+    // 每分钟更新一次时间
+    _timeTimer = Timer.periodic(const Duration(minutes: 1), (_) => _updateTime());
+
+    // 初始化电池信息
+    try {
+      _batteryLevel = await _battery.batteryLevel;
+      _batteryState = await _battery.batteryState;
+      if (mounted) setState(() {});
+
+      // 监听电池状态变化
+      _battery.onBatteryStateChanged.listen((state) {
+        if (mounted) {
+          setState(() => _batteryState = state);
+          _battery.batteryLevel.then((level) {
+            if (mounted) setState(() => _batteryLevel = level);
+          });
+        }
+      });
+    } catch (e) {
+      // 某些平台可能不支持电池API
+      logger.w('无法获取电池信息: $e');
+    }
+  }
+
+  void _updateTime() {
+    if (mounted) {
+      setState(() {
+        _currentTime = DateFormat('HH:mm').format(DateTime.now());
+      });
+    }
+  }
+
   @override
   void dispose() {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     WakelockPlus.disable();
+    _timeTimer?.cancel();
     super.dispose();
   }
 
@@ -359,7 +407,7 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
 
   Widget _buildReader(BuildContext context, EpubReaderLoaded state) => Stack(
     children: [
-      // EPUB 阅读器（带固定顶栏）
+      // EPUB 阅读器（带固定顶栏和底部状态栏）
       Column(
         children: [
           // 固定顶栏 - 避免摄像头遮挡内容
@@ -403,6 +451,8 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
               },
             ),
           ),
+          // 底部状态栏（进度、电池、时间）
+          _buildBottomStatusBar(),
         ],
       ),
 
@@ -445,7 +495,77 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
     }
   }
 
-  /// 构建固定顶栏，显示章节标题或书名
+  /// 构建底部状态栏（进度、电池、时间）
+  Widget _buildBottomStatusBar() {
+    final textStyle = TextStyle(
+      color: Colors.grey.shade600,
+      fontSize: 11,
+    );
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 16),
+      color: Colors.white,
+      child: SafeArea(
+        top: false,
+        child: Row(
+          children: [
+            // 进度
+            Text(
+              '${(_progress * 100).toStringAsFixed(1)}%',
+              style: textStyle,
+            ),
+            const Spacer(),
+            // 电池图标和电量
+            _buildBatteryIndicator(),
+            const SizedBox(width: 8),
+            // 时间
+            Text(_currentTime, style: textStyle),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 构建电池指示器
+  Widget _buildBatteryIndicator() {
+    final color = Colors.grey.shade600;
+    final isCharging = _batteryState == BatteryState.charging;
+
+    // 根据电量选择图标
+    IconData batteryIcon;
+    if (isCharging) {
+      batteryIcon = Icons.battery_charging_full_rounded;
+    } else if (_batteryLevel >= 90) {
+      batteryIcon = Icons.battery_full_rounded;
+    } else if (_batteryLevel >= 70) {
+      batteryIcon = Icons.battery_6_bar_rounded;
+    } else if (_batteryLevel >= 50) {
+      batteryIcon = Icons.battery_5_bar_rounded;
+    } else if (_batteryLevel >= 30) {
+      batteryIcon = Icons.battery_3_bar_rounded;
+    } else if (_batteryLevel >= 15) {
+      batteryIcon = Icons.battery_2_bar_rounded;
+    } else {
+      batteryIcon = Icons.battery_1_bar_rounded;
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(batteryIcon, size: 14, color: color),
+        const SizedBox(width: 2),
+        Text(
+          '$_batteryLevel%',
+          style: TextStyle(
+            color: color,
+            fontSize: 11,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 构建固定顶栏，显示返回按钮和书名（左对齐）
   Widget _buildFixedHeader() {
     // 显示当前章节标题，如果没有则显示书名
     final displayTitle = _currentChapterTitle.isNotEmpty
@@ -453,7 +573,7 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
         : widget.book.name;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.only(left: 4, right: 16, top: 4, bottom: 4),
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border(
@@ -467,6 +587,19 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
         bottom: false,
         child: Row(
           children: [
+            // 返回按钮
+            GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: Icon(
+                  Icons.arrow_back_ios_rounded,
+                  size: 18,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+            ),
+            // 书名（左对齐）
             Expanded(
               child: Text(
                 displayTitle,
@@ -477,7 +610,6 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
               ),
             ),
           ],
