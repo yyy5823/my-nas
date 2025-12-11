@@ -15,6 +15,12 @@ import UIKit
       MusicLiveActivityChannel.register(with: registrar)
     }
 
+    // 注册原生日志桥接通道
+    // 用于将 Swift 端日志（包括 Widget Extension）上传到 RabbitMQ
+    if let registrar = self.registrar(forPlugin: "NativeLogBridge") {
+      NativeLogBridge.register(with: registrar)
+    }
+
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 

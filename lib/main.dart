@@ -13,6 +13,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:my_nas/app/app.dart';
 import 'package:my_nas/core/di/injection.dart';
 import 'package:my_nas/core/services/error_report/error_report.dart';
+import 'package:my_nas/core/services/native_log_bridge_service.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/video/data/services/tmdb_service.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -106,6 +107,10 @@ Future<void> _initApp() async {
 
   // 初始化错误报告服务（非阻塞，在后台连接）
   unawaited(ErrorReportService.instance.initialize());
+
+  // 初始化原生日志桥接服务（iOS）
+  // 用于接收 Widget Extension 的日志并上传到 RabbitMQ
+  unawaited(NativeLogBridgeService().init());
 
   // Initialize sqflite_common_ffi for desktop platforms (Windows, macOS, Linux)
   if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
