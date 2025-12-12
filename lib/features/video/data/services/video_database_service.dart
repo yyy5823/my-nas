@@ -104,6 +104,7 @@ class VideoDatabaseService {
   static const String _colLastUpdated = 'last_updated';
   static const String _colThumbnailUrl = 'thumbnail_url';
   static const String _colGeneratedThumbnailUrl = 'generated_thumbnail_url';
+  static const String _colLocalPosterUrl = 'local_poster_url';
   static const String _colFileSize = 'file_size';
   static const String _colFileModifiedTime = 'file_modified_time';
   static const String _colCollectionId = 'collection_id';
@@ -121,7 +122,7 @@ class VideoDatabaseService {
 
       _db = await openDatabase(
         dbPath,
-        version: 4, // 升级版本以添加刮削优先级字段
+        version: 5, // 升级版本以添加 localPosterUrl 字段
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onConfigure: _onConfigure,
@@ -184,6 +185,7 @@ class VideoDatabaseService {
         $_colLastUpdated INTEGER,
         $_colThumbnailUrl TEXT,
         $_colGeneratedThumbnailUrl TEXT,
+        $_colLocalPosterUrl TEXT,
         $_colFileSize INTEGER,
         $_colFileModifiedTime INTEGER,
         $_colCollectionId INTEGER,
@@ -278,6 +280,15 @@ class VideoDatabaseService {
           'CREATE INDEX IF NOT EXISTS idx_scrape_priority ON $_tableMetadata($_colScrapePriority, $_colScrapeStatus)');
 
       logger.i('VideoDatabaseService: 版本3->4 升级完成');
+    }
+
+    // 从版本4升级到版本5
+    if (oldVersion < 5) {
+      // 添加本地海报缓存路径字段
+      await db.execute(
+          'ALTER TABLE $_tableMetadata ADD COLUMN $_colLocalPosterUrl TEXT');
+
+      logger.i('VideoDatabaseService: 版本4->5 升级完成');
     }
   }
 
@@ -918,6 +929,7 @@ class VideoDatabaseService {
         _colLastUpdated: m.lastUpdated?.millisecondsSinceEpoch,
         _colThumbnailUrl: m.thumbnailUrl,
         _colGeneratedThumbnailUrl: m.generatedThumbnailUrl,
+        _colLocalPosterUrl: m.localPosterUrl,
         _colFileSize: m.fileSize,
         _colFileModifiedTime: m.fileModifiedTime?.millisecondsSinceEpoch,
         _colCollectionId: m.collectionId,
@@ -955,6 +967,7 @@ class VideoDatabaseService {
             : null,
         thumbnailUrl: row[_colThumbnailUrl] as String?,
         generatedThumbnailUrl: row[_colGeneratedThumbnailUrl] as String?,
+        localPosterUrl: row[_colLocalPosterUrl] as String?,
         fileSize: row[_colFileSize] as int?,
         fileModifiedTime: row[_colFileModifiedTime] != null
             ? DateTime.fromMillisecondsSinceEpoch(

@@ -51,6 +51,7 @@ class VideoMetadata {
     this.lastUpdated,
     this.thumbnailUrl,
     this.generatedThumbnailUrl,
+    this.localPosterUrl,
     this.fileSize,
     this.fileModifiedTime,
     this.collectionId,
@@ -84,6 +85,7 @@ class VideoMetadata {
           : null,
       thumbnailUrl: map['thumbnailUrl'] as String?,
       generatedThumbnailUrl: map['generatedThumbnailUrl'] as String?,
+      localPosterUrl: map['localPosterUrl'] as String?,
       fileSize: map['fileSize'] as int?,
       fileModifiedTime: map['fileModifiedTime'] != null
           ? DateTime.fromMillisecondsSinceEpoch(map['fileModifiedTime'] as int)
@@ -115,13 +117,18 @@ class VideoMetadata {
   DateTime? lastUpdated;
   String? thumbnailUrl; // 内置缩略图 URL（来自 NAS）
   String? generatedThumbnailUrl; // 生成的缩略图 URL（本地 file://）
+  String? localPosterUrl; // 本地缓存的海报 URL（本地 file://，离线可用）
   int? fileSize; // 文件大小（字节）
   DateTime? fileModifiedTime; // 文件修改时间
   int? collectionId; // TMDB 电影系列 ID
   String? collectionName; // TMDB 电影系列名称
 
-  /// 优先使用 TMDB 海报，其次使用内置缩略图，最后使用生成的缩略图
-  String? get displayPosterUrl => posterUrl ?? thumbnailUrl ?? generatedThumbnailUrl;
+  /// 海报显示优先级：
+  /// 1. 本地缓存的海报（离线可用）
+  /// 2. TMDB 海报（需网络，但会被 CachedNetworkImage 缓存）
+  /// 3. NAS 内置缩略图（需 NAS 连接）
+  /// 4. 生成的视频缩略图（离线可用）
+  String? get displayPosterUrl => localPosterUrl ?? posterUrl ?? thumbnailUrl ?? generatedThumbnailUrl;
 
   /// 是否有元数据（已成功刮削TMDB数据）
   bool get hasMetadata => tmdbId != null;
@@ -260,6 +267,7 @@ class VideoMetadata {
       'lastUpdated': lastUpdated?.millisecondsSinceEpoch,
       'thumbnailUrl': thumbnailUrl,
       'generatedThumbnailUrl': generatedThumbnailUrl,
+      'localPosterUrl': localPosterUrl,
       'fileSize': fileSize,
       'fileModifiedTime': fileModifiedTime?.millisecondsSinceEpoch,
       'collectionId': collectionId,
@@ -291,6 +299,7 @@ class VideoMetadata {
     DateTime? lastUpdated,
     String? thumbnailUrl,
     String? generatedThumbnailUrl,
+    String? localPosterUrl,
     int? fileSize,
     DateTime? fileModifiedTime,
     int? collectionId,
@@ -319,6 +328,7 @@ class VideoMetadata {
       lastUpdated: lastUpdated ?? this.lastUpdated,
       thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
       generatedThumbnailUrl: generatedThumbnailUrl ?? this.generatedThumbnailUrl,
+      localPosterUrl: localPosterUrl ?? this.localPosterUrl,
       fileSize: fileSize ?? this.fileSize,
       fileModifiedTime: fileModifiedTime ?? this.fileModifiedTime,
       collectionId: collectionId ?? this.collectionId,

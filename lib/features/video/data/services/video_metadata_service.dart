@@ -5,6 +5,7 @@ import 'package:my_nas/features/video/data/services/nfo_scraper_service.dart';
 import 'package:my_nas/features/video/data/services/tmdb_service.dart';
 import 'package:my_nas/features/video/data/services/video_database_service.dart';
 import 'package:my_nas/features/video/data/services/video_history_service.dart';
+import 'package:my_nas/features/video/data/services/video_poster_cache_service.dart';
 import 'package:my_nas/features/video/data/services/video_thumbnail_service.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
@@ -21,6 +22,7 @@ class VideoMetadataService {
   final NfoScraperService _nfoService = NfoScraperService();
   final VideoThumbnailService _thumbnailService = VideoThumbnailService();
   final VideoHistoryService _historyService = VideoHistoryService();
+  final VideoPosterCacheService _posterCacheService = VideoPosterCacheService();
 
   bool _initialized = false;
 
@@ -29,10 +31,11 @@ class VideoMetadataService {
     if (_initialized) return;
 
     try {
-      // 并行初始化 SQLite 和 ThumbnailService
+      // 并行初始化 SQLite、ThumbnailService 和 PosterCacheService
       await Future.wait([
         _db.init(),
         _thumbnailService.init(),
+        _posterCacheService.init(),
       ]);
 
       _initialized = true;
@@ -246,6 +249,12 @@ class VideoMetadataService {
       await _fetchFromTmdb(metadata);
     }
 
+    // 下载海报到本地缓存（支持离线显示）
+    if (metadata.posterUrl != null && metadata.localPosterUrl == null) {
+      // 在后台异步下载海报，不阻塞刮削流程
+      unawaited(_downloadPosterAndSave(metadata, fileSystem));
+    }
+
     // 如果没有封面图，尝试生成缩略图（可跳过以加速刮削）
     if (!skipThumbnail && metadata.displayPosterUrl == null && videoUrl != null) {
       // 在后台异步生成缩略图，不阻塞刮削流程
@@ -256,6 +265,29 @@ class VideoMetadataService {
     await save(metadata);
 
     return metadata;
+  }
+
+  /// 异步下载海报并保存（后台执行，不阻塞）
+  Future<void> _downloadPosterAndSave(
+    VideoMetadata metadata,
+    NasFileSystem? fileSystem,
+  ) async {
+    try {
+      final localUrl = await _posterCacheService.downloadAndCachePoster(
+        sourceId: metadata.sourceId,
+        filePath: metadata.filePath,
+        posterUrl: metadata.posterUrl!,
+        fileSystem: fileSystem,
+      );
+
+      if (localUrl != null) {
+        metadata.localPosterUrl = localUrl;
+        await save(metadata);
+        logger.d('VideoMetadataService: 海报已缓存到本地 "${metadata.fileName}"');
+      }
+    } on Exception catch (e) {
+      logger.w('VideoMetadataService: 下载海报失败 "${metadata.fileName}"', e);
+    }
   }
 
   /// 异步生成缩略图并保存（后台执行，不阻塞）
