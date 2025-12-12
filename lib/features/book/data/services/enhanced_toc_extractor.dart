@@ -50,16 +50,16 @@ class EnhancedTocExtractor {
       return TocExtractionResult.empty();
     }
 
-    final results = <TocExtractionResult>[];
+    final results = <TocExtractionResult>[]
 
     // 策略1: 基于关键词识别
-    results.add(_extractByKeywords(htmlContent));
+    ..add(_extractByKeywords(htmlContent))
 
     // 策略2: 基于结构模式识别 (密集的超链接或标题)
-    results.add(_extractByStructure(htmlContent));
+    ..add(_extractByStructure(htmlContent))
 
     // 策略3: 基于语义标签识别 (nav/aside/div.toc)
-    results.add(_extractBySemantic(htmlContent));
+    ..add(_extractBySemantic(htmlContent));
 
     // 选择置信度最高的结果
     return _selectBestResult(results);

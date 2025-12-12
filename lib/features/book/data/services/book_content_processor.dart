@@ -92,7 +92,7 @@ class BookContentProcessor {
     final allChapters = _extractChapters(htmlContent);
 
     // 3. 如果识别到有效目录,移除目录区域
-    String cleanedHtml = htmlContent;
+    var cleanedHtml = htmlContent;
     var removedToc = false;
 
     if (tocResult.hasValidToc) {
