@@ -1,7 +1,9 @@
 import 'dart:convert';
+import 'dart:ui';
 
 import 'package:http/http.dart' as http;
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/shared/providers/language_preference_provider.dart';
 
 /// TMDB API 服务
 class TmdbService {
@@ -17,6 +19,10 @@ class TmdbService {
   static const String _baseUrl = 'https://api.themoviedb.org/3';
   static const String _imageBaseUrl = 'https://image.tmdb.org/t/p';
 
+  // 语言偏好缓存
+  LanguagePreference? _languagePreference;
+  Locale _systemLocale = const Locale('zh', 'CN');
+
   /// 设置 API Key
   void setApiKey(String key) {
     _apiKey = key;
@@ -24,6 +30,39 @@ class TmdbService {
 
   /// 检查是否配置了 API Key
   bool get hasApiKey => _apiKey.isNotEmpty;
+
+  /// 设置语言偏好
+  void setLanguagePreference(LanguagePreference preference) {
+    _languagePreference = preference;
+  }
+
+  /// 设置系统语言环境
+  void setSystemLocale(Locale locale) {
+    _systemLocale = locale;
+  }
+
+  /// 获取元数据的首选语言代码
+  String getPreferredMetadataLanguage() {
+    if (_languagePreference == null) {
+      return 'zh-CN';
+    }
+
+    final languages = _languagePreference!.metadataLanguages;
+    if (languages.isEmpty) {
+      return 'zh-CN';
+    }
+
+    // 获取第一个有效的语言代码
+    for (final lang in languages) {
+      final code = lang.getActualCode(_systemLocale);
+      if (code.isNotEmpty) {
+        return code;
+      }
+    }
+
+    // 如果都是 original，返回系统语言
+    return _systemLocale.languageCode;
+  }
 
   /// 获取图片完整 URL
   static String getImageUrl(String? path, {ImageSize size = ImageSize.w500}) {

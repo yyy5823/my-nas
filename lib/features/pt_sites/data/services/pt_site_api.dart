@@ -331,20 +331,48 @@ class MTeamApi extends PTSiteApi {
   }
 }
 
-/// Cookie 认证的 PT 站点 API 基类
-class CookiePTSiteApi extends PTSiteApi {
-  CookiePTSiteApi({required super.source, super.client});
+/// 通用 PT 站点 API
+/// 支持 Cookie 认证和自定义请求头认证
+class GenericPTSiteApi extends PTSiteApi {
+  GenericPTSiteApi({required super.source, super.client});
 
   @override
   Map<String, String> get headers {
-    final cookie = source.extraConfig?['cookie'] as String? ?? '';
-    return {
-      'Cookie': cookie,
-      'User-Agent': source.extraConfig?['userAgent'] as String? ??
-          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+    final authType = source.extraConfig?['authType'] as String? ?? 'Cookie';
+    final userAgent = source.extraConfig?['userAgent'] as String? ??
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36';
+
+    final result = <String, String>{
+      'User-Agent': userAgent,
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
     };
+
+    if (authType == '自定义请求头') {
+      // 使用自定义请求头
+      final customHeaders = source.extraConfig?['customHeaders'];
+      if (customHeaders is List) {
+        for (final header in customHeaders) {
+          if (header is Map) {
+            final key = header['key']?.toString() ?? '';
+            final value = header['value']?.toString() ?? '';
+            if (key.isNotEmpty) {
+              result[key] = value;
+            }
+          }
+        }
+      }
+      // 添加 Content-Type（自定义请求头模式通常使用 JSON API）
+      result['Content-Type'] = 'application/json';
+    } else {
+      // Cookie 认证
+      final cookie = source.extraConfig?['cookie'] as String? ?? '';
+      if (cookie.isNotEmpty) {
+        result['Cookie'] = cookie;
+      }
+    }
+
+    return result;
   }
 
   @override
@@ -398,9 +426,7 @@ class CookiePTSiteApi extends PTSiteApi {
 
 /// PT 站点 API 工厂
 class PTSiteApiFactory {
-  static PTSiteApi create(SourceEntity source) => switch (source.type) {
-      SourceType.mteam => MTeamApi(source: source),
-      // 其他站点暂时使用通用 Cookie API
-      _ => CookiePTSiteApi(source: source),
-    };
+  /// 创建 PT 站点 API 实例
+  /// 所有站点都使用通用 API，根据 extraConfig 中的配置进行认证
+  static PTSiteApi create(SourceEntity source) => GenericPTSiteApi(source: source);
 }

@@ -928,7 +928,7 @@ class _LanguagePreferenceTile extends ConsumerWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () => _showLanguageSettingsSheet(context, ref, preference),
+        onTap: () => _showLanguageSettingsSheet(context, ref),
         child: Padding(
           padding: const EdgeInsets.symmetric(
             horizontal: AppSpacing.lg,
@@ -988,94 +988,65 @@ class _LanguagePreferenceTile extends ConsumerWidget {
   }
 
   String _getPreferenceSummary(LanguagePreference preference) {
-    if (preference.audioLanguage == LanguageOption.auto &&
-        preference.subtitleLanguage == LanguageOption.auto &&
-        preference.metadataLanguage == LanguageOption.auto) {
+    final isAllAuto = preference.audioLanguages.length == 1 &&
+        preference.audioLanguages.first == LanguageOption.auto &&
+        preference.subtitleLanguages.length == 1 &&
+        preference.subtitleLanguages.first == LanguageOption.auto &&
+        preference.metadataLanguages.length == 1 &&
+        preference.metadataLanguages.first == LanguageOption.auto;
+
+    if (isAllAuto) {
       return '全部自动';
     }
 
     final parts = <String>[];
-    if (preference.metadataLanguage != LanguageOption.auto) {
-      parts.add('元数据: ${preference.metadataLanguage.displayName}');
+    if (preference.metadataLanguages.first != LanguageOption.auto) {
+      parts.add('元数据: ${_formatLanguageList(preference.metadataLanguages)}');
     }
-    if (preference.audioLanguage != LanguageOption.auto) {
-      parts.add('音频: ${preference.audioLanguage.displayName}');
+    if (preference.audioLanguages.first != LanguageOption.auto) {
+      parts.add('音频: ${_formatLanguageList(preference.audioLanguages)}');
     }
-    if (preference.subtitleLanguage != LanguageOption.auto) {
-      parts.add('字幕: ${preference.subtitleLanguage.displayName}');
+    if (preference.subtitleLanguages.first != LanguageOption.auto) {
+      parts.add('字幕: ${_formatLanguageList(preference.subtitleLanguages)}');
     }
 
     return parts.isEmpty ? '全部自动' : parts.join(' | ');
   }
 
-  void _showLanguageSettingsSheet(
-    BuildContext context,
-    WidgetRef ref,
-    LanguagePreference preference,
-  ) {
+  String _formatLanguageList(List<LanguageOption> languages) {
+    if (languages.length == 1) {
+      return languages.first.displayName;
+    }
+    return languages.map((e) => e.displayName).take(2).join(' > ') +
+        (languages.length > 2 ? '...' : '');
+  }
+
+  void _showLanguageSettingsSheet(BuildContext context, WidgetRef ref) {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) => _LanguageSettingsSheet(
-        isDark: isDark,
-        preference: preference,
-        onChanged: (newPref) {
-          // 更新各项设置
-          if (newPref.audioLanguage != preference.audioLanguage) {
-            ref.read(languagePreferenceProvider.notifier).setAudioLanguage(newPref.audioLanguage);
-          }
-          if (newPref.subtitleLanguage != preference.subtitleLanguage) {
-            ref.read(languagePreferenceProvider.notifier).setSubtitleLanguage(newPref.subtitleLanguage);
-          }
-          if (newPref.metadataLanguage != preference.metadataLanguage) {
-            ref.read(languagePreferenceProvider.notifier).setMetadataLanguage(newPref.metadataLanguage);
-          }
-        },
-      ),
+      builder: (context) => _LanguageSettingsSheet(isDark: isDark),
     );
   }
 }
 
 /// 语言设置底部弹窗
-class _LanguageSettingsSheet extends StatefulWidget {
-  const _LanguageSettingsSheet({
-    required this.isDark,
-    required this.preference,
-    required this.onChanged,
-  });
+class _LanguageSettingsSheet extends ConsumerStatefulWidget {
+  const _LanguageSettingsSheet({required this.isDark});
 
   final bool isDark;
-  final LanguagePreference preference;
-  final void Function(LanguagePreference) onChanged;
 
   @override
-  State<_LanguageSettingsSheet> createState() => _LanguageSettingsSheetState();
+  ConsumerState<_LanguageSettingsSheet> createState() => _LanguageSettingsSheetState();
 }
 
-class _LanguageSettingsSheetState extends State<_LanguageSettingsSheet> {
-  late LanguageOption _audioLanguage;
-  late LanguageOption _subtitleLanguage;
-  late LanguageOption _metadataLanguage;
-
+class _LanguageSettingsSheetState extends ConsumerState<_LanguageSettingsSheet> {
   @override
-  void initState() {
-    super.initState();
-    _audioLanguage = widget.preference.audioLanguage;
-    _subtitleLanguage = widget.preference.subtitleLanguage;
-    _metadataLanguage = widget.preference.metadataLanguage;
-  }
+  Widget build(BuildContext context) {
+    final preference = ref.watch(languagePreferenceProvider);
 
-  void _updatePreference() {
-    widget.onChanged(LanguagePreference(
-      audioLanguage: _audioLanguage,
-      subtitleLanguage: _subtitleLanguage,
-      metadataLanguage: _metadataLanguage,
-    ));
-  }
-
-  @override
-  Widget build(BuildContext context) => ClipRRect(
+    return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
@@ -1092,108 +1063,112 @@ class _LanguageSettingsSheetState extends State<_LanguageSettingsSheet> {
             ),
           ),
           child: SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // 拖动指示器
-                Container(
-                  margin: const EdgeInsets.only(top: 12),
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: widget.isDark
-                        ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.3)
-                        : AppColors.lightOnSurfaceVariant.withValues(alpha: 0.3),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(AppSpacing.lg),
-                  child: Text(
-                    '语言偏好设置',
-                    style: context.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: widget.isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-                  child: Text(
-                    '设置音频、字幕和元数据的语言偏好，自动模式会跟随系统语言。',
-                    style: context.textTheme.bodySmall?.copyWith(
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // 拖动指示器
+                  Container(
+                    margin: const EdgeInsets.only(top: 12),
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
                       color: widget.isDark
-                          ? AppColors.darkOnSurfaceVariant
-                          : AppColors.lightOnSurfaceVariant,
+                          ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.3)
+                          : AppColors.lightOnSurfaceVariant.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(2),
                     ),
-                    textAlign: TextAlign.center,
                   ),
-                ),
-                const SizedBox(height: AppSpacing.lg),
+                  Padding(
+                    padding: const EdgeInsets.all(AppSpacing.lg),
+                    child: Text(
+                      '语言偏好设置',
+                      style: context.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: widget.isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                    child: Text(
+                      '设置音频、字幕和元数据的语言优先级，可添加多个语言并拖拽调整顺序。',
+                      style: context.textTheme.bodySmall?.copyWith(
+                        color: widget.isDark
+                            ? AppColors.darkOnSurfaceVariant
+                            : AppColors.lightOnSurfaceVariant,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
 
-                // 元数据语言
-                _buildLanguageSelector(
-                  context,
-                  title: '元数据语言',
-                  subtitle: '影片标题、简介、演员信息',
-                  icon: Icons.description_rounded,
-                  iconColor: AppColors.primary,
-                  value: _metadataLanguage,
-                  onChanged: (value) {
-                    setState(() => _metadataLanguage = value);
-                    _updatePreference();
-                  },
-                ),
+                  // 元数据语言
+                  _buildLanguagePriorityList(
+                    context,
+                    type: LanguageType.metadata,
+                    title: '元数据语言',
+                    subtitle: '影片标题、简介、演员信息',
+                    icon: Icons.description_rounded,
+                    iconColor: AppColors.primary,
+                    languages: preference.metadataLanguages,
+                    availableLanguages: LanguageOption.metadataLanguages,
+                  ),
 
-                const SizedBox(height: AppSpacing.sm),
+                  const SizedBox(height: AppSpacing.md),
 
-                // 音频语言
-                _buildLanguageSelector(
-                  context,
-                  title: '音频语言',
-                  subtitle: '默认播放的音轨语言',
-                  icon: Icons.audiotrack_rounded,
-                  iconColor: AppColors.accent,
-                  value: _audioLanguage,
-                  onChanged: (value) {
-                    setState(() => _audioLanguage = value);
-                    _updatePreference();
-                  },
-                ),
+                  // 音频语言
+                  _buildLanguagePriorityList(
+                    context,
+                    type: LanguageType.audio,
+                    title: '音频语言',
+                    subtitle: '默认播放的音轨语言',
+                    icon: Icons.audiotrack_rounded,
+                    iconColor: AppColors.accent,
+                    languages: preference.audioLanguages,
+                    availableLanguages: LanguageOption.audioSubtitleLanguages,
+                  ),
 
-                const SizedBox(height: AppSpacing.sm),
+                  const SizedBox(height: AppSpacing.md),
 
-                // 字幕语言
-                _buildLanguageSelector(
-                  context,
-                  title: '字幕语言',
-                  subtitle: '默认显示的字幕语言',
-                  icon: Icons.subtitles_rounded,
-                  iconColor: AppColors.fileVideo,
-                  value: _subtitleLanguage,
-                  onChanged: (value) {
-                    setState(() => _subtitleLanguage = value);
-                    _updatePreference();
-                  },
-                ),
+                  // 字幕语言
+                  _buildLanguagePriorityList(
+                    context,
+                    type: LanguageType.subtitle,
+                    title: '字幕语言',
+                    subtitle: '默认显示的字幕语言',
+                    icon: Icons.subtitles_rounded,
+                    iconColor: AppColors.fileVideo,
+                    languages: preference.subtitleLanguages,
+                    availableLanguages: LanguageOption.audioSubtitleLanguages,
+                  ),
 
-                const SizedBox(height: AppSpacing.xl),
-              ],
+                  const SizedBox(height: AppSpacing.xl),
+                ],
+              ),
             ),
           ),
         ),
       ),
     );
+  }
 
-  Widget _buildLanguageSelector(
+  Widget _buildLanguagePriorityList(
     BuildContext context, {
+    required LanguageType type,
     required String title,
     required String subtitle,
     required IconData icon,
     required Color iconColor,
-    required LanguageOption value,
-    required void Function(LanguageOption) onChanged,
-  }) => Padding(
+    required List<LanguageOption> languages,
+    required List<LanguageOption> availableLanguages,
+  }) {
+    // 获取可添加的语言（排除已选的）
+    final addableLanguages = availableLanguages
+        .where((lang) => !languages.contains(lang))
+        .toList();
+
+    return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
       child: DecoratedBox(
         decoration: BoxDecoration(
@@ -1207,84 +1182,220 @@ class _LanguageSettingsSheetState extends State<_LanguageSettingsSheet> {
                 : AppColors.lightOutline.withValues(alpha: 0.3),
           ),
         ),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(16),
-            onTap: () => _showLanguageOptions(context, title, value, onChanged),
-            child: Padding(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 标题行
+            Padding(
               padding: const EdgeInsets.all(AppSpacing.md),
               child: Row(
                 children: [
                   Container(
-                    width: 40,
-                    height: 40,
+                    width: 36,
+                    height: 36,
                     decoration: BoxDecoration(
                       color: iconColor.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Icon(icon, color: iconColor, size: 20),
+                    child: Icon(icon, color: iconColor, size: 18),
                   ),
-                  const SizedBox(width: AppSpacing.md),
+                  const SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           title,
-                          style: context.textTheme.bodyLarge?.copyWith(
+                          style: context.textTheme.bodyMedium?.copyWith(
                             color: widget.isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
-                            fontWeight: FontWeight.w500,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                        const SizedBox(height: 2),
                         Text(
                           subtitle,
                           style: context.textTheme.bodySmall?.copyWith(
                             color: widget.isDark
                                 ? AppColors.darkOnSurfaceVariant
                                 : AppColors.lightOnSurfaceVariant,
+                            fontSize: 11,
                           ),
                         ),
                       ],
                     ),
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      value.displayName,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: AppColors.primary,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: widget.isDark
-                        ? AppColors.darkOnSurfaceVariant
-                        : AppColors.lightOnSurfaceVariant,
-                    size: 20,
-                  ),
                 ],
               ),
             ),
-          ),
+
+            // 分割线
+            Divider(
+              height: 1,
+              color: widget.isDark
+                  ? AppColors.darkOutline.withValues(alpha: 0.2)
+                  : AppColors.lightOutline.withValues(alpha: 0.3),
+            ),
+
+            // 已选语言列表（可拖拽排序）
+            ReorderableListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              buildDefaultDragHandles: false,
+              itemCount: languages.length,
+              onReorder: (oldIndex, newIndex) {
+                if (newIndex > oldIndex) {
+                  newIndex -= 1;
+                }
+                ref.read(languagePreferenceProvider.notifier)
+                    .reorderLanguages(type, oldIndex, newIndex);
+              },
+              itemBuilder: (context, index) {
+                final lang = languages[index];
+                final canRemove = languages.length > 1;
+
+                return Material(
+                  key: ValueKey('${type.name}_${lang.code}'),
+                  color: Colors.transparent,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.md,
+                      vertical: AppSpacing.xs,
+                    ),
+                    child: Row(
+                      children: [
+                        // 优先级序号
+                        Container(
+                          width: 24,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            color: iconColor.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Center(
+                            child: Text(
+                              '${index + 1}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: iconColor,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: AppSpacing.sm),
+
+                        // 语言名称
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                lang.displayName,
+                                style: context.textTheme.bodyMedium?.copyWith(
+                                  color: widget.isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              if (lang.nativeName != lang.displayName)
+                                Text(
+                                  lang.nativeName,
+                                  style: context.textTheme.bodySmall?.copyWith(
+                                    color: widget.isDark
+                                        ? AppColors.darkOnSurfaceVariant
+                                        : AppColors.lightOnSurfaceVariant,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+
+                        // 删除按钮
+                        if (canRemove)
+                          IconButton(
+                            icon: Icon(
+                              Icons.close_rounded,
+                              size: 18,
+                              color: widget.isDark
+                                  ? AppColors.darkOnSurfaceVariant
+                                  : AppColors.lightOnSurfaceVariant,
+                            ),
+                            onPressed: () {
+                              ref.read(languagePreferenceProvider.notifier)
+                                  .removeLanguage(type, lang);
+                            },
+                            visualDensity: VisualDensity.compact,
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(
+                              minWidth: 32,
+                              minHeight: 32,
+                            ),
+                          ),
+
+                        // 拖拽手柄
+                        ReorderableDragStartListener(
+                          index: index,
+                          child: Padding(
+                            padding: const EdgeInsets.only(left: 4),
+                            child: Icon(
+                              Icons.drag_handle_rounded,
+                              size: 20,
+                              color: widget.isDark
+                                  ? AppColors.darkOnSurfaceVariant
+                                  : AppColors.lightOnSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+
+            // 添加语言按钮
+            if (addableLanguages.isNotEmpty)
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () => _showAddLanguageSheet(context, type, addableLanguages),
+                  borderRadius: const BorderRadius.only(
+                    bottomLeft: Radius.circular(16),
+                    bottomRight: Radius.circular(16),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.add_rounded,
+                          size: 18,
+                          color: AppColors.primary,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '添加语言',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );
+  }
 
-  void _showLanguageOptions(
+  void _showAddLanguageSheet(
     BuildContext context,
-    String title,
-    LanguageOption currentValue,
-    void Function(LanguageOption) onChanged,
+    LanguageType type,
+    List<LanguageOption> availableLanguages,
   ) {
     showModalBottomSheet<void>(
       context: context,
@@ -1321,7 +1432,7 @@ class _LanguageSettingsSheetState extends State<_LanguageSettingsSheet> {
                 Padding(
                   padding: const EdgeInsets.all(AppSpacing.lg),
                   child: Text(
-                    '选择$title',
+                    '添加语言',
                     style: context.textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.bold,
                       color: widget.isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
@@ -1331,16 +1442,16 @@ class _LanguageSettingsSheetState extends State<_LanguageSettingsSheet> {
                 Flexible(
                   child: ListView.builder(
                     shrinkWrap: true,
-                    itemCount: LanguageOption.values.length,
+                    itemCount: availableLanguages.length,
                     itemBuilder: (context, index) {
-                      final option = LanguageOption.values[index];
-                      final isSelected = option == currentValue;
+                      final option = availableLanguages[index];
 
                       return Material(
                         color: Colors.transparent,
                         child: InkWell(
                           onTap: () {
-                            onChanged(option);
+                            ref.read(languagePreferenceProvider.notifier)
+                                .addLanguage(type, option);
                             Navigator.pop(context);
                           },
                           child: Container(
@@ -1360,7 +1471,6 @@ class _LanguageSettingsSheetState extends State<_LanguageSettingsSheet> {
                                           color: widget.isDark
                                               ? AppColors.darkOnSurface
                                               : AppColors.lightOnSurface,
-                                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                                         ),
                                       ),
                                       if (option.nativeName != option.displayName) ...[
@@ -1377,20 +1487,11 @@ class _LanguageSettingsSheetState extends State<_LanguageSettingsSheet> {
                                     ],
                                   ),
                                 ),
-                                if (isSelected)
-                                  Container(
-                                    width: 24,
-                                    height: 24,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      gradient: AppColors.primaryGradient,
-                                    ),
-                                    child: const Icon(
-                                      Icons.check_rounded,
-                                      color: Colors.white,
-                                      size: 16,
-                                    ),
-                                  ),
+                                Icon(
+                                  Icons.add_rounded,
+                                  color: AppColors.primary,
+                                  size: 20,
+                                ),
                               ],
                             ),
                           ),

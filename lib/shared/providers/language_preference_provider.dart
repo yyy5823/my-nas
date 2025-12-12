@@ -3,45 +3,89 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
 
+/// 语言类型
+enum LanguageType {
+  audio,
+  subtitle,
+  metadata,
+}
+
 /// 语言偏好设置
-/// 用于配置音频、字幕、元数据的语言显示
+/// 用于配置音频、字幕、元数据的语言显示优先级
 class LanguagePreference {
   const LanguagePreference({
-    this.audioLanguage = LanguageOption.auto,
-    this.subtitleLanguage = LanguageOption.auto,
-    this.metadataLanguage = LanguageOption.auto,
+    this.audioLanguages = const [LanguageOption.auto],
+    this.subtitleLanguages = const [LanguageOption.auto],
+    this.metadataLanguages = const [LanguageOption.auto],
   });
 
-  factory LanguagePreference.fromJson(Map<String, dynamic> json) => LanguagePreference(
-      audioLanguage: LanguageOption.fromCode(json['audioLanguage'] as String?),
-      subtitleLanguage: LanguageOption.fromCode(json['subtitleLanguage'] as String?),
-      metadataLanguage: LanguageOption.fromCode(json['metadataLanguage'] as String?),
+  factory LanguagePreference.fromJson(Map<String, dynamic> json) {
+    // 向后兼容：支持旧的单选格式
+    if (json.containsKey('audioLanguage')) {
+      return LanguagePreference(
+        audioLanguages: [LanguageOption.fromCode(json['audioLanguage'] as String?)],
+        subtitleLanguages: [LanguageOption.fromCode(json['subtitleLanguage'] as String?)],
+        metadataLanguages: [LanguageOption.fromCode(json['metadataLanguage'] as String?)],
+      );
+    }
+
+    return LanguagePreference(
+      audioLanguages: _parseLanguageList(json['audioLanguages']),
+      subtitleLanguages: _parseLanguageList(json['subtitleLanguages']),
+      metadataLanguages: _parseLanguageList(json['metadataLanguages']),
     );
+  }
 
-  /// 音频语言偏好
-  final LanguageOption audioLanguage;
+  /// 音频语言优先级列表
+  final List<LanguageOption> audioLanguages;
 
-  /// 字幕语言偏好
-  final LanguageOption subtitleLanguage;
+  /// 字幕语言优先级列表
+  final List<LanguageOption> subtitleLanguages;
 
-  /// 元数据语言偏好（影片标题、简介等）
-  final LanguageOption metadataLanguage;
+  /// 元数据语言优先级列表
+  final List<LanguageOption> metadataLanguages;
+
+  static List<LanguageOption> _parseLanguageList(dynamic value) {
+    if (value == null) return [LanguageOption.auto];
+    if (value is String) {
+      // 格式: "zh-CN,en,ja"
+      if (value.isEmpty) return [LanguageOption.auto];
+      return value
+          .split(',')
+          .map(LanguageOption.fromCode)
+          .toList();
+    }
+    return [LanguageOption.auto];
+  }
 
   LanguagePreference copyWith({
-    LanguageOption? audioLanguage,
-    LanguageOption? subtitleLanguage,
-    LanguageOption? metadataLanguage,
+    List<LanguageOption>? audioLanguages,
+    List<LanguageOption>? subtitleLanguages,
+    List<LanguageOption>? metadataLanguages,
   }) =>
       LanguagePreference(
-        audioLanguage: audioLanguage ?? this.audioLanguage,
-        subtitleLanguage: subtitleLanguage ?? this.subtitleLanguage,
-        metadataLanguage: metadataLanguage ?? this.metadataLanguage,
+        audioLanguages: audioLanguages ?? this.audioLanguages,
+        subtitleLanguages: subtitleLanguages ?? this.subtitleLanguages,
+        metadataLanguages: metadataLanguages ?? this.metadataLanguages,
       );
 
+  /// 获取指定类型的语言列表
+  List<LanguageOption> getLanguagesForType(LanguageType type) => switch (type) {
+        LanguageType.audio => audioLanguages,
+        LanguageType.subtitle => subtitleLanguages,
+        LanguageType.metadata => metadataLanguages,
+      };
+
+  /// 获取首选语言（优先级最高的）
+  LanguageOption getPreferredLanguage(LanguageType type) {
+    final languages = getLanguagesForType(type);
+    return languages.isNotEmpty ? languages.first : LanguageOption.auto;
+  }
+
   Map<String, dynamic> toJson() => {
-        'audioLanguage': audioLanguage.code,
-        'subtitleLanguage': subtitleLanguage.code,
-        'metadataLanguage': metadataLanguage.code,
+        'audioLanguages': audioLanguages.map((e) => e.code).join(','),
+        'subtitleLanguages': subtitleLanguages.map((e) => e.code).join(','),
+        'metadataLanguages': metadataLanguages.map((e) => e.code).join(','),
       };
 }
 
@@ -112,6 +156,17 @@ enum LanguageOption {
     );
   }
 
+  /// 获取所有可选语言（排除特殊选项）
+  static List<LanguageOption> get selectableLanguages =>
+      LanguageOption.values.where((e) => e != LanguageOption.auto).toList();
+
+  /// 获取元数据可选语言（包含原产地语言）
+  static List<LanguageOption> get metadataLanguages => LanguageOption.values;
+
+  /// 获取音频/字幕可选语言（不包含原产地语言）
+  static List<LanguageOption> get audioSubtitleLanguages =>
+      LanguageOption.values.where((e) => e != LanguageOption.original).toList();
+
   /// 获取实际的 ISO 语言代码（用于 TMDB API 等）
   String getActualCode(Locale systemLocale) {
     if (this == LanguageOption.auto) {
@@ -173,12 +228,13 @@ class LanguagePreferenceNotifier extends StateNotifier<LanguagePreference> {
       final result = <String, dynamic>{};
       final content = jsonStr.replaceAll('{', '').replaceAll('}', '');
       for (final pair in content.split(',')) {
-        final kv = pair.split(':');
-        if (kv.length == 2) {
-          final key = kv[0].trim().replaceAll('"', '');
-          final value = kv[1].trim().replaceAll('"', '');
-          result[key] = value;
-        }
+        // 处理语言列表中的逗号（使用 : 分割 key 和 value）
+        final colonIndex = pair.indexOf(':');
+        if (colonIndex == -1) continue;
+
+        final key = pair.substring(0, colonIndex).trim().replaceAll('"', '');
+        final value = pair.substring(colonIndex + 1).trim().replaceAll('"', '');
+        result[key] = value;
       }
       return result.isNotEmpty ? result : null;
     } on Exception catch (_) {
@@ -201,27 +257,106 @@ class LanguagePreferenceNotifier extends StateNotifier<LanguagePreference> {
     }
   }
 
-  /// 设置音频语言偏好
-  Future<void> setAudioLanguage(LanguageOption language) async {
-    state = state.copyWith(audioLanguage: language);
+  /// 设置音频语言列表
+  Future<void> setAudioLanguages(List<LanguageOption> languages) async {
+    if (languages.isEmpty) return;
+    state = state.copyWith(audioLanguages: languages);
     await _saveToStorage();
   }
 
-  /// 设置字幕语言偏好
-  Future<void> setSubtitleLanguage(LanguageOption language) async {
-    state = state.copyWith(subtitleLanguage: language);
+  /// 设置字幕语言列表
+  Future<void> setSubtitleLanguages(List<LanguageOption> languages) async {
+    if (languages.isEmpty) return;
+    state = state.copyWith(subtitleLanguages: languages);
     await _saveToStorage();
   }
 
-  /// 设置元数据语言偏好
-  Future<void> setMetadataLanguage(LanguageOption language) async {
-    state = state.copyWith(metadataLanguage: language);
+  /// 设置元数据语言列表
+  Future<void> setMetadataLanguages(List<LanguageOption> languages) async {
+    if (languages.isEmpty) return;
+    state = state.copyWith(metadataLanguages: languages);
     await _saveToStorage();
+  }
+
+  /// 设置指定类型的语言列表
+  Future<void> setLanguages(LanguageType type, List<LanguageOption> languages) async {
+    if (languages.isEmpty) return;
+    switch (type) {
+      case LanguageType.audio:
+        await setAudioLanguages(languages);
+      case LanguageType.subtitle:
+        await setSubtitleLanguages(languages);
+      case LanguageType.metadata:
+        await setMetadataLanguages(languages);
+    }
+  }
+
+  /// 添加语言到指定类型
+  Future<void> addLanguage(LanguageType type, LanguageOption language) async {
+    final current = state.getLanguagesForType(type);
+    if (current.contains(language)) return;
+
+    // 如果添加非自动选项，移除自动
+    var newList = [...current];
+    if (language != LanguageOption.auto && newList.contains(LanguageOption.auto)) {
+      newList.remove(LanguageOption.auto);
+    }
+    // 如果添加自动，清除其他选项
+    if (language == LanguageOption.auto) {
+      newList = [LanguageOption.auto];
+    } else {
+      newList.add(language);
+    }
+
+    await setLanguages(type, newList);
+  }
+
+  /// 移除语言
+  Future<void> removeLanguage(LanguageType type, LanguageOption language) async {
+    final current = state.getLanguagesForType(type);
+    if (current.length <= 1) return; // 至少保留一个
+    if (!current.contains(language)) return;
+
+    final newList = current.where((e) => e != language).toList();
+    await setLanguages(type, newList);
+  }
+
+  /// 重新排序语言
+  Future<void> reorderLanguages(LanguageType type, int oldIndex, int newIndex) async {
+    final current = state.getLanguagesForType(type);
+    if (oldIndex < 0 || oldIndex >= current.length) return;
+    if (newIndex < 0 || newIndex >= current.length) return;
+
+    final newList = [...current];
+    final item = newList.removeAt(oldIndex);
+    newList.insert(newIndex, item);
+
+    await setLanguages(type, newList);
   }
 
   /// 重置为默认值
   Future<void> reset() async {
     state = const LanguagePreference();
     await _saveToStorage();
+  }
+
+  // ============ 向后兼容的方法 ============
+
+  /// 设置音频语言偏好（向后兼容）
+  @Deprecated('Use setAudioLanguages instead')
+  Future<void> setAudioLanguage(LanguageOption language) async {
+    await setAudioLanguages([language]);
+  }
+
+  /// 设置字幕语言偏好（向后兼容）
+  @Deprecated('Use setSubtitleLanguages instead')
+  Future<void> setSubtitleLanguage(LanguageOption language) async {
+    await setSubtitleLanguages([language]);
+  }
+
+  /// 设置元数据语言偏好（向后兼容）
+  @Deprecated('Use setMetadataLanguages instead')
+  Future<void> setMetadataLanguage(LanguageOption language) async {
+    await setMetadataLanguages([language]);
   }
 }

@@ -1083,9 +1083,10 @@ class _PathCardState extends ConsumerState<_PathCard> {
               SnackBar(content: Text('扫描完成，共 $count 个视频，开始刮削元数据...')),
             );
           }
-          // 扫描完成后自动触发后台刮削
-          if (widget.connections.values.any((c) => c.status == SourceStatus.connected)) {
-            unawaited(VideoScannerService().scrapeMetadata(connections: widget.connections));
+          // 扫描完成后自动触发后台刮削（使用最新连接状态）
+          final currentConnections = ref.read(activeConnectionsProvider);
+          if (currentConnections.values.any((c) => c.status == SourceStatus.connected)) {
+            unawaited(VideoScannerService().scrapeMetadata(connections: currentConnections));
           }
         case MediaType.music:
           // 使用单目录扫描
@@ -1154,12 +1155,26 @@ class _PathCardState extends ConsumerState<_PathCard> {
       return;
     }
 
+    // 获取最新的连接状态（而不是使用可能过时的 widget.connections）
+    final connections = ref.read(activeConnectionsProvider);
+
+    // 检查是否有可用连接
+    final hasConnected = connections.values.any((c) => c.status == SourceStatus.connected);
+    if (!hasConnected) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('没有可用连接，请先连接源')),
+        );
+      }
+      return;
+    }
+
     setState(() => _isScraping = true);
 
     try {
       // 直接等待刮削完成（不使用 unawaited）
       await VideoScannerService().scrapeMetadata(
-        connections: widget.connections,
+        connections: connections,
       );
 
       await _loadStats();
@@ -1198,6 +1213,20 @@ class _PathCardState extends ConsumerState<_PathCard> {
       return;
     }
 
+    // 获取最新的连接状态（而不是使用可能过时的 widget.connections）
+    final connections = ref.read(activeConnectionsProvider);
+
+    // 检查是否有可用连接
+    final hasConnected = connections.values.any((c) => c.status == SourceStatus.connected);
+    if (!hasConnected) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('没有可用连接，请先连接源')),
+        );
+      }
+      return;
+    }
+
     setState(() => _isScraping = true);
 
     try {
@@ -1206,7 +1235,7 @@ class _PathCardState extends ConsumerState<_PathCard> {
       );
 
       await VideoScannerService().retryScrapeFailedVideos(
-        connections: widget.connections,
+        connections: connections,
       );
 
       if (!mounted) return;

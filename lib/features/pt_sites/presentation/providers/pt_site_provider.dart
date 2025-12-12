@@ -55,7 +55,7 @@ class PTSiteConnectionNotifier extends StateNotifier<PTSiteConnection> {
           source: SourceEntity(
             id: sourceId,
             name: '',
-            type: SourceType.mteam,
+            type: SourceType.ptSite,
             host: '',
             port: 443,
             username: '',

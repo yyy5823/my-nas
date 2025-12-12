@@ -253,6 +253,8 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
         return _buildPasswordField(field, theme);
       case SourceFormFieldType.number:
         return _buildNumberField(field, theme);
+      case SourceFormFieldType.keyValueList:
+        return _buildKeyValueListField(field, theme);
       default:
         return _buildTextField(field, theme);
     }
@@ -392,6 +394,152 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
           });
         }
       },
+    );
+  }
+
+  /// 构建键值对列表字段（用于自定义请求头等）
+  Widget _buildKeyValueListField(SourceFormField field, ThemeData theme) {
+    final colorScheme = theme.colorScheme;
+
+    // 获取当前的键值对列表
+    var items = <Map<String, String>>[];
+    final existingValue = _formValues[field.key];
+    if (existingValue is List) {
+      items = existingValue.cast<Map<String, String>>().toList();
+    } else if (existingValue is String && existingValue.isNotEmpty) {
+      // 尝试解析 JSON 格式
+      try {
+        items = [];
+      } catch (_) {
+        items = [];
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 标题行
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                field.label,
+                style: theme.textTheme.titleSmall,
+              ),
+            ),
+            TextButton.icon(
+              onPressed: () {
+                setState(() {
+                  items.add({'key': '', 'value': ''});
+                  _formValues[field.key] = items;
+                });
+              },
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('添加'),
+            ),
+          ],
+        ),
+        if (field.helpText != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              field.helpText!,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+
+        // 键值对列表
+        if (items.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: colorScheme.outline.withValues(alpha: 0.3),
+              ),
+            ),
+            child: Center(
+              child: Text(
+                '点击「添加」按钮添加请求头',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          )
+        else
+          ...items.asMap().entries.map((entry) {
+            final index = entry.key;
+            final item = entry.value;
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  // Key 输入框
+                  Expanded(
+                    flex: 2,
+                    child: TextFormField(
+                      initialValue: item['key'],
+                      decoration: InputDecoration(
+                        labelText: 'Key',
+                        hintText: 'x-api-key',
+                        isDense: true,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      onChanged: (value) {
+                        setState(() {
+                          items[index]['key'] = value;
+                          _formValues[field.key] = items;
+                        });
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // Value 输入框
+                  Expanded(
+                    flex: 3,
+                    child: TextFormField(
+                      initialValue: item['value'],
+                      decoration: InputDecoration(
+                        labelText: 'Value',
+                        hintText: '值',
+                        isDense: true,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      onChanged: (value) {
+                        setState(() {
+                          items[index]['value'] = value;
+                          _formValues[field.key] = items;
+                        });
+                      },
+                    ),
+                  ),
+                  // 删除按钮
+                  IconButton(
+                    icon: Icon(
+                      Icons.remove_circle_outline,
+                      color: colorScheme.error,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        items.removeAt(index);
+                        _formValues[field.key] = items;
+                      });
+                    },
+                  ),
+                ],
+              ),
+            );
+          }),
+      ],
     );
   }
 

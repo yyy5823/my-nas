@@ -693,8 +693,22 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     // 这确保了从后台恢复时，比较基准是正确的
     _lastTotalCount = databaseTotalCount;
 
+    final newTotalCount = stats['total'] as int? ?? 0;
+
+    // 保护：在 silent 模式下，如果新查询结果为空但当前状态有数据，保留当前状态
+    // 这避免了因超时或临时查询问题导致 UI 意外变空
+    if (silent) {
+      final currentState = state;
+      if (currentState is VideoListLoaded &&
+          currentState.totalCount > 0 &&
+          newTotalCount == 0) {
+        logger.w('VideoListNotifier: silent 模式下查询结果为空，但当前状态有 ${currentState.totalCount} 个视频，保留当前状态');
+        return;
+      }
+    }
+
     state = VideoListLoaded(
-      totalCount: stats['total'] as int? ?? 0,
+      totalCount: newTotalCount,
       databaseTotalCount: databaseTotalCount,
       movieCount: stats['movies'] as int? ?? 0,
       tvShowCount: stats['tvShows'] as int? ?? 0,

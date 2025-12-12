@@ -672,22 +672,7 @@ class SourceManagerService {
       SourceType.jellyfin ||
       SourceType.emby ||
       SourceType.plex ||
-      // PT 站点
-      SourceType.mteam ||
-      SourceType.hdchina ||
-      SourceType.chdbits ||
-      SourceType.audiences ||
-      SourceType.pthome ||
-      SourceType.ourbits ||
-      SourceType.hdsky ||
-      SourceType.pterclub ||
-      SourceType.hdfans ||
-      SourceType.hdhome ||
-      SourceType.ttg ||
-      SourceType.ssd ||
-      SourceType.lemonhd ||
-      SourceType.haidan ||
-      SourceType.pttime =>
+      SourceType.ptSite =>
         throw UnsupportedError('服务类源 ${type.displayName} 不支持 NasAdapter，请使用对应的 ServiceAdapter'),
     };
 
@@ -709,22 +694,7 @@ class SourceManagerService {
       SourceType.jellyfin ||
       SourceType.emby ||
       SourceType.plex ||
-      // PT 站点
-      SourceType.mteam ||
-      SourceType.hdchina ||
-      SourceType.chdbits ||
-      SourceType.audiences ||
-      SourceType.pthome ||
-      SourceType.ourbits ||
-      SourceType.hdsky ||
-      SourceType.pterclub ||
-      SourceType.hdfans ||
-      SourceType.hdhome ||
-      SourceType.ttg ||
-      SourceType.ssd ||
-      SourceType.lemonhd ||
-      SourceType.haidan ||
-      SourceType.pttime =>
+      SourceType.ptSite =>
         throw UnsupportedError('服务类源 ${type.displayName} 不支持 NasAdapterType'),
     };
 

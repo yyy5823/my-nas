@@ -20,7 +20,8 @@ class SourceTypeSelectionPage extends ConsumerWidget {
 
   /// 检查分类是否应该显示
   bool _shouldShowCategory(SourceCategory category) =>
-      allowedCategories == null || allowedCategories!.contains(category);
+      allowedCategories == null ||
+      allowedCategories!.contains(category);
 
   /// 检查是否有存储类分类
   bool get _hasStorageCategories =>

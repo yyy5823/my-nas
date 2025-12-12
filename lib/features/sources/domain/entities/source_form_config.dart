@@ -8,6 +8,7 @@ enum SourceFormFieldType {
   url,
   toggle,
   select,
+  keyValueList, // 键值对列表，用于自定义请求头等
 }
 
 /// 表单字段配置
@@ -151,36 +152,8 @@ class SourceFormConfig {
         return _getPlexConfig();
 
       // === PT 站点 ===
-      case SourceType.mteam:
-        return _getMteamConfig();
-      case SourceType.hdchina:
-        return _getCookiePTSiteConfig(SourceType.hdchina, 'hdchina.org');
-      case SourceType.chdbits:
-        return _getCookiePTSiteConfig(SourceType.chdbits, 'chdbits.co');
-      case SourceType.audiences:
-        return _getCookiePTSiteConfig(SourceType.audiences, 'audiences.me');
-      case SourceType.pthome:
-        return _getCookiePTSiteConfig(SourceType.pthome, 'pthome.net');
-      case SourceType.ourbits:
-        return _getCookiePTSiteConfig(SourceType.ourbits, 'ourbits.club');
-      case SourceType.hdsky:
-        return _getCookiePTSiteConfig(SourceType.hdsky, 'hdsky.me');
-      case SourceType.pterclub:
-        return _getCookiePTSiteConfig(SourceType.pterclub, 'pterclub.com');
-      case SourceType.hdfans:
-        return _getCookiePTSiteConfig(SourceType.hdfans, 'hdfans.org');
-      case SourceType.hdhome:
-        return _getCookiePTSiteConfig(SourceType.hdhome, 'hdhome.org');
-      case SourceType.ttg:
-        return _getCookiePTSiteConfig(SourceType.ttg, 'totheglory.im');
-      case SourceType.ssd:
-        return _getCookiePTSiteConfig(SourceType.ssd, 'springsunday.net');
-      case SourceType.lemonhd:
-        return _getCookiePTSiteConfig(SourceType.lemonhd, 'lemonhd.org');
-      case SourceType.haidan:
-        return _getCookiePTSiteConfig(SourceType.haidan, 'haidan.video');
-      case SourceType.pttime:
-        return _getCookiePTSiteConfig(SourceType.pttime, 'pttime.org');
+      case SourceType.ptSite:
+        return _getPTSiteConfig();
     }
   }
 
@@ -823,20 +796,32 @@ class SourceFormConfig {
 
   // === PT 站点配置 ===
 
-  static SourceFormConfig _getMteamConfig() => SourceFormConfig(
-      type: SourceType.mteam,
+  /// 通用 PT 站点配置
+  /// 支持 Cookie 认证和自定义请求头认证
+  static SourceFormConfig _getPTSiteConfig() => SourceFormConfig(
+      type: SourceType.ptSite,
       sections: [
-        _basicInfoSection(),
+        // 基本信息 - 站点名称
+        const SourceFormSection(
+          title: '基本信息',
+          fields: [
+            SourceFormField(
+              key: 'name',
+              label: '站点名称',
+              placeholder: '例如：馒头、瓷器、彩虹岛',
+              helpText: '自定义站点名称，便于识别',
+            ),
+          ],
+        ),
+        // 站点配置
         const SourceFormSection(
           title: '站点配置',
-          description: '馒头使用 API 方式认证',
           fields: [
             SourceFormField(
               key: 'host',
               label: '站点地址',
-              placeholder: 'kp.m-team.cc',
-              defaultValue: 'kp.m-team.cc',
-              helpText: '馒头站点域名',
+              placeholder: 'example.com',
+              helpText: '站点域名，不需要 http:// 前缀',
             ),
             SourceFormField(
               key: 'useSsl',
@@ -846,26 +831,41 @@ class SourceFormConfig {
             ),
           ],
         ),
+        // 认证方式选择
         const SourceFormSection(
-          title: 'API 认证',
-          description: '从馒头个人设置中获取 API 密钥',
+          title: '认证方式',
+          description: '选择站点的认证方式',
           fields: [
             SourceFormField(
-              key: 'xApiKey',
-              label: 'x-api-key',
-              type: SourceFormFieldType.password,
-              placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
-              helpText: '从馒头个人设置页面获取',
+              key: 'authType',
+              label: '认证类型',
+              type: SourceFormFieldType.select,
+              options: ['Cookie', '自定义请求头'],
+              defaultValue: 'Cookie',
+              helpText: '大部分站点使用 Cookie，馒头等站点使用自定义请求头',
             ),
+            // Cookie 认证
             SourceFormField(
-              key: 'authorization',
-              label: 'Authorization',
+              key: 'cookie',
+              label: 'Cookie',
               type: SourceFormFieldType.password,
-              placeholder: 'eyJhbGciOiJIUzUxMiJ9...',
-              helpText: 'JWT 令牌，以 eyJ 开头',
+              placeholder: '从浏览器复制完整的 Cookie',
+              required: false,
+              helpText: '登录站点后，从浏览器开发者工具获取 Cookie',
+              visibilityCondition: _isCookieAuthType,
+            ),
+            // 自定义请求头
+            SourceFormField(
+              key: 'customHeaders',
+              label: '自定义请求头',
+              type: SourceFormFieldType.keyValueList,
+              required: false,
+              helpText: '添加自定义请求头，例如 x-api-key、authorization 等',
+              visibilityCondition: _isCustomHeadersAuthType,
             ),
           ],
         ),
+        // RSS 订阅
         const SourceFormSection(
           title: 'RSS 订阅',
           collapsible: true,
@@ -875,9 +875,9 @@ class SourceFormConfig {
             SourceFormField(
               key: 'rssUrl',
               label: 'RSS 订阅地址',
-              placeholder: 'https://rss.m-team.cc/api/rss/fetch?...',
+              placeholder: 'https://...',
               required: false,
-              helpText: '从馒头 RSS 页面获取完整订阅地址',
+              helpText: '从站点 RSS 页面获取完整订阅地址',
             ),
             SourceFormField(
               key: 'enableRssDetail',
@@ -893,6 +893,7 @@ class SourceFormConfig {
             ),
           ],
         ),
+        // 下载设置
         const SourceFormSection(
           title: '下载设置',
           collapsible: true,
@@ -932,6 +933,7 @@ class SourceFormConfig {
             ),
           ],
         ),
+        // 流控规则
         const SourceFormSection(
           title: '流控规则',
           collapsible: true,
@@ -962,141 +964,13 @@ class SourceFormConfig {
       ],
     );
 
-  /// Cookie 认证的 PT 站点通用配置
-  static SourceFormConfig _getCookiePTSiteConfig(
-    SourceType type,
-    String defaultHost,
-  ) =>
-      SourceFormConfig(
-        type: type,
-        sections: [
-          _basicInfoSection(),
-          SourceFormSection(
-            title: '站点配置',
-            fields: [
-              SourceFormField(
-                key: 'host',
-                label: '站点地址',
-                placeholder: defaultHost,
-                defaultValue: defaultHost,
-                helpText: '${type.displayName}站点域名',
-              ),
-              const SourceFormField(
-                key: 'useSsl',
-                label: '使用 HTTPS',
-                type: SourceFormFieldType.toggle,
-                defaultValue: 'true',
-              ),
-            ],
-          ),
-          const SourceFormSection(
-            title: 'Cookie 认证',
-            description: '从浏览器获取站点 Cookie',
-            fields: [
-              SourceFormField(
-                key: 'cookie',
-                label: 'Cookie',
-                type: SourceFormFieldType.password,
-                placeholder: '从浏览器复制完整的 Cookie',
-                helpText: '登录站点后，从浏览器开发者工具获取 Cookie',
-              ),
-            ],
-          ),
-          const SourceFormSection(
-            title: 'RSS 订阅',
-            collapsible: true,
-            defaultExpanded: false,
-            description: '配置 RSS 订阅获取最新资源',
-            fields: [
-              SourceFormField(
-                key: 'rssUrl',
-                label: 'RSS 订阅地址',
-                placeholder: 'https://...',
-                required: false,
-                helpText: '从站点 RSS 页面获取完整订阅地址',
-              ),
-              SourceFormField(
-                key: 'enableRssDetail',
-                label: 'RSS 解析种子详情',
-                type: SourceFormFieldType.toggle,
-                defaultValue: 'true',
-              ),
-              SourceFormField(
-                key: 'enableNotification',
-                label: '发送站点未读消息通知',
-                type: SourceFormFieldType.toggle,
-                defaultValue: 'true',
-              ),
-            ],
-          ),
-          const SourceFormSection(
-            title: '下载设置',
-            collapsible: true,
-            defaultExpanded: false,
-            fields: [
-              SourceFormField(
-                key: 'enableBrowserEmulation',
-                label: '开启浏览器仿真',
-                type: SourceFormFieldType.toggle,
-                defaultValue: 'false',
-                helpText: '模拟浏览器请求，降低被检测风险',
-              ),
-              SourceFormField(
-                key: 'useProxy',
-                label: '使用代理服务器',
-                type: SourceFormFieldType.toggle,
-                defaultValue: 'false',
-              ),
-              SourceFormField(
-                key: 'downloadSubtitle',
-                label: '从详情页下载字幕',
-                type: SourceFormFieldType.toggle,
-                defaultValue: 'false',
-              ),
-              SourceFormField(
-                key: 'addSiteTag',
-                label: '下载器添加站点标签',
-                type: SourceFormFieldType.toggle,
-                defaultValue: 'false',
-              ),
-              SourceFormField(
-                key: 'userAgent',
-                label: 'User-Agent',
-                placeholder: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)...',
-                required: false,
-                helpText: '自定义请求的 User-Agent',
-              ),
-            ],
-          ),
-          const SourceFormSection(
-            title: '流控规则',
-            collapsible: true,
-            defaultExpanded: false,
-            description: '控制请求频率避免被封禁',
-            fields: [
-              SourceFormField(
-                key: 'rateLimitMinutes',
-                label: '单位时间（分钟）',
-                type: SourceFormFieldType.number,
-                defaultValue: '10',
-              ),
-              SourceFormField(
-                key: 'rateLimitCount',
-                label: '单位时间内访问次数',
-                type: SourceFormFieldType.number,
-                defaultValue: '10',
-              ),
-              SourceFormField(
-                key: 'requestInterval',
-                label: '访问间隔（秒）',
-                type: SourceFormFieldType.number,
-                defaultValue: '5',
-              ),
-            ],
-          ),
-          _advancedSection(defaultAutoConnect: false),
-        ],
-      );
+  /// Cookie 认证类型条件判断
+  static bool _isCookieAuthType(Map<String, dynamic> values) =>
+      values['authType'] != '自定义请求头';
+
+  /// 自定义请求头认证类型条件判断
+  static bool _isCustomHeadersAuthType(Map<String, dynamic> values) =>
+      values['authType'] == '自定义请求头';
 
   // === 通用分组模板 ===
 

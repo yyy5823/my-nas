@@ -12,6 +12,7 @@ import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/book/data/services/book_database_service.dart';
 import 'package:my_nas/features/music/data/services/music_database_service.dart';
 import 'package:my_nas/features/photo/data/services/photo_database_service.dart';
+import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/features/video/data/services/video_database_service.dart';
 import 'package:my_nas/features/video/data/services/video_scanner_service.dart';
 import 'package:my_nas/shared/providers/theme_provider.dart';
@@ -139,6 +140,19 @@ class _MyNasAppState extends ConsumerState<MyNasApp> with WidgetsBindingObserver
     // 强制广播当前刮削统计，确保 UI 同步最新进度
     // 这解决了从后台切回前台时进度不更新的问题
     await VideoScannerService().broadcastCurrentStats();
+
+    // 刷新连接状态并尝试自动重连
+    // 这解决了从后台恢复后连接可能已断开但 UI 仍显示已连接的问题
+    try {
+      logger.d('MyNasApp: 检查并恢复连接状态...');
+      // 先刷新状态，让 UI 反映真实连接状态
+      ref.read(activeConnectionsProvider.notifier).refresh();
+      // 然后尝试自动重连
+      await ref.read(activeConnectionsProvider.notifier).autoConnectAll();
+      logger.d('MyNasApp: 连接状态已刷新');
+    } on Exception catch (e) {
+      logger.w('MyNasApp: 恢复连接失败: $e');
+    }
 
     // 仅在移动平台检查后台服务状态
     if (!Platform.isAndroid && !Platform.isIOS) return;
