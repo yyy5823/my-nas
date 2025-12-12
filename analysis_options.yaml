@@ -34,7 +34,8 @@ linter:
 
     # Style rules
     always_declare_return_types: true
-    always_put_required_named_parameters_first: true
+    # 禁用：有时按逻辑分组参数比按必须/可选分组更合理
+    always_put_required_named_parameters_first: false
     avoid_bool_literals_in_conditional_expressions: true
     avoid_catches_without_on_clauses: true
     avoid_catching_errors: true
@@ -45,7 +46,8 @@ linter:
     avoid_final_parameters: true
     avoid_implementing_value_types: true
     avoid_multiple_declarations_per_line: true
-    avoid_positional_boolean_parameters: true
+    # 禁用：简单的私有方法不需要命名参数
+    avoid_positional_boolean_parameters: false
     avoid_private_typedef_functions: true
     # 禁用：有时显式传递默认值可以提高代码可读性
     avoid_redundant_argument_values: false
@@ -105,7 +107,8 @@ linter:
     use_enums: true
     use_if_null_to_convert_nulls_to_bools: true
     use_is_even_rather_than_modulo: true
-    use_late_for_private_fields_and_variables: true
+    # 禁用：late 关键字可能增加运行时错误风险，且某些情况下可空初始化更安全
+    use_late_for_private_fields_and_variables: false
     use_named_constants: true
     use_raw_strings: true
     # 禁用：方法和 setter 都是有效的设计选择，方法可以提供更好的语义
