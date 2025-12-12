@@ -215,7 +215,7 @@ class QBittorrentAutoRefreshNotifier extends StateNotifier<List<QBTorrent>> {
 
 final qbittorrentAutoRefreshProvider = StateNotifierProvider.family
     .autoDispose<QBittorrentAutoRefreshNotifier, List<QBTorrent>, String>(
-  (ref, sourceId) => QBittorrentAutoRefreshNotifier(ref, sourceId),
+  QBittorrentAutoRefreshNotifier.new,
 );
 
 /// 自动刷新的传输信息 Provider
@@ -261,14 +261,12 @@ class QBTransferInfoAutoRefreshNotifier extends StateNotifier<QBTransferInfo?> {
 
 final qbTransferInfoAutoRefreshProvider = StateNotifierProvider.family
     .autoDispose<QBTransferInfoAutoRefreshNotifier, QBTransferInfo?, String>(
-  (ref, sourceId) => QBTransferInfoAutoRefreshNotifier(ref, sourceId),
+  QBTransferInfoAutoRefreshNotifier.new,
 );
 
 /// Torrent 操作 Provider
 final qbittorrentActionsProvider =
-    Provider.family<QBittorrentActions, String>((ref, sourceId) {
-  return QBittorrentActions(ref, sourceId);
-});
+    Provider.family<QBittorrentActions, String>(QBittorrentActions.new);
 
 class QBittorrentActions {
   QBittorrentActions(this._ref, this._sourceId);
@@ -398,8 +396,8 @@ class QBittorrentActions {
     if (adapter == null) return;
 
     await adapter.toggleAlternativeSpeedLimits();
-    _ref.invalidate(qbPreferencesProvider(_sourceId));
-    _ref.invalidate(qbTransferInfoAutoRefreshProvider(_sourceId));
+    _ref..invalidate(qbPreferencesProvider(_sourceId))
+    ..invalidate(qbTransferInfoAutoRefreshProvider(_sourceId));
   }
 
   /// 设置全局限速

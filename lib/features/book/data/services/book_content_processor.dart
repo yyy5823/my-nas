@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:isolate';
 
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/book/data/services/enhanced_toc_extractor.dart';
 
 /// 章节信息
 class BookChapter {
@@ -84,18 +85,37 @@ class BookContentProcessor {
 
   /// 在 Isolate 中处理内容
   static ContentProcessResult _processContentInIsolate(String htmlContent) {
-    // 1. 提取章节
-    final chapters = _extractChapters(htmlContent);
+    // 1. 使用增强的目录提取器
+    final tocResult = EnhancedTocExtractor.extractToc(htmlContent);
 
-    // 2. 识别并移除目录区域
-    final (cleanedHtml, removedToc) = _removeTocSection(htmlContent, chapters);
+    // 2. 提取所有章节(包括目录中的和正文中的)
+    final allChapters = _extractChapters(htmlContent);
 
-    // 3. 清理无效 CSS
+    // 3. 如果识别到有效目录,移除目录区域
+    String cleanedHtml = htmlContent;
+    var removedToc = false;
+
+    if (tocResult.hasValidToc) {
+      final tocSection = tocResult.tocSection!;
+      logger.i(
+        '使用${tocResult.method}方法识别到目录: '
+        '置信度=${tocResult.confidence.toStringAsFixed(2)}, '
+        '章节数=${tocSection.chapters.length}',
+      );
+
+      // 移除目录区域
+      final before = htmlContent.substring(0, tocSection.startOffset);
+      final after = htmlContent.substring(tocSection.endOffset);
+      cleanedHtml = before + after;
+      removedToc = true;
+    }
+
+    // 4. 清理无效 CSS
     final finalHtml = _cleanInvalidCssColors(cleanedHtml);
 
     return ContentProcessResult(
       cleanedHtml: finalHtml,
-      chapters: chapters,
+      chapters: allChapters,
       removedTocSection: removedToc,
     );
   }

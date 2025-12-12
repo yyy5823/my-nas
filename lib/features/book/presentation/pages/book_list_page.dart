@@ -2036,6 +2036,10 @@ class _BookGridItemState extends ConsumerState<_BookGridItem> {
 
     if (!context.mounted) return;
 
+    // 更新最后阅读时间
+    final db = BookDatabaseService();
+    await db.updateLastReadTime(widget.book.sourceId, widget.book.path);
+
     // 根据格式选择阅读器
     Widget readerPage;
     switch (bookItem.format) {
@@ -2056,6 +2060,11 @@ class _BookGridItemState extends ConsumerState<_BookGridItem> {
         builder: (context) => readerPage,
       ),
     );
+
+    // 返回后刷新列表以更新排序
+    if (context.mounted) {
+      await ref.read(bookListProvider.notifier).loadBooks();
+    }
   }
 
   Future<void> _showContextMenu(BuildContext context, WidgetRef ref) async {

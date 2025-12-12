@@ -431,8 +431,6 @@ class VideoScannerService {
           category: _inferCategory(nfoInfo),
           // 海报路径（本地 NAS 路径，需要后续转换为 URL）
           posterUrl: nfoInfo?.posterPath,
-          // 状态：仍需完整刮削以获取更多信息（如完整剧情、演员等）
-          scrapeStatus: ScrapeStatus.pending,
         );
         metadataList.add(metadata);
 

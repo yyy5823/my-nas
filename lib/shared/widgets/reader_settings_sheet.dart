@@ -398,20 +398,22 @@ class AvailableFonts {
   AvailableFonts._();
 
   /// 字体选项列表 (fontFamily, displayName)
+  /// 使用CSS通用字体族名称确保跨平台兼容性
   static const List<(String?, String)> fonts = [
     (null, '系统默认'),
     ('serif', '衬线体'),
     ('sans-serif', '无衬线'),
     ('monospace', '等宽字体'),
-    ('STKaiti', '楷体'),
-    ('STSong', '宋体'),
-    ('STFangsong', '仿宋'),
-    ('STHeiti', '黑体'),
-    ('Noto Serif SC', 'Noto衬线'),
-    ('Noto Sans SC', 'Noto无衬'),
-    ('LXGW WenKai', '霞鹜文楷'),
-    ('Source Han Serif SC', '思源宋体'),
-    ('Source Han Sans SC', '思源黑体'),
+    // 中文字体 - 使用通用名称和fallback
+    ('KaiTi, STKaiti, Kaiti SC, serif', '楷体'),
+    ('SimSun, STSong, Songti SC, serif', '宋体'),
+    ('FangSong, STFangsong, Fangsong SC, serif', '仿宋'),
+    ('SimHei, STHeiti, Heiti SC, sans-serif', '黑体'),
+    ('Noto Serif SC, Noto Serif CJK SC, serif', 'Noto衬线'),
+    ('Noto Sans SC, Noto Sans CJK SC, sans-serif', 'Noto无衬'),
+    ('LXGW WenKai, sans-serif', '霞鹜文楷'),
+    ('Source Han Serif SC, Source Han Serif CN, Noto Serif CJK SC, serif', '思源宋体'),
+    ('Source Han Sans SC, Source Han Sans CN, Noto Sans CJK SC, sans-serif', '思源黑体'),
   ];
 
   /// 获取字体显示名称

@@ -401,8 +401,7 @@ class _SpeedCard extends StatelessWidget {
   final bool isDark;
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
+  Widget build(BuildContext context) => Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: isDark
@@ -449,7 +448,6 @@ class _SpeedCard extends StatelessWidget {
         ],
       ),
     );
-  }
 }
 
 /// 信息行组件（用于版本信息弹框）
@@ -465,8 +463,7 @@ class _InfoRow extends StatelessWidget {
   final bool isDark;
 
   @override
-  Widget build(BuildContext context) {
-    return Row(
+  Widget build(BuildContext context) => Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
@@ -491,7 +488,6 @@ class _InfoRow extends StatelessWidget {
         ),
       ],
     );
-  }
 }
 
 /// Torrent 列表
@@ -619,8 +615,7 @@ class _TorrentList extends ConsumerWidget {
     );
   }
 
-  Widget _buildEmptyState(BuildContext context) {
-    return Center(
+  Widget _buildEmptyState(BuildContext context) => Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -645,7 +640,6 @@ class _TorrentList extends ConsumerWidget {
         ],
       ),
     );
-  }
 }
 
 /// 单个 Torrent 项
@@ -1266,7 +1260,7 @@ class _TorrentTile extends ConsumerWidget {
                   value: currentTags.contains(tag),
                   onChanged: (checked) {
                     final actions = ref.read(qbittorrentActionsProvider(sourceId));
-                    if (checked == true) {
+                    if (checked ?? false) {
                       actions.addTags([torrent.hash], [tag]);
                       setState(() => currentTags.add(tag));
                     } else {
@@ -1362,8 +1356,7 @@ class _DetailItem extends StatelessWidget {
   final String value;
 
   @override
-  Widget build(BuildContext context) {
-    return Padding(
+  Widget build(BuildContext context) => Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1383,7 +1376,6 @@ class _DetailItem extends StatelessWidget {
         ],
       ),
     );
-  }
 }
 
 /// 备用速度限制按钮（只显示图标，切换时改变图标样式）
@@ -1447,7 +1439,7 @@ class _FilterOptionsSheet extends ConsumerWidget {
       minChildSize: 0.3,
       maxChildSize: 0.9,
       expand: false,
-      builder: (context, scrollController) => Container(
+      builder: (context, scrollController) => DecoratedBox(
         decoration: BoxDecoration(
           color: isDark ? AppColors.darkSurface : Colors.white,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
@@ -1656,7 +1648,7 @@ class _SortOptionsSheet extends ConsumerWidget {
       minChildSize: 0.3,
       maxChildSize: 0.9,
       expand: false,
-      builder: (context, scrollController) => Container(
+      builder: (context, scrollController) => DecoratedBox(
         decoration: BoxDecoration(
           color: isDark ? AppColors.darkSurface : Colors.white,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
@@ -1793,8 +1785,7 @@ class _SpeedLimitDialogState extends ConsumerState<_SpeedLimitDialog> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
+  Widget build(BuildContext context) => AlertDialog(
       title: const Text('速度限制设置'),
       content: SingleChildScrollView(
         child: Column(
@@ -1870,7 +1861,6 @@ class _SpeedLimitDialogState extends ConsumerState<_SpeedLimitDialog> {
         ),
       ],
     );
-  }
 
   Future<void> _save() async {
     final actions = ref.read(qbittorrentActionsProvider(widget.sourceId));
@@ -1926,7 +1916,7 @@ class _AddTorrentDialogState extends ConsumerState<_AddTorrentDialog> {
       initialChildSize: 0.7,
       minChildSize: 0.3,
       maxChildSize: 0.95,
-      builder: (context, scrollController) => Container(
+      builder: (context, scrollController) => DecoratedBox(
         decoration: BoxDecoration(
           color: isDark ? AppColors.darkSurface : Colors.white,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
@@ -2124,7 +2114,7 @@ class _AddTorrentDialogState extends ConsumerState<_AddTorrentDialog> {
                       const SizedBox(height: 16),
                     ],
                     // 选项
-                    Container(
+                    DecoratedBox(
                       decoration: BoxDecoration(
                         color: isDark
                             ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)

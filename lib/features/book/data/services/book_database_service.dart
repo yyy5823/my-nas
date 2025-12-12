@@ -19,6 +19,7 @@ class BookEntity {
     this.size = 0,
     this.modifiedTime,
     this.lastUpdated,
+    this.lastReadTime, // 最后阅读时间
     this.metadataExtracted = false,
   });
 
@@ -34,6 +35,7 @@ class BookEntity {
   final int size;
   final DateTime? modifiedTime;
   final DateTime? lastUpdated;
+  final DateTime? lastReadTime; // 最后阅读时间
   final bool metadataExtracted; // 是否已提取元数据
 
   String get uniqueKey => '${sourceId}_$filePath';
@@ -74,6 +76,7 @@ class BookEntity {
     int? size,
     DateTime? modifiedTime,
     DateTime? lastUpdated,
+    Object? lastReadTime = _sentinel,
     bool? metadataExtracted,
   }) =>
       BookEntity(
@@ -89,6 +92,7 @@ class BookEntity {
         size: size ?? this.size,
         modifiedTime: modifiedTime ?? this.modifiedTime,
         lastUpdated: lastUpdated ?? this.lastUpdated,
+        lastReadTime: lastReadTime == _sentinel ? this.lastReadTime : lastReadTime as DateTime?,
         metadataExtracted: metadataExtracted ?? this.metadataExtracted,
       );
 }
@@ -119,6 +123,7 @@ class BookDatabaseService {
   static const String _colSize = 'size';
   static const String _colModifiedTime = 'modified_time';
   static const String _colLastUpdated = 'last_updated';
+  static const String _colLastReadTime = 'last_read_time'; // 最后阅读时间
   static const String _colMetadataExtracted = 'metadata_extracted';
 
   /// 初始化数据库
@@ -131,7 +136,7 @@ class BookDatabaseService {
 
       _db = await openDatabase(
         dbPath,
-        version: 2, // 升级版本以添加新字段
+        version: 3, // 升级版本以添加 last_read_time 字段
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onConfigure: _onConfigure,
@@ -171,6 +176,7 @@ class BookDatabaseService {
         $_colSize INTEGER DEFAULT 0,
         $_colModifiedTime INTEGER,
         $_colLastUpdated INTEGER,
+        $_colLastReadTime INTEGER,
         $_colMetadataExtracted INTEGER DEFAULT 0,
         PRIMARY KEY ($_colSourceId, $_colFilePath)
       )
@@ -179,6 +185,7 @@ class BookDatabaseService {
     // 创建索引以加速查询
     await db.execute('CREATE INDEX idx_books_format ON $_tableBooks ($_colFormat)');
     await db.execute('CREATE INDEX idx_books_modified ON $_tableBooks ($_colModifiedTime DESC)');
+    await db.execute('CREATE INDEX idx_books_last_read ON $_tableBooks ($_colLastReadTime DESC)'); // 最后阅读时间索引
     await db.execute('CREATE INDEX idx_books_filename ON $_tableBooks ($_colFileName)');
     await db.execute('CREATE INDEX idx_books_title ON $_tableBooks ($_colTitle)');
     await db.execute('CREATE INDEX idx_books_author ON $_tableBooks ($_colAuthor)');
@@ -202,6 +209,14 @@ class BookDatabaseService {
       await db.execute('CREATE INDEX IF NOT EXISTS idx_books_title ON $_tableBooks ($_colTitle)');
       await db.execute('CREATE INDEX IF NOT EXISTS idx_books_author ON $_tableBooks ($_colAuthor)');
       await db.execute('CREATE INDEX IF NOT EXISTS idx_books_metadata ON $_tableBooks ($_colMetadataExtracted)');
+    }
+
+    if (oldVersion < 3) {
+      // 添加最后阅读时间字段
+      await db.execute('ALTER TABLE $_tableBooks ADD COLUMN $_colLastReadTime INTEGER');
+      // 创建索引
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_books_last_read ON $_tableBooks ($_colLastReadTime DESC)');
+      logger.i('BookDatabaseService: 已添加 last_read_time 字段和索引');
     }
   }
 
@@ -252,16 +267,22 @@ class BookDatabaseService {
   }
 
   /// 获取所有图书
+  /// 默认按最后阅读时间倒序排列(最近阅读的在最前面)
   Future<List<BookEntity>> getAll({
-    String orderBy = 'file_name',
-    bool descending = false,
+    String orderBy = 'last_read_time',
+    bool descending = true,
   }) async {
     if (!_initialized) await init();
 
     final order = descending ? 'DESC' : 'ASC';
+    // 对于 last_read_time, NULL值排在最后
+    final orderByClause = orderBy == 'last_read_time'
+        ? '$orderBy $order NULLS LAST'
+        : '$orderBy $order';
+
     final results = await _db!.query(
       _tableBooks,
-      orderBy: '$orderBy $order',
+      orderBy: orderByClause,
     );
 
     return results.map(_fromRow).toList();
@@ -455,6 +476,7 @@ class BookDatabaseService {
         _colModifiedTime: b.modifiedTime?.millisecondsSinceEpoch,
         _colLastUpdated:
             b.lastUpdated?.millisecondsSinceEpoch ?? DateTime.now().millisecondsSinceEpoch,
+        _colLastReadTime: b.lastReadTime?.millisecondsSinceEpoch,
         _colMetadataExtracted: b.metadataExtracted ? 1 : 0,
       };
 
@@ -479,6 +501,22 @@ class BookDatabaseService {
         lastUpdated: row[_colLastUpdated] != null
             ? DateTime.fromMillisecondsSinceEpoch(row[_colLastUpdated] as int)
             : null,
+        lastReadTime: row[_colLastReadTime] != null
+            ? DateTime.fromMillisecondsSinceEpoch(row[_colLastReadTime] as int)
+            : null,
         metadataExtracted: (row[_colMetadataExtracted] as int? ?? 0) == 1,
       );
+
+  /// 更新图书的最后阅读时间
+  Future<void> updateLastReadTime(String sourceId, String filePath) async {
+    if (!_initialized) await init();
+
+    await _db!.update(
+      _tableBooks,
+      {_colLastReadTime: DateTime.now().millisecondsSinceEpoch},
+      where: '$_colSourceId = ? AND $_colFilePath = ?',
+      whereArgs: [sourceId, filePath],
+    );
+  }
 }
+

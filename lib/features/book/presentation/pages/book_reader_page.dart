@@ -13,6 +13,8 @@ import 'package:my_nas/core/network/http_client.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/book/data/services/book_content_processor.dart';
 import 'package:my_nas/features/book/data/services/book_file_cache_service.dart';
+import 'package:my_nas/features/book/data/services/progressive_pagination.dart';
+import 'package:my_nas/features/book/data/services/readable_area_calculator.dart';
 import 'package:my_nas/features/book/data/services/mobi_parser_service.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
 import 'package:my_nas/features/reading/data/services/reader_settings_service.dart';
@@ -300,6 +302,7 @@ class BookReaderPage extends ConsumerStatefulWidget {
 class _BookReaderPageState extends ConsumerState<BookReaderPage> {
   bool _showControls = false;
   bool _showToc = false;
+  bool _showMoreMenu = false; // 更多菜单
   List<BookChapter> _chapters = [];
   String _currentChapterTitle = '';
   final ScrollController _scrollController = ScrollController();
@@ -476,8 +479,24 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
       _showControls = !_showControls;
       if (!_showControls) {
         _showToc = false;
+        _showMoreMenu = false;
       }
     });
+  }
+
+  /// 快速切换夜间模式
+  void _toggleNightMode() {
+    final settings = ref.read(bookReaderSettingsProvider);
+    final currentTheme = settings.theme;
+
+    // 在浅色和深色主题之间切换
+    final newTheme = currentTheme == BookReaderTheme.light ||
+            currentTheme == BookReaderTheme.sepia ||
+            currentTheme == BookReaderTheme.green
+        ? BookReaderTheme.dark
+        : BookReaderTheme.light;
+
+    ref.read(bookReaderSettingsProvider.notifier).setTheme(newTheme);
   }
 
   /// 跳转到章节
@@ -637,6 +656,9 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
 
         // 目录抽屉
         if (_showToc) _buildTocDrawer(context, settings),
+
+        // 更多菜单面板
+        if (_showMoreMenu) _buildMoreMenuPanel(context, settings),
       ],
     );
   }
@@ -841,7 +863,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     );
   }
 
-  /// 异步分页（在 Isolate 中处理）
+  /// 渐进式分页（使用新的分页算法）
   Future<void> _paginateContentAsync(
     String htmlContent,
     BookReaderSettings settings,
@@ -849,39 +871,55 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     if (_isPaginationReady) return;
 
     try {
-      // 根据屏幕大小和字体设置估算每页字符数
-      // 减小默认值以避免内容溢出
-      final screenHeight = MediaQuery.of(context).size.height;
-      final fontSize = settings.fontSize;
-      final lineHeight = settings.lineHeight;
-      // 估算可用行数（考虑顶栏和底栏占用的空间）
-      final availableHeight = screenHeight - 120; // 预留顶栏和底栏空间
-      final linePixelHeight = fontSize * lineHeight;
-      final estimatedLines = (availableHeight / linePixelHeight).floor();
-      // 每行平均字符数（考虑中英文混排）
-      final charsPerLine = (MediaQuery.of(context).size.width - settings.horizontalPadding * 2) / fontSize * 1.5;
-      final charsPerPage = (estimatedLines * charsPerLine * 0.8).toInt().clamp(500, 2000);
+      logger.i('开始渐进式分页...');
 
-      // 在 Isolate 中执行分页
-      final result = await BookContentProcessor.paginateContent(
+      // 第一阶段: 快速估算分页
+      final quickResult = await ProgressivePagination.quickPaginate(
         htmlContent: htmlContent,
         chapters: _chapters,
-        charsPerPage: charsPerPage,
+        context: context,
+        settings: settings,
       );
 
       if (!mounted) return;
 
+      // 立即显示快速分页结果
       setState(() {
-        _pages = result.pages;
-        _chapterPageMap = result.chapterPageMap;
+        _pages = quickResult.pages;
+        _chapterPageMap = quickResult.chapterPageMap;
         _isPaginationReady = true;
         // 恢复之前的页码进度
         _restorePageProgress();
       });
 
-      logger.i('内容分页完成: ${result.pages.length} 页');
-    } on Exception catch (e) {
-      logger.e('分页失败', e);
+      logger.i('快速分页完成: ${quickResult.pages.length} 页');
+
+      // 第二阶段(可选): 后台优化分页
+      // 注释掉以提高性能,如需要可取消注释
+      /*
+      logger.i('开始后台优化分页...');
+      final refinedResult = await ProgressivePagination.refinePagination(
+        initialResult: quickResult,
+        context: context,
+        settings: settings,
+        onProgress: (progress) {
+          logger.d('优化进度: ${(progress * 100).toStringAsFixed(0)}%');
+        },
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _pages = refinedResult.pages;
+        _chapterPageMap = refinedResult.chapterPageMap;
+        // 保持当前页码位置
+        _currentPage = _currentPage.clamp(0, _pages.length - 1);
+      });
+
+      logger.i('分页优化完成: ${quickResult.pages.length} -> ${refinedResult.pages.length} 页');
+      */
+    } on Exception catch (e, st) {
+      logger.e('分页失败', e, st);
       // 失败时使用整个内容作为单页
       setState(() {
         _pages = [htmlContent];
@@ -1181,6 +1219,10 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
   Widget _buildHtmlContent(String htmlContent, BookReaderSettings settings) {
     final theme = settings.theme;
 
+    // 调试: 输出当前字体设置
+    logger.d('渲染HTML内容 - 字体: ${settings.fontFamily ?? "系统默认"}, '
+        '字号: ${settings.fontSize}, 行高: ${settings.lineHeight}');
+
     // 构建 HTML 样式
     final style = {
       'body': Style(
@@ -1281,15 +1323,19 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
   Map<String, Style> _buildHtmlStyles(
     BookReaderSettings settings,
     BookReaderTheme theme,
-  ) => {
-    'body': Style(
-      fontSize: FontSize(settings.fontSize),
-      lineHeight: LineHeight(settings.lineHeight),
-      color: theme.textColor,
-      fontFamily: settings.fontFamily,
-      margin: Margins.zero,
-      padding: HtmlPaddings.zero,
-    ),
+  ) {
+    // 调试: 确保分页模式下也正确应用字体
+    logger.d('构建HTML样式 - 字体: ${settings.fontFamily ?? "系统默认"}');
+
+    return {
+      'body': Style(
+        fontSize: FontSize(settings.fontSize),
+        lineHeight: LineHeight(settings.lineHeight),
+        color: theme.textColor,
+        fontFamily: settings.fontFamily,
+        margin: Margins.zero,
+        padding: HtmlPaddings.zero,
+      ),
     'p': Style(
       margin: Margins.only(bottom: settings.paragraphSpacing * 16),
       textAlign: TextAlign.justify,
@@ -1359,6 +1405,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
       fontSize: FontSize(settings.fontSize * 0.9),
     ),
   };
+}
 
   /// 使用纯文本渲染
   Widget _buildTextContent(String content, BookReaderSettings settings) {
@@ -1488,13 +1535,122 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
   }
 
   Widget _buildTapZones(BookReaderSettings settings) {
-    // 只在中间区域点击时切换控制栏
-    // 左右侧边点击不再有任何效果（翻页通过底部控制栏按钮实现）
+    // 三区域交互:
+    // - 左侧 25%: 上一页
+    // - 中间 50%: 切换控制栏
+    // - 右侧 25%: 下一页
     return Positioned.fill(
       child: GestureDetector(
-        onTap: _toggleControls,
+        onTapUp: (details) {
+          final screenWidth = MediaQuery.of(context).size.width;
+          final tapX = details.localPosition.dx;
+          final ratio = tapX / screenWidth;
+
+          final state = ref.read(txtReaderProvider(widget.book));
+          final usePageMode = state is TxtReaderLoaded &&
+              state.hasHtml &&
+              settings.pageTurnMode != BookPageTurnMode.scroll;
+
+          if (ratio < 0.25) {
+            // 左侧区域 - 上一页
+            _handlePreviousPage(usePageMode);
+          } else if (ratio > 0.75) {
+            // 右侧区域 - 下一页
+            _handleNextPage(usePageMode);
+          } else {
+            // 中间区域 - 切换控制栏
+            _toggleControls();
+          }
+        },
         behavior: HitTestBehavior.translucent,
         child: Container(),
+      ),
+    );
+  }
+
+  /// 处理上一页操作
+  void _handlePreviousPage(bool usePageMode) {
+    if (usePageMode) {
+      // 分页模式
+      if (_pageController != null && _currentPage > 0) {
+        _pageController!.previousPage(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    } else {
+      // 滚动模式
+      if (_scrollController.hasClients) {
+        final screenHeight = MediaQuery.of(context).size.height;
+        _scrollController.animateTo(
+          (_scrollController.offset - screenHeight * 0.8).clamp(
+            0.0,
+            _scrollController.position.maxScrollExtent,
+          ),
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    }
+  }
+
+  /// 处理下一页操作
+  void _handleNextPage(bool usePageMode) {
+    if (usePageMode) {
+      // 分页模式
+      if (_pageController != null && _currentPage < _pages.length - 1) {
+        _pageController!.nextPage(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    } else {
+      // 滚动模式
+      if (_scrollController.hasClients) {
+        final screenHeight = MediaQuery.of(context).size.height;
+        _scrollController.animateTo(
+          (_scrollController.offset + screenHeight * 0.8).clamp(
+            0.0,
+            _scrollController.position.maxScrollExtent,
+          ),
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    }
+  }
+
+  /// 构建底部操作按钮
+  Widget _buildBottomActionButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback? onPressed,
+    bool enabled = true,
+  }) {
+    final isEnabled = enabled && onPressed != null;
+    return InkWell(
+      onTap: isEnabled ? onPressed : null,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              color: isEnabled ? Colors.white : Colors.white38,
+              size: 24,
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(
+                color: isEnabled ? Colors.white : Colors.white38,
+                fontSize: 11,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1625,95 +1781,62 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
                   ),
                 ],
               ),
-              // 控制按钮
+              // 功能按钮 - 重新设计为更实用的功能
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  IconButton(
-                    icon: const Icon(Icons.skip_previous, color: Colors.white),
-                    onPressed: () {
-                      if (usePageMode &&
-                          _pageController != null &&
-                          _currentPage > 0) {
-                        _pageController!.previousPage(
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeOut,
-                        );
-                      } else if (_scrollController.hasClients) {
-                        _scrollController.animateTo(
-                          (_scrollController.offset -
-                                  MediaQuery.of(context).size.height * 0.8)
-                              .clamp(
-                                0.0,
-                                _scrollController.position.maxScrollExtent,
-                              ),
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeOut,
-                        );
-                      }
-                    },
-                    tooltip: '上一页',
+                  // 目录
+                  _buildBottomActionButton(
+                    icon: Icons.list_rounded,
+                    label: '目录',
+                    enabled: _chapters.isNotEmpty,
+                    onPressed: _chapters.isNotEmpty
+                        ? () => setState(() {
+                              _showToc = !_showToc;
+                              _showMoreMenu = false;
+                            })
+                        : null,
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.first_page, color: Colors.white),
-                    onPressed: () {
-                      if (usePageMode && _pageController != null) {
-                        _pageController!.jumpToPage(0);
-                        setState(() => _currentPage = 0);
-                      } else if (_scrollController.hasClients) {
-                        _scrollController.jumpTo(0);
-                      }
-                    },
-                    tooltip: '第一页',
+                  // 夜间模式切换
+                  _buildBottomActionButton(
+                    icon: settings.theme == BookReaderTheme.dark ||
+                            settings.theme == BookReaderTheme.black
+                        ? Icons.light_mode_rounded
+                        : Icons.dark_mode_rounded,
+                    label: settings.theme == BookReaderTheme.dark ||
+                            settings.theme == BookReaderTheme.black
+                        ? '日间'
+                        : '夜间',
+                    onPressed: _toggleNightMode,
                   ),
-                  IconButton(
+                  // 阅读设置
+                  _buildBottomActionButton(
+                    icon: Icons.settings_rounded,
+                    label: '设置',
                     onPressed: _showSettingsSheet,
-                    icon: const Icon(
-                      Icons.settings_outlined,
-                      color: Colors.white,
-                    ),
-                    tooltip: '设置',
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.last_page, color: Colors.white),
+                  // 书签功能 (TODO: 后续实现)
+                  _buildBottomActionButton(
+                    icon: Icons.bookmark_outline_rounded,
+                    label: '书签',
                     onPressed: () {
-                      if (usePageMode &&
-                          _pageController != null &&
-                          _pages.isNotEmpty) {
-                        _pageController!.jumpToPage(_pages.length - 1);
-                        setState(() => _currentPage = _pages.length - 1);
-                      } else if (_scrollController.hasClients) {
-                        _scrollController.jumpTo(
-                          _scrollController.position.maxScrollExtent,
-                        );
-                      }
+                      // TODO: 实现书签功能
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('书签功能开发中...'),
+                          duration: Duration(seconds: 1),
+                        ),
+                      );
                     },
-                    tooltip: '最后一页',
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.skip_next, color: Colors.white),
-                    onPressed: () {
-                      if (usePageMode &&
-                          _pageController != null &&
-                          _currentPage < _pages.length - 1) {
-                        _pageController!.nextPage(
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeOut,
-                        );
-                      } else if (_scrollController.hasClients) {
-                        _scrollController.animateTo(
-                          (_scrollController.offset +
-                                  MediaQuery.of(context).size.height * 0.8)
-                              .clamp(
-                                0.0,
-                                _scrollController.position.maxScrollExtent,
-                              ),
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeOut,
-                        );
-                      }
-                    },
-                    tooltip: '下一页',
+                  // 更多菜单
+                  _buildBottomActionButton(
+                    icon: Icons.more_horiz_rounded,
+                    label: '更多',
+                    onPressed: () => setState(() {
+                      _showMoreMenu = !_showMoreMenu;
+                      _showToc = false;
+                    }),
                   ),
                 ],
               ),
@@ -1915,4 +2038,244 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
       ),
     );
   }
+
+  /// 构建更多菜单面板
+  Widget _buildMoreMenuPanel(BuildContext context, BookReaderSettings settings) {
+    final isDark = settings.theme == BookReaderTheme.dark ||
+        settings.theme == BookReaderTheme.black;
+
+    final state = ref.read(txtReaderProvider(widget.book));
+    final usePageMode = state is TxtReaderLoaded &&
+        state.hasHtml &&
+        settings.pageTurnMode != BookPageTurnMode.scroll;
+
+    return Positioned(
+      bottom: 140, // 在底部控制栏上方
+      left: 0,
+      right: 0,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isDark ? Colors.grey[900] : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.2),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 标题
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '更多功能',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(
+                    Icons.close_rounded,
+                    color: isDark ? Colors.white70 : Colors.black54,
+                    size: 20,
+                  ),
+                  onPressed: () => setState(() => _showMoreMenu = false),
+                ),
+              ],
+            ),
+            const Divider(),
+            // 功能列表
+            _buildMoreMenuItem(
+              icon: Icons.first_page_rounded,
+              label: '跳转到开头',
+              isDark: isDark,
+              onTap: () {
+                if (usePageMode && _pageController != null) {
+                  _pageController!.jumpToPage(0);
+                  setState(() {
+                    _currentPage = 0;
+                    _showMoreMenu = false;
+                  });
+                } else if (_scrollController.hasClients) {
+                  _scrollController.jumpTo(0);
+                  setState(() => _showMoreMenu = false);
+                }
+              },
+            ),
+            _buildMoreMenuItem(
+              icon: Icons.last_page_rounded,
+              label: '跳转到结尾',
+              isDark: isDark,
+              onTap: () {
+                if (usePageMode && _pageController != null && _pages.isNotEmpty) {
+                  _pageController!.jumpToPage(_pages.length - 1);
+                  setState(() {
+                    _currentPage = _pages.length - 1;
+                    _showMoreMenu = false;
+                  });
+                } else if (_scrollController.hasClients) {
+                  _scrollController.jumpTo(
+                    _scrollController.position.maxScrollExtent,
+                  );
+                  setState(() => _showMoreMenu = false);
+                }
+              },
+            ),
+            _buildMoreMenuItem(
+              icon: Icons.info_outline_rounded,
+              label: '图书信息',
+              isDark: isDark,
+              onTap: () {
+                setState(() => _showMoreMenu = false);
+                _showBookInfo();
+              },
+            ),
+            _buildMoreMenuItem(
+              icon: Icons.refresh_rounded,
+              label: '刷新内容',
+              isDark: isDark,
+              onTap: () {
+                setState(() => _showMoreMenu = false);
+                // 重新加载图书 - 通过重新初始化 notifier
+                ref.invalidate(txtReaderProvider(widget.book));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('正在重新加载...'),
+                    duration: Duration(seconds: 1),
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 构建更多菜单项
+  Widget _buildMoreMenuItem({
+    required IconData icon,
+    required String label,
+    required bool isDark,
+    required VoidCallback onTap,
+  }) => InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              color: isDark ? Colors.white70 : Colors.black54,
+              size: 22,
+            ),
+            const SizedBox(width: 16),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 15,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+  /// 显示图书信息
+  void _showBookInfo() {
+    final state = ref.read(txtReaderProvider(widget.book));
+    final settings = ref.read(bookReaderSettingsProvider);
+    final isDark = settings.theme == BookReaderTheme.dark ||
+        settings.theme == BookReaderTheme.black;
+
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: isDark ? Colors.grey[900] : Colors.white,
+        title: Text(
+          '图书信息',
+          style: TextStyle(
+            color: isDark ? Colors.white : Colors.black87,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildInfoRow('书名', widget.book.displayName, isDark),
+            _buildInfoRow(
+              '格式',
+              widget.book.path.split('.').last.toUpperCase(),
+              isDark,
+            ),
+            _buildInfoRow(
+              '大小',
+              '${(widget.book.size / 1024 / 1024).toStringAsFixed(2)} MB',
+              isDark,
+            ),
+            if (state is TxtReaderLoaded)
+              _buildInfoRow(
+                '字符数',
+                NumberFormat('#,###').format(state.content.length),
+                isDark,
+              ),
+            if (_chapters.isNotEmpty)
+              _buildInfoRow('章节数', '${_chapters.length}', isDark),
+            if (_pages.isNotEmpty)
+              _buildInfoRow('总页数', '${_pages.length}', isDark),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              '关闭',
+              style: TextStyle(color: AppColors.primary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 构建信息行
+  Widget _buildInfoRow(String label, String value, bool isDark) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 70,
+            child: Text(
+              '$label:',
+              style: TextStyle(
+                color: isDark ? Colors.white70 : Colors.black54,
+                fontSize: 14,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(
+                color: isDark ? Colors.white : Colors.black87,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
 }

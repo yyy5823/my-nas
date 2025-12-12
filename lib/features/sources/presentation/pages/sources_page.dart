@@ -96,15 +96,13 @@ class _SourcesPageState extends ConsumerState<SourcesPage> {
   Widget _buildReorderableList(
     List<SourceEntity> sources,
     Map<String, SourceConnection> connections,
-  ) {
-    return ReorderableListView.builder(
+  ) => ReorderableListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: sources.length,
       onReorder: (oldIndex, newIndex) {
         ref.read(sourcesProvider.notifier).reorderSources(oldIndex, newIndex);
       },
-      proxyDecorator: (child, index, animation) {
-        return AnimatedBuilder(
+      proxyDecorator: (child, index, animation) => AnimatedBuilder(
           animation: animation,
           builder: (context, child) {
             final elevation = Tween<double>(begin: 0, end: 8).evaluate(animation);
@@ -115,8 +113,7 @@ class _SourcesPageState extends ConsumerState<SourcesPage> {
             );
           },
           child: child,
-        );
-      },
+        ),
       itemBuilder: (context, index) {
         final source = sources[index];
         final connection = connections[source.id];
@@ -127,7 +124,6 @@ class _SourcesPageState extends ConsumerState<SourcesPage> {
         );
       },
     );
-  }
 
   Widget _buildEmptyState(BuildContext context) => Center(
       child: Padding(

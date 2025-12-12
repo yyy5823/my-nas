@@ -178,8 +178,6 @@ Future<void> _initAudioSession() async {
         contentType: AndroidAudioContentType.music,
         usage: AndroidAudioUsage.media,
       ),
-      // Android 音频焦点
-      androidAudioFocusGainType: AndroidAudioFocusGainType.gain,
       androidWillPauseWhenDucked: true,
     ));
     logger.i('AudioSession initialized for music playback');
