@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:audio_session/audio_session.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/services/media_proxy_server.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/data/services/live_activity_service.dart';
@@ -158,7 +159,10 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     _initPlayer();
     // 注意：_initLiveActivity 是异步的，但我们不在构造函数中等待它
     // 它会在后台初始化，如果首次播放时未初始化完成，会在 _startLiveActivity 中重试
-    unawaited(_initLiveActivity());
+    AppError.fireAndForget(
+      _initLiveActivity(),
+      action: 'initLiveActivity',
+    );
     _initMediaProxy();
   }
 
@@ -205,7 +209,10 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     _player.playingStream.listen((playing) {
       state = state.copyWith(isPlaying: playing);
       // 播放状态变化时立即更新 Live Activity，避免灵动岛停顿
-      unawaited(_updateLiveActivity());
+      AppError.fireAndForget(
+        _updateLiveActivity(),
+        action: 'updateLiveActivityOnPlayingChange',
+      );
     });
 
     // 监听缓冲状态
@@ -218,7 +225,10 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
       // 缓冲状态变化时更新 Live Activity，保持灵动岛动效同步
       if (wasBuffering != state.isBuffering) {
-        unawaited(_updateLiveActivity());
+        AppError.fireAndForget(
+          _updateLiveActivity(),
+          action: 'updateLiveActivityOnBufferingChange',
+        );
       }
 
       // 播放完成时自动下一曲
@@ -615,7 +625,10 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       await _ref.read(musicHistoryProvider.notifier).addToHistory(music);
 
       // 在后台提取元数据
-      unawaited(_extractMetadataInBackground(music));
+      AppError.fireAndForget(
+        _extractMetadataInBackground(music),
+        action: 'extractMusicMetadata',
+      );
 
       // 启动 Live Activity（iOS 灵动岛）
       // 重要：必须 await 确保在 app 进入后台前完成创建
@@ -767,10 +780,13 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
           // 更新 Live Activity 封面图片
           if (metadata.coverData != null && metadata.coverData!.isNotEmpty) {
-            unawaited(_liveActivityService.updateCoverImage(
-              updatedMusic,
-              Uint8List.fromList(metadata.coverData!),
-            ));
+            AppError.fireAndForget(
+              _liveActivityService.updateCoverImage(
+                updatedMusic,
+                Uint8List.fromList(metadata.coverData!),
+              ),
+              action: 'updateLiveActivityCover',
+            );
           }
         } else {
           logger.w('MusicPlayer: 当前播放的音乐已变更，跳过更新');

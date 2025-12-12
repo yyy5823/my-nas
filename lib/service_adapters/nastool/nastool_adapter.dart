@@ -68,7 +68,8 @@ class NasToolAdapter implements ServiceAdapter {
       _api?.dispose();
       _api = null;
       return ServiceConnectionFailure(e.message);
-    } on Exception catch (e) {
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'connectToNasTool');
       _api?.dispose();
       _api = null;
       return ServiceConnectionFailure('连接失败: $e');

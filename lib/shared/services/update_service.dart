@@ -592,20 +592,22 @@ class UpdateService extends ChangeNotifier {
       try {
         await _doDownloadUpdate();
         return;
-      } on Exception catch (e) {
-        logger.w('UpdateService: 下载失败 (尝试 $attempt/${_config.maxRetries})', e);
-
+      } on Exception catch (e, st) {
         if (_isCancelled) {
+          AppError.ignore(e, st, '用户取消下载更新');
           _setError(UpdateErrorType.cancelled, '下载已取消');
           notifyListeners();
           return;
         }
 
-        if (attempt < _config.maxRetries) {
-          await Future<void>.delayed(_config.retryDelay);
-        } else {
+        // 最后一次重试失败时上报错误
+        if (attempt >= _config.maxRetries) {
+          AppError.handle(e, st, 'downloadUpdate', {'attempt': attempt});
           _setError(UpdateErrorType.downloadFailed, '下载失败: $e');
           notifyListeners();
+        } else {
+          AppError.ignore(e, st, '下载失败，重试中 (尝试 $attempt/${_config.maxRetries})');
+          await Future<void>.delayed(_config.retryDelay);
         }
       }
     }
@@ -715,10 +717,10 @@ class UpdateService extends ChangeNotifier {
       }
 
       return success;
-    } on Exception catch (e) {
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'installUpdate', {'filePath': _downloadedFilePath});
       _setError(UpdateErrorType.installFailed, '安装失败: $e');
       _status = UpdateStatus.readyToInstall;
-      logger.e('UpdateService: 安装失败', e);
       notifyListeners();
       return false;
     }
@@ -878,8 +880,8 @@ class UpdateService extends ChangeNotifier {
         if (await file.exists()) {
           await file.delete();
         }
-      } on Exception catch (e) {
-        logger.w('UpdateService: 清理下载文件失败', e);
+      } on Exception catch (e, st) {
+        AppError.ignore(e, st, '清理下载文件失败');
       }
       _downloadedFilePath = null;
     }

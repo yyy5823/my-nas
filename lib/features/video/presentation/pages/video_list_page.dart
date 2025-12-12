@@ -5,6 +5,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
@@ -373,7 +374,10 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     state = VideoListLoaded(totalCount: 0);
 
     // 在后台初始化服务并加载数据，不阻塞UI
-    unawaited(_initAndLoadInBackground());
+    AppError.fireAndForget(
+      _initAndLoadInBackground(),
+      action: 'initVideoList',
+    );
   }
 
   /// 后台初始化服务并加载数据
