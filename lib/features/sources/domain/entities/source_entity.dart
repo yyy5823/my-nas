@@ -36,7 +36,21 @@ enum SourceType {
   emby('Emby', 'emby'),
   plex('Plex', 'plex'),
   // PT 站点
-  mteam('馒头 M-Team', 'mteam');
+  mteam('馒头 M-Team', 'mteam'),
+  hdchina('瓷器 HDChina', 'hdchina'),
+  chdbits('彩虹岛 CHDBits', 'chdbits'),
+  audiences('观众 Audiences', 'audiences'),
+  pthome('铂金家 PTHome', 'pthome'),
+  ourbits('我堡 OurBits', 'ourbits'),
+  hdsky('天空 HDSky', 'hdsky'),
+  pterclub('猫站 PTerClub', 'pterclub'),
+  hdfans('红豆饭 HDFans', 'hdfans'),
+  hdhome('家园 HDHome', 'hdhome'),
+  ttg('TTG', 'ttg'),
+  ssd('SSD', 'ssd'),
+  lemonhd('柠檬 LemonHD', 'lemonhd'),
+  haidan('海胆 Haidan', 'haidan'),
+  pttime('PTTime', 'pttime');
 
   const SourceType(this.displayName, this.id);
   final String displayName;
@@ -66,8 +80,23 @@ enum SourceType {
         SourceType.jellyfin => 8096,
         SourceType.emby => 8096,
         SourceType.plex => 32400,
-        // PT 站点
-        SourceType.mteam => 443,
+        // PT 站点（都使用 HTTPS 443）
+        SourceType.mteam ||
+        SourceType.hdchina ||
+        SourceType.chdbits ||
+        SourceType.audiences ||
+        SourceType.pthome ||
+        SourceType.ourbits ||
+        SourceType.hdsky ||
+        SourceType.pterclub ||
+        SourceType.hdfans ||
+        SourceType.hdhome ||
+        SourceType.ttg ||
+        SourceType.ssd ||
+        SourceType.lemonhd ||
+        SourceType.haidan ||
+        SourceType.pttime =>
+          443,
       };
 
   /// 该源类型是否已实现
@@ -95,7 +124,22 @@ enum SourceType {
         SourceType.emby => false,
         SourceType.plex => false,
         // PT 站点
-        SourceType.mteam => true,
+        SourceType.mteam ||
+        SourceType.hdchina ||
+        SourceType.chdbits ||
+        SourceType.audiences ||
+        SourceType.pthome ||
+        SourceType.ourbits ||
+        SourceType.hdsky ||
+        SourceType.pterclub ||
+        SourceType.hdfans ||
+        SourceType.hdhome ||
+        SourceType.ttg ||
+        SourceType.ssd ||
+        SourceType.lemonhd ||
+        SourceType.haidan ||
+        SourceType.pttime =>
+          true,
       };
 
   /// 获取源类型所属的分组
@@ -127,7 +171,22 @@ enum SourceType {
         SourceType.moviepilot =>
           SourceCategory.mediaManagement,
         // PT 站点
-        SourceType.mteam => SourceCategory.ptSites,
+        SourceType.mteam ||
+        SourceType.hdchina ||
+        SourceType.chdbits ||
+        SourceType.audiences ||
+        SourceType.pthome ||
+        SourceType.ourbits ||
+        SourceType.hdsky ||
+        SourceType.pterclub ||
+        SourceType.hdfans ||
+        SourceType.hdhome ||
+        SourceType.ttg ||
+        SourceType.ssd ||
+        SourceType.lemonhd ||
+        SourceType.haidan ||
+        SourceType.pttime =>
+          SourceCategory.ptSites,
       };
 
   /// 是否支持文件系统访问
@@ -171,7 +230,22 @@ enum SourceType {
         SourceType.emby => Icons.live_tv,
         SourceType.plex => Icons.live_tv,
         // PT 站点
-        SourceType.mteam => Icons.rss_feed,
+        SourceType.mteam ||
+        SourceType.hdchina ||
+        SourceType.chdbits ||
+        SourceType.audiences ||
+        SourceType.pthome ||
+        SourceType.ourbits ||
+        SourceType.hdsky ||
+        SourceType.pterclub ||
+        SourceType.hdfans ||
+        SourceType.hdhome ||
+        SourceType.ttg ||
+        SourceType.ssd ||
+        SourceType.lemonhd ||
+        SourceType.haidan ||
+        SourceType.pttime =>
+          Icons.rss_feed,
       };
 
   /// 获取源类型的描述
@@ -200,6 +274,20 @@ enum SourceType {
         SourceType.plex => '媒体服务器',
         // PT 站点
         SourceType.mteam => '知名 PT 站点，使用 API 认证',
+        SourceType.hdchina => '老牌 PT 站点，综合资源',
+        SourceType.chdbits => '高清影视资源站点',
+        SourceType.audiences => '影视资源站点',
+        SourceType.pthome => '综合资源站点',
+        SourceType.ourbits => '综合资源站点',
+        SourceType.hdsky => '高清影视资源站点',
+        SourceType.pterclub => '综合资源站点',
+        SourceType.hdfans => '高清影视资源站点',
+        SourceType.hdhome => '高清影视资源站点',
+        SourceType.ttg => '综合资源站点',
+        SourceType.ssd => 'Spring Sunday 资源站点',
+        SourceType.lemonhd => '高清影视资源站点',
+        SourceType.haidan => '综合资源站点',
+        SourceType.pttime => '综合资源站点',
       };
 
   /// 是否默认使用 SSL
@@ -207,14 +295,47 @@ enum SourceType {
         SourceType.synology ||
         SourceType.webdav ||
         SourceType.trakt ||
-        SourceType.mteam =>
+        // PT 站点都使用 HTTPS
+        SourceType.mteam ||
+        SourceType.hdchina ||
+        SourceType.chdbits ||
+        SourceType.audiences ||
+        SourceType.pthome ||
+        SourceType.ourbits ||
+        SourceType.hdsky ||
+        SourceType.pterclub ||
+        SourceType.hdfans ||
+        SourceType.hdhome ||
+        SourceType.ttg ||
+        SourceType.ssd ||
+        SourceType.lemonhd ||
+        SourceType.haidan ||
+        SourceType.pttime =>
           true,
         _ => false,
       };
 
-  /// 是否需要用户名（有些服务可能只需要 API Key）
+  /// 是否需要用户名（有些服务可能只需要 API Key 或 Cookie）
   bool get requiresUsername => switch (this) {
-        SourceType.trakt || SourceType.aria2 || SourceType.mteam => false,
+        SourceType.trakt ||
+        SourceType.aria2 ||
+        // PT 站点使用 API 或 Cookie 认证，不需要用户名
+        SourceType.mteam ||
+        SourceType.hdchina ||
+        SourceType.chdbits ||
+        SourceType.audiences ||
+        SourceType.pthome ||
+        SourceType.ourbits ||
+        SourceType.hdsky ||
+        SourceType.pterclub ||
+        SourceType.hdfans ||
+        SourceType.hdhome ||
+        SourceType.ttg ||
+        SourceType.ssd ||
+        SourceType.lemonhd ||
+        SourceType.haidan ||
+        SourceType.pttime =>
+          false,
         _ => true,
       };
 

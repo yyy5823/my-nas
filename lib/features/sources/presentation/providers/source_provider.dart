@@ -130,6 +130,9 @@ class ActiveConnectionsNotifier
   bool _hasInitialized = false;
   bool _isAutoConnecting = false;
 
+  /// 已触发过初始自动连接
+  bool _hasAutoConnectedOnce = false;
+
   /// 是否正在自动连接中
   bool get isAutoConnecting => _isAutoConnecting;
 
@@ -139,10 +142,12 @@ class ActiveConnectionsNotifier
     _hasInitialized = true;
 
     // 等待 sourcesProvider 初始化完成
-    // 通过监听源列表变化来触发自动连接
+    // 只在应用启动时触发一次自动连接，而不是每次源列表变化都触发
+    // 这样可以避免新建源时触发重复连接
     _ref.listen<AsyncValue<List<SourceEntity>>>(sourcesProvider, (previous, next) {
-      if (next.hasValue && !_isAutoConnecting) {
-        // 数据已准备好，立即开始自动连接（使用 microtask 避免在 listen 回调中直接调用）
+      if (next.hasValue && !_isAutoConnecting && !_hasAutoConnectedOnce) {
+        // 数据已准备好，只在首次启动时自动连接（使用 microtask 避免在 listen 回调中直接调用）
+        _hasAutoConnectedOnce = true;
         Future.microtask(autoConnectAll);
       }
     }, fireImmediately: true);

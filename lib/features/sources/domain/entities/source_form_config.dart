@@ -153,6 +153,34 @@ class SourceFormConfig {
       // === PT 站点 ===
       case SourceType.mteam:
         return _getMteamConfig();
+      case SourceType.hdchina:
+        return _getCookiePTSiteConfig(SourceType.hdchina, 'hdchina.org');
+      case SourceType.chdbits:
+        return _getCookiePTSiteConfig(SourceType.chdbits, 'chdbits.co');
+      case SourceType.audiences:
+        return _getCookiePTSiteConfig(SourceType.audiences, 'audiences.me');
+      case SourceType.pthome:
+        return _getCookiePTSiteConfig(SourceType.pthome, 'pthome.net');
+      case SourceType.ourbits:
+        return _getCookiePTSiteConfig(SourceType.ourbits, 'ourbits.club');
+      case SourceType.hdsky:
+        return _getCookiePTSiteConfig(SourceType.hdsky, 'hdsky.me');
+      case SourceType.pterclub:
+        return _getCookiePTSiteConfig(SourceType.pterclub, 'pterclub.com');
+      case SourceType.hdfans:
+        return _getCookiePTSiteConfig(SourceType.hdfans, 'hdfans.org');
+      case SourceType.hdhome:
+        return _getCookiePTSiteConfig(SourceType.hdhome, 'hdhome.org');
+      case SourceType.ttg:
+        return _getCookiePTSiteConfig(SourceType.ttg, 'totheglory.im');
+      case SourceType.ssd:
+        return _getCookiePTSiteConfig(SourceType.ssd, 'springsunday.net');
+      case SourceType.lemonhd:
+        return _getCookiePTSiteConfig(SourceType.lemonhd, 'lemonhd.org');
+      case SourceType.haidan:
+        return _getCookiePTSiteConfig(SourceType.haidan, 'haidan.video');
+      case SourceType.pttime:
+        return _getCookiePTSiteConfig(SourceType.pttime, 'pttime.org');
     }
   }
 
@@ -933,6 +961,142 @@ class SourceFormConfig {
         _advancedSection(defaultAutoConnect: false),
       ],
     );
+
+  /// Cookie 认证的 PT 站点通用配置
+  static SourceFormConfig _getCookiePTSiteConfig(
+    SourceType type,
+    String defaultHost,
+  ) =>
+      SourceFormConfig(
+        type: type,
+        sections: [
+          _basicInfoSection(),
+          SourceFormSection(
+            title: '站点配置',
+            fields: [
+              SourceFormField(
+                key: 'host',
+                label: '站点地址',
+                placeholder: defaultHost,
+                defaultValue: defaultHost,
+                helpText: '${type.displayName}站点域名',
+              ),
+              const SourceFormField(
+                key: 'useSsl',
+                label: '使用 HTTPS',
+                type: SourceFormFieldType.toggle,
+                defaultValue: 'true',
+              ),
+            ],
+          ),
+          const SourceFormSection(
+            title: 'Cookie 认证',
+            description: '从浏览器获取站点 Cookie',
+            fields: [
+              SourceFormField(
+                key: 'cookie',
+                label: 'Cookie',
+                type: SourceFormFieldType.password,
+                placeholder: '从浏览器复制完整的 Cookie',
+                helpText: '登录站点后，从浏览器开发者工具获取 Cookie',
+              ),
+            ],
+          ),
+          const SourceFormSection(
+            title: 'RSS 订阅',
+            collapsible: true,
+            defaultExpanded: false,
+            description: '配置 RSS 订阅获取最新资源',
+            fields: [
+              SourceFormField(
+                key: 'rssUrl',
+                label: 'RSS 订阅地址',
+                placeholder: 'https://...',
+                required: false,
+                helpText: '从站点 RSS 页面获取完整订阅地址',
+              ),
+              SourceFormField(
+                key: 'enableRssDetail',
+                label: 'RSS 解析种子详情',
+                type: SourceFormFieldType.toggle,
+                defaultValue: 'true',
+              ),
+              SourceFormField(
+                key: 'enableNotification',
+                label: '发送站点未读消息通知',
+                type: SourceFormFieldType.toggle,
+                defaultValue: 'true',
+              ),
+            ],
+          ),
+          const SourceFormSection(
+            title: '下载设置',
+            collapsible: true,
+            defaultExpanded: false,
+            fields: [
+              SourceFormField(
+                key: 'enableBrowserEmulation',
+                label: '开启浏览器仿真',
+                type: SourceFormFieldType.toggle,
+                defaultValue: 'false',
+                helpText: '模拟浏览器请求，降低被检测风险',
+              ),
+              SourceFormField(
+                key: 'useProxy',
+                label: '使用代理服务器',
+                type: SourceFormFieldType.toggle,
+                defaultValue: 'false',
+              ),
+              SourceFormField(
+                key: 'downloadSubtitle',
+                label: '从详情页下载字幕',
+                type: SourceFormFieldType.toggle,
+                defaultValue: 'false',
+              ),
+              SourceFormField(
+                key: 'addSiteTag',
+                label: '下载器添加站点标签',
+                type: SourceFormFieldType.toggle,
+                defaultValue: 'false',
+              ),
+              SourceFormField(
+                key: 'userAgent',
+                label: 'User-Agent',
+                placeholder: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)...',
+                required: false,
+                helpText: '自定义请求的 User-Agent',
+              ),
+            ],
+          ),
+          const SourceFormSection(
+            title: '流控规则',
+            collapsible: true,
+            defaultExpanded: false,
+            description: '控制请求频率避免被封禁',
+            fields: [
+              SourceFormField(
+                key: 'rateLimitMinutes',
+                label: '单位时间（分钟）',
+                type: SourceFormFieldType.number,
+                defaultValue: '10',
+              ),
+              SourceFormField(
+                key: 'rateLimitCount',
+                label: '单位时间内访问次数',
+                type: SourceFormFieldType.number,
+                defaultValue: '10',
+              ),
+              SourceFormField(
+                key: 'requestInterval',
+                label: '访问间隔（秒）',
+                type: SourceFormFieldType.number,
+                defaultValue: '5',
+              ),
+            ],
+          ),
+          _advancedSection(defaultAutoConnect: false),
+        ],
+      );
 
   // === 通用分组模板 ===
 
