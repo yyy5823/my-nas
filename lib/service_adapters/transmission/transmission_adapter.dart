@@ -1,3 +1,4 @@
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/service_adapters/base/service_adapter.dart';
 import 'package:my_nas/service_adapters/transmission/api/transmission_api.dart';
@@ -57,7 +58,8 @@ class TransmissionAdapter implements ServiceAdapter {
       _api?.dispose();
       _api = null;
       return ServiceConnectionFailure(e.message);
-    } on Exception catch (e) {
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'connectToTransmission');
       _api?.dispose();
       _api = null;
       return ServiceConnectionFailure('连接失败: $e');

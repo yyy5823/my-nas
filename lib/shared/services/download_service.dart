@@ -240,8 +240,12 @@ class DownloadService {
     final task = _tasks[taskId];
     if (task != null) {
       final file = File(task.savePath);
-      if (file.existsSync()) {
-        file.deleteSync();
+      try {
+        if (file.existsSync()) {
+          file.deleteSync();
+        }
+      } on Exception catch (e, st) {
+        AppError.ignore(e, st, '删除取消的下载文件失败');
       }
     }
   }
@@ -260,8 +264,12 @@ class DownloadService {
 
     // 删除失败的文件
     final file = File(task.savePath);
-    if (await file.exists()) {
-      await file.delete();
+    try {
+      if (await file.exists()) {
+        await file.delete();
+      }
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '删除失败的下载文件时出错');
     }
 
     await startDownload(taskId);
