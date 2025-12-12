@@ -8,6 +8,7 @@ import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/pages/source_form_page.dart';
 import 'package:my_nas/features/sources/presentation/pages/source_type_selection_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
+import 'package:my_nas/features/sources/presentation/widgets/two_fa_sheet.dart';
 
 class SourcesPage extends ConsumerStatefulWidget {
   const SourcesPage({super.key});
@@ -583,72 +584,11 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
     }
   }
 
-  Future<_TwoFAResult?> _show2FADialog() async {
-    final controller = TextEditingController();
-    var rememberDevice = widget.source.rememberDevice;
-
-    return showDialog<_TwoFAResult>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('二次验证'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('请输入验证器应用中的验证码'),
-              const SizedBox(height: 16),
-              TextField(
-                controller: controller,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: '验证码',
-                  hintText: '6 位数字',
-                  prefixIcon: Icon(Icons.security),
-                ),
-                autofocus: true,
-                maxLength: 6,
-              ),
-              const SizedBox(height: 8),
-              CheckboxListTile(
-                value: rememberDevice,
-                onChanged: (value) {
-                  setDialogState(() {
-                    rememberDevice = value ?? false;
-                  });
-                },
-                title: const Text('记住此设备'),
-                subtitle: const Text(
-                  '下次登录时跳过二次验证',
-                  style: TextStyle(fontSize: 12),
-                ),
-                contentPadding: EdgeInsets.zero,
-                controlAffinity: ListTileControlAffinity.leading,
-                dense: true,
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(
-                context,
-                _TwoFAResult(
-                  otpCode: controller.text,
-                  rememberDevice: rememberDevice,
-                ),
-              ),
-              child: const Text('验证'),
-            ),
-          ],
-        ),
-      ),
+  Future<TwoFAResult?> _show2FADialog() async => showTwoFASheet(
+      context,
+      initialRememberDevice: widget.source.rememberDevice,
+      sourceName: widget.source.displayName,
     );
-  }
 
   Future<String?> _showPasswordDialog() async {
     final controller = TextEditingController();
@@ -740,15 +680,4 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
       }
     }
   }
-}
-
-/// 2FA 验证结果
-class _TwoFAResult {
-  const _TwoFAResult({
-    required this.otpCode,
-    required this.rememberDevice,
-  });
-
-  final String otpCode;
-  final bool rememberDevice;
 }
