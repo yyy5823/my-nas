@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:path/path.dart' as p;
@@ -32,8 +33,8 @@ class SmbFileSystem implements NasFileSystem {
       final files = await client.listFiles(folder);
 
       return files.map(_toFileItem).toList();
-    } on Exception catch (e) {
-      logger.e('SmbFileSystem: 列出目录失败 $path', e);
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'SmbFileSystem.listDirectory');
       rethrow;
     }
   }

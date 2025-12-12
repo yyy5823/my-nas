@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/services/background_task_service.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
@@ -186,8 +187,8 @@ class VideoScannerService {
         _cachedConnections = connections;
         unawaited(scrapeMetadata(connections: connections));
       }
-    } on Exception catch (e) {
-      logger.w('VideoScannerService: 检查恢复刮削失败', e);
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '检查恢复刮削失败，非关键操作');
     }
   }
 
@@ -206,8 +207,8 @@ class VideoScannerService {
       final stats = await _dbService.getScrapeStats();
       _scrapeStatsController.add(stats);
       logger.d('VideoScannerService: 已广播当前统计 - completed: ${stats.completed}, pending: ${stats.pending}');
-    } on Exception catch (e) {
-      logger.w('VideoScannerService: 广播统计失败', e);
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '广播统计失败，非关键操作');
     }
   }
 
@@ -337,8 +338,8 @@ class VideoScannerService {
         final stats = await _dbService.getScrapeStats();
         _scrapeStatsController.add(stats);
         logger.i('VideoScannerService: 扫描完成，广播统计 - total: ${stats.total}, pending: ${stats.pending}');
-      } on Exception catch (e) {
-        logger.w('VideoScannerService: 广播扫描完成统计失败', e);
+      } on Exception catch (e, st) {
+        AppError.ignore(e, st, '广播扫描完成统计失败，非关键操作');
       }
 
       // 更新后台服务为完成状态
@@ -354,7 +355,7 @@ class VideoScannerService {
 
       return allVideos.length;
     } catch (e, st) {
-      logger.e('VideoScannerService: 扫描失败', e, st);
+      AppError.handle(e, st, 'VideoScannerService.scanFilesOnly');
 
       // 为所有正在扫描的路径发送错误进度
       for (final path in paths) {
@@ -602,7 +603,7 @@ class VideoScannerService {
         ),
       );
     } on Exception catch (e, st) {
-      logger.e('VideoScannerService: 刮削失败', e, st);
+      AppError.handle(e, st, 'VideoScannerService.scrapeMetadata');
       _emitProgress(const VideoScanProgress(phase: VideoScanPhase.error));
 
       // 广播统计以更新 UI

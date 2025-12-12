@@ -18,6 +18,21 @@ class ErrorReportService {
   static final ErrorReportService _instance = ErrorReportService._();
   static ErrorReportService get instance => _instance;
 
+  /// 是否启用错误上报
+  ///
+  /// 设置为 false 可以完全禁用错误上报功能。
+  /// 在 debug 模式下默认禁用，release 模式下默认启用。
+  ///
+  /// 使用方式：
+  /// ```dart
+  /// // 禁用错误上报
+  /// ErrorReportService.instance.enabled = false;
+  ///
+  /// // 启用错误上报
+  /// ErrorReportService.instance.enabled = true;
+  /// ```
+  bool enabled = !kDebugMode;
+
   // RabbitMQ 配置
   static const String _host = '192.168.0.120';
   static const int _port = 5672;
@@ -153,6 +168,14 @@ class ErrorReportService {
     String? action,
     Map<String, dynamic>? extraData,
   }) async {
+    // 如果上报功能被禁用，直接返回
+    if (!enabled) {
+      if (kDebugMode) {
+        print('[ErrorReportService] Reporting disabled, skipping: $errorType');
+      }
+      return;
+    }
+
     // 获取网络类型（异步但不阻塞）
     final networkType = await DeviceInfoHelper.instance.getNetworkType();
 

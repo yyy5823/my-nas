@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
 import 'package:path/path.dart';
@@ -130,8 +131,8 @@ class VideoDatabaseService {
 
       _initialized = true;
       logger.i('VideoDatabaseService: 数据库初始化完成');
-    } catch (e) {
-      logger.e('VideoDatabaseService: 数据库初始化失败', e);
+    } catch (e, st) {
+      AppError.handle(e, st, 'VideoDatabaseService.init');
       rethrow;
     }
   }

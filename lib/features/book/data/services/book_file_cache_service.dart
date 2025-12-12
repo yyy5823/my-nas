@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -36,8 +37,8 @@ class BookFileCacheService {
 
       _initialized = true;
       logger.i('BookFileCacheService: 缓存目录初始化完成 $_cacheDir');
-    } catch (e) {
-      logger.e('BookFileCacheService: 初始化失败', e);
+    } catch (e, st) {
+      AppError.handle(e, st, 'BookFileCacheService.init');
       rethrow;
     }
   }
@@ -68,8 +69,8 @@ class BookFileCacheService {
         final size = await file.length();
         return size > 0;
       }
-    } on Exception catch (e) {
-      logger.w('BookFileCacheService: 检查缓存失败', e);
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '检查缓存失败，非关键功能');
     }
     return false;
   }
@@ -91,8 +92,8 @@ class BookFileCacheService {
       unawaited(_cleanupIfNeeded());
 
       return file;
-    } on Exception catch (e) {
-      logger.e('BookFileCacheService: 保存缓存失败', e);
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'BookFileCacheService.saveToCache');
       return null;
     }
   }
@@ -108,8 +109,8 @@ class BookFileCacheService {
         await file.setLastAccessed(DateTime.now());
         return file;
       }
-    } on Exception catch (e) {
-      logger.w('BookFileCacheService: 获取缓存失败', e);
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '获取缓存失败，非关键功能');
     }
     return null;
   }
@@ -124,8 +125,8 @@ class BookFileCacheService {
         await file.delete();
         logger.i('BookFileCacheService: 删除缓存成功 ${file.path}');
       }
-    } on Exception catch (e) {
-      logger.w('BookFileCacheService: 删除缓存失败', e);
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '删除缓存失败，非关键功能');
     }
   }
 
@@ -164,8 +165,8 @@ class BookFileCacheService {
           logger.d('BookFileCacheService: 清理缓存 ${file.path}');
         }
       }
-    } on Exception catch (e) {
-      logger.w('BookFileCacheService: 清理缓存失败', e);
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '清理缓存失败，非关键功能');
     }
   }
 }

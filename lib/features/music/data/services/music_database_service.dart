@@ -1,3 +1,4 @@
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
@@ -170,8 +171,8 @@ class MusicDatabaseService {
 
       _initialized = true;
       logger.i('MusicDatabaseService: 数据库初始化完成');
-    } catch (e) {
-      logger.e('MusicDatabaseService: 数据库初始化失败', e);
+    } catch (e, st) {
+      AppError.handle(e, st, 'MusicDatabaseService.init');
       rethrow;
     }
   }
@@ -685,8 +686,8 @@ class MusicDatabaseService {
       try {
         await _db!.execute('PRAGMA wal_checkpoint(TRUNCATE)');
         logger.d('MusicDatabaseService: WAL checkpoint 完成');
-      } on Exception catch (e) {
-        logger.w('MusicDatabaseService: WAL checkpoint 失败', e);
+      } on Exception catch (e, st) {
+        AppError.ignore(e, st, 'WAL checkpoint 失败，不影响关闭流程');
       }
       await _db!.close();
       _db = null;

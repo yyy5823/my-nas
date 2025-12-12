@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -35,8 +36,8 @@ class MusicAudioCacheService {
 
       _initialized = true;
       logger.i('MusicAudioCacheService: 缓存目录初始化完成 $_cacheDir');
-    } catch (e) {
-      logger.e('MusicAudioCacheService: 初始化失败', e);
+    } catch (e, st) {
+      AppError.handle(e, st, 'MusicAudioCacheService.init');
       rethrow;
     }
   }
@@ -71,8 +72,8 @@ class MusicAudioCacheService {
         final size = await file.length();
         return size > 0;
       }
-    } on Exception catch (e) {
-      logger.w('MusicAudioCacheService: 检查缓存失败', e);
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '检查缓存失败，非关键功能');
     }
     return false;
   }
@@ -85,8 +86,8 @@ class MusicAudioCacheService {
       final file = await getCacheFile(sourceId, filePath);
       final partFile = File('${file.path}.part');
       return await partFile.exists();
-    } on Exception catch (e) {
-      logger.w('MusicAudioCacheService: 检查下载状态失败', e);
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '检查下载状态失败，非关键功能');
     }
     return false;
   }
@@ -113,8 +114,8 @@ class MusicAudioCacheService {
       if (await mimeFile.exists()) {
         await mimeFile.delete();
       }
-    } on Exception catch (e) {
-      logger.w('MusicAudioCacheService: 删除缓存失败', e);
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '删除缓存失败，非关键功能');
     }
   }
 
@@ -178,8 +179,8 @@ class MusicAudioCacheService {
           '${(freedSize / 1024 / 1024).toStringAsFixed(2)}MB 缓存空间',
         );
       }
-    } on Exception catch (e) {
-      logger.w('MusicAudioCacheService: 清理缓存配额失败', e);
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '清理缓存配额失败，非关键功能');
     }
   }
 
@@ -197,8 +198,8 @@ class MusicAudioCacheService {
         }
       }
       logger.i('MusicAudioCacheService: 已清空所有音频缓存');
-    } on Exception catch (e) {
-      logger.e('MusicAudioCacheService: 清空缓存失败', e);
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'MusicAudioCacheService.clearAll');
     }
   }
 
@@ -216,8 +217,8 @@ class MusicAudioCacheService {
           }
         }
       }
-    } on Exception catch (e) {
-      logger.w('MusicAudioCacheService: 计算缓存大小失败', e);
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '计算缓存大小失败，非关键功能');
     }
     return totalSize;
   }
@@ -247,8 +248,8 @@ class MusicAudioCacheService {
           }
         }
       }
-    } on Exception catch (e) {
-      logger.w('MusicAudioCacheService: 计算缓存数量失败', e);
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '计算缓存数量失败，非关键功能');
     }
     return count;
   }

@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
-import 'package:my_nas/core/errors/app_error_handler.dart';
 
 /// NASTool API 客户端
 ///
@@ -38,8 +37,8 @@ class NasToolApi {
         return true;
       }
       return false;
-    } on Exception catch (e, st) {
-      AppError.handle(e, st, 'validateNasToolConnection');
+    } on NasToolApiException {
+      // API 异常，连接验证失败
       return false;
     }
   }
