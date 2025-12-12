@@ -28,9 +28,13 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
   bool _isScanning = false;
   String? _errorMessage;
 
-  // 重复照片数据
-  Map<String, List<PhotoEntity>> _duplicateGroups = {};
-  ({int fileHashDuplicates, int perceptualHashDuplicates, int totalDuplicatePhotos})? _stats;
+  // 重复照片数据 - 基于文件名+大小的快速检测
+  Map<String, List<PhotoEntity>> _nameSizeDuplicates = {};
+  ({int duplicateGroups, int totalDuplicatePhotos})? _nameSizeStats;
+
+  // 重复照片数据 - 基于哈希的深度检测
+  Map<String, List<PhotoEntity>> _hashDuplicates = {};
+  ({int fileHashDuplicates, int perceptualHashDuplicates, int totalDuplicatePhotos})? _hashStats;
 
   // 选中的照片（用于删除）
   final Set<String> _selectedPhotos = {}; // 存储 uniqueKey
@@ -38,6 +42,9 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
   // 扫描进度
   HashProgress? _scanProgress;
   StreamSubscription<HashProgress>? _progressSubscription;
+
+  // 当前显示模式
+  bool _showHashMode = false;
 
   @override
   void initState() {
@@ -59,12 +66,20 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
 
     try {
       await _db.init();
-      final stats = await _db.getDuplicateStats();
-      final duplicates = await _db.getDuplicatesByFileHash();
+
+      // 优先加载快速检测结果（基于文件名+大小）
+      final nameSizeStats = await _db.getNameSizeDuplicateStats();
+      final nameSizeDups = await _db.getPotentialDuplicatesByNameAndSize();
+
+      // 同时加载哈希检测结果
+      final hashStats = await _db.getDuplicateStats();
+      final hashDups = await _db.getDuplicatesByFileHash();
 
       setState(() {
-        _stats = stats;
-        _duplicateGroups = duplicates;
+        _nameSizeStats = nameSizeStats;
+        _nameSizeDuplicates = nameSizeDups;
+        _hashStats = hashStats;
+        _hashDuplicates = hashDups;
         _isLoading = false;
       });
     } on Exception catch (e) {
@@ -269,31 +284,149 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
       );
     }
 
+    // 根据模式选择显示的数据
+    final duplicates = _showHashMode ? _hashDuplicates : _nameSizeDuplicates;
+
     return CustomScrollView(
       slivers: [
         // 扫描进度卡片
         if (_isScanning || _scanProgress != null)
           SliverToBoxAdapter(child: _buildScanProgressCard(isDark)),
 
+        // 模式切换选项卡
+        SliverToBoxAdapter(child: _buildModeTabBar(isDark)),
+
         // 统计信息卡片
         SliverToBoxAdapter(child: _buildStatsCard(isDark)),
 
         // 重复照片组列表
-        if (_duplicateGroups.isEmpty)
+        if (duplicates.isEmpty)
           SliverFillRemaining(child: _buildEmptyState(isDark))
         else
           SliverList(
             delegate: SliverChildBuilderDelegate(
               (context, index) {
-                final entry = _duplicateGroups.entries.elementAt(index);
+                final entry = duplicates.entries.elementAt(index);
                 return _buildDuplicateGroup(entry.key, entry.value, isDark);
               },
-              childCount: _duplicateGroups.length,
+              childCount: duplicates.length,
             ),
           ),
       ],
     );
   }
+
+  /// 模式切换选项卡
+  Widget _buildModeTabBar(bool isDark) => Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurfaceElevated : Colors.grey[200],
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _buildModeTab(
+              title: '快速检测',
+              subtitle: '文件名+大小',
+              isSelected: !_showHashMode,
+              count: _nameSizeStats?.duplicateGroups ?? 0,
+              isDark: isDark,
+              onTap: () => setState(() => _showHashMode = false),
+            ),
+          ),
+          Expanded(
+            child: _buildModeTab(
+              title: '深度检测',
+              subtitle: '内容哈希',
+              isSelected: _showHashMode,
+              count: _hashStats?.fileHashDuplicates ?? 0,
+              isDark: isDark,
+              onTap: () => setState(() => _showHashMode = true),
+            ),
+          ),
+        ],
+      ),
+    );
+
+  Widget _buildModeTab({
+    required String title,
+    required String subtitle,
+    required bool isSelected,
+    required int count,
+    required bool isDark,
+    required VoidCallback onTap,
+  }) => GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? (isDark ? AppColors.darkSurface : Colors.white)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
+        ),
+        child: Column(
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    color: isSelected
+                        ? AppColors.primary
+                        : (isDark ? Colors.grey[400] : Colors.grey[600]),
+                  ),
+                ),
+                if (count > 0) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? AppColors.primary.withValues(alpha: 0.15)
+                          : (isDark ? Colors.grey[700] : Colors.grey[300]),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '$count',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: isSelected
+                            ? AppColors.primary
+                            : (isDark ? Colors.grey[400] : Colors.grey[600]),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 2),
+            Text(
+              subtitle,
+              style: TextStyle(
+                fontSize: 11,
+                color: isDark ? Colors.grey[500] : Colors.grey[500],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
 
   Widget _buildScanProgressCard(bool isDark) {
     final progress = _scanProgress;
@@ -375,39 +508,95 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
   }
 
   Widget _buildStatsCard(bool isDark) {
-    final stats = _stats;
-
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: isDark ? AppColors.darkSurfaceElevated : null,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            _buildStatItem(
-              '重复组',
-              '${stats?.fileHashDuplicates ?? 0}',
-              Icons.collections_rounded,
-              isDark,
-            ),
-            const SizedBox(width: 24),
-            _buildStatItem(
-              '涉及照片',
-              '${stats?.totalDuplicatePhotos ?? 0}',
-              Icons.photo_library_rounded,
-              isDark,
-            ),
-            const SizedBox(width: 24),
-            _buildStatItem(
-              '相似组',
-              '${stats?.perceptualHashDuplicates ?? 0}',
-              Icons.compare_rounded,
-              isDark,
-            ),
-          ],
+    // 根据当前模式显示对应的统计
+    if (_showHashMode) {
+      final stats = _hashStats;
+      return Card(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        color: isDark ? AppColors.darkSurfaceElevated : null,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              _buildStatItem(
+                '重复组',
+                '${stats?.fileHashDuplicates ?? 0}',
+                Icons.collections_rounded,
+                isDark,
+              ),
+              const SizedBox(width: 24),
+              _buildStatItem(
+                '涉及照片',
+                '${stats?.totalDuplicatePhotos ?? 0}',
+                Icons.photo_library_rounded,
+                isDark,
+              ),
+              const SizedBox(width: 24),
+              _buildStatItem(
+                '相似组',
+                '${stats?.perceptualHashDuplicates ?? 0}',
+                Icons.compare_rounded,
+                isDark,
+              ),
+            ],
+          ),
         ),
-      ),
-    );
+      );
+    } else {
+      final stats = _nameSizeStats;
+      return Card(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        color: isDark ? AppColors.darkSurfaceElevated : null,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  _buildStatItem(
+                    '重复组',
+                    '${stats?.duplicateGroups ?? 0}',
+                    Icons.collections_rounded,
+                    isDark,
+                  ),
+                  const SizedBox(width: 24),
+                  _buildStatItem(
+                    '涉及照片',
+                    '${stats?.totalDuplicatePhotos ?? 0}',
+                    Icons.photo_library_rounded,
+                    isDark,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, size: 16, color: AppColors.primary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '快速检测基于相同的文件名和大小，可能存在误判。建议使用深度检测确认。',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark ? Colors.grey[400] : Colors.grey[600],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
   }
 
   Widget _buildStatItem(String label, String value, IconData icon, bool isDark) =>
@@ -444,14 +633,16 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
             ),
             const SizedBox(height: 16),
             Text(
-              '没有发现重复照片',
+              _showHashMode ? '没有发现重复照片' : '没有发现疑似重复',
               style: context.textTheme.titleMedium?.copyWith(
                 color: isDark ? Colors.white : null,
               ),
             ),
             const SizedBox(height: 8),
             Text(
-              '点击右上角刷新按钮扫描照片哈希值',
+              _showHashMode
+                  ? '点击右上角刷新按钮扫描照片哈希值'
+                  : '快速检测未发现相同文件名和大小的照片',
               style: context.textTheme.bodyMedium?.copyWith(
                 color: isDark ? Colors.grey[400] : Colors.grey[600],
               ),

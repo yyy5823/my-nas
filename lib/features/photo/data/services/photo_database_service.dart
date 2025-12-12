@@ -376,6 +376,152 @@ class PhotoDatabaseService {
     return groups;
   }
 
+  /// 年月分组数据（用于时间线导航）
+  /// 返回按年份分组的月份信息，包含每月的第一张照片作为缩略图
+  Future<List<YearMonthGroup>> getMonthlyGroups() async {
+    if (!_initialized) await init();
+
+    // 获取所有月份的统计
+    final results = await _db!.rawQuery('''
+      SELECT
+        CAST(strftime('%Y', $_colModifiedTime / 1000, 'unixepoch') AS INTEGER) as year,
+        CAST(strftime('%m', $_colModifiedTime / 1000, 'unixepoch') AS INTEGER) as month,
+        COUNT(*) as count,
+        MIN($_colModifiedTime) as first_time
+      FROM $_tablePhotos
+      WHERE $_colModifiedTime IS NOT NULL AND $_colModifiedTime > 0
+      GROUP BY year, month
+      ORDER BY year DESC, month DESC
+    ''');
+
+    // 按年份分组
+    final yearMap = <int, List<MonthData>>{};
+    for (final row in results) {
+      final year = row['year'] as int? ?? 0;
+      final month = row['month'] as int? ?? 0;
+      final count = row['count'] as int? ?? 0;
+      if (year <= 0 || month <= 0) continue;
+
+      yearMap.putIfAbsent(year, () => []);
+      yearMap[year]!.add(MonthData(
+        month: month,
+        count: count,
+      ));
+    }
+
+    // 获取每个月的第一张照片作为缩略图
+    final yearGroups = <YearMonthGroup>[];
+    for (final year in yearMap.keys.toList()..sort((a, b) => b.compareTo(a))) {
+      final months = yearMap[year]!;
+
+      // 批量获取每月的第一张照片缩略图
+      for (final monthData in months) {
+        final thumbResult = await _db!.rawQuery('''
+          SELECT $_colThumbnailUrl, $_colFilePath, $_colSourceId
+          FROM $_tablePhotos
+          WHERE $_colModifiedTime IS NOT NULL
+            AND CAST(strftime('%Y', $_colModifiedTime / 1000, 'unixepoch') AS INTEGER) = ?
+            AND CAST(strftime('%m', $_colModifiedTime / 1000, 'unixepoch') AS INTEGER) = ?
+          ORDER BY $_colModifiedTime ASC
+          LIMIT 1
+        ''', [year, monthData.month]);
+
+        if (thumbResult.isNotEmpty) {
+          monthData..thumbnailUrl = thumbResult.first[_colThumbnailUrl] as String?
+          ..thumbnailPath = thumbResult.first[_colFilePath] as String?
+          ..thumbnailSourceId = thumbResult.first[_colSourceId] as String?;
+        }
+      }
+
+      yearGroups.add(YearMonthGroup(
+        year: year,
+        months: months,
+        totalCount: months.fold(0, (sum, m) => sum + m.count),
+      ));
+    }
+
+    return yearGroups;
+  }
+
+  /// 获取指定年月的照片
+  Future<List<PhotoEntity>> getPhotosByMonth(int year, int month, {int? limit, int offset = 0}) async {
+    if (!_initialized) await init();
+
+    final results = await _db!.query(
+      _tablePhotos,
+      where: '''
+        $_colModifiedTime IS NOT NULL
+        AND CAST(strftime('%Y', $_colModifiedTime / 1000, 'unixepoch') AS INTEGER) = ?
+        AND CAST(strftime('%m', $_colModifiedTime / 1000, 'unixepoch') AS INTEGER) = ?
+      ''',
+      whereArgs: [year, month],
+      orderBy: '$_colModifiedTime DESC',
+      limit: limit,
+      offset: offset,
+    );
+
+    return results.map(_fromRow).toList();
+  }
+
+  /// 基于文件名和大小获取潜在重复照片（无需哈希，快速检测）
+  /// 返回 `Map<key, List<PhotoEntity>>，key = fileName_size`
+  Future<Map<String, List<PhotoEntity>>> getPotentialDuplicatesByNameAndSize() async {
+    if (!_initialized) await init();
+
+    // 找出文件名和大小都相同的照片组
+    final duplicateKeys = await _db!.rawQuery('''
+      SELECT $_colFileName, $_colSize, COUNT(*) as cnt
+      FROM $_tablePhotos
+      WHERE $_colSize > 0
+      GROUP BY $_colFileName, $_colSize
+      HAVING cnt > 1
+      ORDER BY cnt DESC
+    ''');
+
+    if (duplicateKeys.isEmpty) return {};
+
+    final result = <String, List<PhotoEntity>>{};
+    for (final row in duplicateKeys) {
+      final fileName = row[_colFileName]! as String;
+      final size = row[_colSize]! as int;
+      final key = '${fileName}_$size';
+
+      final photos = await _db!.query(
+        _tablePhotos,
+        where: '$_colFileName = ? AND $_colSize = ?',
+        whereArgs: [fileName, size],
+        orderBy: '$_colModifiedTime DESC',
+      );
+      result[key] = photos.map(_fromRow).toList();
+    }
+
+    return result;
+  }
+
+  /// 获取基于文件名+大小的重复统计
+  Future<({int duplicateGroups, int totalDuplicatePhotos})> getNameSizeDuplicateStats() async {
+    if (!_initialized) await init();
+
+    final groupCount = Sqflite.firstIntValue(await _db!.rawQuery('''
+      SELECT COUNT(*) FROM (
+        SELECT $_colFileName, $_colSize FROM $_tablePhotos
+        WHERE $_colSize > 0
+        GROUP BY $_colFileName, $_colSize HAVING COUNT(*) > 1
+      )
+    ''')) ?? 0;
+
+    final totalPhotos = Sqflite.firstIntValue(await _db!.rawQuery('''
+      SELECT COUNT(*) FROM $_tablePhotos
+      WHERE ($_colFileName, $_colSize) IN (
+        SELECT $_colFileName, $_colSize FROM $_tablePhotos
+        WHERE $_colSize > 0
+        GROUP BY $_colFileName, $_colSize HAVING COUNT(*) > 1
+      )
+    ''')) ?? 0;
+
+    return (duplicateGroups: groupCount, totalDuplicatePhotos: totalPhotos);
+  }
+
   /// 获取统计信息
   Future<Map<String, dynamic>> getStats() async {
     if (!_initialized) await init();
@@ -685,4 +831,54 @@ class PhotoDatabaseService {
       totalDuplicatePhotos: totalDuplicatePhotos,
     );
   }
+}
+
+/// 年份分组数据
+class YearMonthGroup {
+  const YearMonthGroup({
+    required this.year,
+    required this.months,
+    required this.totalCount,
+  });
+
+  final int year;
+  final List<MonthData> months;
+  final int totalCount;
+}
+
+/// 月份数据
+class MonthData {
+  MonthData({
+    required this.month,
+    required this.count,
+    this.thumbnailUrl,
+    this.thumbnailPath,
+    this.thumbnailSourceId,
+  });
+
+  final int month;
+  final int count;
+  String? thumbnailUrl;
+  String? thumbnailPath;
+  String? thumbnailSourceId;
+
+  /// 月份名称
+  String get monthName => switch (month) {
+        1 => '一月',
+        2 => '二月',
+        3 => '三月',
+        4 => '四月',
+        5 => '五月',
+        6 => '六月',
+        7 => '七月',
+        8 => '八月',
+        9 => '九月',
+        10 => '十月',
+        11 => '十一月',
+        12 => '十二月',
+        _ => '$month月',
+      };
+
+  /// 短月份名称
+  String get shortMonthName => '$month月';
 }

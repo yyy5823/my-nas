@@ -76,7 +76,7 @@ class AuthStorageService {
     if (!_storageAvailable) return null;
     try {
       return await _storage.read(key: key);
-    } catch (e) {
+    } on Exception catch (e) {
       if (_handleStorageError(e, 'read($key)')) {
         return null;
       }
@@ -93,7 +93,7 @@ class AuthStorageService {
     try {
       await _storage.write(key: key, value: value);
       return true;
-    } catch (e) {
+    } on Exception catch (e) {
       if (_handleStorageError(e, 'write($key)')) {
         return false;
       }
@@ -107,7 +107,7 @@ class AuthStorageService {
     try {
       await _storage.delete(key: key);
       return true;
-    } catch (e) {
+    } on Exception catch (e) {
       if (_handleStorageError(e, 'delete($key)')) {
         return false;
       }

@@ -85,6 +85,9 @@ class TxtReaderNotifier extends StateNotifier<TxtReaderState> {
   final ReadingProgressService _progressService = ReadingProgressService();
   final BookFileCacheService _cacheService = BookFileCacheService();
 
+  /// 最大支持的文件大小 (50MB)
+  static const int _maxFileSizeBytes = 50 * 1024 * 1024;
+
   /// 获取文件系统（如果有 sourceId）
   NasFileSystem? _getFileSystem() {
     if (book.sourceId == null) return null;
@@ -100,6 +103,16 @@ class TxtReaderNotifier extends StateNotifier<TxtReaderState> {
     state = TxtReaderLoading();
 
     try {
+      // 检查文件大小
+      if (book.size > _maxFileSizeBytes) {
+        state = TxtReaderError(
+          '文件过大 (${(book.size / 1024 / 1024).toStringAsFixed(1)} MB)\n'
+          '最大支持 ${_maxFileSizeBytes ~/ 1024 ~/ 1024} MB 的文件\n\n'
+          '建议使用 Calibre 将文件分割或转换为更小的格式',
+        );
+        return;
+      }
+
       // 初始化缓存服务
       await _cacheService.init();
 
@@ -127,6 +140,12 @@ class TxtReaderNotifier extends StateNotifier<TxtReaderState> {
           return;
       }
 
+      // 检查内容是否为空
+      if (content.isEmpty && (htmlContent == null || htmlContent.isEmpty)) {
+        state = TxtReaderError('文件内容为空或无法解析');
+        return;
+      }
+
       // 恢复阅读进度
       await _progressService.init();
       final itemId = _progressService.generateItemId(book.id, book.path);
@@ -137,8 +156,18 @@ class TxtReaderNotifier extends StateNotifier<TxtReaderState> {
         htmlContent: htmlContent,
         scrollPosition: progress?.position ?? 0.0,
       );
-    } on Exception catch (e) {
-      state = TxtReaderError(e.toString());
+
+      logger.i('图书加载完成: ${book.name}, 内容长度: ${content.length}, '
+          'HTML: ${htmlContent?.length ?? 0}');
+    } on Exception catch (e, st) {
+      logger.e('加载图书失败', e, st);
+      // 检查是否是内存相关错误
+      final errorMsg = e.toString().toLowerCase();
+      if (errorMsg.contains('memory') || errorMsg.contains('heap')) {
+        state = TxtReaderError('内存不足，文件可能过大\n请尝试加载较小的文件');
+      } else {
+        state = TxtReaderError('加载失败: ${e.toString().replaceAll('Exception: ', '')}');
+      }
     }
   }
 
@@ -439,8 +468,40 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     });
 
     try {
-      // 在 Isolate 中处理内容
-      final result = await BookContentProcessor.processContent(htmlContent);
+      // 对于大文件，限制处理内容以提高性能
+      // 超过 500KB 的内容只提取章节，不移除目录
+      final shouldSimplify = htmlContent.length > 500000;
+
+      if (shouldSimplify) {
+        logger.i('大文件内容，使用简化处理模式');
+        // 简化处理：只提取前100个章节，不处理目录
+        final chapters = _extractChaptersSimple(htmlContent, maxChapters: 100);
+
+        if (!mounted) return;
+
+        setState(() {
+          _chapters = chapters;
+          _isProcessing = false;
+          _isContentProcessed = true;
+        });
+
+        logger.i('简化处理完成: ${chapters.length} 个章节');
+        return;
+      }
+
+      // 在 Isolate 中处理内容，添加超时
+      final result = await BookContentProcessor.processContent(htmlContent)
+          .timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          logger.w('内容处理超时，使用简化模式');
+          // 超时时返回简化结果
+          return ContentProcessResult(
+            cleanedHtml: htmlContent,
+            chapters: _extractChaptersSimple(htmlContent, maxChapters: 50),
+          );
+        },
+      );
 
       if (!mounted) return;
 
@@ -461,11 +522,38 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
       );
     } on Exception catch (e) {
       logger.e('内容处理失败', e);
+      if (!mounted) return;
       setState(() {
         _isProcessing = false;
         _isContentProcessed = true; // 即使失败也标记为已处理，避免重复
       });
     }
+  }
+
+  /// 简化的章节提取（用于大文件）
+  List<BookChapter> _extractChaptersSimple(String content, {int maxChapters = 100}) {
+    final chapters = <BookChapter>[];
+    final pattern = RegExp(r'<h([1-3])[^>]*>([^<]{1,100})</h\1>', caseSensitive: false);
+
+    for (final match in pattern.allMatches(content)) {
+      if (chapters.length >= maxChapters) break;
+
+      final level = int.tryParse(match.group(1) ?? '1') ?? 1;
+      var title = match.group(2)?.trim() ?? '';
+
+      // 移除内部 HTML 标签
+      title = title.replaceAll(RegExp('<[^>]*>'), '').trim();
+
+      if (title.isNotEmpty && title.length < 80) {
+        chapters.add(BookChapter(
+          title: title,
+          offset: match.start,
+          level: level,
+        ));
+      }
+    }
+
+    return chapters;
   }
 
   @override
@@ -722,8 +810,20 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     TxtReaderLoaded state,
     BookReaderSettings settings,
   ) {
+    // 检查是否有有效的 HTML 内容
+    if (!state.hasHtml) {
+      // 没有 HTML 内容，回退到纯文本模式
+      return _buildScrollContent(
+        TxtReaderLoaded(
+          content: state.content,
+          scrollPosition: state.scrollPosition,
+        ),
+        settings,
+      );
+    }
+
     // 内容处理中时显示加载提示
-    if (!_isContentProcessed || !state.hasHtml) {
+    if (!_isContentProcessed) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -736,6 +836,21 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
               '正在处理内容...',
               style: TextStyle(
                 color: settings.theme.textColor.withValues(alpha: 0.5),
+              ),
+            ),
+            const SizedBox(height: 24),
+            // 添加跳过按钮，允许用户直接查看内容
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _isContentProcessed = true;
+                });
+              },
+              child: Text(
+                '跳过处理',
+                style: TextStyle(
+                  color: settings.theme.textColor.withValues(alpha: 0.7),
+                ),
               ),
             ),
           ],
@@ -756,6 +871,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
       topBarHeight: topBarHeight,
       bottomBarHeight: bottomBarHeight,
       onPaginationReady: (info) {
+        if (!mounted) return;
         setState(() {
           _webViewPaginationReady = true;
           _totalPages = info.totalPages;
@@ -765,6 +881,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
         _restoreWebViewPageProgress();
       },
       onPageChanged: (page) {
+        if (!mounted) return;
         setState(() {
           _currentPage = page;
         });
@@ -772,6 +889,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
         _savePageProgress(page);
       },
       onChapterChanged: (chapter) {
+        if (!mounted) return;
         if (chapter != _currentChapterTitle) {
           setState(() {
             _currentChapterTitle = chapter;

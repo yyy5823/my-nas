@@ -43,8 +43,8 @@ class VideoMetadataService {
 
       final stats = await _db.getStats();
       logger.i('VideoMetadataService: 初始化完成，SQLite 条目: ${stats['total']}');
-    } catch (e) {
-      logger.e('VideoMetadataService: 初始化失败', e);
+    } catch (e, st) {
+      AppError.handle(e, st, 'VideoMetadataService.init');
       rethrow;
     }
   }

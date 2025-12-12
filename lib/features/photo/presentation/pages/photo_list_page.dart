@@ -14,6 +14,7 @@ import 'package:my_nas/features/photo/data/services/photo_library_cache_service.
 import 'package:my_nas/features/photo/domain/entities/photo_item.dart';
 import 'package:my_nas/features/photo/presentation/pages/photo_duplicates_page.dart';
 import 'package:my_nas/features/photo/presentation/pages/photo_viewer_page.dart';
+import 'package:my_nas/features/photo/presentation/widgets/photo_timeline_navigator.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
@@ -1041,11 +1042,13 @@ class PhotoListPage extends ConsumerStatefulWidget {
 
 class _PhotoListPageState extends ConsumerState<PhotoListPage> {
   final _searchController = TextEditingController();
+  final _scrollController = ScrollController();
   bool _showSearch = false;
 
   @override
   void dispose() {
     _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -1692,18 +1695,69 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
     WidgetRef ref,
     PhotoListLoaded state,
     bool isDark,
-  ) => RefreshIndicator(
-      onRefresh: () => ref.read(photoListProvider.notifier).forceRefresh(),
-      child: CustomScrollView(
-        slivers: [
+  ) =>
+      Column(
+        children: [
+          // 时间线导航面板（时间线模式下显示）
+          if (state.viewMode == PhotoViewMode.timeline)
+            TimelineNavigatorPanel(
+              onMonthTap: (year, month) => _scrollToMonth(ref, state, year, month),
+            ),
           // 照片内容
-          if (state.viewMode == PhotoViewMode.grid)
-            _buildGridView(context, ref, state, isDark)
-          else
-            _buildTimelineView(context, ref, state, isDark),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: () => ref.read(photoListProvider.notifier).forceRefresh(),
+              child: CustomScrollView(
+                controller: _scrollController,
+                slivers: [
+                  if (state.viewMode == PhotoViewMode.grid)
+                    _buildGridView(context, ref, state, isDark)
+                  else
+                    _buildTimelineView(context, ref, state, isDark),
+                ],
+              ),
+            ),
+          ),
         ],
-      ),
-    );
+      );
+
+  /// 滚动到指定年月的照片位置
+  void _scrollToMonth(WidgetRef ref, PhotoListLoaded state, int year, int month) {
+    // 找到该月在分组中的位置
+    final groups = state.groupedPhotos;
+    var found = false;
+
+    for (final group in groups) {
+      if (group.date.year == year && group.date.month == month) {
+        found = true;
+        break;
+      }
+    }
+
+    if (found) {
+      // 估算滚动位置（头部约50像素，每行约照片高度）
+      final screenWidth = MediaQuery.of(context).size.width;
+      final crossAxisCount = screenWidth > 600 ? 6 : 3;
+      final itemSize = (screenWidth - 8 - (crossAxisCount - 1) * 4) / crossAxisCount;
+      final headerHeight = 50.0;
+      final rowHeight = itemSize + 4;
+
+      var scrollOffset = 0.0;
+      for (final group in groups) {
+        if (group.date.year == year && group.date.month == month) {
+          break;
+        }
+        final rowCount = (group.photos.length / crossAxisCount).ceil();
+        scrollOffset += headerHeight + rowCount * rowHeight;
+      }
+
+      _scrollController.animateTo(
+        scrollOffset,
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
 
   Widget _buildGridView(
     BuildContext context,

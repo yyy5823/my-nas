@@ -131,7 +131,7 @@ class SmbFileSystem implements NasFileSystem {
         }();
 
         return controller.stream;
-      } catch (e) {
+      } on Exception {
         await raf.close();
         rethrow;
       }
@@ -213,7 +213,7 @@ class SmbFileSystem implements NasFileSystem {
 
       await writer.flush();
       await writer.close();
-    } catch (e) {
+    } on Exception {
       await writer.close();
       rethrow;
     }

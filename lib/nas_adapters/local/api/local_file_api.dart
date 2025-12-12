@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -274,8 +275,8 @@ class LocalFileApi {
           logger.w('LocalFileApi: 无法获取文件信息 ${entity.path}', e);
         }
       }
-    } catch (e) {
-      logger.e('LocalFileApi: 无法列出目录 $path', e);
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'LocalFileApi.listDirectory');
       rethrow;
     }
 

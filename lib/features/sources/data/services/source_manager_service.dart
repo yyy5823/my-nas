@@ -261,7 +261,7 @@ class SourceManagerService {
       await _secureStorage.write(key: key, value: value);
       logger.i('SourceManagerService: 保存凭证到安全存储 $sourceId (deviceId: ${credential.deviceId != null ? "有" : "无"})');
       return true;
-    } catch (e) {
+    } on Exception catch (e) {
       if (_handleSecureStorageError(e, 'saveCredential')) {
         return false;
       }

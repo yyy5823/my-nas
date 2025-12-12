@@ -556,10 +556,14 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
         'movies=${moviesList.length}, tvShows=${tvShowRepresentatives.length}, '
         'others=${othersList.length}, databaseTotal=$databaseTotalCount');
 
-    // 诊断：如果过滤后为空但数据库有数据，异步打印诊断信息（不阻塞 UI 更新）
-    if ((stats['total'] as int? ?? 0) == 0 && databaseTotalCount > 0) {
-      logger.w('VideoListNotifier: ⚠️ 路径过滤后无数据！数据库有 $databaseTotalCount 条记录但过滤后为 0');
-      // 使用 unawaited 延迟执行诊断查询，不阻塞 state 更新
+    // 修复：如果配置的路径过滤后无数据，但数据库有数据，回退到不过滤模式重新查询
+    final filteredTotal = stats['total'] as int? ?? 0;
+    if (filteredTotal == 0 && databaseTotalCount > 0 && enabledPaths != null) {
+      logger
+        ..w('VideoListNotifier: ⚠️ 路径过滤后无数据！数据库有 $databaseTotalCount 条记录')
+        ..w('  配置的路径可能与数据库中的不匹配，回退到显示所有数据');
+
+      // 异步打印诊断信息
       unawaited(Future.microtask(() async {
         try {
           final sample = await _db.getFirstVideoPath();
@@ -570,6 +574,82 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
           logger.w('  无法获取示例路径: $e');
         }
       }));
+
+      // 回退：不使用路径过滤，重新查询
+      final fallbackResults = await Future.wait([
+        _db.getStats(),  // 不传 enabledPaths
+        _db.getTvShowGroupCount(),
+        _db.getTopRated(limit: 30),
+        _db.getRecentlyUpdated(limit: 20),
+        _db.getByCategory(MediaCategory.movie, limit: 30),
+        _db.getTvShowGroupRepresentatives(limit: 30),
+        _db.getMovieCollections(),
+        _db.getByCategory(MediaCategory.unknown, limit: 30),
+      ]);
+
+      // 使用回退查询的结果
+      final fallbackStats = fallbackResults[0] as Map<String, dynamic>;
+      final fallbackTvShowGroupCount = fallbackResults[1] as int;
+      final fallbackTopRated = fallbackResults[2] as List<VideoMetadata>;
+      final fallbackRecent = fallbackResults[3] as List<VideoMetadata>;
+      final fallbackMovies = fallbackResults[4] as List<VideoMetadata>;
+      final fallbackTvShowReps = fallbackResults[5] as List<VideoMetadata>;
+      final fallbackCollections = fallbackResults[6] as List<MovieCollection>;
+      final fallbackOthers = fallbackResults[7] as List<VideoMetadata>;
+
+      logger.i('VideoListNotifier: 回退查询成功 - total=${fallbackStats['total']}');
+
+      // 构建 tvShowGroups
+      final fallbackTvShowGroups = <String, TvShowGroup>{};
+      for (final rep in fallbackTvShowReps) {
+        final groupKey = rep.tmdbId != null ? 'tmdb_${rep.tmdbId}' : 'title_${rep.title?.toLowerCase()}';
+        fallbackTvShowGroups[groupKey] = TvShowGroup(
+          groupKey: groupKey,
+          title: rep.title ?? rep.fileName,
+          tmdbId: rep.tmdbId,
+          posterUrl: rep.posterUrl,
+          backdropUrl: rep.backdropUrl,
+          rating: rep.rating,
+          overview: rep.overview,
+          year: rep.year,
+          genres: rep.genres,
+          seasonEpisodes: {rep.seasonNumber ?? 1: [rep]},
+        );
+      }
+
+      final fallbackTopRatedFinal = _buildTopRatedWithGroups(fallbackTopRated, fallbackTvShowGroups);
+      final fallbackRecentFinal = _buildRecentWithGroups(fallbackRecent, fallbackTvShowGroups);
+
+      final fallbackVideoByKey = <String, VideoMetadata>{};
+      for (final m in fallbackMovies) {
+        fallbackVideoByKey[m.uniqueKey] = m;
+      }
+      for (final m in fallbackTvShowReps) {
+        fallbackVideoByKey[m.uniqueKey] = m;
+      }
+      for (final m in fallbackOthers) {
+        fallbackVideoByKey[m.uniqueKey] = m;
+      }
+
+      _lastTotalCount = databaseTotalCount;
+
+      state = VideoListLoaded(
+        totalCount: fallbackStats['total'] as int? ?? 0,
+        databaseTotalCount: databaseTotalCount,
+        movieCount: fallbackStats['movies'] as int? ?? 0,
+        tvShowCount: fallbackStats['tvShows'] as int? ?? 0,
+        tvShowGroupCount: fallbackTvShowGroupCount,
+        otherCount: fallbackStats['others'] as int? ?? 0,
+        topRatedMovies: fallbackTopRatedFinal,
+        recentVideos: fallbackRecentFinal,
+        movies: fallbackMovies,
+        tvShowGroups: fallbackTvShowGroups,
+        others: fallbackOthers,
+        movieCollections: fallbackCollections,
+        videoByKey: fallbackVideoByKey,
+        fromCache: true,
+      );
+      return;  // 已经设置了 state，直接返回
     }
 
     // 首页剧集直接使用代表性数据，不需要再分组

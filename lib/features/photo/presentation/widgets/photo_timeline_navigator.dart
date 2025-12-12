@@ -1,0 +1,492 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/features/photo/data/services/photo_database_service.dart';
+import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
+import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
+import 'package:my_nas/shared/widgets/stream_image.dart';
+
+/// 时间线导航器 Provider
+final timelineNavigatorProvider =
+    StateNotifierProvider<TimelineNavigatorNotifier, TimelineNavigatorState>(
+        TimelineNavigatorNotifier.new);
+
+/// 时间线导航状态
+class TimelineNavigatorState {
+  const TimelineNavigatorState({
+    this.yearGroups = const [],
+    this.selectedYear,
+    this.isLoading = true,
+    this.isExpanded = false,
+  });
+
+  final List<YearMonthGroup> yearGroups;
+  final int? selectedYear;
+  final bool isLoading;
+  final bool isExpanded;
+
+  /// 获取所有年份
+  List<int> get years => yearGroups.map((g) => g.year).toList();
+
+  /// 获取选中年份的月份数据
+  List<MonthData> get selectedMonths {
+    if (selectedYear == null) return [];
+    return yearGroups
+        .firstWhere((g) => g.year == selectedYear,
+            orElse: () => const YearMonthGroup(year: 0, months: [], totalCount: 0))
+        .months;
+  }
+
+  TimelineNavigatorState copyWith({
+    List<YearMonthGroup>? yearGroups,
+    int? selectedYear,
+    bool? isLoading,
+    bool? isExpanded,
+  }) =>
+      TimelineNavigatorState(
+        yearGroups: yearGroups ?? this.yearGroups,
+        selectedYear: selectedYear ?? this.selectedYear,
+        isLoading: isLoading ?? this.isLoading,
+        isExpanded: isExpanded ?? this.isExpanded,
+      );
+}
+
+/// 时间线导航状态管理
+class TimelineNavigatorNotifier extends StateNotifier<TimelineNavigatorState> {
+  TimelineNavigatorNotifier(Ref _) : super(const TimelineNavigatorState()) {
+    _loadData();
+  }
+
+  final PhotoDatabaseService _db = PhotoDatabaseService();
+
+  Future<void> _loadData() async {
+    try {
+      await _db.init();
+      final yearGroups = await _db.getMonthlyGroups();
+
+      state = state.copyWith(
+        yearGroups: yearGroups,
+        selectedYear: yearGroups.isNotEmpty ? yearGroups.first.year : null,
+        isLoading: false,
+      );
+    } on Exception {
+      state = state.copyWith(isLoading: false);
+    }
+  }
+
+  /// 刷新数据
+  Future<void> refresh() async {
+    state = state.copyWith(isLoading: true);
+    await _loadData();
+  }
+
+  /// 选择年份
+  void selectYear(int year) {
+    state = state.copyWith(selectedYear: year);
+  }
+
+  /// 切换展开状态
+  void toggleExpanded() {
+    state = state.copyWith(isExpanded: !state.isExpanded);
+  }
+
+  /// 设置展开状态
+  void setExpanded(bool expanded) {
+    state = state.copyWith(isExpanded: expanded);
+  }
+}
+
+/// 年份选择器组件
+class YearSelector extends ConsumerWidget {
+  const YearSelector({
+    super.key,
+    required this.years,
+    required this.selectedYear,
+    required this.onYearSelected,
+  });
+
+  final List<int> years;
+  final int? selectedYear;
+  final ValueChanged<int> onYearSelected;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return SizedBox(
+      height: 40,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: years.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final year = years[index];
+          final isSelected = year == selectedYear;
+
+          return GestureDetector(
+            onTap: () => onYearSelected(year),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? AppColors.primary
+                    : isDark
+                        ? AppColors.darkSurfaceElevated
+                        : context.colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: isSelected
+                      ? AppColors.primary
+                      : isDark
+                          ? Colors.grey[700]!
+                          : Colors.grey[300]!,
+                ),
+              ),
+              child: Text(
+                '$year',
+                style: TextStyle(
+                  color: isSelected
+                      ? Colors.white
+                      : isDark
+                          ? Colors.white
+                          : Colors.black87,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// 月份网格组件
+class MonthGrid extends ConsumerWidget {
+  const MonthGrid({
+    super.key,
+    required this.year,
+    required this.months,
+    required this.onMonthTap,
+  });
+
+  final int year;
+  final List<MonthData> months;
+  final void Function(int year, int month) onMonthTap;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final connections = ref.watch(activeConnectionsProvider);
+
+    // 创建12个月的占位符
+    final monthSlots = List.generate(12, (index) {
+      final month = index + 1;
+      return months.firstWhere(
+        (m) => m.month == month,
+        orElse: () => MonthData(month: month, count: 0),
+      );
+    });
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 4,
+          childAspectRatio: 1,
+          crossAxisSpacing: 8,
+          mainAxisSpacing: 8,
+        ),
+        itemCount: 12,
+        itemBuilder: (context, index) {
+          final monthData = monthSlots[index];
+          final hasPhotos = monthData.count > 0;
+
+          // 获取缩略图的文件系统
+          SourceConnection? connection;
+          if (monthData.thumbnailSourceId != null) {
+            connection = connections[monthData.thumbnailSourceId];
+          }
+
+          return GestureDetector(
+            onTap: hasPhotos ? () => onMonthTap(year, monthData.month) : null,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              decoration: BoxDecoration(
+                color: hasPhotos
+                    ? null
+                    : isDark
+                        ? AppColors.darkSurfaceElevated.withValues(alpha: 0.5)
+                        : Colors.grey[200],
+                borderRadius: BorderRadius.circular(12),
+                border: hasPhotos
+                    ? Border.all(color: AppColors.primary.withValues(alpha: 0.3))
+                    : null,
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // 缩略图或占位符
+                    if (hasPhotos && monthData.thumbnailPath != null)
+                      StreamImage(
+                        url: monthData.thumbnailUrl,
+                        path: monthData.thumbnailPath,
+                        fileSystem: connection?.adapter.fileSystem,
+                        placeholder: _buildPlaceholder(isDark),
+                        errorWidget: _buildPlaceholder(isDark),
+                        cacheKey: monthData.thumbnailPath,
+                      )
+                    else
+                      _buildPlaceholder(isDark),
+
+                    // 渐变遮罩 + 信息
+                    Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.transparent,
+                            Colors.black.withValues(alpha: hasPhotos ? 0.7 : 0.3),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    // 月份和数量
+                    Positioned(
+                      left: 8,
+                      right: 8,
+                      bottom: 8,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            monthData.shortMonthName,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              shadows: hasPhotos
+                                  ? [
+                                      Shadow(
+                                        color: Colors.black.withValues(alpha: 0.5),
+                                        blurRadius: 4,
+                                      ),
+                                    ]
+                                  : null,
+                            ),
+                          ),
+                          if (hasPhotos)
+                            Text(
+                              '${monthData.count}张',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.8),
+                                fontSize: 11,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildPlaceholder(bool isDark) => Container(
+        color: isDark ? Colors.grey[850] : Colors.grey[300],
+        child: Icon(
+          Icons.photo_outlined,
+          color: isDark ? Colors.grey[700] : Colors.grey[400],
+          size: 24,
+        ),
+      );
+}
+
+/// 右侧快速月份索引条
+class MonthQuickIndex extends StatelessWidget {
+  const MonthQuickIndex({
+    super.key,
+    required this.yearGroups,
+    required this.onMonthTap,
+  });
+
+  final List<YearMonthGroup> yearGroups;
+  final void Function(int year, int month) onMonthTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      width: 44,
+      margin: const EdgeInsets.only(right: 4),
+      child: ListView.builder(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        itemCount: yearGroups.length,
+        itemBuilder: (context, yearIndex) {
+          final yearGroup = yearGroups[yearIndex];
+          return Column(
+            children: [
+              // 年份标签
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                margin: const EdgeInsets.only(bottom: 2),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  '${yearGroup.year}',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.primary,
+                  ),
+                ),
+              ),
+              // 月份按钮
+              ...yearGroup.months.map((monthData) => InkWell(
+                    onTap: () => onMonthTap(yearGroup.year, monthData.month),
+                    borderRadius: BorderRadius.circular(4),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 3),
+                      child: Text(
+                        '${monthData.month}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: isDark ? Colors.grey[400] : Colors.grey[600],
+                        ),
+                      ),
+                    ),
+                  )),
+              const SizedBox(height: 8),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// 完整的时间线导航面板（可折叠）
+class TimelineNavigatorPanel extends ConsumerWidget {
+  const TimelineNavigatorPanel({
+    super.key,
+    required this.onMonthTap,
+  });
+
+  final void Function(int year, int month) onMonthTap;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(timelineNavigatorProvider);
+    final notifier = ref.read(timelineNavigatorProvider.notifier);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    if (state.isLoading) {
+      return const SizedBox.shrink();
+    }
+
+    if (state.yearGroups.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+      decoration: BoxDecoration(
+        color: isDark
+            ? AppColors.darkSurface
+            : context.colorScheme.surface,
+        border: Border(
+          bottom: BorderSide(
+            color: isDark ? Colors.grey[800]! : Colors.grey[200]!,
+          ),
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 头部 - 年份选择器
+          GestureDetector(
+            onTap: notifier.toggleExpanded,
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      const SizedBox(width: 16),
+                      Icon(
+                        Icons.calendar_month_rounded,
+                        size: 20,
+                        color: AppColors.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '时间线',
+                        style: context.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const Spacer(),
+                      AnimatedRotation(
+                        duration: const Duration(milliseconds: 200),
+                        turns: state.isExpanded ? 0.5 : 0,
+                        child: Icon(
+                          Icons.keyboard_arrow_down,
+                          color: isDark ? Colors.grey[400] : Colors.grey[600],
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  YearSelector(
+                    years: state.years,
+                    selectedYear: state.selectedYear,
+                    onYearSelected: notifier.selectYear,
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // 月份网格（可折叠）
+          AnimatedSize(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+            child: state.isExpanded
+                ? Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: MonthGrid(
+                      year: state.selectedYear ?? DateTime.now().year,
+                      months: state.selectedMonths,
+                      onMonthTap: (year, month) {
+                        onMonthTap(year, month);
+                        notifier.setExpanded(false);
+                      },
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ],
+      ),
+    );
+  }
+}

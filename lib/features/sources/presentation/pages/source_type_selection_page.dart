@@ -101,6 +101,12 @@ class SourceTypeSelectionPage extends ConsumerWidget {
                 SourceCategory.mediaManagement,
                 SourceType.byCategory(SourceCategory.mediaManagement),
               ),
+            if (_shouldShowCategory(SourceCategory.ptSites))
+              _buildCategorySection(
+                context,
+                SourceCategory.ptSites,
+                SourceType.byCategory(SourceCategory.ptSites),
+              ),
           ],
 
           const SizedBox(height: 32),

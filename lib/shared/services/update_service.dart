@@ -667,7 +667,7 @@ class UpdateService extends ChangeNotifier {
       }
 
       await sink.close();
-    } catch (e) {
+    } on Exception {
       await sink.close();
       rethrow;
     }
