@@ -85,6 +85,7 @@ class VideoListLoading extends VideoListState {
 class VideoListLoaded extends VideoListState {
   VideoListLoaded({
     required this.totalCount,
+    this.databaseTotalCount = 0,
     this.movieCount = 0,
     this.tvShowCount = 0,
     this.tvShowGroupCount = 0,
@@ -108,6 +109,9 @@ class VideoListLoaded extends VideoListState {
   });
 
   final int totalCount;
+  /// 数据库中的总数量（不经过路径过滤）
+  /// 用于判断是否有数据但被路径过滤掉了
+  final int databaseTotalCount;
   final int movieCount;
   /// 剧集集数（单集数量）
   final int tvShowCount;
@@ -167,6 +171,7 @@ class VideoListLoaded extends VideoListState {
 
   VideoListLoaded copyWith({
     int? totalCount,
+    int? databaseTotalCount,
     int? movieCount,
     int? tvShowCount,
     int? tvShowGroupCount,
@@ -186,6 +191,7 @@ class VideoListLoaded extends VideoListState {
   }) =>
       VideoListLoaded(
         totalCount: totalCount ?? this.totalCount,
+        databaseTotalCount: databaseTotalCount ?? this.databaseTotalCount,
         movieCount: movieCount ?? this.movieCount,
         tvShowCount: tvShowCount ?? this.tvShowCount,
         tvShowGroupCount: tvShowGroupCount ?? this.tvShowGroupCount,
@@ -406,8 +412,17 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       state = VideoListLoading(fromCache: true);
     }
 
+    // 确保数据库已初始化
+    try {
+      await _db.init();
+    } on Exception catch (e) {
+      logger.e('VideoListNotifier: 数据库初始化失败', e);
+      return;
+    }
+
     // 获取启用的路径（用于过滤停用文件夹的视频）
     final enabledPaths = _getEnabledPaths();
+    logger.d('VideoListNotifier: enabledPaths = $enabledPaths');
 
     // 并行查询各分类数据（使用 SQLite 索引，O(log N) 复杂度）
     // 首页只加载少量数据用于展示，查看全部页面支持分页懒加载
@@ -425,6 +440,8 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
         _db.getMovieCollections(),
         // 其他视频（未识别为电影或剧集）
         _db.getByCategory(MediaCategory.unknown, limit: 30, enabledPaths: enabledPaths),
+        // 获取数据库总数（不经过路径过滤），用于判断是否有数据被过滤
+        _db.getCount(),
       ]).timeout(
         const Duration(seconds: 3),
         onTimeout: () {
@@ -439,6 +456,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
             <VideoMetadata>[],
             <MovieCollection>[],
             <VideoMetadata>[],
+            0,
           ];
         },
       );
@@ -457,6 +475,13 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     final tvShowRepresentatives = (results[5] as List<VideoMetadata>?) ?? <VideoMetadata>[];
     final movieCollections = (results[6] as List<MovieCollection>?) ?? <MovieCollection>[];
     final othersList = (results[7] as List<VideoMetadata>?) ?? <VideoMetadata>[];
+    final databaseTotalCount = (results[8] as int?) ?? 0;
+
+    // 记录查询结果统计
+    logger.d('VideoListNotifier: 查询结果 - stats=$stats, '
+        'topRated=${topRatedRaw.length}, recent=${recentRaw.length}, '
+        'movies=${moviesList.length}, tvShows=${tvShowRepresentatives.length}, '
+        'others=${othersList.length}, databaseTotal=$databaseTotalCount');
 
     // 首页剧集直接使用代表性数据，不需要再分组
     // 但为了兼容性，仍然构建 TvShowGroup（用于高分推荐和最近添加的去重）
@@ -497,6 +522,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
 
     state = VideoListLoaded(
       totalCount: stats['total'] as int? ?? 0,
+      databaseTotalCount: databaseTotalCount,
       movieCount: stats['movies'] as int? ?? 0,
       tvShowCount: stats['tvShows'] as int? ?? 0,
       tvShowGroupCount: tvShowGroupCount,
@@ -513,7 +539,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
 
     logger.i('''
       VideoListNotifier: 数据加载完成，
-      总计 ${stats['total']} 个视频，
+      总计 ${stats['total']} 个视频（数据库总数: $databaseTotalCount），
       电影 ${stats['movies']} 个（首页加载 ${moviesList.length}），
       剧集 $tvShowGroupCount 部（首页加载 ${tvShowRepresentatives.length} 部），
       其他 ${stats['others']} 个（首页加载 ${othersList.length}），
@@ -836,7 +862,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
                   onRetry: () => ref.read(videoListProvider.notifier).reloadFromCache(),
                 ),
               final VideoListLoaded loaded => loaded.totalCount == 0
-                  ? _buildEmptyState(context, ref, loaded, isDark)
+                  ? _buildEmptyOrFilteredState(context, ref, loaded, isDark)
                   : _buildVideoContent(context, ref, loaded, isDark),
             },
           ),
@@ -1257,17 +1283,109 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     );
   }
 
-  Widget _buildEmptyState(
+  /// 根据数据库实际数据量决定显示空状态还是被过滤提示
+  Widget _buildEmptyOrFilteredState(
     BuildContext context,
     WidgetRef ref,
     VideoListLoaded state,
     bool isDark,
   ) {
-    // 获取缓存信息
-    final cacheService = VideoLibraryCacheService();
-    final cacheInfo = cacheService.getCacheInfo();
+    // 如果数据库有数据但当前显示为空，说明数据被路径过滤了
+    if (state.databaseTotalCount > 0) {
+      return _buildFilteredEmptyState(context, ref, state, isDark);
+    }
+    return _buildEmptyState(context, ref, state, isDark);
+  }
 
-    return Center(
+  /// 数据被路径过滤后的空状态（数据库有数据但当前媒体库配置没有匹配）
+  Widget _buildFilteredEmptyState(
+    BuildContext context,
+    WidgetRef ref,
+    VideoListLoaded state,
+    bool isDark,
+  ) => Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 100,
+              height: 100,
+              decoration: BoxDecoration(
+                color: Colors.orange.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.filter_list_off_rounded,
+                size: 50,
+                color: Colors.orange,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              '媒体库路径未匹配',
+              style: context.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white : null,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '数据库中有 ${state.databaseTotalCount} 个影视，但当前媒体库配置的路径没有匹配到这些数据。',
+              style: context.textTheme.bodyMedium?.copyWith(
+                color: isDark ? Colors.grey[400] : Colors.grey,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '请检查媒体库设置中的目录配置是否正确。',
+              style: context.textTheme.bodySmall?.copyWith(
+                color: isDark ? Colors.grey[500] : Colors.grey[600],
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 32),
+            ElevatedButton.icon(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(builder: (_) => const MediaLibraryPage()),
+              ),
+              icon: const Icon(Icons.folder_open_rounded),
+              label: const Text('媒体库设置'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+  Widget _buildEmptyState(
+    BuildContext context,
+    WidgetRef ref,
+    VideoListLoaded state,
+    bool isDark,
+  ) =>
+    // 使用 FutureBuilder 异步获取数据库统计信息
+    FutureBuilder<String>(
+      future: VideoDatabaseService().getStatsInfo(),
+      builder: (context, snapshot) {
+        final cacheInfo = snapshot.data ?? '加载中...';
+        return _buildEmptyStateContent(context, ref, isDark, cacheInfo);
+      },
+    );
+
+  Widget _buildEmptyStateContent(
+    BuildContext context,
+    WidgetRef ref,
+    bool isDark,
+    String cacheInfo,
+  ) => Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
@@ -1359,7 +1477,6 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
         ),
       ),
     );
-  }
 
   Widget _buildVideoContent(
     BuildContext context,

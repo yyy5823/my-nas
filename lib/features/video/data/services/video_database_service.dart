@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
@@ -683,6 +685,66 @@ class VideoDatabaseService {
       andWhere: ' AND ($conditions)',
       args: args,
     );
+  }
+
+  /// 获取统计信息文本（用于空状态显示）
+  ///
+  /// 返回格式如: "123 个影视 · 2.5 MB 缓存"
+  Future<String> getStatsInfo() async {
+    if (!_initialized) await init();
+
+    final totalCount = Sqflite.firstIntValue(await _db!.rawQuery(
+        'SELECT COUNT(*) FROM $_tableMetadata')) ?? 0;
+
+    if (totalCount == 0) {
+      return '无缓存';
+    }
+
+    // 获取数据库文件大小
+    final dbSize = await _getDatabaseSize();
+    final sizeText = _formatSize(dbSize);
+
+    return '$totalCount 个影视 · $sizeText 缓存';
+  }
+
+  /// 获取数据库文件大小（字节）
+  Future<int> _getDatabaseSize() async {
+    try {
+      final documentsDir = await getApplicationDocumentsDirectory();
+      final dbPath = join(documentsDir.path, 'video_metadata.db');
+      final dbFile = File(dbPath);
+      if (await dbFile.exists()) {
+        final mainSize = await dbFile.length();
+        // 检查 WAL 和 SHM 文件
+        var walSize = 0;
+        var shmSize = 0;
+        final walFile = File('$dbPath-wal');
+        final shmFile = File('$dbPath-shm');
+        if (await walFile.exists()) {
+          walSize = await walFile.length();
+        }
+        if (await shmFile.exists()) {
+          shmSize = await shmFile.length();
+        }
+        return mainSize + walSize + shmSize;
+      }
+    } on Exception catch (e) {
+      logger.w('VideoDatabaseService: 获取数据库大小失败', e);
+    }
+    return 0;
+  }
+
+  /// 格式化文件大小
+  String _formatSize(int bytes) {
+    if (bytes < 1024) {
+      return '$bytes B';
+    } else if (bytes < 1024 * 1024) {
+      return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    } else if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(2)} MB';
+    } else {
+      return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+    }
   }
 
   /// 获取总数量

@@ -164,12 +164,15 @@ class VideoLibraryCacheService {
   }
 
   /// 获取缓存大小（字节）
+  ///
+  /// 使用 UTF-8 编码计算实际字节大小，而非字符串长度
   int getCacheSize() {
     final data = _box?.get(_cacheKey);
     if (data == null) return 0;
     try {
       final jsonStr = jsonEncode(data);
-      return jsonStr.length;
+      // 使用 UTF-8 编码计算实际字节大小
+      return utf8.encode(jsonStr).length;
     } on Exception {
       return 0;
     }
