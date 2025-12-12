@@ -551,6 +551,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
           // 使用 LockCachingAudioSource 实现边下边播并自动缓存到指定文件
           // 这样下次播放相同歌曲时可以直接使用缓存
+          // ignore: experimental_member_use
           audioSource = LockCachingAudioSource(
             Uri.parse(proxyUrl),
             cacheFile: cacheFile,
@@ -563,6 +564,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       } else if (uri.scheme == 'http' || uri.scheme == 'https') {
         // HTTP/HTTPS URL：使用 LockCachingAudioSource 边下边播
         logger.d('MusicPlayer: 使用 HTTP/HTTPS URL (流式播放)');
+        // ignore: experimental_member_use
         audioSource = LockCachingAudioSource(uri);
       } else {
         throw Exception('不支持的音频协议: ${uri.scheme}');

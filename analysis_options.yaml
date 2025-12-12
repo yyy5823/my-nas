@@ -47,7 +47,8 @@ linter:
     avoid_multiple_declarations_per_line: true
     avoid_positional_boolean_parameters: true
     avoid_private_typedef_functions: true
-    avoid_redundant_argument_values: true
+    # 禁用：有时显式传递默认值可以提高代码可读性
+    avoid_redundant_argument_values: false
     avoid_returning_this: true
     avoid_setters_without_getters: true
     avoid_types_on_closure_parameters: true
@@ -77,7 +78,8 @@ linter:
     prefer_final_in_for_each: true
     prefer_final_locals: true
     prefer_if_elements_to_conditional_expressions: true
-    prefer_int_literals: true
+    # 禁用：1.0 比 1 在某些上下文中更清楚表达类型意图
+    prefer_int_literals: false
     prefer_mixin: true
     prefer_null_aware_method_calls: true
     prefer_single_quotes: true

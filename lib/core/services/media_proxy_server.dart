@@ -42,7 +42,7 @@ class MediaProxyServer {
       logger.i('MediaProxyServer: 启动成功，端口 $_port');
 
       // 处理请求
-      _server!.listen(_handleRequest, onError: (error) {
+      _server!.listen(_handleRequest, onError: (Object error) {
         logger.e('MediaProxyServer: 服务器错误', error);
       });
     } catch (e, st) {

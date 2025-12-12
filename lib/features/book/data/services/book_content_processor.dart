@@ -180,6 +180,7 @@ class BookContentProcessor {
 
   /// 识别并移除目录区域
   /// 返回 (清理后的 HTML, 是否移除了目录)
+  // ignore: unused_element
   static (String, bool) _removeTocSection(
     String htmlContent,
     List<BookChapter> chapters,

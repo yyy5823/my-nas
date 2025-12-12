@@ -581,10 +581,9 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
 
   Future<void> _playTrack(MusicItem track, int index) async {
     final playerNotifier = ref.read(musicPlayerControllerProvider.notifier);
-    final queueNotifier = ref.read(playQueueProvider.notifier)
 
     // 设置播放队列为歌单中的所有歌曲
-    ..setQueue(_tracks);
+    ref.read(playQueueProvider.notifier).setQueue(_tracks);
     // 播放选中的歌曲
     await playerNotifier.play(track);
   }

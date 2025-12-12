@@ -13,12 +13,7 @@ import 'package:my_nas/features/sources/presentation/providers/source_provider.d
 /// 用于展示下载器、媒体追踪、媒体管理等服务类源的列表
 class ServiceSourcesPage extends ConsumerStatefulWidget {
   const ServiceSourcesPage({
-    super.key,
-    required this.title,
-    required this.category,
-    required this.emptyIcon,
-    required this.emptyTitle,
-    required this.emptySubtitle,
+    required this.title, required this.category, required this.emptyIcon, required this.emptyTitle, required this.emptySubtitle, super.key,
   });
 
   /// 页面标题
@@ -218,8 +213,7 @@ class _ServiceSourcesPageState extends ConsumerState<ServiceSourcesPage> {
 /// 排序模式下的服务源卡片
 class _ReorderableServiceCard extends StatelessWidget {
   const _ReorderableServiceCard({
-    super.key,
-    required this.source,
+    required this.source, super.key,
   });
 
   final SourceEntity source;

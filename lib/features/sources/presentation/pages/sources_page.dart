@@ -184,8 +184,7 @@ class _SourcesPageState extends ConsumerState<SourcesPage> {
 /// 排序模式下的源卡片（带拖动手柄）
 class _ReorderableSourceCard extends StatelessWidget {
   const _ReorderableSourceCard({
-    super.key,
-    required this.source,
+    required this.source, super.key,
     this.connection,
   });
 

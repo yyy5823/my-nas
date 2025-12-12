@@ -6,14 +6,13 @@ class TvShowGroup {
   TvShowGroup({
     required this.groupKey,
     required this.title,
-    this.tmdbId,
+    required this.seasonEpisodes, this.tmdbId,
     this.posterUrl,
     this.backdropUrl,
     this.rating,
     this.overview,
     this.year,
     this.genres,
-    required this.seasonEpisodes,
   });
 
   /// 分组键（优先使用 tmdbId，否则使用标准化的标题）

@@ -2098,7 +2098,9 @@ class _PosterCard extends ConsumerStatefulWidget {
   const _PosterCard({
     required this.metadata,
     required this.onTap,
-    required this.isDark, this.width,
+    required this.isDark,
+    // ignore: unused_element_parameter
+    this.width,
   });
 
   final VideoMetadata metadata;
@@ -2445,6 +2447,7 @@ class _CategoryRow extends StatelessWidget {
     this.iconColor,
     this.maxCount = 10,
     this.onViewAll,
+    // ignore: unused_element_parameter
     this.useVerticalPosters = true,
     this.totalCount,
     this.onItemContextMenu,
@@ -4084,6 +4087,7 @@ class _TvShowRow extends StatelessWidget {
     required this.isDark,
     this.icon,
     this.iconColor,
+    // ignore: unused_element_parameter
     this.maxCount = 10,
     this.onViewAll,
     this.totalCount,
@@ -4206,6 +4210,7 @@ class _TvShowPosterCard extends StatefulWidget {
     required this.group,
     required this.onTap,
     required this.isDark,
+    // ignore: unused_element_parameter
     this.width = 130,
   });
 
@@ -5900,6 +5905,7 @@ class _MovieCollectionRow extends StatelessWidget {
     required this.isDark,
     this.icon,
     this.iconColor,
+    // ignore: unused_element_parameter
     this.maxCount = 10,
   });
 

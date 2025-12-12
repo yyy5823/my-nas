@@ -17,8 +17,7 @@ enum SourceFormMode {
 /// 根据源类型动态生成表单，支持创建和编辑模式
 class SourceFormPage extends ConsumerStatefulWidget {
   const SourceFormPage({
-    super.key,
-    required this.sourceType,
+    required this.sourceType, super.key,
     this.existingSource,
   });
 
