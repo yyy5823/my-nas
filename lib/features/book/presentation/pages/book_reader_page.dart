@@ -16,6 +16,7 @@ import 'package:my_nas/features/book/data/services/book_file_cache_service.dart'
 import 'package:my_nas/features/book/data/services/mobi_parser_service.dart';
 import 'package:my_nas/features/book/data/services/progressive_pagination.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
+import 'package:my_nas/features/book/presentation/widgets/webview_book_reader.dart';
 import 'package:my_nas/features/reading/data/services/reader_settings_service.dart';
 import 'package:my_nas/features/reading/data/services/reading_progress_service.dart';
 import 'package:my_nas/features/reading/presentation/providers/reader_settings_provider.dart';
@@ -308,13 +309,19 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
 
   // 分页相关
   PageController? _pageController;
-  List<String> _pages = []; // 分页后的内容
+  List<String> _pages = []; // 分页后的内容 (用于旧模式)
   Map<int, int> _chapterPageMap = {}; // 章节索引 -> 页码映射
   int _currentPage = 0;
+  int _totalPages = 1;
   bool _isPaginationReady = false;
   bool _isProcessing = false; // 内容处理中
   bool _isContentProcessed = false; // 内容是否已处理完成
   bool _isScrollPositionRestored = false; // 滚动位置是否已恢复
+
+  // WebView 阅读器相关
+  final GlobalKey<WebViewBookReaderState> _webViewReaderKey = GlobalKey();
+  final bool _useWebViewRenderer = true; // 使用 WebView 渲染器 (更精确的分页)
+  bool _webViewPaginationReady = false; // WebView 分页是否已准备就绪
 
   // 状态栏相关
   final Battery _battery = Battery();
@@ -603,9 +610,13 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     final usePageMode =
         state.hasHtml && settings.pageTurnMode != BookPageTurnMode.scroll;
 
-    // 初始化分页（如果需要且尚未完成）
+    // 判断是否使用 WebView 渲染器
+    final useWebView = _useWebViewRenderer && state.hasHtml && usePageMode;
+
+    // 初始化分页（如果需要且尚未完成）- 仅在非 WebView 模式下使用传统分页
     // 需要等内容处理完成后再分页，因为分页依赖清理后的 HTML
     if (usePageMode &&
+        !useWebView &&
         !_isPaginationReady &&
         state.hasHtml &&
         _isContentProcessed) {
@@ -625,13 +636,15 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
                 // 固定顶栏 - 避免摄像头遮挡内容
                 _buildFixedHeader(theme, settings),
                 Expanded(
-                  child: usePageMode
-                      ? _buildPagedContent(state, settings)
-                      : _buildScrollContent(state, settings),
+                  child: useWebView
+                      ? _buildWebViewContent(state, settings)
+                      : (usePageMode
+                          ? _buildPagedContent(state, settings)
+                          : _buildScrollContent(state, settings)),
                 ),
                 // 底部状态栏（进度、电池、时间）
                 if (settings.showProgress)
-                  _buildBottomStatusBar(theme, settings, usePageMode, state),
+                  _buildBottomStatusBar(theme, settings, usePageMode || useWebView, state),
               ],
             ),
           ),
@@ -682,6 +695,88 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
       ),
       child: _buildContent(state, settings),
     );
+  }
+
+  /// WebView 分页模式内容 - 使用 CSS Multi-column 实现精确分页
+  Widget _buildWebViewContent(
+    TxtReaderLoaded state,
+    BookReaderSettings settings,
+  ) {
+    // 内容处理中时显示加载提示
+    if (!_isContentProcessed || !state.hasHtml) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(
+              color: settings.theme.textColor.withValues(alpha: 0.5),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '正在处理内容...',
+              style: TextStyle(
+                color: settings.theme.textColor.withValues(alpha: 0.5),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 计算顶部和底部栏的高度
+    const topBarHeight = 40.0; // _buildFixedHeader 的大致高度
+    const bottomBarHeight = 24.0; // _buildBottomStatusBar 的大致高度
+
+    return WebViewBookReader(
+      key: _webViewReaderKey,
+      htmlContent: state.htmlContent!,
+      chapters: _chapters,
+      settings: settings,
+      initialPage: _currentPage,
+      topBarHeight: topBarHeight,
+      bottomBarHeight: bottomBarHeight,
+      onPaginationReady: (info) {
+        setState(() {
+          _webViewPaginationReady = true;
+          _totalPages = info.totalPages;
+          _currentPage = info.currentPage;
+        });
+        // 恢复阅读进度
+        _restoreWebViewPageProgress();
+      },
+      onPageChanged: (page) {
+        setState(() {
+          _currentPage = page;
+        });
+        // 保存进度
+        _savePageProgress(page);
+      },
+      onChapterChanged: (chapter) {
+        if (chapter != _currentChapterTitle) {
+          setState(() {
+            _currentChapterTitle = chapter;
+          });
+        }
+      },
+    );
+  }
+
+  /// 恢复 WebView 分页进度
+  void _restoreWebViewPageProgress() {
+    final itemId = ReadingProgressService().generateItemId(
+      widget.book.sourceId ?? 'local',
+      widget.book.path,
+    );
+    final progress = ReadingProgressService().getProgress(itemId);
+    if (progress != null && _totalPages > 1) {
+      final targetPage = progress.position.toInt().clamp(0, _totalPages - 1);
+      if (targetPage > 0) {
+        // 延迟跳转，确保 WebView 已准备就绪
+        Future.delayed(const Duration(milliseconds: 200), () {
+          _webViewReaderKey.currentState?.goToPage(targetPage);
+        });
+      }
+    }
   }
 
   /// 恢复滚动位置
@@ -985,6 +1080,11 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
 
   /// 获取分页进度文本
   String _getPageProgressText() {
+    // WebView 分页模式
+    if (_webViewPaginationReady && _totalPages > 0) {
+      return '${_currentPage + 1} / $_totalPages';
+    }
+    // 传统分页模式
     if (_pages.isEmpty) return '';
     return '${_currentPage + 1} / ${_pages.length}';
   }
@@ -1549,13 +1649,17 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
           final usePageMode = state is TxtReaderLoaded &&
               state.hasHtml &&
               settings.pageTurnMode != BookPageTurnMode.scroll;
+          final useWebView = _useWebViewRenderer &&
+              state is TxtReaderLoaded &&
+              state.hasHtml &&
+              usePageMode;
 
           if (ratio < 0.25) {
             // 左侧区域 - 上一页
-            _handlePreviousPage(usePageMode);
+            _handlePreviousPage(usePageMode: usePageMode, useWebView: useWebView);
           } else if (ratio > 0.75) {
             // 右侧区域 - 下一页
-            _handleNextPage(usePageMode);
+            _handleNextPage(usePageMode: usePageMode, useWebView: useWebView);
           } else {
             // 中间区域 - 切换控制栏
             _toggleControls();
@@ -1568,9 +1672,15 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
   }
 
   /// 处理上一页操作
-  void _handlePreviousPage(bool usePageMode) {
-    if (usePageMode) {
-      // 分页模式
+  void _handlePreviousPage({
+    required bool usePageMode,
+    required bool useWebView,
+  }) {
+    if (useWebView) {
+      // WebView 分页模式
+      _webViewReaderKey.currentState?.previousPage();
+    } else if (usePageMode) {
+      // 传统分页模式
       if (_pageController != null && _currentPage > 0) {
         _pageController!.previousPage(
           duration: const Duration(milliseconds: 300),
@@ -1594,9 +1704,15 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
   }
 
   /// 处理下一页操作
-  void _handleNextPage(bool usePageMode) {
-    if (usePageMode) {
-      // 分页模式
+  void _handleNextPage({
+    required bool usePageMode,
+    required bool useWebView,
+  }) {
+    if (useWebView) {
+      // WebView 分页模式
+      _webViewReaderKey.currentState?.nextPage();
+    } else if (usePageMode) {
+      // 传统分页模式
       if (_pageController != null && _currentPage < _pages.length - 1) {
         _pageController!.nextPage(
           duration: const Duration(milliseconds: 300),
@@ -1705,6 +1821,14 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
         state is TxtReaderLoaded &&
         state.hasHtml &&
         settings.pageTurnMode != BookPageTurnMode.scroll;
+    final useWebView = _useWebViewRenderer &&
+        state is TxtReaderLoaded &&
+        state.hasHtml &&
+        usePageMode;
+
+    // 获取当前模式的总页数
+    final effectiveTotalPages = useWebView ? _totalPages : _pages.length;
+    final maxPageIndex = (effectiveTotalPages - 1).clamp(0, double.maxFinite.toInt());
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -1725,7 +1849,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
               Row(
                 children: [
                   Text(
-                    usePageMode
+                    (usePageMode || useWebView)
                         ? '${_currentPage + 1}'
                         : _getProgressText(
                             state is TxtReaderLoaded ? state : null,
@@ -1734,14 +1858,8 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
                   ),
                   Expanded(
                     child: Slider(
-                      value: usePageMode
-                          ? _currentPage.toDouble().clamp(
-                              0,
-                              (_pages.length - 1).toDouble().clamp(
-                                0,
-                                double.infinity,
-                              ),
-                            )
+                      value: (usePageMode || useWebView)
+                          ? _currentPage.toDouble().clamp(0, maxPageIndex.toDouble())
                           : (_scrollController.hasClients
                                 ? (_scrollController.position.pixels /
                                           _scrollController
@@ -1749,21 +1867,22 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
                                               .maxScrollExtent)
                                       .clamp(0.0, 1.0)
                                 : 0.0),
-                      max: usePageMode
-                          ? (_pages.length - 1).toDouble().clamp(
-                              0,
-                              double.infinity,
-                            )
+                      max: (usePageMode || useWebView)
+                          ? maxPageIndex.toDouble().clamp(1, double.infinity)
                           : 1.0,
                       onChanged: (value) {
-                        if (usePageMode && _pages.isNotEmpty) {
-                          final page = value.round().clamp(
-                            0,
-                            _pages.length - 1,
-                          );
+                        if (useWebView) {
+                          // WebView 分页模式
+                          final page = value.round().clamp(0, maxPageIndex);
+                          _webViewReaderKey.currentState?.goToPage(page);
+                          setState(() => _currentPage = page);
+                        } else if (usePageMode && _pages.isNotEmpty) {
+                          // 传统分页模式
+                          final page = value.round().clamp(0, _pages.length - 1);
                           _pageController?.jumpToPage(page);
                           setState(() => _currentPage = page);
                         } else if (_scrollController.hasClients) {
+                          // 滚动模式
                           final target =
                               value *
                               _scrollController.position.maxScrollExtent;
@@ -1775,7 +1894,9 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
                     ),
                   ),
                   Text(
-                    usePageMode ? '${_pages.length}' : '100%',
+                    (usePageMode || useWebView)
+                        ? '$effectiveTotalPages'
+                        : '100%',
                     style: const TextStyle(color: Colors.white, fontSize: 12),
                   ),
                 ],
@@ -1868,12 +1989,17 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
           selectedIndex: settings.pageTurnMode.index,
           onSelect: (index) {
             settingsNotifier.setPageTurnMode(BookPageTurnMode.values[index]);
-            // 重置分页状态
+            // 重置分页状态 (传统模式和 WebView 模式)
             setState(() {
+              // 传统分页
               _isPaginationReady = false;
               _pages = [];
               _pageController?.dispose();
               _pageController = null;
+              // WebView 分页
+              _webViewPaginationReady = false;
+              _totalPages = 1;
+              _currentPage = 0;
             });
           },
         ),
@@ -2047,6 +2173,10 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     final usePageMode = state is TxtReaderLoaded &&
         state.hasHtml &&
         settings.pageTurnMode != BookPageTurnMode.scroll;
+    final useWebView = _useWebViewRenderer &&
+        state is TxtReaderLoaded &&
+        state.hasHtml &&
+        usePageMode;
 
     return Positioned(
       bottom: 140, // 在底部控制栏上方
@@ -2098,13 +2228,22 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
               label: '跳转到开头',
               isDark: isDark,
               onTap: () {
-                if (usePageMode && _pageController != null) {
+                if (useWebView) {
+                  // WebView 分页模式
+                  _webViewReaderKey.currentState?.goToFirstPage();
+                  setState(() {
+                    _currentPage = 0;
+                    _showMoreMenu = false;
+                  });
+                } else if (usePageMode && _pageController != null) {
+                  // 传统分页模式
                   _pageController!.jumpToPage(0);
                   setState(() {
                     _currentPage = 0;
                     _showMoreMenu = false;
                   });
                 } else if (_scrollController.hasClients) {
+                  // 滚动模式
                   _scrollController.jumpTo(0);
                   setState(() => _showMoreMenu = false);
                 }
@@ -2115,13 +2254,22 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
               label: '跳转到结尾',
               isDark: isDark,
               onTap: () {
-                if (usePageMode && _pageController != null && _pages.isNotEmpty) {
+                if (useWebView) {
+                  // WebView 分页模式
+                  _webViewReaderKey.currentState?.goToLastPage();
+                  setState(() {
+                    _currentPage = _totalPages - 1;
+                    _showMoreMenu = false;
+                  });
+                } else if (usePageMode && _pageController != null && _pages.isNotEmpty) {
+                  // 传统分页模式
                   _pageController!.jumpToPage(_pages.length - 1);
                   setState(() {
                     _currentPage = _pages.length - 1;
                     _showMoreMenu = false;
                   });
                 } else if (_scrollController.hasClients) {
+                  // 滚动模式
                   _scrollController.jumpTo(
                     _scrollController.position.maxScrollExtent,
                   );
@@ -2231,7 +2379,10 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
               ),
             if (_chapters.isNotEmpty)
               _buildInfoRow('章节数', '${_chapters.length}', isDark),
-            if (_pages.isNotEmpty)
+            // 显示总页数 - 支持 WebView 和传统分页模式
+            if (_webViewPaginationReady && _totalPages > 0)
+              _buildInfoRow('总页数', '$_totalPages', isDark)
+            else if (_pages.isNotEmpty)
               _buildInfoRow('总页数', '${_pages.length}', isDark),
           ],
         ),

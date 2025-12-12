@@ -108,6 +108,7 @@ dependencies:
   device_info_plus: ^12.3.0
   flutter_foreground_task: ^9.1.0
   battery_plus: ^6.2.1  # Battery info for reader status bar
+  flutter_inappwebview: ^6.1.5  # WebView for precise book pagination
 
 dev_dependencies:
   flutter_test:
