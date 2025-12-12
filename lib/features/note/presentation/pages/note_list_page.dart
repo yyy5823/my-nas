@@ -585,8 +585,8 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
         break;
       case MediaFileAction.deleteFromSource:
         if (!context.mounted) return;
-        // ignore: use_build_context_synchronously
         final confirmed = await showDeleteConfirmDialog(
+          // ignore: use_build_context_synchronously
           context: context,
           title: '删除笔记',
           content: '确定要删除"${node.displayName}"吗？此操作将删除源文件，无法恢复！',
@@ -2061,8 +2061,8 @@ class _NoteListContentState extends ConsumerState<NoteListContent> {
         break;
       case MediaFileAction.deleteFromSource:
         if (!context.mounted) return;
-        // ignore: use_build_context_synchronously
         final confirmed = await showDeleteConfirmDialog(
+          // ignore: use_build_context_synchronously
           context: context,
           title: '删除笔记',
           content: '确定要删除"${node.displayName}"吗？此操作将删除源文件，无法恢复！',
