@@ -176,6 +176,27 @@ jobs:
           channel: 'stable'
           cache: true
 
+      # 预下载 Gradle，避免构建时网络问题
+      - name: Cache Gradle wrapper
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/wrapper
+            ~/.gradle/caches
+          key: ${{ runner.os }}-gradle-wrapper-${{ hashFiles('android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-wrapper-
+
+      - name: Pre-download Gradle (with retry)
+        run: |
+          cd android
+          for i in {1..3}; do
+            ./gradlew --version && break || {
+              echo "Attempt $i failed, retrying in 10s..."
+              sleep 10
+            }
+          done
+
       - name: Get dependencies
         run: flutter pub get
 
@@ -226,6 +247,14 @@ jobs:
 
       - name: Generate code
         run: dart run build_runner build --delete-conflicting-outputs
+
+      # 清理并重新安装 CocoaPods 依赖
+      - name: Clean and install pods
+        run: |
+          cd ios
+          rm -rf Pods Podfile.lock
+          pod repo update || true
+          pod install --repo-update
 
       - name: Build iOS (no codesign)
         run: flutter build ios --release --no-codesign
@@ -303,8 +332,22 @@ jobs:
           # 预缓存 macOS 工具链
           flutter precache --macos
 
+      # 清理可能损坏的 native assets 缓存
+      - name: Clean native assets cache
+        run: |
+          rm -rf ~/.pub-cache/hosted/pub.dev/sqlite3-*/
+          rm -rf .dart_tool/native_assets_builder/
+          rm -rf build/
+
       - name: Get dependencies
         run: flutter pub get
+
+      # 清理并重建 native assets (sqlite3)
+      - name: Clean and rebuild native assets
+        run: |
+          flutter clean
+          flutter pub get
+          dart run build_runner clean || true
 
       - name: Generate code
         run: dart run build_runner build --delete-conflicting-outputs
@@ -396,6 +439,13 @@ jobs:
         if: steps.check_windows.outputs.supported == 'true'
         run: flutter config --enable-windows-desktop
 
+      # 清理可能损坏的构建缓存
+      - name: Clean build cache
+        if: steps.check_windows.outputs.supported == 'true'
+        run: |
+          if (Test-Path build) { Remove-Item -Recurse -Force build }
+          if (Test-Path .dart_tool) { Remove-Item -Recurse -Force .dart_tool }
+
       - name: Get dependencies
         if: steps.check_windows.outputs.supported == 'true'
         run: flutter pub get
@@ -404,9 +454,19 @@ jobs:
         if: steps.check_windows.outputs.supported == 'true'
         run: dart run build_runner build --delete-conflicting-outputs
 
-      - name: Build Windows x64
+      # 重试构建（如果失败，清理后重试一次）
+      - name: Build Windows x64 (with retry)
         if: steps.check_windows.outputs.supported == 'true'
-        run: flutter build windows --release
+        run: |
+          try {
+            flutter build windows --release
+          } catch {
+            Write-Host "First build attempt failed, cleaning and retrying..."
+            if (Test-Path build\windows) { Remove-Item -Recurse -Force build\windows }
+            flutter clean
+            flutter pub get
+            flutter build windows --release
+          }
 
       - name: Create ZIP (Portable)
         if: steps.check_windows.outputs.supported == 'true'
@@ -498,14 +558,28 @@ jobs:
       - name: Enable Linux desktop
         run: flutter config --enable-linux-desktop
 
+      # 清理可能损坏的构建缓存
+      - name: Clean build cache
+        run: |
+          rm -rf build/
+          rm -rf .dart_tool/
+
       - name: Get dependencies
         run: flutter pub get
 
       - name: Generate code
         run: dart run build_runner build --delete-conflicting-outputs
 
-      - name: Build Linux
-        run: flutter build linux --release
+      # 重试构建（如果失败，清理后重试一次）
+      - name: Build Linux (with retry)
+        run: |
+          if ! flutter build linux --release; then
+            echo "First build attempt failed, cleaning and retrying..."
+            rm -rf build/linux
+            flutter clean
+            flutter pub get
+            flutter build linux --release
+          fi
 
       - name: Create tarball
         run: |
@@ -543,6 +617,12 @@ jobs:
           flutter config --enable-linux-desktop
           flutter precache --linux
 
+      # 清理可能损坏的构建缓存
+      - name: Clean build cache
+        run: |
+          rm -rf build/
+          rm -rf .dart_tool/
+
       - name: Get dependencies
         run: |
           export PATH="$HOME/flutter/bin:$PATH"
@@ -553,10 +633,17 @@ jobs:
           export PATH="$HOME/flutter/bin:$PATH"
           dart run build_runner build --delete-conflicting-outputs
 
-      - name: Build Linux ARM64
+      # 重试构建（如果失败，清理后重试一次）
+      - name: Build Linux ARM64 (with retry)
         run: |
           export PATH="$HOME/flutter/bin:$PATH"
-          flutter build linux --release
+          if ! flutter build linux --release; then
+            echo "First build attempt failed, cleaning and retrying..."
+            rm -rf build/linux
+            flutter clean
+            flutter pub get
+            flutter build linux --release
+          fi
 
       - name: Create tarball
         run: |
