@@ -1633,12 +1633,11 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     return '${progress.toStringAsFixed(0)}%';
   }
 
-  Widget _buildTapZones(BookReaderSettings settings) {
-    // 三区域交互:
-    // - 左侧 25%: 上一页
-    // - 中间 50%: 切换控制栏
-    // - 右侧 25%: 下一页
-    return Positioned.fill(
+  Widget _buildTapZones(BookReaderSettings settings) => Positioned.fill(
+      // 三区域交互:
+      // - 左侧 25%: 上一页
+      // - 中间 50%: 切换控制栏
+      // - 右侧 25%: 下一页
       child: GestureDetector(
         onTapUp: (details) {
           final screenWidth = MediaQuery.of(context).size.width;
@@ -1669,7 +1668,6 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
         child: Container(),
       ),
     );
-  }
 
   /// 处理上一页操作
   void _handlePreviousPage({

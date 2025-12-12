@@ -334,7 +334,7 @@ class ProgressivePagination {
 
     // 匹配块级元素
     final blockPattern = RegExp(
-      r'<(?:p|div|h[1-6]|blockquote|li|tr)[^>]*>.*?</(?:p|div|h[1-6]|blockquote|li|tr)>',
+      '<(?:p|div|h[1-6]|blockquote|li|tr)[^>]*>.*?</(?:p|div|h[1-6]|blockquote|li|tr)>',
       caseSensitive: false,
       dotAll: true,
     );
@@ -361,7 +361,7 @@ class ProgressivePagination {
   /// 估算段落字符数 (用于快速分页)
   static int _estimateParagraphCharCount(String paragraphHtml) {
     // 移除 HTML 标签
-    final plainText = paragraphHtml.replaceAll(RegExp(r'<[^>]+>'), '');
+    final plainText = paragraphHtml.replaceAll(RegExp('<[^>]+>'), '');
     return plainText.length;
   }
 }

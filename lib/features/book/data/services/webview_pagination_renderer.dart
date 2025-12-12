@@ -465,7 +465,7 @@ class WebViewPaginationRenderer {
     // 分页状态
     let totalPages = 1;
     let currentPage = 0;
-    let pageWidth = ${width};
+    let pageWidth = $width;
     let isAnimating = false;
 
     // 获取内容元素

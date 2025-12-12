@@ -86,7 +86,7 @@ class ReadableAreaCalculator {
     BookReaderSettings settings,
   ) {
     // 移除 HTML 标签,获取纯文本
-    final plainText = paragraphHtml.replaceAll(RegExp(r'<[^>]+>'), '');
+    final plainText = paragraphHtml.replaceAll(RegExp('<[^>]+>'), '');
     if (plainText.trim().isEmpty) return 0;
 
     // 估算文本行数
@@ -139,7 +139,7 @@ class ReadableAreaCalculator {
   /// 简单的 HTML 段落分割
   static List<String> _splitHtmlIntoParagraphs(String html) {
     final blockPattern = RegExp(
-      r'<(?:p|div|h[1-6]|blockquote|li)[^>]*>.*?</(?:p|div|h[1-6]|blockquote|li)>',
+      '<(?:p|div|h[1-6]|blockquote|li)[^>]*>.*?</(?:p|div|h[1-6]|blockquote|li)>',
       caseSensitive: false,
       dotAll: true,
     );

@@ -106,8 +106,8 @@ class EnhancedTocExtractor {
     final searchArea = html.substring(0, searchEnd);
 
     // 查找连续的标题或链接模式
-    final linkPattern = RegExp(r'<a[^>]*href[^>]*>.*?</a>', dotAll: true);
-    final headingPattern = RegExp(r'<h[4-6][^>]*>.*?</h[4-6]>', dotAll: true);
+    final linkPattern = RegExp('<a[^>]*href[^>]*>.*?</a>', dotAll: true);
+    final headingPattern = RegExp('<h[4-6][^>]*>.*?</h[4-6]>', dotAll: true);
 
     var maxDensity = 0.0;
     var tocStart = -1;
@@ -157,11 +157,11 @@ class EnhancedTocExtractor {
   static TocExtractionResult _extractBySemantic(String html) {
     // 查找语义化目录容器
     final semanticPatterns = [
-      r'<nav[^>]*class="[^"]*toc[^"]*"[^>]*>.*?</nav>',
-      r'<div[^>]*class="[^"]*toc[^"]*"[^>]*>.*?</div>',
-      r'<div[^>]*id="[^"]*toc[^"]*"[^>]*>.*?</div>',
-      r'<aside[^>]*>.*?</aside>',
-      r'<nav[^>]*>.*?</nav>',
+      '<nav[^>]*class="[^"]*toc[^"]*"[^>]*>.*?</nav>',
+      '<div[^>]*class="[^"]*toc[^"]*"[^>]*>.*?</div>',
+      '<div[^>]*id="[^"]*toc[^"]*"[^>]*>.*?</div>',
+      '<aside[^>]*>.*?</aside>',
+      '<nav[^>]*>.*?</nav>',
     ];
 
     for (final pattern in semanticPatterns) {
@@ -172,8 +172,8 @@ class EnhancedTocExtractor {
         final matchContent = match.group(0)!;
 
         // 检查是否包含章节链接或标题
-        final hasLinks = RegExp(r'<a[^>]*href').hasMatch(matchContent);
-        final hasHeadings = RegExp(r'<h[1-6]').hasMatch(matchContent);
+        final hasLinks = RegExp('<a[^>]*href').hasMatch(matchContent);
+        final hasHeadings = RegExp('<h[1-6]').hasMatch(matchContent);
 
         if (hasLinks || hasHeadings) {
           final tocSection = _extractTocSection(html, match.start);
@@ -227,7 +227,7 @@ class EnhancedTocExtractor {
 
     // 查找最近的块级元素开始标签
     final containerPattern = RegExp(
-      r'<(div|section|nav|aside|article)[^>]*>',
+      '<(div|section|nav|aside|article)[^>]*>',
       caseSensitive: false,
     );
 
@@ -255,7 +255,7 @@ class EnhancedTocExtractor {
 
     // 策略1: 查找目录后第一个长段落 (>300字符)
     final longParaPattern = RegExp(
-      r'<p[^>]*>(.{300,}?)</p>',
+      '<p[^>]*>(.{300,}?)</p>',
       dotAll: true,
     );
 
@@ -267,7 +267,7 @@ class EnhancedTocExtractor {
     }
 
     // 策略2: 查找连续的 h1/h2 标签 (正文章节)
-    final mainHeadingPattern = RegExp(r'<h[1-2][^>]*>');
+    final mainHeadingPattern = RegExp('<h[1-2][^>]*>');
     var headingCount = 0;
     var lastHeadingPos = startPos;
 
@@ -298,7 +298,7 @@ class EnhancedTocExtractor {
 
     // 提取链接文本作为章节
     final linkPattern = RegExp(
-      r'<a[^>]*>([^<]+)</a>',
+      '<a[^>]*>([^<]+)</a>',
       caseSensitive: false,
     );
 
@@ -322,7 +322,7 @@ class EnhancedTocExtractor {
     // 如果没有链接,尝试提取小标题
     if (chapters.isEmpty) {
       final headingPattern = RegExp(
-        r'<h([4-6])[^>]*>([^<]+)</h[4-6]>',
+        '<h([4-6])[^>]*>([^<]+)</h[4-6]>',
         caseSensitive: false,
       );
 
@@ -437,6 +437,6 @@ class EnhancedTocExtractor {
     ];
 
     final lower = title.toLowerCase();
-    return ignored.any((keyword) => lower.contains(keyword));
+    return ignored.any(lower.contains);
   }
 }
