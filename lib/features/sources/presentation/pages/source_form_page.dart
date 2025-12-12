@@ -574,9 +574,11 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
           );
         }
 
-        // 尝试连接
+        // 尝试连接（通过 provider 以更新 UI 状态）
         if (source.autoConnect) {
-          await sourceManager.connect(source, password: password);
+          await ref
+              .read(activeConnectionsProvider.notifier)
+              .connect(source, password: password);
         }
       }
 
