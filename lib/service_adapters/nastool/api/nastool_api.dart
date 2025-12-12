@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
-import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/core/errors/app_error_handler.dart';
 
 /// NASTool API 客户端
 ///
@@ -39,7 +39,7 @@ class NasToolApi {
       }
       return false;
     } on Exception catch (e, st) {
-      logger.e('Failed to validate connection', e, st);
+      AppError.handle(e, st, 'validateNasToolConnection');
       return false;
     }
   }

@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/errors/exceptions.dart';
 import 'package:my_nas/core/utils/logger.dart';
 
@@ -96,8 +97,8 @@ class SynologyApi {
         sid: _sid!,
         deviceId: data['did'] as String?,
       );
-    } catch (e, stackTrace) {
-      logger.e('SynologyApi: 登录异常', e, stackTrace);
+    } catch (e, st) {
+      AppError.handle(e, st, 'SynologyApi.login');
       rethrow;
     }
   }
@@ -541,10 +542,8 @@ class SynologyApi {
       }
 
       return data;
-    } on DioException catch (e) {
-      logger..e('SynologyApi: Dio 异常 => ${e.type}', e, e.stackTrace)
-      ..e('SynologyApi: 原始错误 => ${e.error}')
-      ..e('SynologyApi: 消息 => ${e.message}');
+    } on DioException catch (e, st) {
+      AppError.handle(e, st, 'SynologyApi._requestRaw');
       rethrow;
     }
   }
@@ -601,10 +600,8 @@ class SynologyApi {
 
       logger.d('SynologyApi: 请求成功');
       return data;
-    } on DioException catch (e) {
-      logger..e('SynologyApi: Dio 异常 => ${e.type}', e, e.stackTrace)
-      ..e('SynologyApi: 原始错误 => ${e.error}')
-      ..e('SynologyApi: 消息 => ${e.message}');
+    } on DioException catch (e, st) {
+      AppError.handle(e, st, 'SynologyApi._request');
       rethrow;
     }
   }

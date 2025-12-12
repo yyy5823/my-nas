@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/video/data/services/nfo_scraper_service.dart';
 import 'package:my_nas/features/video/data/services/tmdb_service.dart';
@@ -252,13 +253,19 @@ class VideoMetadataService {
     // 下载海报到本地缓存（支持离线显示）
     if (metadata.posterUrl != null && metadata.localPosterUrl == null) {
       // 在后台异步下载海报，不阻塞刮削流程
-      unawaited(_downloadPosterAndSave(metadata, fileSystem));
+      AppError.fireAndForget(
+        _downloadPosterAndSave(metadata, fileSystem),
+        action: 'downloadPoster',
+      );
     }
 
     // 如果没有封面图，尝试生成缩略图（可跳过以加速刮削）
     if (!skipThumbnail && metadata.displayPosterUrl == null && videoUrl != null) {
       // 在后台异步生成缩略图，不阻塞刮削流程
-      unawaited(_tryGenerateThumbnailAndSave(metadata, videoUrl, fileSystem));
+      AppError.fireAndForget(
+        _tryGenerateThumbnailAndSave(metadata, videoUrl, fileSystem),
+        action: 'generateThumbnail',
+      );
     }
 
     // 保存到缓存

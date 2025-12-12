@@ -1,3 +1,4 @@
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/service_adapters/base/service_adapter.dart';
 import 'package:my_nas/service_adapters/nastool/api/nastool_api.dart';
@@ -57,8 +58,8 @@ class NasToolAdapter implements ServiceAdapter {
       // 获取系统信息
       try {
         _systemInfo = await _api!.getSystemInfo();
-      } on Exception catch (_) {
-        // 系统信息获取失败不影响连接
+      } on Exception catch (e, st) {
+        AppError.ignore(e, st, '系统信息获取失败不影响连接');
       }
 
       _connection = config;

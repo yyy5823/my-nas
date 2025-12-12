@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/core/errors/app_error_handler.dart';
 
 /// 自适应图片组件
 ///
@@ -56,8 +56,8 @@ class AdaptiveImage extends StatelessWidget {
     try {
       final uri = Uri.parse(url);
       return uri.toFilePath(windows: Platform.isWindows);
-    } on Exception catch (e) {
-      logger.e('转换本地文件路径失败', e);
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'toLocalPath');
       return null;
     }
   }

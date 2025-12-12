@@ -2,17 +2,12 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart' as archive_lib;
-import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 
 /// 压缩文件类型
-enum ArchiveType {
-  zip,
-  rar,
-  sevenZip,
-  unknown,
-}
+enum ArchiveType { zip, rar, sevenZip, unknown }
 
 /// 解压结果
 class ExtractResult {
@@ -22,15 +17,11 @@ class ExtractResult {
     this.error,
   });
 
-  factory ExtractResult.failure(String error) => ExtractResult(
-        success: false,
-        error: error,
-      );
+  factory ExtractResult.failure(String error) =>
+      ExtractResult(success: false, error: error);
 
-  factory ExtractResult.fromFiles(List<ExtractedFile> files) => ExtractResult(
-        success: true,
-        files: files,
-      );
+  factory ExtractResult.fromFiles(List<ExtractedFile> files) =>
+      ExtractResult(success: true, files: files);
 
   final bool success;
   final List<ExtractedFile> files;
@@ -39,10 +30,7 @@ class ExtractResult {
 
 /// 解压出的文件
 class ExtractedFile {
-  const ExtractedFile({
-    required this.name,
-    required this.bytes,
-  });
+  const ExtractedFile({required this.name, required this.bytes});
 
   final String name;
   final Uint8List bytes;
@@ -56,6 +44,7 @@ class ExtractedFile {
 /// - 7z: 桌面平台使用系统命令
 class ArchiveExtractService {
   factory ArchiveExtractService() => _instance ??= ArchiveExtractService._();
+
   ArchiveExtractService._();
 
   static ArchiveExtractService? _instance;
@@ -115,18 +104,20 @@ class ArchiveExtractService {
         if (file.isFile && _isImageFile(file.name)) {
           final content = file.content as List<int>?;
           if (content != null) {
-            files.add(ExtractedFile(
-              name: file.name,
-              bytes: Uint8List.fromList(content),
-            ));
+            files.add(
+              ExtractedFile(
+                name: file.name,
+                bytes: Uint8List.fromList(content),
+              ),
+            );
           }
         }
       }
 
       files.sort((a, b) => a.name.compareTo(b.name));
       return ExtractResult.fromFiles(files);
-    } on Exception catch (e) {
-      logger.e('ZIP 解压失败', e);
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'extractZip');
       return ExtractResult.failure('ZIP 解压失败: $e');
     }
   }
@@ -146,7 +137,8 @@ class ArchiveExtractService {
     // 移动平台：尝试当作 ZIP 解压（有些 .cbr 实际是 ZIP）
     try {
       return await _extractZip(bytes);
-    } on Exception catch (_) {
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, 'RAR格式在移动平台不支持，尝试ZIP解压失败');
       return ExtractResult.failure(
         'RAR 格式在此平台暂不支持\n\n'
         '建议将文件转换为 CBZ 格式',
@@ -237,8 +229,8 @@ class ArchiveExtractService {
       // 清理临时目录
       try {
         await workDir.delete(recursive: true);
-      } on Exception catch (e) {
-        logger.w('清理临时目录失败', e);
+      } on Exception catch (e, st) {
+        AppError.ignore(e, st, '清理临时目录失败');
       }
     }
   }
@@ -251,10 +243,9 @@ class ArchiveExtractService {
     await for (final entity in dir.list(recursive: true)) {
       if (entity is File && _isImageFile(entity.path)) {
         final bytes = await entity.readAsBytes();
-        files.add(ExtractedFile(
-          name: path.basename(entity.path),
-          bytes: bytes,
-        ));
+        files.add(
+          ExtractedFile(name: path.basename(entity.path), bytes: bytes),
+        );
       }
     }
   }
@@ -291,8 +282,8 @@ class ArchiveExtractService {
 
       final result = await Process.run(command, args);
       return result.exitCode == 0;
-    } on Exception catch (e) {
-      logger.e('执行解压命令失败', e);
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'runExtractCommand');
       return false;
     }
   }

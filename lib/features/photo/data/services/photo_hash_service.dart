@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/photo/data/services/photo_database_service.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
@@ -108,8 +109,8 @@ class PhotoHashService {
       ));
 
       logger.i('PhotoHashService: 处理完成，成功 $processed 张，失败 $failed 张');
-    } on Exception catch (e) {
-      logger.e('PhotoHashService: 处理失败', e);
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'PhotoHashService.processAllPhotos');
       _progressController.add(HashProgress(
         processed: 0,
         total: 0,
@@ -148,8 +149,8 @@ class PhotoHashService {
         fileHash: fileHash,
         perceptualHash: perceptualHash,
       );
-    } on Exception catch (e) {
-      logger.w('PhotoHashService: 处理照片失败 ${photo.filePath}: $e');
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '单张照片处理失败，继续处理下一张');
       return null;
     }
   }

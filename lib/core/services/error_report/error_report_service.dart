@@ -4,6 +4,7 @@ import 'dart:convert';
 
 import 'package:dart_amqp/dart_amqp.dart';
 import 'package:flutter/foundation.dart';
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/services/error_report/device_info_helper.dart';
 import 'package:my_nas/core/services/error_report/error_report_model.dart';
 import 'package:my_nas/core/services/error_report/route_tracker.dart';
@@ -53,7 +54,10 @@ class ErrorReportService {
   Future<void> initialize() async {
     await DeviceInfoHelper.instance.initialize();
     // 异步连接，不阻塞应用启动
-    unawaited(_connectWithTimeout());
+    AppError.fireAndForget(
+      _connectWithTimeout(),
+      action: 'ErrorReportService.connectOnInit',
+    );
   }
 
   // 连接超时时间
@@ -105,7 +109,10 @@ class ErrorReportService {
       }
 
       // 发送缓存的错误（异步，不阻塞）
-      unawaited(_flushPendingQueue());
+      AppError.fireAndForget(
+        _flushPendingQueue(),
+        action: 'ErrorReportService.flushPendingQueue',
+      );
     } on Exception catch (e) {
       _isConnecting = false;
       _isConnected = false;
@@ -196,7 +203,10 @@ class ErrorReportService {
     if (!_isConnected) {
       _addToPendingQueue(report);
       // 异步尝试连接，不阻塞
-      unawaited(_connectWithTimeout());
+      AppError.fireAndForget(
+        _connectWithTimeout(),
+        action: 'ErrorReportService.connectOnSend',
+      );
       return;
     }
 

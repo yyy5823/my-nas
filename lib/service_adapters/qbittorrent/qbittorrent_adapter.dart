@@ -1,4 +1,4 @@
-import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/service_adapters/base/service_adapter.dart';
 import 'package:my_nas/service_adapters/qbittorrent/api/qbittorrent_api.dart';
@@ -58,8 +58,7 @@ class QBittorrentAdapter implements ServiceAdapter {
         _appVersion = await _api!.getAppVersion();
         _apiVersion = await _api!.getApiVersion();
       } on Exception catch (e, st) {
-        logger.e('Failed to get version info', e, st);
-        // 版本信息获取失败不影响连接
+        AppError.ignore(e, st, '版本信息获取失败不影响连接');
       }
 
       _connection = config;
@@ -69,9 +68,10 @@ class QBittorrentAdapter implements ServiceAdapter {
       _api = null;
       return ServiceConnectionFailure(e.message);
     } on Exception catch (e, st) {
+      AppError.handle(e, st, 'connectToQBittorrent');
       _api?.dispose();
       _api = null;
-      return ServiceConnectionFailure('连接失败: $e $st');
+      return ServiceConnectionFailure('连接失败: $e');
     }
   }
 
@@ -80,8 +80,7 @@ class QBittorrentAdapter implements ServiceAdapter {
     try {
       await _api?.logout();
     } on Exception catch (e, st) {
-      logger.e('Failed to logout', e, st);
-      // 忽略登出错误
+      AppError.ignore(e, st, '登出失败，忽略错误');
     }
     _api?.dispose();
     _api = null;

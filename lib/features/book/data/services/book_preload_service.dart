@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/book/data/services/book_database_service.dart';
 import 'package:my_nas/features/book/data/services/book_file_cache_service.dart';
@@ -105,7 +106,10 @@ class BookPreloadService {
   void _startProcessing() {
     if (_isRunning) return;
     _isRunning = true;
-    unawaited(_processQueue());
+    AppError.fireAndForget(
+      _processQueue(),
+      action: 'BookPreloadService.processQueue',
+    );
   }
 
   /// 处理队列
@@ -116,8 +120,8 @@ class BookPreloadService {
 
       try {
         await _processTask(task);
-      } on Exception catch (e) {
-        logger.d('BookPreloadService: 预加载失败 ${task.book.fileName} - $e');
+      } on Exception catch (e, st) {
+        AppError.ignore(e, st, '图书预加载失败（后台任务）');
       }
 
       // 短暂延迟，避免占用太多资源

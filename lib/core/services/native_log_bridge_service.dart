@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/services/error_report/error_report_model.dart';
 import 'package:my_nas/core/services/error_report/error_report_service.dart';
 import 'package:my_nas/core/utils/logger.dart';
@@ -36,7 +37,10 @@ class NativeLogBridgeService {
     logger.i('NativeLogBridgeService: 初始化完成');
 
     // 启动时检查是否有待上传的日志
-    unawaited(_uploadPendingLogs());
+    AppError.fireAndForget(
+      _uploadPendingLogs(),
+      action: 'NativeLogBridge.uploadPendingLogsOnInit',
+    );
   }
 
   /// 处理来自原生端的方法调用
@@ -77,8 +81,8 @@ class NativeLogBridgeService {
       // 清空已上传的日志
       await _clearLogs();
       logger.i('NativeLogBridgeService: 原生日志上传完成');
-    } on Exception catch (e, stackTrace) {
-      logger.e('NativeLogBridgeService: 上传日志失败', e, stackTrace);
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'NativeLogBridgeService._uploadPendingLogs');
     }
   }
 
@@ -89,8 +93,8 @@ class NativeLogBridgeService {
       return result?.cast<Map<dynamic, dynamic>>().map((e) =>
         e.map((key, value) => MapEntry(key.toString(), value)),
       ).toList() ?? [];
-    } on PlatformException catch (e) {
-      logger.e('NativeLogBridgeService: 获取待上传日志失败', e);
+    } on PlatformException catch (e, st) {
+      AppError.handle(e, st, 'NativeLogBridgeService._getPendingLogs');
       return [];
     }
   }
@@ -99,8 +103,8 @@ class NativeLogBridgeService {
   Future<void> _clearLogs() async {
     try {
       await _channel.invokeMethod<void>('clearLogs');
-    } on PlatformException catch (e) {
-      logger.e('NativeLogBridgeService: 清空日志失败', e);
+    } on PlatformException catch (e, st) {
+      AppError.handle(e, st, 'NativeLogBridgeService._clearLogs');
     }
   }
 
@@ -156,7 +160,8 @@ class NativeLogBridgeService {
     if (!_initialized) return 0;
     try {
       return await _channel.invokeMethod<int>('getPendingLogCount') ?? 0;
-    } on PlatformException {
+    } on PlatformException catch (e, st) {
+      AppError.ignore(e, st, '获取日志数量失败不影响业务');
       return 0;
     }
   }

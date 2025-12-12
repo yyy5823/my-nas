@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -282,8 +283,8 @@ class UpdateService extends ChangeNotifier {
       try {
         await _doCheckForUpdates();
         return; // 成功则返回
-      } on Exception catch (e) {
-        logger.w('UpdateService: 检查更新失败 (尝试 $attempt/${_config.maxRetries})', e);
+      } on Exception catch (e, st) {
+        AppError.ignore(e, st, '检查更新失败 (尝试 $attempt/${_config.maxRetries})');
 
         if (_isCancelled) {
           _setError(UpdateErrorType.cancelled, '检查已取消');

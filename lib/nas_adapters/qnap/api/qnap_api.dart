@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/errors/exceptions.dart';
 import 'package:my_nas/core/utils/logger.dart';
 
@@ -76,8 +77,8 @@ class QnapApi {
       final errorMsg = _getAuthErrorMessage(errorCode);
       logger.w('QnapApi: 登录失败, 错误码 => $errorCode, 消息 => $errorMsg');
       return QnapAuthFailure(error: errorMsg);
-    } catch (e, stackTrace) {
-      logger.e('QnapApi: 登录异常', e, stackTrace);
+    } catch (e, st) {
+      AppError.handle(e, st, 'QnapApi.login');
       rethrow;
     }
   }
@@ -91,8 +92,8 @@ class QnapApi {
         '/cgi-bin/authLogout.cgi',
         queryParameters: {'sid': _sid},
       );
-    } on Exception catch (e) {
-      logger.w('QnapApi: 登出时发生错误', e);
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '登出时发生错误不影响操作');
     } finally {
       _sid = null;
     }
@@ -418,8 +419,8 @@ class QnapApi {
       }
 
       return data;
-    } on DioException catch (e) {
-      logger.e('QnapApi: Dio 异常 => ${e.type}', e, e.stackTrace);
+    } on DioException catch (e, st) {
+      AppError.handle(e, st, 'QnapApi._request');
       rethrow;
     }
   }

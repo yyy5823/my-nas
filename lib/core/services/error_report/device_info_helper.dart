@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 /// 设备信息帮助类
@@ -43,7 +44,8 @@ class DeviceInfoHelper {
       await _loadAppVersion();
       _loadScreenResolution();
       _initialized = true;
-    } on Exception catch (e) {
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '设备信息初始化失败不影响核心功能');
       if (kDebugMode) {
         print('[DeviceInfoHelper] Failed to initialize: $e');
       }
@@ -56,7 +58,8 @@ class DeviceInfoHelper {
       final results = await _connectivity.checkConnectivity();
       if (results.isEmpty) return 'none';
       return results.map(_connectivityToString).join(',');
-    } on Exception {
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '获取网络类型失败返回空值');
       return null;
     }
   }
@@ -80,7 +83,8 @@ class DeviceInfoHelper {
         final ratio = view.devicePixelRatio;
         _screenResolution = '${size.width.toInt()}x${size.height.toInt()}@${ratio.toStringAsFixed(1)}x';
       }
-    } on Exception catch (e) {
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '加载屏幕分辨率失败不影响核心功能');
       if (kDebugMode) {
         print('[DeviceInfoHelper] Failed to load screen resolution: $e');
       }
@@ -137,7 +141,8 @@ class DeviceInfoHelper {
     try {
       final packageInfo = await PackageInfo.fromPlatform();
       _appVersion = '${packageInfo.version}+${packageInfo.buildNumber}';
-    } on Exception catch (e) {
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '加载应用版本失败使用默认值');
       if (kDebugMode) {
         print('[DeviceInfoHelper] Failed to load app version: $e');
       }

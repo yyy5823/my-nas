@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:path/path.dart' as p;
@@ -34,8 +35,8 @@ class VideoPathUtils {
         final localPath = uri.toFilePath(windows: Platform.isWindows);
         logger.d('VideoPathUtils: file URI 转换为本地路径: $videoUrl -> $localPath');
         return localPath;
-      } on Exception catch (e) {
-        logger.e('VideoPathUtils: 解析 file URI 失败: $videoUrl', e);
+      } on Exception catch (e, st) {
+        AppError.handle(e, st, 'convertToLocalPath', {'videoUrl': videoUrl});
         return null;
       }
     }
@@ -117,8 +118,8 @@ class VideoThumbnailService {
         await _cacheDir!.create(recursive: true);
       }
       logger.i('VideoThumbnailService: 初始化完成，缓存目录: ${_cacheDir!.path}');
-    } on Exception catch (e) {
-      logger.e('VideoThumbnailService: 初始化失败', e);
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'initVideoThumbnailService');
     }
   }
 
@@ -287,8 +288,11 @@ class VideoThumbnailService {
 
       logger.i('VideoThumbnailService: 缩略图生成成功 $thumbnailPath');
       return thumbnailPath;
-    } on Exception catch (e, stackTrace) {
-      logger.e('VideoThumbnailService: 生成缩略图失败', e, stackTrace);
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'generateThumbnail', {
+        'videoUrl': videoUrl,
+        'videoPath': videoPath,
+      });
       return null;
     } finally {
       // 清理临时文件
@@ -299,8 +303,8 @@ class VideoThumbnailService {
             await tempFile.delete();
             logger.d('VideoThumbnailService: 已清理临时文件 $tempFilePath');
           }
-        } on Exception catch (e) {
-          logger.w('VideoThumbnailService: 清理临时文件失败', e);
+        } on Exception catch (e, st) {
+          AppError.ignore(e, st, '清理临时文件失败（非关键错误）');
         }
       }
     }
@@ -390,11 +394,11 @@ class VideoThumbnailService {
 
       logger.d('VideoThumbnailService: 截图成功，大小: ${screenshot.length} bytes');
       return screenshot;
-    } on TimeoutException catch (e) {
-      logger.w('VideoThumbnailService: $e');
+    } on TimeoutException catch (e, st) {
+      AppError.ignore(e, st, '视频帧提取超时（预期行为）');
       return null;
-    } on Exception catch (e, stackTrace) {
-      logger.e('VideoThumbnailService: media_kit 提取帧失败', e, stackTrace);
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'captureFrameWithMediaKit', {'videoPath': videoPath});
       return null;
     } finally {
       // 释放资源
@@ -465,8 +469,8 @@ class VideoThumbnailService {
       logger.d(
           'VideoThumbnailService: 视频片段下载完成, 大小: ${bytesWritten ~/ 1024}KB');
       return tempPath;
-    } on Exception catch (e) {
-      logger.e('VideoThumbnailService: 下载视频片段失败', e);
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'downloadVideoForThumbnail', {'filePath': filePath});
       return null;
     }
   }
@@ -509,8 +513,8 @@ class VideoThumbnailService {
       await File(thumbnailPath).writeAsBytes(imageBytes);
 
       return thumbnailPath;
-    } on Exception catch (e) {
-      logger.e('VideoThumbnailService: 从本地文件生成缩略图失败', e);
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'generateFromLocalFile', {'localPath': localPath});
       return null;
     }
   }
@@ -521,8 +525,8 @@ class VideoThumbnailService {
     if (path != null) {
       try {
         await File(path).delete();
-      } on Exception catch (e) {
-        logger.w('VideoThumbnailService: 删除缓存失败', e);
+      } on Exception catch (e, st) {
+        AppError.ignore(e, st, '删除缩略图缓存失败（非关键错误）');
       }
     }
   }
@@ -536,8 +540,8 @@ class VideoThumbnailService {
         await _cacheDir!.create(recursive: true);
       }
       logger.i('VideoThumbnailService: 缓存已清除');
-    } on Exception catch (e) {
-      logger.e('VideoThumbnailService: 清除缓存失败', e);
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'clearAllCacheThumbnails');
     }
   }
 

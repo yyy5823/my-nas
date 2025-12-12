@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:app_links/app_links.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/presentation/providers/music_favorites_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
@@ -32,8 +33,8 @@ class DeepLinkService {
       // 监听后续的链接
       _linkSubscription = _appLinks!.uriLinkStream.listen(
         _handleDeepLink,
-        onError: (Object err) {
-          logger.e('DeepLinkService: Error listening to links', err);
+        onError: (Object err, StackTrace st) {
+          AppError.handle(err, st, 'DeepLinkService.uriLinkStream');
         },
       );
 
@@ -42,13 +43,13 @@ class DeepLinkService {
         if (uri != null) {
           _handleDeepLink(uri);
         }
-      }).catchError((Object error) {
-        logger.e('DeepLinkService: Error getting initial link', error);
+      }).catchError((Object error, StackTrace st) {
+        AppError.handle(error, st, 'DeepLinkService.getInitialLink');
       });
 
       logger.i('DeepLinkService: Initialized');
-    } catch (e, stackTrace) {
-      logger.e('DeepLinkService: Failed to initialize', e, stackTrace);
+    } catch (e, st) {
+      AppError.handle(e, st, 'DeepLinkService.init');
       // 清理资源
       _appLinks = null;
       _linkSubscription = null;

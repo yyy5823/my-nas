@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
 
 /// 漫画缓存条目
@@ -103,8 +104,8 @@ class ComicLibraryCacheService {
             Map<String, dynamic>.from(jsonDecode(data) as Map));
         logger.i('ComicLibraryCacheService: 加载缓存成功，共 ${_cache!.comics.length} 本漫画');
       }
-    } on Exception catch (e) {
-      logger.w('ComicLibraryCacheService: 加载缓存失败', e);
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, 'ComicLibraryCacheService加载缓存失败');
       _cache = null;
     }
 
@@ -131,8 +132,8 @@ class ComicLibraryCacheService {
     try {
       await _storage.write(key: _cacheKey, value: jsonEncode(cache.toJson()));
       logger.i('ComicLibraryCacheService: 保存缓存成功，共 ${cache.comics.length} 本漫画');
-    } on Exception catch (e) {
-      logger.e('ComicLibraryCacheService: 保存缓存失败', e);
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'saveComicLibraryCache');
     }
   }
 
@@ -141,8 +142,8 @@ class ComicLibraryCacheService {
     try {
       await _storage.delete(key: _cacheKey);
       logger.i('ComicLibraryCacheService: 清除缓存成功');
-    } on Exception catch (e) {
-      logger.e('ComicLibraryCacheService: 清除缓存失败', e);
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'clearComicLibraryCache');
     }
   }
 

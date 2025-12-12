@@ -1,3 +1,4 @@
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 
@@ -97,8 +98,8 @@ class SubtitleService {
       });
 
       logger.i('SubtitleService: 共找到 ${subtitles.length} 个字幕');
-    } on Exception catch (e) {
-      logger.e('SubtitleService: 查找字幕失败', e);
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'findSubtitles', {'videoPath': videoPath});
     }
 
     return subtitles;

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
@@ -42,11 +43,11 @@ class MediaProxyServer {
       logger.i('MediaProxyServer: 启动成功，端口 $_port');
 
       // 处理请求
-      _server!.listen(_handleRequest, onError: (Object error) {
-        logger.e('MediaProxyServer: 服务器错误', error);
+      _server!.listen(_handleRequest, onError: (Object error, StackTrace st) {
+        AppError.handle(error, st, 'MediaProxyServer.listen');
       });
     } catch (e, st) {
-      logger.e('MediaProxyServer: 启动失败', e, st);
+      AppError.handle(e, st, 'MediaProxyServer.start');
       rethrow;
     }
   }
@@ -61,8 +62,8 @@ class MediaProxyServer {
       _port = 0;
       _proxyFiles.clear();
       logger.i('MediaProxyServer: 已停止');
-    } on Exception catch (e) {
-      logger.e('MediaProxyServer: 停止失败', e);
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'MediaProxyServer.stop');
     }
   }
 
@@ -125,7 +126,7 @@ class MediaProxyServer {
     try {
       await _streamFile(request, fileInfo);
     } on Exception catch (e, st) {
-      logger.e('MediaProxyServer: 流式传输失败', e, st);
+      AppError.handle(e, st, 'MediaProxyServer._handleRequest');
       if (!request.response.headers.persistentConnection) {
         request.response.statusCode = HttpStatus.internalServerError;
       }
@@ -189,8 +190,8 @@ class MediaProxyServer {
       await request.response.addStream(stream);
       await request.response.close();
       logger.d('MediaProxyServer: 传输完成 ${fileInfo.filePath}');
-    } on Exception catch (e) {
-      logger.e('MediaProxyServer: 传输中断 ${fileInfo.filePath}', e);
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '客户端断开连接导致传输中断');
       await request.response.close();
     }
   }

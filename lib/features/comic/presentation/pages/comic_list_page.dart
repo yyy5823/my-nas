@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/router/app_router.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/services/media_scan_progress_service.dart';
 import 'package:my_nas/core/utils/logger.dart';
@@ -182,7 +183,10 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
     state = ComicListLoaded(comics: []);
 
     // 在后台初始化服务并加载数据，不阻塞UI
-    unawaited(_initAndLoadInBackground());
+    AppError.fireAndForget(
+      _initAndLoadInBackground(),
+      action: 'initComicList',
+    );
   }
 
   /// 后台初始化服务并加载数据
@@ -207,8 +211,8 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
           loadComics();
         }
       });
-    } on Exception catch (e) {
-      logger.e('ComicListNotifier: 初始化失败', e);
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'initComicListNotifier');
       // 保持空列表状态，让用户可以正常使用界面
     }
   }
@@ -318,8 +322,8 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
             }
           },
         );
-      } on Exception catch (e) {
-        logger.w('扫描漫画文件夹失败: ${mediaPath.path} - $e');
+      } on Exception catch (e, st) {
+        AppError.ignore(e, st, '扫描漫画文件夹失败: ${mediaPath.path}');
       }
 
       scannedFolders++;
@@ -420,8 +424,8 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
       }
 
       return comics.length;
-    } on Exception catch (e) {
-      logger.e('ComicListNotifier: 扫描目录 $pathPrefix 失败', e);
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'scanSinglePath');
       progressService.endScan(MediaType.comic, sourceId, pathPrefix, success: false);
       rethrow;
     }
@@ -484,8 +488,8 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
           }
         }
       }
-    } on Exception catch (e) {
-      logger.w('扫描漫画目录失败: $path - $e');
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '扫描漫画目录失败: $path');
     }
   }
 
@@ -556,8 +560,8 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
           }
         }
       }
-    } on Exception catch (e) {
-      logger.w('扫描漫画目录失败: $path - $e');
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '扫描漫画目录失败（预期错误，无需上报）: $path');
     }
   }
 
@@ -596,8 +600,8 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
         coverPath: imageFiles.first.path,
         pageCount: imageFiles.length,
       );
-    } on Exception catch (e) {
-      logger.w('检查漫画目录失败: $folderPath - $e');
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '检查漫画目录失败（预期错误，无需上报）: $folderPath');
       return null;
     }
   }
@@ -645,8 +649,8 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
 
       logger.i('从媒体库移除漫画: $displayTitle');
       return true;
-    } on Exception catch (e) {
-      logger.e('从媒体库移除漫画失败: $displayTitle', e);
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'removeComicFromLibrary', {'title': displayTitle});
       return false;
     }
   }
@@ -694,8 +698,8 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
 
       logger.i('删除漫画源文件: $displayTitle');
       return true;
-    } on Exception catch (e) {
-      logger.e('删除漫画源文件失败: $displayTitle', e);
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'deleteComicFromSource', {'title': displayTitle});
       return false;
     }
   }

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
-import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/core/errors/app_error_handler.dart';
 
 /// 语言偏好设置
 /// 用于配置音频、字幕、元数据的语言显示
@@ -160,11 +160,10 @@ class LanguagePreferenceNotifier extends StateNotifier<LanguagePreference> {
         final json = _parseJson(jsonStr);
         if (json != null) {
           state = LanguagePreference.fromJson(json);
-          logger.d('LanguagePreferenceNotifier: 已加载语言偏好 => $state');
         }
       }
-    } on Exception catch (e) {
-      logger.w('LanguagePreferenceNotifier: 加载语言偏好失败', e);
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '加载语言偏好失败，使用默认值');
     }
   }
 
@@ -197,9 +196,8 @@ class LanguagePreferenceNotifier extends StateNotifier<LanguagePreference> {
       final box = await Hive.openBox<String>(_boxName);
       final jsonStr = _toJsonString(state.toJson());
       await box.put(_key, jsonStr);
-      logger.d('LanguagePreferenceNotifier: 已保存语言偏好');
-    } on Exception catch (e) {
-      logger.w('LanguagePreferenceNotifier: 保存语言偏好失败', e);
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '保存语言偏好失败');
     }
   }
 

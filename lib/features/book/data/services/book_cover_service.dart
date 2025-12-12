@@ -7,6 +7,7 @@ import 'dart:ui' as ui
 import 'package:epub_plus/epub_plus.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:image/image.dart' as img;
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/book/data/services/mobi_parser_service.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
@@ -102,8 +103,8 @@ class BookCoverService {
         await _box?.put(key, coverPath);
       }
       return coverPath;
-    } on Exception catch (e) {
-      logger.w('提取图书封面失败: $bookPath', e);
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '封面提取失败不影响核心功能');
       return null;
     }
   }
@@ -165,8 +166,8 @@ class BookCoverService {
 
       logger.d('EPUB 没有封面: $bookPath');
       return null;
-    } on Exception catch (e) {
-      logger.w('提取 EPUB 封面失败: $bookPath', e);
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, 'EPUB封面提取失败');
       return null;
     }
   }

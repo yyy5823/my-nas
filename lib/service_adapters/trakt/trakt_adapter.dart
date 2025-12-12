@@ -1,4 +1,4 @@
-import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/service_adapters/base/service_adapter.dart';
 import 'package:my_nas/service_adapters/trakt/api/trakt_api.dart';
@@ -57,8 +57,7 @@ class TraktAdapter implements ServiceAdapter {
       try {
         _userSettings = await _api!.getUserSettings();
       } on Exception catch (e, st) {
-        logger.e('Failed to get user settings', e, st);
-        // 用户信息获取失败不影响连接
+        AppError.ignore(e, st, '用户信息获取失败不影响连接');
       }
 
       _connection = ServiceConnectionConfig(
@@ -76,7 +75,7 @@ class TraktAdapter implements ServiceAdapter {
     } on TraktApiException catch (e) {
       return ServiceConnectionFailure(e.message);
     } on Exception catch (e, st) {
-      logger.e('Failed to authenticate with code', e, st);
+      AppError.handle(e, st, 'authenticateTraktWithCode');
       return ServiceConnectionFailure('认证失败: $e');
     }
   }
@@ -121,7 +120,7 @@ class TraktAdapter implements ServiceAdapter {
       try {
         _userSettings = await _api!.getUserSettings();
       } on Exception catch (e, st) {
-        logger.e('Failed to get user settings', e, st);
+        AppError.handle(e, st, 'getTraktUserSettings');
         _api?.dispose();
         _api = null;
         return ServiceConnectionFailure('连接验证失败: $e');
@@ -134,7 +133,7 @@ class TraktAdapter implements ServiceAdapter {
       _api = null;
       return ServiceConnectionFailure(e.message);
     } on Exception catch (e, st) {
-      logger.e('Failed to connect', e, st);
+      AppError.handle(e, st, 'connectToTrakt');
       _api?.dispose();
       _api = null;
       return ServiceConnectionFailure('连接失败: $e');
@@ -146,8 +145,7 @@ class TraktAdapter implements ServiceAdapter {
     try {
       await _api?.revokeToken();
     } on Exception catch (e, st) {
-      logger.e('Failed to revoke token', e, st);
-      // 忽略撤销错误
+      AppError.ignore(e, st, 'Token撤销失败，忽略错误继续断开连接');
     }
     _api?.dispose();
     _api = null;

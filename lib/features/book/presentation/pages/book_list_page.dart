@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/router/app_router.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/services/media_scan_progress_service.dart';
 import 'package:my_nas/core/utils/logger.dart';
@@ -226,7 +227,10 @@ class BookListNotifier extends StateNotifier<BookListState> {
     state = BookListLoaded(totalCount: 0);
 
     // 在后台初始化服务并加载数据，不阻塞UI
-    unawaited(_initAndLoadInBackground());
+    AppError.fireAndForget(
+      _initAndLoadInBackground(),
+      action: 'BookListNotifier.initAndLoadInBackground',
+    );
   }
 
   /// 后台初始化服务并加载数据
@@ -258,8 +262,8 @@ class BookListNotifier extends StateNotifier<BookListState> {
           loadBooks();
         }
       });
-    } on Exception catch (e) {
-      logger.e('BookListNotifier: 初始化失败', e);
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'BookListNotifier.initAndLoad');
       // 保持空列表状态，让用户可以正常使用界面
     }
   }
@@ -313,7 +317,10 @@ class BookListNotifier extends StateNotifier<BookListState> {
     logger.i('BookListNotifier: 从 SQLite 加载了 ${allBooks.length} 本图书');
 
     // 启动后台元数据提取（不阻塞 UI）
-    unawaited(_extractMetadataInBackground());
+    AppError.fireAndForget(
+      _extractMetadataInBackground(),
+      action: 'BookListNotifier.extractMetadataInBackground',
+    );
 
     // 启动后台预加载（只预加载前 20 本）
     _startPreloading(allBooks.take(20).toList());

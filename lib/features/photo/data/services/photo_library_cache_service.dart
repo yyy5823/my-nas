@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:hive_ce/hive.dart';
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
 
 /// 照片库缓存条目
@@ -101,8 +102,8 @@ class PhotoLibraryCacheService {
     try {
       _box = await Hive.openBox(_boxName);
       logger.i('PhotoLibraryCacheService: 初始化完成');
-    } on Exception catch (e) {
-      logger.e('PhotoLibraryCacheService: 打开缓存失败，尝试删除并重建', e);
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'PhotoLibraryCacheService.init');
       await Hive.deleteBoxFromDisk(_boxName);
       _box = await Hive.openBox(_boxName);
       logger.i('PhotoLibraryCacheService: 重建缓存完成');
@@ -115,8 +116,8 @@ class PhotoLibraryCacheService {
     if (data == null) return null;
     try {
       return PhotoLibraryCache.fromMap(data as Map<dynamic, dynamic>);
-    } on Exception catch (e) {
-      logger.e('PhotoLibraryCacheService: 解析缓存失败', e);
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '缓存解析失败，返回null');
       return null;
     }
   }
@@ -152,8 +153,8 @@ class PhotoLibraryCacheService {
     try {
       final jsonStr = jsonEncode(data);
       return jsonStr.length;
-    } on Exception catch (e) {
-      logger.w('PhotoLibraryCacheService: 计算缓存大小失败', e);
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '计算缓存大小失败，返回0');
       return 0;
     }
   }

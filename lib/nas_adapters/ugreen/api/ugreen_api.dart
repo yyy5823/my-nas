@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart' show ThumbnailSize;
 import 'package:pointycastle/api.dart';
@@ -190,8 +191,8 @@ class UGreenApi {
       }
 
       return UGreenAuthFailure(error: '服务器响应格式错误');
-    } on DioException catch (e) {
-      logger.e('UGreenApi: 登录请求异常', e);
+    } on DioException catch (e, st) {
+      AppError.handle(e, st, 'UGreenApi.login');
       if (e.type == DioExceptionType.connectionTimeout ||
           e.type == DioExceptionType.receiveTimeout) {
         return UGreenAuthFailure(error: '连接超时，请检查网络和地址');
@@ -201,7 +202,7 @@ class UGreenApi {
       }
       return UGreenAuthFailure(error: e.message ?? '网络错误');
     } on Exception catch (e, st) {
-      logger.e('UGreenApi: 登录异常', e, st);
+      AppError.handle(e, st, 'UGreenApi.login');
       return UGreenAuthFailure(error: e.toString());
     }
   }
@@ -228,7 +229,7 @@ class UGreenApi {
       // Base64 编码
       return base64Encode(encrypted);
     } catch (e, st) {
-      logger.e('UGreenApi: RSA 加密失败', e, st);
+      AppError.handle(e, st, 'UGreenApi._encryptPassword');
       rethrow;
     }
   }
@@ -283,8 +284,8 @@ class UGreenApi {
         '/ugreen/v1/verify/logout',
         queryParameters: {'token': _token},
       );
-    } on Exception catch (e) {
-      logger.w('UGreenApi: 登出请求失败', e);
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '登出失败不影响操作');
     } finally {
       _token = null;
       _username = null;
@@ -431,8 +432,8 @@ class UGreenApi {
             logger.w('UGreenApi: $endpoint 返回错误: $msg');
           }
         }
-      } on Exception catch (e) {
-        logger.w('UGreenApi: 尝试失败', e);
+      } on Exception catch (e, st) {
+        AppError.ignore(e, st, '尝试不同的 API 端点，失败是预期的');
       }
     }
 
@@ -522,8 +523,8 @@ class UGreenApi {
         logger.i('UGreenApi: 从存储池获取到 ${poolResult.length} 个共享文件夹');
         return poolResult;
       }
-    } on Exception catch (e) {
-      logger.w('UGreenApi: 从存储池获取共享失败', e);
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '从存储池获取共享失败，继续尝试其他方法');
     }
 
     // 尝试不同的共享端点和参数组合
@@ -599,8 +600,8 @@ class UGreenApi {
             return items;
           }
         }
-      } on Exception catch (e) {
-        logger.w('UGreenApi: 尝试失败 ($attempt)', e);
+      } on Exception catch (e, st) {
+        AppError.ignore(e, st, '尝试不同的共享 API 端点，失败是预期的');
       }
     }
 
@@ -627,8 +628,8 @@ class UGreenApi {
           }
           return rootFiles;
         }
-      } on Exception catch (e) {
-        logger.d('UGreenApi: 尝试根路径 $rootPath 失败 (使用 $e)');
+      } on Exception catch (e, st) {
+        AppError.ignore(e, st, '尝试不同的根路径，失败是预期的');
       }
     }
 
@@ -857,8 +858,8 @@ class UGreenApi {
           final minute = parts.length > 4 ? int.tryParse(parts[4]) ?? 0 : 0;
           final second = parts.length > 5 ? int.tryParse(parts[5]) ?? 0 : 0;
           return DateTime(year, month, day, hour, minute, second);
-        } on Exception catch (e) {
-          logger.d('UGreenApi: 无法解析日期 $value (${e.runtimeType})');
+        } on Exception catch (e, st) {
+          AppError.ignore(e, st, '日期格式解析失败是预期的，返回 null');
         }
       }
     }

@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:photo_view/photo_view.dart';
@@ -190,8 +191,8 @@ class _StreamImageState extends State<StreamImage> {
     try {
       final uri = Uri.parse(url);
       return uri.toFilePath();
-    } on Exception catch (e) {
-      logger.w('StreamImage: 无法解析 file:// URL: $url', e);
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '无效的 file:// URL: $url');
       return null;
     }
   }
@@ -274,8 +275,8 @@ class _StreamImageState extends State<StreamImage> {
         try {
           stream = await widget.fileSystem!.getUrlStream(widget.url!);
           logger.d('StreamImage: Using URL stream for ${widget.url}');
-        } on Exception catch (e) {
-          logger.w('StreamImage: URL stream failed, falling back to file stream: $e');
+        } on Exception catch (e, st) {
+          AppError.ignore(e, st, 'URL stream 失败，降级到 file stream');
           // URL 加载失败，继续尝试文件流
         }
       }
@@ -324,8 +325,8 @@ class _StreamImageState extends State<StreamImage> {
           _isLoading = false;
         });
       }
-    } on Exception catch (e, stackTrace) {
-      logger.e('StreamImage: 加载图片失败', e, stackTrace);
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'loadImageViaStream');
       if (mounted) {
         setState(() {
           _hasError = true;

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
-import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/core/errors/app_error_handler.dart';
 
 final themeModeProvider =
     StateNotifierProvider<ThemeModeNotifier, ThemeMode>((ref) => ThemeModeNotifier());
@@ -20,10 +20,9 @@ class ThemeModeNotifier extends StateNotifier<ThemeMode> {
       final value = box.get(_key);
       if (value != null) {
         state = _parseThemeMode(value);
-        logger.d('ThemeModeNotifier: 已加载主题模式 => $state');
       }
-    } on Exception catch (e) {
-      logger.w('ThemeModeNotifier: 加载主题模式失败', e);
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '加载主题模式失败，使用默认值');
     }
   }
 
@@ -36,9 +35,8 @@ class ThemeModeNotifier extends StateNotifier<ThemeMode> {
     try {
       final box = await Hive.openBox<String>(_boxName);
       await box.put(_key, mode.name);
-      logger.d('ThemeModeNotifier: 已保存主题模式 => $mode');
-    } on Exception catch (e) {
-      logger.w('ThemeModeNotifier: 保存主题模式失败', e);
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '保存主题模式失败');
     }
   }
 

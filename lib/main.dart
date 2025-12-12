@@ -12,6 +12,7 @@ import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:my_nas/app/app.dart';
 import 'package:my_nas/core/di/injection.dart';
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/services/error_report/error_report.dart';
 import 'package:my_nas/core/services/native_log_bridge_service.dart';
 import 'package:my_nas/core/utils/logger.dart';
@@ -111,11 +112,17 @@ Future<void> _initApp() async {
   logger.i('Initializing MyNAS...');
 
   // 初始化错误报告服务（非阻塞，在后台连接）
-  unawaited(ErrorReportService.instance.initialize());
+  AppError.fireAndForget(
+    ErrorReportService.instance.initialize(),
+    action: 'ErrorReportService.initialize',
+  );
 
   // 初始化原生日志桥接服务（iOS）
   // 用于接收 Widget Extension 的日志并上传到 RabbitMQ
-  unawaited(NativeLogBridgeService().init());
+  AppError.fireAndForget(
+    NativeLogBridgeService().init(),
+    action: 'NativeLogBridgeService.init',
+  );
 
   // Initialize sqflite_common_ffi for desktop platforms (Windows, macOS, Linux)
   if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
@@ -157,8 +164,8 @@ Future<void> _loadTmdbApiKey() async {
       TmdbService().setApiKey(apiKey);
       logger.i('TMDB API key loaded');
     }
-  } on Exception catch (e) {
-    logger.w('Failed to load TMDB API key: $e');
+  } on Exception catch (e, st) {
+    AppError.ignore(e, st, '加载 TMDB API key 失败（可选功能）');
   }
 }
 
@@ -183,7 +190,7 @@ Future<void> _initAudioSession() async {
       androidWillPauseWhenDucked: true,
     ));
     logger.i('AudioSession initialized for music playback');
-  } on Exception catch (e) {
-    logger.w('Failed to initialize AudioSession: $e');
+  } on Exception catch (e, st) {
+    AppError.ignore(e, st, '初始化 AudioSession 失败（可选功能）');
   }
 }

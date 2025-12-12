@@ -1,4 +1,5 @@
 import 'package:my_nas/core/constants/app_constants.dart';
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/network/dio_client.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/nas_adapters/base/nas_adapter.dart';
@@ -133,8 +134,9 @@ class SynologyAdapter implements NasAdapter {
         version: dsmInfo.version,
         serial: dsmInfo.serial,
       );
-    } on Exception {
+    } on Exception catch (e, st) {
       // 获取服务器信息失败不影响连接
+      AppError.ignore(e, st, '获取服务器信息失败不影响连接');
     }
 
     return ConnectionSuccess(

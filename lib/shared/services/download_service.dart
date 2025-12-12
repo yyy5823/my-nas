@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 
@@ -186,17 +187,20 @@ class DownloadService {
           errorMessage: '下载失败: ${response.statusCode}',
         );
       }
-    } on DioException catch (e) {
+    } on DioException catch (e, st) {
       if (e.type == DioExceptionType.cancel) {
-        // 用户取消
+        // 用户取消操作，不需要上报
+        AppError.ignore(e, st, '用户取消下载');
         return;
       }
+      AppError.handle(e, st, 'startDownload', {'taskId': taskId, 'url': task.url});
       _updateTask(
         taskId,
         status: DownloadStatus.failed,
         errorMessage: e.message ?? '下载失败',
       );
-    } on Exception catch (e) {
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'startDownload', {'taskId': taskId, 'url': task.url});
       _updateTask(
         taskId,
         status: DownloadStatus.failed,

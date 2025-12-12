@@ -1,4 +1,5 @@
 import 'package:my_nas/core/constants/app_constants.dart';
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/network/dio_client.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/nas_adapters/base/nas_adapter.dart';
@@ -124,8 +125,8 @@ class UGreenAdapter implements NasAdapter {
         version: deviceInfo.version,
         serial: deviceInfo.serial,
       );
-    } on Exception catch (e) {
-      logger.w('UGreenAdapter: 获取设备信息失败', e);
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '获取设备信息失败不影响连接');
     }
 
     // 测试 UGOS 文件 API 是否可用
@@ -147,8 +148,8 @@ class UGreenAdapter implements NasAdapter {
           _useWebDav = true;
         }
       }
-    } on Exception catch (e) {
-      logger.w('UGreenAdapter: UGOS 文件 API 不可用，切换到 WebDAV', e);
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, 'UGOS 文件 API 不可用，切换到 WebDAV');
       _useWebDav = true;
     }
 
@@ -156,8 +157,8 @@ class UGreenAdapter implements NasAdapter {
     if (_useWebDav) {
       try {
         await _initWebDav(config);
-      } on Exception catch (e) {
-        logger.e('UGreenAdapter: WebDAV 初始化失败', e);
+      } on Exception catch (e, st) {
+        AppError.handle(e, st, 'UGreenAdapter._initWebDav');
         // 仍然标记为已连接，但文件操作可能失败
       }
     }
@@ -199,8 +200,8 @@ class UGreenAdapter implements NasAdapter {
           password: config.password,
         );
         return;
-      } on Exception catch (e) {
-        logger.w('UGreenAdapter: WebDAV $davPath 失败', e);
+      } on Exception catch (e, st) {
+        AppError.ignore(e, st, 'WebDAV $davPath 失败，继续尝试其他路径');
       }
     }
 

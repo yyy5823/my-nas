@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:my_nas/app/router/app_router.dart';
 import 'package:my_nas/app/theme/app_theme.dart';
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/services/background_task_service.dart';
 import 'package:my_nas/core/services/deep_link_service.dart';
 import 'package:my_nas/core/utils/logger.dart';
@@ -52,7 +53,7 @@ class _MyNasAppState extends ConsumerState<MyNasApp> with WidgetsBindingObserver
       DeepLinkService().init(ref);
       logger.i('MyNasApp: DeepLinkService 初始化成功');
     } on Exception catch (e, stackTrace) {
-      logger.e('MyNasApp: DeepLinkService 初始化失败', e, stackTrace);
+      AppError.handle(e, stackTrace, 'initDeepLinkService');
       // 不抛出异常，允许应用继续运行
     }
   }
@@ -123,8 +124,8 @@ class _MyNasAppState extends ConsumerState<MyNasApp> with WidgetsBindingObserver
       await Hive.close();
 
       logger.i('MyNasApp: 所有数据库已安全关闭');
-    } on Exception catch (e) {
-      logger.e('MyNasApp: 关闭数据库时发生错误', e);
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'closeDatabases');
     }
 
     // 当应用被销毁时，我们选择让服务继续运行

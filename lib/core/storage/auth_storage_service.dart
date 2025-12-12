@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
 
 /// 安全存储异常
@@ -125,7 +126,8 @@ class AuthStorageService {
   String get deviceName {
     try {
       return Platform.localHostname;
-    } on Exception catch (_) {
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '获取设备名称失败，使用默认名称');
       return 'MyNAS-Client';
     }
   }
@@ -166,8 +168,8 @@ class AuthStorageService {
         username: json['username'] as String,
         password: json['password'] as String,
       );
-    } on Exception catch (e) {
-      logger.e('AuthStorageService: 解析凭证失败', e);
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'parseCredentials');
       return null;
     }
   }
@@ -205,7 +207,8 @@ class AuthStorageService {
     try {
       final json = jsonDecode(data) as Map<String, dynamic>;
       return json.map((k, v) => MapEntry(k, v as String));
-    } on Exception catch (_) {
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '解析设备ID映射失败，返回空map');
       return {};
     }
   }
