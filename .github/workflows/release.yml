@@ -161,6 +161,10 @@ jobs:
   build-android:
     needs: extract-version
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # 限制 Gradle daemon 内存使用
+      GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=2 -Xmx3g"
     steps:
       - uses: actions/checkout@v4
 
@@ -191,11 +195,19 @@ jobs:
         run: |
           cd android
           for i in {1..3}; do
-            ./gradlew --version && break || {
+            ./gradlew --version --no-daemon && break || {
               echo "Attempt $i failed, retrying in 10s..."
               sleep 10
             }
           done
+
+      # 清理缓存避免 "Already watching path" 问题
+      - name: Clean Flutter build cache
+        run: |
+          flutter clean
+          rm -rf ~/.pub-cache/hosted/pub.dev/*/
+          rm -rf build/
+          rm -rf .dart_tool/
 
       - name: Get dependencies
         run: flutter pub get
@@ -203,9 +215,12 @@ jobs:
       - name: Generate code
         run: dart run build_runner build --delete-conflicting-outputs
 
-      # 构建分架构 APK
+      # 构建分架构 APK (使用 --no-daemon 避免文件监控冲突)
       - name: Build APK (split per ABI)
-        run: flutter build apk --release --split-per-abi
+        run: |
+          cd android && ./gradlew --stop || true
+          cd ..
+          flutter build apk --release --split-per-abi
 
       - name: Rename APKs
         run: |
