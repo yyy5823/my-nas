@@ -149,6 +149,10 @@ class SourceFormConfig {
         return _getEmbyConfig();
       case SourceType.plex:
         return _getPlexConfig();
+
+      // === PT 站点 ===
+      case SourceType.mteam:
+        return _getMteamConfig();
     }
   }
 
@@ -782,6 +786,147 @@ class SourceFormConfig {
               label: 'Plex Token',
               type: SourceFormFieldType.password,
               helpText: '从 Plex Web 获取 X-Plex-Token',
+            ),
+          ],
+        ),
+        _advancedSection(defaultAutoConnect: false),
+      ],
+    );
+
+  // === PT 站点配置 ===
+
+  static SourceFormConfig _getMteamConfig() => SourceFormConfig(
+      type: SourceType.mteam,
+      sections: [
+        _basicInfoSection(),
+        const SourceFormSection(
+          title: '站点配置',
+          description: '馒头使用 API 方式认证',
+          fields: [
+            SourceFormField(
+              key: 'host',
+              label: '站点地址',
+              placeholder: 'kp.m-team.cc',
+              defaultValue: 'kp.m-team.cc',
+              helpText: '馒头站点域名',
+            ),
+            SourceFormField(
+              key: 'useSsl',
+              label: '使用 HTTPS',
+              type: SourceFormFieldType.toggle,
+              defaultValue: 'true',
+            ),
+          ],
+        ),
+        const SourceFormSection(
+          title: 'API 认证',
+          description: '从馒头个人设置中获取 API 密钥',
+          fields: [
+            SourceFormField(
+              key: 'xApiKey',
+              label: 'x-api-key',
+              type: SourceFormFieldType.password,
+              placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
+              helpText: '从馒头个人设置页面获取',
+            ),
+            SourceFormField(
+              key: 'authorization',
+              label: 'Authorization',
+              type: SourceFormFieldType.password,
+              placeholder: 'eyJhbGciOiJIUzUxMiJ9...',
+              helpText: 'JWT 令牌，以 eyJ 开头',
+            ),
+          ],
+        ),
+        const SourceFormSection(
+          title: 'RSS 订阅',
+          collapsible: true,
+          defaultExpanded: false,
+          description: '配置 RSS 订阅获取最新资源',
+          fields: [
+            SourceFormField(
+              key: 'rssUrl',
+              label: 'RSS 订阅地址',
+              placeholder: 'https://rss.m-team.cc/api/rss/fetch?...',
+              required: false,
+              helpText: '从馒头 RSS 页面获取完整订阅地址',
+            ),
+            SourceFormField(
+              key: 'enableRssDetail',
+              label: 'RSS 解析种子详情',
+              type: SourceFormFieldType.toggle,
+              defaultValue: 'true',
+            ),
+            SourceFormField(
+              key: 'enableNotification',
+              label: '发送站点未读消息通知',
+              type: SourceFormFieldType.toggle,
+              defaultValue: 'true',
+            ),
+          ],
+        ),
+        const SourceFormSection(
+          title: '下载设置',
+          collapsible: true,
+          defaultExpanded: false,
+          fields: [
+            SourceFormField(
+              key: 'enableBrowserEmulation',
+              label: '开启浏览器仿真',
+              type: SourceFormFieldType.toggle,
+              defaultValue: 'false',
+              helpText: '模拟浏览器请求，降低被检测风险',
+            ),
+            SourceFormField(
+              key: 'useProxy',
+              label: '使用代理服务器',
+              type: SourceFormFieldType.toggle,
+              defaultValue: 'false',
+            ),
+            SourceFormField(
+              key: 'downloadSubtitle',
+              label: '从详情页下载字幕',
+              type: SourceFormFieldType.toggle,
+              defaultValue: 'false',
+            ),
+            SourceFormField(
+              key: 'addSiteTag',
+              label: '下载器添加站点标签',
+              type: SourceFormFieldType.toggle,
+              defaultValue: 'false',
+            ),
+            SourceFormField(
+              key: 'userAgent',
+              label: 'User-Agent',
+              placeholder: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)...',
+              required: false,
+              helpText: '自定义请求的 User-Agent',
+            ),
+          ],
+        ),
+        const SourceFormSection(
+          title: '流控规则',
+          collapsible: true,
+          defaultExpanded: false,
+          description: '控制请求频率避免被封禁',
+          fields: [
+            SourceFormField(
+              key: 'rateLimitMinutes',
+              label: '单位时间（分钟）',
+              type: SourceFormFieldType.number,
+              defaultValue: '10',
+            ),
+            SourceFormField(
+              key: 'rateLimitCount',
+              label: '单位时间内访问次数',
+              type: SourceFormFieldType.number,
+              defaultValue: '10',
+            ),
+            SourceFormField(
+              key: 'requestInterval',
+              label: '访问间隔（秒）',
+              type: SourceFormFieldType.number,
+              defaultValue: '5',
             ),
           ],
         ),

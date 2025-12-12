@@ -262,8 +262,23 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
       onLoadUrl();
     }
 
-    // 决定使用哪个 URL
-    final imageUrl = hasOriginalImage ? displayUrl : (photo.thumbnailUrl ?? displayUrl);
+    // 决定使用哪个 URL：
+    // 1. 如果有原图 URL，直接使用原图
+    // 2. 如果没有原图但有文件系统，让 StreamImage 通过 path 加载原图（不传 url）
+    // 3. 如果都没有，才使用缩略图
+    final canLoadViaStream = fileSystem != null && photo.path.isNotEmpty;
+    final String? imageUrl;
+
+    if (hasOriginalImage) {
+      // 有原图 URL，使用原图
+      imageUrl = displayUrl;
+    } else if (canLoadViaStream) {
+      // 没有原图 URL 但可以通过流加载，不传 url 让 StreamImage 通过 path 加载原图
+      imageUrl = null;
+    } else {
+      // 无法通过流加载，降级使用缩略图
+      imageUrl = photo.thumbnailUrl ?? displayUrl;
+    }
 
     return PhotoViewGalleryPageOptions.customChild(
       child: StreamImage(
@@ -277,7 +292,7 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
           ),
         ),
         errorWidget: _buildErrorWidget(photo, onLoadUrl),
-        cacheKey: photo.path,
+        cacheKey: '${photo.path}_full', // 使用不同的缓存键区分原图和缩略图
       ),
       initialScale: PhotoViewComputedScale.contained,
       minScale: PhotoViewComputedScale.contained * 0.5,

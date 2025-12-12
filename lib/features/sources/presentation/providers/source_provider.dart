@@ -376,3 +376,11 @@ final mediaManagementSourcesProvider = Provider<List<SourceEntity>>((ref) {
       .where((s) => s.type.category == SourceCategory.mediaManagement)
       .toList();
 });
+
+/// PT 站点源列表
+final ptSitesSourcesProvider = Provider<List<SourceEntity>>((ref) {
+  final sources = ref.watch(sourcesProvider).valueOrNull ?? [];
+  return sources
+      .where((s) => s.type.category == SourceCategory.ptSites)
+      .toList();
+});

@@ -208,11 +208,23 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     // 监听播放状态
     _player.playingStream.listen((playing) {
       state = state.copyWith(isPlaying: playing);
-      // 播放状态变化时立即更新 Live Activity，避免灵动岛停顿
-      AppError.fireAndForget(
-        _updateLiveActivity(),
-        action: 'updateLiveActivityOnPlayingChange',
-      );
+      // 当开始播放时，确保 Live Activity 已启动
+      // 这是修复首次播放后立即切到后台时灵动岛不显示的关键
+      if (playing && !_liveActivityService.isActivityRunning) {
+        final currentMusic = _ref.read(currentMusicProvider);
+        if (currentMusic != null) {
+          AppError.fireAndForget(
+            _startLiveActivity(currentMusic),
+            action: 'startLiveActivityOnPlayingStart',
+          );
+        }
+      } else {
+        // 播放状态变化时立即更新 Live Activity，避免灵动岛停顿
+        AppError.fireAndForget(
+          _updateLiveActivity(),
+          action: 'updateLiveActivityOnPlayingChange',
+        );
+      }
     });
 
     // 监听缓冲状态

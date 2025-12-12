@@ -34,7 +34,9 @@ enum SourceType {
   moviepilot('MoviePilot', 'moviepilot'),
   jellyfin('Jellyfin', 'jellyfin'),
   emby('Emby', 'emby'),
-  plex('Plex', 'plex');
+  plex('Plex', 'plex'),
+  // PT 站点
+  mteam('馒头 M-Team', 'mteam');
 
   const SourceType(this.displayName, this.id);
   final String displayName;
@@ -64,6 +66,8 @@ enum SourceType {
         SourceType.jellyfin => 8096,
         SourceType.emby => 8096,
         SourceType.plex => 32400,
+        // PT 站点
+        SourceType.mteam => 443,
       };
 
   /// 该源类型是否已实现
@@ -90,6 +94,8 @@ enum SourceType {
         SourceType.jellyfin => false,
         SourceType.emby => false,
         SourceType.plex => false,
+        // PT 站点
+        SourceType.mteam => true,
       };
 
   /// 获取源类型所属的分组
@@ -120,6 +126,8 @@ enum SourceType {
         SourceType.nastool ||
         SourceType.moviepilot =>
           SourceCategory.mediaManagement,
+        // PT 站点
+        SourceType.mteam => SourceCategory.ptSites,
       };
 
   /// 是否支持文件系统访问
@@ -162,6 +170,8 @@ enum SourceType {
         SourceType.jellyfin => Icons.live_tv,
         SourceType.emby => Icons.live_tv,
         SourceType.plex => Icons.live_tv,
+        // PT 站点
+        SourceType.mteam => Icons.rss_feed,
       };
 
   /// 获取源类型的描述
@@ -188,20 +198,23 @@ enum SourceType {
         SourceType.jellyfin => '开源媒体服务器',
         SourceType.emby => '媒体服务器',
         SourceType.plex => '媒体服务器',
+        // PT 站点
+        SourceType.mteam => '知名 PT 站点，使用 API 认证',
       };
 
   /// 是否默认使用 SSL
   bool get defaultUseSsl => switch (this) {
         SourceType.synology ||
         SourceType.webdav ||
-        SourceType.trakt =>
+        SourceType.trakt ||
+        SourceType.mteam =>
           true,
         _ => false,
       };
 
   /// 是否需要用户名（有些服务可能只需要 API Key）
   bool get requiresUsername => switch (this) {
-        SourceType.trakt || SourceType.aria2 => false,
+        SourceType.trakt || SourceType.aria2 || SourceType.mteam => false,
         _ => true,
       };
 

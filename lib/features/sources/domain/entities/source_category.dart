@@ -13,7 +13,8 @@ enum SourceCategory {
   // === 服务类源 ===
   downloadTools('下载工具', 'download_tools', Icons.download),
   mediaTracking('媒体追踪', 'media_tracking', Icons.track_changes),
-  mediaManagement('媒体管理', 'media_management', Icons.construction);
+  mediaManagement('媒体管理', 'media_management', Icons.construction),
+  ptSites('PT站点', 'pt_sites', Icons.rss_feed);
 
   const SourceCategory(this.displayName, this.id, this.icon);
   final String displayName;
@@ -23,7 +24,8 @@ enum SourceCategory {
   /// 是否为服务类源分组
   bool get isServiceCategory => this == downloadTools ||
         this == mediaTracking ||
-        this == mediaManagement;
+        this == mediaManagement ||
+        this == ptSites;
 
   /// 是否为存储类源分组（包括媒体服务器）
   bool get isStorageCategory => !isServiceCategory;
@@ -37,6 +39,7 @@ enum SourceCategory {
         downloadTools => '管理下载任务和种子',
         mediaTracking => '追踪观看记录和媒体状态',
         mediaManagement => '自动化管理媒体库和订阅',
+        ptSites => '连接 PT 站点获取资源',
       };
 }
 
@@ -55,5 +58,6 @@ extension SourceCategoryExtension on SourceCategory {
         SourceCategory.downloadTools,
         SourceCategory.mediaTracking,
         SourceCategory.mediaManagement,
+        SourceCategory.ptSites,
       ];
 }

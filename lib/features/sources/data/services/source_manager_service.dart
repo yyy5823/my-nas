@@ -671,7 +671,8 @@ class SourceManagerService {
       SourceType.moviepilot ||
       SourceType.jellyfin ||
       SourceType.emby ||
-      SourceType.plex =>
+      SourceType.plex ||
+      SourceType.mteam =>
         throw UnsupportedError('服务类源 ${type.displayName} 不支持 NasAdapter，请使用对应的 ServiceAdapter'),
     };
 
@@ -692,7 +693,8 @@ class SourceManagerService {
       SourceType.moviepilot ||
       SourceType.jellyfin ||
       SourceType.emby ||
-      SourceType.plex =>
+      SourceType.plex ||
+      SourceType.mteam =>
         throw UnsupportedError('服务类源 ${type.displayName} 不支持 NasAdapterType'),
     };
 

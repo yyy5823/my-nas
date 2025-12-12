@@ -35,16 +35,18 @@ class MusicPlayerPage extends ConsumerStatefulWidget {
       return;
     }
 
-    // 检查上次导航时间，防止短时间内重复导航（300ms 防抖，从 500ms 降低以提高响应性）
-    final now = DateTime.now();
-    if (_lastNavigationTime != null &&
-        now.difference(_lastNavigationTime!).inMilliseconds < 300) {
+    // 检查当前路由是否已经是播放器页面
+    // 注意：这个检查要在防抖检查之前，因为如果已经在播放器页面，应该直接返回
+    final currentRoute = ModalRoute.of(context);
+    if (currentRoute?.settings.name == '/music_player') {
       return;
     }
 
-    // 检查当前路由是否已经是播放器页面
-    final currentRoute = ModalRoute.of(context);
-    if (currentRoute?.settings.name == '/music_player') {
+    // 检查上次导航时间，防止短时间内重复导航
+    // 使用 100ms 防抖，足够防止意外双击，同时不影响正常的播放歌曲场景
+    final now = DateTime.now();
+    if (_lastNavigationTime != null &&
+        now.difference(_lastNavigationTime!).inMilliseconds < 100) {
       return;
     }
 
