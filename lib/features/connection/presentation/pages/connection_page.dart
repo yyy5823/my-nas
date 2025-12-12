@@ -462,6 +462,7 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
             type: NasAdapterType.ugreen,
             label: '绿联',
             icon: Icons.storage_rounded,
+            comingSoon: true, // 绿联 API 系逆向工程获得，暂不开放
           ),
           _buildTypeOption(
             type: NasAdapterType.webdav,
@@ -476,48 +477,72 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
     required NasAdapterType type,
     required String label,
     required IconData icon,
+    bool comingSoon = false,
   }) {
-    final isSelected = _selectedType == type;
+    final isSelected = !comingSoon && _selectedType == type;
+    final isDisabled = comingSoon;
+    
     return Expanded(
       child: GestureDetector(
-        onTap: () {
-          setState(() {
-            _selectedType = type;
-            _portController.text = switch (type) {
-              NasAdapterType.synology => '5000',
-              NasAdapterType.webdav => '5005',
-              _ => '5000',
-            };
-          });
-        },
+        onTap: isDisabled
+            ? null
+            : () {
+                setState(() {
+                  _selectedType = type;
+                  _portController.text = switch (type) {
+                    NasAdapterType.synology => '5000',
+                    NasAdapterType.webdav => '5005',
+                    _ => '5000',
+                  };
+                });
+              },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(vertical: 12),
+          padding: EdgeInsets.symmetric(vertical: comingSoon ? 8 : 12),
           decoration: BoxDecoration(
             color: isSelected ? AppColors.primary : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                icon,
-                size: 18,
-                color: isSelected
-                    ? Colors.white
-                    : AppColors.darkOnSurfaceVariant,
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    icon,
+                    size: 18,
+                    color: isDisabled
+                        ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.4)
+                        : isSelected
+                            ? Colors.white
+                            : AppColors.darkOnSurfaceVariant,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      color: isDisabled
+                          ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.4)
+                          : isSelected
+                              ? Colors.white
+                              : AppColors.darkOnSurfaceVariant,
+                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  color: isSelected
-                      ? Colors.white
-                      : AppColors.darkOnSurfaceVariant,
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                  fontSize: 13,
+              if (comingSoon) ...[
+                const SizedBox(height: 2),
+                Text(
+                  '即将推出',
+                  style: TextStyle(
+                    color: AppColors.darkOnSurfaceVariant.withValues(alpha: 0.4),
+                    fontSize: 9,
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ),

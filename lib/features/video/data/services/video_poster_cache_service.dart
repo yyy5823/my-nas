@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
+import 'package:image/image.dart' as img;
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:path/path.dart' as p;
@@ -10,11 +11,24 @@ import 'package:path_provider/path_provider.dart';
 /// 视频海报缓存服务
 ///
 /// 在刮削时主动下载海报到本地，支持离线显示
+/// 自动压缩大尺寸海报以节省存储空间
 class VideoPosterCacheService {
   factory VideoPosterCacheService() => _instance ??= VideoPosterCacheService._();
   VideoPosterCacheService._();
 
   static VideoPosterCacheService? _instance;
+
+  /// 海报最大宽度（像素）
+  static const int _maxPosterWidth = 500;
+
+  /// 海报最大高度（像素）
+  static const int _maxPosterHeight = 750;
+
+  /// 原始图片大小阈值（字节），超过此大小才进行压缩
+  static const int _compressThreshold = 200 * 1024; // 200KB
+
+  /// JPEG 压缩质量 (0-100)
+  static const int _jpegQuality = 85;
 
   Directory? _cacheDir;
   final _downloadingTasks = <String, Future<String?>>{};
@@ -121,31 +135,14 @@ class VideoPosterCacheService {
   }) async {
     try {
       Uint8List? imageData;
-      var extension = 'jpg';
 
       // 根据 URL 类型选择下载方式
       if (posterUrl.startsWith('http://') || posterUrl.startsWith('https://')) {
         // HTTP(S) URL - 直接下载
         imageData = await _downloadFromHttp(posterUrl);
-
-        // 从 URL 推断扩展名
-        final urlLower = posterUrl.toLowerCase();
-        if (urlLower.contains('.png')) {
-          extension = 'png';
-        } else if (urlLower.contains('.webp')) {
-          extension = 'webp';
-        }
       } else if (fileSystem != null) {
         // 使用文件系统接口下载（用于 NAS 本地文件）
         imageData = await _downloadFromFileSystem(posterUrl, fileSystem);
-
-        // 从路径推断扩展名
-        final ext = p.extension(posterUrl).toLowerCase();
-        if (ext == '.png') {
-          extension = 'png';
-        } else if (ext == '.webp') {
-          extension = 'webp';
-        }
       }
 
       if (imageData == null || imageData.isEmpty) {
@@ -153,10 +150,22 @@ class VideoPosterCacheService {
         return null;
       }
 
-      // 保存到缓存
-      final cachePath = p.join(_cacheDir!.path, '$cacheKey.$extension');
+      // 压缩海报（如果需要）
+      final compressedData = await _compressImageIfNeeded(imageData);
+
+      // 压缩后统一保存为 JPEG
+      final cachePath = p.join(_cacheDir!.path, '$cacheKey.jpg');
       final file = File(cachePath);
-      await file.writeAsBytes(imageData);
+      await file.writeAsBytes(compressedData);
+
+      final originalSize = imageData.length;
+      final compressedSize = compressedData.length;
+      if (originalSize != compressedSize) {
+        logger.d(
+          'VideoPosterCacheService: 海报已压缩 '
+          '${_formatSize(originalSize)} -> ${_formatSize(compressedSize)}',
+        );
+      }
 
       final fileUrl = Uri.file(cachePath).toString();
       logger.d('VideoPosterCacheService: 海报已缓存 $fileUrl');
@@ -204,6 +213,74 @@ class VideoPosterCacheService {
       logger.e('VideoPosterCacheService: 文件系统下载异常', e);
       return null;
     }
+  }
+
+  /// 压缩图片（如果需要）
+  ///
+  /// 压缩条件：
+  /// 1. 原始大小超过 [_compressThreshold]
+  /// 2. 图片尺寸超过 [_maxPosterWidth] x [_maxPosterHeight]
+  Future<Uint8List> _compressImageIfNeeded(Uint8List imageData) async {
+    // 小于阈值直接返回
+    if (imageData.length < _compressThreshold) {
+      return imageData;
+    }
+
+    try {
+      // 解码图片
+      final image = img.decodeImage(imageData);
+      if (image == null) {
+        logger.w('VideoPosterCacheService: 无法解码图片，跳过压缩');
+        return imageData;
+      }
+
+      var needsResize = false;
+      var targetWidth = image.width;
+      var targetHeight = image.height;
+
+      // 检查是否需要缩放
+      if (image.width > _maxPosterWidth || image.height > _maxPosterHeight) {
+        needsResize = true;
+
+        // 计算缩放比例，保持宽高比
+        final widthRatio = _maxPosterWidth / image.width;
+        final heightRatio = _maxPosterHeight / image.height;
+        final ratio = widthRatio < heightRatio ? widthRatio : heightRatio;
+
+        targetWidth = (image.width * ratio).round();
+        targetHeight = (image.height * ratio).round();
+      }
+
+      // 缩放图片（如果需要）
+      final resizedImage = needsResize
+          ? img.copyResize(
+              image,
+              width: targetWidth,
+              height: targetHeight,
+              interpolation: img.Interpolation.linear,
+            )
+          : image;
+
+      // 编码为 JPEG
+      final compressedData = img.encodeJpg(resizedImage, quality: _jpegQuality);
+
+      // 如果压缩后反而更大，返回原数据
+      if (compressedData.length >= imageData.length && !needsResize) {
+        return imageData;
+      }
+
+      return Uint8List.fromList(compressedData);
+    } on Exception catch (e) {
+      logger.w('VideoPosterCacheService: 压缩失败，使用原图', e);
+      return imageData;
+    }
+  }
+
+  /// 格式化文件大小
+  String _formatSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 
   /// 删除指定视频的海报缓存

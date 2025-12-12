@@ -57,6 +57,11 @@
 			<string>fetch</string>
 			<string>processing</string>
 		</array>
+		<!-- Picture in Picture -->
+		<key>UIRequiredDeviceCapabilities</key>
+		<array>
+			<string>arm64</string>
+		</array>
 		<key>BGTaskSchedulerPermittedIdentifiers</key>
 		<array>
 			<string>com.kkape.mynas.scrape</string>

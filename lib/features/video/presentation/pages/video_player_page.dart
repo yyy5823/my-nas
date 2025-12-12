@@ -54,6 +54,9 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
   // 记录上一次的横竖屏状态，避免重复设置
   Orientation? _lastOrientation;
 
+  // 画中画支持状态
+  bool _isPipSupported = false;
+
   @override
   void initState() {
     super.initState();
@@ -70,6 +73,11 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
       // 缓存源信息（用于 dispose 时更新缩略图）
       await _cacheSourceInfo();
       if (!mounted) return;
+      // 检查画中画支持
+      await _checkPipSupport();
+      if (!mounted) return;
+      // 初始化画中画状态监听
+      _playerNotifier?.initPipStatusListener();
       // 开始播放
       await _playerNotifier?.play(
             widget.video,
@@ -79,6 +87,14 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
       await _loadSubtitles();
     });
     _startHideControlsTimer();
+  }
+
+  /// 检查画中画支持
+  Future<void> _checkPipSupport() async {
+    final supported = await _playerNotifier?.isPipSupported ?? false;
+    if (mounted) {
+      setState(() => _isPipSupported = supported);
+    }
   }
 
   @override
@@ -426,6 +442,11 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
                           _startHideControlsTimer();
                         },
                       );
+                    },
+                    isPipSupported: _isPipSupported,
+                    onTogglePip: () {
+                      playerNotifier.togglePictureInPicture();
+                      _startHideControlsTimer();
                     },
                   );
                 },

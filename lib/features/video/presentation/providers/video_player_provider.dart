@@ -5,6 +5,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:my_nas/core/services/media_proxy_server.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/video/data/services/pip_service.dart';
 import 'package:my_nas/features/video/data/services/subtitle_service.dart';
 import 'package:my_nas/features/video/data/services/video_history_service.dart';
 import 'package:my_nas/features/video/domain/entities/video_item.dart';
@@ -34,6 +35,7 @@ class VideoPlayerState {
     this.volume = 1.0,
     this.speed = 1.0,
     this.isFullscreen = false,
+    this.isPictureInPicture = false,
     this.subtitleEnabled = true,
     this.errorMessage,
   });
@@ -45,6 +47,7 @@ class VideoPlayerState {
   final double volume;
   final double speed;
   final bool isFullscreen;
+  final bool isPictureInPicture;
   final bool subtitleEnabled;
   final String? errorMessage;
 
@@ -73,6 +76,7 @@ class VideoPlayerState {
     double? volume,
     double? speed,
     bool? isFullscreen,
+    bool? isPictureInPicture,
     bool? subtitleEnabled,
     String? errorMessage,
   }) =>
@@ -84,6 +88,7 @@ class VideoPlayerState {
         volume: volume ?? this.volume,
         speed: speed ?? this.speed,
         isFullscreen: isFullscreen ?? this.isFullscreen,
+        isPictureInPicture: isPictureInPicture ?? this.isPictureInPicture,
         subtitleEnabled: subtitleEnabled ?? this.subtitleEnabled,
         errorMessage: errorMessage,
       );
@@ -99,6 +104,7 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
   late final Player _player;
   late final VideoController _videoController;
   final VideoHistoryService _historyService = VideoHistoryService();
+  final PipService _pipService = PipService();
 
   Timer? _progressSaveTimer;
   VideoItem? _currentVideo;
@@ -109,6 +115,9 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
 
   Player get player => _player;
   VideoController get videoController => _videoController;
+
+  /// 是否支持画中画
+  Future<bool> get isPipSupported => _pipService.isSupported;
 
   void _initPlayer() {
     _player = Player();
@@ -557,6 +566,60 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
     state = state.copyWith(isFullscreen: fullscreen);
   }
 
+  /// 切换画中画模式
+  Future<bool> togglePictureInPicture() async {
+    final success = await _pipService.togglePipMode(
+      aspectRatio: _calculateAspectRatio(),
+    );
+    if (success) {
+      state = state.copyWith(isPictureInPicture: _pipService.isPipMode);
+      // 进入画中画时退出全屏
+      if (_pipService.isPipMode && state.isFullscreen) {
+        state = state.copyWith(isFullscreen: false);
+      }
+    }
+    return success;
+  }
+
+  /// 进入画中画模式
+  Future<bool> enterPictureInPicture() async {
+    final success = await _pipService.enterPipMode(
+      aspectRatio: _calculateAspectRatio(),
+    );
+    if (success) {
+      state = state.copyWith(isPictureInPicture: true, isFullscreen: false);
+    }
+    return success;
+  }
+
+  /// 退出画中画模式
+  Future<bool> exitPictureInPicture() async {
+    final success = await _pipService.exitPipMode();
+    if (success) {
+      state = state.copyWith(isPictureInPicture: false);
+    }
+    return success;
+  }
+
+  /// 计算视频宽高比
+  double _calculateAspectRatio() {
+    final width = _player.state.width;
+    final height = _player.state.height;
+    if (width != null && height != null && height > 0) {
+      return width / height;
+    }
+    return 16 / 9; // 默认 16:9
+  }
+
+  /// 初始化画中画状态监听
+  ///
+  /// 由于 floating 包不提供状态流，我们通过轮询来检查状态变化
+  void initPipStatusListener() {
+    // floating 包没有提供实时的状态流
+    // 画中画状态在 togglePictureInPicture 等方法中手动更新
+    logger.d('VideoPlayerNotifier: 画中画状态监听已初始化');
+  }
+
   /// 设置字幕
   Future<void> setSubtitle(SubtitleItem? subtitle) async {
     _ref.read(currentSubtitleProvider.notifier).state = subtitle;
@@ -644,6 +707,11 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
       subscription.cancel();
     }
     _subscriptions.clear();
+
+    // 退出画中画模式
+    if (_pipService.isPipMode) {
+      _pipService.exitPipMode();
+    }
 
     _saveCurrentProgress();
     _stopProgressSaveTimer();

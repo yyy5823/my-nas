@@ -412,12 +412,9 @@ class _PathCardState extends ConsumerState<_PathCard> {
       });
       _scrapeStatsSub = VideoScannerService().scrapeStatsStream.listen((globalStats) async {
         if (mounted) {
-          final globalProgress = globalStats.total > 0
-              ? globalStats.processed / globalStats.total
-              : 0.0;
-
           final sourceId = widget.path.sourceId;
           final pathPrefix = widget.path.path;
+          // 获取当前目录的刮削统计（而不是使用全局统计）
           final pathStats = await VideoScannerService().getScrapeStats(
             sourceId: sourceId,
             pathPrefix: pathPrefix,
@@ -434,7 +431,8 @@ class _PathCardState extends ConsumerState<_PathCard> {
               _scrapedCount = pathStats.completed;
               _pendingScrapeCount = pathStats.pending;
               _retryableCount = retryable;
-              _scrapeProgress = globalProgress;
+              // 使用当前目录的进度，而不是全局进度
+              _scrapeProgress = pathStats.progress;
               if (globalStats.isAllDone) {
                 _isScraping = false;
               }

@@ -29,6 +29,8 @@ class VideoControls extends ConsumerWidget {
     this.onPlayPrevious,
     this.onPlayNext,
     this.onShowBookmarks,
+    this.onTogglePip,
+    this.isPipSupported = false,
     super.key,
   });
 
@@ -49,6 +51,8 @@ class VideoControls extends ConsumerWidget {
   final VoidCallback? onPlayPrevious;
   final VoidCallback? onPlayNext;
   final VoidCallback? onShowBookmarks;
+  final VoidCallback? onTogglePip;
+  final bool isPipSupported;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => DecoratedBox(
@@ -324,7 +328,20 @@ class VideoControls extends ConsumerWidget {
                   speed: state.speed,
                   onSpeedChange: onSpeedChange,
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 8),
+                // 画中画
+                if (isPipSupported)
+                  IconButton(
+                    onPressed: onTogglePip,
+                    icon: Icon(
+                      state.isPictureInPicture
+                          ? Icons.picture_in_picture_alt
+                          : Icons.picture_in_picture,
+                      color: Colors.white,
+                    ),
+                    tooltip: state.isPictureInPicture ? '退出画中画' : '画中画',
+                  ),
+                const SizedBox(width: 8),
                 // 全屏
                 IconButton(
                   onPressed: onToggleFullscreen,

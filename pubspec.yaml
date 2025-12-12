@@ -110,6 +110,10 @@ dependencies:
   battery_plus: ^6.2.1  # Battery info for reader status bar
   flutter_inappwebview: ^6.1.5  # WebView for precise book pagination
 
+  # Picture in Picture
+  floating: ^2.0.1  # Android/iOS PiP support
+  window_manager: ^0.4.3  # Desktop window control
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

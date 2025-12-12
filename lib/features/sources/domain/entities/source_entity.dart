@@ -70,7 +70,7 @@ enum SourceType {
   bool get isSupported => switch (this) {
         // NAS 设备
         SourceType.synology => true,
-        SourceType.ugreen => true,
+        SourceType.ugreen => false, // 绿联 API 系逆向工程获得，暂不开放
         SourceType.fnos => false, // 飞牛OS暂未提供API
         SourceType.qnap => true,
         // 通用协议
