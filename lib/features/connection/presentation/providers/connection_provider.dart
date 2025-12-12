@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/storage/auth_storage_service.dart';
 import 'package:my_nas/core/storage/storage_service.dart';
 import 'package:my_nas/core/utils/logger.dart';
@@ -143,8 +144,13 @@ class ConnectionStateNotifier extends StateNotifier<NasConnectionState> {
             rememberDevice: rememberDevice,
           ),
       };
-    } on Exception catch (e) {
+    } on Exception catch (e, st) {
       await adapter?.dispose();
+      AppError.handle(e, st, 'NasConnection.connect', {
+        'host': host,
+        'port': port,
+        'type': type.name,
+      });
       state = ConnectionError(message: '连接失败: ${_getErrorMessage(e)}');
     }
   }

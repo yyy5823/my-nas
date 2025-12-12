@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
+import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/file_browser/presentation/providers/file_browser_provider.dart';
 import 'package:my_nas/features/file_browser/presentation/widgets/file_item_widget.dart';
@@ -1760,15 +1761,9 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
           ),
         ),
       );
-    } on Exception catch (e) {
+    } on Exception catch (e, st) {
       if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('下载失败: $e'),
-          backgroundColor: AppColors.error,
-        ),
-      );
+      AppError.handleWithUI(context, e, st, '下载失败', 'downloadFile');
     }
   }
 
@@ -1809,15 +1804,9 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
           backgroundColor: isDark ? AppColors.darkSurfaceElevated : null,
         ),
       );
-    } on Exception catch (e) {
+    } on Exception catch (e, st) {
       if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('上传失败: $e'),
-          backgroundColor: AppColors.error,
-        ),
-      );
+      AppError.handleWithUI(context, e, st, '上传失败', 'uploadFile');
     }
   }
 
@@ -1885,10 +1874,11 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
                           ),
                         );
                       }
-                    } on Exception catch (e) {
+                    } on Exception catch (e, st) {
+                      AppError.handle(e, st, isCopy ? 'copyFile' : 'moveFile');
                       scaffoldMessenger.showSnackBar(
                         SnackBar(
-                          content: Text('操作失败: $e'),
+                          content: Text('操作失败: ${AppError.getUserFriendlyMessage(e)}'),
                           backgroundColor: AppColors.error,
                         ),
                       );

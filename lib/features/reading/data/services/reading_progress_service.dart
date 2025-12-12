@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:hive_ce/hive.dart';
+import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/utils/logger.dart';
 
 /// 阅读进度信息
@@ -168,8 +169,8 @@ class ReadingProgressService {
       _bookmarksBox = await Hive.openBox(_bookmarksBoxName);
       _recentBox = await Hive.openBox(_recentBoxName);
       logger.i('ReadingProgressService: 初始化完成');
-    } on Exception catch (e) {
-      logger.e('ReadingProgressService: 初始化失败', e);
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'ReadingProgressService.init');
       // 删除损坏的数据并重新创建
       await Hive.deleteBoxFromDisk(_progressBoxName);
       await Hive.deleteBoxFromDisk(_bookmarksBoxName);
@@ -189,12 +190,10 @@ class ReadingProgressService {
   ReadingProgress? getProgress(String itemId) {
     final data = _progressBox?.get(itemId);
     if (data == null) return null;
-    try {
-      return ReadingProgress.fromMap(data as Map<dynamic, dynamic>);
-    } on Exception catch (e) {
-      logger.w('ReadingProgressService: 解析进度数据失败', e);
-      return null;
-    }
+    return AppError.guardSync(
+      () => ReadingProgress.fromMap(data as Map<dynamic, dynamic>),
+      action: 'ReadingProgress.parse',
+    );
   }
 
   /// 保存阅读进度
@@ -217,11 +216,12 @@ class ReadingProgressService {
     for (final key in _progressBox!.keys) {
       final data = _progressBox!.get(key);
       if (data != null) {
-        try {
-          results.add(ReadingProgress.fromMap(data as Map<dynamic, dynamic>));
-        } on Exception catch (e) {
-          // 跳过无效数据
-          logger.w('ReadingProgressService: 解析进度数据失败', e);
+        final progress = AppError.guardSync(
+          () => ReadingProgress.fromMap(data as Map<dynamic, dynamic>),
+          action: 'ReadingProgress.parseAll',
+        );
+        if (progress != null) {
+          results.add(progress);
         }
       }
     }
@@ -234,13 +234,14 @@ class ReadingProgressService {
   List<Bookmark> getBookmarks(String itemId) {
     final data = _bookmarksBox?.get(itemId);
     if (data == null) return [];
-    try {
-      final list = jsonDecode(data as String) as List;
-      return list.map((e) => Bookmark.fromMap(e as Map<dynamic, dynamic>)).toList();
-    } on Exception catch (e) {
-      logger.w('ReadingProgressService: 解析书签数据失败', e);
-      return [];
-    }
+    return AppError.guardSync(
+      () {
+        final list = jsonDecode(data as String) as List;
+        return list.map((e) => Bookmark.fromMap(e as Map<dynamic, dynamic>)).toList();
+      },
+      action: 'Bookmark.parse',
+      fallback: <Bookmark>[],
+    )!;
   }
 
   /// 添加书签

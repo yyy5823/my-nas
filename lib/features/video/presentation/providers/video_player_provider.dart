@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/services/media_proxy_server.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/video/data/services/pip_service.dart';
@@ -355,8 +356,8 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
           fileSize: video.size,
         );
         logger.i('VideoPlayer: 使用代理 URL => $playUrl');
-      } on Exception catch (e) {
-        logger.e('VideoPlayer: 启动代理服务器失败', e);
+      } on Exception catch (e, st) {
+        AppError.handle(e, st, 'VideoPlayer.startProxyServer');
         state = state.copyWith(errorMessage: '无法启动媒体代理服务');
         return;
       }
@@ -379,9 +380,9 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
     try {
       await _player.open(Media(playUrl));
       logger.d('VideoPlayer: 视频源打开成功');
-    } on Exception catch (e, stackTrace) {
-      logger.e('VideoPlayer: 打开视频失败', e, stackTrace);
-      state = state.copyWith(errorMessage: e.toString());
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'VideoPlayer.openVideo', {'path': video.path});
+      state = state.copyWith(errorMessage: AppError.getUserFriendlyMessage(e));
       return;
     }
 
@@ -485,9 +486,9 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
     Future.microtask(() {
       try {
         _ref.read(currentVideoProvider.notifier).state = null;
-      } on Exception catch (e) {
-        // 忽略错误，可能 provider 已经被销毁
-        logger.e('VideoPlayerNotifier: 修改 provider 状态失败', e);
+      } on Exception catch (e, st) {
+        // Provider 可能已被销毁，这是预期行为
+        AppError.ignore(e, st, 'Provider已销毁，无法修改状态');
       }
     });
 
@@ -504,8 +505,8 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
             duration: durationToSave,
           );
           logger.i('VideoPlayerNotifier: 进度保存成功');
-        } on Exception catch (e) {
-          logger.e('VideoPlayerNotifier: 保存进度失败', e);
+        } on Exception catch (e, st) {
+          AppError.handle(e, st, 'VideoPlayer.saveProgress');
         }
       });
     }
@@ -635,8 +636,8 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
           SubtitleTrack.uri(subtitle.url, title: subtitle.name),
         );
         logger.i('VideoPlayerNotifier: 加载字幕 ${subtitle.name}');
-      } on Exception catch (e) {
-        logger.e('VideoPlayerNotifier: 加载字幕失败', e);
+      } on Exception catch (e, st) {
+        AppError.handle(e, st, 'VideoPlayer.loadSubtitle', {'name': subtitle.name});
       }
     }
   }
