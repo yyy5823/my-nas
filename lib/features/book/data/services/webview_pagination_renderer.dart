@@ -122,7 +122,7 @@ class WebViewPaginationRenderer {
   /// 设置 JavaScript 处理器
   void _setupJavaScriptHandlers(InAppWebViewController controller) {
     // 分页准备完成
-    controller.addJavaScriptHandler(
+    controller..addJavaScriptHandler(
       handlerName: 'onPaginationReady',
       callback: (args) {
         if (args.isNotEmpty) {
@@ -138,10 +138,10 @@ class WebViewPaginationRenderer {
           logger.i('WebView 分页准备完成: ${_paginationInfo!.totalPages} 页');
         }
       },
-    );
+    )
 
     // 页码变化
-    controller
+
       ..addJavaScriptHandler(
         handlerName: 'onPageChanged',
         callback: (args) {

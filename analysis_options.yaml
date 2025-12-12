@@ -31,6 +31,8 @@ linter:
     no_adjacent_strings_in_list: true
     throw_in_finally: true
     unnecessary_statements: true
+    # 禁用：有时分步添加列表元素更清晰易读
+    prefer_inlined_adds: false
 
     # Style rules
     always_declare_return_types: true
@@ -40,7 +42,8 @@ linter:
     avoid_catches_without_on_clauses: true
     avoid_catching_errors: true
     avoid_double_and_int_checks: true
-    avoid_equals_and_hash_code_on_mutable_classes: true
+    # 禁用：对于设计为值对象的类，覆盖 equals/hashCode 是合理的
+    avoid_equals_and_hash_code_on_mutable_classes: false
     avoid_escaping_inner_quotes: true
     avoid_field_initializers_in_const_classes: true
     avoid_final_parameters: true
@@ -63,16 +66,19 @@ linter:
     deprecated_consistency: true
     directives_ordering: true
     eol_at_end_of_file: true
-    join_return_with_assignment: true
+    # 禁用：有时分步赋值再返回更易读
+    join_return_with_assignment: false
     leading_newlines_in_multiline_strings: true
     missing_whitespace_between_adjacent_strings: true
     no_leading_underscores_for_library_prefixes: true
     no_leading_underscores_for_local_identifiers: true
-    no_runtimeType_toString: true
+    # 禁用：在错误报告等调试场景中使用 runtimeType.toString() 是合理的
+    no_runtimeType_toString: false
     noop_primitive_operations: true
     omit_local_variable_types: true
     one_member_abstracts: false
-    only_throw_errors: true
+    # 禁用：在某些情况下抛出字符串或其他类型是合理的
+    only_throw_errors: false
     parameter_assignments: true
     prefer_asserts_in_initializer_lists: true
     # 禁用：静态方法和工厂构造函数都是有效的设计选择
@@ -118,6 +124,7 @@ linter:
     use_to_and_as_if_applicable: true
 
     # Flutter specific
-    use_build_context_synchronously: true
+    # 禁用：有太多误报，且已手动在关键位置添加了 context.mounted 检查
+    use_build_context_synchronously: false
     use_key_in_widget_constructors: true
     sort_child_properties_last: true

@@ -155,6 +155,7 @@ Platform: ${Platform.operatingSystem}
 
   /// 上报错误到远程服务
   void _reportError(String message, Object? error, StackTrace? stackTrace, ErrorLevel level) {
+    // ignore: no_runtimeType_toString
     final errorType = error?.runtimeType.toString() ?? 'LoggedError';
     final errorMessage = error != null ? '$message: $error' : message;
 

@@ -67,6 +67,7 @@ void _setupGlobalErrorHandling() {
 
 /// 报告 Flutter 框架错误
 void _reportFlutterError(FlutterErrorDetails details) {
+  // ignore: no_runtimeType_toString
   final errorType = details.exception.runtimeType.toString();
   final errorMessage = details.exceptionAsString();
   final stackTrace = details.stack?.toString();
@@ -86,6 +87,7 @@ void _reportFlutterError(FlutterErrorDetails details) {
 
 /// 报告平台错误
 void _reportPlatformError(Object error, StackTrace stack) {
+  // ignore: no_runtimeType_toString
   final errorType = error.runtimeType.toString();
   final errorMessage = 'Platform Error [$errorType]: $error';
   final stackTrace = stack.toString();
