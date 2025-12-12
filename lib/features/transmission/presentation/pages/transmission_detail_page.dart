@@ -1173,7 +1173,7 @@ class _AddTorrentDialogState extends ConsumerState<_AddTorrentDialog> {
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                padding: const EdgeInsets.fromLTRB(20, 8, 12, 16),
                 child: Row(
                   children: [
                     Container(
@@ -1201,6 +1201,24 @@ class _AddTorrentDialogState extends ConsumerState<_AddTorrentDialog> {
                             ),
                           ),
                         ],
+                      ),
+                    ),
+                    // 添加按钮（移到右上角）
+                    FilledButton.icon(
+                      onPressed: _isLoading ? null : _submit,
+                      icon: _isLoading
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.add, size: 18),
+                      label: const Text('添加'),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       ),
                     ),
                   ],
@@ -1341,42 +1359,9 @@ class _AddTorrentDialogState extends ConsumerState<_AddTorrentDialog> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 80),
+                    // 底部空白
+                    SizedBox(height: MediaQuery.of(context).padding.bottom + 20),
                   ],
-                ),
-              ),
-              Container(
-                padding: EdgeInsets.fromLTRB(20, 12, 20, 12 + MediaQuery.of(context).padding.bottom),
-                decoration: BoxDecoration(
-                  color: isDark ? AppColors.darkSurface : Colors.white,
-                  border: Border(
-                    top: BorderSide(
-                      color: isDark
-                          ? AppColors.darkOutline.withValues(alpha: 0.2)
-                          : AppColors.lightOutline.withValues(alpha: 0.2),
-                    ),
-                  ),
-                ),
-                child: FilledButton(
-                  onPressed: _isLoading ? null : _submit,
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size(double.infinity, 52),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  ),
-                  child: _isLoading
-                      ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
-                        )
-                      : const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.add, size: 20),
-                            SizedBox(width: 8),
-                            Text('添加任务', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-                          ],
-                        ),
                 ),
               ),
             ],

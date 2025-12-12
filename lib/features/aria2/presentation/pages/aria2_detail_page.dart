@@ -285,7 +285,14 @@ class _Aria2DetailPageState extends ConsumerState<Aria2DetailPage> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => _AddDownloadDialog(sourceId: widget.source.id),
+      builder: (context) => GestureDetector(
+        onTap: () => Navigator.of(context).pop(),
+        behavior: HitTestBehavior.opaque,
+        child: GestureDetector(
+          onTap: () {}, // 阻止内部点击事件冒泡
+          child: _AddDownloadDialog(sourceId: widget.source.id),
+        ),
+      ),
     );
   }
 
@@ -1125,7 +1132,7 @@ class _AddDownloadDialogState extends ConsumerState<_AddDownloadDialog> {
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                padding: const EdgeInsets.fromLTRB(20, 8, 12, 16),
                 child: Row(
                   children: [
                     Container(
@@ -1153,6 +1160,24 @@ class _AddDownloadDialogState extends ConsumerState<_AddDownloadDialog> {
                             ),
                           ),
                         ],
+                      ),
+                    ),
+                    // 添加按钮（移到右上角）
+                    FilledButton.icon(
+                      onPressed: _isLoading ? null : _submit,
+                      icon: _isLoading
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.add, size: 18),
+                      label: const Text('添加'),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       ),
                     ),
                   ],
@@ -1242,42 +1267,9 @@ class _AddDownloadDialogState extends ConsumerState<_AddDownloadDialog> {
                         ),
                       ),
                     ],
-                    const SizedBox(height: 80),
+                    // 底部空白
+                    SizedBox(height: MediaQuery.of(context).padding.bottom + 20),
                   ],
-                ),
-              ),
-              Container(
-                padding: EdgeInsets.fromLTRB(20, 12, 20, 12 + MediaQuery.of(context).padding.bottom),
-                decoration: BoxDecoration(
-                  color: isDark ? AppColors.darkSurface : Colors.white,
-                  border: Border(
-                    top: BorderSide(
-                      color: isDark
-                          ? AppColors.darkOutline.withValues(alpha: 0.2)
-                          : AppColors.lightOutline.withValues(alpha: 0.2),
-                    ),
-                  ),
-                ),
-                child: FilledButton(
-                  onPressed: _isLoading ? null : _submit,
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size(double.infinity, 52),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  ),
-                  child: _isLoading
-                      ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
-                        )
-                      : const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.add, size: 20),
-                            SizedBox(width: 8),
-                            Text('添加任务', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-                          ],
-                        ),
                 ),
               ),
             ],
