@@ -331,6 +331,10 @@ class VideoScannerService {
         );
       }
 
+      // 执行 WAL checkpoint，将写入日志合并到主数据库
+      // 这样用户看到的缓存大小会更准确稳定
+      await _dbService.checkpoint();
+
       // 扫描完成后立即广播刮削统计，确保影视页面能及时刷新
       // 这一步非常关键：VideoListNotifier 监听 scrapeStatsStream
       // 当 total 变化时会触发页面刷新
@@ -582,6 +586,10 @@ class VideoScannerService {
           await Future<void>.delayed(const Duration(milliseconds: 100));
         }
       }
+
+      // 执行 WAL checkpoint，将写入日志合并到主数据库
+      // 这样用户看到的缓存大小会更准确稳定
+      await _dbService.checkpoint();
 
       // 刮削完成，广播最终统计
       final finalStats = await _dbService.getScrapeStats();

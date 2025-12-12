@@ -519,8 +519,27 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
         state.hasHtml &&
         settings.pageTurnMode != BookPageTurnMode.scroll;
 
-    if (usePageMode && _isPaginationReady && _pages.isNotEmpty) {
-      // 分页模式：使用章节页码映射
+    // 判断是否使用 WebView 渲染器
+    final useWebView = _useWebViewRenderer &&
+        state is TxtReaderLoaded &&
+        state.hasHtml &&
+        usePageMode;
+
+    if (useWebView && _webViewPaginationReady && _totalPages > 0) {
+      // WebView 分页模式：根据章节偏移量计算目标页码
+      final totalLength = state.htmlContent!.length.toDouble();
+      final progress = chapter.offset / totalLength;
+      final targetPage = (progress * (_totalPages - 1)).round().clamp(0, _totalPages - 1);
+
+      _webViewReaderKey.currentState?.goToPage(targetPage);
+
+      setState(() {
+        _currentPage = targetPage;
+        _currentChapterTitle = chapter.title;
+        _showToc = false;
+      });
+    } else if (usePageMode && _isPaginationReady && _pages.isNotEmpty) {
+      // 传统分页模式：使用章节页码映射
       final targetPage = _chapterPageMap[chapterIndex] ?? 0;
 
       _pageController?.animateToPage(
@@ -532,6 +551,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
       setState(() {
         _currentPage = targetPage;
         _currentChapterTitle = chapter.title;
+        _showToc = false;
       });
     } else {
       // 滚动模式
@@ -551,11 +571,11 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
           curve: Curves.easeOut,
         );
       }
-    }
 
-    setState(() {
-      _showToc = false;
-    });
+      setState(() {
+        _showToc = false;
+      });
+    }
   }
 
   void _showSettingsSheet() {

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:image/image.dart' as img;
 import 'package:my_nas/core/utils/logger.dart';
@@ -8,27 +9,69 @@ import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+/// 海报压缩配置
+class _PosterCompressionConfig {
+  const _PosterCompressionConfig({
+    required this.maxWidth,
+    required this.maxHeight,
+    required this.jpegQuality,
+    required this.compressThreshold,
+  });
+
+  final int maxWidth;
+  final int maxHeight;
+  final int jpegQuality;
+  final int compressThreshold;
+}
+
 /// 视频海报缓存服务
 ///
 /// 在刮削时主动下载海报到本地，支持离线显示
 /// 自动压缩大尺寸海报以节省存储空间
+///
+/// 优化策略：
+/// - 根据平台自适应压缩参数（桌面端高质量，移动端更激进压缩）
+/// - 桌面端屏幕大，使用更高质量和更大尺寸
+/// - 移动端存储有限，使用更高压缩率
 class VideoPosterCacheService {
   factory VideoPosterCacheService() => _instance ??= VideoPosterCacheService._();
   VideoPosterCacheService._();
 
   static VideoPosterCacheService? _instance;
 
-  /// 海报最大宽度（像素）
-  static const int _maxPosterWidth = 500;
+  /// 桌面端配置（macOS, Windows, Linux）
+  /// - 更大尺寸：500x750（适合大屏显示）
+  /// - 更高质量：85%（细节保留更好）
+  /// - 更宽松阈值：200KB
+  static const _desktopConfig = _PosterCompressionConfig(
+    maxWidth: 500,
+    maxHeight: 750,
+    jpegQuality: 85,
+    compressThreshold: 200 * 1024, // 200KB
+  );
 
-  /// 海报最大高度（像素）
-  static const int _maxPosterHeight = 750;
+  /// 移动端配置（iOS, Android）
+  /// - 更小尺寸：400x600（移动端足够）
+  /// - 更低质量：70%（视觉差异不明显但大小减少显著）
+  /// - 更积极压缩：80KB
+  static const _mobileConfig = _PosterCompressionConfig(
+    maxWidth: 400,
+    maxHeight: 600,
+    jpegQuality: 70,
+    compressThreshold: 80 * 1024, // 80KB
+  );
 
-  /// 原始图片大小阈值（字节），超过此大小才进行压缩
-  static const int _compressThreshold = 200 * 1024; // 200KB
+  /// 获取当前平台的压缩配置
+  _PosterCompressionConfig get _config {
+    if (Platform.isAndroid || Platform.isIOS) {
+      return _mobileConfig;
+    }
+    return _desktopConfig;
+  }
 
-  /// JPEG 压缩质量 (0-100)
-  static const int _jpegQuality = 85;
+  /// 是否为桌面平台
+  static bool get _isDesktop =>
+      Platform.isMacOS || Platform.isWindows || Platform.isLinux;
 
   Directory? _cacheDir;
   final _downloadingTasks = <String, Future<String?>>{};
@@ -218,11 +261,17 @@ class VideoPosterCacheService {
   /// 压缩图片（如果需要）
   ///
   /// 压缩条件：
-  /// 1. 原始大小超过 [_compressThreshold]
-  /// 2. 图片尺寸超过 [_maxPosterWidth] x [_maxPosterHeight]
+  /// 1. 原始大小超过压缩阈值
+  /// 2. 图片尺寸超过最大尺寸限制
+  ///
+  /// 压缩参数根据平台自适应：
+  /// - 桌面端：更大尺寸、更高质量
+  /// - 移动端：更小尺寸、更激进压缩
   Future<Uint8List> _compressImageIfNeeded(Uint8List imageData) async {
+    final config = _config;
+
     // 小于阈值直接返回
-    if (imageData.length < _compressThreshold) {
+    if (imageData.length < config.compressThreshold) {
       return imageData;
     }
 
@@ -239,12 +288,12 @@ class VideoPosterCacheService {
       var targetHeight = image.height;
 
       // 检查是否需要缩放
-      if (image.width > _maxPosterWidth || image.height > _maxPosterHeight) {
+      if (image.width > config.maxWidth || image.height > config.maxHeight) {
         needsResize = true;
 
         // 计算缩放比例，保持宽高比
-        final widthRatio = _maxPosterWidth / image.width;
-        final heightRatio = _maxPosterHeight / image.height;
+        final widthRatio = config.maxWidth / image.width;
+        final heightRatio = config.maxHeight / image.height;
         final ratio = widthRatio < heightRatio ? widthRatio : heightRatio;
 
         targetWidth = (image.width * ratio).round();
@@ -262,12 +311,18 @@ class VideoPosterCacheService {
           : image;
 
       // 编码为 JPEG
-      final compressedData = img.encodeJpg(resizedImage, quality: _jpegQuality);
+      final compressedData = img.encodeJpg(resizedImage, quality: config.jpegQuality);
 
       // 如果压缩后反而更大，返回原数据
       if (compressedData.length >= imageData.length && !needsResize) {
         return imageData;
       }
+
+      logger.d(
+        'VideoPosterCacheService: 海报已压缩 (${_isDesktop ? "桌面" : "移动"}端配置) '
+        '${image.width}x${image.height} -> ${targetWidth}x$targetHeight, '
+        'quality: ${config.jpegQuality}%',
+      );
 
       return Uint8List.fromList(compressedData);
     } on Exception catch (e) {

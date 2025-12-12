@@ -114,14 +114,14 @@ class _Aria2DetailPageState extends ConsumerState<Aria2DetailPage> {
                   // 筛选按钮
                   if (connection?.status == Aria2ConnectionStatus.connected)
                     IconButton(
-                      icon: const Icon(Icons.filter_list),
+                      icon: const Icon(Icons.filter_alt_rounded),
                       tooltip: '筛选',
                       onPressed: () => _showFilterDialog(context),
                     ),
                   // 排序按钮
                   if (connection?.status == Aria2ConnectionStatus.connected)
                     IconButton(
-                      icon: const Icon(Icons.sort),
+                      icon: const Icon(Icons.swap_vert_rounded),
                       tooltip: '排序',
                       onPressed: () => _showSortDialog(context),
                     ),
@@ -947,7 +947,7 @@ class _FilterOptionsSheet extends ConsumerWidget {
               padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
-                  const Icon(Icons.filter_list),
+                  const Icon(Icons.filter_alt_rounded),
                   const SizedBox(width: 8),
                   Text('筛选状态', style: context.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
                 ],
@@ -1024,7 +1024,7 @@ class _SortOptionsSheet extends ConsumerWidget {
               padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
-                  const Icon(Icons.sort),
+                  const Icon(Icons.swap_vert_rounded),
                   const SizedBox(width: 8),
                   Text('排序方式', style: context.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
                   const Spacer(),

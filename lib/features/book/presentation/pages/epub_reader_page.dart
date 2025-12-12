@@ -12,7 +12,9 @@ import 'package:my_nas/core/network/http_client.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/book/data/services/book_file_cache_service.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
+import 'package:my_nas/features/reading/data/services/reader_settings_service.dart';
 import 'package:my_nas/features/reading/data/services/reading_progress_service.dart';
+import 'package:my_nas/features/reading/presentation/providers/reader_settings_provider.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
@@ -295,9 +297,10 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
   }
 
   /// 处理点击区域（使用规范化坐标 0-1）
-  /// 左侧 1/4: 上一页
-  /// 右侧 1/4: 下一页
-  /// 中间 1/2: 切换控制栏
+  /// 左侧 25%: 上一页
+  /// 右侧 25%: 下一页
+  /// 中间 50%: 切换控制栏
+  /// 与其他格式（TXT/MOBI/AZW3）保持一致
   void _handleTapZone(Offset normalizedPosition) {
     // 如果 EPUB 还没准备好，只允许切换控制栏
     if (!_isEpubReady) {
@@ -309,35 +312,17 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
 
     try {
       if (tapX < 0.25) {
-        // 左侧区域 - 上一页
+        // 左侧 25% 区域 - 上一页
         _epubController.prev();
       } else if (tapX > 0.75) {
-        // 右侧区域 - 下一页
+        // 右侧 25% 区域 - 下一页
         _epubController.next();
       } else {
-        // 中间区域 - 切换控制栏
+        // 中间 50% 区域 - 切换控制栏
         _toggleControls();
       }
     } on Exception catch (e) {
       logger.w('EPUB 翻页操作失败', e);
-    }
-  }
-
-  /// 安全的上一页操作
-  void _safePrev() {
-    try {
-      _epubController.prev();
-    } on Exception catch (e) {
-      logger.w('EPUB 上一页操作失败', e);
-    }
-  }
-
-  /// 安全的下一页操作
-  void _safeNext() {
-    try {
-      _epubController.next();
-    } on Exception catch (e) {
-      logger.w('EPUB 下一页操作失败', e);
     }
   }
 
@@ -375,36 +360,148 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
       title: 'EPUB 设置',
       icon: Icons.menu_book_rounded,
       iconColor: AppColors.info,
-      contentBuilder: (context) => _buildSettingsContent(),
+      contentBuilder: (context) => Consumer(
+        builder: (context, ref, _) {
+          final settings = ref.watch(bookReaderSettingsProvider);
+          return _buildSettingsContent(settings);
+        },
+      ),
     );
   }
 
-  /// 构建设置内容
-  Widget _buildSettingsContent() => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SettingSectionTitle(title: '显示设置'),
-          SettingSwitchRow(
-            title: '屏幕常亮',
-            value: true, // EPUB 默认开启屏幕常亮
-            onChanged: (value) {
-              if (value) {
-                WakelockPlus.enable();
-              } else {
-                WakelockPlus.disable();
-              }
-            },
+  /// 构建设置内容 - 与其他格式对齐
+  Widget _buildSettingsContent(BookReaderSettings settings) {
+    final settingsNotifier = ref.read(bookReaderSettingsProvider.notifier);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 主题
+        const SettingSectionTitle(title: '阅读主题'),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: BookReaderTheme.values
+                .map(
+                  (theme) => Padding(
+                    padding: const EdgeInsets.only(right: 12),
+                    child: _buildThemeOption(
+                      theme: theme,
+                      isSelected: settings.theme == theme,
+                      onTap: () => settingsNotifier.setTheme(theme),
+                    ),
+                  ),
+                )
+                .toList(),
           ),
-          const SizedBox(height: 16),
+        ),
+        const SizedBox(height: 24),
+
+        // 其他设置
+        const SettingSectionTitle(title: '其他设置'),
+        SettingSwitchRow(
+          title: '屏幕常亮',
+          value: settings.keepScreenOn,
+          onChanged: (value) {
+            settingsNotifier.setKeepScreenOn(value: value);
+            if (value) {
+              WakelockPlus.enable();
+            } else {
+              WakelockPlus.disable();
+            }
+          },
+        ),
+        SettingSwitchRow(
+          title: '显示进度',
+          value: settings.showProgress,
+          onChanged: (value) => settingsNotifier.setShowProgress(value: value),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          'EPUB 格式字体大小由阅读器内部控制，如需调整请使用阅读器内置缩放手势。',
+          style: TextStyle(
+            fontSize: 13,
+            color: Colors.grey.shade600,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 构建主题选项
+  Widget _buildThemeOption({
+    required BookReaderTheme theme,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: theme.backgroundColor,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: isSelected
+                    ? AppColors.primary
+                    : (isDark ? Colors.grey.shade600 : Colors.grey.shade300),
+                width: isSelected ? 3 : 1,
+              ),
+              boxShadow: isSelected
+                  ? [
+                      BoxShadow(
+                        color: AppColors.primary.withValues(alpha: 0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ]
+                  : null,
+            ),
+            child: Center(
+              child: Text(
+                'Aa',
+                style: TextStyle(
+                  color: theme.textColor,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
           Text(
-            'EPUB 格式使用系统字体渲染，字体大小和样式请在系统设置中调整。',
+            theme.label,
             style: TextStyle(
-              fontSize: 13,
-              color: Colors.grey.shade600,
+              fontSize: 12,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+              color: isSelected
+                  ? AppColors.primary
+                  : (isDark ? Colors.white70 : Colors.black54),
             ),
           ),
         ],
-      );
+      ),
+    );
+  }
+
+  /// 快速切换夜间模式
+  void _toggleNightMode() {
+    final settings = ref.read(bookReaderSettingsProvider);
+    final currentTheme = settings.theme;
+
+    // 在浅色和深色主题之间切换
+    final newTheme = currentTheme == BookReaderTheme.light ||
+            currentTheme == BookReaderTheme.sepia ||
+            currentTheme == BookReaderTheme.green
+        ? BookReaderTheme.dark
+        : BookReaderTheme.light;
+
+    ref.read(bookReaderSettingsProvider.notifier).setTheme(newTheme);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -701,77 +798,269 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
     ),
   );
 
-  Widget _buildBottomBar(BuildContext context) => DecoratedBox(
-    decoration: BoxDecoration(
-      gradient: LinearGradient(
-        begin: Alignment.bottomCenter,
-        end: Alignment.topCenter,
-        colors: [
-          Colors.black.withValues(alpha: 0.7),
-          Colors.transparent,
-        ],
-      ),
-    ),
-    child: SafeArea(
-      top: false,
+  /// 构建底部操作按钮 - 与其他格式统一
+  Widget _buildBottomActionButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback? onPressed,
+    bool enabled = true,
+  }) {
+    final isEnabled = enabled && onPressed != null;
+    return InkWell(
+      onTap: isEnabled ? onPressed : null,
+      borderRadius: BorderRadius.circular(8),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // 进度条
-            Row(
-              children: [
-                Text(
-                  '${(_progress * 100).toStringAsFixed(1)}%',
-                  style: const TextStyle(color: Colors.white, fontSize: 12),
-                ),
-                Expanded(
-                  child: Slider(
-                    value: _progress.clamp(0.0, 1.0),
-                    onChanged: _isEpubReady ? _safeProgressChange : null,
-                    activeColor: AppColors.primary,
-                    inactiveColor: Colors.white30,
-                  ),
-                ),
-              ],
+            Icon(
+              icon,
+              color: isEnabled ? Colors.white : Colors.white38,
+              size: 24,
             ),
-            // 控制按钮
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.skip_previous, color: Colors.white),
-                  onPressed: _isEpubReady ? _safePrev : null,
-                  tooltip: '上一页',
-                ),
-                IconButton(
-                  icon: const Icon(Icons.first_page, color: Colors.white),
-                  onPressed: _isEpubReady ? _safeFirst : null,
-                  tooltip: '第一页',
-                ),
-                IconButton(
-                  icon: const Icon(Icons.settings_outlined, color: Colors.white),
-                  onPressed: _showSettingsSheet,
-                  tooltip: '设置',
-                ),
-                IconButton(
-                  icon: const Icon(Icons.last_page, color: Colors.white),
-                  onPressed: _isEpubReady ? _safeLast : null,
-                  tooltip: '最后一页',
-                ),
-                IconButton(
-                  icon: const Icon(Icons.skip_next, color: Colors.white),
-                  onPressed: _isEpubReady ? _safeNext : null,
-                  tooltip: '下一页',
-                ),
-              ],
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(
+                color: isEnabled ? Colors.white : Colors.white38,
+                fontSize: 11,
+              ),
             ),
           ],
         ),
       ),
-    ),
-  );
+    );
+  }
+
+  Widget _buildBottomBar(BuildContext context) {
+    final settings = ref.watch(bookReaderSettingsProvider);
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.bottomCenter,
+          end: Alignment.topCenter,
+          colors: [
+            Colors.black.withValues(alpha: 0.7),
+            Colors.transparent,
+          ],
+        ),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 进度条
+              Row(
+                children: [
+                  Text(
+                    '${(_progress * 100).toStringAsFixed(1)}%',
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+                  Expanded(
+                    child: Slider(
+                      value: _progress.clamp(0.0, 1.0),
+                      onChanged: _isEpubReady ? _safeProgressChange : null,
+                      activeColor: AppColors.primary,
+                      inactiveColor: Colors.white30,
+                    ),
+                  ),
+                  const Text(
+                    '100%',
+                    style: TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+                ],
+              ),
+              // 功能按钮 - 与其他格式统一
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  // 目录
+                  _buildBottomActionButton(
+                    icon: Icons.list_rounded,
+                    label: '目录',
+                    enabled: _chapters.isNotEmpty,
+                    onPressed: _chapters.isNotEmpty
+                        ? () => setState(() => _showToc = !_showToc)
+                        : null,
+                  ),
+                  // 夜间模式切换
+                  _buildBottomActionButton(
+                    icon: settings.theme == BookReaderTheme.dark ||
+                            settings.theme == BookReaderTheme.black
+                        ? Icons.light_mode_rounded
+                        : Icons.dark_mode_rounded,
+                    label: settings.theme == BookReaderTheme.dark ||
+                            settings.theme == BookReaderTheme.black
+                        ? '日间'
+                        : '夜间',
+                    onPressed: _toggleNightMode,
+                  ),
+                  // 阅读设置
+                  _buildBottomActionButton(
+                    icon: Icons.settings_rounded,
+                    label: '设置',
+                    onPressed: _showSettingsSheet,
+                  ),
+                  // 书签功能 (TODO: 后续实现)
+                  _buildBottomActionButton(
+                    icon: Icons.bookmark_outline_rounded,
+                    label: '书签',
+                    onPressed: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('书签功能开发中...'),
+                          duration: Duration(seconds: 1),
+                        ),
+                      );
+                    },
+                  ),
+                  // 更多菜单
+                  _buildBottomActionButton(
+                    icon: Icons.more_horiz_rounded,
+                    label: '更多',
+                    onPressed: () {
+                      _showMoreMenu(context);
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 显示更多菜单
+  void _showMoreMenu(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.grey[900],
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[600],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
+            ListTile(
+              leading: const Icon(Icons.first_page_rounded, color: Colors.white),
+              title: const Text('跳转到开头', style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(context);
+                _safeFirst();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.last_page_rounded, color: Colors.white),
+              title: const Text('跳转到结尾', style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(context);
+                _safeLast();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.info_outline_rounded, color: Colors.white),
+              title: const Text('图书信息', style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(context);
+                _showBookInfo();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.refresh_rounded, color: Colors.white),
+              title: const Text('刷新内容', style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(context);
+                ref.invalidate(epubReaderProvider(widget.book));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('正在重新加载...'),
+                    duration: Duration(seconds: 1),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 显示图书信息
+  void _showBookInfo() {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: const Text('图书信息', style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildInfoRow('书名', widget.book.displayName),
+            _buildInfoRow('格式', 'EPUB'),
+            _buildInfoRow(
+              '大小',
+              '${(widget.book.size / 1024 / 1024).toStringAsFixed(2)} MB',
+            ),
+            if (_chapters.isNotEmpty)
+              _buildInfoRow('章节数', '${_chapters.length}'),
+            _buildInfoRow('进度', '${(_progress * 100).toStringAsFixed(1)}%'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('关闭', style: TextStyle(color: AppColors.primary)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 构建信息行
+  Widget _buildInfoRow(String label, String value) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 70,
+            child: Text(
+              '$label:',
+              style: const TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
 
   Widget _buildTocDrawer(BuildContext context) => Positioned(
     top: 0,

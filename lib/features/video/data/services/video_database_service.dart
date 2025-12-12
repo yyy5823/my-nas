@@ -712,7 +712,7 @@ class VideoDatabaseService {
       return '无缓存';
     }
 
-    // 获取数据库文件大小
+    // 获取数据库文件大小（稳定值，不包括 WAL 波动）
     final dbSize = await _getDatabaseSize();
     final sizeText = _formatSize(dbSize);
 
@@ -720,30 +720,38 @@ class VideoDatabaseService {
   }
 
   /// 获取数据库文件大小（字节）
+  ///
+  /// 只返回主数据库文件大小，不包括 WAL 和 SHM 临时文件
+  /// 这样可以避免因 WAL checkpoint 机制导致的大小波动
   Future<int> _getDatabaseSize() async {
     try {
       final documentsDir = await getApplicationDocumentsDirectory();
       final dbPath = join(documentsDir.path, 'video_metadata.db');
       final dbFile = File(dbPath);
       if (await dbFile.exists()) {
-        final mainSize = await dbFile.length();
-        // 检查 WAL 和 SHM 文件
-        var walSize = 0;
-        var shmSize = 0;
-        final walFile = File('$dbPath-wal');
-        final shmFile = File('$dbPath-shm');
-        if (await walFile.exists()) {
-          walSize = await walFile.length();
-        }
-        if (await shmFile.exists()) {
-          shmSize = await shmFile.length();
-        }
-        return mainSize + walSize + shmSize;
+        // 只返回主数据库大小，WAL/SHM 是临时文件，大小会波动
+        // WAL 文件会在 checkpoint 时合并到主数据库
+        return await dbFile.length();
       }
     } on Exception catch (e) {
       logger.w('VideoDatabaseService: 获取数据库大小失败', e);
     }
     return 0;
+  }
+
+  /// 执行 WAL checkpoint，将 WAL 日志合并到主数据库
+  ///
+  /// 建议在以下时机调用：
+  /// - 应用进入后台时
+  /// - 大量写操作完成后（如扫描完成）
+  Future<void> checkpoint() async {
+    if (!_initialized) return;
+    try {
+      await _db!.rawQuery('PRAGMA wal_checkpoint(TRUNCATE)');
+      logger.d('VideoDatabaseService: WAL checkpoint 完成');
+    } on Exception catch (e) {
+      logger.w('VideoDatabaseService: WAL checkpoint 失败', e);
+    }
   }
 
   /// 格式化文件大小

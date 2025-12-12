@@ -2548,7 +2548,7 @@ class _AllSongsPageState extends ConsumerState<AllSongsPage> {
               child: Row(
                 children: [
                   Icon(
-                    Icons.sort_rounded,
+                    Icons.swap_vert_rounded,
                     color: isDark ? Colors.white70 : Colors.black87,
                   ),
                   const SizedBox(width: 12),
@@ -3047,7 +3047,7 @@ class _AllSongsContentState extends ConsumerState<_AllSongsContent> {
               child: Row(
                 children: [
                   Icon(
-                    Icons.sort_rounded,
+                    Icons.swap_vert_rounded,
                     color: widget.isDark ? Colors.white70 : Colors.black87,
                   ),
                   const SizedBox(width: 12),

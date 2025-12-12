@@ -156,7 +156,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
                 tooltip: isGridView ? '列表视图' : '网格视图',
               ),
               _buildIconButton(
-                icon: Icons.sort_rounded,
+                icon: Icons.swap_vert_rounded,
                 onTap: () => _showSortOptions(context, isDark),
                 isDark: isDark,
                 tooltip: '排序',

@@ -259,16 +259,44 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
   static const int _debounceMs = 500;
 
   /// 获取启用的路径列表（用于 SQLite 过滤）
+  ///
+  /// 返回 null 表示不进行路径过滤（显示所有数据）
+  /// 返回空列表也会被转换为 null（不过滤）
   List<({String sourceId, String path})>? _getEnabledPaths() {
-    final config = _ref.read(mediaLibraryConfigProvider).valueOrNull;
-    if (config == null) return null;
+    final configState = _ref.read(mediaLibraryConfigProvider);
+
+    // 配置还在加载中，不进行路径过滤
+    if (configState.isLoading) {
+      logger.d('VideoListNotifier: 媒体库配置加载中，跳过路径过滤');
+      return null;
+    }
+
+    // 配置加载失败，不进行路径过滤
+    if (configState.hasError) {
+      logger.w('VideoListNotifier: 媒体库配置加载失败，跳过路径过滤');
+      return null;
+    }
+
+    final config = configState.valueOrNull;
+    if (config == null) {
+      logger.d('VideoListNotifier: 媒体库配置为空，跳过路径过滤');
+      return null;
+    }
 
     final enabledPaths = config.getEnabledPathsForType(MediaType.video);
-    if (enabledPaths.isEmpty) return null;
+    if (enabledPaths.isEmpty) {
+      logger.d('VideoListNotifier: 视频路径列表为空，跳过路径过滤');
+      return null;
+    }
 
-    return enabledPaths
+    // 详细记录路径配置，帮助诊断路径匹配问题
+    final result = enabledPaths
         .map((p) => (sourceId: p.sourceId, path: p.path))
         .toList();
+
+    logger.d('VideoListNotifier: 启用的视频路径: ${result.map((p) => '${p.sourceId}:${p.path}').join(', ')}');
+
+    return result;
   }
 
   @override
@@ -3748,7 +3776,7 @@ class _CategoryFullPageState extends ConsumerState<_CategoryFullPage> {
           // 排序按钮
           IconButton(
             icon: Icon(
-              Icons.sort_rounded,
+              Icons.swap_vert_rounded,
               color: isDark ? Colors.white : Colors.black87,
             ),
             onPressed: () => _showSortOptions(context, isDark),
@@ -3760,7 +3788,7 @@ class _CategoryFullPageState extends ConsumerState<_CategoryFullPage> {
               icon: Badge(
                 isLabelVisible: _selectedGenre != null,
                 child: Icon(
-                  Icons.filter_list_rounded,
+                  Icons.filter_alt_rounded,
                   color: isDark ? Colors.white : Colors.black87,
                 ),
               ),
@@ -4835,7 +4863,7 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
           // 排序按钮
           IconButton(
             icon: Icon(
-              Icons.sort_rounded,
+              Icons.swap_vert_rounded,
               color: isDark ? Colors.white : Colors.black87,
             ),
             tooltip: '排序',
@@ -4846,7 +4874,7 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
             children: [
               IconButton(
                 icon: Icon(
-                  Icons.filter_list_rounded,
+                  Icons.filter_alt_rounded,
                   color: isDark ? Colors.white : Colors.black87,
                 ),
                 onPressed: _isLoadingFilters ? null : () => _showFilterSheet(context, isDark),
@@ -4924,7 +4952,7 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
               child: Row(
                 children: [
                   Icon(
-                    Icons.sort_rounded,
+                    Icons.swap_vert_rounded,
                     size: 14,
                     color: isDark ? Colors.white54 : Colors.black45,
                   ),
@@ -5606,7 +5634,7 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
           // 排序按钮
           IconButton(
             icon: Icon(
-              Icons.sort_rounded,
+              Icons.swap_vert_rounded,
               color: isDark ? Colors.white : Colors.black87,
             ),
             tooltip: '排序',
@@ -5617,7 +5645,7 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
             children: [
               IconButton(
                 icon: Icon(
-                  Icons.filter_list_rounded,
+                  Icons.filter_alt_rounded,
                   color: isDark ? Colors.white : Colors.black87,
                 ),
                 onPressed: _isLoadingFilters ? null : () => _showFilterSheet(context, isDark),
@@ -5950,7 +5978,7 @@ class _OthersPaginatedPageState extends ConsumerState<_OthersPaginatedPage> {
           IconButton(
             onPressed: () => _showSortSheet(context, isDark),
             icon: Icon(
-              Icons.sort_rounded,
+              Icons.swap_vert_rounded,
               color: isDark ? Colors.white : Colors.black87,
             ),
             tooltip: '排序',

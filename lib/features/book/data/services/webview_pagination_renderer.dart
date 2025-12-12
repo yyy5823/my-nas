@@ -311,7 +311,7 @@ class WebViewPaginationRenderer {
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport" content="width=$width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <style>
     /* 重置样式 */
     * {
@@ -325,10 +325,12 @@ class WebViewPaginationRenderer {
     }
 
     html, body {
-      width: 100%;
-      height: 100%;
+      width: ${width}px;
+      height: ${height}px;
       overflow: hidden;
       background-color: $bgColor;
+      margin: 0;
+      padding: 0;
     }
 
     /* 内容容器 - CSS Multi-column 分页核心 */
@@ -338,9 +340,10 @@ class WebViewPaginationRenderer {
       column-gap: ${horizontalPadding * 2}px;
       column-fill: auto;
 
-      /* 尺寸 */
-      width: 100%;
+      /* 尺寸 - 使用精确像素值 */
+      width: ${width}px;
       height: ${contentHeight}px;
+      max-height: ${contentHeight}px;
 
       /* 内边距 */
       padding: ${verticalPadding}px ${horizontalPadding}px;
@@ -467,6 +470,7 @@ class WebViewPaginationRenderer {
     let currentPage = 0;
     let pageWidth = $width;
     let isAnimating = false;
+    let isReady = false;
 
     // 获取内容元素
     function getContent() {
@@ -478,28 +482,57 @@ class WebViewPaginationRenderer {
       const content = getContent();
       if (!content) return 1;
 
+      // 强制重新布局以获取准确的 scrollWidth
+      content.offsetHeight;
+
       // 使用 scrollWidth 计算总页数
       const scrollWidth = content.scrollWidth;
       const visibleWidth = pageWidth;
 
-      return Math.max(1, Math.ceil(scrollWidth / visibleWidth));
+      // 确保至少有1页，并且计算正确
+      const pages = Math.max(1, Math.ceil(scrollWidth / visibleWidth));
+
+      console.log('分页计算: scrollWidth=' + scrollWidth + ', pageWidth=' + visibleWidth + ', totalPages=' + pages);
+
+      return pages;
     }
 
     // 初始化分页
     function initPagination() {
-      pageWidth = window.innerWidth;
-      totalPages = calculateTotalPages();
-      currentPage = 0;
+      const content = getContent();
+      if (!content) {
+        console.error('无法找到内容元素');
+        return;
+      }
 
-      // 确保在第一页
-      goToPage(0, false);
+      // 检查内容是否为空
+      if (!content.innerHTML || content.innerHTML.trim() === '') {
+        console.error('内容为空');
+        return;
+      }
 
-      // 通知 Flutter
-      window.flutter_inappwebview.callHandler('onPaginationReady', {
-        totalPages: totalPages,
-        currentPage: currentPage,
-        pageWidth: pageWidth,
-        pageHeight: window.innerHeight
+      pageWidth = $width;
+
+      // 等待一帧确保布局完成
+      requestAnimationFrame(() => {
+        totalPages = calculateTotalPages();
+        currentPage = 0;
+        isReady = true;
+
+        // 确保在第一页
+        goToPage(0, false);
+
+        // 通知 Flutter
+        if (window.flutter_inappwebview && window.flutter_inappwebview.callHandler) {
+          window.flutter_inappwebview.callHandler('onPaginationReady', {
+            totalPages: totalPages,
+            currentPage: currentPage,
+            pageWidth: pageWidth,
+            pageHeight: $height
+          });
+        }
+
+        console.log('分页初始化完成: totalPages=' + totalPages);
       });
     }
 
@@ -532,7 +565,9 @@ class WebViewPaginationRenderer {
       }
 
       // 通知 Flutter
-      window.flutter_inappwebview.callHandler('onPageChanged', currentPage);
+      if (window.flutter_inappwebview && window.flutter_inappwebview.callHandler) {
+        window.flutter_inappwebview.callHandler('onPageChanged', currentPage);
+      }
 
       // 检测当前章节
       detectCurrentChapter();
@@ -560,7 +595,7 @@ class WebViewPaginationRenderer {
       const content = getContent();
       if (!content) return;
 
-      const progress = currentPage / Math.max(1, totalPages - 1);
+      const progress = totalPages > 1 ? currentPage / (totalPages - 1) : 0;
       const estimatedOffset = Math.floor(progress * content.textContent.length);
 
       // 找到对应的章节
@@ -573,7 +608,9 @@ class WebViewPaginationRenderer {
         }
       }
 
-      window.flutter_inappwebview.callHandler('onChapterDetected', currentChapter);
+      if (window.flutter_inappwebview && window.flutter_inappwebview.callHandler) {
+        window.flutter_inappwebview.callHandler('onChapterDetected', currentChapter);
+      }
     }
 
     // 更新主题
@@ -606,22 +643,27 @@ class WebViewPaginationRenderer {
       clearTimeout(window.resizeTimer);
       window.resizeTimer = setTimeout(() => {
         const oldPage = currentPage;
-        const oldProgress = currentPage / Math.max(1, totalPages - 1);
+        const oldProgress = totalPages > 1 ? currentPage / (totalPages - 1) : 0;
 
         initPagination();
 
         // 尝试保持阅读进度
-        const newPage = Math.round(oldProgress * (totalPages - 1));
-        goToPage(newPage, false);
+        if (isReady) {
+          const newPage = Math.round(oldProgress * (totalPages - 1));
+          goToPage(newPage, false);
+        }
       }, 200);
     });
 
     // 页面加载完成后初始化
     document.addEventListener('DOMContentLoaded', () => {
-      // 等待内容渲染完成
+      console.log('DOM 加载完成，准备初始化分页');
+      // 等待内容渲染完成 - 使用多次 requestAnimationFrame 确保布局稳定
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          initPagination();
+          requestAnimationFrame(() => {
+            initPagination();
+          });
         });
       });
     });

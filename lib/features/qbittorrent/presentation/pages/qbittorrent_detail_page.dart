@@ -126,14 +126,14 @@ class _QBittorrentDetailPageState extends ConsumerState<QBittorrentDetailPage> {
                   // 筛选按钮
                   if (connection?.status == QBConnectionStatus.connected)
                     IconButton(
-                      icon: const Icon(Icons.filter_list),
+                      icon: const Icon(Icons.filter_alt_rounded),
                       tooltip: '筛选',
                       onPressed: () => _showFilterDialog(context),
                     ),
                   // 排序按钮
                   if (connection?.status == QBConnectionStatus.connected)
                     IconButton(
-                      icon: const Icon(Icons.sort),
+                      icon: const Icon(Icons.swap_vert_rounded),
                       tooltip: '排序',
                       onPressed: () => _showSortDialog(context),
                     ),
@@ -297,14 +297,23 @@ class _QBittorrentDetailPageState extends ConsumerState<QBittorrentDetailPage> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => _AddTorrentDialog(sourceId: widget.source.id),
+      builder: (context) => GestureDetector(
+        onTap: () => Navigator.of(context).pop(),
+        behavior: HitTestBehavior.opaque,
+        child: GestureDetector(
+          onTap: () {}, // 阻止内部点击事件冒泡
+          child: _AddTorrentDialog(sourceId: widget.source.id),
+        ),
+      ),
     );
   }
 
   void _showSpeedLimitDialog(BuildContext context) {
-    showDialog<void>(
+    showModalBottomSheet<void>(
       context: context,
-      builder: (context) => _SpeedLimitDialog(sourceId: widget.source.id),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _SpeedLimitSheet(sourceId: widget.source.id),
     );
   }
 
@@ -1463,7 +1472,7 @@ class _FilterOptionsSheet extends ConsumerWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Row(
                 children: [
-                  const Icon(Icons.filter_list, size: 20),
+                  const Icon(Icons.filter_alt_rounded, size: 20),
                   const SizedBox(width: 8),
                   Text(
                     '筛选',
@@ -1672,7 +1681,7 @@ class _SortOptionsSheet extends ConsumerWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Row(
                 children: [
-                  const Icon(Icons.sort, size: 20),
+                  const Icon(Icons.swap_vert_rounded, size: 20),
                   const SizedBox(width: 8),
                   Text(
                     '排序',
@@ -1741,21 +1750,22 @@ class _SortOptionsSheet extends ConsumerWidget {
       };
 }
 
-/// 速度限制设置对话框
-class _SpeedLimitDialog extends ConsumerStatefulWidget {
-  const _SpeedLimitDialog({required this.sourceId});
+/// 速度限制设置底部弹框（可拖动）
+class _SpeedLimitSheet extends ConsumerStatefulWidget {
+  const _SpeedLimitSheet({required this.sourceId});
 
   final String sourceId;
 
   @override
-  ConsumerState<_SpeedLimitDialog> createState() => _SpeedLimitDialogState();
+  ConsumerState<_SpeedLimitSheet> createState() => _SpeedLimitSheetState();
 }
 
-class _SpeedLimitDialogState extends ConsumerState<_SpeedLimitDialog> {
+class _SpeedLimitSheetState extends ConsumerState<_SpeedLimitSheet> {
   final _dlLimitController = TextEditingController();
   final _upLimitController = TextEditingController();
   final _altDlLimitController = TextEditingController();
   final _altUpLimitController = TextEditingController();
+  bool _isSaving = false;
 
   @override
   void initState() {
@@ -1785,99 +1795,253 @@ class _SpeedLimitDialogState extends ConsumerState<_SpeedLimitDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-      title: const Text('速度限制设置'),
-      content: SingleChildScrollView(
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.55,
+      minChildSize: 0.3,
+      maxChildSize: 0.85,
+      builder: (context, scrollController) => DecoratedBox(
+        decoration: BoxDecoration(
+          color: isDark ? AppColors.darkSurface : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('全局限速', style: context.textTheme.titleSmall),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _dlLimitController,
-                    decoration: const InputDecoration(
-                      labelText: '下载 (KB/s)',
-                      hintText: '0 = 无限制',
-                    ),
-                    keyboardType: TextInputType.number,
-                  ),
+            // 拖动指示器
+            Center(
+              child: Container(
+                margin: const EdgeInsets.only(top: 12, bottom: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.grey[600] : Colors.grey[400],
+                  borderRadius: BorderRadius.circular(2),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: TextField(
-                    controller: _upLimitController,
-                    decoration: const InputDecoration(
-                      labelText: '上传 (KB/s)',
-                      hintText: '0 = 无限制',
-                    ),
-                    keyboardType: TextInputType.number,
-                  ),
-                ),
-              ],
+              ),
             ),
-            const SizedBox(height: 24),
-            Text('备用限速', style: context.textTheme.titleSmall),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _altDlLimitController,
-                    decoration: const InputDecoration(
-                      labelText: '下载 (KB/s)',
-                      hintText: '0 = 无限制',
+            // 标题栏
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 12, 16),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    keyboardType: TextInputType.number,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: TextField(
-                    controller: _altUpLimitController,
-                    decoration: const InputDecoration(
-                      labelText: '上传 (KB/s)',
-                      hintText: '0 = 无限制',
+                    child: const Icon(
+                      Icons.speed,
+                      color: AppColors.primary,
+                      size: 20,
                     ),
-                    keyboardType: TextInputType.number,
                   ),
-                ),
-              ],
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '速度限制设置',
+                          style: context.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          '设置全局和备用速度限制',
+                          style: context.textTheme.bodySmall?.copyWith(
+                            color: isDark
+                                ? AppColors.darkOnSurfaceVariant
+                                : AppColors.lightOnSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // 保存按钮
+                  FilledButton.icon(
+                    onPressed: _isSaving ? null : _save,
+                    icon: _isSaving
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.check, size: 18),
+                    label: const Text('保存'),
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            // 内容区域
+            Expanded(
+              child: ListView(
+                controller: scrollController,
+                padding: const EdgeInsets.all(20),
+                children: [
+                  // 全局限速
+                  Text(
+                    '全局限速',
+                    style: context.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '设置为 0 表示不限速',
+                    style: context.textTheme.bodySmall?.copyWith(
+                      color: isDark
+                          ? AppColors.darkOnSurfaceVariant
+                          : AppColors.lightOnSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildSpeedInput(
+                          controller: _dlLimitController,
+                          label: '下载',
+                          icon: Icons.download,
+                          color: AppColors.success,
+                          isDark: isDark,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildSpeedInput(
+                          controller: _upLimitController,
+                          label: '上传',
+                          icon: Icons.upload,
+                          color: AppColors.primary,
+                          isDark: isDark,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  // 备用限速
+                  Text(
+                    '备用限速',
+                    style: context.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '可通过快捷按钮临时切换到备用限速',
+                    style: context.textTheme.bodySmall?.copyWith(
+                      color: isDark
+                          ? AppColors.darkOnSurfaceVariant
+                          : AppColors.lightOnSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildSpeedInput(
+                          controller: _altDlLimitController,
+                          label: '下载',
+                          icon: Icons.download,
+                          color: AppColors.warning,
+                          isDark: isDark,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildSpeedInput(
+                          controller: _altUpLimitController,
+                          label: '上传',
+                          icon: Icons.upload,
+                          color: AppColors.warning,
+                          isDark: isDark,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ],
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('取消'),
+    );
+  }
+
+  Widget _buildSpeedInput({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    required Color color,
+    required bool isDark,
+  }) => TextField(
+      controller: controller,
+      decoration: InputDecoration(
+        labelText: '$label (KB/s)',
+        hintText: '0',
+        prefixIcon: Icon(icon, color: color, size: 20),
+        filled: true,
+        fillColor: isDark
+            ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
+            : AppColors.lightSurfaceVariant.withValues(alpha: 0.5),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
         ),
-        FilledButton(
-          onPressed: _save,
-          child: const Text('保存'),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: color, width: 2),
         ),
-      ],
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      ),
+      keyboardType: TextInputType.number,
+      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
     );
 
   Future<void> _save() async {
-    final actions = ref.read(qbittorrentActionsProvider(widget.sourceId));
+    setState(() => _isSaving = true);
 
-    final dlLimit = (int.tryParse(_dlLimitController.text) ?? 0) * 1024;
-    final upLimit = (int.tryParse(_upLimitController.text) ?? 0) * 1024;
-    final altDlLimit = (int.tryParse(_altDlLimitController.text) ?? 0) * 1024;
-    final altUpLimit = (int.tryParse(_altUpLimitController.text) ?? 0) * 1024;
+    try {
+      final actions = ref.read(qbittorrentActionsProvider(widget.sourceId));
 
-    await actions.setGlobalSpeedLimits(dlLimit: dlLimit, upLimit: upLimit);
-    await actions.setAlternativeSpeedLimits(dlLimit: altDlLimit, upLimit: altUpLimit);
+      final dlLimit = (int.tryParse(_dlLimitController.text) ?? 0) * 1024;
+      final upLimit = (int.tryParse(_upLimitController.text) ?? 0) * 1024;
+      final altDlLimit = (int.tryParse(_altDlLimitController.text) ?? 0) * 1024;
+      final altUpLimit = (int.tryParse(_altUpLimitController.text) ?? 0) * 1024;
 
-    if (mounted) {
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('速度限制已保存')),
-      );
+      await actions.setGlobalSpeedLimits(dlLimit: dlLimit, upLimit: upLimit);
+      await actions.setAlternativeSpeedLimits(dlLimit: altDlLimit, upLimit: altUpLimit);
+
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white, size: 20),
+                SizedBox(width: 8),
+                Text('速度限制已保存'),
+              ],
+            ),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
     }
   }
 }
@@ -1975,6 +2139,24 @@ class _AddTorrentDialogState extends ConsumerState<_AddTorrentDialog> {
                             ),
                           ),
                         ],
+                      ),
+                    ),
+                    // 添加按钮（移到右上角）
+                    FilledButton.icon(
+                      onPressed: _isLoading ? null : _submit,
+                      icon: _isLoading
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.add, size: 18),
+                      label: const Text('添加'),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       ),
                     ),
                   ],
@@ -2174,60 +2356,9 @@ class _AddTorrentDialogState extends ConsumerState<_AddTorrentDialog> {
                         ),
                       ),
                     ),
-                    // 底部空白，为按钮留出空间
-                    const SizedBox(height: 80),
+                    // 底部空白
+                    SizedBox(height: MediaQuery.of(context).padding.bottom + 20),
                   ],
-                ),
-              ),
-              // 底部按钮（固定）
-              Container(
-                padding: EdgeInsets.fromLTRB(
-                  20,
-                  12,
-                  20,
-                  12 + MediaQuery.of(context).padding.bottom,
-                ),
-                decoration: BoxDecoration(
-                  color: isDark ? AppColors.darkSurface : Colors.white,
-                  border: Border(
-                    top: BorderSide(
-                      color: isDark
-                          ? AppColors.darkOutline.withValues(alpha: 0.2)
-                          : AppColors.lightOutline.withValues(alpha: 0.2),
-                    ),
-                  ),
-                ),
-                child: FilledButton(
-                  onPressed: _isLoading ? null : _submit,
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size(double.infinity, 52),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  child: _isLoading
-                      ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.5,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.add, size: 20),
-                            SizedBox(width: 8),
-                            Text(
-                              '添加任务',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
                 ),
               ),
             ],
