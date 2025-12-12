@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/features/pt_sites/presentation/pages/pt_site_detail_page.dart';
 import 'package:my_nas/features/qbittorrent/presentation/pages/qbittorrent_detail_page.dart';
 import 'package:my_nas/features/sources/domain/entities/source_category.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
@@ -466,6 +467,19 @@ class _ServiceSourceCardState extends ConsumerState<_ServiceSourceCard> {
   }
 
   Future<void> _openDetailPage(BuildContext context) async {
+    // PT 站点不需要密码验证，直接跳转
+    if (widget.source.type.category == SourceCategory.ptSites) {
+      if (context.mounted) {
+        await Navigator.push(
+          context,
+          MaterialPageRoute<void>(
+            builder: (_) => PTSiteDetailPage(source: widget.source),
+          ),
+        );
+      }
+      return;
+    }
+
     // 获取密码
     String? password;
     final manager = ref.read(sourceManagerProvider);

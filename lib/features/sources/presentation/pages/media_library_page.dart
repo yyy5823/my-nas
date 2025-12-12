@@ -1209,15 +1209,18 @@ class _PathCardState extends ConsumerState<_PathCard> {
         connections: widget.connections,
       );
 
+      if (!mounted) return;
+
       await _loadStats();
       await _loadInitialScrapeStats();
       await ref.read(videoListProvider.notifier).reloadFromCache();
-      if (mounted) {
-        setState(() => _isScraping = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('重试刮削完成')),
-        );
-      }
+
+      if (!mounted) return;
+
+      setState(() => _isScraping = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('重试刮削完成')),
+      );
     } on Exception catch (e) {
       if (mounted) {
         setState(() => _isScraping = false);

@@ -767,6 +767,25 @@ class VideoDatabaseService {
     }
   }
 
+  /// 获取第一个视频的路径信息（用于诊断路径不匹配问题）
+  Future<({String sourceId, String filePath})?> getFirstVideoPath() async {
+    if (!_initialized) await init();
+
+    final result = await _db!.rawQuery(
+      'SELECT $_colSourceId, $_colFilePath FROM $_tableMetadata LIMIT 1',
+    );
+
+    if (result.isEmpty) return null;
+
+    final row = result.first;
+    final sourceId = row[_colSourceId];
+    final filePath = row[_colFilePath];
+
+    if (sourceId is! String || filePath is! String) return null;
+
+    return (sourceId: sourceId, filePath: filePath);
+  }
+
   /// 获取总数量
   Future<int> getCount({MediaCategory? category}) async {
     if (!_initialized) await init();

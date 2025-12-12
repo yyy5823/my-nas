@@ -5,7 +5,6 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
-import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
@@ -357,10 +356,32 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
   /// - 刮削全部完成时立即刷新
   /// - 当总数变化时也触发刷新（说明扫描完成有新视频加入）
   void _onScrapeStatsChanged(ScrapeStats stats) {
-    // 当刮削全部完成时，立即刷新（取消防抖等待）
-    if (stats.isAllDone && _lastCompletedCount > 0) {
+    logger.d('VideoListNotifier: 收到统计更新 - total: ${stats.total}, completed: ${stats.completed}, '
+        'pending: ${stats.pending}, isAllDone: ${stats.isAllDone}, '
+        'lastTotal: $_lastTotalCount, lastCompleted: $_lastCompletedCount');
+
+    // 检查当前 UI 状态 - 如果数据库有数据但 UI 显示为空，强制刷新
+    final currentState = state;
+    if (currentState is VideoListLoaded) {
+      logger.d('VideoListNotifier: 当前 UI 状态 - totalCount: ${currentState.totalCount}, '
+          'databaseTotalCount: ${currentState.databaseTotalCount}');
+    }
+    if (currentState is VideoListLoaded &&
+        currentState.totalCount == 0 &&
+        stats.total > 0) {
+      logger.d('VideoListNotifier: UI 为空但数据库有 ${stats.total} 个视频，强制刷新');
       _debounceTimer?.cancel();
-      _lastCompletedCount = 0;
+      _lastCompletedCount = stats.completed;
+      _lastTotalCount = stats.total;
+      _loadCategorizedData(silent: true);
+      return;
+    }
+
+    // 当刮削全部完成时，立即刷新（取消防抖等待）
+    if (stats.isAllDone && stats.total > 0) {
+      logger.d('VideoListNotifier: 刮削全部完成，立即刷新');
+      _debounceTimer?.cancel();
+      _lastCompletedCount = stats.completed;
       _lastTotalCount = stats.total;
       _loadCategorizedData(silent: true);
       return;
@@ -370,6 +391,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     if (stats.total != _lastTotalCount) {
       logger.d('VideoListNotifier: 视频总数变化 $_lastTotalCount -> ${stats.total}，刷新列表');
       _lastTotalCount = stats.total;
+      _lastCompletedCount = stats.completed;
       _debounceTimer?.cancel();
       _loadCategorizedData(silent: true);
       return;
@@ -402,10 +424,11 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     state = VideoListLoaded(totalCount: 0);
 
     // 在后台初始化服务并加载数据，不阻塞UI
-    AppError.fireAndForget(
-      _initAndLoadInBackground(),
-      action: 'initVideoList',
-    );
+    _initAndLoadInBackground().then((_) {
+      logger.i('VideoListNotifier: 后台初始化完成');
+    }).catchError((Object e, StackTrace st) {
+      logger.e('VideoListNotifier: 后台初始化异常', e, st);
+    });
   }
 
   /// 后台初始化服务并加载数据
@@ -429,6 +452,17 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       // 从 SQLite 加载分类数据
       // SQLite是本地数据库，查询应该非常快
       await _loadCategorizedData(silent: true);
+
+      // 初始化完成后，同步当前刮削统计的跟踪值
+      // 这确保后续的比较基准是正确的
+      try {
+        final stats = await _db.getScrapeStats();
+        _lastTotalCount = stats.total;
+        _lastCompletedCount = stats.completed;
+        logger.d('VideoListNotifier: 初始化完成，同步统计值 - total: ${stats.total}, completed: ${stats.completed}');
+      } on Exception catch (e) {
+        logger.w('VideoListNotifier: 同步统计值失败', e);
+      }
     } on Exception catch (e) {
       logger.e('VideoListNotifier: 后台初始化失败', e);
       // 保持空列表状态，让用户可以正常使用界面
@@ -454,7 +488,14 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
 
     // 获取启用的路径（用于过滤停用文件夹的视频）
     final enabledPaths = _getEnabledPaths();
-    logger.d('VideoListNotifier: enabledPaths = $enabledPaths');
+    if (enabledPaths != null) {
+      logger.d('VideoListNotifier: enabledPaths 数量=${enabledPaths.length}');
+      for (final p in enabledPaths) {
+        logger.d('  - sourceId="${p.sourceId}", path="${p.path}"');
+      }
+    } else {
+      logger.d('VideoListNotifier: enabledPaths = null (不进行路径过滤)');
+    }
 
     // 并行查询各分类数据（使用 SQLite 索引，O(log N) 复杂度）
     // 首页只加载少量数据用于展示，查看全部页面支持分页懒加载
@@ -515,6 +556,22 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
         'movies=${moviesList.length}, tvShows=${tvShowRepresentatives.length}, '
         'others=${othersList.length}, databaseTotal=$databaseTotalCount');
 
+    // 诊断：如果过滤后为空但数据库有数据，异步打印诊断信息（不阻塞 UI 更新）
+    if ((stats['total'] as int? ?? 0) == 0 && databaseTotalCount > 0) {
+      logger.w('VideoListNotifier: ⚠️ 路径过滤后无数据！数据库有 $databaseTotalCount 条记录但过滤后为 0');
+      // 使用 unawaited 延迟执行诊断查询，不阻塞 state 更新
+      unawaited(Future.microtask(() async {
+        try {
+          final sample = await _db.getFirstVideoPath();
+          if (sample != null) {
+            logger.w('  数据库中的示例路径: sourceId="${sample.sourceId}", path="${sample.filePath}"');
+          }
+        } on Exception catch (e) {
+          logger.w('  无法获取示例路径: $e');
+        }
+      }));
+    }
+
     // 首页剧集直接使用代表性数据，不需要再分组
     // 但为了兼容性，仍然构建 TvShowGroup（用于高分推荐和最近添加的去重）
     final tvShowGroups = <String, TvShowGroup>{};
@@ -551,6 +608,10 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     for (final m in othersList) {
       videoByKey[m.uniqueKey] = m;
     }
+
+    // 同步刮削统计跟踪值，避免后续比较逻辑失效
+    // 这确保了从后台恢复时，比较基准是正确的
+    _lastTotalCount = databaseTotalCount;
 
     state = VideoListLoaded(
       totalCount: stats['total'] as int? ?? 0,

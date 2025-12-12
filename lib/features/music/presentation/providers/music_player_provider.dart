@@ -185,6 +185,9 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   // 上次 Live Activity 更新的秒数（避免每帧都更新）
   int _lastLiveActivityUpdateSecond = -1;
 
+  // 是否正在启动 Live Activity（防止重复启动导致竞争条件）
+  bool _isStartingLiveActivity = false;
+
   // 音频缓存服务（用于持久化缓存，避免重复下载）
   final MusicAudioCacheService _audioCacheService = MusicAudioCacheService();
 
@@ -208,9 +211,9 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     // 监听播放状态
     _player.playingStream.listen((playing) {
       state = state.copyWith(isPlaying: playing);
-      // 当开始播放时，确保 Live Activity 已启动
-      // 这是修复首次播放后立即切到后台时灵动岛不显示的关键
-      if (playing && !_liveActivityService.isActivityRunning) {
+      // 当开始播放时，确保 Live Activity 已启动（但避免与 play() 方法竞争）
+      // 使用 _isStartingLiveActivity 标志位防止重复启动
+      if (playing && !_liveActivityService.isActivityRunning && !_isStartingLiveActivity) {
         final currentMusic = _ref.read(currentMusicProvider);
         if (currentMusic != null) {
           AppError.fireAndForget(
@@ -218,13 +221,13 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
             action: 'startLiveActivityOnPlayingStart',
           );
         }
-      } else {
-        // 播放状态变化时立即更新 Live Activity，避免灵动岛停顿
-        AppError.fireAndForget(
-          _updateLiveActivity(),
-          action: 'updateLiveActivityOnPlayingChange',
-        );
       }
+      // 播放状态变化时始终更新 Live Activity（包括暂停时）
+      // 这确保灵动岛能正确显示暂停/播放状态
+      AppError.fireAndForget(
+        _updateLiveActivity(),
+        action: 'updateLiveActivityOnPlayingChange',
+      );
     });
 
     // 监听缓冲状态
@@ -394,41 +397,52 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   Future<void> _startLiveActivity(MusicItem music) async {
     if (!_liveActivityService.isSupported) return;
 
-    // 获取封面数据
-    Uint8List? coverData;
-    if (music.coverData != null && music.coverData!.isNotEmpty) {
-      coverData = Uint8List.fromList(music.coverData!);
-      logger.d('LiveActivity: 使用音乐自带封面 - size=${coverData.length} bytes');
-    } else {
-      // 尝试从封面缓存中获取
-      // uniqueKey 格式: sourceId_path
-      final uniqueKey = '${music.sourceId ?? ''}_${music.path}';
-      final coverCacheService = MusicCoverCacheService();
-      coverData = await coverCacheService.getCover(uniqueKey);
-      if (coverData != null) {
-        logger.d('LiveActivity: 从缓存获取到封面 - $uniqueKey, size=${coverData.length} bytes');
-      } else {
-        logger.w('LiveActivity: 无法获取封面 - $uniqueKey');
-      }
+    // 防止重复启动
+    if (_isStartingLiveActivity) {
+      logger.d('LiveActivity: 正在启动中，跳过重复调用');
+      return;
     }
+    _isStartingLiveActivity = true;
 
-    // 当正在缓冲（切换歌曲）时，也显示播放动效
-    final showPlayingAnimation = state.isPlaying || state.isBuffering;
+    try {
+      // 获取封面数据
+      Uint8List? coverData;
+      if (music.coverData != null && music.coverData!.isNotEmpty) {
+        coverData = Uint8List.fromList(music.coverData!);
+        logger.d('LiveActivity: 使用音乐自带封面 - size=${coverData.length} bytes');
+      } else {
+        // 尝试从封面缓存中获取
+        // uniqueKey 格式: sourceId_path
+        final uniqueKey = '${music.sourceId ?? ''}_${music.path}';
+        final coverCacheService = MusicCoverCacheService();
+        coverData = await coverCacheService.getCover(uniqueKey);
+        if (coverData != null) {
+          logger.d('LiveActivity: 从缓存获取到封面 - $uniqueKey, size=${coverData.length} bytes');
+        } else {
+          logger.w('LiveActivity: 无法获取封面 - $uniqueKey');
+        }
+      }
 
-    // 切歌时需要强制更新灵动岛的歌曲信息（标题、艺术家、封面等）
-    // 不能仅依赖定时更新，因为定时更新可能不会立即触发
-    await _liveActivityService.startMusicActivity(
-      music: music,
-      isPlaying: showPlayingAnimation,
-      position: state.position,
-      duration: state.duration,
-      coverData: coverData,
-    );
+      // 当正在缓冲（切换歌曲）时，也显示播放动效
+      final showPlayingAnimation = state.isPlaying || state.isBuffering;
 
-    logger.i('LiveActivity: 切歌更新完成 - title=${music.displayTitle}, artist=${music.displayArtist}');
+      // 切歌时需要强制更新灵动岛的歌曲信息（标题、艺术家、封面等）
+      // 不能仅依赖定时更新，因为定时更新可能不会立即触发
+      await _liveActivityService.startMusicActivity(
+        music: music,
+        isPlaying: showPlayingAnimation,
+        position: state.position,
+        duration: state.duration,
+        coverData: coverData,
+      );
 
-    // 启动定时更新
-    _startLiveActivityUpdateTimer();
+      logger.i('LiveActivity: 切歌更新完成 - title=${music.displayTitle}, artist=${music.displayArtist}');
+
+      // 启动定时更新
+      _startLiveActivityUpdateTimer();
+    } finally {
+      _isStartingLiveActivity = false;
+    }
   }
 
   /// 启动 Live Activity 更新
@@ -791,13 +805,18 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
           }
 
           // 更新 Live Activity 封面图片
+          // 使用完整的 updateActivity 方法确保灵动岛正确刷新
           if (metadata.coverData != null && metadata.coverData!.isNotEmpty) {
+            final showPlayingAnimation = state.isPlaying || state.isBuffering;
             AppError.fireAndForget(
-              _liveActivityService.updateCoverImage(
-                updatedMusic,
-                Uint8List.fromList(metadata.coverData!),
+              _liveActivityService.updateActivity(
+                music: updatedMusic,
+                isPlaying: showPlayingAnimation,
+                position: state.position,
+                duration: state.duration,
+                coverData: Uint8List.fromList(metadata.coverData!),
               ),
-              action: 'updateLiveActivityCover',
+              action: 'updateLiveActivityWithCover',
             );
           }
         } else {
