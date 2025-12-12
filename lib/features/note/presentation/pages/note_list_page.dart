@@ -584,6 +584,8 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
         // 笔记不支持此操作
         break;
       case MediaFileAction.deleteFromSource:
+        if (!context.mounted) return;
+        // ignore: use_build_context_synchronously
         final confirmed = await showDeleteConfirmDialog(
           context: context,
           title: '删除笔记',
@@ -2058,6 +2060,8 @@ class _NoteListContentState extends ConsumerState<NoteListContent> {
         // 笔记不支持此操作
         break;
       case MediaFileAction.deleteFromSource:
+        if (!context.mounted) return;
+        // ignore: use_build_context_synchronously
         final confirmed = await showDeleteConfirmDialog(
           context: context,
           title: '删除笔记',

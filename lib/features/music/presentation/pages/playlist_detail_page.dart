@@ -729,7 +729,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
                 await ref
                     .read(playlistProvider.notifier)
                     .renamePlaylist(widget.playlist.id, name);
-                if (mounted) {
+                if (context.mounted) {
                   Navigator.pop(context);
                 }
               }
@@ -758,7 +758,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
               await ref
                   .read(playlistProvider.notifier)
                   .clearPlaylist(widget.playlist.id);
-              if (mounted) {
+              if (context.mounted) {
                 Navigator.pop(context);
                 await _loadTracks();
               }
@@ -787,7 +787,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
               await ref
                   .read(playlistProvider.notifier)
                   .deletePlaylist(widget.playlist.id);
-              if (mounted) {
+              if (context.mounted) {
                 Navigator.pop(context); // 关闭对话框
                 Navigator.pop(context); // 返回上一页
               }

@@ -73,7 +73,8 @@ linter:
     only_throw_errors: true
     parameter_assignments: true
     prefer_asserts_in_initializer_lists: true
-    prefer_constructors_over_static_methods: true
+    # 禁用：静态方法和工厂构造函数都是有效的设计选择
+    prefer_constructors_over_static_methods: false
     prefer_expression_function_bodies: true
     prefer_final_in_for_each: true
     prefer_final_locals: true
@@ -107,7 +108,8 @@ linter:
     use_late_for_private_fields_and_variables: true
     use_named_constants: true
     use_raw_strings: true
-    use_setters_to_change_properties: true
+    # 禁用：方法和 setter 都是有效的设计选择，方法可以提供更好的语义
+    use_setters_to_change_properties: false
     use_string_buffers: true
     use_super_parameters: true
     use_to_and_as_if_applicable: true
