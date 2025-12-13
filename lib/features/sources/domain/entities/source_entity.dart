@@ -201,6 +201,38 @@ enum SourceType {
         SourceType.ptSite => Icons.rss_feed,
       };
 
+  /// 获取源类型的主题颜色（用于快速区分不同协议）
+  Color get themeColor => switch (this) {
+        // NAS 设备 - 蓝色系（品牌感）
+        SourceType.synology => const Color(0xFF1976D2), // 深蓝
+        SourceType.qnap => const Color(0xFF0288D1), // 浅蓝
+        SourceType.ugreen => const Color(0xFF4CAF50), // 绿联绿
+        SourceType.fnos => const Color(0xFF00BCD4), // 青色
+        // 通用协议 - 各自特征色
+        SourceType.webdav => const Color(0xFF9C27B0), // 紫色 - 云协议
+        SourceType.smb => const Color(0xFFFF9800), // 橙色 - Windows/网络
+        SourceType.ftp => const Color(0xFF795548), // 棕色 - 传统协议
+        SourceType.sftp => const Color(0xFF607D8B), // 蓝灰 - 安全协议
+        SourceType.nfs => const Color(0xFF009688), // 青绿 - Unix协议
+        SourceType.upnp => const Color(0xFFE91E63), // 粉红 - 媒体发现
+        // 本地存储 - 灰色
+        SourceType.local => const Color(0xFF757575),
+        // 下载工具 - 绿色系
+        SourceType.qbittorrent => const Color(0xFF2196F3), // qB蓝
+        SourceType.transmission => const Color(0xFFFF5722), // Tr橙红
+        SourceType.aria2 => const Color(0xFF8BC34A), // 浅绿
+        // 媒体追踪 - 红色
+        SourceType.trakt => const Color(0xFFED1C24), // Trakt红
+        // 媒体管理 - 各品牌色
+        SourceType.nastool => const Color(0xFF673AB7), // 深紫
+        SourceType.moviepilot => const Color(0xFF3F51B5), // 靛蓝
+        SourceType.jellyfin => const Color(0xFF00A4DC), // Jellyfin紫蓝
+        SourceType.emby => const Color(0xFF52B54B), // Emby绿
+        SourceType.plex => const Color(0xFFE5A00D), // Plex橙黄
+        // PT 站点 - 琥珀色
+        SourceType.ptSite => const Color(0xFFFFA000),
+      };
+
   /// 获取源类型的描述
   String get description => switch (this) {
         // NAS 设备

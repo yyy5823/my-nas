@@ -2012,6 +2012,7 @@ class _LanguageSettingsSheet extends ConsumerWidget {
                     child: DropdownButton<LanguageOption>(
                       value: currentValue,
                       isDense: true,
+                      menuMaxHeight: 300, // 限制下拉菜单最大高度
                       icon: Icon(
                         Icons.expand_more_rounded,
                         size: 18,

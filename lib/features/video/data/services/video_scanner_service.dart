@@ -10,6 +10,7 @@ import 'package:my_nas/features/sources/data/services/source_manager_service.dar
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/video/data/services/nfo_scraper_service.dart';
+import 'package:my_nas/features/video/data/services/subtitle_service.dart';
 import 'package:my_nas/features/video/data/services/video_database_service.dart';
 import 'package:my_nas/features/video/data/services/video_library_cache_service.dart';
 import 'package:my_nas/features/video/data/services/video_metadata_service.dart';
@@ -230,6 +231,7 @@ class VideoScannerService {
 
     _isScanning = true;
     final allVideos = <_ScannedVideo>[];
+    final allSubtitles = <_ScannedSubtitle>[];
     final sourceIds = <String>{};
 
     // 启动后台服务（移动平台）
@@ -267,16 +269,19 @@ class VideoScannerService {
           pathPrefix: path.path,
         ));
 
-        // 创建当前目录的视频列表（用于计算单目录进度）
+        // 创建当前目录的视频和字幕列表（用于计算单目录进度）
         final pathVideos = <_ScannedVideo>[];
+        final pathSubtitles = <_ScannedSubtitle>[];
         await _scanDirectory(
           fileSystem: fileSystem,
           sourceId: path.sourceId,
           path: path.path,
           rootPathPrefix: path.path,
           videos: pathVideos,
+          subtitles: pathSubtitles,
         );
         allVideos.addAll(pathVideos);
+        allSubtitles.addAll(pathSubtitles);
 
         // 记录该目录的扫描数量
         pathVideoCounts.add((path.sourceId, path.path, pathVideos.length));
@@ -319,6 +324,12 @@ class VideoScannerService {
       }
 
       await _saveBasicMetadataToDb(allVideos);
+
+      // 保存字幕索引到数据库
+      if (allSubtitles.isNotEmpty) {
+        await _saveSubtitlesToDb(allSubtitles);
+        logger.i('VideoScannerService: 字幕索引完成，共 ${allSubtitles.length} 条');
+      }
 
       // 完成文件扫描 - 为每个目录发送 completed 阶段进度
       for (final (sourceId, pathPrefix, count) in pathVideoCounts) {
@@ -434,7 +445,7 @@ class VideoScannerService {
           seasonNumber: nfoInfo?.seasonNumber,
           episodeNumber: nfoInfo?.episodeNumber,
           // 如果有 NFO 信息，设置分类
-          category: _inferCategory(nfoInfo),
+          category: _inferCategory(nfoInfo, fileName: video.file.name),
           // 海报路径（本地 NAS 路径，需要后续转换为 URL）
           posterUrl: nfoInfo?.posterPath,
         );
@@ -465,18 +476,36 @@ class VideoScannerService {
     }
   }
 
-  /// 根据 NFO 信息推断媒体分类
-  MediaCategory _inferCategory(NfoBasicInfo? nfoInfo) {
-    if (nfoInfo == null) return MediaCategory.unknown;
-
-    // 如果有季集信息，是剧集
-    if (nfoInfo.seasonNumber != null || nfoInfo.episodeNumber != null) {
-      return MediaCategory.tvShow;
+  /// 根据 NFO 信息和文件名推断媒体分类
+  ///
+  /// 优先顺序：
+  /// 1. NFO 信息中的季集号（最可靠）
+  /// 2. 文件名模式（如 S01E01、1x01、第X集）
+  /// 3. NFO 有数据但无季集信息 -> 电影
+  /// 4. 都没有 -> unknown
+  MediaCategory _inferCategory(NfoBasicInfo? nfoInfo, {String? fileName}) {
+    // 1. 优先使用 NFO 信息
+    if (nfoInfo != null) {
+      if (nfoInfo.seasonNumber != null || nfoInfo.episodeNumber != null) {
+        return MediaCategory.tvShow;
+      }
+      // NFO 有数据但无季集信息，认为是电影
+      if (nfoInfo.hasData) {
+        return MediaCategory.movie;
+      }
     }
 
-    // 默认为电影
-    if (nfoInfo.hasData) {
-      return MediaCategory.movie;
+    // 2. 尝试从文件名推断
+    if (fileName != null && fileName.isNotEmpty) {
+      // 使用 VideoFileNameParser 检测剧集模式
+      final info = VideoFileNameParser.parse(fileName);
+      if (info.isTvShow) {
+        return MediaCategory.tvShow;
+      }
+      // 如果文件名有年份且不是剧集，可能是电影
+      if (info.year != null) {
+        return MediaCategory.movie;
+      }
     }
 
     return MediaCategory.unknown;
@@ -861,12 +890,14 @@ class VideoScannerService {
   /// - 系统目录（以 @ 开头、#recycle、eaDir）
   ///
   /// 优化：对于有 NFO 文件的目录，会快速解析基础信息
+  /// 同时索引字幕文件，关联到同目录下的视频
   Future<void> _scanDirectory({
     required NasFileSystem fileSystem,
     required String sourceId,
     required String path,
     required String rootPathPrefix,
     required List<_ScannedVideo> videos,
+    required List<_ScannedSubtitle> subtitles,
   }) async {
     _emitProgress(
       VideoScanProgress(
@@ -888,8 +919,9 @@ class VideoScannerService {
            item.name.toLowerCase() == 'movie.nfo' ||
            item.name.toLowerCase() == 'tvshow.nfo'));
 
-      // 收集当前目录的视频文件，稍后批量处理 NFO
+      // 收集当前目录的视频文件和字幕文件
       final videoItems = <FileItem>[];
+      final subtitleItems = <FileItem>[];
 
       for (final item in items) {
         if (item.isDirectory) {
@@ -905,9 +937,12 @@ class VideoScannerService {
             path: item.path,
             rootPathPrefix: rootPathPrefix,
             videos: videos,
+            subtitles: subtitles,
           );
         } else if (item.type == FileType.video) {
           videoItems.add(item);
+        } else if (_isSubtitleFile(item.name)) {
+          subtitleItems.add(item);
         }
       }
 
@@ -951,6 +986,22 @@ class VideoScannerService {
           nfoBasicInfo: nfoInfo,
         ));
 
+        // 为该视频关联字幕文件
+        final videoBaseName = _getBaseName(videoItem.name).toLowerCase();
+        for (final subtitleItem in subtitleItems) {
+          final subtitleBaseName = _getBaseName(subtitleItem.name).toLowerCase();
+          // 字幕文件名以视频名开头，或完全匹配
+          if (subtitleBaseName == videoBaseName ||
+              subtitleBaseName.startsWith(videoBaseName)) {
+            subtitles.add(_ScannedSubtitle(
+              sourceId: sourceId,
+              videoPath: videoItem.path,
+              subtitleFile: subtitleItem,
+              language: _parseSubtitleLanguage(subtitleItem.name, videoBaseName),
+            ));
+          }
+        }
+
         // 每扫描到一定数量更新进度
         if (videos.length % 10 == 0) {
           _emitProgress(
@@ -967,6 +1018,63 @@ class VideoScannerService {
     } on Exception catch (e) {
       logger.w('VideoScannerService: 扫描目录失败 $path', e);
     }
+  }
+
+  /// 检查是否是字幕文件
+  bool _isSubtitleFile(String fileName) {
+    final ext = _getExtension(fileName);
+    return subtitleExtensions.contains(ext);
+  }
+
+  /// 获取文件扩展名（小写，包含点号）
+  String _getExtension(String fileName) {
+    final lastDot = fileName.lastIndexOf('.');
+    if (lastDot == -1) return '';
+    return fileName.substring(lastDot).toLowerCase();
+  }
+
+  /// 从字幕文件名解析语言
+  String? _parseSubtitleLanguage(String subtitleName, String videoBaseName) {
+    // 常见的语言标记
+    const languagePatterns = {
+      'chs': '简体中文',
+      'cht': '繁体中文',
+      'sc': '简体中文',
+      'tc': '繁体中文',
+      'zh': '中文',
+      'zh-cn': '简体中文',
+      'zh-tw': '繁体中文',
+      'chinese': '中文',
+      '简体': '简体中文',
+      '繁体': '繁体中文',
+      '简中': '简体中文',
+      '繁中': '繁体中文',
+      'en': 'English',
+      'eng': 'English',
+      'english': 'English',
+      'ja': '日本語',
+      'jp': '日本語',
+      'jpn': '日本語',
+      'ko': '한국어',
+      'kor': '한국어',
+    };
+
+    final subtitleBaseName = _getBaseName(subtitleName).toLowerCase();
+    var remaining = subtitleBaseName;
+
+    if (subtitleBaseName.startsWith(videoBaseName)) {
+      remaining = subtitleBaseName.substring(videoBaseName.length);
+    }
+
+    remaining = remaining.replaceAll(RegExp(r'^[._\-\s]+'), '');
+
+    for (final entry in languagePatterns.entries) {
+      if (remaining.contains(entry.key)) {
+        return entry.value;
+      }
+    }
+
+    return remaining.isNotEmpty ? remaining : null;
   }
 
   /// 获取文件基础名（不含扩展名）
@@ -988,6 +1096,24 @@ class VideoScannerService {
 
   void _emitProgress(VideoScanProgress progress) {
     _progressController.add(progress);
+  }
+
+  /// 保存字幕索引到数据库
+  Future<void> _saveSubtitlesToDb(List<_ScannedSubtitle> subtitles) async {
+    final subtitleIndexes = subtitles
+        .map(
+          (s) => SubtitleIndex(
+            sourceId: s.sourceId,
+            videoPath: s.videoPath,
+            subtitlePath: s.subtitleFile.path,
+            fileName: s.subtitleFile.name,
+            format: _getExtension(s.subtitleFile.name).substring(1), // 去掉点号
+            language: s.language,
+          ),
+        )
+        .toList();
+
+    await _dbService.upsertSubtitlesBatch(subtitleIndexes);
   }
 
   /// 释放资源
@@ -1036,4 +1162,19 @@ class NfoBasicInfo {
   final String? posterPath;
 
   bool get hasData => title != null || tmdbId != null;
+}
+
+/// 扫描到的字幕
+class _ScannedSubtitle {
+  const _ScannedSubtitle({
+    required this.sourceId,
+    required this.videoPath,
+    required this.subtitleFile,
+    this.language,
+  });
+
+  final String sourceId;
+  final String videoPath;
+  final FileItem subtitleFile;
+  final String? language;
 }

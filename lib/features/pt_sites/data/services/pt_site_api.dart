@@ -84,13 +84,16 @@ enum PTTorrentSortBy {
 class MTeamApi extends PTSiteApi {
   MTeamApi({required super.source, super.client}) : _ioClient = _createIOClient();
 
-  /// 创建支持重定向的 IOClient
+  /// 创建禁用自动重定向的 IOClient，以便更好地处理 302 等状态码
   static http.Client _createIOClient() {
     final httpClient = HttpClient();
     // ignore: cascade_invocations
     httpClient.badCertificateCallback = (cert, host, port) => true;
     // ignore: cascade_invocations
     httpClient.connectionTimeout = const Duration(seconds: 30);
+    // 禁用自动重定向，以便能够检测到 302 等认证问题
+    // ignore: cascade_invocations
+    httpClient.autoUncompress = true;
     return IOClient(httpClient);
   }
 
@@ -99,13 +102,18 @@ class MTeamApi extends PTSiteApi {
   @override
   Map<String, String> get headers {
     final xApiKey = source.extraConfig?['xApiKey'] as String? ?? '';
-    final authorization = source.extraConfig?['authorization'] as String? ?? '';
+    // 获取 userAgent，确保空字符串也使用默认值
+    final configUserAgent = source.extraConfig?['userAgent'] as String?;
+    final userAgent = (configUserAgent != null && configUserAgent.isNotEmpty)
+        ? configUserAgent
+        : 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+    // 参考 nas-tools 实现: 只需要 x-api-key，不需要 authorization
+    // https://github.com/linyuan0213/nas-tools/blob/master/app/indexer/client/_mteam.py
     return {
-      'Content-Type': 'application/json',
+      'Content-Type': 'application/json; charset=utf-8',
       'x-api-key': xApiKey,
-      'authorization': authorization,
-      'User-Agent': source.extraConfig?['userAgent'] as String? ??
-          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+      'User-Agent': userAgent,
     };
   }
 
@@ -120,30 +128,42 @@ class MTeamApi extends PTSiteApi {
   @override
   Future<bool> testConnection() async {
     try {
-      // 检查必要的认证信息
+      // 检查必要的认证信息（只需要 x-api-key）
       final xApiKey = source.extraConfig?['xApiKey'] as String? ?? '';
-      final authorization = source.extraConfig?['authorization'] as String? ?? '';
 
       _logger
         ..d('MTeamApi.testConnection: extraConfig = ${source.extraConfig}')
         ..d('MTeamApi.testConnection: xApiKey = ${xApiKey.isNotEmpty ? "已配置(${xApiKey.length}字符)" : "未配置"}')
-        ..d('MTeamApi.testConnection: authorization = ${authorization.isNotEmpty ? "已配置(${authorization.length}字符)" : "未配置"}')
         ..d('MTeamApi.testConnection: headers = $headers');
 
-      if (xApiKey.isEmpty && authorization.isEmpty) {
-        _logger.w('MTeamApi.testConnection: 缺少认证信息');
+      if (xApiKey.isEmpty) {
+        _logger.w('MTeamApi.testConnection: 缺少 x-api-key');
         AppError.ignore(
           Exception('缺少认证信息'),
           StackTrace.current,
-          '馒头站点需要配置 x-api-key 或 authorization 请求头',
+          '馒头站点需要配置 x-api-key',
         );
         return false;
       }
 
-      _logger.i('MTeamApi.testConnection: 开始请求 $_apiBase/api/member/profile');
+      // 使用搜索接口测试连接（不需要 uid 参数）
+      // 参考 nas-tools 的实现: https://github.com/linyuan0213/nas-tools
+      _logger.i('MTeamApi.testConnection: 开始请求 $_apiBase/api/torrent/search');
+
+      // 构建搜索请求体
+      final searchBody = json.encode({
+        'mode': 'normal',
+        'categories': <String>[],
+        'visible': 1,
+        'keyword': '',
+        'pageNumber': 1,
+        'pageSize': 1, // 只获取一条用于测试
+      });
+
       final response = await _ioClient.post(
-        Uri.parse('$_apiBase/api/member/profile'),
+        Uri.parse('$_apiBase/api/torrent/search'),
         headers: headers,
+        body: searchBody,
       );
 
       _logger
@@ -152,14 +172,15 @@ class MTeamApi extends PTSiteApi {
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body) as Map<String, dynamic>;
-        // 检查 API 返回的状态码
-        if (data['code'] == '0') {
+        // 检查 API 返回的状态码（可能是字符串 "0" 或整数 0）
+        final code = data['code'];
+        if (code == '0' || code == 0 || code == 'SUCCESS') {
           _logger.i('MTeamApi.testConnection: 连接成功');
           return true;
         }
         // API 返回错误
         final message = data['message'] as String? ?? '未知错误';
-        _logger.w('MTeamApi.testConnection: API 返回错误 - $message');
+        _logger.w('MTeamApi.testConnection: API 返回错误 - code=$code, message=$message');
         AppError.ignore(
           Exception('API 返回错误: $message'),
           StackTrace.current,
@@ -170,10 +191,19 @@ class MTeamApi extends PTSiteApi {
 
       // HTTP 状态码错误
       _logger.w('MTeamApi.testConnection: HTTP 状态码错误 ${response.statusCode}');
+
+      // 302 重定向通常表示认证信息无效或已过期
+      final errorMessage = switch (response.statusCode) {
+        302 => '认证信息可能已过期，请更新 x-api-key',
+        401 => '认证失败，请检查 x-api-key 是否正确',
+        403 => '访问被拒绝，请检查账号权限',
+        _ => 'HTTP ${response.statusCode}',
+      };
+
       AppError.ignore(
-        Exception('HTTP ${response.statusCode}'),
+        Exception(errorMessage),
         StackTrace.current,
-        '馒头连接失败: HTTP ${response.statusCode}',
+        '馒头连接失败: $errorMessage',
       );
       return false;
     } on Exception catch (e, st) {
@@ -186,8 +216,16 @@ class MTeamApi extends PTSiteApi {
   @override
   Future<PTUserInfo> getUserInfo() async {
     try {
+      // /api/member/profile 需要 uid 参数
+      // 从 authorization JWT token 解析 uid，或从配置获取
+      final uid = _extractUidFromConfig();
+      if (uid == null) {
+        _logger.w('MTeamApi.getUserInfo: 无法获取 uid，返回空用户信息');
+        return const PTUserInfo(username: '', userId: '');
+      }
+
       final response = await _ioClient.post(
-        Uri.parse('$_apiBase/api/member/profile'),
+        Uri.parse('$_apiBase/api/member/profile?uid=$uid'),
         headers: headers,
       );
 
@@ -196,7 +234,8 @@ class MTeamApi extends PTSiteApi {
       }
 
       final data = json.decode(response.body) as Map<String, dynamic>;
-      if (data['code'] != '0') {
+      final code = data['code'];
+      if (code != '0' && code != 0 && code != 'SUCCESS') {
         throw Exception(data['message'] ?? '获取用户信息失败');
       }
 
@@ -218,6 +257,41 @@ class MTeamApi extends PTSiteApi {
       AppError.handle(e, st, 'MTeamApi.getUserInfo');
       rethrow;
     }
+  }
+
+  /// 从配置或 JWT token 中提取 uid
+  int? _extractUidFromConfig() {
+    // 优先从 extraConfig 获取
+    final configUid = source.extraConfig?['uid'];
+    if (configUid != null) {
+      if (configUid is int) return configUid;
+      if (configUid is String) return int.tryParse(configUid);
+    }
+
+    // 尝试从 authorization JWT token 解析 uid
+    final authorization = source.extraConfig?['authorization'] as String?;
+    if (authorization != null && authorization.isNotEmpty) {
+      try {
+        // JWT 格式: header.payload.signature
+        final parts = authorization.split('.');
+        if (parts.length == 3) {
+          // Base64 解码 payload，补齐 padding
+          final payload = parts[1].padRight(
+            (parts[1].length + 3) & ~3,
+            '=',
+          );
+          final decoded = utf8.decode(base64Decode(payload));
+          final payloadJson = json.decode(decoded) as Map<String, dynamic>;
+          final uid = payloadJson['uid'];
+          if (uid is int) return uid;
+          if (uid is String) return int.tryParse(uid);
+        }
+      } on FormatException catch (e) {
+        _logger.w('MTeamApi: 解析 JWT token 失败 - $e');
+      }
+    }
+
+    return null;
   }
 
   @override
@@ -268,7 +342,9 @@ class MTeamApi extends PTSiteApi {
       }
 
       final data = json.decode(response.body) as Map<String, dynamic>;
-      if (data['code'] != '0') {
+      final code = data['code'];
+      // code 可能是字符串 "0" 或整数 0
+      if (code != '0' && code != 0 && code != 'SUCCESS') {
         throw Exception(data['message'] ?? '获取种子列表失败');
       }
 
@@ -296,7 +372,8 @@ class MTeamApi extends PTSiteApi {
       }
 
       final data = json.decode(response.body) as Map<String, dynamic>;
-      if (data['code'] != '0') {
+      final code = data['code'];
+      if (code != '0' && code != 0 && code != 'SUCCESS') {
         throw Exception(data['message'] ?? '获取种子详情失败');
       }
 
@@ -321,7 +398,8 @@ class MTeamApi extends PTSiteApi {
       }
 
       final data = json.decode(response.body) as Map<String, dynamic>;
-      if (data['code'] != '0') {
+      final code = data['code'];
+      if (code != '0' && code != 0 && code != 'SUCCESS') {
         throw Exception(data['message'] ?? '获取下载链接失败');
       }
 
@@ -459,14 +537,32 @@ class GenericPTSiteApi extends PTSiteApi {
   @override
   Future<bool> testConnection() async {
     try {
-      final response = await _client.get(
-        Uri.parse(baseUrl),
-        headers: headers,
-      );
+      // 使用 IOClient 以更好地处理各种 Content-Type
+      final httpClient = HttpClient();
+      // ignore: cascade_invocations
+      httpClient.badCertificateCallback = (cert, host, port) => true;
+      // ignore: cascade_invocations
+      httpClient.connectionTimeout = const Duration(seconds: 30);
+
+      final request = await httpClient.getUrl(Uri.parse(baseUrl));
+      headers.forEach((key, value) {
+        request.headers.set(key, value);
+      });
+
+      final response = await request.close();
+      final body = await response.transform(utf8.decoder).join();
+
+      httpClient.close();
+
       // 检查是否被重定向到登录页
       return response.statusCode == 200 &&
-          !response.body.contains('login') &&
-          !response.body.contains('登录');
+          !body.contains('login') &&
+          !body.contains('登录');
+    } on FormatException catch (e, st) {
+      // 处理 Content-Type 解析错误（如 "Invalid media type"）
+      _logger.w('GenericPTSiteApi.testConnection: 响应格式解析错误 - $e');
+      AppError.ignore(e, st, '响应格式解析错误，站点可能返回了非标准的 Content-Type');
+      return false;
     } on Exception catch (e, st) {
       AppError.ignore(e, st, '测试连接失败，用户可感知');
       return false;
@@ -487,7 +583,173 @@ class GenericPTSiteApi extends PTSiteApi {
     String? keyword,
     PTTorrentSortBy sortBy = PTTorrentSortBy.uploadTime,
     bool descending = true,
-  }) async => [];
+  }) async {
+    try {
+      // 构建种子列表 URL (NexusPHP 标准格式)
+      final params = <String, String>{
+        'page': (page - 1).toString(), // NexusPHP 页码从 0 开始
+      };
+      if (keyword != null && keyword.isNotEmpty) {
+        params['search'] = keyword;
+        params['notnewword'] = '1';
+      }
+      if (category != null) {
+        params['cat'] = category;
+      }
+
+      final uri = Uri.parse('$baseUrl/torrents.php').replace(queryParameters: params);
+
+      final httpClient = HttpClient();
+      // ignore: cascade_invocations
+      httpClient.badCertificateCallback = (cert, host, port) => true;
+      // ignore: cascade_invocations
+      httpClient.connectionTimeout = const Duration(seconds: 30);
+
+      final request = await httpClient.getUrl(uri);
+      headers.forEach((key, value) {
+        request.headers.set(key, value);
+      });
+
+      final response = await request.close();
+      final body = await response.transform(utf8.decoder).join();
+      httpClient.close();
+
+      if (response.statusCode != 200) {
+        throw Exception('获取种子列表失败: ${response.statusCode}');
+      }
+
+      // 解析 HTML 获取种子列表
+      return _parseNexusPHPTorrents(body);
+    } on Exception catch (e, st) {
+      _logger.e('GenericPTSiteApi.getTorrents: $e');
+      AppError.ignore(e, st, '获取种子列表失败');
+      return [];
+    }
+  }
+
+  /// 解析 NexusPHP 种子列表 HTML
+  List<PTTorrent> _parseNexusPHPTorrents(String html) {
+    final torrents = <PTTorrent>[];
+
+    try {
+      // 使用正则表达式提取种子信息
+      // NexusPHP 种子列表格式: <tr class="*_tr">...</tr>
+      final torrentRowRegex = RegExp(
+        r'<tr[^>]*class="[^"]*torrent[^"]*"[^>]*>(.*?)</tr>',
+        dotAll: true,
+        caseSensitive: false,
+      );
+
+      // 如果没有找到带 torrent class 的行，尝试其他常见模式
+      var matches = torrentRowRegex.allMatches(html);
+      if (matches.isEmpty) {
+        // 尝试匹配带 id="torrent_" 的行
+        final altRegex = RegExp(
+          r'<tr[^>]*id="torrent_[^"]*"[^>]*>(.*?)</tr>',
+          dotAll: true,
+          caseSensitive: false,
+        );
+        matches = altRegex.allMatches(html);
+      }
+
+      for (final match in matches) {
+        final rowHtml = match.group(1) ?? '';
+
+        // 提取种子 ID 和标题
+        final detailMatch = RegExp(
+          r'href="[^"]*details\.php\?id=(\d+)[^"]*"[^>]*>([^<]+)',
+          caseSensitive: false,
+        ).firstMatch(rowHtml);
+
+        if (detailMatch == null) continue;
+
+        final id = detailMatch.group(1) ?? '';
+        final name = _htmlDecode(detailMatch.group(2)?.trim() ?? '');
+
+        if (id.isEmpty || name.isEmpty) continue;
+
+        // 提取副标题
+        final smallDescrMatch = RegExp(
+          r'class="[^"]*torrentname[^"]*"[^>]*>.*?<br[^>]*/?>([^<]+)',
+          dotAll: true,
+          caseSensitive: false,
+        ).firstMatch(rowHtml);
+        final smallDescr = _htmlDecode(smallDescrMatch?.group(1)?.trim() ?? '');
+
+        // 提取大小
+        final sizeMatch = RegExp(
+          r'(\d+(?:\.\d+)?)\s*(GB|MB|KB|TB|GiB|MiB|KiB|TiB)',
+          caseSensitive: false,
+        ).firstMatch(rowHtml);
+        final size = _parseSize(sizeMatch?.group(0) ?? '');
+
+        // 提取做种/下载/完成数
+        final seedersMatch = RegExp(r'class="[^"]*seeders[^"]*"[^>]*>(\d+)', caseSensitive: false).firstMatch(rowHtml);
+        final leechersMatch = RegExp(r'class="[^"]*leechers[^"]*"[^>]*>(\d+)', caseSensitive: false).firstMatch(rowHtml);
+        final snatchedMatch = RegExp(r'class="[^"]*snatched[^"]*"[^>]*>(\d+)', caseSensitive: false).firstMatch(rowHtml);
+
+        final seeders = int.tryParse(seedersMatch?.group(1) ?? '') ?? 0;
+        final leechers = int.tryParse(leechersMatch?.group(1) ?? '') ?? 0;
+        final snatched = int.tryParse(snatchedMatch?.group(1) ?? '') ?? 0;
+
+        // 检测免费状态
+        final isFree = RegExp(r'free|pro_free|pro_free2up', caseSensitive: false).hasMatch(rowHtml);
+        final isDoubleFree = RegExp(r'pro_free2up|twoupfree', caseSensitive: false).hasMatch(rowHtml);
+        final isDoubleUp = RegExp(r'pro_2up|twoup', caseSensitive: false).hasMatch(rowHtml);
+        final isHalfDown = RegExp(r'pro_50pctdown|halfdown', caseSensitive: false).hasMatch(rowHtml);
+
+        torrents.add(PTTorrent(
+          id: id,
+          name: name,
+          size: size,
+          seeders: seeders,
+          leechers: leechers,
+          snatched: snatched,
+          uploadTime: DateTime.now(), // HTML 中时间格式复杂，暂时用当前时间
+          smallDescr: smallDescr.isNotEmpty ? smallDescr : null,
+          detailUrl: '$baseUrl/details.php?id=$id',
+          status: PTTorrentStatus(
+            isFree: isFree,
+            isDoubleFree: isDoubleFree,
+            isDoubleUp: isDoubleUp,
+            isHalfDown: isHalfDown,
+          ),
+        ));
+      }
+    } on Exception catch (e) {
+      _logger.w('GenericPTSiteApi._parseNexusPHPTorrents: 解析失败 - $e');
+    }
+
+    return torrents;
+  }
+
+  /// HTML 实体解码
+  String _htmlDecode(String text) => text
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&#39;', "'")
+        .replaceAll('&nbsp;', ' ')
+        .trim();
+
+  /// 解析文件大小
+  int _parseSize(String sizeStr) {
+    if (sizeStr.isEmpty) return 0;
+    final match = RegExp(r'(\d+(?:\.\d+)?)\s*(GB|MB|KB|TB|GiB|MiB|KiB|TiB)', caseSensitive: false).firstMatch(sizeStr);
+    if (match == null) return 0;
+
+    final value = double.tryParse(match.group(1) ?? '0') ?? 0;
+    final unit = (match.group(2) ?? '').toUpperCase();
+
+    return switch (unit) {
+      'TB' || 'TIB' => (value * 1024 * 1024 * 1024 * 1024).toInt(),
+      'GB' || 'GIB' => (value * 1024 * 1024 * 1024).toInt(),
+      'MB' || 'MIB' => (value * 1024 * 1024).toInt(),
+      'KB' || 'KIB' => (value * 1024).toInt(),
+      _ => value.toInt(),
+    };
+  }
 
   @override
   Future<PTTorrent> getTorrentDetail(String torrentId) async =>

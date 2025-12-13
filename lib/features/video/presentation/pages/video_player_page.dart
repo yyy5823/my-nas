@@ -84,7 +84,9 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
             startPosition: widget.video.lastPosition,
           );
       if (!mounted) return;
-      await _loadSubtitles();
+      // 异步加载字幕，不阻塞播放流程
+      // 字幕搜索可能耗时，使用 fire-and-forget 模式
+      unawaited(_loadSubtitles());
     });
     _startHideControlsTimer();
   }
@@ -104,21 +106,20 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
     _checkOrientationAndSetFullscreen();
   }
 
-  /// 根据屏幕方向自动设置全屏状态
+  /// 根据屏幕方向记录状态（不再自动设置全屏）
   void _checkOrientationAndSetFullscreen() {
     if (!mounted) return;
 
     final size = WidgetsBinding.instance.platformDispatcher.views.first.physicalSize;
     final orientation = size.width > size.height ? Orientation.landscape : Orientation.portrait;
 
-    // 避免重复设置
+    // 避免重复记录
     if (orientation == _lastOrientation) return;
     _lastOrientation = orientation;
 
-    // 横屏时自动进入全屏，竖屏时自动退出全屏
-    final isLandscape = orientation == Orientation.landscape;
-    _playerNotifier?.setFullscreen(fullscreen: isLandscape);
-    logger.d('VideoPlayerPage: 屏幕方向变化 => ${isLandscape ? "横屏(全屏)" : "竖屏(非全屏)"}');
+    // 仅记录方向变化，不自动切换全屏
+    // 全屏状态由用户手动控制
+    logger.d('VideoPlayerPage: 屏幕方向变化 => ${orientation == Orientation.landscape ? "横屏" : "竖屏"}');
   }
 
   /// 缓存源信息，用于 dispose 时更新缩略图
@@ -142,19 +143,38 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
   }
 
   /// 加载字幕
+  ///
+  /// 优先从本地数据库缓存获取字幕（毫秒级响应），
+  /// 如果缓存中没有则回退到实时文件系统扫描。
   Future<void> _loadSubtitles() async {
     // 使用缓存的 connections，避免使用 ref
     final connections = _connections;
     if (connections == null || connections.isEmpty) return;
 
-    final connectedEntry = connections.entries.firstWhere(
-      (e) => e.value.status == SourceStatus.connected,
-      orElse: () => throw Exception('No connected source'),
-    );
-    final adapter = connectedEntry.value.adapter;
+    final sourceId = widget.video.sourceId;
+    SourceConnection? connection;
+
+    // 优先使用视频的 sourceId 获取连接
+    if (sourceId != null) {
+      connection = connections[sourceId];
+    }
+
+    // 如果没有指定 sourceId 或连接不可用，使用第一个已连接的源
+    if (connection == null || connection.status != SourceStatus.connected) {
+      final connectedEntry = connections.entries.firstWhere(
+        (e) => e.value.status == SourceStatus.connected,
+        orElse: () => throw Exception('No connected source'),
+      );
+      connection = connectedEntry.value;
+    }
+
+    final adapter = connection.adapter;
+    final effectiveSourceId = sourceId ?? connection.source.id;
 
     try {
-      final subtitles = await SubtitleService().findSubtitles(
+      // 使用新的 getSubtitles 方法：优先从数据库缓存获取
+      final subtitles = await SubtitleService().getSubtitles(
+        sourceId: effectiveSourceId,
         videoPath: widget.video.path,
         videoName: widget.video.name,
         fileSystem: adapter.fileSystem,
@@ -297,11 +317,17 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
     final playerNotifier = ref.read(videoPlayerControllerProvider.notifier);
     final isFullscreen = playerState.isFullscreen;
 
-    // 全屏模式下隐藏系统 UI
+    // 全屏模式下隐藏系统 UI 并强制横屏
     if (isFullscreen) {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
     } else {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      // 非全屏时允许所有方向，默认竖屏显示
+      SystemChrome.setPreferredOrientations([]);
     }
 
     return PopScope(

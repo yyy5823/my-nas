@@ -127,13 +127,7 @@ class _SourcesPageState extends ConsumerState<SourcesPage> {
             subtitle: discoveryState.isDiscovering
                 ? '正在扫描...'
                 : '点击添加到连接源',
-            trailing: discoveryState.isDiscovering
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : null,
+            // 移除重复的loading指示器，仅保留AppBar中的雷达按钮loading
           ),
           const SizedBox(height: 8),
           ...discoveryState.devices.map(
@@ -332,17 +326,17 @@ class _ReorderableSourceCard extends StatelessWidget {
             ),
             const SizedBox(width: 12),
 
-            // 图标
+            // 图标 - 使用源类型的主题色
             Container(
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                color: _getStatusColor().withValues(alpha: 0.1),
+                color: source.type.themeColor.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
                 source.type.icon,
-                color: _getStatusColor(),
+                color: source.type.themeColor,
               ),
             ),
             const SizedBox(width: 16),
@@ -402,14 +396,6 @@ class _ReorderableSourceCard extends StatelessWidget {
       ),
     );
   }
-
-  Color _getStatusColor() => switch (_status) {
-        SourceStatus.connected => Colors.green,
-        SourceStatus.connecting => Colors.orange,
-        SourceStatus.requires2FA => Colors.amber,
-        SourceStatus.error => Colors.red,
-        SourceStatus.disconnected => Colors.grey,
-      };
 }
 
 class _SourceCard extends ConsumerStatefulWidget {
@@ -463,17 +449,17 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              // 图标
+              // 图标 - 使用源类型的主题色
               Container(
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: _getStatusColor().withValues(alpha: 0.1),
+                  color: widget.source.type.themeColor.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
                   _getSourceIcon(),
-                  color: _getStatusColor(),
+                  color: widget.source.type.themeColor,
                 ),
               ),
               const SizedBox(width: 16),
@@ -554,14 +540,6 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
   }
 
   IconData _getSourceIcon() => widget.source.type.icon;
-
-  Color _getStatusColor() => switch (_status) {
-        SourceStatus.connected => Colors.green,
-        SourceStatus.connecting => Colors.orange,
-        SourceStatus.requires2FA => Colors.amber,
-        SourceStatus.error => Colors.red,
-        SourceStatus.disconnected => Colors.grey,
-      };
 
   void _showSourceOptions(BuildContext context) {
     final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
@@ -944,22 +922,19 @@ class _SourceTypeBottomSheet extends StatelessWidget {
   }
 }
 
-/// 发现的设备卡片 - 使用橙色/琥珀色主题，与已配置连接源区分
+/// 发现的设备卡片 - 使用源类型专属颜色，便于快速区分不同协议
 class _DiscoveredDeviceCard extends StatelessWidget {
   const _DiscoveredDeviceCard({required this.device});
 
   final DiscoveredDevice device;
-
-  // 发现设备使用橙色/琥珀色主题
-  static const _discoveredColor = Colors.amber;
-  static const _discoveredColorDark = Color(0xFFFFB300); // amber[600]
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
-    final accentColor = isDark ? _discoveredColorDark : _discoveredColor;
+    // 使用源类型的主题色，而不是统一的琥猥色
+    final accentColor = device.type.themeColor;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),

@@ -426,16 +426,18 @@ class _PathCardState extends ConsumerState<_PathCard> {
 
           if (mounted) {
             setState(() {
-              _isScraping = VideoScannerService().isScraping;
+              // 关键修复：当前目录的刮削状态应基于：
+              // 1. 全局正在刮削 AND 当前目录有待刮削内容
+              // 2. 或者当前目录正在被刮削中（scraping > 0）
+              final isGlobalScraping = VideoScannerService().isScraping;
+              _isScraping = isGlobalScraping && 
+                  (pathStats.pending > 0 || pathStats.scraping > 0);
               _itemCount = pathStats.total;
               _scrapedCount = pathStats.completed;
               _pendingScrapeCount = pathStats.pending;
               _retryableCount = retryable;
-              // 使用当前目录的进度，而不是全局进度
+              // 使用当前目录的进度
               _scrapeProgress = pathStats.progress;
-              if (globalStats.isAllDone) {
-                _isScraping = false;
-              }
             });
           }
         }
@@ -492,19 +494,18 @@ class _PathCardState extends ConsumerState<_PathCard> {
       pathPrefix: pathPrefix,
     );
 
-    // 获取全局统计数据用于进度条
-    final globalStats = await VideoScannerService().getScrapeStats();
-
     if (mounted) {
       setState(() {
         _itemCount = pathStats.total;
         _scrapedCount = pathStats.completed;
         _pendingScrapeCount = pathStats.pending;
         _retryableCount = retryable;
-        // 进度条显示全局进度（合并所有目录的进度）
-        if (globalStats.total > 0) {
-          _scrapeProgress = globalStats.processed / globalStats.total;
-        }
+        // 使用当前目录的进度（而非全局进度）
+        _scrapeProgress = pathStats.progress;
+        // 关键修复：只有当前目录有待刮削内容时才显示刮削中状态
+        final isGlobalScraping = VideoScannerService().isScraping;
+        _isScraping = isGlobalScraping && 
+            (pathStats.pending > 0 || pathStats.scraping > 0);
       });
     }
   }

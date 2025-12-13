@@ -113,6 +113,16 @@ class VideoDatabaseService {
   static const String _colHasNfo = 'has_nfo'; // 是否检测到 NFO 文件
   static const String _colScrapePriority = 'scrape_priority'; // 刮削优先级
 
+  // 字幕表
+  static const String _tableSubtitles = 'video_subtitles';
+  static const String _subColId = 'id';
+  static const String _subColSourceId = 'source_id';
+  static const String _subColVideoPath = 'video_path'; // 关联的视频文件路径
+  static const String _subColSubtitlePath = 'subtitle_path'; // 字幕文件路径
+  static const String _subColFileName = 'file_name'; // 字幕文件名
+  static const String _subColFormat = 'format'; // 字幕格式 (srt, ass, vtt)
+  static const String _subColLanguage = 'language'; // 语言
+
   /// 初始化数据库
   Future<void> init() async {
     if (_initialized) return;
@@ -123,7 +133,7 @@ class VideoDatabaseService {
 
       _db = await openDatabase(
         dbPath,
-        version: 5, // 升级版本以添加 localPosterUrl 字段
+        version: 6, // 升级版本以添加字幕索引表
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onConfigure: _onConfigure,
@@ -222,7 +232,32 @@ class VideoDatabaseService {
     await db.execute(
         'CREATE INDEX idx_scrape_priority ON $_tableMetadata($_colScrapePriority, $_colScrapeStatus)');
 
+    // 创建字幕索引表
+    await _createSubtitleTable(db);
+
     logger.i('VideoDatabaseService: 表和索引创建完成');
+  }
+
+  /// 创建字幕索引表
+  Future<void> _createSubtitleTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $_tableSubtitles (
+        $_subColId INTEGER PRIMARY KEY AUTOINCREMENT,
+        $_subColSourceId TEXT NOT NULL,
+        $_subColVideoPath TEXT NOT NULL,
+        $_subColSubtitlePath TEXT NOT NULL,
+        $_subColFileName TEXT NOT NULL,
+        $_subColFormat TEXT NOT NULL,
+        $_subColLanguage TEXT,
+        UNIQUE($_subColSourceId, $_subColSubtitlePath)
+      )
+    ''');
+
+    // 创建索引 - 用于快速查询视频对应的字幕
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_subtitle_video ON $_tableSubtitles($_subColSourceId, $_subColVideoPath)');
+
+    logger.i('VideoDatabaseService: 字幕索引表创建完成');
   }
 
   /// 数据库升级
@@ -290,6 +325,14 @@ class VideoDatabaseService {
           'ALTER TABLE $_tableMetadata ADD COLUMN $_colLocalPosterUrl TEXT');
 
       logger.i('VideoDatabaseService: 版本4->5 升级完成');
+    }
+
+    // 从版本5升级到版本6
+    if (oldVersion < 6) {
+      // 添加字幕索引表
+      await _createSubtitleTable(db);
+
+      logger.i('VideoDatabaseService: 版本5->6 升级完成（添加字幕索引表）');
     }
   }
 
@@ -1585,6 +1628,216 @@ class VideoDatabaseService {
 
     return withTmdbIdCount + withoutTmdbIdCount;
   }
+
+  /// 修复现有视频的分类（基于文件名模式）
+  ///
+  /// 用于修复已扫描但分类不正确的视频。会检测文件名中的剧集模式
+  /// （如 S01E01、1x01、第X集）并更新 category 字段。
+  ///
+  /// 返回修复的视频数量。
+  Future<int> repairCategoriesFromFilenames() async {
+    if (!_initialized) await init();
+
+    var fixedCount = 0;
+
+    // 获取所有分类为 unknown（2）的视频
+    final unknownVideos = await _db!.query(
+      _tableMetadata,
+      columns: [_colSourceId, _colFilePath, _colFileName],
+      where: '$_colCategory = ?',
+      whereArgs: [MediaCategory.unknown.index],
+    );
+
+    logger.i('VideoDatabaseService: 发现 ${unknownVideos.length} 个未分类视频，开始修复');
+
+    // 批量更新
+    final tvShowUpdates = <({String sourceId, String filePath})>[];
+    final movieUpdates = <({String sourceId, String filePath})>[];
+
+    for (final row in unknownVideos) {
+      final sourceId = row[_colSourceId] as String?;
+      final filePath = row[_colFilePath] as String?;
+      final fileName = row[_colFileName] as String?;
+      if (sourceId == null || filePath == null || fileName == null) continue;
+
+      // 使用正则表达式检测剧集模式（与 VideoFileNameParser 相同的逻辑）
+      final tvShowPattern = RegExp(
+        r'[Ss](\d{1,2})[Ee](\d{1,2})|(\d{1,2})x(\d{1,2})|第(\d+)季.*?第(\d+)集|第(\d+)集',
+        caseSensitive: false,
+      );
+
+      if (tvShowPattern.hasMatch(fileName)) {
+        tvShowUpdates.add((sourceId: sourceId, filePath: filePath));
+      } else {
+        // 检测年份模式判断是否为电影
+        final yearPattern = RegExp(r'[\[\(]?((?:19|20)\d{2})[\]\)]?');
+        if (yearPattern.hasMatch(fileName)) {
+          movieUpdates.add((sourceId: sourceId, filePath: filePath));
+        }
+      }
+    }
+
+    // 批量更新为 tvShow
+    if (tvShowUpdates.isNotEmpty) {
+      await _db!.transaction((txn) async {
+        final batch = txn.batch();
+        for (final item in tvShowUpdates) {
+          batch.update(
+            _tableMetadata,
+            {_colCategory: MediaCategory.tvShow.index},
+            where: '$_colSourceId = ? AND $_colFilePath = ?',
+            whereArgs: [item.sourceId, item.filePath],
+          );
+        }
+        await batch.commit(noResult: true);
+      });
+      fixedCount += tvShowUpdates.length;
+      logger.i('VideoDatabaseService: 已将 ${tvShowUpdates.length} 个视频修复为剧集');
+    }
+
+    // 批量更新为 movie
+    if (movieUpdates.isNotEmpty) {
+      await _db!.transaction((txn) async {
+        final batch = txn.batch();
+        for (final item in movieUpdates) {
+          batch.update(
+            _tableMetadata,
+            {_colCategory: MediaCategory.movie.index},
+            where: '$_colSourceId = ? AND $_colFilePath = ?',
+            whereArgs: [item.sourceId, item.filePath],
+          );
+        }
+        await batch.commit(noResult: true);
+      });
+      fixedCount += movieUpdates.length;
+      logger.i('VideoDatabaseService: 已将 ${movieUpdates.length} 个视频修复为电影');
+    }
+
+    logger.i('VideoDatabaseService: 分类修复完成，共修复 $fixedCount 个视频');
+    return fixedCount;
+  }
+
+  // ============ 字幕索引方法 ============
+
+  /// 批量保存字幕索引
+  ///
+  /// 在视频扫描时调用，将发现的字幕文件索引到数据库
+  Future<void> upsertSubtitlesBatch(List<SubtitleIndex> subtitles) async {
+    if (!_initialized) await init();
+    if (subtitles.isEmpty) return;
+
+    await _db!.transaction((txn) async {
+      final batch = txn.batch();
+      for (final subtitle in subtitles) {
+        batch.insert(
+          _tableSubtitles,
+          {
+            _subColSourceId: subtitle.sourceId,
+            _subColVideoPath: subtitle.videoPath,
+            _subColSubtitlePath: subtitle.subtitlePath,
+            _subColFileName: subtitle.fileName,
+            _subColFormat: subtitle.format,
+            _subColLanguage: subtitle.language,
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+      await batch.commit(noResult: true);
+    });
+
+    logger.d('VideoDatabaseService: 批量保存 ${subtitles.length} 条字幕索引');
+  }
+
+  /// 获取视频对应的字幕列表（毫秒级响应）
+  ///
+  /// 从本地数据库查询，不需要访问文件系统
+  Future<List<SubtitleIndex>> getSubtitlesForVideo(
+    String sourceId,
+    String videoPath,
+  ) async {
+    if (!_initialized) await init();
+
+    final results = await _db!.query(
+      _tableSubtitles,
+      where: '$_subColSourceId = ? AND $_subColVideoPath = ?',
+      whereArgs: [sourceId, videoPath],
+    );
+
+    return results.map(_subtitleFromRow).toList();
+  }
+
+  /// 删除视频对应的所有字幕索引
+  Future<void> deleteSubtitlesForVideo(String sourceId, String videoPath) async {
+    if (!_initialized) await init();
+
+    await _db!.delete(
+      _tableSubtitles,
+      where: '$_subColSourceId = ? AND $_subColVideoPath = ?',
+      whereArgs: [sourceId, videoPath],
+    );
+  }
+
+  /// 根据 sourceId 删除所有字幕索引
+  Future<int> deleteSubtitlesBySourceId(String sourceId) async {
+    if (!_initialized) await init();
+
+    return _db!.delete(
+      _tableSubtitles,
+      where: '$_subColSourceId = ?',
+      whereArgs: [sourceId],
+    );
+  }
+
+  /// 根据 sourceId 和路径前缀删除字幕索引
+  Future<int> deleteSubtitlesByPath(String sourceId, String pathPrefix) async {
+    if (!_initialized) await init();
+
+    return _db!.delete(
+      _tableSubtitles,
+      where: '$_subColSourceId = ? AND $_subColVideoPath LIKE ?',
+      whereArgs: [sourceId, '$pathPrefix%'],
+    );
+  }
+
+  /// 从数据库行转换为 SubtitleIndex
+  SubtitleIndex _subtitleFromRow(Map<String, dynamic> row) => SubtitleIndex(
+        sourceId: row[_subColSourceId] as String,
+        videoPath: row[_subColVideoPath] as String,
+        subtitlePath: row[_subColSubtitlePath] as String,
+        fileName: row[_subColFileName] as String,
+        format: row[_subColFormat] as String,
+        language: row[_subColLanguage] as String?,
+      );
+}
+
+/// 字幕索引实体
+class SubtitleIndex {
+  const SubtitleIndex({
+    required this.sourceId,
+    required this.videoPath,
+    required this.subtitlePath,
+    required this.fileName,
+    required this.format,
+    this.language,
+  });
+
+  /// 源ID
+  final String sourceId;
+
+  /// 关联的视频文件路径
+  final String videoPath;
+
+  /// 字幕文件路径
+  final String subtitlePath;
+
+  /// 字幕文件名
+  final String fileName;
+
+  /// 字幕格式 (srt, ass, vtt 等)
+  final String format;
+
+  /// 语言
+  final String? language;
 }
 
 /// 电影系列

@@ -118,6 +118,9 @@ class PhotoListLoaded extends PhotoListState {
     this.viewMode = PhotoViewMode.grid,
     this.searchQuery = '',
     this.fromCache = false,
+    // 时间线筛选
+    this.filterYear,
+    this.filterMonth,
     // 分类数据 - 从 SQLite 预加载
     this.allPhotos = const [],
     this.searchResults = const [],
@@ -142,6 +145,10 @@ class PhotoListLoaded extends PhotoListState {
   final PhotoViewMode viewMode;
   final String searchQuery;
   final bool fromCache;
+  
+  // 时间线筛选 - 年/月
+  final int? filterYear;
+  final int? filterMonth;
 
   // 分类数据 - 已从 SQLite 预加载
   final List<PhotoEntity> allPhotos;
@@ -160,9 +167,24 @@ class PhotoListLoaded extends PhotoListState {
   // 缓存的过滤后照片列表 - 避免每次 build 都重新创建对象
   final List<PhotoFileWithSource>? _cachedFilteredPhotos;
 
-  /// 当前显示的照片（搜索时返回搜索结果）
-  List<PhotoEntity> get displayPhotos =>
-      searchQuery.isNotEmpty ? searchResults : allPhotos;
+  /// 当前显示的照片（搜索时返回搜索结果，应用时间筛选）
+  List<PhotoEntity> get displayPhotos {
+    var photos = searchQuery.isNotEmpty ? searchResults : allPhotos;
+    
+    // 应用时间线筛选
+    if (filterYear != null) {
+      photos = photos.where((p) {
+        final date = p.modifiedTime;
+        if (date == null) return false;
+        if (date.year != filterYear) return false;
+        // 如果指定了月份，进一步过滤
+        if (filterMonth != null && date.month != filterMonth) return false;
+        return true;
+      }).toList();
+    }
+    
+    return photos;
+  }
 
   /// 兼容旧代码：返回 PhotoFileWithSource 列表
   List<PhotoFileWithSource> get photos => allPhotos
@@ -380,6 +402,10 @@ class PhotoListLoaded extends PhotoListState {
     PhotoViewMode? viewMode,
     String? searchQuery,
     bool? fromCache,
+    // 时间线筛选
+    int? filterYear,
+    int? filterMonth,
+    bool clearFilter = false, // 用于清除筛选
     List<PhotoEntity>? allPhotos,
     List<PhotoEntity>? searchResults,
     List<({DateTime date, int count})>? dateGroups,
@@ -388,8 +414,9 @@ class PhotoListLoaded extends PhotoListState {
     List<PhotoGroup<PhotoEntity>>? cachedGroupedPhotos,
     List<PhotoFileWithSource>? cachedFilteredPhotos,
   }) {
-    // 如果照片列表或搜索结果变化，需要重建索引和所有缓存
-    final needsRebuild = allPhotos != null || searchResults != null || searchQuery != null;
+    // 如果照片列表、搜索结果或筛选条件变化，需要重建索引和所有缓存
+    final needsRebuild = allPhotos != null || searchResults != null || searchQuery != null ||
+        filterYear != null || filterMonth != null || clearFilter;
     return PhotoListLoaded(
       totalCount: totalCount ?? this.totalCount,
       dateGroupCount: dateGroupCount ?? this.dateGroupCount,
@@ -399,6 +426,8 @@ class PhotoListLoaded extends PhotoListState {
       viewMode: viewMode ?? this.viewMode,
       searchQuery: searchQuery ?? this.searchQuery,
       fromCache: fromCache ?? this.fromCache,
+      filterYear: clearFilter ? null : (filterYear ?? this.filterYear),
+      filterMonth: clearFilter ? null : (filterMonth ?? this.filterMonth),
       allPhotos: allPhotos ?? this.allPhotos,
       searchResults: searchResults ?? this.searchResults,
       dateGroups: dateGroups ?? this.dateGroups,
@@ -987,6 +1016,22 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
           ? PhotoViewMode.timeline
           : PhotoViewMode.grid;
       state = current.copyWith(viewMode: nextMode);
+    }
+  }
+
+  /// 设置时间线筛选（年/月）
+  void setTimelineFilter({int? year, int? month}) {
+    final current = state;
+    if (current is PhotoListLoaded) {
+      state = current.copyWith(filterYear: year, filterMonth: month);
+    }
+  }
+
+  /// 清除时间线筛选
+  void clearTimelineFilter() {
+    final current = state;
+    if (current is PhotoListLoaded) {
+      state = current.copyWith(clearFilter: true);
     }
   }
 
@@ -1698,11 +1743,9 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
   ) =>
       Column(
         children: [
-          // 时间线导航面板（时间线模式下显示）
-          if (state.viewMode == PhotoViewMode.timeline)
-            TimelineNavigatorPanel(
-              onMonthTap: (year, month) => _scrollToMonth(ref, state, year, month),
-            ),
+          // 时间筛选栏（有筛选时显示，或在时间线模式下显示）
+          if (state.filterYear != null || state.viewMode == PhotoViewMode.timeline)
+            _buildTimelineFilterBar(context, ref, state, isDark),
           // 照片内容
           Expanded(
             child: RefreshIndicator(
@@ -1721,42 +1764,136 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
         ],
       );
 
-  /// 滚动到指定年月的照片位置
-  void _scrollToMonth(WidgetRef ref, PhotoListLoaded state, int year, int month) {
-    // 找到该月在分组中的位置
-    final groups = state.groupedPhotos;
-    var found = false;
+  /// 构建时间line筛选栏
+  Widget _buildTimelineFilterBar(
+    BuildContext context,
+    WidgetRef ref,
+    PhotoListLoaded state,
+    bool isDark,
+  ) {
+    final hasFilter = state.filterYear != null;
+    
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : Colors.white,
+        border: Border(
+          bottom: BorderSide(
+            color: isDark ? Colors.grey[800]! : Colors.grey[200]!,
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          // 日历图标
+          Icon(
+            Icons.calendar_month_rounded,
+            size: 20,
+            color: hasFilter ? AppColors.primary : (isDark ? Colors.grey[400] : Colors.grey[600]),
+          ),
+          const SizedBox(width: 8),
+          // 筛选按钮
+          Expanded(
+            child: GestureDetector(
+              onTap: () => _showTimelineFilterSheet(context, ref, state),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: hasFilter
+                      ? AppColors.primary.withValues(alpha: 0.1)
+                      : (isDark ? AppColors.darkSurfaceElevated : Colors.grey[100]),
+                  borderRadius: BorderRadius.circular(8),
+                  border: hasFilter
+                      ? Border.all(color: AppColors.primary.withValues(alpha: 0.3))
+                      : null,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      hasFilter
+                          ? (state.filterMonth != null
+                              ? '${state.filterYear}年${state.filterMonth}月'
+                              : '${state.filterYear}年')
+                          : '按时间筛选',
+                      style: TextStyle(
+                        color: hasFilter
+                            ? AppColors.primary
+                            : (isDark ? Colors.white : Colors.black87),
+                        fontWeight: hasFilter ? FontWeight.w600 : FontWeight.normal,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      size: 18,
+                      color: hasFilter
+                          ? AppColors.primary
+                          : (isDark ? Colors.grey[400] : Colors.grey[600]),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          // 清除筛选按钮
+          if (hasFilter) ...[
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: () => ref.read(photoListProvider.notifier).clearTimelineFilter(),
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: isDark ? AppColors.darkSurfaceElevated : Colors.grey[100],
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Icon(
+                  Icons.close,
+                  size: 16,
+                  color: isDark ? Colors.grey[400] : Colors.grey[600],
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(width: 8),
+          // 照片数量
+          Text(
+            '${state.displayPhotos.length}张',
+            style: TextStyle(
+              fontSize: 13,
+              color: isDark ? Colors.grey[400] : Colors.grey[600],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-    for (final group in groups) {
-      if (group.date.year == year && group.date.month == month) {
-        found = true;
-        break;
-      }
-    }
-
-    if (found) {
-      // 估算滚动位置（头部约50像素，每行约照片高度）
-      final screenWidth = MediaQuery.of(context).size.width;
-      final crossAxisCount = screenWidth > 600 ? 6 : 3;
-      final itemSize = (screenWidth - 8 - (crossAxisCount - 1) * 4) / crossAxisCount;
-      final headerHeight = 50.0;
-      final rowHeight = itemSize + 4;
-
-      var scrollOffset = 0.0;
-      for (final group in groups) {
-        if (group.date.year == year && group.date.month == month) {
-          break;
-        }
-        final rowCount = (group.photos.length / crossAxisCount).ceil();
-        scrollOffset += headerHeight + rowCount * rowHeight;
-      }
-
-      _scrollController.animateTo(
-        scrollOffset,
-        duration: const Duration(milliseconds: 500),
-        curve: Curves.easeInOut,
-      );
-    }
+  /// 显示时间线筛选底部弹窗
+  void _showTimelineFilterSheet(
+    BuildContext context,
+    WidgetRef ref,
+    PhotoListLoaded state,
+  ) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => TimelineFilterBottomSheet(
+        currentYear: state.filterYear,
+        currentMonth: state.filterMonth,
+        onYearSelected: (year) {
+          ref.read(photoListProvider.notifier).setTimelineFilter(year: year);
+        },
+        onMonthSelected: (year, month) {
+          ref.read(photoListProvider.notifier).setTimelineFilter(year: year, month: month);
+        },
+        onClearFilter: () {
+          ref.read(photoListProvider.notifier).clearTimelineFilter();
+        },
+      ),
+    );
   }
 
   Widget _buildGridView(

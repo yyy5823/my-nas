@@ -490,3 +490,290 @@ class TimelineNavigatorPanel extends ConsumerWidget {
     );
   }
 }
+
+/// 时间线筛选底部弹窗
+/// 用于按年/月筛选照片，只显示有数据的月份
+class TimelineFilterBottomSheet extends ConsumerWidget {
+  const TimelineFilterBottomSheet({
+    super.key,
+    required this.onYearSelected,
+    required this.onMonthSelected,
+    required this.onClearFilter,
+    this.currentYear,
+    this.currentMonth,
+  });
+
+  final void Function(int year) onYearSelected;
+  final void Function(int year, int month) onMonthSelected;
+  final VoidCallback onClearFilter;
+  final int? currentYear;
+  final int? currentMonth;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(timelineNavigatorProvider);
+    final notifier = ref.read(timelineNavigatorProvider.notifier);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.7,
+      ),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 拖动指示器
+          Container(
+            margin: const EdgeInsets.only(top: 12),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: isDark ? Colors.grey[700] : Colors.grey[300],
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          // 标题栏
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.calendar_month_rounded,
+                  color: AppColors.primary,
+                  size: 24,
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  '时间筛选',
+                  style: context.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
+                ),
+                const Spacer(),
+                // 当前筛选提示
+                if (currentYear != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          currentMonth != null
+                              ? '$currentYear年$currentMonth月'
+                              : '$currentYear年',
+                          style: TextStyle(
+                            color: AppColors.primary,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        GestureDetector(
+                          onTap: () {
+                            onClearFilter();
+                            Navigator.pop(context);
+                          },
+                          child: Icon(
+                            Icons.close,
+                            size: 14,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          // 年份和月份列表
+          if (state.isLoading)
+            const Padding(
+              padding: EdgeInsets.all(32),
+              child: CircularProgressIndicator(),
+            )
+          else if (state.yearGroups.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(32),
+              child: Text(
+                '暂无照片数据',
+                style: TextStyle(
+                  color: isDark ? Colors.grey[400] : Colors.grey[600],
+                ),
+              ),
+            )
+          else
+            Flexible(
+              child: ListView.builder(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                shrinkWrap: true,
+                itemCount: state.yearGroups.length,
+                itemBuilder: (context, index) {
+                  final yearGroup = state.yearGroups[index];
+                  final isSelectedYear = yearGroup.year == currentYear;
+
+                  return _buildYearSection(
+                    context,
+                    yearGroup,
+                    isSelectedYear,
+                    isDark,
+                    notifier,
+                  );
+                },
+              ),
+            ),
+          // 底部安全区域
+          SizedBox(height: MediaQuery.of(context).viewPadding.bottom + 8),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildYearSection(
+    BuildContext context,
+    YearMonthGroup yearGroup,
+    bool isSelectedYear,
+    bool isDark,
+    TimelineNavigatorNotifier notifier,
+  ) =>
+      Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        decoration: BoxDecoration(
+          color: isSelectedYear
+              ? AppColors.primary.withValues(alpha: 0.08)
+              : (isDark ? AppColors.darkSurfaceElevated : Colors.grey[50]),
+          borderRadius: BorderRadius.circular(12),
+          border: isSelectedYear
+              ? Border.all(color: AppColors.primary.withValues(alpha: 0.3))
+              : null,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 年份标题（可点击筛选整年）
+            InkWell(
+              onTap: () {
+                onYearSelected(yearGroup.year);
+                Navigator.pop(context);
+              },
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    Text(
+                      '${yearGroup.year}年',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: isSelectedYear
+                            ? AppColors.primary
+                            : (isDark ? Colors.white : Colors.black87),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: (isSelectedYear ? AppColors.primary : Colors.grey)
+                            .withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        '${yearGroup.totalCount}张',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: isSelectedYear
+                              ? AppColors.primary
+                              : (isDark ? Colors.grey[400] : Colors.grey[600]),
+                        ),
+                      ),
+                    ),
+                    const Spacer(),
+                    Icon(
+                      isSelectedYear && currentMonth == null
+                          ? Icons.check_circle
+                          : Icons.arrow_forward_ios,
+                      size: 16,
+                      color: isSelectedYear
+                          ? AppColors.primary
+                          : (isDark ? Colors.grey[600] : Colors.grey[400]),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // 月份网格（只显示有数据的月份）
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: yearGroup.months.map((monthData) {
+                  final isSelectedMonth =
+                      isSelectedYear && monthData.month == currentMonth;
+
+                  return InkWell(
+                    onTap: () {
+                      onMonthSelected(yearGroup.year, monthData.month);
+                      Navigator.pop(context);
+                    },
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: isSelectedMonth
+                            ? AppColors.primary
+                            : (isDark
+                                ? AppColors.darkSurface.withValues(alpha: 0.8)
+                                : Colors.white),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: isSelectedMonth
+                              ? AppColors.primary
+                              : (isDark ? Colors.grey[700]! : Colors.grey[300]!),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '${monthData.month}月',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: isSelectedMonth ? FontWeight.bold : FontWeight.w500,
+                              color: isSelectedMonth
+                                  ? Colors.white
+                                  : (isDark ? Colors.white : Colors.black87),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${monthData.count}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: isSelectedMonth
+                                  ? Colors.white.withValues(alpha: 0.8)
+                                  : (isDark ? Colors.grey[500] : Colors.grey[600]),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
+        ),
+      );
+}

@@ -204,41 +204,68 @@ class BookCoverService {
     }
   }
 
+  /// PDF 封面提取的最大文件大小 (30MB)
+  /// 降低限制以避免大文件导致内存溢出闪退
+  static const int _maxPdfSizeForCover = 30 * 1024 * 1024;
+
   /// 从 PDF 文件提取封面（渲染第一页）
   Future<Uint8List?> _extractPdfCover(
     String bookPath,
     NasFileSystem fileSystem,
   ) async {
+    File? tempFile;
+    PdfDocument? doc;
+
     try {
       final tempDir = await getTemporaryDirectory();
       final fileName = path.basename(bookPath);
-      final tempFile = File(path.join(tempDir.path, 'cover_$fileName'));
+      tempFile = File(path.join(tempDir.path, 'cover_$fileName'));
 
+      // 只读取前 30MB，足够提取封面
       final stream = await fileSystem.getFileStream(bookPath);
       final bytes = <int>[];
       await for (final chunk in stream) {
         bytes.addAll(chunk);
-        if (bytes.length > 100 * 1024 * 1024) {
-          logger.w('PDF 文件过大，跳过封面提取: $bookPath');
+        if (bytes.length > _maxPdfSizeForCover) {
+          logger.w('PDF 文件过大 (>${_maxPdfSizeForCover ~/ 1024 ~/ 1024}MB)，跳过封面提取: $bookPath');
           return null;
         }
       }
+
+      // 文件过小可能不是有效 PDF
+      if (bytes.length < 1024) {
+        logger.d('PDF 文件过小，跳过封面提取: $bookPath');
+        return null;
+      }
+
       await tempFile.writeAsBytes(bytes);
 
-      final doc = await PdfDocument.openFile(tempFile.path);
+      // 使用 try-catch 包装 PDF 库调用，防止 native 崩溃
+      try {
+        doc = await PdfDocument.openFile(tempFile.path)
+            .timeout(const Duration(seconds: 10));
+      } on TimeoutException {
+        logger.w('PDF 打开超时，跳过封面提取: $bookPath');
+        return null;
+        // ignore: avoid_catches_without_on_clauses
+      } catch (e) {
+        // PDF 库可能抛出各种非 Exception 的错误
+        logger.w('PDF 打开失败，跳过封面提取: $bookPath', e);
+        return null;
+      }
+
       if (doc.pages.isEmpty) {
-        await tempFile.delete().catchError((_) => tempFile);
         return null;
       }
 
       final page = doc.pages[0];
-      final pdfImage = await page.render(
-        width: 300,
-        height: 400,
-        backgroundColor: const ui.Color(0xFFFFFFFF),
-      );
-
-      await tempFile.delete().catchError((_) => tempFile);
+      final pdfImage = await page
+          .render(
+            width: 300,
+            height: 400,
+            backgroundColor: const ui.Color(0xFFFFFFFF),
+          )
+          .timeout(const Duration(seconds: 10));
 
       if (pdfImage == null || pdfImage.pixels.isEmpty) {
         return null;
@@ -251,9 +278,23 @@ class BookCoverService {
         pdfImage.height,
       );
       return pngBytes;
+    } on TimeoutException {
+      logger.w('PDF 封面提取超时: $bookPath');
+      return null;
     } on Exception catch (e) {
       logger.w('提取 PDF 封面失败: $bookPath', e);
       return null;
+    } finally {
+      // 确保清理资源
+      try {
+        await doc?.dispose();
+      } on Exception catch (_) {
+        // ignore dispose errors
+      }
+      // 清理临时文件
+      if (tempFile != null && await tempFile.exists()) {
+        await tempFile.delete().catchError((_) => tempFile!);
+      }
     }
   }
 

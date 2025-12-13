@@ -34,8 +34,14 @@ class PipService {
   /// 是否支持画中画
   Future<bool> get isSupported async {
     if (_isMobile) {
-      _floating ??= Floating();
-      return _floating!.isPipAvailable;
+      try {
+        _floating ??= Floating();
+        return await _floating!.isPipAvailable;
+      } on Exception catch (e) {
+        // floating 包在 iOS 上可能没有正确注册原生插件
+        logger.w('PipService: 检查画中画支持失败: $e');
+        return false;
+      }
     }
     // 桌面端总是支持（通过窗口管理）
     return _isDesktop;

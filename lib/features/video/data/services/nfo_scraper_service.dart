@@ -478,8 +478,17 @@ class NfoScraperService {
       final document = XmlDocument.parse(content);
       final root = document.rootElement;
 
-      // 判断是电影还是剧集
-      final isEpisode = root.name.local == 'episodedetails';
+      // 判断根元素类型
+      final rootName = root.name.local.toLowerCase();
+      final isEpisode = rootName == 'episodedetails';
+
+      // 始终尝试解析 season 和 episode 元素
+      // 即使根元素不是 episodedetails，NFO 中也可能包含这些信息
+      final seasonNumber = _parseInt(_getElementText(root, 'season'));
+      final episodeNumber = _parseInt(_getElementText(root, 'episode'));
+
+      // 如果有季集号，则视为剧集类型
+      final hasEpisodeInfo = seasonNumber != null || episodeNumber != null;
 
       return NfoMetadata(
         title: _getElementText(root, 'title'),
@@ -494,9 +503,12 @@ class NfoScraperService {
         studio: _getElementText(root, 'studio'),
         tmdbId: _parseTmdbId(root),
         imdbId: _getElementText(root, 'imdbid') ?? _getElementText(root, 'imdb'),
-        seasonNumber: isEpisode ? _parseInt(_getElementText(root, 'season')) : null,
-        episodeNumber: isEpisode ? _parseInt(_getElementText(root, 'episode')) : null,
-        episodeTitle: isEpisode ? _getElementText(root, 'title') : null,
+        // 始终解析季集号，不限制于 episodedetails 根元素
+        seasonNumber: seasonNumber,
+        episodeNumber: episodeNumber,
+        episodeTitle: (isEpisode || hasEpisodeInfo) 
+            ? _getElementText(root, 'title') 
+            : null,
         aired: _getElementText(root, 'aired') ?? _getElementText(root, 'premiered'),
       );
     } on Exception catch (e) {

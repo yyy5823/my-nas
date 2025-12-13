@@ -393,8 +393,10 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     );
 
     // 初始化电池信息
+    // 注意：battery_plus 在某些 iOS 版本可能返回错误的类型（String 而不是 int）
+    // 使用 catch Object 来捕获所有类型的错误（包括 TypeError）
     try {
-      _batteryLevel = await _battery.batteryLevel;
+      _batteryLevel = await _safeBatteryLevel();
       _batteryState = await _battery.batteryState;
       if (mounted) setState(() {});
 
@@ -402,14 +404,30 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
       _battery.onBatteryStateChanged.listen((state) {
         if (mounted) {
           setState(() => _batteryState = state);
-          _battery.batteryLevel.then((level) {
+          _safeBatteryLevel().then((level) {
             if (mounted) setState(() => _batteryLevel = level);
           });
         }
       });
-    } on Exception catch (e, st) {
-      // 某些平台可能不支持电池API
+    // ignore: avoid_catches_without_on_clauses
+    } catch (e, st) {
+      // 某些平台可能不支持电池API，或者存在类型转换问题
+      // 使用裸 catch 是因为需要捕获 TypeError（不是 Exception 的子类）
       logger.w('无法获取电池信息: $e $st');
+    }
+  }
+
+  /// 安全获取电池电量，处理 iOS 平台可能的类型转换错误
+  Future<int> _safeBatteryLevel() async {
+    try {
+      return await _battery.batteryLevel;
+    // ignore: avoid_catches_without_on_clauses
+    } catch (e) {
+      // battery_plus 在某些 iOS 版本可能返回 String 而不是 int
+      // 导致 "type 'String' is not a subtype of type 'int?'" 错误
+      // 使用裸 catch 是因为需要捕获 TypeError（不是 Exception 的子类）
+      logger.w('获取电池电量时出现类型错误: $e');
+      return -1; // 返回 -1 表示未知
     }
   }
 
