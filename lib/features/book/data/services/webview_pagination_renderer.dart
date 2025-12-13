@@ -91,8 +91,8 @@ class WebViewPaginationRenderer {
         // 禁用不需要的功能
         supportZoom: false,
         useWideViewPort: false,
-        // 透明背景
-        transparentBackground: true,
+        // 不透明背景 - 确保内容区域有正确的背景色
+        transparentBackground: false,
         // 禁用滚动 (我们用 Flutter 控制)
         disableVerticalScroll: true,
         disableHorizontalScroll: true,
@@ -280,6 +280,57 @@ class WebViewPaginationRenderer {
     return '#$r$g$b';
   }
 
+  /// 清理 HTML 内容：移除可能的外层 HTML 结构
+  /// MOBI 解析出的内容可能包含完整的 HTML 文档结构，
+  /// 直接嵌入会导致嵌套 HTML 文档，浏览器无法正确渲染
+  String _sanitizeHtmlContent(String content) {
+    var cleaned = content;
+    
+    // 移除 DOCTYPE
+    cleaned = cleaned.replaceAll(
+      RegExp('<!DOCTYPE[^>]*>', caseSensitive: false),
+      '',
+    );
+    
+    // 移除 html 标签
+    cleaned = cleaned.replaceAll(
+      RegExp('</?html[^>]*>', caseSensitive: false),
+      '',
+    );
+    
+    // 移除 head 及其内容
+    cleaned = cleaned.replaceAll(
+      RegExp('<head[^>]*>.*?</head>', caseSensitive: false, dotAll: true),
+      '',
+    );
+    
+    // 移除 body 标签（保留内容）
+    cleaned = cleaned.replaceAll(
+      RegExp('</?body[^>]*>', caseSensitive: false),
+      '',
+    );
+    
+    // 移除 meta 标签
+    cleaned = cleaned.replaceAll(
+      RegExp('<meta[^>]*/?>', caseSensitive: false),
+      '',
+    );
+    
+    // 移除 xml 声明
+    cleaned = cleaned.replaceAll(
+      RegExp(r'<\?xml[^>]*\?>', caseSensitive: false),
+      '',
+    );
+    
+    // 如果内容为空或只有空白，返回提示
+    final trimmed = cleaned.trim();
+    if (trimmed.isEmpty) {
+      return '<p style="color: #999; text-align: center; padding: 20px;">内容解析失败，请尝试使用 Calibre 转换为 EPUB 格式</p>';
+    }
+    
+    return trimmed;
+  }
+
   /// 构建分页 HTML
   String _buildPaginatedHtml(
     String content,
@@ -287,6 +338,9 @@ class WebViewPaginationRenderer {
     double width,
     double height,
   ) {
+    // 清理内容，移除嵌套的 HTML 结构
+    final sanitizedContent = _sanitizeHtmlContent(content);
+    
     final theme = settings.theme;
     final bgColor = _colorToHex(theme.backgroundColor);
     final textColor = _colorToHex(theme.textColor);
@@ -459,9 +513,20 @@ class WebViewPaginationRenderer {
   <style id="theme-style"></style>
 </head>
 <body>
-  <div id="content">$content</div>
+  <div id="debug-overlay" style="position: fixed; top: 0; left: 0; background: rgba(255,0,0,0.8); color: white; padding: 4px 8px; font-size: 10px; z-index: 9999; display: none;"></div>
+  <div id="content">$sanitizedContent</div>
 
   <script>
+    // 调试函数
+    function updateDebug(msg) {
+      var overlay = document.getElementById('debug-overlay');
+      if (overlay) {
+        overlay.style.display = 'block';
+        overlay.textContent = msg;
+        console.log('DEBUG: ' + msg);
+      }
+    }
+    
     // 章节数据
     const chapters = $chaptersJson;
 

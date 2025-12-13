@@ -1,9 +1,12 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:logger/logger.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/features/pt_sites/domain/entities/pt_torrent.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
+
+final _logger = Logger();
 
 /// PT 站点 API 基类
 abstract class PTSiteApi {
@@ -91,13 +94,65 @@ class MTeamApi extends PTSiteApi {
   @override
   Future<bool> testConnection() async {
     try {
+      // 检查必要的认证信息
+      final xApiKey = source.extraConfig?['xApiKey'] as String? ?? '';
+      final authorization = source.extraConfig?['authorization'] as String? ?? '';
+
+      _logger
+        ..d('MTeamApi.testConnection: extraConfig = ${source.extraConfig}')
+        ..d('MTeamApi.testConnection: xApiKey = ${xApiKey.isNotEmpty ? "已配置(${xApiKey.length}字符)" : "未配置"}')
+        ..d('MTeamApi.testConnection: authorization = ${authorization.isNotEmpty ? "已配置(${authorization.length}字符)" : "未配置"}')
+        ..d('MTeamApi.testConnection: headers = $headers');
+
+      if (xApiKey.isEmpty && authorization.isEmpty) {
+        _logger.w('MTeamApi.testConnection: 缺少认证信息');
+        AppError.ignore(
+          Exception('缺少认证信息'),
+          StackTrace.current,
+          '馒头站点需要配置 x-api-key 或 authorization 请求头',
+        );
+        return false;
+      }
+
+      _logger.i('MTeamApi.testConnection: 开始请求 $_apiBase/api/member/profile');
       final response = await _client.post(
         Uri.parse('$_apiBase/api/member/profile'),
         headers: headers,
       );
-      return response.statusCode == 200;
+
+      _logger
+        ..d('MTeamApi.testConnection: HTTP ${response.statusCode}')
+        ..d('MTeamApi.testConnection: response = ${response.body.substring(0, response.body.length > 500 ? 500 : response.body.length)}');
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body) as Map<String, dynamic>;
+        // 检查 API 返回的状态码
+        if (data['code'] == '0') {
+          _logger.i('MTeamApi.testConnection: 连接成功');
+          return true;
+        }
+        // API 返回错误
+        final message = data['message'] as String? ?? '未知错误';
+        _logger.w('MTeamApi.testConnection: API 返回错误 - $message');
+        AppError.ignore(
+          Exception('API 返回错误: $message'),
+          StackTrace.current,
+          '馒头 API 返回错误: $message',
+        );
+        return false;
+      }
+
+      // HTTP 状态码错误
+      _logger.w('MTeamApi.testConnection: HTTP 状态码错误 ${response.statusCode}');
+      AppError.ignore(
+        Exception('HTTP ${response.statusCode}'),
+        StackTrace.current,
+        '馒头连接失败: HTTP ${response.statusCode}',
+      );
+      return false;
     } on Exception catch (e, st) {
-      AppError.ignore(e, st, '测试连接失败，用户可感知');
+      _logger.e('MTeamApi.testConnection: 异常 - $e');
+      AppError.ignore(e, st, '馒头测试连接失败');
       return false;
     }
   }
@@ -427,6 +482,72 @@ class GenericPTSiteApi extends PTSiteApi {
 /// PT 站点 API 工厂
 class PTSiteApiFactory {
   /// 创建 PT 站点 API 实例
-  /// 所有站点都使用通用 API，根据 extraConfig 中的配置进行认证
-  static PTSiteApi create(SourceEntity source) => GenericPTSiteApi(source: source);
+  /// 根据站点类型选择合适的 API 实现
+  static PTSiteApi create(SourceEntity source) {
+    _logger
+      ..d('PTSiteApiFactory.create: source.name = ${source.name}, host = ${source.host}')
+      ..d('PTSiteApiFactory.create: extraConfig = ${source.extraConfig}');
+
+    // 判断是否是馒头站点
+    if (_isMTeamSite(source)) {
+      _logger.i('PTSiteApiFactory.create: 识别为馒头站点，使用 MTeamApi');
+      final convertedSource = _convertToMTeamConfig(source);
+      _logger.d('PTSiteApiFactory.create: 转换后 extraConfig = ${convertedSource.extraConfig}');
+      return MTeamApi(source: convertedSource);
+    }
+    _logger.i('PTSiteApiFactory.create: 使用通用 GenericPTSiteApi');
+    return GenericPTSiteApi(source: source);
+  }
+
+  /// 判断是否是馒头站点
+  static bool _isMTeamSite(SourceEntity source) {
+    final host = source.host.toLowerCase();
+    final name = source.name.toLowerCase();
+
+    // 通过域名判断
+    if (host.contains('m-team') || host.contains('mteam')) {
+      return true;
+    }
+
+    // 通过名称判断
+    if (name.contains('馒头') || name.contains('m-team') || name.contains('mteam')) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /// 将通用配置转换为馒头专用配置
+  /// 从自定义请求头中提取 x-api-key 和 authorization
+  static SourceEntity _convertToMTeamConfig(SourceEntity source) {
+    final extraConfig = Map<String, dynamic>.from(source.extraConfig ?? {});
+
+    _logger.d('PTSiteApiFactory._convertToMTeamConfig: 原始 customHeaders = ${extraConfig['customHeaders']}');
+
+    // 从自定义请求头中提取馒头需要的字段
+    final customHeaders = extraConfig['customHeaders'];
+    if (customHeaders is List) {
+      _logger.d('PTSiteApiFactory._convertToMTeamConfig: customHeaders 是 List，共 ${customHeaders.length} 项');
+      for (final header in customHeaders) {
+        _logger.d('PTSiteApiFactory._convertToMTeamConfig: 处理 header = $header (type: ${header.runtimeType})');
+        if (header is Map) {
+          final key = header['key']?.toString().toLowerCase() ?? '';
+          final value = header['value']?.toString() ?? '';
+          _logger.d('PTSiteApiFactory._convertToMTeamConfig: key = $key, value.length = ${value.length}');
+
+          if (key == 'x-api-key') {
+            extraConfig['xApiKey'] = value;
+            _logger.i('PTSiteApiFactory._convertToMTeamConfig: 提取 xApiKey 成功');
+          } else if (key == 'authorization') {
+            extraConfig['authorization'] = value;
+            _logger.i('PTSiteApiFactory._convertToMTeamConfig: 提取 authorization 成功');
+          }
+        }
+      }
+    } else {
+      _logger.w('PTSiteApiFactory._convertToMTeamConfig: customHeaders 不是 List 类型: ${customHeaders?.runtimeType}');
+    }
+
+    return source.copyWith(extraConfig: extraConfig);
+  }
 }

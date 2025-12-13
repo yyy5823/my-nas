@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:my_nas/features/pt_sites/data/services/pt_site_api.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/domain/entities/source_form_config.dart';
@@ -592,6 +593,13 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
 
     try {
       final source = _buildSourceEntity();
+
+      // PT 站点使用专用的测试方法
+      if (source.type == SourceType.ptSite) {
+        await _testPTSiteConnection(source);
+        return;
+      }
+
       final password = _formValues['password'] as String? ?? '';
 
       final sourceManager = ref.read(sourceManagerProvider);
@@ -616,6 +624,33 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
           _showErrorSnackBar('连接失败: ${connection.errorMessage ?? "未知错误"}');
         default:
           _showErrorSnackBar('连接状态异常');
+      }
+    } on Exception catch (e) {
+      if (!mounted) return;
+      _showErrorSnackBar('测试失败: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isTesting = false;
+        });
+      }
+    }
+  }
+
+  /// PT 站点专用的连接测试
+  Future<void> _testPTSiteConnection(SourceEntity source) async {
+    try {
+      // 使用 PTSiteApiFactory 创建 API 实例并测试连接
+      final api = PTSiteApiFactory.create(source);
+      final connected = await api.testConnection();
+      api.dispose();
+
+      if (!mounted) return;
+
+      if (connected) {
+        _showSuccessSnackBar('连接测试成功');
+      } else {
+        _showErrorSnackBar('连接失败，请检查认证信息');
       }
     } on Exception catch (e) {
       if (!mounted) return;

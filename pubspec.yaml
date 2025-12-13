@@ -1,7 +1,7 @@
 name: my_nas
 description: "跨平台 NAS 客户端 - 统一管理你的 NAS 资源"
 publish_to: 'none'
-version: 0.2.5+1
+version: 0.2.6+1
 
 environment:
   sdk: ^3.10.1
@@ -103,7 +103,8 @@ dependencies:
   wakelock_plus: ^1.4.0
   epub_plus: ^5.1.0
   flutter_html: ^3.0.0
-  flutter_epub_viewer: ^1.2.6
+  flutter_epub_viewer:
+    path: packages/flutter_epub_viewer
   dart_amqp: ^0.3.1
   device_info_plus: ^12.3.0
   flutter_foreground_task: ^9.1.0

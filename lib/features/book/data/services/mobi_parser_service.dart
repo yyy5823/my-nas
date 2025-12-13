@@ -15,6 +15,7 @@ class MobiParseResult {
     this.author,
     this.content,
     this.htmlContent,
+    this.epubPath, // 转换后的 EPUB 文件路径
     this.error,
   });
 
@@ -37,12 +38,21 @@ class MobiParseResult {
         author: author,
       );
 
+  factory MobiParseResult.fromEpub(String epubPath) => MobiParseResult(
+        success: true,
+        epubPath: epubPath,
+      );
+
   final bool success;
   final String? title;
   final String? author;
   final String? content;
   final String? htmlContent; // 原始 HTML 内容
+  final String? epubPath; // 转换后的 EPUB 文件路径（Calibre 转换结果）
   final String? error;
+
+  /// 是否应该使用 EPUB 阅读器打开
+  bool get shouldUseEpubReader => epubPath != null;
 }
 
 /// MOBI/AZW3 解析服务
@@ -75,7 +85,7 @@ class MobiParserService {
     return _parseWithBuiltIn(bytes);
   }
 
-  /// 使用 Calibre 解析
+  /// 使用 Calibre 解析 - 转换为 EPUB 格式
   Future<MobiParseResult> _parseWithCalibre(
     Uint8List bytes,
     String fileName,
@@ -101,11 +111,12 @@ class MobiParserService {
       final inputFile = File(path.join(workDir.path, fileName));
       await inputFile.writeAsBytes(bytes);
 
-      // 转换为 TXT
+      // 转换为 EPUB（而不是 TXT，保留格式和图片）
       final outputFile = File(
-        path.join(workDir.path, '${path.basenameWithoutExtension(fileName)}.txt'),
+        path.join(workDir.path, '${path.basenameWithoutExtension(fileName)}.epub'),
       );
 
+      logger.i('Calibre 转换: $fileName -> EPUB');
       final result = await Process.run(
         convertCmd,
         [inputFile.path, outputFile.path],
@@ -116,10 +127,20 @@ class MobiParserService {
         return MobiParseResult.failure('转换失败: ${result.stderr}');
       }
 
-      // 读取转换后的内容
+      // 返回 EPUB 文件路径，让调用方使用 EPUB 阅读器打开
       if (await outputFile.exists()) {
-        final content = await outputFile.readAsString();
-        return MobiParseResult.fromContent(content: content);
+        // 复制到持久化缓存目录
+        final cacheDir = Directory(path.join(tempDir.path, 'mobi_epub_cache'));
+        if (!await cacheDir.exists()) {
+          await cacheDir.create(recursive: true);
+        }
+        final cachedEpub = File(
+          path.join(cacheDir.path, '${path.basenameWithoutExtension(fileName)}.epub'),
+        );
+        await outputFile.copy(cachedEpub.path);
+        
+        logger.i('MOBI 转换 EPUB 成功: ${cachedEpub.path}');
+        return MobiParseResult.fromEpub(cachedEpub.path);
       }
 
       return MobiParseResult.failure('转换后的文件不存在');
@@ -600,16 +621,27 @@ class MobiParserService {
 
   /// 获取 Calibre 安装提示
   String _getCalibreInstallHint() {
+    // 移动端显示转换建议
+    if (Platform.isAndroid || Platform.isIOS) {
+      return '📱 移动端暂不支持此格式\n\n'
+          '建议在电脑上使用 Calibre 转换为 EPUB 格式后阅读：\n'
+          '1. 下载 Calibre: calibre-ebook.com\n'
+          '2. 打开 MOBI/AZW3 文件\n'
+          '3. 转换 → EPUB\n'
+          '4. 将 EPUB 传到手机阅读';
+    }
+    
     if (Platform.isMacOS) {
-      return 'macOS 安装 Calibre：\n'
+      return '🖥 macOS 安装 Calibre：\n'
           'brew install --cask calibre\n'
-          '或从 https://calibre-ebook.com 下载';
+          '或从 calibre-ebook.com 下载';
     } else if (Platform.isWindows) {
-      return 'Windows 安装 Calibre：\n从 https://calibre-ebook.com 下载安装';
+      return '🖥 Windows 安装 Calibre：\n'
+          '从 calibre-ebook.com 下载安装';
     } else {
-      return 'Linux 安装 Calibre：\n'
+      return '🖥 Linux 安装 Calibre：\n'
           'sudo apt install calibre\n'
-          '或从 https://calibre-ebook.com 下载';
+          '或从 calibre-ebook.com 下载';
     }
   }
 

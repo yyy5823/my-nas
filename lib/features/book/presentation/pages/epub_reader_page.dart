@@ -224,6 +224,11 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
   String _currentChapterTitle = '';
   bool _isEpubReady = false; // 标记 EPUB 是否已完全加载
 
+  // 触摸检测：区分点击和滑动
+  Offset? _touchDownPosition;
+  // 点击阈值：屏幕宽度的 5%（规范化坐标 0-1）
+  static const double _tapThreshold = 0.05;
+
   // 状态栏相关
   final Battery _battery = Battery();
   int _batteryLevel = 100;
@@ -425,11 +430,76 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
           value: settings.showProgress,
           onChanged: (value) => settingsNotifier.setShowProgress(value: value),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 24),
+
+        // 字体大小
+        const SettingSectionTitle(title: '字体大小'),
+        _buildFontSizeSlider(settings, settingsNotifier),
+      ],
+    );
+  }
+
+  /// 构建字体大小滑块
+  Widget _buildFontSizeSlider(
+    BookReaderSettings settings,
+    BookReaderSettingsNotifier settingsNotifier,
+  ) {
+    // EPUB 使用独立的字体大小设置
+    // 范围：80% - 200%（相当于 12-30 的比例）
+    final currentSize = settings.fontSize.clamp(12.0, 30.0);
+    final percentage = ((currentSize / 15.0) * 100).round();
+
+    return Column(
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.text_fields, size: 16),
+            const SizedBox(width: 8),
+            Text(
+              '$percentage%',
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const Spacer(),
+            IconButton(
+              icon: const Icon(Icons.remove_circle_outline, size: 20),
+              onPressed: currentSize > 12
+                  ? () {
+                      final newSize = (currentSize - 2).clamp(12.0, 30.0);
+                      settingsNotifier.setFontSize(newSize);
+                      _epubController.setFontSize(fontSize: newSize);
+                    }
+                  : null,
+            ),
+            IconButton(
+              icon: const Icon(Icons.add_circle_outline, size: 20),
+              onPressed: currentSize < 30
+                  ? () {
+                      final newSize = (currentSize + 2).clamp(12.0, 30.0);
+                      settingsNotifier.setFontSize(newSize);
+                      _epubController.setFontSize(fontSize: newSize);
+                    }
+                  : null,
+            ),
+          ],
+        ),
+        Slider(
+          value: currentSize,
+          min: 12,
+          max: 30,
+          divisions: 9,
+          label: '$percentage%',
+          onChanged: (value) {
+            settingsNotifier.setFontSize(value);
+            _epubController.setFontSize(fontSize: value);
+          },
+        ),
         Text(
-          'EPUB 格式字体大小由阅读器内部控制，如需调整请使用阅读器内置缩放手势。',
+          '调整 EPUB 阅读器字体大小',
           style: TextStyle(
-            fontSize: 13,
+            fontSize: 12,
             color: Colors.grey.shade600,
           ),
         ),
@@ -526,6 +596,23 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
     );
   }
 
+  /// 将 BookReaderTheme 转换为 EpubTheme
+  EpubTheme _getEpubTheme(BookReaderTheme theme) {
+    // 根据背景色判断主题类型
+    final brightness = ThemeData.estimateBrightnessForColor(theme.backgroundColor);
+    if (brightness == Brightness.dark) {
+      return EpubTheme.custom(
+        backgroundDecoration: BoxDecoration(color: theme.backgroundColor),
+        foregroundColor: theme.textColor,
+      );
+    } else {
+      return EpubTheme.custom(
+        backgroundDecoration: BoxDecoration(color: theme.backgroundColor),
+        foregroundColor: theme.textColor,
+      );
+    }
+  }
+
   Widget _buildError(String message) => Center(
     child: Padding(
       padding: const EdgeInsets.all(32),
@@ -558,12 +645,17 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
           // 固定顶栏 - 避免摄像头遮挡内容
           _buildFixedHeader(),
           Expanded(
+            // 注：已在 forked flutter_epub_viewer 中移除 VerticalDragGestureRecognizer
             child: EpubViewer(
               epubSource: EpubSource.fromFile(File(state.filePath)),
               epubController: _epubController,
               initialCfi: state.initialCfi,
               displaySettings: EpubDisplaySettings(
                 allowScriptedContent: true,
+                flow: EpubFlow.paginated, // 强制水平分页，禁止垂直滚动
+                snap: true, // 页面对齐，防止中间停顿
+                fontSize: ref.watch(bookReaderSettingsProvider).fontSize.toInt(),
+                theme: _getEpubTheme(ref.watch(bookReaderSettingsProvider).theme),
               ),
               onChaptersLoaded: (chapters) {
                 setState(() {
@@ -590,9 +682,20 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
                     .read(epubReaderProvider(widget.book).notifier)
                     .saveProgress(location);
               },
-              // 使用原生触摸事件处理，避免 GestureDetector 拦截手势
+              // 使用原生触摸事件处理，区分点击和滑动
+              onTouchDown: (x, y) {
+                _touchDownPosition = Offset(x, y);
+              },
               onTouchUp: (x, y) {
-                _handleTapZone(Offset(x, y));
+                final upPosition = Offset(x, y);
+                // 只有触摸移动距离小于阈值才视为点击
+                if (_touchDownPosition != null) {
+                  final distance = (upPosition - _touchDownPosition!).distance;
+                  if (distance < _tapThreshold) {
+                    _handleTapZone(upPosition);
+                  }
+                }
+                _touchDownPosition = null;
               },
             ),
           ),

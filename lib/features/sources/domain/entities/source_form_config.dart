@@ -1008,7 +1008,9 @@ class SourceFormConfig {
               label: '自定义请求头',
               type: SourceFormFieldType.keyValueList,
               required: false,
-              helpText: '添加自定义请求头，例如 x-api-key、authorization 等',
+              helpText: '馒头站点需要添加 x-api-key 和 authorization 两个请求头\n'
+                  '获取方式：登录馒头网站 → 按 F12 打开开发者工具 → '
+                  'Network → 刷新页面 → 找到任意 API 请求 → 复制请求头中的值',
               visibilityCondition: _isCustomHeadersAuthType,
             ),
           ],

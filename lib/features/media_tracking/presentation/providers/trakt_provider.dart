@@ -24,11 +24,6 @@ class TraktStats {
     this.watchlistCount = 0,
   });
 
-  final int moviesWatched;
-  final int showsWatched;
-  final int episodesWatched;
-  final int watchlistCount;
-
   factory TraktStats.fromJson(Map<String, dynamic> json) {
     final movies = json['movies'] as Map<String, dynamic>? ?? {};
     final shows = json['shows'] as Map<String, dynamic>? ?? {};
@@ -41,6 +36,11 @@ class TraktStats {
       watchlistCount: 0, // 需要单独获取
     );
   }
+
+  final int moviesWatched;
+  final int showsWatched;
+  final int episodesWatched;
+  final int watchlistCount;
 }
 
 /// Trakt 连接状态
@@ -91,6 +91,17 @@ class TraktConfig {
     this.expiresAt,
   });
 
+  factory TraktConfig.fromJson(Map<String, dynamic> json) => TraktConfig(
+        clientId: json['clientId'] as String,
+        clientSecret: json['clientSecret'] as String,
+        useBuiltInCredentials: json['useBuiltInCredentials'] as bool? ?? false,
+        accessToken: json['accessToken'] as String?,
+        refreshToken: json['refreshToken'] as String?,
+        expiresAt: json['expiresAt'] != null
+            ? DateTime.parse(json['expiresAt'] as String)
+            : null,
+      );
+
   final String clientId;
   final String clientSecret;
   final bool useBuiltInCredentials;
@@ -111,17 +122,6 @@ class TraktConfig {
         'refreshToken': refreshToken,
         'expiresAt': expiresAt?.toIso8601String(),
       };
-
-  factory TraktConfig.fromJson(Map<String, dynamic> json) => TraktConfig(
-        clientId: json['clientId'] as String,
-        clientSecret: json['clientSecret'] as String,
-        useBuiltInCredentials: json['useBuiltInCredentials'] as bool? ?? false,
-        accessToken: json['accessToken'] as String?,
-        refreshToken: json['refreshToken'] as String?,
-        expiresAt: json['expiresAt'] != null
-            ? DateTime.parse(json['expiresAt'] as String)
-            : null,
-      );
 
   TraktConfig copyWith({
     String? clientId,
@@ -192,10 +192,6 @@ class TraktConnectionNotifier extends StateNotifier<TraktConnectionState> {
     final effectiveClientId = clientId ?? TraktOAuthConfig.builtInClientId;
     final effectiveClientSecret =
         clientSecret ?? TraktOAuthConfig.builtInClientSecret;
-
-    if (effectiveClientId == null || effectiveClientSecret == null) {
-      throw Exception('需要提供 Client ID 和 Client Secret');
-    }
 
     state = state.copyWith(status: TraktConnectionStatus.connecting);
 
@@ -358,11 +354,15 @@ class TraktConnectionNotifier extends StateNotifier<TraktConnectionState> {
     String? clientSecret,
   }) async {
     final effectiveClientId = useBuiltIn
-        ? TraktOAuthConfig.builtInClientId!
-        : clientId!;
+        ? TraktOAuthConfig.builtInClientId
+        : clientId ?? '';
     final effectiveClientSecret = useBuiltIn
-        ? TraktOAuthConfig.builtInClientSecret!
-        : clientSecret!;
+        ? TraktOAuthConfig.builtInClientSecret
+        : clientSecret ?? '';
+
+    if (effectiveClientId.isEmpty || effectiveClientSecret.isEmpty) {
+      throw Exception('需要提供 Client ID 和 Client Secret');
+    }
 
     // 选择重定向 URI：移动端使用深度链接，桌面端使用 OOB
     final redirectUri = supportsDeepLinkCallback

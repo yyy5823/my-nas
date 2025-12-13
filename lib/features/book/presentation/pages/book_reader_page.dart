@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:battery_plus/battery_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_html/flutter_html.dart';
@@ -16,6 +17,7 @@ import 'package:my_nas/features/book/data/services/book_file_cache_service.dart'
 import 'package:my_nas/features/book/data/services/mobi_parser_service.dart';
 import 'package:my_nas/features/book/data/services/progressive_pagination.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
+import 'package:my_nas/features/book/presentation/pages/epub_reader_page.dart';
 import 'package:my_nas/features/book/presentation/widgets/webview_book_reader.dart';
 import 'package:my_nas/features/reading/data/services/reader_settings_service.dart';
 import 'package:my_nas/features/reading/data/services/reading_progress_service.dart';
@@ -73,6 +75,13 @@ class TxtReaderError extends TxtReaderState {
   TxtReaderError(this.message);
 
   final String message;
+}
+
+/// MOBI/AZW3 转换为 EPUB 后需要重定向到 EPUB 阅读器
+class TxtReaderRedirectToEpub extends TxtReaderState {
+  TxtReaderRedirectToEpub(this.epubPath);
+
+  final String epubPath;
 }
 
 class TxtReaderNotifier extends StateNotifier<TxtReaderState> {
@@ -133,7 +142,12 @@ class TxtReaderNotifier extends StateNotifier<TxtReaderState> {
         case BookFormat.mobi:
         case BookFormat.azw3:
           final result = await _loadMobiBook();
-          content = result.content;
+          // 检查是否转换为 EPUB
+          if (result.epubPath != null) {
+            state = TxtReaderRedirectToEpub(result.epubPath!);
+            return;
+          }
+          content = result.content ?? '';
           htmlContent = result.htmlContent;
         case BookFormat.unknown:
           state = TxtReaderError('未知的电子书格式');
@@ -230,7 +244,7 @@ class TxtReaderNotifier extends StateNotifier<TxtReaderState> {
   String _decodeGbk(List<int> bytes) => String.fromCharCodes(bytes);
 
   /// 加载 MOBI/AZW3 电子书
-  Future<({String content, String? htmlContent})> _loadMobiBook() async {
+  Future<MobiParseResult> _loadMobiBook() async {
     Uint8List bytes;
 
     // 检查是否有缓存
@@ -284,7 +298,7 @@ class TxtReaderNotifier extends StateNotifier<TxtReaderState> {
       throw Exception(result.error ?? '解析失败');
     }
 
-    return (content: result.content ?? '', htmlContent: result.htmlContent);
+    return result;
   }
 
   void setScrollPosition(double position) {
@@ -695,8 +709,48 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
           onRetry: () =>
               ref.read(txtReaderProvider(widget.book).notifier).loadBook(),
         ),
+        TxtReaderRedirectToEpub(:final epubPath) => _buildEpubRedirect(epubPath),
         TxtReaderLoaded() => _buildReader(context, state, settings),
       },
+    );
+  }
+
+  /// MOBI/AZW3 转换为 EPUB 后的重定向页面
+  Widget _buildEpubRedirect(String epubPath) {
+    // 自动跳转到 EPUB 阅读器
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      // 替换当前页面为 EPUB 阅读器
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute<void>(
+          builder: (context) => EpubReaderPage(
+            book: BookItem(
+              id: widget.book.id,
+              name: widget.book.name,
+              path: epubPath,
+              url: 'file://$epubPath',
+              sourceId: widget.book.sourceId,
+            ),
+          ),
+        ),
+      );
+    });
+
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const CircularProgressIndicator(),
+          const SizedBox(height: 16),
+          Text(
+            '正在打开 EPUB 阅读器...',
+            style: TextStyle(
+              color: Colors.grey.shade600,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -810,8 +864,6 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     TxtReaderLoaded state,
     BookReaderSettings settings,
   ) {
-    final theme = settings.theme;
-    
     // 检查是否有有效的 HTML 内容
     if (!state.hasHtml) {
       // 没有 HTML 内容，回退到纯文本模式
@@ -824,54 +876,17 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
       );
     }
 
-    // 检查 HTML 内容是否实际有效（不只是空白标签）
-    // ignore: unnecessary_raw_strings
-    final realContent = state.htmlContent!
-        .replaceAll(RegExp(r'<[^>]*>'), '') // 移除标签
-        .replaceAll(RegExp(r'\s+'), '') // 移除空白
-        .trim();
-    if (realContent.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.error_outline_rounded,
-              size: 48,
-              color: theme.textColor.withValues(alpha: 0.5),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '无法解析此书籍内容',
-              style: TextStyle(
-                color: theme.textColor,
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '可能需要使用 Calibre 转换为 EPUB 格式',
-              style: TextStyle(
-                fontSize: 12,
-                color: theme.textColor.withValues(alpha: 0.6),
-              ),
-            ),
-            const SizedBox(height: 24),
-            TextButton.icon(
-              onPressed: () => Navigator.pop(context),
-              icon: const Icon(Icons.arrow_back),
-              label: const Text('返回'),
-              style: TextButton.styleFrom(
-                foregroundColor: theme.textColor.withValues(alpha: 0.7),
-              ),
-            ),
-          ],
-        ),
-      );
+    // 记录内容信息用于调试（不阻塞渲染）
+    if (kDebugMode) {
+      final htmlLength = state.htmlContent?.length ?? 0;
+      logger.d('WebView 内容: $htmlLength 字符');
     }
 
-    // 内容处理中时显示加载提示
+    // 内容处理中时显示加载提示（仅在非 WebView 模式下阻塞）
+    // WebView 模式可以直接渲染原始内容，不需要等待处理完成
+    // 注：这个加载阻塞仅用于传统分页模式，因为传统分页需要清理后的 HTML
+    // WebView 使用 CSS multi-column 分页，可以处理原始 HTML
+    /*
     if (!_isContentProcessed) {
       return Center(
         child: Column(
@@ -906,45 +921,71 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
         ),
       );
     }
+    */
 
     // 计算顶部和底部栏的高度
     const topBarHeight = 40.0; // _buildFixedHeader 的大致高度
     const bottomBarHeight = 24.0; // _buildBottomStatusBar 的大致高度
 
-    return WebViewBookReader(
-      key: _webViewReaderKey,
-      htmlContent: state.htmlContent!,
-      chapters: _chapters,
-      settings: settings,
-      initialPage: _currentPage,
-      topBarHeight: topBarHeight,
-      bottomBarHeight: bottomBarHeight,
-      onPaginationReady: (info) {
-        if (!mounted) return;
-        setState(() {
-          _webViewPaginationReady = true;
-          _totalPages = info.totalPages;
-          _currentPage = info.currentPage;
-        });
-        // 恢复阅读进度
-        _restoreWebViewPageProgress();
-      },
-      onPageChanged: (page) {
-        if (!mounted) return;
-        setState(() {
-          _currentPage = page;
-        });
-        // 保存进度
-        _savePageProgress(page);
-      },
-      onChapterChanged: (chapter) {
-        if (!mounted) return;
-        if (chapter != _currentChapterTitle) {
-          setState(() {
-            _currentChapterTitle = chapter;
-          });
-        }
-      },
+    // 调试信息：显示内容长度
+    final contentLength = state.htmlContent?.length ?? 0;
+    logger.i('WebView 内容长度: $contentLength 字符');
+
+    return Stack(
+      children: [
+        WebViewBookReader(
+          key: _webViewReaderKey,
+          htmlContent: state.htmlContent!,
+          chapters: _chapters,
+          settings: settings,
+          initialPage: _currentPage,
+          topBarHeight: topBarHeight,
+          bottomBarHeight: bottomBarHeight,
+          onPaginationReady: (info) {
+            if (!mounted) return;
+            setState(() {
+              _webViewPaginationReady = true;
+              _totalPages = info.totalPages;
+              _currentPage = info.currentPage;
+            });
+            // 恢复阅读进度
+            _restoreWebViewPageProgress();
+          },
+          onPageChanged: (page) {
+            if (!mounted) return;
+            setState(() {
+              _currentPage = page;
+            });
+            // 保存进度
+            _savePageProgress(page);
+          },
+          onChapterChanged: (chapter) {
+            if (!mounted) return;
+            if (chapter != _currentChapterTitle) {
+              setState(() {
+                _currentChapterTitle = chapter;
+              });
+            }
+          },
+        ),
+        // 调试 overlay - 显示在右上角
+        if (kDebugMode)
+          Positioned(
+            top: 8,
+            right: 8,
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: Colors.red.withValues(alpha: 0.8),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                'WebView: $contentLength chars',
+                style: const TextStyle(color: Colors.white, fontSize: 10),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
