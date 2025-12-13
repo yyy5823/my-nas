@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:my_nas/core/errors/app_error_handler.dart';
+import 'package:my_nas/core/utils/background_task_pool.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/video/data/services/nfo_scraper_service.dart';
 import 'package:my_nas/features/video/data/services/tmdb_service.dart';
@@ -250,21 +251,24 @@ class VideoMetadataService {
       await _fetchFromTmdb(metadata);
     }
 
+    // 捕获非空引用供闭包使用（避免 Dart 类型分析器警告）
+    final metadataRef = metadata;
+
     // 下载海报到本地缓存（支持离线显示）
-    if (metadata.posterUrl != null && metadata.localPosterUrl == null) {
-      // 在后台异步下载海报，不阻塞刮削流程
-      AppError.fireAndForget(
-        _downloadPosterAndSave(metadata, fileSystem),
-        action: 'downloadPoster',
+    // 使用任务池限制并发，防止大量视频同时下载导致手机发热
+    if (metadataRef.posterUrl != null && metadataRef.localPosterUrl == null) {
+      BackgroundTaskPool.media.addFireAndForget(
+        () => _downloadPosterAndSave(metadataRef, fileSystem),
+        taskName: 'downloadPoster:${metadataRef.fileName}',
       );
     }
 
     // 如果没有封面图，尝试生成缩略图（可跳过以加速刮削）
-    if (!skipThumbnail && metadata.displayPosterUrl == null && videoUrl != null) {
-      // 在后台异步生成缩略图，不阻塞刮削流程
-      AppError.fireAndForget(
-        _tryGenerateThumbnailAndSave(metadata, videoUrl, fileSystem),
-        action: 'generateThumbnail',
+    // 缩略图生成是 CPU 密集型操作，必须限制并发
+    if (!skipThumbnail && metadataRef.displayPosterUrl == null && videoUrl != null) {
+      BackgroundTaskPool.media.addFireAndForget(
+        () => _tryGenerateThumbnailAndSave(metadataRef, videoUrl, fileSystem),
+        taskName: 'generateThumbnail:${metadataRef.fileName}',
       );
     }
 

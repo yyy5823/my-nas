@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/services/background_task_service.dart';
+import 'package:my_nas/core/utils/background_task_pool.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
@@ -537,6 +538,9 @@ class VideoScannerService {
       final initialStats = await _dbService.getScrapeStats();
       _scrapeStatsController.add(initialStats);
 
+      // 用于跟踪本批次完成的视频数
+      var batchCompletedCount = 0;
+
       while (!_shouldStopScraping) {
         // 获取待刮削的视频
         final pendingVideos = await _dbService.getPendingScrape(
@@ -548,42 +552,66 @@ class VideoScannerService {
           break;
         }
 
-        // 获取刮削统计
-        final stats = await _dbService.getScrapeStats();
-        _scrapeStatsController.add(stats);
+        // 每批次开始时获取一次统计（减少数据库查询）
+        final batchStats = await _dbService.getScrapeStats();
+        _scrapeStatsController.add(batchStats);
 
+        // 发送批次开始进度
+        _emitProgress(VideoScanProgress(
+          phase: VideoScanPhase.scraping,
+          scannedCount: batchStats.processed,
+          totalCount: batchStats.total,
+          currentFile: '正在处理 ${pendingVideos.length} 个视频...',
+        ));
+
+        // 更新后台服务进度（批次级别）
+        await _backgroundTaskService.updateProgress(
+          BackgroundTaskProgress(
+            taskType: BackgroundTaskType.videoScrape,
+            state: BackgroundTaskState.running,
+            current: batchStats.processed,
+            total: batchStats.total,
+            message: '正在刮削: ${pendingVideos.length} 个视频',
+          ),
+        );
+
+        // 使用任务池并行刮削（限制并发数，防止过载）
+        // 移动端 2 并发，桌面端 4 并发
+        final futures = <Future<void>>[];
         for (final video in pendingVideos) {
           if (_shouldStopScraping) break;
 
-          // 获取当前进度（每个视频开始前）
-          final currentStats = await _dbService.getScrapeStats();
-          final progress = VideoScanProgress(
-            phase: VideoScanPhase.scraping,
-            scannedCount: currentStats.processed,
-            totalCount: currentStats.total,
-            currentFile: video.fileName,
+          final future = BackgroundTaskPool.scrape.add(
+            () async {
+              await _scrapeOneVideo(video, connections);
+              batchCompletedCount++;
+
+              // 每完成几个视频更新一次进度显示（不查询数据库）
+              if (batchCompletedCount % 3 == 0) {
+                _emitProgress(VideoScanProgress(
+                  phase: VideoScanPhase.scraping,
+                  scannedCount: batchStats.processed + batchCompletedCount,
+                  totalCount: batchStats.total,
+                  currentFile: video.fileName,
+                ));
+              }
+            },
+            taskName: 'scrape:${video.fileName}',
           );
-          _emitProgress(progress);
+          futures.add(future);
+        }
 
-          // 更新后台服务进度
-          await _backgroundTaskService.updateProgress(
-            BackgroundTaskProgress(
-              taskType: BackgroundTaskType.videoScrape,
-              state: BackgroundTaskState.running,
-              current: currentStats.processed,
-              total: currentStats.total,
-              message: '正在刮削: ${video.fileName}',
-            ),
-          );
+        // 等待本批次所有刮削任务完成
+        await Future.wait(futures);
 
-          await _scrapeOneVideo(video, connections);
+        // 批次完成后更新统计（只查询一次数据库）
+        final updatedStats = await _dbService.getScrapeStats();
+        _scrapeStatsController.add(updatedStats);
+        batchCompletedCount = 0;
 
-          // 刮削完成后立即更新统计
-          final updatedStats = await _dbService.getScrapeStats();
-          _scrapeStatsController.add(updatedStats);
-
-          // 添加延迟避免 API 限制
-          await Future<void>.delayed(const Duration(milliseconds: 100));
+        // 批次间短暂延迟，避免 API 限流
+        if (!_shouldStopScraping) {
+          await Future<void>.delayed(const Duration(milliseconds: 200));
         }
       }
 

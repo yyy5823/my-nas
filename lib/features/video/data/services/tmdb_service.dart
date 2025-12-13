@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:ui';
 
@@ -18,6 +19,17 @@ class TmdbService {
 
   static const String _baseUrl = 'https://api.themoviedb.org/3';
   static const String _imageBaseUrl = 'https://image.tmdb.org/t/p';
+
+  /// HTTP 请求超时时间
+  static const Duration _requestTimeout = Duration(seconds: 15);
+
+  /// 带超时的 HTTP GET 请求
+  ///
+  /// 防止网络不稳定时请求无限挂起
+  Future<http.Response> _httpGet(Uri uri) => http.get(uri).timeout(
+        _requestTimeout,
+        onTimeout: () => throw TimeoutException('TMDB API 请求超时: $uri'),
+      );
 
   // 语言偏好缓存
   LanguagePreference? _languagePreference;
@@ -94,7 +106,7 @@ class TmdbService {
       }
 
       final uri = Uri.parse('$_baseUrl/search/movie').replace(queryParameters: params);
-      final response = await http.get(uri);
+      final response = await _httpGet(uri);
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body) as Map<String, dynamic>;
@@ -132,7 +144,7 @@ class TmdbService {
       }
 
       final uri = Uri.parse('$_baseUrl/search/tv').replace(queryParameters: params);
-      final response = await http.get(uri);
+      final response = await _httpGet(uri);
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body) as Map<String, dynamic>;
@@ -162,7 +174,7 @@ class TmdbService {
       };
 
       final uri = Uri.parse('$_baseUrl/movie/$movieId').replace(queryParameters: params);
-      final response = await http.get(uri);
+      final response = await _httpGet(uri);
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body) as Map<String, dynamic>;
@@ -192,7 +204,7 @@ class TmdbService {
       };
 
       final uri = Uri.parse('$_baseUrl/tv/$tvId').replace(queryParameters: params);
-      final response = await http.get(uri);
+      final response = await _httpGet(uri);
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body) as Map<String, dynamic>;
@@ -223,7 +235,7 @@ class TmdbService {
 
       final uri = Uri.parse('$_baseUrl/tv/$tvId/season/$seasonNumber')
           .replace(queryParameters: params);
-      final response = await http.get(uri);
+      final response = await _httpGet(uri);
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body) as Map<String, dynamic>;
@@ -255,7 +267,7 @@ class TmdbService {
 
       final uri = Uri.parse('$_baseUrl/movie/$movieId/recommendations')
           .replace(queryParameters: params);
-      final response = await http.get(uri);
+      final response = await _httpGet(uri);
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body) as Map<String, dynamic>;
@@ -287,7 +299,7 @@ class TmdbService {
 
       final uri = Uri.parse('$_baseUrl/tv/$tvId/recommendations')
           .replace(queryParameters: params);
-      final response = await http.get(uri);
+      final response = await _httpGet(uri);
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body) as Map<String, dynamic>;
@@ -319,7 +331,7 @@ class TmdbService {
 
       final uri = Uri.parse('$_baseUrl/movie/$movieId/similar')
           .replace(queryParameters: params);
-      final response = await http.get(uri);
+      final response = await _httpGet(uri);
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body) as Map<String, dynamic>;
@@ -351,7 +363,7 @@ class TmdbService {
 
       final uri = Uri.parse('$_baseUrl/tv/$tvId/similar')
           .replace(queryParameters: params);
-      final response = await http.get(uri);
+      final response = await _httpGet(uri);
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body) as Map<String, dynamic>;
@@ -381,7 +393,7 @@ class TmdbService {
 
       final uri = Uri.parse('$_baseUrl/collection/$collectionId')
           .replace(queryParameters: params);
-      final response = await http.get(uri);
+      final response = await _httpGet(uri);
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body) as Map<String, dynamic>;
