@@ -19,6 +19,11 @@ enum SourceType {
   // 通用协议
   webdav('WebDAV', 'webdav'),
   smb('SMB/CIFS', 'smb'),
+  ftp('FTP', 'ftp'),
+  sftp('SFTP', 'sftp'),
+  nfs('NFS', 'nfs'),
+  // 媒体发现（无需认证）
+  upnp('UPnP/DLNA', 'upnp'),
   // 本地存储
   local('本地存储', 'local'),
 
@@ -52,6 +57,10 @@ enum SourceType {
         // 通用协议
         SourceType.webdav => 443,
         SourceType.smb => 445,
+        SourceType.ftp => 21,
+        SourceType.sftp => 22,
+        SourceType.nfs => 2049,
+        SourceType.upnp => 0, // 自动发现，无固定端口
         // 本地存储
         SourceType.local => 0,
         // 下载工具
@@ -80,6 +89,10 @@ enum SourceType {
         // 通用协议
         SourceType.webdav => true,
         SourceType.smb => true,
+        SourceType.ftp => true,
+        SourceType.sftp => true,
+        SourceType.nfs => true,
+        SourceType.upnp => true,
         // 本地存储
         SourceType.local => true,
         // 下载工具
@@ -107,7 +120,13 @@ enum SourceType {
         SourceType.fnos =>
           SourceCategory.nasDevices,
         // 通用协议
-        SourceType.webdav || SourceType.smb => SourceCategory.genericProtocols,
+        SourceType.webdav ||
+        SourceType.smb ||
+        SourceType.ftp ||
+        SourceType.sftp ||
+        SourceType.nfs ||
+        SourceType.upnp =>
+          SourceCategory.genericProtocols,
         // 本地存储
         SourceType.local => SourceCategory.localStorage,
         // 媒体服务器
@@ -138,6 +157,10 @@ enum SourceType {
         SourceType.fnos ||
         SourceType.webdav ||
         SourceType.smb ||
+        SourceType.ftp ||
+        SourceType.sftp ||
+        SourceType.nfs ||
+        SourceType.upnp ||
         SourceType.local =>
           true,
         _ => false,
@@ -156,6 +179,10 @@ enum SourceType {
         // 通用协议
         SourceType.webdav => Icons.cloud,
         SourceType.smb => Icons.lan,
+        SourceType.ftp => Icons.upload_file,
+        SourceType.sftp => Icons.security,
+        SourceType.nfs => Icons.share,
+        SourceType.upnp => Icons.cast,
         // 本地存储
         SourceType.local => Icons.folder,
         // 下载工具
@@ -184,6 +211,10 @@ enum SourceType {
         // 通用协议
         SourceType.webdav => '支持 WebDAV 协议的服务器',
         SourceType.smb => 'Windows 共享文件夹协议',
+        SourceType.ftp => '文件传输协议（支持 TLS 加密）',
+        SourceType.sftp => '基于 SSH 的安全文件传输',
+        SourceType.nfs => '网络文件系统',
+        SourceType.upnp => '自动发现局域网媒体设备',
         // 本地存储
         SourceType.local => '设备本地存储',
         // 下载工具
@@ -217,6 +248,8 @@ enum SourceType {
   bool get requiresUsername => switch (this) {
         SourceType.trakt ||
         SourceType.aria2 ||
+        // UPnP 自动发现无需认证
+        SourceType.upnp ||
         // PT 站点使用 API 或 Cookie 认证，不需要用户名
         SourceType.ptSite =>
           false,

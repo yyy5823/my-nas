@@ -662,6 +662,12 @@ class SourceManagerService {
       SourceType.webdav => WebDavAdapter(),
       SourceType.smb => SmbAdapter(),
       SourceType.local => LocalAdapter(),
+      // 新增的通用协议（待实现）
+      SourceType.ftp ||
+      SourceType.sftp ||
+      SourceType.nfs ||
+      SourceType.upnp =>
+        throw UnsupportedError('协议 ${type.displayName} 尚未实现'),
       // 服务类源不使用 NasAdapter，需要使用各自的 ServiceAdapter
       SourceType.qbittorrent ||
       SourceType.transmission ||
@@ -684,6 +690,12 @@ class SourceManagerService {
       SourceType.webdav => NasAdapterType.webdav,
       SourceType.smb => NasAdapterType.smb,
       SourceType.local => NasAdapterType.local,
+      // 新增的通用协议（待实现）
+      SourceType.ftp ||
+      SourceType.sftp ||
+      SourceType.nfs ||
+      SourceType.upnp =>
+        throw UnsupportedError('协议 ${type.displayName} 尚未实现'),
       // 服务类源不使用 NasAdapterType
       SourceType.qbittorrent ||
       SourceType.transmission ||

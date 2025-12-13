@@ -11,6 +11,7 @@ class TraktApi {
   TraktApi({
     required this.clientId,
     required this.clientSecret,
+    this.redirectUri = defaultOobRedirectUri,
     this.accessToken,
     this.refreshToken,
     this.tokenExpiresAt,
@@ -19,10 +20,16 @@ class TraktApi {
   static const String apiUrl = 'https://api.trakt.tv';
   static const String authUrl = 'https://trakt.tv';
   static const String apiVersion = '2';
-  static const String redirectUri = 'urn:ietf:wg:oauth:2.0:oob';
+
+  /// OOB (Out-of-Band) 重定向 URI - 用户手动输入授权码
+  static const String defaultOobRedirectUri = 'urn:ietf:wg:oauth:2.0:oob';
+
+  /// 深度链接重定向 URI - 自动回调应用
+  static const String deepLinkRedirectUri = 'mynas://trakt/callback';
 
   final String clientId;
   final String clientSecret;
+  final String redirectUri;
   String? accessToken;
   String? refreshToken;
   DateTime? tokenExpiresAt;

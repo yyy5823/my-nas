@@ -6,7 +6,6 @@ import 'package:my_nas/features/sources/data/services/source_manager_service.dar
 import 'package:my_nas/features/sources/domain/entities/source_category.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/pages/source_form_page.dart';
-import 'package:my_nas/features/sources/presentation/pages/source_type_selection_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/features/sources/presentation/widgets/two_fa_sheet.dart';
 
@@ -170,14 +169,27 @@ class _SourcesPageState extends ConsumerState<SourcesPage> {
     );
 
   void _showAddSourceSheet(BuildContext context) {
-    // 使用新的源类型选择页面，只显示存储类分类
-    Navigator.push<void>(
-      context,
-      MaterialPageRoute<void>(
-        builder: (context) => SourceTypeSelectionPage(
-          allowedCategories: SourceCategoryExtension.storageCategories,
-        ),
+    // 获取所有存储类源的已支持类型
+    final supportedTypes = SourceCategoryExtension.storageCategories
+        .expand(SourceType.byCategory)
+        .where((type) => type.isSupported)
+        .toList();
+
+    if (supportedTypes.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('暂无可用的连接源类型')),
+      );
+      return;
+    }
+
+    // 显示底部弹窗让用户选择类型
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
+      builder: (context) => _SourceTypeBottomSheet(types: supportedTypes),
     );
   }
 }
@@ -679,5 +691,150 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
         }
       }
     }
+  }
+}
+
+/// 源类型选择底部弹窗
+class _SourceTypeBottomSheet extends StatelessWidget {
+  const _SourceTypeBottomSheet({required this.types});
+
+  final List<SourceType> types;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    // 按分类分组
+    final groupedTypes = <SourceCategory, List<SourceType>>{};
+    for (final type in types) {
+      groupedTypes.putIfAbsent(type.category, () => []).add(type);
+    }
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 拖动条
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // 标题
+            Text(
+              '添加连接源',
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '选择要添加的连接源类型',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // 按分类显示类型
+            Flexible(
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (final category in groupedTypes.keys) ...[
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8, bottom: 4),
+                        child: Text(
+                          category.displayName,
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: colorScheme.primary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      ...groupedTypes[category]!
+                          .map((type) => _buildTypeTile(context, type)),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTypeTile(BuildContext context, SourceType type) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: colorScheme.outline.withValues(alpha: 0.2),
+        ),
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        leading: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: colorScheme.primaryContainer.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(
+            type.icon,
+            color: colorScheme.primary,
+            size: 24,
+          ),
+        ),
+        title: Text(
+          type.displayName,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        subtitle: Text(
+          type.description,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: colorScheme.onSurfaceVariant,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        trailing: Icon(
+          Icons.chevron_right,
+          color: colorScheme.onSurfaceVariant,
+        ),
+        onTap: () {
+          Navigator.pop(context);
+          Navigator.push<void>(
+            context,
+            MaterialPageRoute<void>(
+              builder: (context) => SourceFormPage(
+                sourceType: type,
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 }

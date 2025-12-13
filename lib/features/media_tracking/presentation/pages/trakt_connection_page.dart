@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:my_nas/core/services/deep_link_service.dart';
 import 'package:my_nas/features/media_tracking/presentation/providers/trakt_provider.dart';
+import 'package:my_nas/service_adapters/trakt/trakt_config.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Trakt 连接页面
@@ -21,20 +25,46 @@ class _TraktConnectionPageState extends ConsumerState<TraktConnectionPage> {
   final _codeController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
+  bool _showAdvancedOptions = false;
   bool _showAuthCodeInput = false;
   bool _obscureSecret = true;
+  bool _useCustomCredentials = false;
+
+  StreamSubscription<AsyncValue<TraktOAuthCallback>>? _oauthCallbackSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    // 如果没有内置凭证，默认展开高级选项
+    if (!TraktOAuthConfig.hasBuiltInCredentials) {
+      _showAdvancedOptions = true;
+      _useCustomCredentials = true;
+    }
+  }
 
   @override
   void dispose() {
     _clientIdController.dispose();
     _clientSecretController.dispose();
     _codeController.dispose();
+    _oauthCallbackSubscription?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final traktState = ref.watch(traktConnectionProvider);
+
+    // 监听 OAuth 回调
+    ref.listen<AsyncValue<TraktOAuthCallback>>(
+      traktOAuthCallbackProvider,
+      (previous, next) {
+        next.whenData((callback) {
+          // 收到回调，处理授权码
+          ref.read(traktConnectionProvider.notifier).handleOAuthCallback(callback.code);
+        });
+      },
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -282,6 +312,9 @@ class _TraktConnectionPageState extends ConsumerState<TraktConnectionPage> {
   Widget _buildDisconnectedView(BuildContext context, TraktConnectionState state) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final notifier = ref.read(traktConnectionProvider.notifier);
+    final hasBuiltIn = TraktOAuthConfig.hasBuiltInCredentials;
+    final supportsDeepLink = notifier.supportsDeepLinkCallback;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -337,75 +370,147 @@ class _TraktConnectionPageState extends ConsumerState<TraktConnectionPage> {
             ),
             const SizedBox(height: 24),
 
-            // OAuth 配置
-            TextFormField(
-              controller: _clientIdController,
-              decoration: const InputDecoration(
-                labelText: 'Client ID',
-                helperText: '从 trakt.tv 应用设置获取',
-                prefixIcon: Icon(Icons.apps),
-              ),
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return '请输入 Client ID';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 16),
-
-            TextFormField(
-              controller: _clientSecretController,
-              obscureText: _obscureSecret,
-              decoration: InputDecoration(
-                labelText: 'Client Secret',
-                prefixIcon: const Icon(Icons.vpn_key),
-                suffixIcon: IconButton(
-                  icon: Icon(
-                    _obscureSecret ? Icons.visibility : Icons.visibility_off,
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      _obscureSecret = !_obscureSecret;
-                    });
-                  },
-                ),
-              ),
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return '请输入 Client Secret';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 24),
-
-            if (!_showAuthCodeInput) ...[
-              // 登录按钮
+            // 主要登录按钮（如果有内置凭证）
+            if (hasBuiltIn && !_useCustomCredentials && !_showAuthCodeInput) ...[
               FilledButton.icon(
                 onPressed: state.status == TraktConnectionStatus.connecting
                     ? null
-                    : _openAuthorizationUrl,
+                    : _startBuiltInOAuthFlow,
                 icon: state.status == TraktConnectionStatus.connecting
                     ? const SizedBox(
                         width: 20,
                         height: 20,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Icon(Icons.open_in_browser),
-                label: const Text('在浏览器中登录'),
+                    : const Icon(Icons.login),
+                label: const Text('使用 Trakt 账号登录'),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                ),
               ),
-            ] else ...[
-              // 授权码输入
+              if (!supportsDeepLink) ...[
+                const SizedBox(height: 8),
+                Text(
+                  '登录后需要手动输入授权码',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 16),
+              // 高级选项开关
+              TextButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _showAdvancedOptions = !_showAdvancedOptions;
+                  });
+                },
+                icon: Icon(
+                  _showAdvancedOptions
+                      ? Icons.expand_less
+                      : Icons.expand_more,
+                ),
+                label: Text(_showAdvancedOptions ? '隐藏高级选项' : '使用自定义凭证'),
+              ),
+            ],
+
+            // 高级选项（自定义凭证）
+            if (_showAdvancedOptions || !hasBuiltIn) ...[
+              if (hasBuiltIn) ...[
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  title: const Text('使用自定义 API 凭证'),
+                  subtitle: const Text('如果您有自己的 Trakt 应用'),
+                  value: _useCustomCredentials,
+                  onChanged: (value) {
+                    setState(() {
+                      _useCustomCredentials = value;
+                      _showAuthCodeInput = false;
+                    });
+                  },
+                ),
+              ],
+
+              if (_useCustomCredentials || !hasBuiltIn) ...[
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _clientIdController,
+                  decoration: InputDecoration(
+                    labelText: 'Client ID',
+                    helperText: '从 trakt.tv/oauth/applications 获取',
+                    prefixIcon: const Icon(Icons.apps),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  validator: (value) {
+                    if (_useCustomCredentials || !hasBuiltIn) {
+                      if (value == null || value.isEmpty) {
+                        return '请输入 Client ID';
+                      }
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+
+                TextFormField(
+                  controller: _clientSecretController,
+                  obscureText: _obscureSecret,
+                  decoration: InputDecoration(
+                    labelText: 'Client Secret',
+                    prefixIcon: const Icon(Icons.vpn_key),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscureSecret ? Icons.visibility : Icons.visibility_off,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _obscureSecret = !_obscureSecret;
+                        });
+                      },
+                    ),
+                  ),
+                  validator: (value) {
+                    if (_useCustomCredentials || !hasBuiltIn) {
+                      if (value == null || value.isEmpty) {
+                        return '请输入 Client Secret';
+                      }
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 24),
+              ],
+            ],
+
+            // 授权码输入（OOB 模式或非移动端）
+            if (_showAuthCodeInput) ...[
+              const Divider(),
+              const SizedBox(height: 16),
+              Text(
+                '请在浏览器中完成登录，然后输入授权码',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 16),
               TextFormField(
                 controller: _codeController,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: '授权码',
                   helperText: '从 Trakt 网页复制授权码',
-                  prefixIcon: Icon(Icons.code),
+                  prefixIcon: const Icon(Icons.code),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
                 validator: (value) {
-                  if (value == null || value.isEmpty) {
+                  if (_showAuthCodeInput && (value == null || value.isEmpty)) {
                     return '请输入授权码';
                   }
                   return null;
@@ -445,6 +550,26 @@ class _TraktConnectionPageState extends ConsumerState<TraktConnectionPage> {
               ),
             ],
 
+            // 自定义凭证的登录按钮
+            if ((_useCustomCredentials || !hasBuiltIn) && !_showAuthCodeInput) ...[
+              FilledButton.icon(
+                onPressed: state.status == TraktConnectionStatus.connecting
+                    ? null
+                    : _startCustomOAuthFlow,
+                icon: state.status == TraktConnectionStatus.connecting
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.open_in_browser),
+                label: const Text('在浏览器中登录'),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                ),
+              ),
+            ],
+
             // 错误信息
             if (state.errorMessage != null) ...[
               const SizedBox(height: 16),
@@ -474,42 +599,87 @@ class _TraktConnectionPageState extends ConsumerState<TraktConnectionPage> {
     );
   }
 
-  Future<void> _openAuthorizationUrl() async {
-    if (!_formKey.currentState!.validate()) return;
+  /// 使用内置凭证启动 OAuth 流程
+  Future<void> _startBuiltInOAuthFlow() async {
+    final notifier = ref.read(traktConnectionProvider.notifier);
 
-    final clientId = _clientIdController.text.trim();
-    final clientSecret = _clientSecretController.text.trim();
+    try {
+      final url = await notifier.startOAuthFlow(useBuiltIn: true);
+      final uri = Uri.parse(url);
 
-    final url = ref
-        .read(traktConnectionProvider.notifier)
-        .getAuthorizationUrl(clientId, clientSecret);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
 
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-      setState(() {
-        _showAuthCodeInput = true;
-      });
-    } else {
+        // 如果不支持深度链接回调，显示授权码输入框
+        if (!notifier.supportsDeepLinkCallback) {
+          setState(() {
+            _showAuthCodeInput = true;
+          });
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('无法打开浏览器')),
+          );
+        }
+      }
+    } on Exception catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('无法打开浏览器')),
+          SnackBar(content: Text('启动登录失败: $e')),
         );
       }
     }
   }
 
+  /// 使用自定义凭证启动 OAuth 流程
+  Future<void> _startCustomOAuthFlow() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    final notifier = ref.read(traktConnectionProvider.notifier);
+    final clientId = _clientIdController.text.trim();
+    final clientSecret = _clientSecretController.text.trim();
+
+    try {
+      final url = await notifier.startOAuthFlow(
+        useBuiltIn: false,
+        clientId: clientId,
+        clientSecret: clientSecret,
+      );
+      final uri = Uri.parse(url);
+
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+
+        // 如果不支持深度链接回调，显示授权码输入框
+        if (!notifier.supportsDeepLinkCallback) {
+          setState(() {
+            _showAuthCodeInput = true;
+          });
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('无法打开浏览器')),
+          );
+        }
+      }
+    } on Exception catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('启动登录失败: $e')),
+        );
+      }
+    }
+  }
+
+  /// 提交授权码（OOB 模式）
   Future<void> _submitAuthCode() async {
     if (!_formKey.currentState!.validate()) return;
 
     final code = _codeController.text.trim();
-    final clientId = _clientIdController.text.trim();
-    final clientSecret = _clientSecretController.text.trim();
 
-    await ref.read(traktConnectionProvider.notifier).authenticateWithCode(
-          code,
-          clientId,
-          clientSecret,
-        );
+    // 使用 handleOAuthCallback 处理，它会从存储中读取待处理的 OAuth 状态
+    await ref.read(traktConnectionProvider.notifier).handleOAuthCallback(code);
   }
 }

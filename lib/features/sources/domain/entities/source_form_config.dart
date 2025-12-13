@@ -122,6 +122,14 @@ class SourceFormConfig {
         return _getWebdavConfig();
       case SourceType.smb:
         return _getSmbConfig();
+      case SourceType.ftp:
+        return _getFtpConfig();
+      case SourceType.sftp:
+        return _getSftpConfig();
+      case SourceType.nfs:
+        return _getNfsConfig();
+      case SourceType.upnp:
+        return _getUpnpConfig();
 
       // === 本地存储 ===
       case SourceType.local:
@@ -349,6 +357,146 @@ class SourceFormConfig {
         ),
         _credentialSection(),
         _advancedSection(),
+      ],
+    );
+
+  static SourceFormConfig _getFtpConfig() => SourceFormConfig(
+      type: SourceType.ftp,
+      sections: [
+        _basicInfoSection(),
+        SourceFormSection(
+          title: '连接配置',
+          fields: [
+            const SourceFormField(
+              key: 'host',
+              label: '主机地址',
+              placeholder: '192.168.1.100 或 ftp.example.com',
+            ),
+            SourceFormField(
+              key: 'port',
+              label: '端口',
+              type: SourceFormFieldType.number,
+              defaultValue: SourceType.ftp.defaultPort.toString(),
+            ),
+            const SourceFormField(
+              key: 'encryption',
+              label: '加密方式',
+              type: SourceFormFieldType.select,
+              options: ['无加密', '隐式 TLS (FTPS)', '显式 TLS (FTPES)'],
+              defaultValue: '无加密',
+              helpText: 'FTPS 使用端口 990，FTPES 使用端口 21',
+            ),
+          ],
+        ),
+        _credentialSection(),
+        _advancedSection(),
+      ],
+    );
+
+  static SourceFormConfig _getSftpConfig() => SourceFormConfig(
+      type: SourceType.sftp,
+      sections: [
+        _basicInfoSection(),
+        SourceFormSection(
+          title: '连接配置',
+          fields: [
+            const SourceFormField(
+              key: 'host',
+              label: '主机地址',
+              placeholder: '192.168.1.100 或 server.example.com',
+            ),
+            SourceFormField(
+              key: 'port',
+              label: '端口',
+              type: SourceFormFieldType.number,
+              defaultValue: SourceType.sftp.defaultPort.toString(),
+            ),
+          ],
+        ),
+        SourceFormSection(
+          title: '认证配置',
+          fields: [
+            const SourceFormField(
+              key: 'username',
+              label: '用户名',
+              placeholder: 'root',
+            ),
+            const SourceFormField(
+              key: 'authMethod',
+              label: '认证方式',
+              type: SourceFormFieldType.select,
+              options: ['密码', 'SSH 密钥'],
+              defaultValue: '密码',
+            ),
+            SourceFormField(
+              key: 'password',
+              label: '密码',
+              type: SourceFormFieldType.password,
+              visibilityCondition: (values) =>
+                  values['authMethod'] != 'SSH 密钥',
+            ),
+            SourceFormField(
+              key: 'privateKey',
+              label: 'SSH 私钥',
+              type: SourceFormFieldType.password,
+              helpText: '粘贴 PEM 格式的私钥内容',
+              visibilityCondition: (values) =>
+                  values['authMethod'] == 'SSH 密钥',
+            ),
+          ],
+        ),
+        _advancedSection(),
+      ],
+    );
+
+  static SourceFormConfig _getNfsConfig() => SourceFormConfig(
+      type: SourceType.nfs,
+      sections: [
+        _basicInfoSection(),
+        SourceFormSection(
+          title: '连接配置',
+          fields: [
+            const SourceFormField(
+              key: 'host',
+              label: '主机地址',
+              placeholder: '192.168.1.100',
+            ),
+            const SourceFormField(
+              key: 'exportPath',
+              label: '导出路径',
+              placeholder: '/volume1/share',
+              helpText: 'NFS 服务器导出的共享路径',
+            ),
+            const SourceFormField(
+              key: 'nfsVersion',
+              label: 'NFS 版本',
+              type: SourceFormFieldType.select,
+              options: ['自动', 'NFSv3', 'NFSv4'],
+              defaultValue: '自动',
+            ),
+          ],
+        ),
+        _advancedSection(),
+      ],
+    );
+
+  static SourceFormConfig _getUpnpConfig() => SourceFormConfig(
+      type: SourceType.upnp,
+      testConnectionSupported: false,
+      sections: [
+        SourceFormSection(
+          title: 'UPnP/DLNA 设备',
+          description: '自动发现局域网内的媒体设备，无需手动配置',
+          fields: [
+            const SourceFormField(
+              key: 'name',
+              label: '名称',
+              placeholder: 'DLNA 媒体服务器',
+              required: false,
+              helpText: '可选，用于标识此设备',
+            ),
+          ],
+        ),
       ],
     );
 
