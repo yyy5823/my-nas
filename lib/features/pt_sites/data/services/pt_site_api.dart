@@ -635,7 +635,7 @@ class GenericPTSiteApi extends PTSiteApi {
       // 使用正则表达式提取种子信息
       // NexusPHP 种子列表格式: <tr class="*_tr">...</tr>
       final torrentRowRegex = RegExp(
-        r'<tr[^>]*class="[^"]*torrent[^"]*"[^>]*>(.*?)</tr>',
+        '<tr[^>]*class="[^"]*torrent[^"]*"[^>]*>(.*?)</tr>',
         dotAll: true,
         caseSensitive: false,
       );
@@ -645,7 +645,7 @@ class GenericPTSiteApi extends PTSiteApi {
       if (matches.isEmpty) {
         // 尝试匹配带 id="torrent_" 的行
         final altRegex = RegExp(
-          r'<tr[^>]*id="torrent_[^"]*"[^>]*>(.*?)</tr>',
+          '<tr[^>]*id="torrent_[^"]*"[^>]*>(.*?)</tr>',
           dotAll: true,
           caseSensitive: false,
         );
@@ -670,7 +670,7 @@ class GenericPTSiteApi extends PTSiteApi {
 
         // 提取副标题
         final smallDescrMatch = RegExp(
-          r'class="[^"]*torrentname[^"]*"[^>]*>.*?<br[^>]*/?>([^<]+)',
+          'class="[^"]*torrentname[^"]*"[^>]*>.*?<br[^>]*/?>([^<]+)',
           dotAll: true,
           caseSensitive: false,
         ).firstMatch(rowHtml);
@@ -693,10 +693,10 @@ class GenericPTSiteApi extends PTSiteApi {
         final snatched = int.tryParse(snatchedMatch?.group(1) ?? '') ?? 0;
 
         // 检测免费状态
-        final isFree = RegExp(r'free|pro_free|pro_free2up', caseSensitive: false).hasMatch(rowHtml);
-        final isDoubleFree = RegExp(r'pro_free2up|twoupfree', caseSensitive: false).hasMatch(rowHtml);
-        final isDoubleUp = RegExp(r'pro_2up|twoup', caseSensitive: false).hasMatch(rowHtml);
-        final isHalfDown = RegExp(r'pro_50pctdown|halfdown', caseSensitive: false).hasMatch(rowHtml);
+        final isFree = RegExp('free|pro_free|pro_free2up', caseSensitive: false).hasMatch(rowHtml);
+        final isDoubleFree = RegExp('pro_free2up|twoupfree', caseSensitive: false).hasMatch(rowHtml);
+        final isDoubleUp = RegExp('pro_2up|twoup', caseSensitive: false).hasMatch(rowHtml);
+        final isHalfDown = RegExp('pro_50pctdown|halfdown', caseSensitive: false).hasMatch(rowHtml);
 
         torrents.add(PTTorrent(
           id: id,

@@ -241,10 +241,10 @@ class SubtitleService {
       });
 
       final results = await Future.wait(futures);
-      subtitles.addAll(results.whereType<SubtitleItem>());
+      subtitles..addAll(results.whereType<SubtitleItem>())
 
       // 按语言排序（中文优先）
-      subtitles.sort((a, b) {
+      ..sort((a, b) {
         final aScore = _getLanguageScore(a.language);
         final bScore = _getLanguageScore(b.language);
         return aScore.compareTo(bScore);
