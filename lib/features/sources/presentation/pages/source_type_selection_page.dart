@@ -245,6 +245,7 @@ class SourceTypeSelectionPage extends ConsumerWidget {
                 MaterialPageRoute<void>(
                   builder: (context) => SourceFormPage(
                     sourceType: type,
+                    popTwice: true,
                   ),
                 ),
               );

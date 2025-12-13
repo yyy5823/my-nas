@@ -138,6 +138,13 @@ class SmbAdapter implements NasAdapter {
         msg.contains('no route to host')) {
       return 'SMB 网络不可达\n请检查：\n• 网络连接是否正常\n• 是否在同一网络';
     }
+    // 连接已关闭错误 (StreamSink closed)
+    if (msg.contains('streamsink is closed') ||
+        msg.contains('stream is closed') ||
+        msg.contains('connection closed') ||
+        msg.contains('socket closed')) {
+      return 'SMB 连接已断开\n请检查网络连接后重试';
+    }
 
     // 认证相关错误
     if (msg.contains('status_logon_failure') ||

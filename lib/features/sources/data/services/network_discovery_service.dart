@@ -151,8 +151,15 @@ class NetworkDiscoveryNotifier extends StateNotifier<NetworkDiscoveryState> {
       );
       logger.i('NetworkDiscovery: 发现完成，共 ${devices.length} 个设备');
     } on SocketException catch (e) {
-      // 端口占用错误，可能是其他 mDNS 服务正在运行
-      logger.w('NetworkDiscovery: 端口冲突 (${e.message})，请稍后重试');
+      // 网络相关错误（无网络、路由不可达等），使用 debug 级别避免日志刷屏
+      // 这些错误在设备切换网络、没有 WiFi 等情况下是正常的
+      logger.d('NetworkDiscovery: 网络异常 (${e.message})，跳过发现');
+      state = state.copyWith(isDiscovering: false);
+    } on OSError catch (e) {
+      // 系统错误（端口占用等）
+      // Address already in use (errno = 48) 表示 mDNS 端口已被占用
+      // 这在 iOS 上可能是因为系统 mDNS 服务正在运行
+      logger.d('NetworkDiscovery: 系统错误 (${e.message})，跳过发现');
       state = state.copyWith(isDiscovering: false);
     } on Exception catch (e, st) {
       logger.e('NetworkDiscovery: 发现失败', e, st);

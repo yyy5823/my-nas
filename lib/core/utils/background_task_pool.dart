@@ -17,6 +17,11 @@ import 'package:my_nas/core/utils/logger.dart';
 /// await pool.add(() => downloadPoster(url));
 /// ```
 class BackgroundTaskPool {
+
+  BackgroundTaskPool({
+    required this.name,
+    required this.maxConcurrency,
+  });
   /// 媒体处理任务池（海报下载、缩略图生成等）
   ///
   /// 移动端限制 2 个并发，桌面端限制 4 个并发
@@ -42,11 +47,6 @@ class BackgroundTaskPool {
   );
 
   static bool get _isMobile => Platform.isAndroid || Platform.isIOS;
-
-  BackgroundTaskPool({
-    required this.name,
-    required this.maxConcurrency,
-  });
 
   final String name;
   final int maxConcurrency;

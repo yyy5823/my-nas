@@ -27,11 +27,21 @@ class _TraktConnectionPageState extends ConsumerState<TraktConnectionPage> {
   bool _obscureSecret = true;
 
   @override
+  void deactivate() {
+    // 离开页面时如果正在进行设备码流程，应该取消
+    // 使用 Future.microtask 避免在构建过程中修改 Provider 状态
+    Future.microtask(() {
+      if (mounted) {
+        ref.read(traktConnectionProvider.notifier).cancelDeviceCodeFlow();
+      }
+    });
+    super.deactivate();
+  }
+
+  @override
   void dispose() {
     _clientIdController.dispose();
     _clientSecretController.dispose();
-    // 取消正在进行的轮询
-    ref.read(traktConnectionProvider.notifier).cancelDeviceCodeFlow();
     super.dispose();
   }
 

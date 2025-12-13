@@ -45,6 +45,8 @@ class WebViewPaginationRenderer {
     required this.onPaginationReady,
     required this.onPageChanged,
     required this.onChapterDetected,
+    this.estimatedTotalPages,
+    this.onLoadingStateChanged,
   });
 
   final BookReaderSettings settings;
@@ -52,9 +54,17 @@ class WebViewPaginationRenderer {
   final ValueChanged<int> onPageChanged;
   final ValueChanged<String> onChapterDetected;
 
+  /// 估算的总页数（用于大文件快速显示）
+  final int? estimatedTotalPages;
+
+  /// 加载状态变化回调
+  final ValueChanged<bool>? onLoadingStateChanged;
+
   InAppWebViewController? _controller;
   PaginationInfo? _paginationInfo;
   bool _isReady = false;
+  // ignore: unused_field - 用于未来支持加载状态跟踪
+  bool _isLoading = true;
 
   /// 是否已准备就绪
   bool get isReady => _isReady;
@@ -134,6 +144,8 @@ class WebViewPaginationRenderer {
             pageHeight: (data['pageHeight'] as num).toDouble(),
           );
           _isReady = true;
+          _isLoading = false;
+          onLoadingStateChanged?.call(false);
           onPaginationReady(_paginationInfo!);
           logger.i('WebView 分页准备完成: ${_paginationInfo!.totalPages} 页');
         }

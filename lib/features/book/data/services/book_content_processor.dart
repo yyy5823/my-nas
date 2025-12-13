@@ -276,7 +276,39 @@ class BookContentProcessor {
     // 简化实现：只处理包含 color 的 style 属性
     if (!html.contains('color')) return html;
 
-    return html.replaceAllMapped(
+    var cleaned = html;
+
+    // 1. 移除明确会导致崩溃的无效 0x 颜色声明（针对 flutter_html 的已知崩溃）
+    // 匹配 pattern: color: 0x0000c
+    cleaned = cleaned.replaceAllMapped(
+      RegExp(r'(?:color\s*[:=]\s*0x[0-9a-fA-F]+\s*[;"]?)', caseSensitive: false),
+      (match) {
+        final fullMatch = match.group(0) ?? '';
+        // 尝试提取 hex 部分修复
+        final hexMatch = RegExp('0x([0-9a-fA-F]+)').firstMatch(fullMatch);
+        if (hexMatch != null) {
+          var hex = hexMatch.group(1) ?? '';
+          if (hex.length > 6) hex = hex.substring(0, 6);
+          if (hex.length < 3) return ''; // 太短无法修复
+          if (hex.length < 6) hex = hex.padRight(6, '0');
+          return 'color: #$hex;';
+        }
+        return ''; // 无法修复则移除
+      },
+    );
+
+    // 2. 正常化 hex 颜色 (以防万一)
+    cleaned = cleaned.replaceAllMapped(
+      // 使用标准字符串避免 raw string 的引号限制，需双重转义反斜杠
+      RegExp('color\\s*:\\s*0x([0-9a-fA-F]{3,6})(?=[;\\s"\'<]|\$)', caseSensitive: false),
+      (match) {
+        final hex = match.group(1) ?? '';
+        return 'color: #${hex.padRight(6, '0')}';
+      },
+    );
+
+    // 正常的 style 属性处理
+    cleaned = cleaned.replaceAllMapped(
       RegExp(r'style\s*=\s*"([^"]*color[^"]*)"', caseSensitive: false),
       (match) {
         final styleContent = match.group(1) ?? '';
@@ -293,6 +325,8 @@ class BookContentProcessor {
         return "style='$fixedStyle'";
       },
     );
+
+    return cleaned;
   }
 
   /// 修复 style 中的颜色值

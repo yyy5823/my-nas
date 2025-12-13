@@ -488,66 +488,111 @@ class PTSiteApiFactory {
       ..d('PTSiteApiFactory.create: source.name = ${source.name}, host = ${source.host}')
       ..d('PTSiteApiFactory.create: extraConfig = ${source.extraConfig}');
 
-    // 判断是否是馒头站点
+    // 判断是否是馒头站点（只检查 host）
     if (_isMTeamSite(source)) {
       _logger.i('PTSiteApiFactory.create: 识别为馒头站点，使用 MTeamApi');
-      final convertedSource = _convertToMTeamConfig(source);
-      _logger.d('PTSiteApiFactory.create: 转换后 extraConfig = ${convertedSource.extraConfig}');
-      return MTeamApi(source: convertedSource);
+
+      // 预处理：从 customHeaders 或表单字段提取 API Key
+      final preparedSource = _prepareApiKeyConfig(source);
+      _logger.d('PTSiteApiFactory.create: 预处理后 extraConfig = ${preparedSource.extraConfig}');
+
+      return MTeamApi(source: preparedSource);
     }
+
     _logger.i('PTSiteApiFactory.create: 使用通用 GenericPTSiteApi');
     return GenericPTSiteApi(source: source);
   }
 
   /// 判断是否是馒头站点
+  /// 参考 nas-tools：只检查 host 是否包含 m-team
   static bool _isMTeamSite(SourceEntity source) {
     final host = source.host.toLowerCase();
-    final name = source.name.toLowerCase();
-
-    // 通过域名判断
-    if (host.contains('m-team') || host.contains('mteam')) {
-      return true;
-    }
-
-    // 通过名称判断
-    if (name.contains('馒头') || name.contains('m-team') || name.contains('mteam')) {
-      return true;
-    }
-
-    return false;
+    // 馒头域名特征
+    return host.contains('m-team') || host.contains('mteam');
   }
 
-  /// 将通用配置转换为馒头专用配置
-  /// 从自定义请求头中提取 x-api-key 和 authorization
-  static SourceEntity _convertToMTeamConfig(SourceEntity source) {
+  /// 预处理 API Key 配置
+  /// 从 customHeaders 中提取 x-api-key 和 authorization，写入 extraConfig
+  static SourceEntity _prepareApiKeyConfig(SourceEntity source) {
     final extraConfig = Map<String, dynamic>.from(source.extraConfig ?? {});
 
-    _logger.d('PTSiteApiFactory._convertToMTeamConfig: 原始 customHeaders = ${extraConfig['customHeaders']}');
+    // 已有的直接配置
+    var xApiKey = extraConfig['xApiKey'] as String? ?? '';
+    var authorization = extraConfig['authorization'] as String? ?? '';
 
-    // 从自定义请求头中提取馒头需要的字段
-    final customHeaders = extraConfig['customHeaders'];
+    // 尝试从 customHeaders 提取
+    var customHeaders = extraConfig['customHeaders'];
+
+    // 解析 String 类型的 customHeaders（兼容旧数据）
+    if (customHeaders is String && customHeaders.isNotEmpty) {
+      _logger.d('PTSiteApiFactory._prepareApiKeyConfig: 解析 String 类型 customHeaders');
+      customHeaders = _parseCustomHeadersString(customHeaders);
+    }
+
     if (customHeaders is List) {
-      _logger.d('PTSiteApiFactory._convertToMTeamConfig: customHeaders 是 List，共 ${customHeaders.length} 项');
       for (final header in customHeaders) {
-        _logger.d('PTSiteApiFactory._convertToMTeamConfig: 处理 header = $header (type: ${header.runtimeType})');
         if (header is Map) {
           final key = header['key']?.toString().toLowerCase() ?? '';
           final value = header['value']?.toString() ?? '';
-          _logger.d('PTSiteApiFactory._convertToMTeamConfig: key = $key, value.length = ${value.length}');
-
-          if (key == 'x-api-key') {
-            extraConfig['xApiKey'] = value;
-            _logger.i('PTSiteApiFactory._convertToMTeamConfig: 提取 xApiKey 成功');
-          } else if (key == 'authorization') {
-            extraConfig['authorization'] = value;
-            _logger.i('PTSiteApiFactory._convertToMTeamConfig: 提取 authorization 成功');
+          if (key == 'x-api-key' && value.isNotEmpty && xApiKey.isEmpty) {
+            xApiKey = value;
+            _logger.d('PTSiteApiFactory._prepareApiKeyConfig: 从 customHeaders 提取 x-api-key');
+          } else if (key == 'authorization' && value.isNotEmpty && authorization.isEmpty) {
+            authorization = value;
+            _logger.d('PTSiteApiFactory._prepareApiKeyConfig: 从 customHeaders 提取 authorization');
           }
         }
       }
-    } else {
-      _logger.w('PTSiteApiFactory._convertToMTeamConfig: customHeaders 不是 List 类型: ${customHeaders?.runtimeType}');
     }
 
+    // 更新 extraConfig
+    if (xApiKey.isNotEmpty) extraConfig['xApiKey'] = xApiKey;
+    if (authorization.isNotEmpty) extraConfig['authorization'] = authorization;
+
     return source.copyWith(extraConfig: extraConfig);
+  }
+
+
+  /// 尝试解析 String 格式的 customHeaders
+  static List<Map<String, String>>? _parseCustomHeadersString(String str) {
+    if (str.isEmpty) return null;
+
+    // 尝试 JSON 解析
+    try {
+      final parsed = json.decode(str);
+      if (parsed is List) {
+        return parsed.map((e) {
+          if (e is Map) {
+            return Map<String, String>.from(
+              e.map((k, v) => MapEntry(k.toString(), v.toString())),
+            );
+          }
+          return <String, String>{};
+        }).toList();
+      }
+    } on FormatException {
+      // JSON 解析失败，尝试其他格式
+    }
+
+    // 尝试解析 "key: value\nkey2: value2" 格式
+    final lines = str.split(RegExp(r'[\n;]'));
+    final result = <Map<String, String>>[];
+    for (final line in lines) {
+      final colonIndex = line.indexOf(':');
+      if (colonIndex > 0) {
+        final key = line.substring(0, colonIndex).trim();
+        final value = line.substring(colonIndex + 1).trim();
+        if (key.isNotEmpty && value.isNotEmpty) {
+          result.add({'key': key, 'value': value});
+        }
+      }
+    }
+
+    if (result.isNotEmpty) {
+      _logger.d('PTSiteApiFactory._parseCustomHeadersString: 解析出 ${result.length} 个 header');
+      return result;
+    }
+
+    return null;
   }
 }

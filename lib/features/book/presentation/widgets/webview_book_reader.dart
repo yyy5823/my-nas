@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/book/data/services/book_content_processor.dart';
+import 'package:my_nas/features/book/data/services/chunked_content_provider.dart';
 import 'package:my_nas/features/book/data/services/webview_pagination_renderer.dart';
 import 'package:my_nas/features/reading/data/services/reader_settings_service.dart';
 
@@ -12,6 +13,7 @@ export 'package:my_nas/features/book/data/services/webview_pagination_renderer.d
 
 /// WebView 图书阅读器组件
 /// 使用 CSS Multi-column 实现精确分页
+/// 支持大文件分块加载和估算分页
 class WebViewBookReader extends StatefulWidget {
   const WebViewBookReader({
     required this.htmlContent,
@@ -59,8 +61,13 @@ class WebViewBookReader extends StatefulWidget {
 
 class WebViewBookReaderState extends State<WebViewBookReader> {
   WebViewPaginationRenderer? _renderer;
+  ChunkedContentProvider? _contentProvider;
   bool _isReady = false;
+  bool _isLoading = true;
   PaginationInfo? _paginationInfo;
+
+  /// 大文件阈值 (500KB)
+  static const int _largeFileThreshold = 500000;
 
   /// 是否已准备就绪
   bool get isReady => _isReady;
@@ -83,7 +90,53 @@ class WebViewBookReaderState extends State<WebViewBookReader> {
   @override
   void initState() {
     super.initState();
+    _initializeContent();
+  }
+
+  void _initializeContent() {
+    final contentLength = widget.htmlContent.length;
+    final isLargeFile = contentLength > _largeFileThreshold;
+
+    logger.i(
+      'WebViewBookReader: 初始化 - '
+      '内容长度: $contentLength, '
+      '大文件: $isLargeFile',
+    );
+
+    // 对于大文件，创建分块提供者
+    if (isLargeFile) {
+      _contentProvider = ChunkedContentProvider(
+        fullContent: widget.htmlContent,
+        chapters: widget.chapters,
+      );
+    }
+
     _initRenderer();
+
+    // 对于大文件，先使用估算值快速响应
+    if (isLargeFile && _contentProvider != null) {
+      // 延迟一帧后发送估算的分页信息，让 UI 有时间显示加载状态
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _sendEstimatedPagination();
+      });
+    }
+  }
+
+  /// 发送估算的分页信息
+  void _sendEstimatedPagination() {
+    if (_contentProvider == null) return;
+
+    final estimatedInfo = PaginationInfo(
+      totalPages: _contentProvider!.estimatedTotalPages,
+      currentPage: 0,
+      pageWidth: MediaQuery.of(context).size.width,
+      pageHeight: MediaQuery.of(context).size.height,
+    );
+
+    // 先通知外部估算值（用于显示进度条等）
+    logger.i('WebViewBookReader: 发送估算分页 - ${estimatedInfo.totalPages} 页');
+    widget.onPaginationReady(estimatedInfo);
   }
 
   @override
@@ -112,12 +165,25 @@ class WebViewBookReaderState extends State<WebViewBookReader> {
       onPaginationReady: _onPaginationReady,
       onPageChanged: _onPageChanged,
       onChapterDetected: widget.onChapterChanged,
+      estimatedTotalPages: _contentProvider?.estimatedTotalPages,
+      onLoadingStateChanged: _onLoadingStateChanged,
     );
   }
 
+  void _onLoadingStateChanged(bool isLoading) {
+    if (!mounted) return;
+    setState(() {
+      _isLoading = isLoading;
+    });
+  }
+
   void _onPaginationReady(PaginationInfo info) {
+    // 检查 widget 是否仍然 mounted，避免在 dispose 后调用 setState
+    if (!mounted) return;
+
     setState(() {
       _isReady = true;
+      _isLoading = false;
       _paginationInfo = info;
     });
 
@@ -126,7 +192,9 @@ class WebViewBookReaderState extends State<WebViewBookReader> {
     // 跳转到初始页
     if (widget.initialPage > 0) {
       Future.delayed(const Duration(milliseconds: 100), () {
-        goToPage(widget.initialPage);
+        if (mounted) {
+          goToPage(widget.initialPage);
+        }
       });
     }
 
@@ -134,6 +202,9 @@ class WebViewBookReaderState extends State<WebViewBookReader> {
   }
 
   void _onPageChanged(int page) {
+    // 检查 widget 是否仍然 mounted，避免在 dispose 后调用 setState
+    if (!mounted) return;
+
     setState(() {
       _paginationInfo = _paginationInfo?.copyWith(currentPage: page);
     });
@@ -185,11 +256,55 @@ class WebViewBookReaderState extends State<WebViewBookReader> {
             widget.topBarHeight -
             widget.bottomBarHeight;
 
-        return _renderer!.buildWebView(
-          htmlContent: widget.htmlContent,
-          chapters: widget.chapters,
-          availableWidth: availableWidth,
-          availableHeight: availableHeight,
+        return Stack(
+          children: [
+            // WebView 内容
+            _renderer!.buildWebView(
+              htmlContent: widget.htmlContent,
+              chapters: widget.chapters,
+              availableWidth: availableWidth,
+              availableHeight: availableHeight,
+            ),
+
+            // 加载指示器覆盖层
+            if (_isLoading)
+              Positioned.fill(
+                child: ColoredBox(
+                  color: widget.settings.theme.backgroundColor,
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(
+                          color: widget.settings.theme.textColor
+                              .withValues(alpha: 0.6),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          '正在加载内容...',
+                          style: TextStyle(
+                            color: widget.settings.theme.textColor
+                                .withValues(alpha: 0.5),
+                            fontSize: 14,
+                          ),
+                        ),
+                        if (_contentProvider != null) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            '预计 ${_contentProvider!.estimatedTotalPages} 页',
+                            style: TextStyle(
+                              color: widget.settings.theme.textColor
+                                  .withValues(alpha: 0.3),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
         );
       },
     );

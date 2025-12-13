@@ -21,6 +21,7 @@ class SourceFormPage extends ConsumerStatefulWidget {
     required this.sourceType, super.key,
     this.existingSource,
     this.initialValues,
+    this.popTwice = false,
   });
 
   /// 源类型
@@ -31,6 +32,9 @@ class SourceFormPage extends ConsumerStatefulWidget {
 
   /// 初始值（用于从发现的设备预填）
   final Map<String, String>? initialValues;
+
+  /// 保存后是否需要返回两次（从类型选择页进入时为 true）
+  final bool popTwice;
 
   SourceFormMode get mode =>
       existingSource != null ? SourceFormMode.edit : SourceFormMode.create;
@@ -70,7 +74,7 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
       }
 
       for (final field in section.fields) {
-        String? initialValue;
+        dynamic initialValue;
 
         if (widget.existingSource != null) {
           // 编辑模式：从现有源获取值
@@ -85,16 +89,18 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
 
         _formValues[field.key] = initialValue;
 
-        // 为文本类型字段创建控制器
+        // 为文本类型字段创建控制器（仅支持 String 类型）
         if (field.type != SourceFormFieldType.toggle &&
-            field.type != SourceFormFieldType.select) {
-          _controllers[field.key] = TextEditingController(text: initialValue);
+            field.type != SourceFormFieldType.select &&
+            field.type != SourceFormFieldType.keyValueList) {
+          final textValue = initialValue is String ? initialValue : '';
+          _controllers[field.key] = TextEditingController(text: textValue);
         }
       }
     }
   }
 
-  String? _getValueFromSource(SourceEntity source, String key) {
+  dynamic _getValueFromSource(SourceEntity source, String key) {
     switch (key) {
       case 'name':
         return source.name;
@@ -113,8 +119,13 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
       case 'apiKey':
         return source.apiKey;
       default:
-        // 从 extraConfig 中获取
-        return source.extraConfig?[key]?.toString();
+        // 从 extraConfig 中获取，保持原始类型（List、Map 等）
+        final value = source.extraConfig?[key];
+        // 对于复杂类型（List、Map），直接返回
+        if (value is List || value is Map) {
+          return value;
+        }
+        return value?.toString();
     }
   }
 
@@ -774,7 +785,7 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
       Navigator.pop(context, source);
 
       // 如果是从类型选择页进入的，再返回一次
-      if (Navigator.canPop(context)) {
+      if (widget.popTwice && mounted && Navigator.canPop(context)) {
         Navigator.pop(context);
       }
     } on Exception catch (e) {
