@@ -810,6 +810,8 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     TxtReaderLoaded state,
     BookReaderSettings settings,
   ) {
+    final theme = settings.theme;
+    
     // 检查是否有有效的 HTML 内容
     if (!state.hasHtml) {
       // 没有 HTML 内容，回退到纯文本模式
@@ -819,6 +821,53 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
           scrollPosition: state.scrollPosition,
         ),
         settings,
+      );
+    }
+
+    // 检查 HTML 内容是否实际有效（不只是空白标签）
+    // ignore: unnecessary_raw_strings
+    final realContent = state.htmlContent!
+        .replaceAll(RegExp(r'<[^>]*>'), '') // 移除标签
+        .replaceAll(RegExp(r'\s+'), '') // 移除空白
+        .trim();
+    if (realContent.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.error_outline_rounded,
+              size: 48,
+              color: theme.textColor.withValues(alpha: 0.5),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '无法解析此书籍内容',
+              style: TextStyle(
+                color: theme.textColor,
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '可能需要使用 Calibre 转换为 EPUB 格式',
+              style: TextStyle(
+                fontSize: 12,
+                color: theme.textColor.withValues(alpha: 0.6),
+              ),
+            ),
+            const SizedBox(height: 24),
+            TextButton.icon(
+              onPressed: () => Navigator.pop(context),
+              icon: const Icon(Icons.arrow_back),
+              label: const Text('返回'),
+              style: TextButton.styleFrom(
+                foregroundColor: theme.textColor.withValues(alpha: 0.7),
+              ),
+            ),
+          ],
+        ),
       );
     }
 
@@ -1240,9 +1289,11 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     );
 
     return Container(
-      padding: EdgeInsets.symmetric(
-        vertical: 2,
-        horizontal: settings.horizontalPadding,
+      padding: EdgeInsets.only(
+        top: 2,
+        bottom: 8,
+        left: settings.horizontalPadding,
+        right: settings.horizontalPadding,
       ),
       color: theme.backgroundColor,
       child: Row(

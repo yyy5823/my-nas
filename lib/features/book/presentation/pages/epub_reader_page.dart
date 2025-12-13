@@ -302,6 +302,15 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
   /// 中间 50%: 切换控制栏
   /// 与其他格式（TXT/MOBI/AZW3）保持一致
   void _handleTapZone(Offset normalizedPosition) {
+    // 如果控制栏正在显示，先隐藏控制栏，本次点击不执行翻页
+    if (_showControls) {
+      setState(() {
+        _showControls = false;
+        _showToc = false;
+      });
+      return;
+    }
+
     // 如果 EPUB 还没准备好，只允许切换控制栏
     if (!_isEpubReady) {
       _toggleControls();
@@ -639,7 +648,7 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
     );
 
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 16),
+      padding: const EdgeInsets.only(top: 4, bottom: 10, left: 16, right: 16),
       color: Colors.white,
       child: SafeArea(
         top: false,

@@ -1410,10 +1410,14 @@ class _BookListPageState extends ConsumerState<BookListPage> {
                 mainAxisSpacing: AppSpacing.md,
               ),
               delegate: SliverChildBuilderDelegate(
-                (context, index) => _BookGridItem(
-                  book: state.filteredBooks[index],
-                  isDark: isDark,
-                ),
+                (context, index) {
+                  final book = state.filteredBooks[index];
+                  return _BookGridItem(
+                    key: ValueKey('${book.sourceId}_${book.path}'),
+                    book: book,
+                    isDark: isDark,
+                  );
+                },
                 childCount: state.filteredBooks.length,
               ),
             ),
@@ -1743,10 +1747,14 @@ class _BookListContentState extends ConsumerState<BookListContent> {
           mainAxisSpacing: AppSpacing.md,
         ),
         itemCount: state.filteredBooks.length,
-        itemBuilder: (context, index) => _BookGridItem(
-          book: state.filteredBooks[index],
-          isDark: isDark,
-        ),
+        itemBuilder: (context, index) {
+          final book = state.filteredBooks[index];
+          return _BookGridItem(
+            key: ValueKey('${book.sourceId}_${book.path}'),
+            book: book,
+            isDark: isDark,
+          );
+        },
       ),
     );
 }
@@ -1755,6 +1763,7 @@ class _BookGridItem extends ConsumerStatefulWidget {
   const _BookGridItem({
     required this.book,
     required this.isDark,
+    super.key,
   });
 
   final BookFileWithSource book;
@@ -1772,6 +1781,18 @@ class _BookGridItemState extends ConsumerState<_BookGridItem> {
   void initState() {
     super.initState();
     _loadCover();
+  }
+
+  @override
+  void didUpdateWidget(covariant _BookGridItem oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 如果书籍变了，重新加载封面
+    if (oldWidget.book.path != widget.book.path ||
+        oldWidget.book.sourceId != widget.book.sourceId) {
+      _coverPath = null;
+      _coverLoaded = false;
+      _loadCover();
+    }
   }
 
   Future<void> _loadCover() async {
