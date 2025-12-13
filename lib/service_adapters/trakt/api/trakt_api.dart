@@ -65,6 +65,98 @@ class TraktApi {
         '&client_id=$clientId'
         '&redirect_uri=$redirectUri';
 
+  // ==================== Device Code Flow ====================
+
+  /// 请求设备码（Device Code Flow 第一步）
+  ///
+  /// 返回设备码信息，用户需要访问 verification_url 并输入 user_code
+  Future<TraktDeviceCode> requestDeviceCode() async {
+    final url = Uri.parse('$apiUrl/oauth/device/code');
+
+    try {
+      final response = await client.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'client_id': clientId}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        return TraktDeviceCode.fromJson(data);
+      }
+
+      throw TraktApiException('请求设备码失败: ${response.statusCode}');
+    } on SocketException catch (e) {
+      throw TraktApiException('无法连接到 Trakt: ${e.message}');
+    } on http.ClientException catch (e) {
+      throw TraktApiException('网络错误: ${e.message}');
+    }
+  }
+
+  /// 轮询设备授权状态（Device Code Flow 第二步）
+  ///
+  /// 返回值：
+  /// - TraktTokenResponse: 授权成功
+  /// - null: 用户尚未完成授权，需要继续轮询
+  /// - 抛出异常: 授权失败或过期
+  Future<TraktTokenResponse?> pollDeviceToken(String deviceCode) async {
+    final url = Uri.parse('$apiUrl/oauth/device/token');
+
+    try {
+      final response = await client.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'code': deviceCode,
+          'client_id': clientId,
+          'client_secret': clientSecret,
+        }),
+      );
+
+      switch (response.statusCode) {
+        case 200:
+          // 授权成功
+          final data = jsonDecode(response.body) as Map<String, dynamic>;
+          final tokenResponse = TraktTokenResponse.fromJson(data);
+
+          // 更新本地 token
+          accessToken = tokenResponse.accessToken;
+          refreshToken = tokenResponse.refreshToken;
+          tokenExpiresAt = DateTime.now().add(
+            Duration(seconds: tokenResponse.expiresIn),
+          );
+
+          return tokenResponse;
+
+        case 400:
+          // 用户尚未授权，继续轮询
+          return null;
+
+        case 404:
+          throw const TraktApiException('无效的设备码');
+
+        case 409:
+          throw const TraktApiException('设备码已被使用');
+
+        case 410:
+          throw const TraktApiException('设备码已过期，请重新获取');
+
+        case 418:
+          throw const TraktApiException('用户拒绝了授权');
+
+        case 429:
+          throw const TraktApiException('轮询过于频繁，请稍后重试');
+
+        default:
+          throw TraktApiException('轮询授权状态失败: ${response.statusCode}');
+      }
+    } on SocketException catch (e) {
+      throw TraktApiException('无法连接到 Trakt: ${e.message}');
+    } on http.ClientException catch (e) {
+      throw TraktApiException('网络错误: ${e.message}');
+    }
+  }
+
   /// 使用授权码获取 Token
   Future<TraktTokenResponse> exchangeCodeForToken(String code) async {
     final url = Uri.parse('$apiUrl/oauth/token');
@@ -716,6 +808,40 @@ class TraktIds {
   final String? imdb;
   final int? tmdb;
   final int? tvdb;
+}
+
+/// 设备码响应（Device Code Flow）
+class TraktDeviceCode {
+  const TraktDeviceCode({
+    required this.deviceCode,
+    required this.userCode,
+    required this.verificationUrl,
+    required this.expiresIn,
+    required this.interval,
+  });
+
+  factory TraktDeviceCode.fromJson(Map<String, dynamic> json) => TraktDeviceCode(
+        deviceCode: json['device_code'] as String,
+        userCode: json['user_code'] as String,
+        verificationUrl: json['verification_url'] as String,
+        expiresIn: json['expires_in'] as int,
+        interval: json['interval'] as int,
+      );
+
+  /// 设备码（用于轮询）
+  final String deviceCode;
+
+  /// 用户码（用户需要输入这个）
+  final String userCode;
+
+  /// 验证 URL（用户需要访问这个网址）
+  final String verificationUrl;
+
+  /// 过期时间（秒）
+  final int expiresIn;
+
+  /// 轮询间隔（秒）
+  final int interval;
 }
 
 /// 媒体项（用于同步操作）

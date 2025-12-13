@@ -9,15 +9,17 @@
 class TraktOAuthConfig {
   TraktOAuthConfig._();
 
-  /// 内置的 Client ID（留空则要求用户输入）
+  /// 内置的 Client ID
   ///
   /// 从 https://trakt.tv/oauth/applications 获取
-  static const String? builtInClientId = null;
+  static const String? builtInClientId =
+      '6b0d66f15e4bde4a8e1e31486353153b4b4779e374589eedb981ef5bc228b2d8';
 
-  /// 内置的 Client Secret（留空则要求用户输入）
+  /// 内置的 Client Secret
   ///
   /// 从 https://trakt.tv/oauth/applications 获取
-  static const String? builtInClientSecret = null;
+  static const String? builtInClientSecret =
+      '4a404648a599aa906f88e130d7296b12324f52db788152a601ae76c75544324c';
 
   /// 深度链接回调 URI
   static const String deepLinkRedirectUri = 'mynas://trakt/callback';

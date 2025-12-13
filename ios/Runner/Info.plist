@@ -66,6 +66,23 @@
 		<array>
 			<string>com.kkape.mynas.scrape</string>
 		</array>
+		<!-- 局域网设备发现 -->
+		<key>NSLocalNetworkUsageDescription</key>
+		<string>需要访问局域网以发现和连接 NAS 设备</string>
+		<key>NSBonjourServices</key>
+		<array>
+			<string>_smb._tcp</string>
+			<string>_webdav._tcp</string>
+			<string>_webdavs._tcp</string>
+			<string>_ftp._tcp</string>
+			<string>_sftp-ssh._tcp</string>
+			<string>_nfs._tcp</string>
+			<string>_http._tcp</string>
+			<string>_https._tcp</string>
+			<string>_diskstation._tcp</string>
+			<string>_synology._tcp</string>
+			<string>_qnap._tcp</string>
+		</array>
 		<key>NSSupportsLiveActivities</key>
 		<true/>
 		<key>CFBundleURLTypes</key>

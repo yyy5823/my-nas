@@ -50,12 +50,16 @@ class TraktConnectionState {
     this.userSettings,
     this.stats,
     this.errorMessage,
+    this.deviceCode,
   });
 
   final TraktConnectionStatus status;
   final TraktUserSettings? userSettings;
   final TraktStats? stats;
   final String? errorMessage;
+
+  /// 当前的设备码（Device Code Flow）
+  final TraktDeviceCode? deviceCode;
 
   bool get isConnected => status == TraktConnectionStatus.connected;
 
@@ -64,12 +68,15 @@ class TraktConnectionState {
     TraktUserSettings? userSettings,
     TraktStats? stats,
     String? errorMessage,
+    TraktDeviceCode? deviceCode,
+    bool clearDeviceCode = false,
   }) =>
       TraktConnectionState(
         status: status ?? this.status,
         userSettings: userSettings ?? this.userSettings,
         stats: stats ?? this.stats,
         errorMessage: errorMessage,
+        deviceCode: clearDeviceCode ? null : (deviceCode ?? this.deviceCode),
       );
 }
 
@@ -168,6 +175,148 @@ class TraktConnectionNotifier extends StateNotifier<TraktConnectionState> {
 
   /// 是否有内置凭证可用
   bool get hasBuiltInCredentials => TraktOAuthConfig.hasBuiltInCredentials;
+
+  /// 是否正在轮询设备授权
+  bool _isPolling = false;
+
+  // ==================== Device Code Flow ====================
+
+  /// 启动设备码授权流程
+  ///
+  /// 返回设备码信息，UI 应显示 userCode 和 verificationUrl 给用户
+  Future<TraktDeviceCode> startDeviceCodeFlow({
+    String? clientId,
+    String? clientSecret,
+  }) async {
+    // 使用提供的凭证或内置凭证
+    final effectiveClientId = clientId ?? TraktOAuthConfig.builtInClientId;
+    final effectiveClientSecret =
+        clientSecret ?? TraktOAuthConfig.builtInClientSecret;
+
+    if (effectiveClientId == null || effectiveClientSecret == null) {
+      throw Exception('需要提供 Client ID 和 Client Secret');
+    }
+
+    state = state.copyWith(status: TraktConnectionStatus.connecting);
+
+    try {
+      _api = TraktApi(
+        clientId: effectiveClientId,
+        clientSecret: effectiveClientSecret,
+      );
+
+      final deviceCode = await _api!.requestDeviceCode();
+
+      // 更新 state，触发 UI 重建
+      state = state.copyWith(
+        status: TraktConnectionStatus.connecting,
+        deviceCode: deviceCode,
+      );
+
+      // 开始后台轮询
+      _startPollingDeviceToken(
+        deviceCode: deviceCode,
+        clientId: effectiveClientId,
+        clientSecret: effectiveClientSecret,
+      );
+
+      return deviceCode;
+    } on Exception catch (e, st) {
+      logger.e('TraktConnectionNotifier: 请求设备码失败', e, st);
+      state = state.copyWith(
+        status: TraktConnectionStatus.error,
+        errorMessage: e.toString(),
+        clearDeviceCode: true,
+      );
+      rethrow;
+    }
+  }
+
+  /// 开始轮询设备授权状态
+  void _startPollingDeviceToken({
+    required TraktDeviceCode deviceCode,
+    required String clientId,
+    required String clientSecret,
+  }) {
+    if (_isPolling) return;
+    _isPolling = true;
+
+    final interval = Duration(seconds: deviceCode.interval);
+    final expiresAt = DateTime.now().add(Duration(seconds: deviceCode.expiresIn));
+
+    Future<void> poll() async {
+      while (_isPolling && DateTime.now().isBefore(expiresAt)) {
+        await Future<void>.delayed(interval);
+        if (!_isPolling) break;
+
+        try {
+          final tokenResponse = await _api!.pollDeviceToken(deviceCode.deviceCode);
+
+          if (tokenResponse != null) {
+            // 授权成功！
+            _isPolling = false;
+
+            // 保存配置
+            _config = TraktConfig(
+              clientId: clientId,
+              clientSecret: clientSecret,
+              useBuiltInCredentials: clientId == TraktOAuthConfig.builtInClientId,
+              accessToken: tokenResponse.accessToken,
+              refreshToken: tokenResponse.refreshToken,
+              expiresAt:
+                  DateTime.now().add(Duration(seconds: tokenResponse.expiresIn)),
+            );
+            await _saveConfig();
+
+            // 获取用户信息
+            await _fetchUserData();
+
+            state = state.copyWith(
+              status: TraktConnectionStatus.connected,
+              clearDeviceCode: true,
+            );
+            logger.i('TraktConnectionNotifier: Device Code 授权成功');
+            return;
+          }
+        } on TraktApiException catch (e) {
+          // 如果是致命错误，停止轮询
+          if (e.message.contains('过期') ||
+              e.message.contains('拒绝') ||
+              e.message.contains('无效')) {
+            _isPolling = false;
+            state = state.copyWith(
+              status: TraktConnectionStatus.error,
+              errorMessage: e.message,
+              clearDeviceCode: true,
+            );
+            return;
+          }
+          // 其他错误继续轮询
+        }
+      }
+
+      // 轮询超时
+      if (_isPolling) {
+        _isPolling = false;
+        state = state.copyWith(
+          status: TraktConnectionStatus.error,
+          errorMessage: '授权超时，请重试',
+          clearDeviceCode: true,
+        );
+      }
+    }
+
+    poll();
+  }
+
+  /// 取消设备码授权流程
+  void cancelDeviceCodeFlow() {
+    _isPolling = false;
+    state = state.copyWith(
+      status: TraktConnectionStatus.disconnected,
+      clearDeviceCode: true,
+    );
+  }
 
   /// 初始化：尝试从安全存储加载配置并自动连接
   Future<void> _init() async {

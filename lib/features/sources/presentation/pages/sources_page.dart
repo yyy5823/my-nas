@@ -288,6 +288,9 @@ class _SourcesPageState extends ConsumerState<SourcesPage> {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.7,
+      ),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),

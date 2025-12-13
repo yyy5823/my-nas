@@ -21,7 +21,7 @@ class TwoFAResult {
 /// 返回 [TwoFAResult]，如果用户取消则返回 null
 Future<TwoFAResult?> showTwoFASheet(
   BuildContext context, {
-  bool initialRememberDevice = false,
+  bool initialRememberDevice = true, // 默认记住设备
   String? sourceName,
 }) async => showModalBottomSheet<TwoFAResult>(
     context: context,
@@ -37,7 +37,7 @@ Future<TwoFAResult?> showTwoFASheet(
 
 class _TwoFASheet extends StatefulWidget {
   const _TwoFASheet({
-    this.initialRememberDevice = false,
+    this.initialRememberDevice = true, // 默认记住设备
     this.sourceName,
   });
 
@@ -239,7 +239,51 @@ class _TwoFASheetState extends State<_TwoFASheet> with SingleTickerProviderState
                           ),
                           textAlign: TextAlign.center,
                         ),
-                        const SizedBox(height: 32),
+                        const SizedBox(height: 20),
+                        // 记住设备选项 - 移到验证码输入框之前，紧凑样式
+                        GestureDetector(
+                          onTap: () => setState(() => _rememberDevice = !_rememberDevice),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: _rememberDevice
+                                  ? AppColors.accent.withValues(alpha: 0.1)
+                                  : (isDark
+                                      ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
+                                      : AppColors.lightSurfaceVariant.withValues(alpha: 0.3)),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: _rememberDevice
+                                    ? AppColors.accent.withValues(alpha: 0.5)
+                                    : Colors.transparent,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  _rememberDevice ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+                                  size: 20,
+                                  color: _rememberDevice
+                                      ? AppColors.accent
+                                      : (isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  '记住此设备',
+                                  style: context.textTheme.bodyMedium?.copyWith(
+                                    color: _rememberDevice
+                                        ? AppColors.accent
+                                        : (isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant),
+                                    fontWeight: _rememberDevice ? FontWeight.w600 : FontWeight.normal,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
                         // PIN 码输入框
                         _buildPinCodeFields(isDark),
                         if (_hasError) ...[
@@ -256,76 +300,6 @@ class _TwoFASheetState extends State<_TwoFASheet> with SingleTickerProviderState
                             ],
                           ),
                         ],
-                        const SizedBox(height: 28),
-                        // 记住设备选项
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                          decoration: BoxDecoration(
-                            color: isDark
-                                ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
-                                : AppColors.lightSurfaceVariant.withValues(alpha: 0.5),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 40,
-                                height: 40,
-                                decoration: BoxDecoration(
-                                  color: _rememberDevice
-                                      ? AppColors.accent.withValues(alpha: 0.15)
-                                      : (isDark
-                                          ? AppColors.darkSurfaceVariant
-                                          : AppColors.lightSurfaceVariant),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Icon(
-                                  Icons.devices_rounded,
-                                  color: _rememberDevice
-                                      ? AppColors.accent
-                                      : (isDark
-                                          ? AppColors.darkOnSurfaceVariant
-                                          : AppColors.lightOnSurfaceVariant),
-                                  size: 20,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      '记住此设备',
-                                      style: context.textTheme.titleSmall?.copyWith(
-                                        fontWeight: FontWeight.w600,
-                                        color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
-                                      ),
-                                    ),
-                                    Text(
-                                      '下次登录时跳过二次验证',
-                                      style: context.textTheme.bodySmall?.copyWith(
-                                        color: isDark
-                                            ? AppColors.darkOnSurfaceVariant
-                                            : AppColors.lightOnSurfaceVariant,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Switch.adaptive(
-                                value: _rememberDevice,
-                                onChanged: (value) => setState(() => _rememberDevice = value),
-                                activeTrackColor: AppColors.accent.withValues(alpha: 0.5),
-                                thumbColor: WidgetStateProperty.resolveWith((states) {
-                                  if (states.contains(WidgetState.selected)) {
-                                    return AppColors.accent;
-                                  }
-                                  return null;
-                                }),
-                              ),
-                            ],
-                          ),
-                        ),
                         const SizedBox(height: 24),
                         // 验证按钮
                         FilledButton(

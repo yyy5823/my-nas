@@ -1,17 +1,16 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:my_nas/core/services/deep_link_service.dart';
 import 'package:my_nas/features/media_tracking/presentation/providers/trakt_provider.dart';
+import 'package:my_nas/service_adapters/trakt/api/trakt_api.dart';
 import 'package:my_nas/service_adapters/trakt/trakt_config.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Trakt 连接页面
 ///
-/// 显示 Trakt 连接状态：
-/// - 未连接：显示连接按钮 → 打开系统浏览器进行 OAuth
-/// - 已连接：显示用户头像、名称、同步统计、注销按钮
+/// 支持两种授权方式：
+/// 1. Device Code Flow（推荐）- 显示验证码，用户在另一设备上输入
+/// 2. 自定义凭证 - 用户输入自己的 Client ID/Secret
 class TraktConnectionPage extends ConsumerStatefulWidget {
   const TraktConnectionPage({super.key});
 
@@ -22,49 +21,23 @@ class TraktConnectionPage extends ConsumerStatefulWidget {
 class _TraktConnectionPageState extends ConsumerState<TraktConnectionPage> {
   final _clientIdController = TextEditingController();
   final _clientSecretController = TextEditingController();
-  final _codeController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
-  bool _showAdvancedOptions = false;
-  bool _showAuthCodeInput = false;
+  bool _showCustomCredentials = false;
   bool _obscureSecret = true;
-  bool _useCustomCredentials = false;
-
-  StreamSubscription<AsyncValue<TraktOAuthCallback>>? _oauthCallbackSubscription;
-
-  @override
-  void initState() {
-    super.initState();
-    // 如果没有内置凭证，默认展开高级选项
-    if (!TraktOAuthConfig.hasBuiltInCredentials) {
-      _showAdvancedOptions = true;
-      _useCustomCredentials = true;
-    }
-  }
 
   @override
   void dispose() {
     _clientIdController.dispose();
     _clientSecretController.dispose();
-    _codeController.dispose();
-    _oauthCallbackSubscription?.cancel();
+    // 取消正在进行的轮询
+    ref.read(traktConnectionProvider.notifier).cancelDeviceCodeFlow();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final traktState = ref.watch(traktConnectionProvider);
-
-    // 监听 OAuth 回调
-    ref.listen<AsyncValue<TraktOAuthCallback>>(
-      traktOAuthCallbackProvider,
-      (previous, next) {
-        next.whenData((callback) {
-          // 收到回调，处理授权码
-          ref.read(traktConnectionProvider.notifier).handleOAuthCallback(callback.code);
-        });
-      },
-    );
 
     return Scaffold(
       appBar: AppBar(
@@ -109,7 +82,6 @@ class _TraktConnectionPageState extends ConsumerState<TraktConnectionPage> {
               padding: const EdgeInsets.all(24),
               child: Column(
                 children: [
-                  // 头像
                   CircleAvatar(
                     radius: 40,
                     backgroundColor: colorScheme.primaryContainer,
@@ -117,16 +89,10 @@ class _TraktConnectionPageState extends ConsumerState<TraktConnectionPage> {
                         ? NetworkImage(userSettings!.avatarUrl!)
                         : null,
                     child: userSettings?.avatarUrl == null
-                        ? Icon(
-                            Icons.person,
-                            size: 40,
-                            color: colorScheme.primary,
-                          )
+                        ? Icon(Icons.person, size: 40, color: colorScheme.primary)
                         : null,
                   ),
                   const SizedBox(height: 16),
-
-                  // 用户名
                   Text(
                     userSettings?.username ?? '未知用户',
                     style: theme.textTheme.titleLarge?.copyWith(
@@ -143,8 +109,6 @@ class _TraktConnectionPageState extends ConsumerState<TraktConnectionPage> {
                     ),
                   ],
                   const SizedBox(height: 8),
-
-                  // 连接状态
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
@@ -197,35 +161,23 @@ class _TraktConnectionPageState extends ConsumerState<TraktConnectionPage> {
                     children: [
                       Expanded(
                         child: _buildStatItem(
-                          context,
-                          Icons.movie_outlined,
-                          '电影',
-                          '${state.stats?.moviesWatched ?? 0}',
-                        ),
+                            context, Icons.movie_outlined, '电影',
+                            '${state.stats?.moviesWatched ?? 0}'),
                       ),
                       Expanded(
                         child: _buildStatItem(
-                          context,
-                          Icons.tv_outlined,
-                          '剧集',
-                          '${state.stats?.episodesWatched ?? 0}',
-                        ),
+                            context, Icons.tv_outlined, '剧集',
+                            '${state.stats?.episodesWatched ?? 0}'),
                       ),
                       Expanded(
                         child: _buildStatItem(
-                          context,
-                          Icons.subscriptions_outlined,
-                          '节目',
-                          '${state.stats?.showsWatched ?? 0}',
-                        ),
+                            context, Icons.subscriptions_outlined, '节目',
+                            '${state.stats?.showsWatched ?? 0}'),
                       ),
                       Expanded(
                         child: _buildStatItem(
-                          context,
-                          Icons.bookmark_border,
-                          '待看',
-                          '${state.stats?.watchlistCount ?? 0}',
-                        ),
+                            context, Icons.bookmark_border, '待看',
+                            '${state.stats?.watchlistCount ?? 0}'),
                       ),
                     ],
                   ),
@@ -254,12 +206,7 @@ class _TraktConnectionPageState extends ConsumerState<TraktConnectionPage> {
     );
   }
 
-  Widget _buildStatItem(
-    BuildContext context,
-    IconData icon,
-    String label,
-    String value,
-  ) {
+  Widget _buildStatItem(BuildContext context, IconData icon, String label, String value) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
@@ -312,9 +259,8 @@ class _TraktConnectionPageState extends ConsumerState<TraktConnectionPage> {
   Widget _buildDisconnectedView(BuildContext context, TraktConnectionState state) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final notifier = ref.read(traktConnectionProvider.notifier);
-    final hasBuiltIn = TraktOAuthConfig.hasBuiltInCredentials;
-    final supportsDeepLink = notifier.supportsDeepLinkCallback;
+    final deviceCode = state.deviceCode; // 从 state 读取，以触发 UI 重建
+    final isConnecting = state.status == TraktConnectionStatus.connecting;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -324,250 +270,18 @@ class _TraktConnectionPageState extends ConsumerState<TraktConnectionPage> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // Trakt Logo 和说明
-            Card(
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-                side: BorderSide(
-                  color: colorScheme.outline.withValues(alpha: 0.2),
-                ),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  children: [
-                    Container(
-                      width: 80,
-                      height: 80,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFED1C24).withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: const Icon(
-                        Icons.track_changes,
-                        size: 40,
-                        color: Color(0xFFED1C24),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      '连接 Trakt',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '追踪您的观看记录、同步媒体状态',
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+            _buildHeader(context),
             const SizedBox(height: 24),
 
-            // 主要登录按钮（如果有内置凭证）
-            if (hasBuiltIn && !_useCustomCredentials && !_showAuthCodeInput) ...[
-              FilledButton.icon(
-                onPressed: state.status == TraktConnectionStatus.connecting
-                    ? null
-                    : _startBuiltInOAuthFlow,
-                icon: state.status == TraktConnectionStatus.connecting
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.login),
-                label: const Text('使用 Trakt 账号登录'),
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                ),
-              ),
-              if (!supportsDeepLink) ...[
-                const SizedBox(height: 8),
-                Text(
-                  '登录后需要手动输入授权码',
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-              const SizedBox(height: 16),
-              // 高级选项开关
-              TextButton.icon(
-                onPressed: () {
-                  setState(() {
-                    _showAdvancedOptions = !_showAdvancedOptions;
-                  });
-                },
-                icon: Icon(
-                  _showAdvancedOptions
-                      ? Icons.expand_less
-                      : Icons.expand_more,
-                ),
-                label: Text(_showAdvancedOptions ? '隐藏高级选项' : '使用自定义凭证'),
-              ),
-            ],
-
-            // 高级选项（自定义凭证）
-            if (_showAdvancedOptions || !hasBuiltIn) ...[
-              if (hasBuiltIn) ...[
-                const SizedBox(height: 8),
-                SwitchListTile(
-                  title: const Text('使用自定义 API 凭证'),
-                  subtitle: const Text('如果您有自己的 Trakt 应用'),
-                  value: _useCustomCredentials,
-                  onChanged: (value) {
-                    setState(() {
-                      _useCustomCredentials = value;
-                      _showAuthCodeInput = false;
-                    });
-                  },
-                ),
-              ],
-
-              if (_useCustomCredentials || !hasBuiltIn) ...[
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _clientIdController,
-                  decoration: InputDecoration(
-                    labelText: 'Client ID',
-                    helperText: '从 trakt.tv/oauth/applications 获取',
-                    prefixIcon: const Icon(Icons.apps),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  validator: (value) {
-                    if (_useCustomCredentials || !hasBuiltIn) {
-                      if (value == null || value.isEmpty) {
-                        return '请输入 Client ID';
-                      }
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-
-                TextFormField(
-                  controller: _clientSecretController,
-                  obscureText: _obscureSecret,
-                  decoration: InputDecoration(
-                    labelText: 'Client Secret',
-                    prefixIcon: const Icon(Icons.vpn_key),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _obscureSecret ? Icons.visibility : Icons.visibility_off,
-                      ),
-                      onPressed: () {
-                        setState(() {
-                          _obscureSecret = !_obscureSecret;
-                        });
-                      },
-                    ),
-                  ),
-                  validator: (value) {
-                    if (_useCustomCredentials || !hasBuiltIn) {
-                      if (value == null || value.isEmpty) {
-                        return '请输入 Client Secret';
-                      }
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 24),
-              ],
-            ],
-
-            // 授权码输入（OOB 模式或非移动端）
-            if (_showAuthCodeInput) ...[
-              const Divider(),
-              const SizedBox(height: 16),
-              Text(
-                '请在浏览器中完成登录，然后输入授权码',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _codeController,
-                decoration: InputDecoration(
-                  labelText: '授权码',
-                  helperText: '从 Trakt 网页复制授权码',
-                  prefixIcon: const Icon(Icons.code),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                validator: (value) {
-                  if (_showAuthCodeInput && (value == null || value.isEmpty)) {
-                    return '请输入授权码';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () {
-                        setState(() {
-                          _showAuthCodeInput = false;
-                        });
-                      },
-                      child: const Text('返回'),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    flex: 2,
-                    child: FilledButton(
-                      onPressed: state.status == TraktConnectionStatus.connecting
-                          ? null
-                          : _submitAuthCode,
-                      child: state.status == TraktConnectionStatus.connecting
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text('完成认证'),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-
-            // 自定义凭证的登录按钮
-            if ((_useCustomCredentials || !hasBuiltIn) && !_showAuthCodeInput) ...[
-              FilledButton.icon(
-                onPressed: state.status == TraktConnectionStatus.connecting
-                    ? null
-                    : _startCustomOAuthFlow,
-                icon: state.status == TraktConnectionStatus.connecting
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.open_in_browser),
-                label: const Text('在浏览器中登录'),
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                ),
-              ),
+            // 如果有设备码，显示验证码界面
+            if (deviceCode != null && isConnecting) ...[
+              _buildDeviceCodeView(context, deviceCode),
+            ] else if (_showCustomCredentials) ...[
+              // 自定义凭证输入
+              _buildCustomCredentialsForm(context, state),
+            ] else ...[
+              // 主登录按钮
+              _buildMainLoginButton(context, state),
             ],
 
             // 错误信息
@@ -599,87 +313,440 @@ class _TraktConnectionPageState extends ConsumerState<TraktConnectionPage> {
     );
   }
 
-  /// 使用内置凭证启动 OAuth 流程
-  Future<void> _startBuiltInOAuthFlow() async {
-    final notifier = ref.read(traktConnectionProvider.notifier);
+  Widget _buildHeader(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: colorScheme.outline.withValues(alpha: 0.2)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: const Color(0xFFED1C24).withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Icon(
+                Icons.track_changes,
+                size: 40,
+                color: Color(0xFFED1C24),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Trakt',
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '自动同步观看记录到云端\n跨设备追踪电影和剧集进度',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+                height: 1.5,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 设备码验证界面
+  Widget _buildDeviceCodeView(BuildContext context, TraktDeviceCode deviceCode) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: colorScheme.primary.withValues(alpha: 0.3)),
+      ),
+      color: colorScheme.primaryContainer.withValues(alpha: 0.3),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          children: [
+            // 步骤说明
+            Row(
+              children: [
+                Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: colorScheme.primary,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Center(
+                    child: Text('1', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    '访问以下网址',
+                    style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w500),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            // 验证网址
+            InkWell(
+              onTap: () => _launchUrl(deviceCode.verificationUrl),
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: colorScheme.surface,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: colorScheme.outline.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.link, color: colorScheme.primary),
+                    const SizedBox(width: 8),
+                    Text(
+                      deviceCode.verificationUrl,
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        color: colorScheme.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Icon(Icons.open_in_new, size: 16, color: colorScheme.primary),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // 步骤 2
+            Row(
+              children: [
+                Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: colorScheme.primary,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Center(
+                    child: Text('2', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    '输入验证码',
+                    style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w500),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // 验证码显示
+            InkWell(
+              onTap: () {
+                Clipboard.setData(ClipboardData(text: deviceCode.userCode));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('验证码已复制'), duration: Duration(seconds: 2)),
+                );
+              },
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 20),
+                decoration: BoxDecoration(
+                  color: colorScheme.surface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: colorScheme.primary, width: 2),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      deviceCode.userCode,
+                      style: theme.textTheme.headlineMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 4,
+                        color: colorScheme.primary,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Icon(Icons.copy, color: colorScheme.primary),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // 等待状态
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  '等待授权...',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // 取消按钮
+            TextButton(
+              onPressed: () {
+                ref.read(traktConnectionProvider.notifier).cancelDeviceCodeFlow();
+              },
+              child: const Text('取消'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 主登录按钮
+  Widget _buildMainLoginButton(BuildContext context, TraktConnectionState state) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final hasBuiltIn = TraktOAuthConfig.hasBuiltInCredentials;
+    final isConnecting = state.status == TraktConnectionStatus.connecting;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // 主按钮 - 如果有内置凭证则启动 Device Code Flow
+        if (hasBuiltIn) ...[
+          FilledButton.icon(
+            onPressed: isConnecting ? null : _startDeviceCodeFlow,
+            icon: isConnecting
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.login),
+            label: const Text('连接 Trakt 账号'),
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+            ),
+          ),
+          const SizedBox(height: 12),
+          // 简洁的说明文字
+          Text(
+            '点击后将显示验证码，在任意设备浏览器中输入即可完成连接',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 32),
+          // 高级选项 - 更低调的展示
+          Center(
+            child: TextButton(
+              onPressed: () {
+                setState(() {
+                  _showCustomCredentials = true;
+                });
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                textStyle: theme.textTheme.bodySmall,
+              ),
+              child: const Text('使用自定义 API 凭证'),
+            ),
+          ),
+        ] else ...[
+          // 没有内置凭证，直接显示自定义凭证表单
+          _buildCustomCredentialsForm(context, state),
+        ],
+      ],
+    );
+  }
+
+  /// 自定义凭证表单
+  Widget _buildCustomCredentialsForm(BuildContext context, TraktConnectionState state) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isConnecting = state.status == TraktConnectionStatus.connecting;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (TraktOAuthConfig.hasBuiltInCredentials) ...[
+          // 返回按钮
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () {
+                setState(() {
+                  _showCustomCredentials = false;
+                });
+              },
+              icon: const Icon(Icons.arrow_back, size: 18),
+              label: const Text('返回'),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+
+        // 说明
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.code, color: colorScheme.primary, size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    '开发者选项',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '使用自己在 trakt.tv/oauth/applications 创建的应用凭证',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        TextFormField(
+          controller: _clientIdController,
+          decoration: InputDecoration(
+            labelText: 'Client ID',
+            prefixIcon: const Icon(Icons.apps),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          validator: (value) {
+            if (value == null || value.isEmpty) {
+              return '请输入 Client ID';
+            }
+            return null;
+          },
+        ),
+        const SizedBox(height: 16),
+
+        TextFormField(
+          controller: _clientSecretController,
+          obscureText: _obscureSecret,
+          decoration: InputDecoration(
+            labelText: 'Client Secret',
+            prefixIcon: const Icon(Icons.vpn_key),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            suffixIcon: IconButton(
+              icon: Icon(_obscureSecret ? Icons.visibility : Icons.visibility_off),
+              onPressed: () {
+                setState(() {
+                  _obscureSecret = !_obscureSecret;
+                });
+              },
+            ),
+          ),
+          validator: (value) {
+            if (value == null || value.isEmpty) {
+              return '请输入 Client Secret';
+            }
+            return null;
+          },
+        ),
+        const SizedBox(height: 24),
+
+        FilledButton.icon(
+          onPressed: isConnecting ? null : _startCustomDeviceCodeFlow,
+          icon: isConnecting
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.login),
+          label: const Text('连接'),
+          style: FilledButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 使用内置凭证启动 Device Code Flow
+  Future<void> _startDeviceCodeFlow() async {
     try {
-      final url = await notifier.startOAuthFlow(useBuiltIn: true);
-      final uri = Uri.parse(url);
-
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-
-        // 如果不支持深度链接回调，显示授权码输入框
-        if (!notifier.supportsDeepLinkCallback) {
-          setState(() {
-            _showAuthCodeInput = true;
-          });
-        }
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('无法打开浏览器')),
-          );
-        }
-      }
+      await ref.read(traktConnectionProvider.notifier).startDeviceCodeFlow();
     } on Exception catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('启动登录失败: $e')),
+          SnackBar(content: Text('启动授权失败: $e')),
         );
       }
     }
   }
 
-  /// 使用自定义凭证启动 OAuth 流程
-  Future<void> _startCustomOAuthFlow() async {
+  /// 使用自定义凭证启动 Device Code Flow
+  Future<void> _startCustomDeviceCodeFlow() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final notifier = ref.read(traktConnectionProvider.notifier);
     final clientId = _clientIdController.text.trim();
     final clientSecret = _clientSecretController.text.trim();
 
     try {
-      final url = await notifier.startOAuthFlow(
-        useBuiltIn: false,
-        clientId: clientId,
-        clientSecret: clientSecret,
-      );
-      final uri = Uri.parse(url);
-
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-
-        // 如果不支持深度链接回调，显示授权码输入框
-        if (!notifier.supportsDeepLinkCallback) {
-          setState(() {
-            _showAuthCodeInput = true;
-          });
-        }
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('无法打开浏览器')),
+      await ref.read(traktConnectionProvider.notifier).startDeviceCodeFlow(
+            clientId: clientId,
+            clientSecret: clientSecret,
           );
-        }
-      }
     } on Exception catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('启动登录失败: $e')),
+          SnackBar(content: Text('启动授权失败: $e')),
         );
       }
     }
   }
 
-  /// 提交授权码（OOB 模式）
-  Future<void> _submitAuthCode() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    final code = _codeController.text.trim();
-
-    // 使用 handleOAuthCallback 处理，它会从存储中读取待处理的 OAuth 状态
-    await ref.read(traktConnectionProvider.notifier).handleOAuthCallback(code);
+  Future<void> _launchUrl(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
   }
 }

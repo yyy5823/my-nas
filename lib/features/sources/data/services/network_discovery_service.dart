@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:multicast_dns/multicast_dns.dart';
@@ -83,6 +84,9 @@ class NetworkDiscoveryNotifier extends StateNotifier<NetworkDiscoveryState> {
   Future<void> startDiscovery() async {
     if (state.isDiscovering) return;
 
+    // 先停止任何现有的发现
+    stopDiscovery();
+
     state = state.copyWith(isDiscovering: true, devices: []);
     logger.i('NetworkDiscovery: 开始发现局域网设备');
 
@@ -146,6 +150,10 @@ class NetworkDiscoveryNotifier extends StateNotifier<NetworkDiscoveryState> {
         lastDiscoveryTime: DateTime.now(),
       );
       logger.i('NetworkDiscovery: 发现完成，共 ${devices.length} 个设备');
+    } on SocketException catch (e) {
+      // 端口占用错误，可能是其他 mDNS 服务正在运行
+      logger.w('NetworkDiscovery: 端口冲突 (${e.message})，请稍后重试');
+      state = state.copyWith(isDiscovering: false);
     } on Exception catch (e, st) {
       logger.e('NetworkDiscovery: 发现失败', e, st);
       state = state.copyWith(isDiscovering: false);
