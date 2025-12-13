@@ -1,8 +1,7 @@
 import 'dart:async';
-import 'dart:io';
 
+import 'package:bonsoir/bonsoir.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:multicast_dns/multicast_dns.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 
@@ -26,6 +25,17 @@ class DiscoveredDevice {
 
   @override
   String toString() => 'DiscoveredDevice($name, $host:$port, $type)';
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DiscoveredDevice &&
+          runtimeType == other.runtimeType &&
+          host == other.host &&
+          port == other.port;
+
+  @override
+  int get hashCode => host.hashCode ^ port.hashCode;
 }
 
 /// 网络发现状态
@@ -34,21 +44,25 @@ class NetworkDiscoveryState {
     this.devices = const [],
     this.isDiscovering = false,
     this.lastDiscoveryTime,
+    this.error,
   });
 
   final List<DiscoveredDevice> devices;
   final bool isDiscovering;
   final DateTime? lastDiscoveryTime;
+  final String? error;
 
   NetworkDiscoveryState copyWith({
     List<DiscoveredDevice>? devices,
     bool? isDiscovering,
     DateTime? lastDiscoveryTime,
+    String? error,
   }) =>
       NetworkDiscoveryState(
         devices: devices ?? this.devices,
         isDiscovering: isDiscovering ?? this.isDiscovering,
         lastDiscoveryTime: lastDiscoveryTime ?? this.lastDiscoveryTime,
+        error: error,
       );
 }
 
@@ -58,6 +72,12 @@ final networkDiscoveryProvider =
   (ref) => NetworkDiscoveryNotifier(),
 );
 
+/// 网络发现服务
+/// 使用 bonsoir 包通过原生 API 发现局域网设备：
+/// - iOS/macOS: Apple Bonjour
+/// - Android: Network Service Discovery (NSD)
+/// - Windows: Windows DNS-SD
+/// - Linux: Avahi
 class NetworkDiscoveryNotifier extends StateNotifier<NetworkDiscoveryState> {
   NetworkDiscoveryNotifier() : super(const NetworkDiscoveryState());
 
@@ -77,7 +97,8 @@ class NetworkDiscoveryNotifier extends StateNotifier<NetworkDiscoveryState> {
     '_qnap._tcp': SourceType.qnap,
   };
 
-  MDnsClient? _mdnsClient;
+  final Map<String, BonsoirDiscovery> _discoveries = {};
+  final Map<String, StreamSubscription<BonsoirDiscoveryEvent>> _subscriptions = {};
   Timer? _discoveryTimer;
 
   /// 开始发现
@@ -85,107 +106,149 @@ class NetworkDiscoveryNotifier extends StateNotifier<NetworkDiscoveryState> {
     if (state.isDiscovering) return;
 
     // 先停止任何现有的发现
-    stopDiscovery();
+    await stopDiscovery();
 
-    state = state.copyWith(isDiscovering: true, devices: []);
-    logger.i('NetworkDiscovery: 开始发现局域网设备');
+    state = state.copyWith(isDiscovering: true, devices: [], error: null);
+    logger.i('NetworkDiscovery: 开始发现局域网设备 (使用原生 API)');
 
     try {
-      _mdnsClient = MDnsClient();
-      await _mdnsClient!.start();
+      final devices = <DiscoveredDevice>{};
 
-      final devices = <DiscoveredDevice>[];
-
-      // 遍历所有服务类型进行发现
+      // 为每个服务类型创建发现实例
       for (final entry in _serviceTypes.entries) {
         final serviceType = entry.key;
         final sourceType = entry.value;
 
         try {
-          await for (final ptr in _mdnsClient!.lookup<PtrResourceRecord>(
-            ResourceRecordQuery.serverPointer(serviceType),
-          ).timeout(const Duration(seconds: 3))) {
-            // 获取服务详情
-            await for (final srv in _mdnsClient!.lookup<SrvResourceRecord>(
-              ResourceRecordQuery.service(ptr.domainName),
-            ).timeout(const Duration(seconds: 2))) {
-              // 获取 IP 地址
-              await for (final ip in _mdnsClient!.lookup<IPAddressResourceRecord>(
-                ResourceRecordQuery.addressIPv4(srv.target),
-              ).timeout(const Duration(seconds: 2))) {
-                final name = _extractServiceName(ptr.domainName, serviceType);
-                final host = ip.address.address;
-                final port = srv.port;
+          final discovery = BonsoirDiscovery(type: serviceType);
+          await discovery.initialize();
 
-                // 确定源类型
-                final type = sourceType ?? _guessSourceType(name, port);
-                if (type != null) {
-                  final device = DiscoveredDevice(
-                    name: name,
-                    host: host,
-                    port: port,
-                    type: type,
-                    serviceType: serviceType,
-                  );
+          // 监听发现事件
+          final subscription = discovery.eventStream?.listen(
+            (event) => _handleDiscoveryEvent(event, serviceType, sourceType, devices),
+          );
 
-                  // 避免重复
-                  if (!devices.any((d) => d.host == host && d.port == port)) {
-                    devices.add(device);
-                    logger.d('NetworkDiscovery: 发现设备 $device');
-                  }
-                }
-              }
-            }
+          if (subscription != null) {
+            _subscriptions[serviceType] = subscription;
           }
-        } on TimeoutException {
-          // 超时继续下一个服务类型
+
+          await discovery.start();
+          _discoveries[serviceType] = discovery;
+
+          logger.d('NetworkDiscovery: 开始监听服务类型 $serviceType');
         } on Exception catch (e) {
-          logger.w('NetworkDiscovery: 发现 $serviceType 失败', e);
+          logger.w('NetworkDiscovery: 初始化 $serviceType 发现失败', e);
         }
       }
 
-      state = state.copyWith(
-        devices: devices,
-        isDiscovering: false,
-        lastDiscoveryTime: DateTime.now(),
-      );
-      logger.i('NetworkDiscovery: 发现完成，共 ${devices.length} 个设备');
-    } on SocketException catch (e) {
-      // 网络相关错误（无网络、路由不可达等），使用 debug 级别避免日志刷屏
-      // 这些错误在设备切换网络、没有 WiFi 等情况下是正常的
-      logger.d('NetworkDiscovery: 网络异常 (${e.message})，跳过发现');
-      state = state.copyWith(isDiscovering: false);
-    } on OSError catch (e) {
-      // 系统错误（端口占用等）
-      // Address already in use (errno = 48) 表示 mDNS 端口已被占用
-      // 这在 iOS 上可能是因为系统 mDNS 服务正在运行
-      logger.d('NetworkDiscovery: 系统错误 (${e.message})，跳过发现');
-      state = state.copyWith(isDiscovering: false);
+      // 设置超时，在一段时间后停止发现并更新状态
+      _discoveryTimer = Timer(const Duration(seconds: 10), _finishDiscovery);
     } on Exception catch (e, st) {
       logger.e('NetworkDiscovery: 发现失败', e, st);
-      state = state.copyWith(isDiscovering: false);
-    } finally {
-      _mdnsClient?.stop();
-      _mdnsClient = null;
+      state = state.copyWith(
+        isDiscovering: false,
+        error: e.toString(),
+      );
     }
+  }
+
+  /// 处理发现事件
+  void _handleDiscoveryEvent(
+    BonsoirDiscoveryEvent event,
+    String serviceType,
+    SourceType? sourceType,
+    Set<DiscoveredDevice> devices,
+  ) {
+    switch (event) {
+      case BonsoirDiscoveryServiceFoundEvent():
+        logger.d('NetworkDiscovery: 发现服务 ${event.service.name} ($serviceType)');
+        // 服务发现后需要解析获取 IP 和端口
+        event.service.resolve(_discoveries[serviceType]!.serviceResolver);
+
+      case BonsoirDiscoveryServiceResolvedEvent():
+        final service = event.service;
+        final host = service.host;
+        final port = service.port;
+        final name = service.name;
+
+        if (host != null && host.isNotEmpty) {
+          // 确定源类型
+          final type = sourceType ?? _guessSourceType(name, port);
+          if (type != null) {
+            // 转换 TXT 记录
+            Map<String, String>? txtRecords;
+            final attributes = service.attributes;
+            if (attributes.isNotEmpty) {
+              txtRecords = Map<String, String>.from(attributes);
+            }
+
+            final device = DiscoveredDevice(
+              name: name,
+              host: host,
+              port: port,
+              type: type,
+              serviceType: serviceType,
+              txtRecords: txtRecords,
+            );
+
+            // 避免重复
+            if (devices.add(device)) {
+              logger.i('NetworkDiscovery: 解析设备 $device');
+              // 更新状态
+              state = state.copyWith(devices: devices.toList());
+            }
+          }
+        }
+
+      case BonsoirDiscoveryServiceLostEvent():
+        logger.d('NetworkDiscovery: 服务离线 ${event.service.name}');
+        // 从列表中移除
+        final host = event.service.host;
+        final port = event.service.port;
+        if (host != null) {
+          devices.removeWhere((d) => d.host == host && d.port == port);
+          state = state.copyWith(devices: devices.toList());
+        }
+
+      default:
+        // 忽略其他事件
+        break;
+    }
+  }
+
+  /// 完成发现
+  void _finishDiscovery() {
+    logger.i('NetworkDiscovery: 发现完成，共 ${state.devices.length} 个设备');
+    state = state.copyWith(
+      isDiscovering: false,
+      lastDiscoveryTime: DateTime.now(),
+    );
   }
 
   /// 停止发现
-  void stopDiscovery() {
+  Future<void> stopDiscovery() async {
     _discoveryTimer?.cancel();
-    _mdnsClient?.stop();
-    _mdnsClient = null;
-    state = state.copyWith(isDiscovering: false);
-  }
+    _discoveryTimer = null;
 
-  /// 从域名中提取服务名称
-  String _extractServiceName(String domainName, String serviceType) {
-    // 域名格式: <name>.<serviceType>.local
-    final suffix = '$serviceType.local';
-    if (domainName.endsWith(suffix)) {
-      return domainName.substring(0, domainName.length - suffix.length - 1);
+    // 取消所有订阅
+    for (final subscription in _subscriptions.values) {
+      await subscription.cancel();
     }
-    return domainName;
+    _subscriptions.clear();
+
+    // 停止所有发现实例
+    for (final discovery in _discoveries.values) {
+      try {
+        await discovery.stop();
+      } on Exception catch (e) {
+        logger.w('NetworkDiscovery: 停止发现失败', e);
+      }
+    }
+    _discoveries.clear();
+
+    if (state.isDiscovering) {
+      state = state.copyWith(isDiscovering: false);
+    }
   }
 
   /// 根据名称和端口猜测源类型
@@ -215,7 +278,8 @@ class NetworkDiscoveryNotifier extends StateNotifier<NetworkDiscoveryState> {
 
   @override
   void dispose() {
-    stopDiscovery();
+    // 使用 unawaited 因为 dispose 不能是 async
+    unawaited(stopDiscovery());
     super.dispose();
   }
 }

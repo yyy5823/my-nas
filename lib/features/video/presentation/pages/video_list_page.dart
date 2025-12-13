@@ -499,7 +499,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
 
     // 并行查询各分类数据（使用 SQLite 索引，O(log N) 复杂度）
     // 首页只加载少量数据用于展示，查看全部页面支持分页懒加载
-    // SQLite是本地数据库，查询应该非常快（<1秒），使用3秒超时作为保护
+    // 如果正在刮削，数据库可能被占用，增加超时时间到15秒
     List<Object?> results;
     try {
       results = await Future.wait([
@@ -516,9 +516,9 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
         // 获取数据库总数（不经过路径过滤），用于判断是否有数据被过滤
         _db.getCount(),
       ]).timeout(
-        const Duration(seconds: 3),
+        const Duration(seconds: 15),
         onTimeout: () {
-          logger.w('VideoListNotifier: 数据库查询超时，显示空列表');
+          logger.w('VideoListNotifier: 数据库查询超时（15秒），显示空列表');
           // 返回空结果，避免阻塞
           return [
             <String, dynamic>{'total': 0, 'movies': 0, 'tvShows': 0, 'others': 0},
@@ -575,7 +575,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
         }
       }));
 
-      // 回退：不使用路径过滤，重新查询
+      // 回退：不使用路径过滤，重新查询（同样使用15秒超时）
       final fallbackResults = await Future.wait([
         _db.getStats(),  // 不传 enabledPaths
         _db.getTvShowGroupCount(),
@@ -585,7 +585,22 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
         _db.getTvShowGroupRepresentatives(limit: 30),
         _db.getMovieCollections(),
         _db.getByCategory(MediaCategory.unknown, limit: 30),
-      ]);
+      ]).timeout(
+        const Duration(seconds: 15),
+        onTimeout: () {
+          logger.w('VideoListNotifier: 回退查询超时（15秒）');
+          return [
+            <String, dynamic>{'total': 0, 'movies': 0, 'tvShows': 0, 'others': 0},
+            0,
+            <VideoMetadata>[],
+            <VideoMetadata>[],
+            <VideoMetadata>[],
+            <VideoMetadata>[],
+            <MovieCollection>[],
+            <VideoMetadata>[],
+          ];
+        },
+      );
 
       // 使用回退查询的结果
       final fallbackStats = fallbackResults[0] as Map<String, dynamic>;

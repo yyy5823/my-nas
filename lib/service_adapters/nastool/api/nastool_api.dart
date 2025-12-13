@@ -31,16 +31,32 @@ class NasToolApi {
   /// 验证连接
   Future<bool> validateConnection() async {
     try {
+      _log('validateConnection: 开始验证连接 baseUrl=$baseUrl');
+      _log('validateConnection: apiToken=${apiToken.isNotEmpty ? "已配置(${apiToken.length}字符)" : "未配置"}');
+
       final response = await _makeRequest('GET', '/api/v1/system/info');
+      _log('validateConnection: 响应状态码=${response.statusCode}');
+
       if (response.statusCode == 200) {
         _isAuthenticated = true;
+        _log('validateConnection: 连接验证成功');
         return true;
       }
+      _log('validateConnection: 连接验证失败，状态码=${response.statusCode}');
       return false;
-    } on NasToolApiException {
+    } on NasToolApiException catch (e) {
       // API 异常，连接验证失败
+      _log('validateConnection: API异常 - ${e.message}');
+      return false;
+    } on Exception catch (e) {
+      _log('validateConnection: 未知异常 - $e');
       return false;
     }
+  }
+
+  void _log(String message) {
+    // ignore: avoid_print
+    print('[NasToolApi] $message');
   }
 
   /// 获取系统信息
@@ -207,6 +223,8 @@ class NasToolApi {
       'Authorization': 'Bearer $apiToken',
     };
 
+    _log('_makeRequest: $method $url');
+
     http.Response response;
 
     try {
@@ -224,6 +242,8 @@ class NasToolApi {
         throw NasToolApiException('不支持的 HTTP 方法: $method');
       }
 
+      _log('_makeRequest: 响应 ${response.statusCode}');
+
       if (response.statusCode == 401) {
         _isAuthenticated = false;
         throw const NasToolApiException('认证失败，请检查 API Token');
@@ -234,6 +254,7 @@ class NasToolApi {
       }
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
+        _log('_makeRequest: 错误响应 body=${response.body.substring(0, response.body.length > 200 ? 200 : response.body.length)}');
         throw NasToolApiException(
           '请求失败: ${response.statusCode} ${response.reasonPhrase}',
         );
@@ -241,9 +262,14 @@ class NasToolApi {
 
       return response;
     } on SocketException catch (e) {
+      _log('_makeRequest: SocketException - ${e.message}');
       throw NasToolApiException('无法连接到 NASTool: ${e.message}');
     } on http.ClientException catch (e) {
+      _log('_makeRequest: ClientException - ${e.message}');
       throw NasToolApiException('网络错误: ${e.message}');
+    } on FormatException catch (e) {
+      _log('_makeRequest: FormatException - $e');
+      throw NasToolApiException('URL格式错误: $e');
     }
   }
 

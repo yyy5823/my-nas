@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart';
 import 'package:logger/logger.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/features/pt_sites/domain/entities/pt_torrent.dart';
@@ -20,6 +22,12 @@ abstract class PTSiteApi {
 
   /// 获取基础 URL
   String get baseUrl {
+    // 如果 host 已经包含协议，解析并使用其 scheme 和 host
+    if (source.host.startsWith('http://') || source.host.startsWith('https://')) {
+      final uri = Uri.parse(source.host);
+      final port = source.port == 443 || source.port == 80 ? '' : ':${source.port}';
+      return '${uri.scheme}://${uri.host}$port';
+    }
     final protocol = source.useSsl ? 'https' : 'http';
     final port = source.port == 443 || source.port == 80 ? '' : ':${source.port}';
     return '$protocol://${source.host}$port';
@@ -74,7 +82,19 @@ enum PTTorrentSortBy {
 
 /// 馒头 M-Team API
 class MTeamApi extends PTSiteApi {
-  MTeamApi({required super.source, super.client});
+  MTeamApi({required super.source, super.client}) : _ioClient = _createIOClient();
+
+  /// 创建支持重定向的 IOClient
+  static http.Client _createIOClient() {
+    final httpClient = HttpClient();
+    // ignore: cascade_invocations
+    httpClient.badCertificateCallback = (cert, host, port) => true;
+    // ignore: cascade_invocations
+    httpClient.connectionTimeout = const Duration(seconds: 30);
+    return IOClient(httpClient);
+  }
+
+  final http.Client _ioClient;
 
   @override
   Map<String, String> get headers {
@@ -90,6 +110,12 @@ class MTeamApi extends PTSiteApi {
   }
 
   String get _apiBase => 'https://api.m-team.cc';
+
+  @override
+  void dispose() {
+    _ioClient.close();
+    super.dispose();
+  }
 
   @override
   Future<bool> testConnection() async {
@@ -115,7 +141,7 @@ class MTeamApi extends PTSiteApi {
       }
 
       _logger.i('MTeamApi.testConnection: 开始请求 $_apiBase/api/member/profile');
-      final response = await _client.post(
+      final response = await _ioClient.post(
         Uri.parse('$_apiBase/api/member/profile'),
         headers: headers,
       );
@@ -160,7 +186,7 @@ class MTeamApi extends PTSiteApi {
   @override
   Future<PTUserInfo> getUserInfo() async {
     try {
-      final response = await _client.post(
+      final response = await _ioClient.post(
         Uri.parse('$_apiBase/api/member/profile'),
         headers: headers,
       );
@@ -231,7 +257,7 @@ class MTeamApi extends PTSiteApi {
       body['sortField'] = sortField;
       body['sortDirection'] = descending ? 'DESC' : 'ASC';
 
-      final response = await _client.post(
+      final response = await _ioClient.post(
         Uri.parse('$_apiBase/api/torrent/search'),
         headers: headers,
         body: json.encode(body),
@@ -259,7 +285,7 @@ class MTeamApi extends PTSiteApi {
   @override
   Future<PTTorrent> getTorrentDetail(String torrentId) async {
     try {
-      final response = await _client.post(
+      final response = await _ioClient.post(
         Uri.parse('$_apiBase/api/torrent/detail'),
         headers: headers,
         body: json.encode({'id': torrentId}),
@@ -284,7 +310,7 @@ class MTeamApi extends PTSiteApi {
   @override
   Future<String> getDownloadUrl(String torrentId) async {
     try {
-      final response = await _client.post(
+      final response = await _ioClient.post(
         Uri.parse('$_apiBase/api/torrent/genDlToken'),
         headers: headers,
         body: json.encode({'id': torrentId}),

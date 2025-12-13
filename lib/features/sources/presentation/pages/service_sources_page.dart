@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/features/nastool/presentation/pages/nastool_detail_page.dart';
 import 'package:my_nas/features/pt_sites/presentation/pages/pt_site_detail_page.dart';
 import 'package:my_nas/features/qbittorrent/presentation/pages/qbittorrent_detail_page.dart';
 import 'package:my_nas/features/sources/domain/entities/source_category.dart';
@@ -532,10 +533,19 @@ class _ServiceSourceCardState extends ConsumerState<_ServiceSourceCard> {
             ),
           );
         }
+      case SourceType.nastool:
+        // NASTool 详情页
+        if (context.mounted) {
+          await Navigator.push<void>(
+            context,
+            MaterialPageRoute<void>(
+              builder: (context) => NasToolDetailPage(source: widget.source),
+            ),
+          );
+        }
       case SourceType.transmission:
       case SourceType.aria2:
       case SourceType.trakt:
-      case SourceType.nastool:
       case SourceType.moviepilot:
         // 其他服务类源暂未实现，显示提示
         if (context.mounted) {

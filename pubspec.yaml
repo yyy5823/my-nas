@@ -114,7 +114,7 @@ dependencies:
   # Picture in Picture
   floating: ^2.0.1  # Android/iOS PiP support
   window_manager: ^0.4.3  # Desktop window control
-  multicast_dns: ^0.3.3
+  bonsoir: ^6.0.1  # Native mDNS/Bonjour discovery (iOS/Android/macOS/Windows/Linux)
 
 dev_dependencies:
   flutter_test:

@@ -278,23 +278,47 @@ class BookContentProcessor {
 
     var cleaned = html;
 
+    // 0. 首先移除所有 null 字符和控制字符（这些会导致解析失败）
+    // 使用字符码点范围匹配控制字符
+    cleaned = cleaned.replaceAll(
+      RegExp('[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]'),
+      '',
+    );
+
     // 1. 移除明确会导致崩溃的无效 0x 颜色声明（针对 flutter_html 的已知崩溃）
-    // 匹配 pattern: color: 0x0000c
+    // 匹配 pattern: color: 0x0000c、color=0x0000c 等（包括不完整的hex值）
+    // 更宽松的匹配：0x后面跟任意字符直到遇到有效终结符
     cleaned = cleaned.replaceAllMapped(
-      RegExp(r'(?:color\s*[:=]\s*0x[0-9a-fA-F]+\s*[;"]?)', caseSensitive: false),
+      RegExp('color\\s*[:=]\\s*["\']?0x[0-9a-fA-F]*[^0-9a-fA-F;"\\s>]*["\']?', caseSensitive: false),
       (match) {
         final fullMatch = match.group(0) ?? '';
         // 尝试提取 hex 部分修复
         final hexMatch = RegExp('0x([0-9a-fA-F]+)').firstMatch(fullMatch);
         if (hexMatch != null) {
           var hex = hexMatch.group(1) ?? '';
+          // 移除任何非hex字符
+          hex = hex.replaceAll(RegExp('[^0-9a-fA-F]'), '');
+          if (hex.isEmpty || hex.length < 3) return ''; // 太短无法修复
           if (hex.length > 6) hex = hex.substring(0, 6);
-          if (hex.length < 3) return ''; // 太短无法修复
-          if (hex.length < 6) hex = hex.padRight(6, '0');
+          while (hex.length < 6) {
+            hex = '${hex}0'; // 补齐到6位
+          }
           return 'color: #$hex;';
         }
         return ''; // 无法修复则移除
       },
+    );
+
+    // 1a. 额外清理：移除所有残留的 0x 开头的颜色值（更激进的清理）
+    cleaned = cleaned.replaceAll(
+      RegExp('0x[0-9a-fA-F]{1,8}', caseSensitive: false),
+      '#000000',
+    );
+
+    // 1b. 处理 font 标签中的 color 属性（如 <font color=0x0000c>）
+    cleaned = cleaned.replaceAllMapped(
+      RegExp('(<font[^>]*)\\s+color\\s*=\\s*["\']?0x[0-9a-fA-F]*[^"\\s>]*["\']?', caseSensitive: false),
+      (match) => match.group(1) ?? '', // 直接移除无效的 color 属性，保留 font 标签其他部分
     );
 
     // 2. 正常化 hex 颜色 (以防万一)

@@ -1552,6 +1552,9 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     logger.d('渲染HTML内容 - 字体: ${settings.fontFamily ?? "系统默认"}, '
         '字号: ${settings.fontSize}, 行高: ${settings.lineHeight}');
 
+    // 额外的颜色值清理（防止 flutter_html 解析崩溃）
+    final cleanedHtml = _sanitizeHtmlColors(htmlContent);
+
     // 构建 HTML 样式
     final style = {
       'body': Style(
@@ -1632,20 +1635,61 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
       ),
     };
 
-    return Html(
-      data: htmlContent,
-      style: style,
-      onLinkTap: (url, attributes, element) {
-        if (url != null) {
-          launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    // 使用 Builder 包装以捕获可能的渲染错误
+    return Builder(
+      builder: (context) {
+        try {
+          return Html(
+            data: cleanedHtml,
+            style: style,
+            onLinkTap: (url, attributes, element) {
+              if (url != null) {
+                launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+              }
+            },
+            onCssParseError: (css, messages) {
+              // 忽略 CSS 解析错误，返回 null 使用默认样式
+              logger.d('CSS 解析错误: $css');
+              return null;
+            },
+          );
+        } on FormatException catch (e) {
+          logger.e('HTML 渲染格式错误', e);
+          // 回退到纯文本渲染
+          return _buildTextContent(
+            cleanedHtml.replaceAll(RegExp('<[^>]*>'), ''),
+            settings,
+          );
         }
       },
-      onCssParseError: (css, messages) {
-        // 忽略 CSS 解析错误，返回 null 使用默认样式
-        logger.d('CSS 解析错误: $css');
-        return null;
-      },
     );
+  }
+
+  /// 清理 HTML 中的无效颜色值（防止 flutter_html 崩溃）
+  String _sanitizeHtmlColors(String html) {
+    if (!html.contains('color')) return html;
+
+    var result = html;
+
+    // 移除控制字符
+    result = result.replaceAll(
+      RegExp('[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]'),
+      '',
+    );
+
+    // 替换所有 0x 开头的颜色值为安全的黑色
+    result = result.replaceAll(
+      RegExp(r'0x[0-9a-fA-F]{1,8}', caseSensitive: false),
+      '#000000',
+    );
+
+    // 移除不完整或无效的颜色声明
+    result = result.replaceAllMapped(
+      RegExp(r'''color\s*[:=]\s*["']?[^#\w][^;"'>]*["']?''', caseSensitive: false),
+      (match) => '',
+    );
+
+    return result;
   }
 
   /// 构建 HTML 样式（复用于分页和滚动模式）
