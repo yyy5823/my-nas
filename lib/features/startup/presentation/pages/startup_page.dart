@@ -22,25 +22,35 @@ class _StartupPageState extends ConsumerState<StartupPage> {
   final String _statusMessage = '正在启动...';
   final bool _isLoading = true;
 
+  /// 启动画面最小显示时间（毫秒）
+  /// 让用户看到品牌 Logo，同时给 UI 组件准备时间
+  static const int _minSplashDurationMs = 1200;
+
   @override
   void initState() {
     super.initState();
     _initializeApp();
   }
 
-  void _initializeApp() {
+  Future<void> _initializeApp() async {
+    // 记录开始时间
+    final startTime = DateTime.now();
+
     // 在后台初始化服务，不阻塞 UI
-    // 用户体验优先：立即进入主界面，服务初始化和网络连接在后台进行
     _initServicesInBackground();
 
-    // 使用 microtask 确保在当前帧结束后立即跳转
-    // 这样用户几乎感觉不到 StartupPage 的存在
-    unawaited(Future.microtask(() {
-      if (mounted) {
-        logger.i('StartupPage: 立即进入主界面');
-        context.go(Routes.video);
-      }
-    }));
+    // 等待最小显示时间，让启动画面有足够展示
+    final elapsed = DateTime.now().difference(startTime).inMilliseconds;
+    final remaining = _minSplashDurationMs - elapsed;
+    if (remaining > 0) {
+      await Future<void>.delayed(Duration(milliseconds: remaining));
+    }
+
+    // 跳转到主界面
+    if (mounted) {
+      logger.i('StartupPage: 进入主界面');
+      context.go(Routes.video);
+    }
   }
 
   /// 在后台初始化服务，不阻塞UI

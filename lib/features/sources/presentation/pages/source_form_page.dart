@@ -19,6 +19,7 @@ class SourceFormPage extends ConsumerStatefulWidget {
   const SourceFormPage({
     required this.sourceType, super.key,
     this.existingSource,
+    this.initialValues,
   });
 
   /// 源类型
@@ -26,6 +27,9 @@ class SourceFormPage extends ConsumerStatefulWidget {
 
   /// 编辑模式时的现有源
   final SourceEntity? existingSource;
+
+  /// 初始值（用于从发现的设备预填）
+  final Map<String, String>? initialValues;
 
   SourceFormMode get mode =>
       existingSource != null ? SourceFormMode.edit : SourceFormMode.create;
@@ -70,6 +74,9 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
         if (widget.existingSource != null) {
           // 编辑模式：从现有源获取值
           initialValue = _getValueFromSource(widget.existingSource!, field.key);
+        } else if (widget.initialValues != null && widget.initialValues!.containsKey(field.key)) {
+          // 从发现的设备预填
+          initialValue = widget.initialValues![field.key];
         }
 
         // 如果没有现有值，使用默认值
@@ -407,12 +414,8 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
     if (existingValue is List) {
       items = existingValue.cast<Map<String, String>>().toList();
     } else if (existingValue is String && existingValue.isNotEmpty) {
-      // 尝试解析 JSON 格式
-      try {
-        items = [];
-      } catch (_) {
-        items = [];
-      }
+      // 尝试解析 JSON 格式（字符串值暂不支持，保持空列表）
+      items = [];
     }
 
     return Column(

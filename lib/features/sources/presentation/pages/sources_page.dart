@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/file_browser/presentation/pages/file_browser_page.dart';
+import 'package:my_nas/features/sources/data/services/network_discovery_service.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/source_category.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
@@ -20,14 +21,38 @@ class _SourcesPageState extends ConsumerState<SourcesPage> {
   bool _isReorderMode = false;
 
   @override
+  void initState() {
+    super.initState();
+    // 启动网络发现
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(networkDiscoveryProvider.notifier).startDiscovery();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final sourcesAsync = ref.watch(sourcesProvider);
     final connections = ref.watch(activeConnectionsProvider);
+    final discoveryState = ref.watch(networkDiscoveryProvider);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('连接源'),
         actions: [
+          // 刷新发现按钮
+          IconButton(
+            icon: discoveryState.isDiscovering
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.radar),
+            onPressed: discoveryState.isDiscovering
+                ? null
+                : () => ref.read(networkDiscoveryProvider.notifier).startDiscovery(),
+            tooltip: '扫描局域网设备',
+          ),
           // 排序模式切换按钮
           IconButton(
             icon: Icon(_isReorderMode ? Icons.done : Icons.reorder),
@@ -68,7 +93,7 @@ class _SourcesPageState extends ConsumerState<SourcesPage> {
               .where((s) => s.type.category.isStorageCategory)
               .toList();
 
-          if (sources.isEmpty) {
+          if (sources.isEmpty && discoveryState.devices.isEmpty) {
             return _buildEmptyState(context);
           }
 
@@ -76,20 +101,97 @@ class _SourcesPageState extends ConsumerState<SourcesPage> {
             return _buildReorderableList(sources, connections);
           }
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: sources.length,
-            itemBuilder: (context, index) {
-              final source = sources[index];
-              final connection = connections[source.id];
-              return _SourceCard(
-                source: source,
-                connection: connection,
-              );
-            },
-          );
+          return _buildSourcesList(sources, connections, discoveryState);
         },
       ),
+    );
+  }
+
+  /// 构建包含发现设备和已配置源的列表
+  Widget _buildSourcesList(
+    List<SourceEntity> sources,
+    Map<String, SourceConnection> connections,
+    NetworkDiscoveryState discoveryState,
+  ) {
+    // ignore: unused_local_variable
+    final theme = Theme.of(context);
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        // 发现的设备部分
+        if (discoveryState.devices.isNotEmpty || discoveryState.isDiscovering) ...[
+          _buildSectionHeader(
+            context,
+            '发现的设备',
+            subtitle: discoveryState.isDiscovering
+                ? '正在扫描...'
+                : '点击添加到连接源',
+            trailing: discoveryState.isDiscovering
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : null,
+          ),
+          const SizedBox(height: 8),
+          ...discoveryState.devices.map(
+            (device) => _DiscoveredDeviceCard(device: device),
+          ),
+          const SizedBox(height: 16),
+        ],
+
+        // 已配置的连接源部分
+        if (sources.isNotEmpty) ...[
+          _buildSectionHeader(context, '已配置的连接'),
+          const SizedBox(height: 8),
+          ...sources.map((source) {
+            final connection = connections[source.id];
+            return _SourceCard(
+              source: source,
+              connection: connection,
+            );
+          }),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildSectionHeader(
+    BuildContext context,
+    String title, {
+    String? subtitle,
+    Widget? trailing,
+  }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  color: colorScheme.primary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              if (subtitle != null)
+                Text(
+                  subtitle,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+            ],
+          ),
+        ),
+        if (trailing != null) trailing,
+      ],
     );
   }
 
@@ -834,6 +936,103 @@ class _SourceTypeBottomSheet extends StatelessWidget {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// 发现的设备卡片
+class _DiscoveredDeviceCard extends StatelessWidget {
+  const _DiscoveredDeviceCard({required this.device});
+
+  final DiscoveredDevice device;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: colorScheme.primary.withValues(alpha: 0.3),
+        ),
+      ),
+      color: colorScheme.primaryContainer.withValues(alpha: 0.1),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        leading: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: colorScheme.primary.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(
+            device.type.icon,
+            color: colorScheme.primary,
+            size: 24,
+          ),
+        ),
+        title: Text(
+          device.name,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        subtitle: Text(
+          '${device.host}:${device.port} • ${device.type.displayName}',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: colorScheme.onSurfaceVariant,
+          ),
+        ),
+        trailing: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: colorScheme.primary.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.add,
+                size: 16,
+                color: colorScheme.primary,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '添加',
+                style: TextStyle(
+                  color: colorScheme.primary,
+                  fontWeight: FontWeight.w500,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ),
+        onTap: () => _onDeviceTap(context),
+      ),
+    );
+  }
+
+  void _onDeviceTap(BuildContext context) {
+    // 导航到表单页面，预填发现的设备信息
+    Navigator.push<void>(
+      context,
+      MaterialPageRoute<void>(
+        builder: (context) => SourceFormPage(
+          sourceType: device.type,
+          initialValues: {
+            'name': device.name,
+            'host': device.host,
+            'port': device.port.toString(),
+          },
+        ),
       ),
     );
   }
