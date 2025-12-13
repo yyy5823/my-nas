@@ -522,23 +522,12 @@ class WebViewPaginationRenderer {
       /* 动态注入的主题样式 */
     }
   </style>
-  <style id="theme-style"></style>
+<style id="theme-style"></style>
 </head>
 <body>
-  <div id="debug-overlay" style="position: fixed; top: 0; left: 0; background: rgba(255,0,0,0.8); color: white; padding: 4px 8px; font-size: 10px; z-index: 9999; display: none;"></div>
   <div id="content">$sanitizedContent</div>
 
   <script>
-    // 调试函数
-    function updateDebug(msg) {
-      var overlay = document.getElementById('debug-overlay');
-      if (overlay) {
-        overlay.style.display = 'block';
-        overlay.textContent = msg;
-        console.log('DEBUG: ' + msg);
-      }
-    }
-    
     // 章节数据
     const chapters = $chaptersJson;
 

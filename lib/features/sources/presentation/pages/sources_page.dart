@@ -944,16 +944,22 @@ class _SourceTypeBottomSheet extends StatelessWidget {
   }
 }
 
-/// 发现的设备卡片
+/// 发现的设备卡片 - 使用橙色/琥珀色主题，与已配置连接源区分
 class _DiscoveredDeviceCard extends StatelessWidget {
   const _DiscoveredDeviceCard({required this.device});
 
   final DiscoveredDevice device;
 
+  // 发现设备使用橙色/琥珀色主题
+  static const _discoveredColor = Colors.amber;
+  static const _discoveredColorDark = Color(0xFFFFB300); // amber[600]
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final accentColor = isDark ? _discoveredColorDark : _discoveredColor;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -961,30 +967,88 @@ class _DiscoveredDeviceCard extends StatelessWidget {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(
-          color: colorScheme.primary.withValues(alpha: 0.3),
+          color: accentColor.withValues(alpha: 0.4),
+          width: 1.5,
         ),
       ),
-      color: colorScheme.primaryContainer.withValues(alpha: 0.1),
+      color: accentColor.withValues(alpha: isDark ? 0.08 : 0.06),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        leading: Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: colorScheme.primary.withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(
-            device.type.icon,
-            color: colorScheme.primary,
-            size: 24,
-          ),
+        leading: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            // 主图标容器
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: accentColor.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                device.type.icon,
+                color: accentColor.withValues(alpha: isDark ? 1.0 : 0.85),
+                size: 24,
+              ),
+            ),
+            // 发现徽章 - 雷达图标
+            Positioned(
+              right: -4,
+              bottom: -4,
+              child: Container(
+                width: 20,
+                height: 20,
+                decoration: BoxDecoration(
+                  color: accentColor,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: isDark ? colorScheme.surface : Colors.white,
+                    width: 2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: accentColor.withValues(alpha: 0.3),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.radar,
+                  size: 12,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
         ),
-        title: Text(
-          device.name,
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w500,
-          ),
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
+                device.name,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            // 新发现标签
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: accentColor.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                '发现',
+                style: TextStyle(
+                  color: accentColor.withValues(alpha: isDark ? 1.0 : 0.85),
+                  fontWeight: FontWeight.w600,
+                  fontSize: 10,
+                ),
+              ),
+            ),
+          ],
         ),
         subtitle: Text(
           '${device.host}:${device.port} • ${device.type.displayName}',
@@ -993,25 +1057,32 @@ class _DiscoveredDeviceCard extends StatelessWidget {
           ),
         ),
         trailing: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
-            color: colorScheme.primary.withValues(alpha: 0.1),
+            color: accentColor,
             borderRadius: BorderRadius.circular(8),
+            boxShadow: [
+              BoxShadow(
+                color: accentColor.withValues(alpha: 0.3),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
-          child: Row(
+          child: const Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
                 Icons.add,
                 size: 16,
-                color: colorScheme.primary,
+                color: Colors.white,
               ),
-              const SizedBox(width: 4),
+              SizedBox(width: 4),
               Text(
                 '添加',
                 style: TextStyle(
-                  color: colorScheme.primary,
-                  fontWeight: FontWeight.w500,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
                   fontSize: 12,
                 ),
               ),

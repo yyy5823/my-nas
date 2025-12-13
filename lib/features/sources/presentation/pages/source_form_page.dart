@@ -199,39 +199,55 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
     if (section.collapsible) {
       return Padding(
         padding: const EdgeInsets.only(top: 8),
-        child: ExpansionTile(
-          title: Text(
-            section.title,
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w500,
+        child: Theme(
+          // 确保 ExpansionTile 内容在收起时正确裁剪
+          data: theme.copyWith(dividerColor: Colors.transparent),
+          child: ClipRect(
+            child: ExpansionTile(
+              title: Text(
+                section.title,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              subtitle: section.description != null
+                  ? Text(
+                      section.description!,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    )
+                  : null,
+              initiallyExpanded: section.defaultExpanded,
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: EdgeInsets.zero,
+              clipBehavior: Clip.antiAlias,
+              onExpansionChanged: (expanded) {
+                setState(() {
+                  if (expanded) {
+                    _expandedSections.add(section.title);
+                  } else {
+                    _expandedSections.remove(section.title);
+                  }
+                });
+              },
+              children: [
+                // 使用 Column 包装所有子项，确保正确的布局和裁剪
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (int i = 0; i < visibleFields.length; i++) ...[
+                        _buildFormField(visibleFields[i], theme),
+                        if (i < visibleFields.length - 1) const SizedBox(height: 16),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
-          subtitle: section.description != null
-              ? Text(
-                  section.description!,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                )
-              : null,
-          initiallyExpanded: section.defaultExpanded,
-          tilePadding: EdgeInsets.zero,
-          childrenPadding: const EdgeInsets.only(bottom: 8),
-          onExpansionChanged: (expanded) {
-            setState(() {
-              if (expanded) {
-                _expandedSections.add(section.title);
-              } else {
-                _expandedSections.remove(section.title);
-              }
-            });
-          },
-          children: [
-            for (int i = 0; i < visibleFields.length; i++) ...[
-              _buildFormField(visibleFields[i], theme),
-              if (i < visibleFields.length - 1) const SizedBox(height: 16),
-            ],
-          ],
         ),
       );
     }

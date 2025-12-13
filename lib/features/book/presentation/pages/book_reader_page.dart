@@ -968,23 +968,6 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
             }
           },
         ),
-        // 调试 overlay - 显示在右上角
-        if (kDebugMode)
-          Positioned(
-            top: 8,
-            right: 8,
-            child: Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: Colors.red.withValues(alpha: 0.8),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                'WebView: $contentLength chars',
-                style: const TextStyle(color: Colors.white, fontSize: 10),
-              ),
-            ),
-          ),
       ],
     );
   }

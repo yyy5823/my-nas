@@ -1397,115 +1397,280 @@ class _LanguageSettingsSheetState extends ConsumerState<_LanguageSettingsSheet> 
     LanguageType type,
     List<LanguageOption> availableLanguages,
   ) {
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) => ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-          child: Container(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.6,
-            ),
-            decoration: BoxDecoration(
-              color: widget.isDark
-                  ? AppColors.darkSurface.withValues(alpha: 0.95)
-                  : AppColors.lightSurface.withValues(alpha: 0.98),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // 拖动指示器
-                Container(
-                  margin: const EdgeInsets.only(top: 12),
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: widget.isDark
-                        ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.3)
-                        : AppColors.lightOnSurfaceVariant.withValues(alpha: 0.3),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(AppSpacing.lg),
-                  child: Text(
-                    '添加语言',
-                    style: context.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: widget.isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
-                    ),
-                  ),
-                ),
-                Flexible(
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: availableLanguages.length,
-                    itemBuilder: (context, index) {
-                      final option = availableLanguages[index];
+    // 使用全屏页面而不是底部弹窗，在移动端体验更好
+    Navigator.push<LanguageOption>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => _LanguageSelectionPage(
+          isDark: widget.isDark,
+          availableLanguages: availableLanguages,
+          type: type,
+        ),
+      ),
+    ).then((selectedLanguage) {
+      if (selectedLanguage != null) {
+        ref.read(languagePreferenceProvider.notifier)
+            .addLanguage(type, selectedLanguage);
+      }
+    });
+  }
+}
 
-                      return Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: () {
-                            ref.read(languagePreferenceProvider.notifier)
-                                .addLanguage(type, option);
-                            Navigator.pop(context);
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: AppSpacing.lg,
-                              vertical: AppSpacing.md,
-                            ),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        option.displayName,
-                                        style: context.textTheme.bodyLarge?.copyWith(
-                                          color: widget.isDark
-                                              ? AppColors.darkOnSurface
-                                              : AppColors.lightOnSurface,
-                                        ),
-                                      ),
-                                      if (option.nativeName != option.displayName) ...[
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          option.nativeName,
-                                          style: context.textTheme.bodySmall?.copyWith(
-                                            color: widget.isDark
-                                                ? AppColors.darkOnSurfaceVariant
-                                                : AppColors.lightOnSurfaceVariant,
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ),
-                                Icon(
-                                  Icons.add_rounded,
-                                  color: AppColors.primary,
-                                  size: 20,
-                                ),
-                              ],
-                            ),
+/// 语言选择全屏页面（支持搜索）
+class _LanguageSelectionPage extends StatefulWidget {
+  const _LanguageSelectionPage({
+    required this.isDark,
+    required this.availableLanguages,
+    required this.type,
+  });
+
+  final bool isDark;
+  final List<LanguageOption> availableLanguages;
+  final LanguageType type;
+
+  @override
+  State<_LanguageSelectionPage> createState() => _LanguageSelectionPageState();
+}
+
+class _LanguageSelectionPageState extends State<_LanguageSelectionPage> {
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  List<LanguageOption> get _filteredLanguages {
+    if (_searchQuery.isEmpty) {
+      return widget.availableLanguages;
+    }
+    final query = _searchQuery.toLowerCase();
+    return widget.availableLanguages.where((lang) => lang.displayName.toLowerCase().contains(query) ||
+          lang.nativeName.toLowerCase().contains(query) ||
+          lang.code.toLowerCase().contains(query)).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final typeTitle = switch (widget.type) {
+      LanguageType.audio => '音频',
+      LanguageType.subtitle => '字幕',
+      LanguageType.metadata => '元数据',
+    };
+
+    return Scaffold(
+      backgroundColor: widget.isDark ? AppColors.darkBackground : null,
+      appBar: AppBar(
+        backgroundColor: widget.isDark ? AppColors.darkSurface : null,
+        title: Text(
+          '添加$typeTitle语言',
+          style: TextStyle(
+            color: widget.isDark ? AppColors.darkOnSurface : null,
+          ),
+        ),
+        iconTheme: IconThemeData(
+          color: widget.isDark ? AppColors.darkOnSurface : null,
+        ),
+      ),
+      body: Column(
+        children: [
+          // 搜索框
+          Padding(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            child: TextField(
+              controller: _searchController,
+              onChanged: (value) {
+                setState(() {
+                  _searchQuery = value;
+                });
+              },
+              decoration: InputDecoration(
+                hintText: '搜索语言...',
+                hintStyle: TextStyle(
+                  color: widget.isDark
+                      ? AppColors.darkOnSurfaceVariant
+                      : AppColors.lightOnSurfaceVariant,
+                ),
+                prefixIcon: Icon(
+                  Icons.search_rounded,
+                  color: widget.isDark
+                      ? AppColors.darkOnSurfaceVariant
+                      : AppColors.lightOnSurfaceVariant,
+                ),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: Icon(
+                          Icons.clear_rounded,
+                          color: widget.isDark
+                              ? AppColors.darkOnSurfaceVariant
+                              : AppColors.lightOnSurfaceVariant,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _searchController.clear();
+                            _searchQuery = '';
+                          });
+                        },
+                      )
+                    : null,
+                filled: true,
+                fillColor: widget.isDark
+                    ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
+                    : AppColors.lightSurfaceVariant.withValues(alpha: 0.5),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.md,
+                  vertical: AppSpacing.sm,
+                ),
+              ),
+              style: TextStyle(
+                color: widget.isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+              ),
+            ),
+          ),
+
+          // 语言列表
+          Expanded(
+            child: _filteredLanguages.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.search_off_rounded,
+                          size: 48,
+                          color: widget.isDark
+                              ? AppColors.darkOnSurfaceVariant
+                              : AppColors.lightOnSurfaceVariant,
+                        ),
+                        const SizedBox(height: AppSpacing.md),
+                        Text(
+                          '未找到匹配的语言',
+                          style: context.textTheme.bodyLarge?.copyWith(
+                            color: widget.isDark
+                                ? AppColors.darkOnSurfaceVariant
+                                : AppColors.lightOnSurfaceVariant,
                           ),
                         ),
-                      );
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+                    itemCount: _filteredLanguages.length,
+                    itemBuilder: (context, index) {
+                      final option = _filteredLanguages[index];
+                      return _buildLanguageItem(context, option);
                     },
                   ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLanguageItem(BuildContext context, LanguageOption option) => Card(
+      margin: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: AppSpacing.xs,
+      ),
+      elevation: 0,
+      color: widget.isDark
+          ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
+          : AppColors.lightSurface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: widget.isDark
+              ? AppColors.darkOutline.withValues(alpha: 0.2)
+              : AppColors.lightOutline.withValues(alpha: 0.3),
+        ),
+      ),
+      child: InkWell(
+        onTap: () => Navigator.pop(context, option),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.md,
+          ),
+          child: Row(
+            children: [
+              // 语言图标
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                const SizedBox(height: AppSpacing.lg),
-              ],
-            ),
+                child: Center(
+                  child: Text(
+                    _getLanguageEmoji(option.code),
+                    style: const TextStyle(fontSize: 20),
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              // 语言信息
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      option.displayName,
+                      style: context.textTheme.bodyLarge?.copyWith(
+                        color: widget.isDark
+                            ? AppColors.darkOnSurface
+                            : AppColors.lightOnSurface,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    if (option.nativeName != option.displayName)
+                      Text(
+                        option.nativeName,
+                        style: context.textTheme.bodySmall?.copyWith(
+                          color: widget.isDark
+                              ? AppColors.darkOnSurfaceVariant
+                              : AppColors.lightOnSurfaceVariant,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              // 添加图标
+              Icon(
+                Icons.add_circle_outline_rounded,
+                color: AppColors.primary,
+                size: 24,
+              ),
+            ],
           ),
         ),
       ),
     );
-  }
+
+  String _getLanguageEmoji(String code) => switch (code) {
+        'auto' => '🌐',
+        'original' => '🎬',
+        'zh-CN' => '🇨🇳',
+        'zh-TW' => '🇹🇼',
+        'en' => '🇬🇧',
+        'ja' => '🇯🇵',
+        'ko' => '🇰🇷',
+        'fr' => '🇫🇷',
+        'de' => '🇩🇪',
+        'es' => '🇪🇸',
+        'pt' => '🇵🇹',
+        'ru' => '🇷🇺',
+        'it' => '🇮🇹',
+        'th' => '🇹🇭',
+        'vi' => '🇻🇳',
+        _ => '🌍',
+      };
 }
