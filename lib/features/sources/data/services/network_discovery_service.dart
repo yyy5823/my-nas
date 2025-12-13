@@ -124,6 +124,7 @@ class NetworkDiscoveryNotifier extends StateNotifier<NetworkDiscoveryState> {
           await discovery.initialize();
 
           // 监听发现事件
+          // ignore: cancel_subscriptions - 已在 _subscriptions 中管理
           final subscription = discovery.eventStream?.listen(
             (event) => _handleDiscoveryEvent(event, serviceType, sourceType, devices),
           );

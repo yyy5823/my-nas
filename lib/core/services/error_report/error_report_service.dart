@@ -8,6 +8,7 @@ import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/services/error_report/device_info_helper.dart';
 import 'package:my_nas/core/services/error_report/error_report_model.dart';
 import 'package:my_nas/core/services/error_report/route_tracker.dart';
+import 'package:my_nas/core/utils/logger.dart';
 
 /// 错误报告服务
 /// @author cq
@@ -85,7 +86,7 @@ class ErrorReportService {
         _connectTimeout,
         onTimeout: () {
           if (kDebugMode) {
-            print('[ErrorReportService] Connection timeout');
+            logger.w('[ErrorReportService] Connection timeout');
           }
           _isConnecting = false;
           _scheduleReconnect();
@@ -93,7 +94,7 @@ class ErrorReportService {
       );
     } on Exception catch (e) {
       if (kDebugMode) {
-        print('[ErrorReportService] Connect with timeout failed: $e');
+        logger.w('[ErrorReportService] Connect with timeout failed: $e');
       }
     }
   }
@@ -120,7 +121,7 @@ class ErrorReportService {
       _reconnectAttempts = 0;
 
       if (kDebugMode) {
-        print('[ErrorReportService] Connected to RabbitMQ');
+        logger.i('[ErrorReportService] Connected to RabbitMQ');
       }
 
       // 发送缓存的错误（异步，不阻塞）
@@ -133,7 +134,7 @@ class ErrorReportService {
       _isConnected = false;
 
       if (kDebugMode) {
-        print('[ErrorReportService] Failed to connect: $e');
+        logger.w('[ErrorReportService] Failed to connect: $e');
       }
 
       _scheduleReconnect();
@@ -144,7 +145,7 @@ class ErrorReportService {
   void _scheduleReconnect() {
     if (_reconnectAttempts >= _maxReconnectAttempts) {
       if (kDebugMode) {
-        print('[ErrorReportService] Max reconnect attempts reached');
+        logger.w('[ErrorReportService] Max reconnect attempts reached');
       }
       return;
     }
@@ -171,7 +172,7 @@ class ErrorReportService {
     // 如果上报功能被禁用，直接返回
     if (!enabled) {
       if (kDebugMode) {
-        print('[ErrorReportService] Reporting disabled, skipping: $errorType');
+        logger.d('[ErrorReportService] Reporting disabled, skipping: $errorType');
       }
       return;
     }
@@ -204,7 +205,7 @@ class ErrorReportService {
     // 检查是否为重复错误
     if (_isDuplicateError(report)) {
       if (kDebugMode) {
-        print('[ErrorReportService] Duplicate error ignored: ${report.errorType}');
+        logger.d('[ErrorReportService] Duplicate error ignored: ${report.errorType}');
       }
       return;
     }
@@ -212,7 +213,7 @@ class ErrorReportService {
     // 检查是否为死循环
     if (_isLoopDetected(report)) {
       if (kDebugMode) {
-        print('[ErrorReportService] Loop detected for: ${report.errorType}');
+        logger.w('[ErrorReportService] Loop detected for: ${report.errorType}');
       }
       await _sendLoopWarning(report);
       return;
@@ -238,11 +239,11 @@ class ErrorReportService {
       _exchange!.publish(jsonStr, _routingKey);
 
       if (kDebugMode) {
-        print('[ErrorReportService] Error reported: ${report.errorType}');
+        logger.d('[ErrorReportService] Error reported: ${report.errorType}');
       }
     } on Exception catch (e) {
       if (kDebugMode) {
-        print('[ErrorReportService] Failed to send report: $e');
+        logger.w('[ErrorReportService] Failed to send report: $e');
       }
       _addToPendingQueue(report);
       _isConnected = false;

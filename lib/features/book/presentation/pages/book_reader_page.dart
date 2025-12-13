@@ -1679,12 +1679,14 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
 
     // 替换所有 0x 开头的颜色值为安全的黑色
     result = result.replaceAll(
+      // ignore: unnecessary_raw_strings - 保持正则表达式一致风格
       RegExp(r'0x[0-9a-fA-F]{1,8}', caseSensitive: false),
       '#000000',
     );
 
     // 移除不完整或无效的颜色声明
     result = result.replaceAllMapped(
+      // ignore: unnecessary_raw_strings - 保持正则表达式清晰易读
       RegExp(r'''color\s*[:=]\s*["']?[^#\w][^;"'>]*["']?''', caseSensitive: false),
       (match) => '',
     );

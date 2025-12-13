@@ -1,11 +1,13 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:archive/archive.dart';
 import 'package:charset_converter/charset_converter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
+import 'package:uuid/uuid.dart';
 
 /// MOBI 解析结果
 class MobiParseResult {
@@ -82,7 +84,15 @@ class MobiParserService {
     }
 
     // 使用内置解析器
-    return _parseWithBuiltIn(bytes);
+    final builtInResult = await _parseWithBuiltIn(bytes);
+
+    // 移动端：将解析结果打包为 EPUB，以便使用 EPUB 阅读器
+    // 这样可以获得更好的渲染效果和翻页体验
+    if ((Platform.isIOS || Platform.isAndroid) && builtInResult.success) {
+      return _convertToEpub(builtInResult, fileName);
+    }
+
+    return builtInResult;
   }
 
   /// 使用 Calibre 解析 - 转换为 EPUB 格式
@@ -138,7 +148,7 @@ class MobiParserService {
           path.join(cacheDir.path, '${path.basenameWithoutExtension(fileName)}.epub'),
         );
         await outputFile.copy(cachedEpub.path);
-        
+
         logger.i('MOBI 转换 EPUB 成功: ${cachedEpub.path}');
         return MobiParseResult.fromEpub(cachedEpub.path);
       }
@@ -197,6 +207,237 @@ class MobiParserService {
       return false;
     }
   }
+
+  /// 将解析结果打包为 EPUB 格式（移动端使用）
+  ///
+  /// 此方法将内置解析器得到的 HTML 内容封装为有效的 EPUB 文件，
+  /// 以便使用 flutter_epub_viewer 进行渲染，获得更好的翻页体验。
+  Future<MobiParseResult> _convertToEpub(
+    MobiParseResult parseResult,
+    String fileName,
+  ) async {
+    if (!parseResult.success || parseResult.htmlContent == null) {
+      return parseResult;
+    }
+
+    try {
+      final title = parseResult.title ??
+          path.basenameWithoutExtension(fileName);
+      final author = parseResult.author ?? '未知作者';
+      final htmlContent = parseResult.htmlContent!;
+
+      // 清理 HTML 内容，确保是有效的 XHTML
+      final cleanedHtml = _sanitizeHtmlForEpub(htmlContent);
+
+      // 获取缓存目录
+      final tempDir = await getTemporaryDirectory();
+      final cacheDir = Directory(path.join(tempDir.path, 'mobi_epub_cache'));
+      if (!await cacheDir.exists()) {
+        await cacheDir.create(recursive: true);
+      }
+
+      // 生成唯一的 EPUB 文件名
+      final epubFileName = '${title.hashCode.abs()}_${DateTime.now().millisecondsSinceEpoch}.epub';
+      final epubPath = path.join(cacheDir.path, epubFileName);
+
+      // 创建 EPUB 内容
+      await _createEpubFile(
+        epubPath: epubPath,
+        title: title,
+        author: author,
+        htmlContent: cleanedHtml,
+      );
+
+      logger.i('MOBI 打包 EPUB 成功: $epubPath');
+      return MobiParseResult.fromEpub(epubPath);
+    } on Exception catch (e, st) {
+      logger.e('MOBI 打包 EPUB 失败', e, st);
+      // 失败时返回原始结果，让调用方使用备用渲染
+      return parseResult;
+    }
+  }
+
+  /// 清理 HTML 内容，使其成为有效的 XHTML
+  String _sanitizeHtmlForEpub(String html) {
+    var cleaned = html;
+
+    // 移除可能存在的 DOCTYPE、html、head、body 标签
+    cleaned = cleaned.replaceAll(
+      RegExp('<!DOCTYPE[^>]*>', caseSensitive: false),
+      '',
+    );
+    cleaned = cleaned.replaceAll(
+      RegExp('</?html[^>]*>', caseSensitive: false),
+      '',
+    );
+    cleaned = cleaned.replaceAll(
+      RegExp('<head[^>]*>.*?</head>', caseSensitive: false, dotAll: true),
+      '',
+    );
+    cleaned = cleaned.replaceAll(
+      RegExp('</?body[^>]*>', caseSensitive: false),
+      '',
+    );
+    cleaned = cleaned.replaceAll(
+      RegExp('<meta[^>]*/?>',caseSensitive: false),
+      '',
+    );
+    cleaned = cleaned.replaceAll(
+      RegExp(r'<\?xml[^>]*\?>', caseSensitive: false),
+      '',
+    );
+
+    // 转义 XHTML 中不允许的字符
+    // 注意：不能简单替换 &，因为可能有有效的 HTML 实体
+    cleaned = cleaned.replaceAllMapped(
+      RegExp(r'&(?!(amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)'),
+      (match) => '&amp;',
+    );
+
+    // 自闭合标签需要加斜杠（XHTML 规范）
+    cleaned = cleaned.replaceAllMapped(
+      RegExp('<(br|hr|img|input|meta|link)([^/>]*)(?<!/)>',
+          caseSensitive: false),
+      (match) => '<${match.group(1)}${match.group(2) ?? ''}/>',
+    );
+
+    return cleaned.trim();
+  }
+
+  /// 创建 EPUB 文件
+  Future<void> _createEpubFile({
+    required String epubPath,
+    required String title,
+    required String author,
+    required String htmlContent,
+  }) async {
+    final archive = Archive();
+    final uuid = const Uuid().v4();
+    final timestamp = DateTime.now().toUtc().toIso8601String();
+
+    // 1. mimetype 文件（必须是第一个，且不压缩）
+    archive.addFile(ArchiveFile(
+      'mimetype',
+      utf8.encode('application/epub+zip').length,
+      utf8.encode('application/epub+zip'),
+    ));
+
+    // 2. META-INF/container.xml
+    const containerXml = '''
+<?xml version="1.0" encoding="UTF-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>''';
+    archive.addFile(ArchiveFile(
+      'META-INF/container.xml',
+      utf8.encode(containerXml).length,
+      utf8.encode(containerXml),
+    ));
+
+    // 3. OEBPS/content.opf
+    final contentOpf = '''
+    <?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="uid">urn:uuid:$uuid</dc:identifier>
+    <dc:title>${_escapeXml(title)}</dc:title>
+    <dc:creator>${_escapeXml(author)}</dc:creator>
+    <dc:language>zh-CN</dc:language>
+    <meta property="dcterms:modified">$timestamp</meta>
+  </metadata>
+  <manifest>
+    <item id="chapter1" href="chapter1.xhtml" media-type="application/xhtml+xml"/>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+  </manifest>
+  <spine>
+    <itemref idref="chapter1"/>
+  </spine>
+</package>
+''';
+    archive.addFile(ArchiveFile(
+      'OEBPS/content.opf',
+      utf8.encode(contentOpf).length,
+      utf8.encode(contentOpf),
+    ));
+
+    // 4. OEBPS/chapter1.xhtml（主要内容）
+    final chapterXhtml = '''
+    <?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="zh-CN">
+<head>
+  <meta charset="UTF-8"/>
+  <title>${_escapeXml(title)}</title>
+  <style type="text/css">
+    body { 
+      font-family: sans-serif; 
+      line-height: 1.6; 
+      padding: 1em;
+    }
+    p { 
+      text-indent: 2em; 
+      margin: 0.5em 0; 
+    }
+    h1, h2, h3, h4, h5, h6 { 
+      text-indent: 0; 
+      margin: 1em 0 0.5em 0;
+    }
+  </style>
+</head>
+<body>
+$htmlContent
+</body>
+</html>
+''';
+    archive.addFile(ArchiveFile(
+      'OEBPS/chapter1.xhtml',
+      utf8.encode(chapterXhtml).length,
+      utf8.encode(chapterXhtml),
+    ));
+
+    // 5. OEBPS/nav.xhtml（导航文件）
+    final navXhtml = '''
+    <?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="zh-CN">
+<head>
+  <meta charset="UTF-8"/>
+  <title>导航</title>
+</head>
+<body>
+  <nav epub:type="toc" id="toc">
+    <h1>目录</h1>
+    <ol>
+      <li><a href="chapter1.xhtml">${_escapeXml(title)}</a></li>
+    </ol>
+  </nav>
+</body>
+</html>
+''';
+    archive.addFile(ArchiveFile(
+      'OEBPS/nav.xhtml',
+      utf8.encode(navXhtml).length,
+      utf8.encode(navXhtml),
+    ));
+
+    // 编码为 ZIP 并写入文件
+    final zipData = ZipEncoder().encode(archive);
+    if (zipData == null) {
+      throw StateError('EPUB ZIP 编码失败');
+    }
+
+    await File(epubPath).writeAsBytes(zipData);
+  }
+
+  /// XML 特殊字符转义
+  String _escapeXml(String text) => text
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&apos;');
 
   /// 使用内置解析器解析 MOBI
   Future<MobiParseResult> _parseWithBuiltIn(Uint8List bytes) async {
@@ -630,7 +871,7 @@ class MobiParserService {
           '3. 转换 → EPUB\n'
           '4. 将 EPUB 传到手机阅读';
     }
-    
+
     if (Platform.isMacOS) {
       return '🖥 macOS 安装 Calibre：\n'
           'brew install --cask calibre\n'

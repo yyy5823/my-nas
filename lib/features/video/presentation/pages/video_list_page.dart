@@ -497,175 +497,98 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       logger.d('VideoListNotifier: enabledPaths = null (不进行路径过滤)');
     }
 
-    // 并行查询各分类数据（使用 SQLite 索引，O(log N) 复杂度）
-    // 首页只加载少量数据用于展示，查看全部页面支持分页懒加载
-    // 如果正在刮削，数据库可能被占用，增加超时时间到15秒
-    List<Object?> results;
+    // 渐进式加载：分阶段查询，快速显示 UI
+    // 第一阶段：只获取统计信息（轻量级，快速响应）
+    List<Object?> phase1Results;
     try {
-      results = await Future.wait([
+      phase1Results = await Future.wait([
         _db.getStats(enabledPaths: enabledPaths),
         _db.getTvShowGroupCount(enabledPaths: enabledPaths),
-        // 减少首页加载量，加快初始显示速度
-        _db.getTopRated(limit: 30, enabledPaths: enabledPaths),
-        _db.getRecentlyUpdated(limit: 20, enabledPaths: enabledPaths),
-        _db.getByCategory(MediaCategory.movie, limit: 30, enabledPaths: enabledPaths),
-        _db.getTvShowGroupRepresentatives(limit: 30, enabledPaths: enabledPaths),
-        _db.getMovieCollections(),
-        // 其他视频（未识别为电影或剧集）
-        _db.getByCategory(MediaCategory.unknown, limit: 30, enabledPaths: enabledPaths),
-        // 获取数据库总数（不经过路径过滤），用于判断是否有数据被过滤
-        _db.getCount(),
+        _db.getCount(), // 总数用于判断路径过滤
       ]).timeout(
-        const Duration(seconds: 15),
+        const Duration(seconds: 3),
         onTimeout: () {
-          logger.w('VideoListNotifier: 数据库查询超时（15秒），显示空列表');
-          // 返回空结果，避免阻塞
+          logger.w('VideoListNotifier: 统计查询超时（3秒）');
           return [
             <String, dynamic>{'total': 0, 'movies': 0, 'tvShows': 0, 'others': 0},
             0,
-            <VideoMetadata>[],
-            <VideoMetadata>[],
-            <VideoMetadata>[],
-            <VideoMetadata>[],
-            <MovieCollection>[],
-            <VideoMetadata>[],
             0,
           ];
         },
       );
     } on Exception catch (e) {
-      logger.e('VideoListNotifier: 数据库查询失败', e);
-      // 查询失败时保持当前状态
+      logger.e('VideoListNotifier: 统计查询失败', e);
       return;
     }
 
-    // 安全地转换结果类型，处理可能的null值
-    final stats = (results[0] as Map<String, dynamic>?) ?? <String, dynamic>{};
-    final tvShowGroupCount = (results[1] as int?) ?? 0;
-    final topRatedRaw = (results[2] as List<VideoMetadata>?) ?? <VideoMetadata>[];
-    final recentRaw = (results[3] as List<VideoMetadata>?) ?? <VideoMetadata>[];
-    final moviesList = (results[4] as List<VideoMetadata>?) ?? <VideoMetadata>[];
-    final tvShowRepresentatives = (results[5] as List<VideoMetadata>?) ?? <VideoMetadata>[];
-    final movieCollections = (results[6] as List<MovieCollection>?) ?? <MovieCollection>[];
-    final othersList = (results[7] as List<VideoMetadata>?) ?? <VideoMetadata>[];
-    final databaseTotalCount = (results[8] as int?) ?? 0;
+    final stats = (phase1Results[0] as Map<String, dynamic>?) ?? <String, dynamic>{};
+    final tvShowGroupCount = (phase1Results[1] as int?) ?? 0;
+    final databaseTotalCount = (phase1Results[2] as int?) ?? 0;
+
+    // 检查路径过滤是否需要回退
+    final filteredTotal = stats['total'] as int? ?? 0;
+    final needFallback = filteredTotal == 0 && databaseTotalCount > 0 && enabledPaths != null;
+    final effectiveEnabledPaths = needFallback ? null : enabledPaths;
+
+    if (needFallback) {
+      logger.w('VideoListNotifier: 路径过滤后无数据，回退到显示所有数据');
+      // 重新获取不过滤的统计
+      try {
+        final fallbackStats = await _db.getStats();
+        stats
+          ..['total'] = fallbackStats['total']
+          ..['movies'] = fallbackStats['movies']
+          ..['tvShows'] = fallbackStats['tvShows']
+          ..['others'] = fallbackStats['others'];
+      } on Exception catch (e) {
+        logger.w('VideoListNotifier: 回退统计查询失败', e);
+      }
+    }
+
+    // 第二阶段：分批加载内容数据（减少锁竞争）
+    // 每批最多 3 个并行查询，避免刮削时锁等待
+    List<Object?> results;
+    try {
+      // 批次1：高优先级数据（首屏展示）
+      final batch1 = await Future.wait([
+        _db.getTopRated(limit: 30, enabledPaths: effectiveEnabledPaths),
+        _db.getRecentlyUpdated(limit: 20, enabledPaths: effectiveEnabledPaths),
+        _db.getByCategory(MediaCategory.movie, limit: 30, enabledPaths: effectiveEnabledPaths),
+      ]).timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => [<VideoMetadata>[], <VideoMetadata>[], <VideoMetadata>[]],
+      );
+
+      // 批次2：次优先级数据
+      final batch2 = await Future.wait([
+        _db.getTvShowGroupRepresentatives(limit: 30, enabledPaths: effectiveEnabledPaths),
+        _db.getMovieCollections(),
+        _db.getByCategory(MediaCategory.unknown, limit: 30, enabledPaths: effectiveEnabledPaths),
+      ]).timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => [<VideoMetadata>[], <MovieCollection>[], <VideoMetadata>[]],
+      );
+
+      results = [...batch1, ...batch2];
+    } on Exception catch (e) {
+      logger.e('VideoListNotifier: 内容查询失败', e);
+      results = [<VideoMetadata>[], <VideoMetadata>[], <VideoMetadata>[], <VideoMetadata>[], <MovieCollection>[], <VideoMetadata>[]];
+    }
+
+    // 安全地转换结果类型（新的 results 结构）
+    // results = [topRated, recent, movies, tvShowReps, collections, others]
+    final topRatedRaw = (results[0] as List<VideoMetadata>?) ?? <VideoMetadata>[];
+    final recentRaw = (results[1] as List<VideoMetadata>?) ?? <VideoMetadata>[];
+    final moviesList = (results[2] as List<VideoMetadata>?) ?? <VideoMetadata>[];
+    final tvShowRepresentatives = (results[3] as List<VideoMetadata>?) ?? <VideoMetadata>[];
+    final movieCollections = (results[4] as List<MovieCollection>?) ?? <MovieCollection>[];
+    final othersList = (results[5] as List<VideoMetadata>?) ?? <VideoMetadata>[];
 
     // 记录查询结果统计
     logger.d('VideoListNotifier: 查询结果 - stats=$stats, '
         'topRated=${topRatedRaw.length}, recent=${recentRaw.length}, '
         'movies=${moviesList.length}, tvShows=${tvShowRepresentatives.length}, '
         'others=${othersList.length}, databaseTotal=$databaseTotalCount');
-
-    // 修复：如果配置的路径过滤后无数据，但数据库有数据，回退到不过滤模式重新查询
-    final filteredTotal = stats['total'] as int? ?? 0;
-    if (filteredTotal == 0 && databaseTotalCount > 0 && enabledPaths != null) {
-      logger
-        ..w('VideoListNotifier: ⚠️ 路径过滤后无数据！数据库有 $databaseTotalCount 条记录')
-        ..w('  配置的路径可能与数据库中的不匹配，回退到显示所有数据');
-
-      // 异步打印诊断信息
-      unawaited(Future.microtask(() async {
-        try {
-          final sample = await _db.getFirstVideoPath();
-          if (sample != null) {
-            logger.w('  数据库中的示例路径: sourceId="${sample.sourceId}", path="${sample.filePath}"');
-          }
-        } on Exception catch (e) {
-          logger.w('  无法获取示例路径: $e');
-        }
-      }));
-
-      // 回退：不使用路径过滤，重新查询（同样使用15秒超时）
-      final fallbackResults = await Future.wait([
-        _db.getStats(),  // 不传 enabledPaths
-        _db.getTvShowGroupCount(),
-        _db.getTopRated(limit: 30),
-        _db.getRecentlyUpdated(limit: 20),
-        _db.getByCategory(MediaCategory.movie, limit: 30),
-        _db.getTvShowGroupRepresentatives(limit: 30),
-        _db.getMovieCollections(),
-        _db.getByCategory(MediaCategory.unknown, limit: 30),
-      ]).timeout(
-        const Duration(seconds: 15),
-        onTimeout: () {
-          logger.w('VideoListNotifier: 回退查询超时（15秒）');
-          return [
-            <String, dynamic>{'total': 0, 'movies': 0, 'tvShows': 0, 'others': 0},
-            0,
-            <VideoMetadata>[],
-            <VideoMetadata>[],
-            <VideoMetadata>[],
-            <VideoMetadata>[],
-            <MovieCollection>[],
-            <VideoMetadata>[],
-          ];
-        },
-      );
-
-      // 使用回退查询的结果
-      final fallbackStats = fallbackResults[0] as Map<String, dynamic>;
-      final fallbackTvShowGroupCount = fallbackResults[1] as int;
-      final fallbackTopRated = fallbackResults[2] as List<VideoMetadata>;
-      final fallbackRecent = fallbackResults[3] as List<VideoMetadata>;
-      final fallbackMovies = fallbackResults[4] as List<VideoMetadata>;
-      final fallbackTvShowReps = fallbackResults[5] as List<VideoMetadata>;
-      final fallbackCollections = fallbackResults[6] as List<MovieCollection>;
-      final fallbackOthers = fallbackResults[7] as List<VideoMetadata>;
-
-      logger.i('VideoListNotifier: 回退查询成功 - total=${fallbackStats['total']}');
-
-      // 构建 tvShowGroups
-      final fallbackTvShowGroups = <String, TvShowGroup>{};
-      for (final rep in fallbackTvShowReps) {
-        final groupKey = rep.tmdbId != null ? 'tmdb_${rep.tmdbId}' : 'title_${rep.title?.toLowerCase()}';
-        fallbackTvShowGroups[groupKey] = TvShowGroup(
-          groupKey: groupKey,
-          title: rep.title ?? rep.fileName,
-          tmdbId: rep.tmdbId,
-          posterUrl: rep.posterUrl,
-          backdropUrl: rep.backdropUrl,
-          rating: rep.rating,
-          overview: rep.overview,
-          year: rep.year,
-          genres: rep.genres,
-          seasonEpisodes: {rep.seasonNumber ?? 1: [rep]},
-        );
-      }
-
-      final fallbackTopRatedFinal = _buildTopRatedWithGroups(fallbackTopRated, fallbackTvShowGroups);
-      final fallbackRecentFinal = _buildRecentWithGroups(fallbackRecent, fallbackTvShowGroups);
-
-      final fallbackVideoByKey = <String, VideoMetadata>{};
-      for (final m in fallbackMovies) {
-        fallbackVideoByKey[m.uniqueKey] = m;
-      }
-      for (final m in fallbackTvShowReps) {
-        fallbackVideoByKey[m.uniqueKey] = m;
-      }
-      for (final m in fallbackOthers) {
-        fallbackVideoByKey[m.uniqueKey] = m;
-      }
-
-      _lastTotalCount = databaseTotalCount;
-
-      state = VideoListLoaded(
-        totalCount: fallbackStats['total'] as int? ?? 0,
-        databaseTotalCount: databaseTotalCount,
-        movieCount: fallbackStats['movies'] as int? ?? 0,
-        tvShowCount: fallbackStats['tvShows'] as int? ?? 0,
-        tvShowGroupCount: fallbackTvShowGroupCount,
-        otherCount: fallbackStats['others'] as int? ?? 0,
-        topRatedMovies: fallbackTopRatedFinal,
-        recentVideos: fallbackRecentFinal,
-        movies: fallbackMovies,
-        tvShowGroups: fallbackTvShowGroups,
-        others: fallbackOthers,
-        movieCollections: fallbackCollections,
-        videoByKey: fallbackVideoByKey,
-        fromCache: true,
-      );
-      return;  // 已经设置了 state，直接返回
-    }
 
     // 首页剧集直接使用代表性数据，不需要再分组
     // 但为了兼容性，仍然构建 TvShowGroup（用于高分推荐和最近添加的去重）
@@ -1135,37 +1058,40 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               ),
               const SizedBox(height: 4),
               if (videoCount > 0 || isScraping)
-                Row(
-                  children: [
-                    _buildStatChip(
-                      icon: Icons.movie_rounded,
-                      label: '$movieCount 电影',
-                      color: AppColors.primary,
-                      isDark: isDark,
-                    ),
-                    const SizedBox(width: 12),
-                    _buildStatChip(
-                      icon: Icons.live_tv_rounded,
-                      label: '$tvShowCount 剧集',
-                      color: AppColors.accent,
-                      isDark: isDark,
-                    ),
-                    // 其他视频
-                    if (otherCount > 0) ...[
-                      const SizedBox(width: 12),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
                       _buildStatChip(
-                        icon: Icons.video_file_rounded,
-                        label: '$otherCount 其他',
-                        color: Colors.grey,
+                        icon: Icons.movie_rounded,
+                        label: '$movieCount 电影',
+                        color: AppColors.primary,
                         isDark: isDark,
                       ),
-                    ],
-                    // 刮削进度指示器
-                    if (isScraping) ...[
                       const SizedBox(width: 12),
-                      _buildScrapeProgressChip(isDark),
+                      _buildStatChip(
+                        icon: Icons.live_tv_rounded,
+                        label: '$tvShowCount 剧集',
+                        color: AppColors.accent,
+                        isDark: isDark,
+                      ),
+                      // 其他视频
+                      if (otherCount > 0) ...[
+                        const SizedBox(width: 12),
+                        _buildStatChip(
+                          icon: Icons.video_file_rounded,
+                          label: '$otherCount 其他',
+                          color: Colors.grey,
+                          isDark: isDark,
+                        ),
+                      ],
+                      // 刮削进度指示器
+                      if (isScraping) ...[
+                        const SizedBox(width: 12),
+                        _buildScrapeProgressChip(isDark),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
             ],
           ),

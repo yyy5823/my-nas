@@ -301,7 +301,8 @@ class BookContentProcessor {
           if (hex.isEmpty || hex.length < 3) return ''; // 太短无法修复
           if (hex.length > 6) hex = hex.substring(0, 6);
           while (hex.length < 6) {
-            hex = '${hex}0'; // 补齐到6位
+            // ignore: use_string_buffers - 简单循环，StringBuffer 过度设计
+            hex += '0'; // 补齐到6位
           }
           return 'color: #$hex;';
         }

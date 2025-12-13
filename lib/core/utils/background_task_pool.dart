@@ -87,10 +87,10 @@ class BackgroundTaskPool {
       _executeTask(queuedTask);
     } else {
       _queue.add(queuedTask);
-      logger.d(
-        'BackgroundTaskPool[$name]: 任务入队 '
-        '(running: $_running, queued: ${_queue.length})',
-      );
+      // logger.d(
+      //   'BackgroundTaskPool[$name]: 任务入队 '
+      //   '(running: $_running, queued: ${_queue.length})',
+      // );
     }
 
     return completer.future;
