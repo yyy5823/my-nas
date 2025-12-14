@@ -78,6 +78,111 @@ class SmbFileSystem implements NasFileSystem {
     }
   }
 
+  /// 并行列出多个目录
+  ///
+  /// 利用连接池同时列出多个目录，大幅提升扫描速度
+  /// 如果没有连接池，则回退到串行执行
+  ///
+  /// [paths] 要列出的目录路径列表
+  /// [concurrency] 最大并发数（默认根据连接池配置自动调整）
+  ///
+  /// 返回 Map<路径, 文件列表>，失败的目录会被跳过并记录日志
+  Future<Map<String, List<FileItem>>> listDirectoriesParallel(
+    List<String> paths, {
+    int? concurrency,
+  }) async {
+    if (paths.isEmpty) return {};
+
+    final results = <String, List<FileItem>>{};
+
+    // 如果没有连接池，回退到串行执行
+    if (connectionPool == null) {
+      logger.d('SmbFileSystem: 无连接池，使用串行目录列表');
+      for (final path in paths) {
+        try {
+          results[path] = await listDirectory(path);
+        } on Exception catch (e) {
+          logger.w('SmbFileSystem: 列出目录失败: $path - $e');
+        }
+      }
+      return results;
+    }
+
+    // 使用连接池并行执行
+    final pool = connectionPool!;
+    final maxConcurrency = concurrency ?? pool.maxConnections;
+    final actualConcurrency = maxConcurrency < paths.length ? maxConcurrency : paths.length;
+
+    logger.d('SmbFileSystem: 并行列出 ${paths.length} 个目录，并发数: $actualConcurrency');
+
+    // 分批处理，每批使用连接池并行执行
+    for (var i = 0; i < paths.length; i += actualConcurrency) {
+      final batch = paths.skip(i).take(actualConcurrency).toList();
+
+      final futures = batch.map((path) async {
+        try {
+          final files = await pool.withConnection(
+            (client) => _listDirectoryWithClient(client, path),
+            type: SmbConnectionType.general,
+          );
+          return MapEntry(path, files);
+        } on Exception catch (e) {
+          logger.w('SmbFileSystem: 并行列出目录失败: $path - $e');
+          return MapEntry(path, <FileItem>[]);
+        }
+      });
+
+      final batchResults = await Future.wait(futures);
+      for (final entry in batchResults) {
+        if (entry.value.isNotEmpty || !results.containsKey(entry.key)) {
+          results[entry.key] = entry.value;
+        }
+      }
+    }
+
+    logger.d('SmbFileSystem: 并行列出完成，成功 ${results.length}/${paths.length} 个目录');
+    return results;
+  }
+
+  /// 递归发现所有子目录（用于扫描阶段1）
+  ///
+  /// 从根目录开始，并行遍历发现所有子目录
+  /// 返回所有目录路径（包括根目录）
+  ///
+  /// [rootPath] 根目录路径
+  /// [onProgress] 进度回调，参数为当前发现的目录数
+  Future<List<String>> discoverAllDirectories(
+    String rootPath, {
+    void Function(int count)? onProgress,
+  }) async {
+    final allDirectories = <String>[rootPath];
+    final pendingDirectories = <String>[rootPath];
+
+    while (pendingDirectories.isNotEmpty) {
+      // 取出一批待处理的目录
+      final batch = pendingDirectories.take(10).toList();
+      pendingDirectories.removeRange(0, batch.length);
+
+      // 并行列出这批目录
+      final results = await listDirectoriesParallel(batch);
+
+      // 收集发现的子目录
+      for (final entry in results.entries) {
+        final subDirs = entry.value
+            .where((f) => f.isDirectory && !f.isHidden)
+            .map((f) => f.path)
+            .toList();
+        allDirectories.addAll(subDirs);
+        pendingDirectories.addAll(subDirs);
+      }
+
+      onProgress?.call(allDirectories.length);
+    }
+
+    logger.i('SmbFileSystem: 发现 ${allDirectories.length} 个目录');
+    return allDirectories;
+  }
+
   /// 列出共享文件夹
   Future<List<FileItem>> listShares() async {
     logger.d('SmbFileSystem: 获取共享列表');

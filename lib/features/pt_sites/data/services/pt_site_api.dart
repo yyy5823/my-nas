@@ -224,9 +224,11 @@ class MTeamApi extends PTSiteApi {
         return const PTUserInfo(username: '', userId: '');
       }
 
+      // M-Team API 需要将 uid 放在 POST body 中，而不是 query parameter
       final response = await _ioClient.post(
-        Uri.parse('$_apiBase/api/member/profile?uid=$uid'),
+        Uri.parse('$_apiBase/api/member/profile'),
         headers: headers,
+        body: json.encode({'uid': uid}),
       );
 
       if (response.statusCode != 200) {
@@ -436,9 +438,9 @@ class MTeamApi extends PTSiteApi {
       id: data['id']?.toString() ?? '',
       name: data['name'] as String? ?? '',
       size: _parseBytes(data['size']),
-      seeders: (status['seeders'] as int?) ?? 0,
-      leechers: (status['leechers'] as int?) ?? 0,
-      snatched: (status['timesCompleted'] as int?) ?? 0,
+      seeders: _parseInt(status['seeders']),
+      leechers: _parseInt(status['leechers']),
+      snatched: _parseInt(status['timesCompleted']),
       uploadTime: DateTime.tryParse(data['createdDate'] as String? ?? '') ?? DateTime.now(),
       category: data['category'] as String?,
       smallDescr: data['smallDescr'] as String?,
@@ -486,6 +488,15 @@ class MTeamApi extends PTSiteApi {
     if (value == null) return 0;
     if (value is int) return value;
     if (value is String) return int.tryParse(value) ?? 0;
+    return 0;
+  }
+
+  /// 解析整数值（可能是 int 或 String）
+  int _parseInt(dynamic value) {
+    if (value == null) return 0;
+    if (value is int) return value;
+    if (value is String) return int.tryParse(value) ?? 0;
+    if (value is double) return value.toInt();
     return 0;
   }
 }

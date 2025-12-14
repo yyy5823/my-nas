@@ -9,13 +9,13 @@ import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
-import 'package:my_nas/features/video/data/services/nfo_scraper_service.dart';
 import 'package:my_nas/features/video/data/services/subtitle_service.dart';
 import 'package:my_nas/features/video/data/services/video_database_service.dart';
 import 'package:my_nas/features/video/data/services/video_library_cache_service.dart';
 import 'package:my_nas/features/video/data/services/video_metadata_service.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
+import 'package:my_nas/nas_adapters/smb/smb_file_system.dart';
 
 /// 视频扫描进度
 class VideoScanProgress {
@@ -119,7 +119,6 @@ class VideoScannerService {
   final VideoMetadataService _metadataService = VideoMetadataService();
   final VideoDatabaseService _dbService = VideoDatabaseService();
   final BackgroundTaskService _backgroundTaskService = BackgroundTaskService();
-  final NfoScraperService _nfoService = NfoScraperService();
 
   bool _isScanning = false;
 
@@ -288,14 +287,16 @@ class VideoScannerService {
         // 创建当前目录的视频和字幕列表（用于计算单目录进度）
         final pathVideos = <_ScannedVideo>[];
         final pathSubtitles = <_ScannedSubtitle>[];
-        await _scanDirectory(
+
+        // 使用增量扫描（支持断点续扫和并行处理）
+        await _scanDirectoriesIncremental(
           fileSystem: fileSystem,
           sourceId: path.sourceId,
-          path: path.path,
-          rootPathPrefix: path.path,
+          rootPath: path.path,
           videos: pathVideos,
           subtitles: pathSubtitles,
         );
+
         allVideos.addAll(pathVideos);
         allSubtitles.addAll(pathSubtitles);
 
@@ -904,143 +905,6 @@ class VideoScannerService {
     }
   }
 
-  /// 递归扫描目录（无深度限制）
-  ///
-  /// 会跳过以下目录：
-  /// - 隐藏目录（以 . 开头）
-  /// - 系统目录（以 @ 开头、#recycle、eaDir）
-  ///
-  /// 优化：对于有 NFO 文件的目录，会快速解析基础信息
-  /// 同时索引字幕文件，关联到同目录下的视频
-  Future<void> _scanDirectory({
-    required NasFileSystem fileSystem,
-    required String sourceId,
-    required String path,
-    required String rootPathPrefix,
-    required List<_ScannedVideo> videos,
-    required List<_ScannedSubtitle> subtitles,
-  }) async {
-    _emitProgress(
-      VideoScanProgress(
-        phase: VideoScanPhase.scanning,
-        sourceId: sourceId,
-        pathPrefix: rootPathPrefix,
-        currentPath: path,
-        scannedCount: videos.length,
-      ),
-    );
-
-    try {
-      final items = await fileSystem.listDirectory(path);
-
-      // 检测当前目录是否包含 NFO 文件（用于设置刮削优先级）
-      final hasNfo = items.any((item) =>
-          !item.isDirectory &&
-          (item.name.toLowerCase().endsWith('.nfo') ||
-           item.name.toLowerCase() == 'movie.nfo' ||
-           item.name.toLowerCase() == 'tvshow.nfo'));
-
-      // 收集当前目录的视频文件和字幕文件
-      final videoItems = <FileItem>[];
-      final subtitleItems = <FileItem>[];
-
-      for (final item in items) {
-        if (item.isDirectory) {
-          // 跳过隐藏目录和系统目录
-          if (_shouldSkipDirectory(item.name)) {
-            continue;
-          }
-
-          // 递归扫描子目录
-          await _scanDirectory(
-            fileSystem: fileSystem,
-            sourceId: sourceId,
-            path: item.path,
-            rootPathPrefix: rootPathPrefix,
-            videos: videos,
-            subtitles: subtitles,
-          );
-        } else if (item.type == FileType.video) {
-          videoItems.add(item);
-        } else if (_isSubtitleFile(item.name)) {
-          subtitleItems.add(item);
-        }
-      }
-
-      // 处理当前目录的视频文件
-      for (final videoItem in videoItems) {
-        NfoBasicInfo? nfoInfo;
-
-        // 如果目录有 NFO 文件，尝试快速解析基础信息
-        if (hasNfo) {
-          try {
-            final videoBaseName = _getBaseName(videoItem.name);
-            final nfoMetadata = await _nfoService.quickParseFromDirectory(
-              fileSystem: fileSystem,
-              directoryItems: items,
-              videoDir: path,
-              videoBaseName: videoBaseName,
-            );
-
-            if (nfoMetadata != null && nfoMetadata.hasData) {
-              nfoInfo = NfoBasicInfo(
-                title: nfoMetadata.title,
-                originalTitle: nfoMetadata.originalTitle,
-                year: nfoMetadata.year,
-                rating: nfoMetadata.rating,
-                tmdbId: nfoMetadata.tmdbId,
-                genres: nfoMetadata.genres?.join(', '),
-                seasonNumber: nfoMetadata.seasonNumber,
-                episodeNumber: nfoMetadata.episodeNumber,
-                posterPath: nfoMetadata.posterPath,
-              );
-            }
-          } on Exception catch (e) {
-            logger.w('VideoScannerService: 快速解析 NFO 失败 ${videoItem.name}', e);
-          }
-        }
-
-        videos.add(_ScannedVideo(
-          sourceId: sourceId,
-          file: videoItem,
-          hasNfoInDirectory: hasNfo,
-          nfoBasicInfo: nfoInfo,
-        ));
-
-        // 为该视频关联字幕文件
-        final videoBaseName = _getBaseName(videoItem.name).toLowerCase();
-        for (final subtitleItem in subtitleItems) {
-          final subtitleBaseName = _getBaseName(subtitleItem.name).toLowerCase();
-          // 字幕文件名以视频名开头，或完全匹配
-          if (subtitleBaseName == videoBaseName ||
-              subtitleBaseName.startsWith(videoBaseName)) {
-            subtitles.add(_ScannedSubtitle(
-              sourceId: sourceId,
-              videoPath: videoItem.path,
-              subtitleFile: subtitleItem,
-              language: _parseSubtitleLanguage(subtitleItem.name, videoBaseName),
-            ));
-          }
-        }
-
-        // 每扫描到一定数量更新进度
-        if (videos.length % 10 == 0) {
-          _emitProgress(
-            VideoScanProgress(
-              phase: VideoScanPhase.scanning,
-              sourceId: sourceId,
-              pathPrefix: rootPathPrefix,
-              currentPath: path,
-              scannedCount: videos.length,
-            ),
-          );
-        }
-      }
-    } on Exception catch (e) {
-      logger.w('VideoScannerService: 扫描目录失败 $path', e);
-    }
-  }
-
   /// 检查是否是字幕文件
   bool _isSubtitleFile(String fileName) {
     final ext = _getExtension(fileName);
@@ -1114,6 +978,325 @@ class VideoScannerService {
       name.startsWith('#recycle') ||
       name == 'eaDir' ||
       name == '@eaDir';
+
+  // ============ 增量扫描方法 ============
+
+  /// 增量扫描目录（支持断点续扫和并行处理）
+  ///
+  /// 两阶段扫描策略：
+  /// 1. 阶段1：快速发现所有目录，保存到数据库
+  /// 2. 阶段2：逐目录扫描视频文件，已完成的目录会跳过
+  ///
+  /// 优势：
+  /// - 中断后可从上次位置继续
+  /// - SMB 连接池并行列目录，速度提升数倍
+  /// - 进度可视化（已扫描 X/Y 个目录）
+  Future<void> _scanDirectoriesIncremental({
+    required NasFileSystem fileSystem,
+    required String sourceId,
+    required String rootPath,
+    required List<_ScannedVideo> videos,
+    required List<_ScannedSubtitle> subtitles,
+  }) async {
+    // 检查是否有未完成的扫描
+    final hasUnfinished = await _dbService.hasUnfinishedScan(sourceId, rootPath);
+
+    if (hasUnfinished) {
+      logger.i('VideoScannerService: 发现未完成的扫描，继续上次进度');
+      // 重置中断的扫描状态
+      await _dbService.resetInterruptedScans(sourceId, rootPath);
+    } else {
+      // 新扫描：先清除旧进度，然后发现所有目录
+      await _dbService.clearScanProgress(sourceId, rootPath);
+
+      // 阶段1：发现所有目录
+      _emitProgress(VideoScanProgress(
+        phase: VideoScanPhase.scanning,
+        sourceId: sourceId,
+        pathPrefix: rootPath,
+        currentPath: '正在发现目录...',
+      ));
+
+      final directories = await _discoverDirectories(
+        fileSystem: fileSystem,
+        sourceId: sourceId,
+        rootPath: rootPath,
+      );
+
+      logger.i('VideoScannerService: 发现 ${directories.length} 个目录');
+
+      // 保存到数据库
+      await _dbService.addPendingDirectories(sourceId, rootPath, directories);
+    }
+
+    // 阶段2：逐目录扫描文件
+    await _scanPendingDirectories(
+      fileSystem: fileSystem,
+      sourceId: sourceId,
+      rootPath: rootPath,
+      videos: videos,
+      subtitles: subtitles,
+    );
+  }
+
+  /// 发现所有子目录（利用 SMB 并行能力）
+  Future<List<String>> _discoverDirectories({
+    required NasFileSystem fileSystem,
+    required String sourceId,
+    required String rootPath,
+  }) async {
+    // 如果是 SMB 文件系统，使用并行发现
+    if (fileSystem is SmbFileSystem) {
+      return fileSystem.discoverAllDirectories(
+        rootPath,
+        onProgress: (count) {
+          _emitProgress(VideoScanProgress(
+            phase: VideoScanPhase.scanning,
+            sourceId: sourceId,
+            pathPrefix: rootPath,
+            currentPath: '发现 $count 个目录...',
+          ));
+        },
+      );
+    }
+
+    // 其他文件系统使用递归发现
+    final directories = <String>[rootPath];
+    final pending = <String>[rootPath];
+
+    while (pending.isNotEmpty) {
+      final current = pending.removeAt(0);
+
+      try {
+        final items = await fileSystem.listDirectory(current);
+        final subDirs = items
+            .where((f) => f.isDirectory && !f.isHidden && !_shouldSkipDirectory(f.name))
+            .map((f) => f.path)
+            .toList();
+
+        directories.addAll(subDirs);
+        pending.addAll(subDirs);
+
+        if (directories.length % 50 == 0) {
+          _emitProgress(VideoScanProgress(
+            phase: VideoScanPhase.scanning,
+            sourceId: sourceId,
+            pathPrefix: rootPath,
+            currentPath: '发现 ${directories.length} 个目录...',
+          ));
+        }
+      } on Exception catch (e) {
+        logger.w('VideoScannerService: 发现目录失败 $current', e);
+      }
+    }
+
+    return directories;
+  }
+
+  /// 扫描待处理的目录
+  Future<void> _scanPendingDirectories({
+    required NasFileSystem fileSystem,
+    required String sourceId,
+    required String rootPath,
+    required List<_ScannedVideo> videos,
+    required List<_ScannedSubtitle> subtitles,
+  }) async {
+    // 获取总进度
+    final stats = await _dbService.getScanProgressStats(sourceId, rootPath);
+
+    while (true) {
+      // 获取一批待扫描目录
+      final pending = await _dbService.getPendingDirectories(
+        sourceId,
+        rootPath,
+        limit: 20,
+      );
+
+      if (pending.isEmpty) {
+        logger.i('VideoScannerService: 所有目录扫描完成');
+        break;
+      }
+
+      // SMB 支持并行列目录
+      if (fileSystem is SmbFileSystem && pending.length > 1) {
+        await _scanDirectoriesBatchParallel(
+          fileSystem: fileSystem,
+          sourceId: sourceId,
+          rootPath: rootPath,
+          directories: pending,
+          videos: videos,
+          subtitles: subtitles,
+          totalDirectories: stats.totalDirectories,
+        );
+      } else {
+        // 串行扫描
+        for (final dir in pending) {
+          await _scanSingleDirectory(
+            fileSystem: fileSystem,
+            sourceId: sourceId,
+            rootPath: rootPath,
+            dirPath: dir.path,
+            videos: videos,
+            subtitles: subtitles,
+            totalDirectories: stats.totalDirectories,
+          );
+        }
+      }
+    }
+  }
+
+  /// 并行扫描一批目录（SMB 优化）
+  Future<void> _scanDirectoriesBatchParallel({
+    required SmbFileSystem fileSystem,
+    required String sourceId,
+    required String rootPath,
+    required List<ScanProgressItem> directories,
+    required List<_ScannedVideo> videos,
+    required List<_ScannedSubtitle> subtitles,
+    required int totalDirectories,
+  }) async {
+    // 标记开始扫描
+    for (final dir in directories) {
+      await _dbService.markDirectoryScanning(sourceId, dir.path);
+    }
+
+    // 并行列出所有目录内容
+    final paths = directories.map((d) => d.path).toList();
+    final results = await fileSystem.listDirectoriesParallel(paths);
+
+    // 处理每个目录的结果
+    final completedDirs = <({String sourceId, String path, int videoCount})>[];
+
+    for (final dir in directories) {
+      final items = results[dir.path];
+      if (items == null) {
+        // 列目录失败，标记完成但视频数为 0
+        completedDirs.add((sourceId: sourceId, path: dir.path, videoCount: 0));
+        continue;
+      }
+
+      // 处理目录内容
+      final videoCount = await _processDirectoryItems(
+        sourceId: sourceId,
+        dirPath: dir.path,
+        items: items,
+        videos: videos,
+        subtitles: subtitles,
+      );
+
+      completedDirs.add((
+        sourceId: sourceId,
+        path: dir.path,
+        videoCount: videoCount,
+      ));
+    }
+
+    // 批量标记完成
+    await _dbService.markDirectoriesCompletedBatch(completedDirs);
+
+    // 更新进度
+    final currentStats = await _dbService.getScanProgressStats(sourceId, rootPath);
+    _emitProgress(VideoScanProgress(
+      phase: VideoScanPhase.scanning,
+      sourceId: sourceId,
+      pathPrefix: rootPath,
+      currentPath: '${currentStats.completedDirectories}/$totalDirectories 目录',
+      scannedCount: videos.length,
+    ));
+  }
+
+  /// 扫描单个目录
+  Future<void> _scanSingleDirectory({
+    required NasFileSystem fileSystem,
+    required String sourceId,
+    required String rootPath,
+    required String dirPath,
+    required List<_ScannedVideo> videos,
+    required List<_ScannedSubtitle> subtitles,
+    required int totalDirectories,
+  }) async {
+    // 标记开始扫描
+    await _dbService.markDirectoryScanning(sourceId, dirPath);
+
+    try {
+      final items = await fileSystem.listDirectory(dirPath);
+
+      final videoCount = await _processDirectoryItems(
+        sourceId: sourceId,
+        dirPath: dirPath,
+        items: items,
+        videos: videos,
+        subtitles: subtitles,
+      );
+
+      // 标记完成
+      await _dbService.markDirectoryCompleted(sourceId, dirPath, videoCount: videoCount);
+
+      // 更新进度
+      final currentStats = await _dbService.getScanProgressStats(sourceId, rootPath);
+      _emitProgress(VideoScanProgress(
+        phase: VideoScanPhase.scanning,
+        sourceId: sourceId,
+        pathPrefix: rootPath,
+        currentPath: '${currentStats.completedDirectories}/$totalDirectories 目录',
+        scannedCount: videos.length,
+      ));
+    } on Exception catch (e) {
+      logger.w('VideoScannerService: 扫描目录失败 $dirPath', e);
+      // 失败也标记完成，避免无限重试
+      await _dbService.markDirectoryCompleted(sourceId, dirPath, videoCount: 0);
+    }
+  }
+
+  /// 处理目录内容，提取视频和字幕
+  ///
+  /// 返回发现的视频数量
+  Future<int> _processDirectoryItems({
+    required String sourceId,
+    required String dirPath,
+    required List<FileItem> items,
+    required List<_ScannedVideo> videos,
+    required List<_ScannedSubtitle> subtitles,
+  }) async {
+    // 检测当前目录是否包含 NFO 文件
+    final hasNfo = items.any((item) =>
+        !item.isDirectory &&
+        (item.name.toLowerCase().endsWith('.nfo') ||
+         item.name.toLowerCase() == 'movie.nfo' ||
+         item.name.toLowerCase() == 'tvshow.nfo'));
+
+    // 收集视频和字幕
+    final videoItems = items.where((f) => !f.isDirectory && f.type == FileType.video).toList();
+    final subtitleItems = items.where((f) => !f.isDirectory && _isSubtitleFile(f.name)).toList();
+
+    // 处理视频文件（不在此阶段解析 NFO，延迟到刮削阶段）
+    for (final videoItem in videoItems) {
+      videos.add(_ScannedVideo(
+        sourceId: sourceId,
+        file: videoItem,
+        hasNfoInDirectory: hasNfo,
+        // 不在扫描阶段解析 NFO，加快扫描速度
+        nfoBasicInfo: null,
+      ));
+
+      // 关联字幕
+      final videoBaseName = _getBaseName(videoItem.name).toLowerCase();
+      for (final subtitleItem in subtitleItems) {
+        final subtitleBaseName = _getBaseName(subtitleItem.name).toLowerCase();
+        if (subtitleBaseName == videoBaseName ||
+            subtitleBaseName.startsWith(videoBaseName)) {
+          subtitles.add(_ScannedSubtitle(
+            sourceId: sourceId,
+            videoPath: videoItem.path,
+            subtitleFile: subtitleItem,
+            language: _parseSubtitleLanguage(subtitleItem.name, videoBaseName),
+          ));
+        }
+      }
+    }
+
+    return videoItems.length;
+  }
 
   void _emitProgress(VideoScanProgress progress) {
     _progressController.add(progress);

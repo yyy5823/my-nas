@@ -123,6 +123,21 @@ class VideoDatabaseService {
   static const String _subColFormat = 'format'; // 字幕格式 (srt, ass, vtt)
   static const String _subColLanguage = 'language'; // 语言
 
+  // 目录扫描状态表（用于增量扫描和断点续扫）
+  static const String _tableScanProgress = 'scan_progress';
+  static const String _scanColId = 'id';
+  static const String _scanColSourceId = 'source_id';
+  static const String _scanColPath = 'path'; // 目录路径
+  static const String _scanColRootPath = 'root_path'; // 根目录路径（媒体库配置的路径）
+  static const String _scanColStatus = 'status'; // 0=pending, 1=scanning, 2=completed
+  static const String _scanColVideoCount = 'video_count'; // 该目录发现的视频数
+  static const String _scanColLastScanned = 'last_scanned'; // 最后扫描时间
+
+  /// 扫描状态常量
+  static const int scanStatusPending = 0;
+  static const int scanStatusScanning = 1;
+  static const int scanStatusCompleted = 2;
+
   /// 初始化数据库
   Future<void> init() async {
     if (_initialized) return;
@@ -133,7 +148,7 @@ class VideoDatabaseService {
 
       _db = await openDatabase(
         dbPath,
-        version: 6, // 升级版本以添加字幕索引表
+        version: 7, // 升级版本以添加扫描进度表
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onConfigure: _onConfigure,
@@ -235,6 +250,9 @@ class VideoDatabaseService {
     // 创建字幕索引表
     await _createSubtitleTable(db);
 
+    // 创建扫描进度表
+    await _createScanProgressTable(db);
+
     logger.i('VideoDatabaseService: 表和索引创建完成');
   }
 
@@ -258,6 +276,32 @@ class VideoDatabaseService {
         'CREATE INDEX IF NOT EXISTS idx_subtitle_video ON $_tableSubtitles($_subColSourceId, $_subColVideoPath)');
 
     logger.i('VideoDatabaseService: 字幕索引表创建完成');
+  }
+
+  /// 创建扫描进度表
+  ///
+  /// 用于跟踪目录扫描状态，支持增量扫描和断点续扫
+  Future<void> _createScanProgressTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $_tableScanProgress (
+        $_scanColId INTEGER PRIMARY KEY AUTOINCREMENT,
+        $_scanColSourceId TEXT NOT NULL,
+        $_scanColPath TEXT NOT NULL,
+        $_scanColRootPath TEXT NOT NULL,
+        $_scanColStatus INTEGER DEFAULT 0,
+        $_scanColVideoCount INTEGER DEFAULT 0,
+        $_scanColLastScanned INTEGER,
+        UNIQUE($_scanColSourceId, $_scanColPath)
+      )
+    ''');
+
+    // 创建索引 - 用于快速查询待扫描目录
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_scan_source_status ON $_tableScanProgress($_scanColSourceId, $_scanColStatus)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_scan_root ON $_tableScanProgress($_scanColSourceId, $_scanColRootPath)');
+
+    logger.i('VideoDatabaseService: 扫描进度表创建完成');
   }
 
   /// 数据库升级
@@ -333,6 +377,14 @@ class VideoDatabaseService {
       await _createSubtitleTable(db);
 
       logger.i('VideoDatabaseService: 版本5->6 升级完成（添加字幕索引表）');
+    }
+
+    // 从版本6升级到版本7
+    if (oldVersion < 7) {
+      // 添加扫描进度表
+      await _createScanProgressTable(db);
+
+      logger.i('VideoDatabaseService: 版本6->7 升级完成（添加扫描进度表）');
     }
   }
 
@@ -2042,6 +2094,235 @@ class VideoDatabaseService {
         format: row[_subColFormat] as String,
         language: row[_subColLanguage] as String?,
       );
+
+  // ============ 扫描进度方法 ============
+
+  /// 批量保存待扫描目录
+  ///
+  /// 在扫描开始时，将发现的所有子目录添加到待扫描队列
+  Future<void> addPendingDirectories(
+    String sourceId,
+    String rootPath,
+    List<String> directories,
+  ) async {
+    if (!_initialized) await init();
+    if (directories.isEmpty) return;
+
+    await _db!.transaction((txn) async {
+      final batch = txn.batch();
+      for (final dir in directories) {
+        batch.insert(
+          _tableScanProgress,
+          {
+            _scanColSourceId: sourceId,
+            _scanColPath: dir,
+            _scanColRootPath: rootPath,
+            _scanColStatus: scanStatusPending,
+            _scanColVideoCount: 0,
+          },
+          conflictAlgorithm: ConflictAlgorithm.ignore, // 已存在则跳过
+        );
+      }
+      await batch.commit(noResult: true);
+    });
+
+    logger.d('VideoDatabaseService: 添加 ${directories.length} 个待扫描目录');
+  }
+
+  /// 获取待扫描的目录列表
+  ///
+  /// 返回状态为 pending 或 scanning 的目录（scanning 表示上次中断）
+  Future<List<ScanProgressItem>> getPendingDirectories(
+    String sourceId,
+    String rootPath, {
+    int limit = 100,
+  }) async {
+    if (!_initialized) await init();
+
+    final results = await _db!.query(
+      _tableScanProgress,
+      where: '$_scanColSourceId = ? AND $_scanColRootPath = ? AND $_scanColStatus < ?',
+      whereArgs: [sourceId, rootPath, scanStatusCompleted],
+      orderBy: _scanColId,
+      limit: limit,
+    );
+
+    return results.map(_scanProgressFromRow).toList();
+  }
+
+  /// 标记目录开始扫描
+  Future<void> markDirectoryScanning(String sourceId, String path) async {
+    if (!_initialized) await init();
+
+    await _db!.update(
+      _tableScanProgress,
+      {_scanColStatus: scanStatusScanning},
+      where: '$_scanColSourceId = ? AND $_scanColPath = ?',
+      whereArgs: [sourceId, path],
+    );
+  }
+
+  /// 标记目录扫描完成
+  ///
+  /// [videoCount] 该目录发现的视频数量
+  Future<void> markDirectoryCompleted(
+    String sourceId,
+    String path, {
+    int videoCount = 0,
+  }) async {
+    if (!_initialized) await init();
+
+    await _db!.update(
+      _tableScanProgress,
+      {
+        _scanColStatus: scanStatusCompleted,
+        _scanColVideoCount: videoCount,
+        _scanColLastScanned: DateTime.now().millisecondsSinceEpoch,
+      },
+      where: '$_scanColSourceId = ? AND $_scanColPath = ?',
+      whereArgs: [sourceId, path],
+    );
+  }
+
+  /// 批量标记目录扫描完成
+  Future<void> markDirectoriesCompletedBatch(
+    List<({String sourceId, String path, int videoCount})> items,
+  ) async {
+    if (!_initialized) await init();
+    if (items.isEmpty) return;
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    await _db!.transaction((txn) async {
+      final batch = txn.batch();
+      for (final item in items) {
+        batch.update(
+          _tableScanProgress,
+          {
+            _scanColStatus: scanStatusCompleted,
+            _scanColVideoCount: item.videoCount,
+            _scanColLastScanned: now,
+          },
+          where: '$_scanColSourceId = ? AND $_scanColPath = ?',
+          whereArgs: [item.sourceId, item.path],
+        );
+      }
+      await batch.commit(noResult: true);
+    });
+  }
+
+  /// 获取扫描进度统计
+  Future<ScanProgressStats> getScanProgressStats(
+    String sourceId,
+    String rootPath,
+  ) async {
+    if (!_initialized) await init();
+
+    final total = Sqflite.firstIntValue(await _db!.rawQuery(
+      'SELECT COUNT(*) FROM $_tableScanProgress WHERE $_scanColSourceId = ? AND $_scanColRootPath = ?',
+      [sourceId, rootPath],
+    )) ?? 0;
+
+    final completed = Sqflite.firstIntValue(await _db!.rawQuery(
+      'SELECT COUNT(*) FROM $_tableScanProgress WHERE $_scanColSourceId = ? AND $_scanColRootPath = ? AND $_scanColStatus = ?',
+      [sourceId, rootPath, scanStatusCompleted],
+    )) ?? 0;
+
+    final scanning = Sqflite.firstIntValue(await _db!.rawQuery(
+      'SELECT COUNT(*) FROM $_tableScanProgress WHERE $_scanColSourceId = ? AND $_scanColRootPath = ? AND $_scanColStatus = ?',
+      [sourceId, rootPath, scanStatusScanning],
+    )) ?? 0;
+
+    final totalVideos = Sqflite.firstIntValue(await _db!.rawQuery(
+      'SELECT SUM($_scanColVideoCount) FROM $_tableScanProgress WHERE $_scanColSourceId = ? AND $_scanColRootPath = ?',
+      [sourceId, rootPath],
+    )) ?? 0;
+
+    return ScanProgressStats(
+      totalDirectories: total,
+      completedDirectories: completed,
+      scanningDirectories: scanning,
+      totalVideosFound: totalVideos,
+    );
+  }
+
+  /// 清除扫描进度（用于重新扫描）
+  Future<void> clearScanProgress(String sourceId, String rootPath) async {
+    if (!_initialized) await init();
+
+    await _db!.delete(
+      _tableScanProgress,
+      where: '$_scanColSourceId = ? AND $_scanColRootPath = ?',
+      whereArgs: [sourceId, rootPath],
+    );
+
+    logger.i('VideoDatabaseService: 已清除扫描进度 (sourceId: $sourceId, rootPath: $rootPath)');
+  }
+
+  /// 清除源的所有扫描进度
+  Future<void> clearScanProgressBySourceId(String sourceId) async {
+    if (!_initialized) await init();
+
+    await _db!.delete(
+      _tableScanProgress,
+      where: '$_scanColSourceId = ?',
+      whereArgs: [sourceId],
+    );
+  }
+
+  /// 重置中断的扫描（将 scanning 状态重置为 pending）
+  Future<int> resetInterruptedScans(String sourceId, String rootPath) async {
+    if (!_initialized) await init();
+
+    return _db!.update(
+      _tableScanProgress,
+      {_scanColStatus: scanStatusPending},
+      where: '$_scanColSourceId = ? AND $_scanColRootPath = ? AND $_scanColStatus = ?',
+      whereArgs: [sourceId, rootPath, scanStatusScanning],
+    );
+  }
+
+  /// 检查是否有未完成的扫描
+  Future<bool> hasUnfinishedScan(String sourceId, String rootPath) async {
+    if (!_initialized) await init();
+
+    final count = Sqflite.firstIntValue(await _db!.rawQuery(
+      'SELECT COUNT(*) FROM $_tableScanProgress WHERE $_scanColSourceId = ? AND $_scanColRootPath = ? AND $_scanColStatus < ?',
+      [sourceId, rootPath, scanStatusCompleted],
+    ));
+
+    return (count ?? 0) > 0;
+  }
+
+  /// 获取已完成目录的路径集合（用于增量扫描时跳过）
+  Future<Set<String>> getCompletedDirectoryPaths(
+    String sourceId,
+    String rootPath,
+  ) async {
+    if (!_initialized) await init();
+
+    final results = await _db!.query(
+      _tableScanProgress,
+      columns: [_scanColPath],
+      where: '$_scanColSourceId = ? AND $_scanColRootPath = ? AND $_scanColStatus = ?',
+      whereArgs: [sourceId, rootPath, scanStatusCompleted],
+    );
+
+    return results.map((r) => r[_scanColPath]! as String).toSet();
+  }
+
+  /// 从数据库行转换为 ScanProgressItem
+  ScanProgressItem _scanProgressFromRow(Map<String, dynamic> row) =>
+      ScanProgressItem(
+        sourceId: row[_scanColSourceId] as String,
+        path: row[_scanColPath] as String,
+        rootPath: row[_scanColRootPath] as String,
+        status: row[_scanColStatus] as int,
+        videoCount: row[_scanColVideoCount] as int? ?? 0,
+        lastScanned: row[_scanColLastScanned] != null
+            ? DateTime.fromMillisecondsSinceEpoch(row[_scanColLastScanned] as int)
+            : null,
+      );
 }
 
 /// 字幕索引实体
@@ -2134,4 +2415,80 @@ class ScrapeStats {
 
   /// 是否全部完成
   bool get isAllDone => pending == 0 && scraping == 0;
+}
+
+/// 扫描进度项
+class ScanProgressItem {
+  const ScanProgressItem({
+    required this.sourceId,
+    required this.path,
+    required this.rootPath,
+    required this.status,
+    this.videoCount = 0,
+    this.lastScanned,
+  });
+
+  /// 源ID
+  final String sourceId;
+
+  /// 目录路径
+  final String path;
+
+  /// 根目录路径
+  final String rootPath;
+
+  /// 扫描状态: 0=pending, 1=scanning, 2=completed
+  final int status;
+
+  /// 该目录发现的视频数量
+  final int videoCount;
+
+  /// 最后扫描时间
+  final DateTime? lastScanned;
+
+  /// 是否待扫描
+  bool get isPending => status == VideoDatabaseService.scanStatusPending;
+
+  /// 是否正在扫描
+  bool get isScanning => status == VideoDatabaseService.scanStatusScanning;
+
+  /// 是否已完成
+  bool get isCompleted => status == VideoDatabaseService.scanStatusCompleted;
+}
+
+/// 扫描进度统计
+class ScanProgressStats {
+  const ScanProgressStats({
+    required this.totalDirectories,
+    required this.completedDirectories,
+    required this.scanningDirectories,
+    required this.totalVideosFound,
+  });
+
+  /// 总目录数
+  final int totalDirectories;
+
+  /// 已完成目录数
+  final int completedDirectories;
+
+  /// 正在扫描的目录数
+  final int scanningDirectories;
+
+  /// 已发现的视频总数
+  final int totalVideosFound;
+
+  /// 待扫描目录数
+  int get pendingDirectories =>
+      totalDirectories - completedDirectories - scanningDirectories;
+
+  /// 进度百分比 (0-1)
+  double get progress =>
+      totalDirectories > 0 ? completedDirectories / totalDirectories : 0;
+
+  /// 是否全部完成
+  bool get isAllDone =>
+      totalDirectories > 0 && completedDirectories == totalDirectories;
+
+  /// 是否有未完成的扫描
+  bool get hasUnfinished => pendingDirectories > 0 || scanningDirectories > 0;
 }
