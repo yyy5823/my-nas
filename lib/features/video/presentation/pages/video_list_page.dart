@@ -223,13 +223,27 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       _init();
     });
 
+    final scanner = VideoScannerService();
+
     // 监听扫描进度变化，实现扫描过程中的实时更新
-    _scanProgressSubscription = VideoScannerService().progressStream.listen(
+    _scanProgressSubscription = scanner.progressStream.listen(
       _onScanProgressChanged,
     );
 
-    // 监听刮削统计变化，实现渐进式更新
-    _scrapeStatsSubscription = VideoScannerService().scrapeStatsStream.listen(
+    // 边扫边显示（Infuse 风格）：监听部分扫描结果
+    // 每扫描一批文件就推送，用户不需要等待扫描完成
+    _partialResultsSubscription = scanner.partialResultsStream.listen(
+      _onPartialResults,
+    );
+
+    // 单视频更新（Infuse 风格）：监听单个视频元数据更新
+    // 替代整体 scrapeStatsStream 刷新，实现精准卡片更新
+    _videoUpdatedSubscription = scanner.videoUpdatedStream.listen(
+      _onVideoUpdated,
+    );
+
+    // 监听刮削统计变化（保留用于总数变化和全部完成检测）
+    _scrapeStatsSubscription = scanner.scrapeStatsStream.listen(
       _onScrapeStatsChanged,
     );
 
@@ -247,6 +261,8 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
   final VideoDatabaseService _db = VideoDatabaseService();
 
   StreamSubscription<VideoScanProgress>? _scanProgressSubscription;
+  StreamSubscription<List<VideoMetadata>>? _partialResultsSubscription;
+  StreamSubscription<VideoMetadata>? _videoUpdatedSubscription;
   StreamSubscription<ScrapeStats>? _scrapeStatsSubscription;
   ProviderSubscription<Map<String, SourceConnection>>? _connectionsSubscription;
   int _lastCompletedCount = 0;
@@ -301,6 +317,8 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
   @override
   void dispose() {
     _scanProgressSubscription?.cancel();
+    _partialResultsSubscription?.cancel();
+    _videoUpdatedSubscription?.cancel();
     _scrapeStatsSubscription?.cancel();
     _connectionsSubscription?.close();
     _debounceTimer?.cancel();
@@ -377,9 +395,9 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       return;
     }
 
-    // 当刮削全部完成时，立即刷新（取消防抖等待）
+    // 当刮削全部完成时，做一次完整分类刷新（重新排序高分推荐等）
     if (stats.isAllDone && stats.total > 0) {
-      logger.d('VideoListNotifier: 刮削全部完成，立即刷新');
+      logger.d('VideoListNotifier: 刮削全部完成，执行完整分类刷新');
       _debounceTimer?.cancel();
       _lastCompletedCount = stats.completed;
       _lastTotalCount = stats.total;
@@ -389,25 +407,134 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
 
     // 当总数变化时（新扫描完成），立即刷新
     if (stats.total != _lastTotalCount) {
-      logger.d('VideoListNotifier: 视频总数变化 $_lastTotalCount -> ${stats.total}，刷新列表');
+      logger.d('VideoListNotifier: 视频总数变化 $_lastTotalCount -> ${stats.total}');
       _lastTotalCount = stats.total;
       _lastCompletedCount = stats.completed;
-      _debounceTimer?.cancel();
-      _loadCategorizedData(silent: true);
+      // 不需要立即刷新，partialResultsStream 会处理
       return;
     }
 
-    // 只有当有新的刮削完成时才触发刷新
-    if (stats.completed > _lastCompletedCount) {
-      _lastCompletedCount = stats.completed;
-      _scheduleRefresh();
-    }
+    // 更新完成计数（用于进度显示）
+    _lastCompletedCount = stats.completed;
+    // 注意：刮削进行中的更新现在由 videoUpdatedStream 处理，这里不再触发刷新
   }
 
-  /// 使用防抖机制调度刷新
+  /// 边扫边显示（Infuse 风格）：处理部分扫描结果
   ///
-  /// 防抖可以确保在连续刮削时不会频繁刷新UI，
-  /// 同时又能在刮削间隙及时更新显示新数据
+  /// 每收到一批扫描结果就追加到列表中
+  /// 用户可以在扫描过程中就看到视频
+  void _onPartialResults(List<VideoMetadata> newVideos) {
+    if (newVideos.isEmpty) return;
+
+    final currentState = state;
+    if (currentState is! VideoListLoaded) {
+      // 如果还没有初始化完成，创建新状态
+      final videoByKey = <String, VideoMetadata>{};
+      for (final v in newVideos) {
+        videoByKey[v.uniqueKey] = v;
+      }
+      state = VideoListLoaded(
+        totalCount: newVideos.length,
+        databaseTotalCount: newVideos.length,
+        videoByKey: videoByKey,
+        recentVideos: newVideos.take(20).toList(),
+        movies: newVideos.where((v) => v.category == MediaCategory.movie).take(30).toList(),
+        others: newVideos.where((v) => v.category == MediaCategory.unknown).take(30).toList(),
+        fromCache: true,
+      );
+      logger.d('VideoListNotifier: 边扫边显示 - 初始化 ${newVideos.length} 个视频');
+      return;
+    }
+
+    // 追加到现有状态
+    final newVideoByKey = Map<String, VideoMetadata>.from(currentState.videoByKey);
+    for (final v in newVideos) {
+      newVideoByKey[v.uniqueKey] = v;
+    }
+
+    // 追加到各分类列表
+    final newMovies = List<VideoMetadata>.from(currentState.movies);
+    final newOthers = List<VideoMetadata>.from(currentState.others);
+    final newRecent = List<VideoMetadata>.from(currentState.recentVideos);
+
+    for (final v in newVideos) {
+      if (v.category == MediaCategory.movie && newMovies.length < 50) {
+        newMovies.add(v);
+      } else if (v.category == MediaCategory.unknown && newOthers.length < 50) {
+        newOthers.add(v);
+      }
+      if (newRecent.length < 30) {
+        newRecent.add(v);
+      }
+    }
+
+    state = currentState.copyWith(
+      totalCount: newVideoByKey.length,
+      databaseTotalCount: newVideoByKey.length,
+      videoByKey: newVideoByKey,
+      recentVideos: newRecent,
+      movies: newMovies,
+      others: newOthers,
+      movieCount: newMovies.length,
+      otherCount: newOthers.length,
+    );
+
+    logger.d('VideoListNotifier: 边扫边显示 - 追加 ${newVideos.length} 个视频，总计 ${newVideoByKey.length}');
+  }
+
+  /// 单视频更新（Infuse 风格）：处理单个视频元数据更新
+  ///
+  /// 只更新这一个视频的数据，不刷新整个列表
+  /// 这是精准更新的核心，避免 ListView 重建
+  void _onVideoUpdated(VideoMetadata updated) {
+    final currentState = state;
+    if (currentState is! VideoListLoaded) return;
+
+    final key = updated.uniqueKey;
+    final existing = currentState.videoByKey[key];
+
+    // 如果视频不在当前显示列表中，忽略
+    if (existing == null) return;
+
+    // 检查是否有实际变化
+    if (!_hasMetadataChanged(existing, updated)) return;
+
+    // 更新 videoByKey
+    final newVideoByKey = Map<String, VideoMetadata>.from(currentState.videoByKey);
+    newVideoByKey[key] = updated;
+
+    // 更新各分类列表中的视频
+    final newMovies = _updateSingleInList(currentState.movies, key, updated);
+    final newOthers = _updateSingleInList(currentState.others, key, updated);
+    final newRecent = _updateSingleInList(currentState.recentVideos, key, updated);
+    final newTopRated = _updateSingleInList(currentState.topRatedMovies, key, updated);
+
+    state = currentState.copyWith(
+      videoByKey: newVideoByKey,
+      movies: newMovies,
+      others: newOthers,
+      recentVideos: newRecent,
+      topRatedMovies: newTopRated,
+    );
+
+    logger.d('VideoListNotifier: 单视频更新 - ${updated.title ?? updated.fileName}');
+  }
+
+  /// 更新列表中的单个视频
+  List<VideoMetadata> _updateSingleInList(
+    List<VideoMetadata> list,
+    String key,
+    VideoMetadata updated,
+  ) {
+    final index = list.indexWhere((v) => v.uniqueKey == key);
+    if (index == -1) return list;
+
+    final newList = List<VideoMetadata>.from(list);
+    newList[index] = updated;
+    return newList;
+  }
+
+  /// 使用防抖机制调度刷新（完整刷新）
   void _scheduleRefresh() {
     _debounceTimer?.cancel();
     _debounceTimer = Timer(
@@ -416,6 +543,14 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     );
   }
 
+  /// 检查元数据是否有变化
+  bool _hasMetadataChanged(VideoMetadata old, VideoMetadata updated) =>
+      old.title != updated.title ||
+      old.posterUrl != updated.posterUrl ||
+      old.rating != updated.rating ||
+      old.tmdbId != updated.tmdbId ||
+      old.year != updated.year;
+
   void _init() {
     logger.d('VideoListNotifier: 开始初始化...');
 
@@ -423,7 +558,9 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     // 用户不会看到黑屏或loading状态
     state = VideoListLoaded(totalCount: 0);
 
-    // 在后台初始化服务并加载数据，不阻塞UI
+    // Infuse 风格的两阶段加载：
+    // 阶段1：快速加载所有视频（毫秒级）
+    // 阶段2：后台加载分类数据（可以较慢）
     _initAndLoadInBackground().then((_) {
       logger.i('VideoListNotifier: 后台初始化完成');
     }).catchError((Object e, StackTrace st) {
@@ -431,14 +568,17 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     });
   }
 
-  /// 后台初始化服务并加载数据
+  /// Infuse 风格的两阶段加载
+  ///
+  /// 阶段1：快速加载 - 立即显示所有视频（<50ms）
+  /// 阶段2：分类加载 - 后台加载分类数据（高分推荐、最近添加等）
   Future<void> _initAndLoadInBackground() async {
     try {
       // 快速初始化服务（SQLite和Hive都是本地操作，应该很快）
-      // 使用较短的超时，避免异常情况下长时间等待
       await Future.wait([
         _metadataService.init(),
         _cacheService.init(),
+        _db.init(),
       ]).timeout(
         const Duration(seconds: 2),
         onTimeout: () {
@@ -447,22 +587,84 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
         },
       );
 
-      logger.d('VideoListNotifier: 服务初始化完成，加载SQLite数据');
+      logger.d('VideoListNotifier: 服务初始化完成');
 
-      // 从 SQLite 加载分类数据
-      // SQLite是本地数据库，查询应该非常快
-      await _loadCategorizedData(silent: true);
+      // ========== 阶段1：快速加载（Infuse 风格）==========
+      // 使用简单查询立即获取所有视频，不做复杂分类
+      final enabledPaths = _getEnabledPaths();
+      final stopwatch = Stopwatch()..start();
 
-      // 初始化完成后，同步当前刮削统计的跟踪值
-      // 这确保后续的比较基准是正确的
+      final allVideos = await _db.getAllVideosQuick(enabledPaths: enabledPaths);
+      stopwatch.stop();
+      logger.i('VideoListNotifier: 阶段1完成 - 快速加载 ${allVideos.length} 个视频，耗时 ${stopwatch.elapsedMilliseconds}ms');
+
+      // 同步统计值
       try {
-        final stats = await _db.getScrapeStats();
-        _lastTotalCount = stats.total;
-        _lastCompletedCount = stats.completed;
-        logger.d('VideoListNotifier: 初始化完成，同步统计值 - total: ${stats.total}, completed: ${stats.completed}');
+        final scrapeStats = await _db.getScrapeStats();
+        _lastTotalCount = scrapeStats.total;
+        _lastCompletedCount = scrapeStats.completed;
       } on Exception catch (e) {
         logger.w('VideoListNotifier: 同步统计值失败', e);
       }
+
+      if (allVideos.isEmpty) {
+        // 没有数据，保持空状态
+        state = VideoListLoaded(totalCount: 0);
+        return;
+      }
+
+      // 快速构建临时数据结构，立即显示
+      final videoByKey = <String, VideoMetadata>{};
+      for (final v in allVideos) {
+        videoByKey[v.uniqueKey] = v;
+      }
+
+      // 立即更新 UI（阶段1完成）
+      // 临时分类：简单过滤，后续会被完整分类数据替换
+      final tempMovies = allVideos.where((v) => v.category == MediaCategory.movie).take(30).toList();
+      final tempTvShows = allVideos.where((v) => v.category == MediaCategory.tvShow).toList();
+      final tempOthers = allVideos.where((v) => v.category == MediaCategory.unknown).take(30).toList();
+
+      // 快速构建临时剧集分组
+      final tempTvShowGroups = <String, TvShowGroup>{};
+      for (final ep in tempTvShows.take(30)) {
+        final groupKey = ep.tmdbId != null ? 'tmdb_${ep.tmdbId}' : 'title_${ep.title?.toLowerCase() ?? ep.fileName.toLowerCase()}';
+        if (!tempTvShowGroups.containsKey(groupKey)) {
+          tempTvShowGroups[groupKey] = TvShowGroup(
+            groupKey: groupKey,
+            title: ep.title ?? ep.fileName,
+            tmdbId: ep.tmdbId,
+            posterUrl: ep.posterUrl,
+            backdropUrl: ep.backdropUrl,
+            rating: ep.rating,
+            overview: ep.overview,
+            year: ep.year,
+            genres: ep.genres,
+            seasonEpisodes: {ep.seasonNumber ?? 1: [ep]},
+          );
+        }
+      }
+
+      state = VideoListLoaded(
+        totalCount: allVideos.length,
+        databaseTotalCount: allVideos.length,
+        movieCount: tempMovies.length,
+        tvShowCount: tempTvShows.length,
+        tvShowGroupCount: tempTvShowGroups.length,
+        otherCount: tempOthers.length,
+        videoByKey: videoByKey,
+        recentVideos: allVideos.take(20).toList(),
+        movies: tempMovies,
+        tvShowGroups: tempTvShowGroups,
+        others: tempOthers,
+        fromCache: true,
+      );
+
+      // ========== 阶段2：分类加载（后台）==========
+      // 延迟执行，不阻塞阶段1的显示
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      await _loadCategorizedData(silent: true);
+
     } on Exception catch (e) {
       logger.e('VideoListNotifier: 后台初始化失败', e);
       // 保持空列表状态，让用户可以正常使用界面

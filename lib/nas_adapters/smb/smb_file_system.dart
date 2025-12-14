@@ -4,19 +4,39 @@ import 'dart:io';
 import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
+import 'package:my_nas/nas_adapters/smb/smb_connection_pool.dart';
 import 'package:path/path.dart' as p;
 import 'package:smb_connect/smb_connect.dart';
 
 /// SMB 文件系统实现
 ///
 /// 使用 smb_connect 库实现文件操作
+/// 支持连接池，长操作（视频流）使用独立连接
 class SmbFileSystem implements NasFileSystem {
-  SmbFileSystem({required this.client});
+  SmbFileSystem({
+    required this.client,
+    this.connectionPool,
+  });
 
+  /// 主连接（用于快速操作）
   final SmbConnect client;
+
+  /// 连接池（用于并发操作）
+  final SmbConnectionPool? connectionPool;
 
   /// 缓存的共享列表
   List<SmbFile>? _cachedShares;
+
+  /// 检查是否是连接断开错误
+  bool _isConnectionError(Object e) {
+    final msg = e.toString().toLowerCase();
+    return msg.contains('network name is no longer available') ||
+        msg.contains('connection closed') ||
+        msg.contains('socket closed') ||
+        msg.contains('streamsink is closed') ||
+        msg.contains('connection reset') ||
+        msg.contains('broken pipe');
+  }
 
   @override
   Future<List<FileItem>> listDirectory(String path) async {
@@ -27,11 +47,30 @@ class SmbFileSystem implements NasFileSystem {
       return listShares();
     }
 
+    // 尝试使用主连接
     try {
-      // 获取目录对象
-      final folder = await client.file(path);
-      final files = await client.listFiles(folder);
+      return await _listDirectoryWithClient(client, path);
+    } on Exception catch (e) {
+      // 如果是连接错误且有连接池，尝试用新连接重试
+      if (_isConnectionError(e) && connectionPool != null) {
+        logger.w('SmbFileSystem: 主连接断开，使用连接池重试');
+        return connectionPool!.withConnection(
+          (poolClient) => _listDirectoryWithClient(poolClient, path),
+          type: SmbConnectionType.general,
+        );
+      }
+      rethrow;
+    }
+  }
 
+  /// 使用指定连接列出目录
+  Future<List<FileItem>> _listDirectoryWithClient(
+    SmbConnect smbClient,
+    String path,
+  ) async {
+    try {
+      final folder = await smbClient.file(path);
+      final files = await smbClient.listFiles(folder);
       return files.map(_toFileItem).toList();
     } on Exception catch (e, st) {
       AppError.handle(e, st, 'SmbFileSystem.listDirectory');
@@ -90,54 +129,117 @@ class SmbFileSystem implements NasFileSystem {
 
   @override
   Future<FileItem> getFileInfo(String path) async {
-    final file = await client.file(path);
-    return _toFileItem(file);
+    // 尝试使用主连接
+    try {
+      final file = await client.file(path);
+      return _toFileItem(file);
+    } on Exception catch (e) {
+      // 如果是连接错误且有连接池，尝试用新连接重试
+      if (_isConnectionError(e) && connectionPool != null) {
+        logger.w('SmbFileSystem: getFileInfo 主连接断开，使用连接池重试');
+        return connectionPool!.withConnection(
+          (poolClient) async {
+            final file = await poolClient.file(path);
+            return _toFileItem(file);
+          },
+          type: SmbConnectionType.general,
+        );
+      }
+      rethrow;
+    }
   }
 
   @override
   Future<Stream<List<int>>> getFileStream(String path, {FileRange? range}) async {
-    final file = await client.file(path);
-    final fileSize = file.size;
+    // 视频流使用独立连接，避免与其他操作冲突
+    // 如果有连接池，创建专用连接；否则使用主连接
+    SmbConnect streamClient;
+    void Function()? releaseCallback;
 
-    if (range != null) {
-      // 使用 RandomAccessFile 实现范围读取
-      final raf = await client.open(file);
-
-      try {
-        await raf.setPosition(range.start);
-        final length = range.end != null ? range.end! - range.start : fileSize - range.start;
-
-        // 分块读取
-        final controller = StreamController<List<int>>();
-        const chunkSize = 64 * 1024; // 64KB chunks
-        var remaining = length;
-
-        await () async {
-          try {
-            while (remaining > 0) {
-              final toRead = remaining > chunkSize ? chunkSize : remaining;
-              final chunk = await raf.read(toRead);
-              controller.add(chunk);
-              remaining -= chunk.length;
-              if (chunk.isEmpty) break;
-            }
-            await controller.close();
-          } on Exception catch (e) {
-            controller.addError(e);
-            await controller.close();
-          } finally {
-            await raf.close();
-          }
-        }();
-
-        return controller.stream;
-      } on Exception {
-        await raf.close();
-        rethrow;
-      }
+    if (connectionPool != null) {
+      final dedicated = await connectionPool!.createDedicatedConnection();
+      streamClient = dedicated.client;
+      releaseCallback = dedicated.releaseCallback;
     } else {
-      // 完整文件流
-      return client.openRead(file);
+      streamClient = client;
+    }
+
+    /// 清理专用连接
+    Future<void> cleanup() async {
+      if (releaseCallback != null) {
+        try {
+          await streamClient.close();
+          // ignore: avoid_catches_without_on_clauses
+        } catch (_) {}
+        releaseCallback();
+      }
+    }
+
+    try {
+      final file = await streamClient.file(path);
+      final fileSize = file.size;
+
+      if (range != null) {
+        // 使用 RandomAccessFile 实现范围读取
+        final raf = await streamClient.open(file);
+
+        try {
+          await raf.setPosition(range.start);
+          final length = range.end != null ? range.end! - range.start : fileSize - range.start;
+
+          // 分块读取
+          final controller = StreamController<List<int>>();
+          const chunkSize = 64 * 1024; // 64KB chunks
+          var remaining = length;
+
+          unawaited(() async {
+            try {
+              while (remaining > 0) {
+                final toRead = remaining > chunkSize ? chunkSize : remaining;
+                final chunk = await raf.read(toRead);
+                controller.add(chunk);
+                remaining -= chunk.length;
+                if (chunk.isEmpty) break;
+              }
+              await controller.close();
+            } on Exception catch (e) {
+              controller.addError(e);
+              await controller.close();
+            } finally {
+              await raf.close();
+              await cleanup();
+            }
+          }());
+
+          return controller.stream;
+        } on Exception {
+          await raf.close();
+          rethrow;
+        }
+      } else {
+        // 完整文件流 - 包装以便在完成时关闭连接
+        final rawStream = await streamClient.openRead(file);
+
+        if (releaseCallback != null) {
+          // 包装流，在完成时关闭专用连接
+          final controller = StreamController<List<int>>();
+          rawStream.listen(
+            controller.add,
+            onError: controller.addError,
+            onDone: () async {
+              await controller.close();
+              await cleanup();
+            },
+            cancelOnError: true,
+          );
+          return controller.stream;
+        }
+
+        return rawStream;
+      }
+    } on Exception {
+      await cleanup();
+      rethrow;
     }
   }
 

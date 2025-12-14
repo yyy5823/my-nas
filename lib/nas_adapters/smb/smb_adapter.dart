@@ -3,6 +3,7 @@ import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/nas_adapters/base/nas_adapter.dart';
 import 'package:my_nas/nas_adapters/base/nas_connection.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
+import 'package:my_nas/nas_adapters/smb/smb_connection_pool.dart';
 import 'package:my_nas/nas_adapters/smb/smb_file_system.dart';
 import 'package:smb_connect/smb_connect.dart';
 
@@ -10,12 +11,18 @@ import 'package:smb_connect/smb_connect.dart';
 ///
 /// 使用 smb_connect 库实现 SMB 协议连接
 /// 支持 SMB 1.0, CIFS, SMB 2.0, SMB 2.1
+///
+/// 特性：
+/// - 连接池管理：支持多连接并发，避免操作争用
+/// - 自动重连：连接断开时自动重新建立
+/// - 任务隔离：视频播放使用独立连接，不影响其他操作
 class SmbAdapter implements NasAdapter {
   SmbAdapter() {
     logger.i('SmbAdapter: 初始化适配器');
   }
 
   SmbConnect? _client;
+  SmbConnectionPool? _connectionPool;
   SmbFileSystem? _fileSystem;
   ConnectionConfig? _config;
   bool _connected = false;
@@ -98,7 +105,17 @@ class SmbAdapter implements NasAdapter {
         logger.d('SmbAdapter: 共享 => ${share.name} (${share.path})');
       }
 
-      _fileSystem = SmbFileSystem(client: _client!);
+      // 创建连接池
+      _connectionPool = SmbConnectionPool(
+        host: host,
+        username: config.username,
+        password: config.password,
+      );
+
+      _fileSystem = SmbFileSystem(
+        client: _client!,
+        connectionPool: _connectionPool,
+      );
       _connected = true;
 
       return ConnectionSuccess(
@@ -193,11 +210,15 @@ class SmbAdapter implements NasAdapter {
     if (!_connected) return;
 
     try {
+      // 先关闭连接池
+      await _connectionPool?.dispose();
+      // 再关闭主连接
       await _client?.close();
     } on Exception catch (e) {
       logger.w('SmbAdapter: 断开连接时出错', e);
     }
 
+    _connectionPool = null;
     _client = null;
     _fileSystem = null;
     _connected = false;

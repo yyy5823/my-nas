@@ -679,6 +679,79 @@ class VideoDatabaseService {
     return results.map(_fromRow).toList();
   }
 
+  /// 快速获取所有视频（Infuse 风格的即时加载）
+  ///
+  /// 这是最快的加载方式，用于首页初始化：
+  /// - 单次简单查询，无复杂 JOIN 或分组
+  /// - 按文件修改时间倒序，最新内容优先
+  /// - 返回所有必要字段，供 UI 立即展示
+  ///
+  /// 适用场景：
+  /// - 应用启动时的首次加载
+  /// - 需要即时响应的场景（<50ms）
+  ///
+  /// [enabledPaths] 启用的路径列表，如果提供则只返回这些路径下的视频
+  /// [limit] 返回数量限制，0 表示不限制
+  Future<List<VideoMetadata>> getAllVideosQuick({
+    List<({String sourceId, String path})>? enabledPaths,
+    int limit = 0,
+  }) async {
+    if (!_initialized) await init();
+
+    final pathFilter = _buildPathFilter(enabledPaths);
+
+    String sql;
+    List<Object> args;
+
+    if (pathFilter.where.isEmpty) {
+      sql = 'SELECT * FROM $_tableMetadata ORDER BY $_colFileModifiedTime DESC';
+      args = [];
+    } else {
+      sql = 'SELECT * FROM $_tableMetadata${pathFilter.where} ORDER BY $_colFileModifiedTime DESC';
+      args = pathFilter.args;
+    }
+
+    if (limit > 0) {
+      sql += ' LIMIT ?';
+      args.add(limit);
+    }
+
+    final results = await _db!.rawQuery(sql, args);
+    return results.map(_fromRow).toList();
+  }
+
+  /// 批量获取视频元数据（用于增量更新）
+  ///
+  /// 根据 uniqueKey 列表批量获取视频，避免多次数据库查询
+  /// [keys] uniqueKey 列表，格式为 "sourceId|filePath"
+  Future<Map<String, VideoMetadata>> getByKeys(List<String> keys) async {
+    if (!_initialized) await init();
+    if (keys.isEmpty) return {};
+
+    final result = <String, VideoMetadata>{};
+
+    // SQLite 的 IN 子句有参数限制（通常是 999），分批查询
+    const batchSize = 500;
+    for (var i = 0; i < keys.length; i += batchSize) {
+      final batch = keys.skip(i).take(batchSize).toList();
+      final placeholders = List.filled(batch.length, '?').join(', ');
+
+      // uniqueKey = sourceId || '|' || filePath
+      final sql = '''
+        SELECT * FROM $_tableMetadata
+        WHERE ($_colSourceId || '|' || $_colFilePath) IN ($placeholders)
+      ''';
+
+      final rows = await _db!.rawQuery(sql, batch);
+      for (final row in rows) {
+        final metadata = _fromRow(row);
+        result[metadata.uniqueKey] = metadata;
+      }
+    }
+
+    return result;
+  }
+
   /// 获取统计信息
   ///
   /// [enabledPaths] 启用的路径列表，如果提供则只统计这些路径下的视频

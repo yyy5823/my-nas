@@ -164,6 +164,22 @@ class VideoScannerService {
 
   Stream<ScrapeStats> get scrapeStatsStream => _scrapeStatsController.stream;
 
+  /// 边扫边显示：部分扫描结果流（Infuse 风格）
+  ///
+  /// 每扫描一批文件就推送一次，UI 可以逐步显示内容
+  /// 用户不需要等待扫描完成就能看到视频列表
+  final _partialResultsController = StreamController<List<VideoMetadata>>.broadcast();
+
+  Stream<List<VideoMetadata>> get partialResultsStream => _partialResultsController.stream;
+
+  /// 单视频更新流（Infuse 风格）
+  ///
+  /// 刮削完成单个视频后推送，UI 只需更新该视频的卡片
+  /// 替代整体 scrapeStatsStream 刷新，实现精准更新
+  final _videoUpdatedController = StreamController<VideoMetadata>.broadcast();
+
+  Stream<VideoMetadata> get videoUpdatedStream => _videoUpdatedController.stream;
+
   /// 检查并恢复未完成的刮削任务
   ///
   /// 在应用启动时调用，检查是否有待刮削的视频
@@ -463,16 +479,17 @@ class VideoScannerService {
 
       if (metadataList.isNotEmpty) {
         await _dbService.upsertBatch(metadataList);
+
+        // 边扫边显示（Infuse 风格）：每保存一批就推送到 UI
+        // 用户不需要等待扫描完成就能看到视频列表
+        _partialResultsController.add(metadataList);
+        logger.d('VideoScannerService: 推送部分结果 ${metadataList.length} 个视频');
       }
 
       // 批量更新 NFO 标志
       if (nfoFlags.isNotEmpty) {
         await _dbService.updateNfoFlagBatch(nfoFlags);
       }
-
-      // 注意：不在这里发送进度，因为批量保存处理的是所有目录的视频
-      // 进度事件需要 sourceId/pathPrefix 才能被对应的卡片匹配
-      // 调用方在调用前后会发送正确的 savingToDb 开始和 completed 事件
     }
   }
 
@@ -759,6 +776,10 @@ class VideoScannerService {
           ..fileModifiedTime = video.fileModifiedTime;
 
         await _metadataService.save(metadata);
+
+        // 单视频更新推送（Infuse 风格）：只通知这一个视频更新
+        // UI 端只需更新对应的卡片，无需刷新整个列表
+        _videoUpdatedController.add(metadata);
 
         // 成功，退出重试循环
         return;
@@ -1119,6 +1140,9 @@ class VideoScannerService {
   /// 释放资源
   void dispose() {
     _progressController.close();
+    _scrapeStatsController.close();
+    _partialResultsController.close();
+    _videoUpdatedController.close();
   }
 }
 
