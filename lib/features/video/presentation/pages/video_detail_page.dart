@@ -7,6 +7,7 @@ import 'package:my_nas/features/video/data/services/tmdb_service.dart';
 import 'package:my_nas/features/video/data/services/video_favorites_service.dart';
 import 'package:my_nas/features/video/domain/entities/video_item.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
+import 'package:my_nas/features/video/presentation/pages/tmdb_preview_page.dart';
 import 'package:my_nas/features/video/presentation/pages/video_player_page.dart';
 import 'package:my_nas/features/video/presentation/providers/video_detail_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/video_favorites_provider.dart';
@@ -870,8 +871,8 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       '480p': 4,
     };
 
-    final sorted = List<VideoMetadata>.from(variants);
-    sorted.sort((a, b) {
+    final sorted = List<VideoMetadata>.from(variants)
+    ..sort((a, b) {
       final orderA = resolutionOrder[a.resolution] ?? 99;
       final orderB = resolutionOrder[b.resolution] ?? 99;
       return orderA.compareTo(orderB);
@@ -1039,12 +1040,16 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         ),
       );
     } else {
-      // 本地没有该影片，显示提示
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('本地未找到 "${item.title}" (${item.year ?? "未知年份"})'),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 2),
+      // 本地没有该影片，跳转到 TMDB 预览页面
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (context) => TmdbPreviewPage(
+            tmdbId: item.id,
+            isMovie: item.isMovie,
+            title: item.title,
+            posterUrl: item.posterUrl,
+            backdropUrl: item.backdropUrl,
+          ),
         ),
       );
     }
@@ -1223,7 +1228,7 @@ class _CollectionMovieGridItem extends ConsumerWidget {
 
     return GestureDetector(
       onTap: () => _onTap(context, localVideo),
-      child: Container(
+      child: DecoratedBox(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
           border: isCurrentMovie

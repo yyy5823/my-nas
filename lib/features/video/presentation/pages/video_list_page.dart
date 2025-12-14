@@ -863,7 +863,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       final batch2Stopwatch = Stopwatch()..start();
       final batch2 = await Future.wait([
         _db.getTvShowGroupRepresentatives(limit: 30, enabledPaths: effectiveEnabledPaths),
-        _db.getMovieCollections(),
+        _db.getMovieCollections(minCount: 2),
         _db.getByCategory(MediaCategory.unknown, limit: 30, enabledPaths: effectiveEnabledPaths),
       ]).timeout(
         const Duration(seconds: 5),
@@ -2097,6 +2097,9 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               title: '电影系列',
               collections: movieCollections,
               onCollectionTap: (collection) => _showCollectionPage(context, ref, collection),
+              onSeeAllTap: movieCollections.length > 10
+                  ? () => _showMovieCollectionsFullPage(context, ref, movieCollections)
+                  : null,
               isDark: isDark,
               icon: Icons.collections_bookmark_rounded,
               iconColor: Colors.purple,
@@ -2225,6 +2228,22 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
         builder: (context) => _MovieCollectionPage(
           collection: collection,
           onMovieTap: (movie) => _openVideoDetail(context, ref, movie),
+        ),
+      ),
+    );
+  }
+
+  /// 显示电影系列全部页面
+  void _showMovieCollectionsFullPage(
+    BuildContext context,
+    WidgetRef ref,
+    List<MovieCollection> collections,
+  ) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => _MovieCollectionsFullPage(
+          collections: collections,
+          onCollectionTap: (collection) => _showCollectionPage(context, ref, collection),
         ),
       ),
     );
@@ -6567,6 +6586,7 @@ class _MovieCollectionRow extends StatelessWidget {
     required this.collections,
     required this.onCollectionTap,
     required this.isDark,
+    this.onSeeAllTap,
     this.icon,
     this.iconColor,
     // ignore: unused_element_parameter
@@ -6576,6 +6596,7 @@ class _MovieCollectionRow extends StatelessWidget {
   final String title;
   final List<MovieCollection> collections;
   final void Function(MovieCollection) onCollectionTap;
+  final VoidCallback? onSeeAllTap;
   final bool isDark;
   final IconData? icon;
   final Color? iconColor;
@@ -6630,6 +6651,19 @@ class _MovieCollectionRow extends StatelessWidget {
                   ),
                 ),
               ),
+              const Spacer(),
+              // 查看全部按钮
+              if (onSeeAllTap != null && collections.length > maxCount)
+                TextButton(
+                  onPressed: onSeeAllTap,
+                  child: Text(
+                    '查看全部 (${collections.length})',
+                    style: TextStyle(
+                      color: AppColors.primary,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
@@ -6868,6 +6902,151 @@ class _MovieCollectionCardState extends State<_MovieCollectionCard> {
         ),
       ),
     );
+}
+
+/// 电影系列全部页面
+class _MovieCollectionsFullPage extends StatelessWidget {
+  const _MovieCollectionsFullPage({
+    required this.collections,
+    required this.onCollectionTap,
+  });
+
+  final List<MovieCollection> collections;
+  final void Function(MovieCollection) onCollectionTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Scaffold(
+      backgroundColor: isDark ? const Color(0xFF0D0D0D) : Colors.grey[50],
+      appBar: AppBar(
+        title: Text('电影系列 (${collections.length})'),
+        backgroundColor: isDark ? const Color(0xFF0D0D0D) : Colors.grey[50],
+        elevation: 0,
+      ),
+      body: GridView.builder(
+        padding: const EdgeInsets.all(16),
+        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: 180,
+          childAspectRatio: 0.65,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 16,
+        ),
+        itemCount: collections.length,
+        itemBuilder: (context, index) {
+          final collection = collections[index];
+          return _MovieCollectionGridCard(
+            collection: collection,
+            onTap: () => onCollectionTap(collection),
+            isDark: isDark,
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// 电影系列网格卡片
+class _MovieCollectionGridCard extends StatelessWidget {
+  const _MovieCollectionGridCard({
+    required this.collection,
+    required this.onTap,
+    required this.isDark,
+  });
+
+  final MovieCollection collection;
+  final VoidCallback onTap;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    // 获取系列封面（使用第一部电影的封面）
+    final posterUrl = collection.movies.isNotEmpty
+        ? collection.movies.first.displayPosterUrl
+        : null;
+    final hasPoster = posterUrl != null && posterUrl.isNotEmpty;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 封面
+          Expanded(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.2),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    if (hasPoster) AdaptiveImage(
+                            imageUrl: posterUrl,
+                            placeholder: (_) => _buildPlaceholder(),
+                            errorWidget: (_, _) => _buildPlaceholder(),
+                          ) else _buildPlaceholder(),
+                    // 电影数量徽章
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.7),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          '${collection.movies.length} 部',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          // 标题
+          Text(
+            collection.name,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPlaceholder() => Container(
+        color: isDark ? Colors.grey[850] : Colors.grey[200],
+        child: Center(
+          child: Icon(
+            Icons.collections_bookmark_rounded,
+            size: 40,
+            color: isDark ? Colors.grey[600] : Colors.grey[400],
+          ),
+        ),
+      );
 }
 
 /// 电影系列详情页面

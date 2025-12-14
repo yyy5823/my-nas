@@ -1714,11 +1714,17 @@ class VideoDatabaseService {
     return count;
   }
 
-  /// 清空所有数据
+  /// 清空所有数据（包括所有聚合表）
   Future<void> clearAll() async {
     if (!_initialized) await init();
+
+    // 清空所有视频相关表
     await _db!.delete(_tableMetadata);
-    logger.i('VideoDatabaseService: 已清空所有数据');
+    await _db!.delete(_tableTvShowGroups);
+    await _db!.delete(_tableMovieCollectionGroups);
+    await _db!.delete(_tableScanProgress);
+
+    logger.i('VideoDatabaseService: 已清空所有数据（包括聚合表和扫描进度）');
   }
 
   /// 安全关闭数据库
@@ -2108,11 +2114,14 @@ class VideoDatabaseService {
 
   /// 获取所有电影系列（按系列分组，返回每个系列的电影列表）
   ///
-  /// 返回所有有 collectionId 的电影系列（包括本地只有1部的系列）
+  /// 优化版本：使用单次批量查询代替循环查询
+  /// 复杂度从 O(n) 降为 O(1)
   Future<List<MovieCollection>> getMovieCollections({int minCount = 1}) async {
     if (!_initialized) await init();
 
-    // 先获取所有有 collectionId 的电影，按系列分组
+    final stopwatch = Stopwatch()..start();
+
+    // 步骤1：获取所有符合条件的系列 ID 和名称
     final results = await _db!.rawQuery('''
       SELECT $_colCollectionId, $_colCollectionName, COUNT(*) as count
       FROM $_tableMetadata
@@ -2123,42 +2132,50 @@ class VideoDatabaseService {
       ORDER BY count DESC
     ''', [minCount]);
 
-    // 调试：检查有多少电影有 collectionId
-    final totalWithCollection = Sqflite.firstIntValue(await _db!.rawQuery('''
-      SELECT COUNT(*) FROM $_tableMetadata
-      WHERE $_colCollectionId IS NOT NULL AND $_colCategory = 0
-    ''')) ?? 0;
+    if (results.isEmpty) {
+      stopwatch.stop();
+      logger.d('VideoDB: getMovieCollections - 无电影系列，耗时 ${stopwatch.elapsedMilliseconds}ms');
+      return [];
+    }
 
-    final totalMovies = Sqflite.firstIntValue(await _db!.rawQuery('''
-      SELECT COUNT(*) FROM $_tableMetadata WHERE $_colCategory = 0
-    ''')) ?? 0;
-
-    logger.d('VideoDB: getMovieCollections - totalMovies=$totalMovies, '
-        'moviesWithCollectionId=$totalWithCollection, '
-        'uniqueCollections=${results.length}, minCount=$minCount');
-
-    final collections = <MovieCollection>[];
-
+    // 步骤2：收集所有系列 ID
+    final collectionIds = <int>[];
+    final collectionNames = <int, String>{};
     for (final row in results) {
+      final id = row[_colCollectionId]! as int;
+      collectionIds.add(id);
+      collectionNames[id] = row[_colCollectionName] as String? ?? '未知系列';
+    }
+
+    // 步骤3：单次批量查询获取所有系列的电影
+    final placeholders = List.filled(collectionIds.length, '?').join(', ');
+    final allMoviesResult = await _db!.rawQuery('''
+      SELECT * FROM $_tableMetadata
+      WHERE $_colCollectionId IN ($placeholders)
+        AND $_colCategory = 0
+      ORDER BY $_colCollectionId, $_colYear ASC
+    ''', collectionIds);
+
+    // 步骤4：在内存中按系列分组
+    final moviesByCollection = <int, List<VideoMetadata>>{};
+    for (final row in allMoviesResult) {
       final collectionId = row[_colCollectionId]! as int;
-      final collectionName = row[_colCollectionName] as String? ?? '未知系列';
+      moviesByCollection.putIfAbsent(collectionId, () => []).add(_fromRow(row));
+    }
 
-      // 获取该系列的所有电影
-      final moviesResult = await _db!.query(
-        _tableMetadata,
-        where: '$_colCollectionId = ?',
-        whereArgs: [collectionId],
-        orderBy: '$_colYear ASC',
-      );
-
-      final movies = moviesResult.map(_fromRow).toList();
-
+    // 步骤5：构建结果列表（保持原有顺序）
+    final collections = <MovieCollection>[];
+    for (final id in collectionIds) {
       collections.add(MovieCollection(
-        id: collectionId,
-        name: collectionName,
-        movies: movies,
+        id: id,
+        name: collectionNames[id] ?? '未知系列',
+        movies: moviesByCollection[id] ?? [],
       ));
     }
+
+    stopwatch.stop();
+    logger.d('VideoDB: getMovieCollections - 系列=${collections.length}, '
+        '总电影=${allMoviesResult.length}, 耗时 ${stopwatch.elapsedMilliseconds}ms');
 
     return collections;
   }
@@ -2328,6 +2345,8 @@ class VideoDatabaseService {
   }
 
   /// 获取剧集分组的代表性元数据（带筛选条件和排序）
+  ///
+  /// 优化版本：使用 tv_show_groups 聚合表避免 O(n²) 相关子查询
   Future<List<VideoMetadata>> getTvShowGroupRepresentativesFiltered({
     String? genre,
     int? year,
@@ -2337,42 +2356,57 @@ class VideoDatabaseService {
   }) async {
     if (!_initialized) await init();
 
+    // 构建筛选条件（基于聚合表）
     var filterWhere = '';
     final filterArgs = <Object>[];
 
     if (genre != null && genre.isNotEmpty) {
-      filterWhere += ' AND $_colGenres LIKE ?';
+      filterWhere += ' AND g.$_tvgColGenres LIKE ?';
       filterArgs.add('%$genre%');
     }
 
     if (year != null) {
-      filterWhere += ' AND $_colYear = ?';
+      filterWhere += ' AND g.$_tvgColYear = ?';
       filterArgs.add(year);
     }
 
-    final orderBy = _buildOrderBy(sortOption);
+    // 基于聚合表字段的排序
+    final orderBy = _buildOrderByForAggTable(sortOption);
 
-    // 使用子查询获取每个分组的代表性记录
-    // 注意：子查询也需要应用相同的过滤条件
+    // 优化查询：使用聚合表的 representative_rowid 进行 JOIN
+    // 复杂度从 O(n²) 降为 O(n)
     final sql = '''
-      SELECT * FROM $_tableMetadata m1
-      WHERE $_colCategory = 1$filterWhere
-        AND m1.rowid = (
-          SELECT m2.rowid FROM $_tableMetadata m2
-          WHERE m2.$_colCategory = 1$filterWhere
-            AND (
-              (m1.$_colTmdbId IS NOT NULL AND m2.$_colTmdbId = m1.$_colTmdbId)
-              OR (m1.$_colTmdbId IS NULL AND m2.$_colTmdbId IS NULL AND LOWER(m2.$_colTitle) = LOWER(m1.$_colTitle))
-            )
-          ORDER BY m2.$_colRating DESC NULLS LAST, m2.$_colSeasonNumber ASC, m2.$_colEpisodeNumber ASC
-          LIMIT 1
-        )
+      SELECT m.* FROM $_tableTvShowGroups g
+      INNER JOIN $_tableMetadata m ON g.$_tvgColRepresentativeRowid = m.rowid
+      WHERE g.$_tvgColRepresentativeRowid IS NOT NULL$filterWhere
       ORDER BY $orderBy
       LIMIT ? OFFSET ?
     ''';
 
-    final results = await _db!.rawQuery(sql, [...filterArgs, ...filterArgs, limit, offset]);
+    final results = await _db!.rawQuery(sql, [...filterArgs, limit, offset]);
     return results.map(_fromRow).toList();
+  }
+
+  /// 为聚合表构建排序条件
+  String _buildOrderByForAggTable(VideoSortOption sortOption) {
+    switch (sortOption) {
+      case VideoSortOption.ratingDesc:
+        return 'g.$_tvgColRating DESC NULLS LAST, g.$_tvgColTitle';
+      case VideoSortOption.ratingAsc:
+        return 'g.$_tvgColRating ASC NULLS LAST, g.$_tvgColTitle';
+      case VideoSortOption.yearDesc:
+        return 'g.$_tvgColYear DESC NULLS LAST, g.$_tvgColTitle';
+      case VideoSortOption.yearAsc:
+        return 'g.$_tvgColYear ASC NULLS LAST, g.$_tvgColTitle';
+      case VideoSortOption.titleAsc:
+        return 'g.$_tvgColTitle ASC';
+      case VideoSortOption.titleDesc:
+        return 'g.$_tvgColTitle DESC';
+      case VideoSortOption.addedDesc:
+      case VideoSortOption.addedAsc:
+        // 聚合表没有添加时间，使用评分代替
+        return 'g.$_tvgColRating DESC NULLS LAST, g.$_tvgColTitle';
+    }
   }
 
   /// 获取筛选后的剧集分组数量

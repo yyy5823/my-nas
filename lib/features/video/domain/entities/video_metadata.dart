@@ -137,7 +137,14 @@ class VideoMetadata {
   /// 2. TMDB 海报（需网络，但会被 CachedNetworkImage 缓存）
   /// 3. NAS 内置缩略图（需 NAS 连接）
   /// 4. 生成的视频缩略图（离线可用）
-  String? get displayPosterUrl => localPosterUrl ?? posterUrl ?? thumbnailUrl ?? generatedThumbnailUrl;
+  String? get displayPosterUrl {
+    // 检查非空且非空字符串
+    if (localPosterUrl != null && localPosterUrl!.isNotEmpty) return localPosterUrl;
+    if (posterUrl != null && posterUrl!.isNotEmpty) return posterUrl;
+    if (thumbnailUrl != null && thumbnailUrl!.isNotEmpty) return thumbnailUrl;
+    if (generatedThumbnailUrl != null && generatedThumbnailUrl!.isNotEmpty) return generatedThumbnailUrl;
+    return null;
+  }
 
   /// 是否有元数据（已成功刮削TMDB数据）
   bool get hasMetadata => tmdbId != null;
