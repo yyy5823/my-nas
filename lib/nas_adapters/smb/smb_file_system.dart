@@ -256,16 +256,21 @@ class SmbFileSystem implements NasFileSystem {
 
   @override
   Future<Stream<List<int>>> getFileStream(String path, {FileRange? range}) async {
-    // 视频流使用独立连接，避免与其他操作冲突
-    // 如果有连接池，创建专用连接；否则使用主连接
+    // 连接策略：
+    // - 有 range 参数 = 视频播放（需要长时间占用）-> 使用专用连接
+    // - 无 range 参数 = 普通文件下载（如海报图片）-> 使用主连接/通用池
     SmbConnect streamClient;
     void Function()? releaseCallback;
 
-    if (connectionPool != null) {
+    final needsDedicatedConnection = range != null;
+
+    if (connectionPool != null && needsDedicatedConnection) {
+      // 视频播放：使用专用连接，避免阻塞其他操作
       final dedicated = await connectionPool!.createDedicatedConnection();
       streamClient = dedicated.client;
       releaseCallback = dedicated.releaseCallback;
     } else {
+      // 普通文件下载：使用主连接
       streamClient = client;
     }
 
