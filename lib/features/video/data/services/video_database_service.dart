@@ -1015,12 +1015,13 @@ class VideoDatabaseService {
 
     // 使用子查询获取每个分组的代表性记录
     // 优先使用 tmdbId 分组，否则使用 title
+    // 注意：子查询也需要应用路径过滤，否则可能返回其他源的记录导致 rowid 不匹配
     final sql = '''
       SELECT * FROM $_tableMetadata m1
       WHERE $_colCategory = 1${pathFilter.andWhere}
         AND m1.rowid = (
           SELECT m2.rowid FROM $_tableMetadata m2
-          WHERE m2.$_colCategory = 1
+          WHERE m2.$_colCategory = 1${pathFilter.andWhere}
             AND (
               (m1.$_colTmdbId IS NOT NULL AND m2.$_colTmdbId = m1.$_colTmdbId)
               OR (m1.$_colTmdbId IS NULL AND m2.$_colTmdbId IS NULL AND LOWER(m2.$_colTitle) = LOWER(m1.$_colTitle))
@@ -1032,7 +1033,7 @@ class VideoDatabaseService {
       LIMIT ? OFFSET ?
     ''';
 
-    final results = await _db!.rawQuery(sql, [...pathFilter.args, limit, offset]);
+    final results = await _db!.rawQuery(sql, [...pathFilter.args, ...pathFilter.args, limit, offset]);
     return results.map(_fromRow).toList();
   }
 
@@ -1144,12 +1145,13 @@ class VideoDatabaseService {
     final pathFilter = _buildPathFilter(enabledPaths);
 
     // 使用子查询获取每个剧集的代表性记录
+    // 注意：子查询也需要应用路径过滤，否则可能返回其他源的记录导致 rowid 不匹配
     final sql = '''
       SELECT * FROM $_tableMetadata m1
       WHERE $_colCategory = 1 AND $_colGenres LIKE ?${pathFilter.andWhere}
         AND m1.rowid = (
           SELECT m2.rowid FROM $_tableMetadata m2
-          WHERE m2.$_colCategory = 1 AND m2.$_colGenres LIKE ?
+          WHERE m2.$_colCategory = 1 AND m2.$_colGenres LIKE ?${pathFilter.andWhere}
             AND (
               (m1.$_colTmdbId IS NOT NULL AND m2.$_colTmdbId = m1.$_colTmdbId)
               OR (m1.$_colTmdbId IS NULL AND m2.$_colTmdbId IS NULL AND LOWER(m2.$_colTitle) = LOWER(m1.$_colTitle))
@@ -1163,7 +1165,7 @@ class VideoDatabaseService {
 
     final results = await _db!.rawQuery(
       sql,
-      ['%$genre%', ...pathFilter.args, '%$genre%', limit, offset],
+      ['%$genre%', ...pathFilter.args, '%$genre%', ...pathFilter.args, limit, offset],
     );
     return results.map(_fromRow).toList();
   }
@@ -1853,12 +1855,13 @@ class VideoDatabaseService {
     final orderBy = _buildOrderBy(sortOption);
 
     // 使用子查询获取每个分组的代表性记录
+    // 注意：子查询也需要应用相同的过滤条件
     final sql = '''
       SELECT * FROM $_tableMetadata m1
       WHERE $_colCategory = 1$filterWhere
         AND m1.rowid = (
           SELECT m2.rowid FROM $_tableMetadata m2
-          WHERE m2.$_colCategory = 1
+          WHERE m2.$_colCategory = 1$filterWhere
             AND (
               (m1.$_colTmdbId IS NOT NULL AND m2.$_colTmdbId = m1.$_colTmdbId)
               OR (m1.$_colTmdbId IS NULL AND m2.$_colTmdbId IS NULL AND LOWER(m2.$_colTitle) = LOWER(m1.$_colTitle))
@@ -1870,7 +1873,7 @@ class VideoDatabaseService {
       LIMIT ? OFFSET ?
     ''';
 
-    final results = await _db!.rawQuery(sql, [...filterArgs, limit, offset]);
+    final results = await _db!.rawQuery(sql, [...filterArgs, ...filterArgs, limit, offset]);
     return results.map(_fromRow).toList();
   }
 
