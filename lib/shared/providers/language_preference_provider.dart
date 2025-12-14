@@ -98,7 +98,7 @@ enum LanguageOption {
   auto('auto', '自动', '跟随系统语言'),
 
   /// 原产地语言（影片原始语言）
-  original('original', '原产地语言', '使用影片原始语言'),
+  original('original', '原产地', '使用影片原始语言'),
 
   /// 中文（简体）
   zhCN('zh-CN', '简体中文', '中文（简体）'),

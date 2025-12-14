@@ -19,12 +19,15 @@ import 'package:my_nas/features/video/data/services/video_library_cache_service.
 import 'package:my_nas/features/video/data/services/video_metadata_service.dart';
 import 'package:my_nas/features/video/data/services/video_scanner_service.dart';
 import 'package:my_nas/features/video/domain/entities/tv_show_group.dart';
+import 'package:my_nas/features/video/domain/entities/video_category_config.dart';
 import 'package:my_nas/features/video/domain/entities/video_item.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
 import 'package:my_nas/features/video/presentation/pages/video_detail_page.dart';
 import 'package:my_nas/features/video/presentation/pages/video_player_page.dart';
+import 'package:my_nas/features/video/presentation/providers/video_category_settings_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/video_history_provider.dart';
 import 'package:my_nas/features/video/presentation/widgets/hero_banner.dart';
+import 'package:my_nas/features/video/presentation/widgets/video_category_settings_sheet.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/adaptive_image.dart';
 import 'package:my_nas/shared/widgets/context_menu_region.dart';
@@ -1307,6 +1310,15 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
           ),
           tooltip: '搜索',
         ),
+        // 分类设置按钮
+        IconButton(
+          onPressed: () => VideoCategorySettingsSheet.show(context),
+          icon: Icon(
+            Icons.tune_rounded,
+            color: isDark ? Colors.white : Colors.black87,
+          ),
+          tooltip: '分类设置',
+        ),
         IconButton(
           onPressed: () => _showSettingsMenu(context),
           icon: Icon(
@@ -1819,35 +1831,66 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
       return _buildSearchResults(context, ref, state, isDark);
     }
 
-    // 判断是否显示英雄横幅
-    final showHeroBanner = state.topRatedMovies.isNotEmpty;
+    // 获取分类设置
+    final categorySettings = ref.watch(videoCategorySettingsProvider);
+    final visibleSections = categorySettings.visibleSections;
 
     // 判断设备类型
     final screenWidth = MediaQuery.of(context).size.width;
     final isDesktop = screenWidth > 800;
 
-    // 获取最近添加的视频（按修改时间排序）
-    // 用于分类行显示，限制 10 个
+    // 预加载数据
     final recentVideos = _getRecentVideos(state, limit: 10);
-    // 用于查看更多页面，不限制数量
     final allRecentVideos = _getRecentVideos(state);
-
-    // 获取电影列表
     final movies = state.movies;
-
-    // 获取剧集分组列表
     final tvShowGroups = state.tvShowGroupList;
-
-    // 获取电影系列
     final movieCollections = state.movieCollections;
-
-    // 高分推荐
     final topRated = state.topRatedMovies;
 
     return CustomScrollView(
       slivers: [
-        // 英雄横幅（高分推荐轮播）
-        if (showHeroBanner)
+        // 根据分类设置动态渲染各分类
+        for (final section in visibleSections)
+          ..._buildCategorySliver(
+            context: context,
+            ref: ref,
+            section: section,
+            state: state,
+            isDark: isDark,
+            isDesktop: isDesktop,
+            recentVideos: recentVideos,
+            allRecentVideos: allRecentVideos,
+            movies: movies,
+            tvShowGroups: tvShowGroups,
+            movieCollections: movieCollections,
+            topRated: topRated,
+          ),
+
+        // 底部留白
+        const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
+      ],
+    );
+  }
+
+  /// 根据分类配置构建对应的 Sliver
+  List<Widget> _buildCategorySliver({
+    required BuildContext context,
+    required WidgetRef ref,
+    required VideoCategorySectionConfig section,
+    required VideoListLoaded state,
+    required bool isDark,
+    required bool isDesktop,
+    required List<VideoMetadata> recentVideos,
+    required List<VideoMetadata> allRecentVideos,
+    required List<VideoMetadata> movies,
+    required List<TvShowGroup> tvShowGroups,
+    required List<MovieCollection> movieCollections,
+    required List<VideoMetadata> topRated,
+  }) {
+    switch (section.category) {
+      case VideoHomeCategory.heroBanner:
+        if (topRated.isEmpty) return [];
+        return [
           SliverToBoxAdapter(
             child: isDesktop
                 ? HeroBanner(
@@ -1861,12 +1904,14 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
                     onItemTap: (item) => _openVideoDetail(context, ref, item),
                   ),
           ),
+        ];
 
-        // 继续观看（横向卡片）
-        _ContinueWatchingSection(isDark: isDark),
+      case VideoHomeCategory.continueWatching:
+        return [_ContinueWatchingSection(isDark: isDark)];
 
-        // 最近添加（纵向海报）
-        if (recentVideos.isNotEmpty)
+      case VideoHomeCategory.recentlyAdded:
+        if (recentVideos.isEmpty) return [];
+        return [
           SliverToBoxAdapter(
             child: _CategoryRow(
               title: '最近添加',
@@ -1881,9 +1926,11 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
                   : null,
             ),
           ),
+        ];
 
-        // 电影（纵向海报）
-        if (movies.isNotEmpty)
+      case VideoHomeCategory.movies:
+        if (movies.isEmpty) return [];
+        return [
           SliverToBoxAdapter(
             child: _CategoryRow(
               title: '电影',
@@ -1899,9 +1946,11 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
                   : null,
             ),
           ),
+        ];
 
-        // 剧集（纵向海报，显示季集统计）
-        if (tvShowGroups.isNotEmpty)
+      case VideoHomeCategory.tvShows:
+        if (tvShowGroups.isEmpty) return [];
+        return [
           SliverToBoxAdapter(
             child: _TvShowRow(
               title: '剧集',
@@ -1916,9 +1965,55 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
                   : null,
             ),
           ),
+        ];
 
-        // 其他视频（未识别为电影或剧集的视频）
-        if (state.others.isNotEmpty)
+      case VideoHomeCategory.movieCollections:
+        if (movieCollections.isEmpty) return [];
+        return [
+          SliverToBoxAdapter(
+            child: _MovieCollectionRow(
+              title: '电影系列',
+              collections: movieCollections,
+              onCollectionTap: (collection) => _showCollectionPage(context, ref, collection),
+              isDark: isDark,
+              icon: Icons.collections_bookmark_rounded,
+              iconColor: Colors.purple,
+            ),
+          ),
+        ];
+
+      case VideoHomeCategory.topRated:
+        if (topRated.length <= 5) return [];
+        return [
+          SliverToBoxAdapter(
+            child: _CategoryRow(
+              title: '高分推荐',
+              items: topRated.skip(5).toList(),
+              onItemTap: (m) => _openVideoDetail(context, ref, m),
+              onItemContextMenu: (m) => _showVideoContextMenu(context, ref, m),
+              isDark: isDark,
+              icon: Icons.star_rounded,
+              iconColor: Colors.amber,
+              onViewAll: topRated.length > 15
+                  ? () => _showCategoryPage(context, '高分推荐', topRated.skip(5).toList())
+                  : null,
+            ),
+          ),
+        ];
+
+      case VideoHomeCategory.unwatched:
+        // 未观看分类 - 需要异步加载，这里先返回占位符
+        return [
+          _UnwatchedSection(
+            isDark: isDark,
+            onItemTap: (m) => _openVideoDetail(context, ref, m),
+            onItemContextMenu: (m) => _showVideoContextMenu(context, ref, m),
+          ),
+        ];
+
+      case VideoHomeCategory.others:
+        if (state.others.isEmpty) return [];
+        return [
           SliverToBoxAdapter(
             child: _CategoryRow(
               title: '其他',
@@ -1934,41 +2029,20 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
                   : null,
             ),
           ),
+        ];
 
-        // 电影系列（横向卡片，显示系列中电影数量）
-        if (movieCollections.isNotEmpty)
-          SliverToBoxAdapter(
-            child: _MovieCollectionRow(
-              title: '电影系列',
-              collections: movieCollections,
-              onCollectionTap: (collection) => _showCollectionPage(context, ref, collection),
-              isDark: isDark,
-              icon: Icons.collections_bookmark_rounded,
-              iconColor: Colors.purple,
-            ),
+      case VideoHomeCategory.byGenre:
+        // 类型分类 - 根据 genreFilter 加载对应类型的视频
+        if (section.genreFilter == null) return [];
+        return [
+          _GenreCategorySection(
+            genre: section.genreFilter!,
+            isDark: isDark,
+            onItemTap: (m) => _openVideoDetail(context, ref, m),
+            onItemContextMenu: (m) => _showVideoContextMenu(context, ref, m),
           ),
-
-        // 高分推荐（纵向海报）
-        if (topRated.length > 5)
-          SliverToBoxAdapter(
-            child: _CategoryRow(
-              title: '高分推荐',
-              items: topRated.skip(5).toList(), // 跳过 Hero Banner 中已显示的
-              onItemTap: (m) => _openVideoDetail(context, ref, m),
-              onItemContextMenu: (m) => _showVideoContextMenu(context, ref, m),
-              isDark: isDark,
-              icon: Icons.star_rounded,
-              iconColor: Colors.amber,
-              onViewAll: topRated.length > 15
-                  ? () => _showCategoryPage(context, '高分推荐', topRated.skip(5).toList())
-                  : null,
-            ),
-          ),
-
-        // 底部留白
-        const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
-      ],
-    );
+        ];
+    }
   }
 
   /// 获取最近添加的视频（使用 SQLite 预加载的数据）
@@ -6759,6 +6833,161 @@ class _MovieCollectionPage extends ConsumerWidget {
           // 底部留白
           const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
         ],
+      ),
+    );
+  }
+}
+
+/// 未观看分类区块（异步加载）
+class _UnwatchedSection extends StatefulWidget {
+  const _UnwatchedSection({
+    required this.isDark,
+    required this.onItemTap,
+    required this.onItemContextMenu,
+  });
+
+  final bool isDark;
+  final void Function(VideoMetadata) onItemTap;
+  final void Function(VideoMetadata) onItemContextMenu;
+
+  @override
+  State<_UnwatchedSection> createState() => _UnwatchedSectionState();
+}
+
+class _UnwatchedSectionState extends State<_UnwatchedSection> {
+  List<VideoMetadata>? _unwatchedVideos;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUnwatched();
+  }
+
+  Future<void> _loadUnwatched() async {
+    try {
+      final historyService = VideoHistoryService();
+      await historyService.init();
+      final watchedPaths = await historyService.getAllWatchedPaths();
+
+      final db = VideoDatabaseService();
+      await db.init();
+      final unwatched = await db.getUnwatched(
+        watchedPaths: watchedPaths,
+        limit: 20,
+      );
+
+      if (mounted) {
+        setState(() {
+          _unwatchedVideos = unwatched;
+          _loading = false;
+        });
+      }
+    } on Exception catch (e) {
+      logger.w('_UnwatchedSection: 加载未观看视频失败', e);
+      if (mounted) {
+        setState(() {
+          _unwatchedVideos = [];
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const SliverToBoxAdapter(child: SizedBox.shrink());
+    }
+
+    if (_unwatchedVideos == null || _unwatchedVideos!.isEmpty) {
+      return const SliverToBoxAdapter(child: SizedBox.shrink());
+    }
+
+    return SliverToBoxAdapter(
+      child: _CategoryRow(
+        title: '未观看',
+        items: _unwatchedVideos!,
+        onItemTap: widget.onItemTap,
+        onItemContextMenu: widget.onItemContextMenu,
+        isDark: widget.isDark,
+        icon: Icons.visibility_off_rounded,
+        iconColor: Colors.teal,
+      ),
+    );
+  }
+}
+
+/// 类型分类区块（异步加载）
+class _GenreCategorySection extends StatefulWidget {
+  const _GenreCategorySection({
+    required this.genre,
+    required this.isDark,
+    required this.onItemTap,
+    required this.onItemContextMenu,
+  });
+
+  final String genre;
+  final bool isDark;
+  final void Function(VideoMetadata) onItemTap;
+  final void Function(VideoMetadata) onItemContextMenu;
+
+  @override
+  State<_GenreCategorySection> createState() => _GenreCategorySectionState();
+}
+
+class _GenreCategorySectionState extends State<_GenreCategorySection> {
+  List<VideoMetadata>? _videos;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVideos();
+  }
+
+  Future<void> _loadVideos() async {
+    try {
+      final db = VideoDatabaseService();
+      await db.init();
+      final videos = await db.getByGenreCombined(widget.genre, limit: 20);
+
+      if (mounted) {
+        setState(() {
+          _videos = videos;
+          _loading = false;
+        });
+      }
+    } on Exception catch (e) {
+      logger.w('_GenreCategorySection: 加载类型视频失败', e);
+      if (mounted) {
+        setState(() {
+          _videos = [];
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const SliverToBoxAdapter(child: SizedBox.shrink());
+    }
+
+    if (_videos == null || _videos!.isEmpty) {
+      return const SliverToBoxAdapter(child: SizedBox.shrink());
+    }
+
+    return SliverToBoxAdapter(
+      child: _CategoryRow(
+        title: widget.genre,
+        items: _videos!,
+        onItemTap: widget.onItemTap,
+        onItemContextMenu: widget.onItemContextMenu,
+        isDark: widget.isDark,
+        icon: Icons.category_rounded,
+        iconColor: Colors.indigo,
       ),
     );
   }

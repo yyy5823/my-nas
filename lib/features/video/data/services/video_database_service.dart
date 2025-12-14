@@ -984,6 +984,167 @@ class VideoDatabaseService {
     return results.map(_fromRow).toList();
   }
 
+  /// 获取未观看的视频
+  ///
+  /// 排除已在观看历史中的视频（通过传入已观看路径列表）
+  /// [watchedPaths] 已观看的视频路径列表（从 VideoHistoryService.getAllWatchedPaths 获取）
+  /// [enabledPaths] 启用的路径列表
+  Future<List<VideoMetadata>> getUnwatched({
+    required Set<String> watchedPaths,
+    int limit = 50,
+    int offset = 0,
+    List<({String sourceId, String path})>? enabledPaths,
+  }) async {
+    if (!_initialized) await init();
+
+
+    // 如果没有观看历史，返回全部视频
+    if (watchedPaths.isEmpty) {
+      return getAllVideosQuick(enabledPaths: enabledPaths, limit: limit);
+    }
+
+    // 构建排除条件：排除已观看的视频
+    // 使用 sourceId + '|' + filePath 作为唯一标识
+    final allVideos = await getAllVideosQuick(enabledPaths: enabledPaths);
+    final unwatched = allVideos
+        .where((v) => !watchedPaths.contains(v.filePath))
+        .take(limit)
+        .toList();
+
+    return unwatched;
+  }
+
+  /// 获取所有存在的影片类型（去重）
+  ///
+  /// 返回数据库中所有视频的类型标签列表
+  Future<List<String>> getAllGenres() async {
+    if (!_initialized) await init();
+
+    final results = await _db!.query(
+      _tableMetadata,
+      columns: [_colGenres],
+      where: '$_colGenres IS NOT NULL AND $_colGenres != ?',
+      whereArgs: [''],
+      distinct: true,
+    );
+
+    // 收集所有类型并去重
+    final genreSet = <String>{};
+    for (final row in results) {
+      final genresStr = row[_colGenres] as String?;
+      if (genresStr != null && genresStr.isNotEmpty) {
+        final genres = genresStr.split(',').map((g) => g.trim());
+        genreSet.addAll(genres.where((g) => g.isNotEmpty));
+      }
+    }
+
+    // 按出现频率排序（可选：先统计每个类型的数量）
+    final sortedGenres = genreSet.toList()..sort();
+    return sortedGenres;
+  }
+
+  /// 根据类型获取电影
+  ///
+  /// [genre] 类型名称（如：动作、科幻、喜剧）
+  /// [enabledPaths] 启用的路径列表
+  Future<List<VideoMetadata>> getMoviesByGenre(
+    String genre, {
+    int limit = 30,
+    int offset = 0,
+    List<({String sourceId, String path})>? enabledPaths,
+  }) async {
+    if (!_initialized) await init();
+
+    final pathFilter = _buildPathFilter(enabledPaths);
+
+    var where = '$_colCategory = 0 AND $_colGenres LIKE ?';
+    final whereArgs = <Object>['%$genre%'];
+
+    if (pathFilter.andWhere.isNotEmpty) {
+      where += pathFilter.andWhere;
+      whereArgs.addAll(pathFilter.args);
+    }
+
+    final results = await _db!.query(
+      _tableMetadata,
+      where: where,
+      whereArgs: whereArgs,
+      orderBy: '$_colRating DESC',
+      limit: limit,
+      offset: offset,
+    );
+
+    return results.map(_fromRow).toList();
+  }
+
+  /// 根据类型获取剧集（去重，每个剧只返回一条代表记录）
+  ///
+  /// [genre] 类型名称
+  /// [enabledPaths] 启用的路径列表
+  Future<List<VideoMetadata>> getTvShowsByGenre(
+    String genre, {
+    int limit = 30,
+    int offset = 0,
+    List<({String sourceId, String path})>? enabledPaths,
+  }) async {
+    if (!_initialized) await init();
+
+    final pathFilter = _buildPathFilter(enabledPaths);
+
+    // 使用子查询获取每个剧集的代表性记录
+    final sql = '''
+      SELECT * FROM $_tableMetadata m1
+      WHERE $_colCategory = 1 AND $_colGenres LIKE ?${pathFilter.andWhere}
+        AND m1.rowid = (
+          SELECT m2.rowid FROM $_tableMetadata m2
+          WHERE m2.$_colCategory = 1 AND m2.$_colGenres LIKE ?
+            AND (
+              (m1.$_colTmdbId IS NOT NULL AND m2.$_colTmdbId = m1.$_colTmdbId)
+              OR (m1.$_colTmdbId IS NULL AND m2.$_colTmdbId IS NULL AND LOWER(m2.$_colTitle) = LOWER(m1.$_colTitle))
+            )
+          ORDER BY m2.$_colRating DESC NULLS LAST, m2.$_colSeasonNumber ASC, m2.$_colEpisodeNumber ASC
+          LIMIT 1
+        )
+      ORDER BY $_colRating DESC NULLS LAST, $_colTitle
+      LIMIT ? OFFSET ?
+    ''';
+
+    final results = await _db!.rawQuery(
+      sql,
+      ['%$genre%', ...pathFilter.args, '%$genre%', limit, offset],
+    );
+    return results.map(_fromRow).toList();
+  }
+
+  /// 根据类型获取所有视频（电影+剧集）
+  ///
+  /// 用于类型分类显示，合并电影和剧集
+  Future<List<VideoMetadata>> getByGenreCombined(
+    String genre, {
+    int limit = 30,
+    List<({String sourceId, String path})>? enabledPaths,
+  }) async {
+    // 获取电影
+    final movies = await getMoviesByGenre(
+      genre,
+      limit: limit ~/ 2,
+      enabledPaths: enabledPaths,
+    );
+
+    // 获取剧集
+    final tvShows = await getTvShowsByGenre(
+      genre,
+      limit: limit ~/ 2,
+      enabledPaths: enabledPaths,
+    );
+
+    // 合并并按评分排序
+    final combined = [...movies, ...tvShows]
+    ..sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
+
+    return combined.take(limit).toList();
+  }
+
   /// 删除元数据
   Future<void> delete(String sourceId, String filePath) async {
     if (!_initialized) await init();
