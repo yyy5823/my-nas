@@ -251,6 +251,9 @@ class VideoDatabaseService {
         $_colCollectionName TEXT,
         $_colHasNfo INTEGER DEFAULT 0,
         $_colScrapePriority INTEGER DEFAULT 2,
+        $_colShowDirectory TEXT,
+        $_colMovieDirectory TEXT,
+        $_colResolution TEXT,
         UNIQUE($_colSourceId, $_colFilePath)
       )
     ''');
@@ -285,6 +288,10 @@ class VideoDatabaseService {
 
     // 创建扫描进度表
     await _createScanProgressTable(db);
+
+    // 创建聚合表
+    await _createTvShowGroupsTable(db);
+    await _createMovieCollectionGroupsTable(db);
 
     logger.i('VideoDatabaseService: 表和索引创建完成');
   }

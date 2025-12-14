@@ -140,8 +140,18 @@ class SmbAdapter implements NasAdapter {
   String _parseError(Exception e) => _parseErrorAny(e);
 
   String _parseErrorAny(dynamic e) {
+    // 优先处理 SmbAuthException - 认证失败
+    if (e.runtimeType.toString() == 'SmbAuthException') {
+      return 'SMB 认证失败\n用户名或密码错误';
+    }
+
     final msg = e.toString().toLowerCase();
     logger.d('SmbAdapter: 解析错误消息 => $msg');
+
+    // SmbAuthException 的字符串匹配（备用）
+    if (msg.contains('smbauthexception')) {
+      return 'SMB 认证失败\n用户名或密码错误';
+    }
 
     // 连接相关错误
     if (msg.contains('connection refused')) {
