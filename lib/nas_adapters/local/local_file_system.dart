@@ -126,6 +126,12 @@ class LocalFileSystem implements NasFileSystem {
   }
 
   @override
+  Future<void> writeFile(String remotePath, List<int> data) async {
+    final file = File(remotePath);
+    await file.writeAsBytes(data);
+  }
+
+  @override
   Future<List<FileItem>> search(String query, {String? path}) async {
     final basePath = path ?? '/';
     final files = await _api.searchFiles(
@@ -151,3 +157,4 @@ class LocalFileSystem implements NasFileSystem {
   @override
   Future<String?> getThumbnailUrl(String path, {ThumbnailSize? size}) async => _api.getFileUri(path);
 }
+

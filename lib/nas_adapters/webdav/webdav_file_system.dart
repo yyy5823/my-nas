@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:my_nas/core/utils/logger.dart';
@@ -178,6 +179,11 @@ class WebDavFileSystem implements NasFileSystem {
         onProgress?.call(count, total);
       },
     );
+  }
+
+  @override
+  Future<void> writeFile(String remotePath, List<int> data) async {
+    await _client.write(remotePath, Uint8List.fromList(data));
   }
 
   @override

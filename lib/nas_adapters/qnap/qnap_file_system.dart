@@ -139,6 +139,11 @@ class QnapFileSystem implements NasFileSystem {
   }
 
   @override
+  Future<void> writeFile(String remotePath, List<int> data) async {
+    await _api.writeFileData(remotePath, data);
+  }
+
+  @override
   Future<List<FileItem>> search(String query, {String? path}) async {
     final folderPath = path ?? '/';
     final files = await _api.searchFiles(
@@ -174,3 +179,4 @@ class QnapFileSystem implements NasFileSystem {
     return _api.getThumbnailUrl(path, size: sizeStr);
   }
 }
+

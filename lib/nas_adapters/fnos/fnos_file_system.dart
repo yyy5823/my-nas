@@ -131,6 +131,11 @@ class FnOSFileSystem implements NasFileSystem {
   }
 
   @override
+  Future<void> writeFile(String remotePath, List<int> data) async {
+    throw UnimplementedError('飞牛 NAS 写入功能尚未实现');
+  }
+
+  @override
   Future<List<FileItem>> search(String query, {String? path}) async {
     throw UnimplementedError('飞牛 NAS 搜索功能尚未实现');
   }
@@ -139,3 +144,4 @@ class FnOSFileSystem implements NasFileSystem {
   Future<String?> getThumbnailUrl(String path, {ThumbnailSize? size}) async =>
       api.getThumbnailUrl(path, size: size);
 }
+

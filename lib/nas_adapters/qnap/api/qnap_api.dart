@@ -382,6 +382,45 @@ class QnapApi {
     logger.i('QnapApi: 文件上传成功');
   }
 
+  /// 写入字节数据到远程文件
+  ///
+  /// 直接将内存中的字节数据写入到远程文件
+  /// [remotePath] 远程文件完整路径（包含文件名）
+  /// [data] 要写入的字节数据
+  Future<void> writeFileData(String remotePath, List<int> data) async {
+    // 获取目录和文件名
+    final lastSlash = remotePath.lastIndexOf('/');
+    final destFolderPath = lastSlash > 0 ? remotePath.substring(0, lastSlash) : '/';
+    final fileName = lastSlash >= 0 ? remotePath.substring(lastSlash + 1) : remotePath;
+
+    // 使用 MultipartFile.fromBytes
+    final file = MultipartFile.fromBytes(data, filename: fileName);
+
+    final formData = FormData.fromMap({
+      'func': 'upload',
+      'dest_path': destFolderPath,
+      'overwrite': '1',
+      'sid': _sid ?? '',
+      'file': file,
+    });
+
+    logger.d('QnapApi: 写入文件到 $remotePath (${data.length} bytes)');
+
+    final response = await _dio.post<Map<String, dynamic>>(
+      '/cgi-bin/filemanager/utilRequest.cgi',
+      data: formData,
+    );
+
+    final responseData = response.data;
+    if (responseData == null || responseData['status'] != 1) {
+      throw ServerException(
+        message: responseData?['msg'] as String? ?? '写入失败',
+      );
+    }
+
+    logger.d('QnapApi: 文件写入成功');
+  }
+
   /// 通用请求方法
   Future<dynamic> _request(
     String path, {

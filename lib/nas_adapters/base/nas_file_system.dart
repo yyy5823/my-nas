@@ -47,6 +47,18 @@ abstract class NasFileSystem {
     void Function(int sent, int total)? onProgress,
   });
 
+  /// 写入字节数据到远程文件
+  ///
+  /// 直接将内存中的字节数据写入到远程文件，适用于：
+  /// - 写入生成的 NFO 文件
+  /// - 写入下载的海报图片
+  ///
+  /// [remotePath] 远程文件完整路径（包含文件名）
+  /// [data] 要写入的字节数据
+  ///
+  /// 如果文件已存在，将被覆盖
+  Future<void> writeFile(String remotePath, List<int> data);
+
   /// 搜索文件
   Future<List<FileItem>> search(String query, {String? path});
 

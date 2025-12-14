@@ -140,6 +140,11 @@ class SynologyFileSystem implements NasFileSystem {
   }
 
   @override
+  Future<void> writeFile(String remotePath, List<int> data) async {
+    await _api.writeFileData(remotePath, data);
+  }
+
+  @override
   Future<List<FileItem>> search(String query, {String? path}) async {
     final folderPath = path ?? '/';
     final taskId = await _api.startSearch(
@@ -181,3 +186,4 @@ class SynologyFileSystem implements NasFileSystem {
     return _api.getThumbnailUrl(path, size: sizeStr);
   }
 }
+

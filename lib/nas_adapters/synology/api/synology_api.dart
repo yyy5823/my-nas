@@ -510,6 +510,51 @@ class SynologyApi {
     } while (!status.finished);
   }
 
+  /// 写入字节数据到远程文件
+  ///
+  /// 直接将内存中的字节数据写入到远程文件
+  /// [remotePath] 远程文件完整路径（包含文件名）
+  /// [data] 要写入的字节数据
+  Future<void> writeFileData(String remotePath, List<int> data) async {
+    // 获取目录和文件名
+    final lastSlash = remotePath.lastIndexOf('/');
+    final destFolderPath = lastSlash > 0 ? remotePath.substring(0, lastSlash) : '/';
+    final fileName = lastSlash >= 0 ? remotePath.substring(lastSlash + 1) : remotePath;
+
+    // 使用 MultipartFile.fromBytes
+    final file = MultipartFile.fromBytes(data, filename: fileName);
+
+    final formData = FormData.fromMap({
+      'api': 'SYNO.FileStation.Upload',
+      'version': 2,
+      'method': 'upload',
+      'path': destFolderPath,
+      'create_parents': true,
+      'overwrite': true,
+      if (_sid != null) '_sid': _sid,
+      'file': file,
+    });
+
+    logger.d('SynologyApi: 写入文件到 $remotePath (${data.length} bytes)');
+
+    final response = await _dio.post<Map<String, dynamic>>(
+      '/webapi/entry.cgi',
+      data: formData,
+    );
+
+    final responseData = response.data;
+    if (responseData == null || responseData['success'] != true) {
+      final error = responseData?['error'];
+      final errorCode = error is Map<String, dynamic> ? error['code'] as int? : null;
+      throw ServerException(
+        message: _getErrorMessage(errorCode),
+        statusCode: errorCode,
+      );
+    }
+
+    logger.d('SynologyApi: 文件写入成功');
+  }
+
   /// 原始请求方法 - 不检查 success 字段，用于登录等需要自行处理错误的场景
   Future<Map<String, dynamic>> _requestRaw(
     String api,

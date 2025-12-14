@@ -432,6 +432,33 @@ class SmbFileSystem implements NasFileSystem {
   }
 
   @override
+  Future<void> writeFile(String remotePath, List<int> data) async {
+    // 先尝试删除已存在的文件（如果存在）
+    try {
+      final existingFile = await client.file(remotePath);
+      await client.delete(existingFile);
+    } on Exception catch (_) {
+      // 文件不存在，忽略错误
+    }
+
+    // 创建远程文件
+    await client.createFile(remotePath);
+    final remoteFile = await client.file(remotePath);
+
+    // 获取写入流
+    final writer = await client.openWrite(remoteFile);
+
+    try {
+      writer.add(data);
+      await writer.flush();
+      await writer.close();
+    } on Exception {
+      await writer.close();
+      rethrow;
+    }
+  }
+
+  @override
   Future<List<FileItem>> search(String query, {String? path}) async {
     // SMB 不支持服务端搜索，需要客户端遍历实现
     throw UnimplementedError('SMB 暂不支持搜索功能');
@@ -440,3 +467,4 @@ class SmbFileSystem implements NasFileSystem {
   @override
   Future<String?> getThumbnailUrl(String path, {ThumbnailSize? size}) async => null;
 }
+

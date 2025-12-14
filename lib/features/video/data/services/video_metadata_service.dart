@@ -4,6 +4,8 @@ import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/background_task_pool.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/video/data/services/nfo_scraper_service.dart';
+import 'package:my_nas/features/video/data/services/nfo_writer_service.dart';
+import 'package:my_nas/features/video/data/services/remote_poster_service.dart';
 import 'package:my_nas/features/video/data/services/tmdb_service.dart';
 import 'package:my_nas/features/video/data/services/video_database_service.dart';
 import 'package:my_nas/features/video/data/services/video_history_service.dart';
@@ -22,6 +24,8 @@ class VideoMetadataService {
   final VideoDatabaseService _db = VideoDatabaseService();
   final TmdbService _tmdbService = TmdbService();
   final NfoScraperService _nfoService = NfoScraperService();
+  final NfoWriterService _nfoWriterService = NfoWriterService();
+  final RemotePosterService _remotePosterService = RemotePosterService();
   final VideoThumbnailService _thumbnailService = VideoThumbnailService();
   final VideoHistoryService _historyService = VideoHistoryService();
   final VideoPosterCacheService _posterCacheService = VideoPosterCacheService();
@@ -247,8 +251,9 @@ class VideoMetadataService {
     }
 
     // 如果 NFO 没有数据或缺少关键信息，尝试从 TMDB 获取
+    // 传入 fileSystem 以便将 NFO 和海报写入远程目录
     if (!hasNfoData || !metadata.hasMetadata) {
-      await _fetchFromTmdb(metadata);
+      await _fetchFromTmdb(metadata, fileSystem);
     } else if (hasNfoData && 
                metadata.category == MediaCategory.movie && 
                metadata.collectionId == null &&
@@ -424,7 +429,10 @@ class VideoMetadataService {
   }
 
   /// 从 TMDB 获取元数据
-  Future<void> _fetchFromTmdb(VideoMetadata metadata) async {
+  ///
+  /// 如果 [fileSystem] 不为 null，会将 NFO 文件和海报图片写入到视频所在的远程目录，
+  /// 使刮削数据可被 Kodi/Jellyfin/Plex 等软件使用。
+  Future<void> _fetchFromTmdb(VideoMetadata metadata, NasFileSystem? fileSystem) async {
     if (!_tmdbService.hasApiKey) {
       logger.w('VideoMetadataService: 未配置 TMDB API Key');
       return;
@@ -440,6 +448,9 @@ class VideoMetadataService {
     }
 
     try {
+      TmdbMovieDetail? movieDetail;
+      TmdbTvDetail? tvDetail;
+
       if (info.isTvShow) {
         final results = await _tmdbService.searchTvShows(
           info.cleanTitle,
@@ -448,7 +459,7 @@ class VideoMetadataService {
 
         if (results.isNotEmpty) {
           final tvItem = results.results.first;
-          final tvDetail = await _tmdbService.getTvDetail(tvItem.id);
+          tvDetail = await _tmdbService.getTvDetail(tvItem.id);
 
           if (tvDetail != null) {
             String? episodeTitle;
@@ -482,7 +493,7 @@ class VideoMetadataService {
 
         if (results.isNotEmpty) {
           final movieItem = results.results.first;
-          final movieDetail = await _tmdbService.getMovieDetail(movieItem.id);
+          movieDetail = await _tmdbService.getMovieDetail(movieItem.id);
 
           if (movieDetail != null) {
             metadata.updateFromMovie(movieDetail);
@@ -490,10 +501,110 @@ class VideoMetadataService {
           }
         }
       }
+
+      // ---------------- 远程写入 NFO 和海报 ----------------
+      // 如果有 fileSystem 且成功获取了 TMDB 数据，将刮削结果写入远程目录
+      if (fileSystem != null && metadata.tmdbId != null) {
+        final videoDir = _getParentPath(metadata.filePath);
+        final videoFileName = metadata.fileName;
+
+        // 后台异步写入 NFO 和海报，不阻塞主流程
+        BackgroundTaskPool.media.addFireAndForget(
+          () => _writeNfoAndPosterToRemote(
+            metadata: metadata,
+            movieDetail: movieDetail,
+            tvDetail: tvDetail,
+            fileSystem: fileSystem,
+            videoDir: videoDir,
+            videoFileName: videoFileName,
+          ),
+          taskName: 'writeNfoAndPoster:${metadata.fileName}',
+        );
+      }
     } on Exception catch (e) {
       logger.e('VideoMetadataService: 获取元数据失败', e);
     }
   }
+
+  /// 获取文件的父目录路径
+  String _getParentPath(String filePath) {
+    final lastSlash = filePath.lastIndexOf('/');
+    if (lastSlash > 0) {
+      return filePath.substring(0, lastSlash);
+    }
+    return '/';
+  }
+
+  /// 将 NFO 和海报写入远程目录
+  Future<void> _writeNfoAndPosterToRemote({
+    required VideoMetadata metadata,
+    required TmdbMovieDetail? movieDetail,
+    required TmdbTvDetail? tvDetail,
+    required NasFileSystem fileSystem,
+    required String videoDir,
+    required String videoFileName,
+  }) async {
+    try {
+      // 1. 生成并写入 NFO 文件
+      String? nfoContent;
+      NfoType nfoType;
+
+      if (movieDetail != null) {
+        nfoContent = _nfoWriterService.generateFromTmdbMovie(movieDetail);
+        nfoType = NfoType.movie;
+      } else if (tvDetail != null) {
+        nfoContent = _nfoWriterService.generateFromTmdbTvShow(tvDetail);
+        nfoType = NfoType.tvShow;
+      } else {
+        return;
+      }
+
+      await _nfoWriterService.writeNfoFile(
+        fileSystem: fileSystem,
+        videoDir: videoDir,
+        nfoContent: nfoContent,
+        type: nfoType,
+        videoFileName: videoFileName,
+      );
+
+      // 2. 下载并保存海报到远程目录
+      if (metadata.posterUrl != null && metadata.posterUrl!.isNotEmpty) {
+        final remotePosterPath = await _remotePosterService.downloadAndSavePoster(
+          fileSystem: fileSystem,
+          videoDir: videoDir,
+          posterUrl: metadata.posterUrl!,
+          type: PosterType.poster,
+          videoFileName: videoFileName,
+        );
+
+        if (remotePosterPath != null) {
+          // 更新 localPosterUrl 为远程路径
+          metadata.localPosterUrl = remotePosterPath;
+          await save(metadata);
+          logger.i('VideoMetadataService: 海报已保存到远程目录 "$remotePosterPath"');
+        }
+      }
+
+      // 3. 可选：下载背景图（fanart）
+      if (metadata.backdropUrl != null && 
+          metadata.backdropUrl!.isNotEmpty &&
+          metadata.backdropUrl!.startsWith('http')) {
+        await _remotePosterService.downloadAndSavePoster(
+          fileSystem: fileSystem,
+          videoDir: videoDir,
+          posterUrl: metadata.backdropUrl!,
+          type: PosterType.fanart,
+          videoFileName: videoFileName,
+        );
+      }
+
+      logger.i('VideoMetadataService: NFO 和海报已写入远程目录 "$videoDir"');
+    } on Exception catch (e, st) {
+      // 写入失败不影响主流程，仅记录警告
+      logger.w('VideoMetadataService: 写入 NFO/海报到远程目录失败', e, st);
+    }
+  }
+
 
   /// 从 TMDB 补充电影系列信息
   ///
