@@ -463,23 +463,32 @@ class MTeamApi extends PTSiteApi {
   List<String> _parseLabels(Map<String, dynamic> data) {
     final labels = <String>[];
 
-    // 解析标签
-    if (data['labels'] != null) {
-      final labelList = data['labels'] as List<dynamic>? ?? [];
-      for (final label in labelList) {
-        if (label is String) {
-          labels.add(label);
-        } else if (label is Map) {
-          labels.add(label['name']?.toString() ?? '');
+    // 解析标签 - 可能是字符串或数组
+    final labelsValue = data['labels'];
+    if (labelsValue != null) {
+      if (labelsValue is String && labelsValue.isNotEmpty) {
+        // 如果是字符串，可能是逗号分隔的列表
+        labels.addAll(labelsValue.split(',').map((s) => s.trim()));
+      } else if (labelsValue is List) {
+        for (final label in labelsValue) {
+          if (label is String) {
+            labels.add(label);
+          } else if (label is Map) {
+            labels.add(label['name']?.toString() ?? '');
+          }
         }
       }
     }
 
-    // 解析编码格式等
-    if (data['videoCodec'] != null) labels.add(data['videoCodec'] as String);
-    if (data['audioCodec'] != null) labels.add(data['audioCodec'] as String);
-    if (data['resolution'] != null) labels.add(data['resolution'] as String);
-    if (data['source'] != null) labels.add(data['source'] as String);
+    // 解析编码格式等 - 安全处理可能的非字符串类型
+    final videoCodec = data['videoCodec'];
+    if (videoCodec != null) labels.add(videoCodec.toString());
+    final audioCodec = data['audioCodec'];
+    if (audioCodec != null) labels.add(audioCodec.toString());
+    final resolution = data['resolution'];
+    if (resolution != null) labels.add(resolution.toString());
+    final source = data['source'];
+    if (source != null) labels.add(source.toString());
 
     return labels.where((l) => l.isNotEmpty).toList();
   }
