@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:collection';
-import 'dart:io';
 
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/nas_adapters/smb/smb_pool_config.dart';
 
 /// 后台任务池
 ///
@@ -24,29 +24,27 @@ class BackgroundTaskPool {
   });
   /// 媒体处理任务池（海报下载、缩略图生成等）
   ///
-  /// 移动端限制 2 个并发，桌面端限制 4 个并发
+  /// 使用 SmbPoolConfig 根据平台动态配置
   static final media = BackgroundTaskPool(
     name: 'media',
-    maxConcurrency: _isMobile ? 2 : 4,
+    maxConcurrency: SmbPoolConfig.maxBackgroundTasks,
   );
 
   /// 网络请求任务池（API 调用等）
   ///
-  /// 移动端限制 3 个并发，桌面端限制 6 个并发
+  /// 网络请求可以比后台任务多一些并发
   static final network = BackgroundTaskPool(
     name: 'network',
-    maxConcurrency: _isMobile ? 3 : 6,
+    maxConcurrency: SmbPoolConfig.isDesktop ? 8 : 4,
   );
 
   /// 刮削任务池
   ///
-  /// 移动端限制 2 个并发，桌面端限制 4 个并发
+  /// 使用 SmbPoolConfig 根据平台动态配置
   static final scrape = BackgroundTaskPool(
     name: 'scrape',
-    maxConcurrency: _isMobile ? 2 : 4,
+    maxConcurrency: SmbPoolConfig.maxBackgroundTasks,
   );
-
-  static bool get _isMobile => Platform.isAndroid || Platform.isIOS;
 
   final String name;
   final int maxConcurrency;

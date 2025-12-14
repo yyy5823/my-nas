@@ -5,6 +5,7 @@ import 'package:my_nas/nas_adapters/base/nas_connection.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/nas_adapters/smb/smb_connection_pool.dart';
 import 'package:my_nas/nas_adapters/smb/smb_file_system.dart';
+import 'package:my_nas/nas_adapters/smb/smb_pool_config.dart';
 import 'package:smb_connect/smb_connect.dart';
 
 /// SMB/CIFS NAS 适配器
@@ -105,11 +106,15 @@ class SmbAdapter implements NasAdapter {
         logger.d('SmbAdapter: 共享 => ${share.name} (${share.path})');
       }
 
-      // 创建连接池
+      // 创建连接池（根据平台动态配置）
+      logger.i('SmbAdapter: ${SmbPoolConfig.summary}');
       _connectionPool = SmbConnectionPool(
         host: host,
         username: config.username,
         password: config.password,
+        maxConnections: SmbPoolConfig.maxConnections,
+        maxDedicatedConnections: SmbPoolConfig.maxDedicatedConnections,
+        maxIdleTime: SmbPoolConfig.maxIdleTime,
       );
 
       _fileSystem = SmbFileSystem(
