@@ -743,12 +743,15 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
         context,
         MaterialPageRoute<void>(
           builder: (context) => EpubReaderPage(
+            // 使用转换后的本地 EPUB 文件
+            // 注意：sourceId 必须设为 null，因为这是本地缓存文件
+            // 如果保留 sourceId，EpubReaderNotifier 会尝试从 NAS 下载本地路径（导致 404）
             book: BookItem(
               id: widget.book.id,
               name: widget.book.name,
               path: epubPath,
               url: 'file://$epubPath',
-              sourceId: widget.book.sourceId,
+              sourceId: null, // 关键：本地文件不需要 sourceId
             ),
           ),
         ),

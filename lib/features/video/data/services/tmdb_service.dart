@@ -83,10 +83,12 @@ class TmdbService {
   }
 
   /// 搜索电影
+  ///
+  /// [language] 可选，不传则使用用户语言偏好设置
   Future<TmdbSearchResult> searchMovies(
     String query, {
     int page = 1,
-    String language = 'zh-CN',
+    String? language,
     int? year,
   }) async {
     if (!hasApiKey) {
@@ -98,7 +100,7 @@ class TmdbService {
         'api_key': _apiKey,
         'query': query,
         'page': page.toString(),
-        'language': language,
+        'language': language ?? getPreferredMetadataLanguage(),
         'include_adult': 'false',
       };
       if (year != null) {
@@ -122,10 +124,12 @@ class TmdbService {
   }
 
   /// 搜索电视剧
+  ///
+  /// [language] 可选，不传则使用用户语言偏好设置
   Future<TmdbSearchResult> searchTvShows(
     String query, {
     int page = 1,
-    String language = 'zh-CN',
+    String? language,
     int? year,
   }) async {
     if (!hasApiKey) {
@@ -137,7 +141,7 @@ class TmdbService {
         'api_key': _apiKey,
         'query': query,
         'page': page.toString(),
-        'language': language,
+        'language': language ?? getPreferredMetadataLanguage(),
       };
       if (year != null) {
         params['first_air_date_year'] = year.toString();
@@ -160,16 +164,18 @@ class TmdbService {
   }
 
   /// 获取电影详情
+  ///
+  /// [language] 可选，不传则使用用户语言偏好设置
   Future<TmdbMovieDetail?> getMovieDetail(
     int movieId, {
-    String language = 'zh-CN',
+    String? language,
   }) async {
     if (!hasApiKey) return null;
 
     try {
       final params = {
         'api_key': _apiKey,
-        'language': language,
+        'language': language ?? getPreferredMetadataLanguage(),
         'append_to_response': 'credits,videos,images',
       };
 
@@ -190,16 +196,18 @@ class TmdbService {
   }
 
   /// 获取电视剧详情
+  ///
+  /// [language] 可选，不传则使用用户语言偏好设置
   Future<TmdbTvDetail?> getTvDetail(
     int tvId, {
-    String language = 'zh-CN',
+    String? language,
   }) async {
     if (!hasApiKey) return null;
 
     try {
       final params = {
         'api_key': _apiKey,
-        'language': language,
+        'language': language ?? getPreferredMetadataLanguage(),
         'append_to_response': 'credits,videos,images',
       };
 
@@ -220,17 +228,19 @@ class TmdbService {
   }
 
   /// 获取电视剧季详情
+  ///
+  /// [language] 可选，不传则使用用户语言偏好设置
   Future<TmdbSeasonDetail?> getSeasonDetail(
     int tvId,
     int seasonNumber, {
-    String language = 'zh-CN',
+    String? language,
   }) async {
     if (!hasApiKey) return null;
 
     try {
       final params = {
         'api_key': _apiKey,
-        'language': language,
+        'language': language ?? getPreferredMetadataLanguage(),
       };
 
       final uri = Uri.parse('$_baseUrl/tv/$tvId/season/$seasonNumber')
@@ -251,10 +261,12 @@ class TmdbService {
   }
 
   /// 获取电影推荐
+  ///
+  /// [language] 可选，不传则使用用户语言偏好设置
   Future<TmdbSearchResult> getMovieRecommendations(
     int movieId, {
     int page = 1,
-    String language = 'zh-CN',
+    String? language,
   }) async {
     if (!hasApiKey) return TmdbSearchResult.empty();
 
@@ -262,7 +274,7 @@ class TmdbService {
       final params = {
         'api_key': _apiKey,
         'page': page.toString(),
-        'language': language,
+        'language': language ?? getPreferredMetadataLanguage(),
       };
 
       final uri = Uri.parse('$_baseUrl/movie/$movieId/recommendations')
@@ -283,10 +295,12 @@ class TmdbService {
   }
 
   /// 获取电视剧推荐
+  ///
+  /// [language] 可选，不传则使用用户语言偏好设置
   Future<TmdbSearchResult> getTvRecommendations(
     int tvId, {
     int page = 1,
-    String language = 'zh-CN',
+    String? language,
   }) async {
     if (!hasApiKey) return TmdbSearchResult.empty();
 
@@ -294,7 +308,7 @@ class TmdbService {
       final params = {
         'api_key': _apiKey,
         'page': page.toString(),
-        'language': language,
+        'language': language ?? getPreferredMetadataLanguage(),
       };
 
       final uri = Uri.parse('$_baseUrl/tv/$tvId/recommendations')
@@ -315,10 +329,12 @@ class TmdbService {
   }
 
   /// 获取相似电影
+  ///
+  /// [language] 可选，不传则使用用户语言偏好设置
   Future<TmdbSearchResult> getSimilarMovies(
     int movieId, {
     int page = 1,
-    String language = 'zh-CN',
+    String? language,
   }) async {
     if (!hasApiKey) return TmdbSearchResult.empty();
 
@@ -326,7 +342,7 @@ class TmdbService {
       final params = {
         'api_key': _apiKey,
         'page': page.toString(),
-        'language': language,
+        'language': language ?? getPreferredMetadataLanguage(),
       };
 
       final uri = Uri.parse('$_baseUrl/movie/$movieId/similar')
@@ -347,10 +363,12 @@ class TmdbService {
   }
 
   /// 获取相似电视剧
+  ///
+  /// [language] 可选，不传则使用用户语言偏好设置
   Future<TmdbSearchResult> getSimilarTvShows(
     int tvId, {
     int page = 1,
-    String language = 'zh-CN',
+    String? language,
   }) async {
     if (!hasApiKey) return TmdbSearchResult.empty();
 
@@ -358,7 +376,7 @@ class TmdbService {
       final params = {
         'api_key': _apiKey,
         'page': page.toString(),
-        'language': language,
+        'language': language ?? getPreferredMetadataLanguage(),
       };
 
       final uri = Uri.parse('$_baseUrl/tv/$tvId/similar')
@@ -379,16 +397,18 @@ class TmdbService {
   }
 
   /// 获取电影合集/系列详情
+  ///
+  /// [language] 可选，不传则使用用户语言偏好设置
   Future<TmdbCollection?> getCollection(
     int collectionId, {
-    String language = 'zh-CN',
+    String? language,
   }) async {
     if (!hasApiKey) return null;
 
     try {
       final params = {
         'api_key': _apiKey,
-        'language': language,
+        'language': language ?? getPreferredMetadataLanguage(),
       };
 
       final uri = Uri.parse('$_baseUrl/collection/$collectionId')

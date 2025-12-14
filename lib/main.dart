@@ -16,7 +16,10 @@ import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/services/error_report/error_report.dart';
 import 'package:my_nas/core/services/native_log_bridge_service.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/video/data/services/audio_track_service.dart';
+import 'package:my_nas/features/video/data/services/subtitle_service.dart';
 import 'package:my_nas/features/video/data/services/tmdb_service.dart';
+import 'package:my_nas/shared/providers/language_preference_provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 Future<void> main() async {
@@ -159,13 +162,52 @@ Future<void> _loadTmdbApiKey() async {
     // Hive 已经在 configureDependencies 中通过其他服务初始化了
     // 这里直接打开 box 即可
     final box = await Hive.openBox<String>('settings');
+
+    // 加载 TMDB API Key
     final apiKey = box.get('tmdb_api_key', defaultValue: '');
     if (apiKey != null && apiKey.isNotEmpty) {
       TmdbService().setApiKey(apiKey);
       logger.i('TMDB API key loaded');
     }
+
+    // 加载语言偏好设置并传递给相关服务
+    final langPrefJson = box.get('language_preference');
+    if (langPrefJson != null && langPrefJson.isNotEmpty) {
+      final preference = _parseLanguagePreference(langPrefJson);
+      if (preference != null) {
+        TmdbService().setLanguagePreference(preference);
+        SubtitleService().setLanguagePreference(preference);
+        AudioTrackService().setLanguagePreference(preference);
+        logger.i('语言偏好已加载: 元数据=${preference.metadataLanguages.first.code}, '
+            '字幕=${preference.subtitleLanguages.first.code}, '
+            '音轨=${preference.audioLanguages.first.code}');
+      }
+    }
+
+    // 设置系统语言环境
+    TmdbService().setSystemLocale(
+      WidgetsBinding.instance.platformDispatcher.locale,
+    );
   } on Exception catch (e, st) {
-    AppError.ignore(e, st, '加载 TMDB API key 失败（可选功能）');
+    AppError.ignore(e, st, '加载 TMDB 设置失败（可选功能）');
+  }
+}
+
+/// 解析语言偏好 JSON 字符串
+LanguagePreference? _parseLanguagePreference(String jsonStr) {
+  try {
+    final result = <String, dynamic>{};
+    final content = jsonStr.replaceAll('{', '').replaceAll('}', '');
+    for (final pair in content.split(',')) {
+      final colonIndex = pair.indexOf(':');
+      if (colonIndex == -1) continue;
+      final key = pair.substring(0, colonIndex).trim().replaceAll('"', '');
+      final value = pair.substring(colonIndex + 1).trim().replaceAll('"', '');
+      result[key] = value;
+    }
+    return result.isNotEmpty ? LanguagePreference.fromJson(result) : null;
+  } on Exception catch (_) {
+    return null;
   }
 }
 

@@ -6,6 +6,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/services/media_proxy_server.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/video/data/services/audio_track_service.dart';
 import 'package:my_nas/features/video/data/services/pip_service.dart';
 import 'package:my_nas/features/video/data/services/subtitle_service.dart';
 import 'package:my_nas/features/video/data/services/video_history_service.dart';
@@ -105,7 +106,11 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
   late final Player _player;
   late final VideoController _videoController;
   final VideoHistoryService _historyService = VideoHistoryService();
+  final AudioTrackService _audioTrackService = AudioTrackService();
   final PipService _pipService = PipService();
+
+  /// 是否已经自动选择过音轨（每个视频只选择一次）
+  bool _hasAutoSelectedAudioTrack = false;
 
   Timer? _progressSaveTimer;
   VideoItem? _currentVideo;
@@ -194,7 +199,31 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
         // 尝试播放下一个
         _playNextFromPlaylist();
       }
+    }))
+
+    // 监听音轨列表变化，自动选择最佳音轨
+    ..add(_player.stream.tracks.listen((tracks) {
+      if (_isDisposed) return;
+      if (!_hasAutoSelectedAudioTrack && tracks.audio.length > 1) {
+        _autoSelectAudioTrack(tracks.audio);
+      }
     }));
+  }
+
+  /// 自动选择最佳音轨
+  Future<void> _autoSelectAudioTrack(List<AudioTrack> tracks) async {
+    if (_hasAutoSelectedAudioTrack) return;
+    _hasAutoSelectedAudioTrack = true;
+
+    final bestTrack = _audioTrackService.selectBestAudioTrack(tracks);
+    if (bestTrack != null) {
+      // 检查是否需要切换（如果当前音轨已经是最佳音轨则不切换）
+      final currentTrack = _player.state.track.audio;
+      if (currentTrack.id != bestTrack.id) {
+        await setAudioTrack(bestTrack);
+        logger.i('VideoPlayerNotifier: 自动选择音轨 ${bestTrack.title ?? bestTrack.id}');
+      }
+    }
   }
 
   /// 应用保存的设置
@@ -265,6 +294,13 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
         logger.d('VideoPlayerNotifier: 播放完成，清除进度');
         _playNextFromPlaylist();
       }
+    }))
+
+    ..add(_player.stream.tracks.listen((tracks) {
+      if (_isDisposed) return;
+      if (!_hasAutoSelectedAudioTrack && tracks.audio.length > 1) {
+        _autoSelectAudioTrack(tracks.audio);
+      }
     }));
 
     logger.d('VideoPlayerNotifier: 重新初始化 stream listeners');
@@ -332,6 +368,9 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
 
     // 保存当前视频进度
     await _saveCurrentProgress();
+
+    // 重置自动选择标志（新视频需要重新选择音轨）
+    _hasAutoSelectedAudioTrack = false;
 
     _currentVideo = video;
     _ref.read(currentVideoProvider.notifier).state = video;

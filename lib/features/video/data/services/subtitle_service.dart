@@ -4,6 +4,7 @@ import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/video/data/services/video_database_service.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
+import 'package:my_nas/shared/providers/language_preference_provider.dart';
 
 /// 支持的字幕格式
 const subtitleExtensions = ['.srt', '.ass', '.ssa', '.vtt', '.sub'];
@@ -52,6 +53,19 @@ class SubtitleService {
   static SubtitleService? _instance;
 
   final VideoDatabaseService _dbService = VideoDatabaseService();
+
+  /// 用户语言偏好设置
+  LanguagePreference? _languagePreference;
+
+  /// 设置语言偏好
+  void setLanguagePreference(LanguagePreference preference) {
+    _languagePreference = preference;
+    logger.d('SubtitleService: 语言偏好已更新');
+  }
+
+  /// 获取字幕语言优先级列表
+  List<LanguageOption> get _subtitleLanguages =>
+      _languagePreference?.subtitleLanguages ?? [LanguageOption.auto];
 
   /// 查找视频对应的字幕文件
   ///
@@ -359,11 +373,105 @@ class SubtitleService {
   }
 
   /// 获取语言排序分数（越小越优先）
+  ///
+  /// 根据用户的语言偏好设置动态计算排序分数
   int _getLanguageScore(String? language) {
     if (language == null) return 100;
 
     final lang = language.toLowerCase();
+    final preferredLanguages = _subtitleLanguages;
 
+    // 如果是自动模式，使用默认优先级（中文 > 英文 > 日文）
+    if (preferredLanguages.length == 1 && preferredLanguages.first == LanguageOption.auto) {
+      return _getDefaultLanguageScore(lang);
+    }
+
+    // 根据用户偏好列表计算分数
+    // 列表中越靠前的语言分数越低（优先级越高）
+    for (var i = 0; i < preferredLanguages.length; i++) {
+      final option = preferredLanguages[i];
+      if (_matchesLanguageOption(lang, option)) {
+        return i * 10; // 每个优先级差 10 分
+      }
+    }
+
+    // 不在偏好列表中的语言
+    return 1000;
+  }
+
+  /// 检查语言字符串是否匹配语言选项
+  bool _matchesLanguageOption(String lang, LanguageOption option) {
+    switch (option) {
+      case LanguageOption.auto:
+        return false; // 自动模式不匹配具体语言
+      case LanguageOption.original:
+        return false; // 原产地语言需要特殊处理
+      case LanguageOption.zhCN:
+        return lang.contains('简') ||
+            lang.contains('chs') ||
+            lang.contains('sc') ||
+            lang.contains('zh-cn') ||
+            lang.contains('zh-hans') ||
+            lang.contains('简中') ||
+            (lang.contains('中') && !lang.contains('繁'));
+      case LanguageOption.zhTW:
+        return lang.contains('繁') ||
+            lang.contains('cht') ||
+            lang.contains('tc') ||
+            lang.contains('zh-tw') ||
+            lang.contains('zh-hant') ||
+            lang.contains('繁中');
+      case LanguageOption.en:
+        return lang.contains('english') ||
+            lang.contains('eng') ||
+            lang == 'en';
+      case LanguageOption.ja:
+        return lang.contains('日') ||
+            lang.contains('jp') ||
+            lang.contains('jpn') ||
+            lang.contains('japanese');
+      case LanguageOption.ko:
+        return lang.contains('韩') ||
+            lang.contains('kor') ||
+            lang.contains('korean') ||
+            lang == 'ko';
+      case LanguageOption.fr:
+        return lang.contains('french') ||
+            lang.contains('français') ||
+            lang == 'fr';
+      case LanguageOption.de:
+        return lang.contains('german') ||
+            lang.contains('deutsch') ||
+            lang == 'de';
+      case LanguageOption.es:
+        return lang.contains('spanish') ||
+            lang.contains('español') ||
+            lang == 'es';
+      case LanguageOption.pt:
+        return lang.contains('portuguese') ||
+            lang.contains('português') ||
+            lang == 'pt';
+      case LanguageOption.ru:
+        return lang.contains('russian') ||
+            lang.contains('русский') ||
+            lang == 'ru';
+      case LanguageOption.it:
+        return lang.contains('italian') ||
+            lang.contains('italiano') ||
+            lang == 'it';
+      case LanguageOption.th:
+        return lang.contains('thai') ||
+            lang.contains('ไทย') ||
+            lang == 'th';
+      case LanguageOption.vi:
+        return lang.contains('vietnamese') ||
+            lang.contains('tiếng việt') ||
+            lang == 'vi';
+    }
+  }
+
+  /// 默认语言排序分数（自动模式时使用）
+  int _getDefaultLanguageScore(String lang) {
     // 中文最优先
     if (lang.contains('中') || lang.contains('chs') || lang.contains('cht')) {
       return 0;

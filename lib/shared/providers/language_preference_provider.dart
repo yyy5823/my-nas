@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
+import 'package:my_nas/features/video/data/services/audio_track_service.dart';
+import 'package:my_nas/features/video/data/services/subtitle_service.dart';
+import 'package:my_nas/features/video/data/services/tmdb_service.dart';
 
 /// 语言类型
 enum LanguageType {
@@ -252,6 +255,11 @@ class LanguagePreferenceNotifier extends StateNotifier<LanguagePreference> {
       final box = await Hive.openBox<String>(_boxName);
       final jsonStr = _toJsonString(state.toJson());
       await box.put(_key, jsonStr);
+
+      // 同步更新相关服务的语言偏好
+      TmdbService().setLanguagePreference(state);
+      SubtitleService().setLanguagePreference(state);
+      AudioTrackService().setLanguagePreference(state);
     } on Exception catch (e, st) {
       AppError.ignore(e, st, '保存语言偏好失败');
     }

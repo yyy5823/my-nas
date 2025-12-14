@@ -5,6 +5,7 @@ import 'package:archive/archive.dart';
 import 'package:charset_converter/charset_converter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/book/data/services/mobi/mobi_to_epub.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
@@ -72,27 +73,58 @@ class MobiParserService {
   static MobiParserService? _instance;
 
   /// 解析 MOBI/AZW3 文件
+  ///
+  /// 优先使用新的模块化解析器（支持 NCX 目录和多章节）
+  /// 桌面平台可选使用 Calibre 的 ebook-convert 工具
   Future<MobiParseResult> parse(Uint8List bytes, String fileName) async {
-    // 桌面平台优先使用 Calibre
+    // 桌面平台优先使用 Calibre（转换质量最高）
     if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
       final calibreResult = await _parseWithCalibre(bytes, fileName);
       if (calibreResult.success) {
         return calibreResult;
       }
-      // Calibre 不可用，尝试内置解析器
-      logger.i('Calibre 不可用，尝试内置解析器');
+      // Calibre 不可用，尝试新的内置解析器
+      logger.i('Calibre 不可用，使用内置解析器');
     }
 
-    // 使用内置解析器
+    // 使用新的模块化解析器（支持 NCX 目录、多章节）
+    final newParserResult = await _parseWithNewParser(bytes, fileName);
+    if (newParserResult.success) {
+      return newParserResult;
+    }
+
+    // 如果新解析器失败，回退到旧解析器
+    logger.w('新解析器失败，回退到旧解析器: ${newParserResult.error}');
     final builtInResult = await _parseWithBuiltIn(bytes);
 
-    // 移动端：将解析结果打包为 EPUB，以便使用 EPUB 阅读器
-    // 这样可以获得更好的渲染效果和翻页体验
+    // 移动端：将解析结果打包为 EPUB
     if ((Platform.isIOS || Platform.isAndroid) && builtInResult.success) {
       return _convertToEpub(builtInResult, fileName);
     }
 
     return builtInResult;
+  }
+
+  /// 使用新的模块化解析器
+  ///
+  /// 支持 NCX 目录解析、多章节 EPUB 生成
+  Future<MobiParseResult> _parseWithNewParser(
+    Uint8List bytes,
+    String fileName,
+  ) async {
+    try {
+      final result = await MobiToEpubConverter.convert(bytes, fileName);
+
+      if (result.success && result.epubPath != null) {
+        logger.i('新解析器成功: ${result.chapterCount} 个章节');
+        return MobiParseResult.fromEpub(result.epubPath!);
+      }
+
+      return MobiParseResult.failure(result.error ?? '转换失败');
+    } on Exception catch (e, st) {
+      logger.e('新解析器异常', e, st);
+      return MobiParseResult.failure('解析失败: $e');
+    }
   }
 
   /// 使用 Calibre 解析 - 转换为 EPUB 格式
