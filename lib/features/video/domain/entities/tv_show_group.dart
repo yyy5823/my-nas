@@ -6,13 +6,16 @@ class TvShowGroup {
   TvShowGroup({
     required this.groupKey,
     required this.title,
-    required this.seasonEpisodes, this.tmdbId,
+    required this.seasonEpisodes,
+    this.tmdbId,
     this.posterUrl,
     this.backdropUrl,
     this.rating,
     this.overview,
     this.year,
     this.genres,
+    this.precomputedSeasonCount,
+    this.precomputedEpisodeCount,
   });
 
   /// 分组键（优先使用 tmdbId，否则使用标准化的标题）
@@ -42,18 +45,24 @@ class TvShowGroup {
   /// 类型标签（逗号分隔的字符串）
   final String? genres;
 
+  /// 预计算的季数（用于懒加载，避免加载完整剧集列表）
+  final int? precomputedSeasonCount;
+
+  /// 预计算的集数（用于懒加载，避免加载完整剧集列表）
+  final int? precomputedEpisodeCount;
+
   /// 获取类型列表
   List<String> get genreList => genres?.split(',').map((e) => e.trim()).toList() ?? [];
 
   /// 按季分组的剧集 `Map<seasonNumber, List<VideoMetadata>>`
   final Map<int, List<VideoMetadata>> seasonEpisodes;
 
-  /// 季数
-  int get seasonCount => seasonEpisodes.keys.where((s) => s > 0).length;
+  /// 季数（优先使用预计算值，否则从 seasonEpisodes 计算）
+  int get seasonCount => precomputedSeasonCount ?? seasonEpisodes.keys.where((s) => s > 0).length;
 
-  /// 总集数
+  /// 总集数（优先使用预计算值，否则从 seasonEpisodes 计算）
   int get episodeCount =>
-      seasonEpisodes.values.fold(0, (sum, list) => sum + list.length);
+      precomputedEpisodeCount ?? seasonEpisodes.values.fold(0, (sum, list) => sum + list.length);
 
   /// 获取所有季号（已排序）
   List<int> get seasons => seasonEpisodes.keys.toList()..sort();
@@ -110,13 +119,27 @@ class TvShowGroup {
   }
 
   /// 获取分组键
+  ///
+  /// 优先级：
+  /// 1. showDirectory - 基于目录结构分组（最可靠）
+  /// 2. tmdbId - 基于 TMDB ID 分组（准确）
+  /// 3. normalizedTitle - 基于标准化标题分组（兜底）
   static String _getGroupKey(VideoMetadata metadata) {
-    // 优先使用 tmdbId（最准确）
+    // 优先使用 showDirectory（最可靠，基于目录结构）
+    if (metadata.showDirectory != null && metadata.showDirectory!.isNotEmpty) {
+      // 如果有 tmdbId，附加到 key 中以便后续合并
+      if (metadata.tmdbId != null) {
+        return 'dir_tmdb_${metadata.tmdbId}';
+      }
+      return 'dir_${metadata.showDirectory.hashCode.abs()}';
+    }
+
+    // 其次使用 tmdbId（准确）
     if (metadata.tmdbId != null) {
       return 'tmdb_${metadata.tmdbId}';
     }
 
-    // 否则使用标准化的标题
+    // 最后使用标准化的标题（兜底）
     return _normalizeTitle(metadata.title ?? metadata.fileName);
   }
 

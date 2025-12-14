@@ -5,6 +5,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
@@ -273,6 +274,15 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
   bool _hasCheckedResume = false;
   Timer? _debounceTimer;
 
+  /// 增量同步计时器（刮削期间每3秒同步一次聚合表）
+  Timer? _incrementalSyncTimer;
+
+  /// 增量同步间隔（秒）
+  static const int _incrementalSyncIntervalSeconds = 3;
+
+  /// 上次同步时的完成数（用于检测是否有新数据）
+  int _lastSyncedCompletedCount = 0;
+
   /// 防抖间隔（毫秒）- 避免频繁刷新导致UI卡顿
   static const int _debounceMs = 500;
 
@@ -325,6 +335,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     _scrapeStatsSubscription?.cancel();
     _connectionsSubscription?.close();
     _debounceTimer?.cancel();
+    _incrementalSyncTimer?.cancel();
     super.dispose();
   }
 
@@ -401,11 +412,17 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     // 当刮削全部完成时，做一次完整分类刷新（重新排序高分推荐等）
     if (stats.isAllDone && stats.total > 0) {
       logger.d('VideoListNotifier: 刮削全部完成，执行完整分类刷新');
+      _stopIncrementalSyncTimer(); // 停止增量同步
       _debounceTimer?.cancel();
       _lastCompletedCount = stats.completed;
       _lastTotalCount = stats.total;
-      _loadCategorizedData(silent: true);
+      _loadCategorizedData(silent: true, forceSync: true);
       return;
+    }
+
+    // 刮削进行中：启动增量同步计时器
+    if (stats.pending > 0 && stats.completed > _lastSyncedCompletedCount) {
+      _startIncrementalSyncTimer();
     }
 
     // 当总数变化时（新扫描完成），立即刷新
@@ -420,6 +437,62 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     // 更新完成计数（用于进度显示）
     _lastCompletedCount = stats.completed;
     // 注意：刮削进行中的更新现在由 videoUpdatedStream 处理，这里不再触发刷新
+  }
+
+  /// 启动增量同步计时器
+  ///
+  /// 刮削期间每隔 [_incrementalSyncIntervalSeconds] 秒同步一次聚合表
+  /// 确保剧集分组和电影系列的海报能及时更新
+  void _startIncrementalSyncTimer() {
+    if (_incrementalSyncTimer?.isActive ?? false) return;
+
+    logger.d('VideoListNotifier: 启动增量同步计时器');
+    _incrementalSyncTimer = Timer.periodic(
+      Duration(seconds: _incrementalSyncIntervalSeconds),
+      (_) => _performIncrementalSync(),
+    );
+  }
+
+  /// 停止增量同步计时器
+  void _stopIncrementalSyncTimer() {
+    if (_incrementalSyncTimer?.isActive ?? false) {
+      logger.d('VideoListNotifier: 停止增量同步计时器');
+      _incrementalSyncTimer?.cancel();
+      _incrementalSyncTimer = null;
+    }
+  }
+
+  /// 执行增量同步（只同步聚合表，不重建整个 UI）
+  ///
+  /// 性能优化策略：
+  /// 1. 至少有 [_minCompletionsBeforeSync] 个新完成才执行同步
+  /// 2. 使用 fire-and-forget 模式执行 UI 刷新，不阻塞计时器
+  Future<void> _performIncrementalSync() async {
+    // 检查是否有足够的新完成数据（至少10个）
+    const minCompletionsBeforeSync = 10;
+    final newCompletions = _lastCompletedCount - _lastSyncedCompletedCount;
+    if (newCompletions < minCompletionsBeforeSync) {
+      return;
+    }
+
+    logger.d('VideoListNotifier: 执行增量同步 (新增完成数: $newCompletions)');
+    _lastSyncedCompletedCount = _lastCompletedCount;
+
+    // 在后台执行，不阻塞主线程
+    // 使用 AppError.fireAndForget 确保异常被捕获
+    AppError.fireAndForget(
+      Future(() async {
+        // 同步聚合表
+        await Future.wait([
+          _db.syncTvShowGroups(),
+          _db.syncMovieCollectionGroups(),
+        ]);
+
+        // 静默刷新数据（用户无感知）
+        await _loadCategorizedData(silent: true);
+      }),
+      action: 'incrementalSync',
+    );
   }
 
   /// 边扫边显示（Infuse 风格）：处理部分扫描结果
@@ -550,6 +623,8 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
   bool _hasMetadataChanged(VideoMetadata old, VideoMetadata updated) =>
       old.title != updated.title ||
       old.posterUrl != updated.posterUrl ||
+      old.localPosterUrl != updated.localPosterUrl ||
+      old.generatedThumbnailUrl != updated.generatedThumbnailUrl ||
       old.rating != updated.rating ||
       old.tmdbId != updated.tmdbId ||
       old.year != updated.year;
@@ -677,7 +752,8 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
   /// 从 SQLite 加载分类数据（高性能）
   ///
   /// [silent] 为 true 时不显示加载状态，避免页面闪烁（用于刮削进度更新）
-  Future<void> _loadCategorizedData({bool silent = false}) async {
+  /// [forceSync] 为 true 时强制同步聚合表（用于刮削完成后更新海报等数据）
+  Future<void> _loadCategorizedData({bool silent = false, bool forceSync = false}) async {
     // 非静默模式才显示加载状态
     if (!silent) {
       state = VideoListLoading(fromCache: true);
@@ -686,6 +762,18 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     // 确保数据库已初始化
     try {
       await _db.init();
+
+      // 检查聚合表是否需要同步（首次运行、数据库升级后、或刮削完成后）
+      final tvGroupCount = await _db.getTvShowGroupListCount();
+      if (tvGroupCount == 0 || forceSync) {
+        logger.i('VideoListNotifier: 触发聚合表同步 (tvGroupCount=$tvGroupCount, forceSync=$forceSync)');
+        // 使用 fireAndForget 确保同步在后台进行，不阻塞 UI
+        await Future.wait([
+          _db.syncTvShowGroups(),
+          _db.syncMovieCollectionGroups(),
+        ]);
+        logger.i('VideoListNotifier: 聚合表初始同步完成');
+      }
     } on Exception catch (e) {
       logger.e('VideoListNotifier: 数据库初始化失败', e);
       return;
@@ -811,10 +899,26 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
         'others=${othersList.length}, databaseTotal=$databaseTotalCount');
 
     // 首页剧集直接使用代表性数据，不需要再分组
-    // 但为了兼容性，仍然构建 TvShowGroup（用于高分推荐和最近添加的去重）
+    // 使用批量查询获取每个分组的季集统计（懒加载策略：不加载完整剧集列表）
+    final tmdbIds = tvShowRepresentatives
+        .where((r) => r.tmdbId != null)
+        .map((r) => r.tmdbId!)
+        .toList();
+    final titles = tvShowRepresentatives
+        .where((r) => r.tmdbId == null && r.title != null)
+        .map((r) => r.title!)
+        .toList();
+
+    // 批量获取季集统计
+    final groupStats = await _db.getTvShowGroupStats(
+      tmdbIds: tmdbIds.isNotEmpty ? tmdbIds : null,
+      titles: titles.isNotEmpty ? titles : null,
+    );
+
     final tvShowGroups = <String, TvShowGroup>{};
     for (final rep in tvShowRepresentatives) {
       final groupKey = rep.tmdbId != null ? 'tmdb_${rep.tmdbId}' : 'title_${rep.title?.toLowerCase()}';
+      final stats = groupStats[groupKey];
       tvShowGroups[groupKey] = TvShowGroup(
         groupKey: groupKey,
         title: rep.title ?? rep.fileName,
@@ -825,7 +929,10 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
         overview: rep.overview,
         year: rep.year,
         genres: rep.genres,
+        // 使用预计算的季集统计，点击后再加载完整剧集列表
         seasonEpisodes: {rep.seasonNumber ?? 1: [rep]},
+        precomputedSeasonCount: stats?.seasonCount ?? 1,
+        precomputedEpisodeCount: stats?.episodeCount ?? 1,
       );
     }
 
@@ -1970,7 +2077,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
             child: _TvShowRow(
               title: '剧集',
               groups: tvShowGroups,
-              onGroupTap: (group) => _openVideoDetail(context, ref, group.representative),
+              onGroupTap: (group) => _openTvShowDetail(context, ref, group),
               isDark: isDark,
               icon: Icons.live_tv_rounded,
               iconColor: AppColors.accent,
@@ -2232,6 +2339,27 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
         builder: (context) => VideoDetailPage(
           metadata: metadata,
           sourceId: metadata.sourceId,
+        ),
+      ),
+    );
+    ref.invalidate(continueWatchingProvider);
+  }
+
+  /// 打开 TV 剧集合集详情页
+  ///
+  /// 使用 [VideoDetailPage] 展示代表集，其内置的剧集选择器可以展示和播放所有剧集
+  Future<void> _openTvShowDetail(
+    BuildContext context,
+    WidgetRef ref,
+    TvShowGroup group,
+  ) async {
+    // 使用 TvShowGroup 的代表集（通常是第一集或最近观看的一集）导航到 VideoDetailPage
+    // VideoDetailPage 内置的 EpisodeSelector 会显示同一部剧的所有季和集
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => VideoDetailPage(
+          metadata: group.representative,
+          sourceId: group.representative.sourceId,
         ),
       ),
     );

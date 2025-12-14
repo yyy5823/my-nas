@@ -40,7 +40,7 @@ class SmbFileSystem implements NasFileSystem {
 
   @override
   Future<List<FileItem>> listDirectory(String path) async {
-    logger.d('SmbFileSystem: listDirectory => $path');
+    // logger.d('SmbFileSystem: listDirectory => $path'); // 减少日志输出
 
     // 根目录显示共享列表
     if (path == '/' || path.isEmpty) {
@@ -97,7 +97,7 @@ class SmbFileSystem implements NasFileSystem {
 
     // 如果没有连接池，回退到串行执行
     if (connectionPool == null) {
-      logger.d('SmbFileSystem: 无连接池，使用串行目录列表');
+      // logger.d('SmbFileSystem: 无连接池，使用串行目录列表'); // 减少日志输出
       for (final path in paths) {
         try {
           results[path] = await listDirectory(path);
@@ -113,7 +113,7 @@ class SmbFileSystem implements NasFileSystem {
     final maxConcurrency = concurrency ?? pool.maxConnections;
     final actualConcurrency = maxConcurrency < paths.length ? maxConcurrency : paths.length;
 
-    logger.d('SmbFileSystem: 并行列出 ${paths.length} 个目录，并发数: $actualConcurrency');
+    // logger.d('SmbFileSystem: 并行列出 ${paths.length} 个目录，并发数: $actualConcurrency'); // 减少日志输出
 
     // 分批处理，每批使用连接池并行执行
     for (var i = 0; i < paths.length; i += actualConcurrency) {
@@ -140,7 +140,7 @@ class SmbFileSystem implements NasFileSystem {
       }
     }
 
-    logger.d('SmbFileSystem: 并行列出完成，成功 ${results.length}/${paths.length} 个目录');
+    // logger.d('SmbFileSystem: 并行列出完成，成功 ${results.length}/${paths.length} 个目录'); // 减少日志输出
     return results;
   }
 
@@ -185,7 +185,7 @@ class SmbFileSystem implements NasFileSystem {
 
   /// 列出共享文件夹
   Future<List<FileItem>> listShares() async {
-    logger.d('SmbFileSystem: 获取共享列表');
+    // logger.d('SmbFileSystem: 获取共享列表'); // 减少日志输出
 
     // 使用缓存
     if (_cachedShares != null && _cachedShares!.isNotEmpty) {

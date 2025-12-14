@@ -56,6 +56,9 @@ class VideoMetadata {
     this.fileModifiedTime,
     this.collectionId,
     this.collectionName,
+    this.showDirectory,
+    this.movieDirectory,
+    this.resolution,
   });
 
   /// 从 Map 创建
@@ -92,6 +95,9 @@ class VideoMetadata {
           : null,
       collectionId: map['collectionId'] as int?,
       collectionName: map['collectionName'] as String?,
+      showDirectory: map['showDirectory'] as String?,
+      movieDirectory: map['movieDirectory'] as String?,
+      resolution: map['resolution'] as String?,
     );
 
   final String filePath;
@@ -122,6 +128,9 @@ class VideoMetadata {
   DateTime? fileModifiedTime; // 文件修改时间
   int? collectionId; // TMDB 电影系列 ID
   String? collectionName; // TMDB 电影系列名称
+  String? showDirectory; // 所属剧目录（TV 剧集专用，用于分组）
+  String? movieDirectory; // 电影所在目录（用于目录系列识别）
+  String? resolution; // 视频分辨率（4K, 1080p, 720p 等）
 
   /// 海报显示优先级：
   /// 1. 本地缓存的海报（离线可用）
@@ -272,6 +281,9 @@ class VideoMetadata {
       'fileModifiedTime': fileModifiedTime?.millisecondsSinceEpoch,
       'collectionId': collectionId,
       'collectionName': collectionName,
+      'showDirectory': showDirectory,
+      'movieDirectory': movieDirectory,
+      'resolution': resolution,
     };
 
   /// 复制
@@ -304,6 +316,9 @@ class VideoMetadata {
     DateTime? fileModifiedTime,
     int? collectionId,
     String? collectionName,
+    String? showDirectory,
+    String? movieDirectory,
+    String? resolution,
   }) => VideoMetadata(
       filePath: filePath ?? this.filePath,
       sourceId: sourceId ?? this.sourceId,
@@ -333,6 +348,9 @@ class VideoMetadata {
       fileModifiedTime: fileModifiedTime ?? this.fileModifiedTime,
       collectionId: collectionId ?? this.collectionId,
       collectionName: collectionName ?? this.collectionName,
+      showDirectory: showDirectory ?? this.showDirectory,
+      movieDirectory: movieDirectory ?? this.movieDirectory,
+      resolution: resolution ?? this.resolution,
     );
 }
 

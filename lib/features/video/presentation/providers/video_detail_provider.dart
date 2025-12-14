@@ -81,6 +81,14 @@ final relatedLocalVideosProvider = FutureProvider.autoDispose.family<List<VideoM
   return metadataService.getByTmdbId(tmdbId);
 });
 
+/// 根据 TMDB ID 获取本地视频 Provider（返回第一个匹配的视频）
+/// 用于检查系列电影是否在本地可用
+final localVideoByTmdbIdProvider = FutureProvider.autoDispose.family<VideoMetadata?, int>((ref, tmdbId) async {
+  final metadataService = ref.watch(videoMetadataServiceProvider);
+  await metadataService.init();
+  return metadataService.getFirstByTmdbId(tmdbId);
+});
+
 /// 本地推荐内容 Provider（autoDispose + SQLite 索引优化）
 /// 结合 TMDB 推荐和本地已有文件
 /// 参数: (tmdbId, isMovie)

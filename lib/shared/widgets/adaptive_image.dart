@@ -9,7 +9,7 @@ import 'package:my_nas/core/errors/app_error_handler.dart';
 /// 根据 URL 类型自动选择合适的图片加载方式：
 /// - file:// 协议：使用 Image.file 加载本地文件
 /// - http/https 协议：使用 CachedNetworkImage 加载网络图片
-class AdaptiveImage extends StatelessWidget {
+class AdaptiveImage extends StatefulWidget {
   const AdaptiveImage({
     required this.imageUrl, super.key,
     this.fit = BoxFit.cover,
@@ -63,78 +63,116 @@ class AdaptiveImage extends StatelessWidget {
   }
 
   @override
+  State<AdaptiveImage> createState() => _AdaptiveImageState();
+}
+
+class _AdaptiveImageState extends State<AdaptiveImage> {
+  // 缓存文件存在检查结果，避免每次 rebuild 时重新检查导致闪烁
+  bool? _fileExistsCache;
+  String? _cachedPath;
+
+  @override
+  void didUpdateWidget(AdaptiveImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 如果 URL 变了，清除缓存
+    if (oldWidget.imageUrl != widget.imageUrl) {
+      _fileExistsCache = null;
+      _cachedPath = null;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     // 检查是否是不支持的协议（如 smb://）
-    if (!isSupportedUrl(imageUrl)) {
-      return errorWidget?.call(context, 'Unsupported URL scheme') ??
+    if (!AdaptiveImage.isSupportedUrl(widget.imageUrl)) {
+      return widget.errorWidget?.call(context, 'Unsupported URL scheme') ??
           _buildDefaultError(context);
     }
 
-    if (isLocalFile(imageUrl)) {
+    if (AdaptiveImage.isLocalFile(widget.imageUrl)) {
       return _buildLocalImage(context);
-    } else if (isNetworkUrl(imageUrl)) {
+    } else if (AdaptiveImage.isNetworkUrl(widget.imageUrl)) {
       return _buildNetworkImage(context);
     } else {
       // 假设是本地路径
-      return _buildLocalPathImage(context, imageUrl);
+      return _buildLocalPathImage(context, widget.imageUrl);
     }
   }
 
   Widget _buildLocalImage(BuildContext context) {
-    final localPath = toLocalPath(imageUrl);
+    final localPath = AdaptiveImage.toLocalPath(widget.imageUrl);
     if (localPath == null) {
-      return errorWidget?.call(context, 'Invalid file URL') ??
+      return widget.errorWidget?.call(context, 'Invalid file URL') ??
           _buildDefaultError(context);
     }
     return _buildLocalPathImage(context, localPath);
   }
 
   Widget _buildLocalPathImage(BuildContext context, String path) {
+    // 如果已经缓存了这个路径的检查结果，直接使用
+    if (_cachedPath == path && _fileExistsCache != null) {
+      return _buildLocalPathImageContent(context, path, _fileExistsCache!);
+    }
+
     final file = File(path);
 
     return FutureBuilder<bool>(
       future: file.exists(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return placeholder?.call(context) ?? _buildDefaultPlaceholder();
+          // 第一次加载时显示占位符
+          return widget.placeholder?.call(context) ?? _buildDefaultPlaceholder();
         }
 
-        if (snapshot.data != true) {
-          return errorWidget?.call(context, 'File not found') ??
-              _buildDefaultError(context);
-        }
+        final exists = snapshot.data ?? false;
+        // 缓存结果，避免后续重建时闪烁
+        _fileExistsCache = exists;
+        _cachedPath = path;
 
-        return AnimatedSwitcher(
-          duration: fadeInDuration,
-          child: Image.file(
-            file,
-            key: ValueKey(path),
-            fit: fit,
-            width: width,
-            height: height,
-            errorBuilder: (context, error, stackTrace) =>
-                errorWidget?.call(context, error) ?? _buildDefaultError(context),
-          ),
-        );
+        return _buildLocalPathImageContent(context, path, exists);
       },
     );
   }
 
+  Widget _buildLocalPathImageContent(BuildContext context, String path, bool exists) {
+    if (!exists) {
+      return widget.errorWidget?.call(context, 'File not found') ??
+          _buildDefaultError(context);
+    }
+
+    return Image.file(
+      File(path),
+      key: ValueKey(path),
+      fit: widget.fit,
+      width: widget.width,
+      height: widget.height,
+      // 使用 frameBuilder 实现平滑加载，避免闪烁
+      frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+        if (wasSynchronouslyLoaded || frame != null) {
+          return child;
+        }
+        return widget.placeholder?.call(context) ?? _buildDefaultPlaceholder();
+      },
+      errorBuilder: (context, error, stackTrace) =>
+          widget.errorWidget?.call(context, error) ?? _buildDefaultError(context),
+    );
+  }
+
   Widget _buildNetworkImage(BuildContext context) => CachedNetworkImage(
-      imageUrl: imageUrl,
-      fit: fit,
-      width: width,
-      height: height,
-      fadeInDuration: fadeInDuration,
+      imageUrl: widget.imageUrl,
+      fit: widget.fit,
+      width: widget.width,
+      height: widget.height,
+      fadeInDuration: widget.fadeInDuration,
       placeholder: (context, _) =>
-          placeholder?.call(context) ?? _buildDefaultPlaceholder(),
+          widget.placeholder?.call(context) ?? _buildDefaultPlaceholder(),
       errorWidget: (context, _, error) =>
-          errorWidget?.call(context, error) ?? _buildDefaultError(context),
+          widget.errorWidget?.call(context, error) ?? _buildDefaultError(context),
     );
 
   Widget _buildDefaultPlaceholder() => Container(
-      width: width,
-      height: height,
+      width: widget.width,
+      height: widget.height,
       color: Colors.grey[300],
       child: const Center(
         child: CircularProgressIndicator(strokeWidth: 2),
@@ -142,8 +180,8 @@ class AdaptiveImage extends StatelessWidget {
     );
 
   Widget _buildDefaultError(BuildContext context) => Container(
-      width: width,
-      height: height,
+      width: widget.width,
+      height: widget.height,
       color: Colors.grey[800],
       child: const Icon(
         Icons.broken_image_outlined,

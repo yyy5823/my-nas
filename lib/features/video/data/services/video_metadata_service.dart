@@ -249,6 +249,13 @@ class VideoMetadataService {
     // 如果 NFO 没有数据或缺少关键信息，尝试从 TMDB 获取
     if (!hasNfoData || !metadata.hasMetadata) {
       await _fetchFromTmdb(metadata);
+    } else if (hasNfoData && 
+               metadata.category == MediaCategory.movie && 
+               metadata.collectionId == null &&
+               metadata.tmdbId != null) {
+      // NFO 刮削成功但缺少系列信息：尝试从 TMDB 补充
+      // 仅补充 collectionId/collectionName，不覆盖其他元数据
+      await _supplementCollectionFromTmdb(metadata);
     }
 
     // 捕获非空引用供闭包使用（避免 Dart 类型分析器警告）
@@ -385,6 +392,15 @@ class VideoMetadataService {
         ..episodeTitle = nfoData.episodeTitle
         ..lastUpdated = DateTime.now();
 
+        // 如果 NFO 包含 <set> 标签，使用其作为电影系列信息
+        if (nfoData.setName != null) {
+          // 使用负数 ID 区分 NFO 系列和 TMDB 系列
+          metadata
+            ..collectionId = -1 * nfoData.setName.hashCode.abs()
+            ..collectionName = nfoData.setName;
+          logger.d('VideoMetadataService: 从 NFO 获取到电影系列 "${nfoData.setName}"');
+        }
+
         if (nfoData.posterPath != null) {
           try {
             final posterUrl = await fileSystem.getFileUrl(nfoData.posterPath!);
@@ -485,6 +501,27 @@ class VideoMetadataService {
       }
     } on Exception catch (e) {
       logger.e('VideoMetadataService: 获取元数据失败', e);
+    }
+  }
+
+  /// 从 TMDB 补充电影系列信息
+  ///
+  /// 用于 NFO 刮削成功但缺少系列信息的情况
+  /// 仅更新 collectionId 和 collectionName，不覆盖其他元数据
+  Future<void> _supplementCollectionFromTmdb(VideoMetadata metadata) async {
+    if (!_tmdbService.hasApiKey || metadata.tmdbId == null) return;
+
+    try {
+      final movieDetail = await _tmdbService.getMovieDetail(metadata.tmdbId!);
+      if (movieDetail != null && movieDetail.belongsToCollection != null) {
+        metadata
+          ..collectionId = movieDetail.belongsToCollection!.id
+          ..collectionName = movieDetail.belongsToCollection!.name;
+        logger.d('VideoMetadataService: 从 TMDB 补充系列信息 '
+            '"${movieDetail.belongsToCollection!.name}" for "${metadata.title}"');
+      }
+    } on Exception catch (e) {
+      logger.w('VideoMetadataService: 补充 TMDB 系列信息失败', e);
     }
   }
 

@@ -445,6 +445,9 @@ class VideoScannerService {
 
         // 创建基础元数据（包含 NFO 基础信息，如果有的话）
         final nfoInfo = video.nfoBasicInfo;
+        final category = _inferCategory(nfoInfo, fileName: video.file.name);
+        // 解析文件名获取分辨率
+        final fileInfo = VideoFileNameParser.parse(video.file.name);
         final metadata = VideoMetadata(
           sourceId: video.sourceId,
           filePath: video.file.path,
@@ -462,9 +465,19 @@ class VideoScannerService {
           seasonNumber: nfoInfo?.seasonNumber,
           episodeNumber: nfoInfo?.episodeNumber,
           // 如果有 NFO 信息，设置分类
-          category: _inferCategory(nfoInfo, fileName: video.file.name),
+          category: category,
           // 海报路径（本地 NAS 路径，需要后续转换为 URL）
           posterUrl: nfoInfo?.posterPath,
+          // TV 剧集的剧目录（用于分组）
+          showDirectory: category == MediaCategory.tvShow
+              ? VideoDatabaseService.extractShowDirectory(video.file.path)
+              : null,
+          // 电影所在目录（用于目录系列识别）
+          movieDirectory: category == MediaCategory.movie
+              ? VideoDatabaseService.extractMovieDirectory(video.file.path)
+              : null,
+          // 视频分辨率（用于质量分组）
+          resolution: fileInfo.resolution,
         );
         metadataList.add(metadata);
 

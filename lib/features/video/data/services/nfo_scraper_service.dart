@@ -27,6 +27,8 @@ class NfoMetadata {
     this.episodeNumber,
     this.episodeTitle,
     this.aired,
+    this.setName,
+    this.setOverview,
   });
 
   final String? title;
@@ -48,6 +50,8 @@ class NfoMetadata {
   final int? episodeNumber;
   final String? episodeTitle;
   final String? aired;
+  final String? setName;      // 电影系列名称（来自 <set><name>...）
+  final String? setOverview;  // 电影系列描述（来自 <set><overview>...）
 
   bool get hasData => title != null || tmdbId != null;
 
@@ -197,7 +201,7 @@ class NfoScraperService {
       final videoDir = _getParentPath(videoPath);
       final videoBaseName = _getBaseName(videoFileName);
 
-      logger.d('NfoScraperService: 扫描目录 $videoDir 查找 $videoBaseName 的刮削信息');
+      // logger.d('NfoScraperService: 扫描目录 $videoDir 查找 $videoBaseName 的刮削信息'); // 减少日志输出
 
       // 列出目录内容
       final files = await fileSystem.listDirectory(videoDir);
@@ -261,7 +265,7 @@ class NfoScraperService {
       if (_isMatchingNfo(fileName, videoBaseName)) {
         try {
           final content = await _readFileAsString(fileSystem, file.path);
-          logger.d('NfoScraperService: 找到匹配的 NFO 文件 ${file.name}');
+          // logger.d('NfoScraperService: 找到匹配的 NFO 文件 ${file.name}'); // 减少日志输出
           return _parseNfoContent(content);
         } on Exception catch (e) {
           logger.w('NfoScraperService: 读取 NFO 文件失败 ${file.name}', e);
@@ -276,7 +280,7 @@ class NfoScraperService {
       if (file.name.toLowerCase() == 'episode.nfo') {
         try {
           final content = await _readFileAsString(fileSystem, file.path);
-          logger.d('NfoScraperService: 找到 episode.nfo');
+          // logger.d('NfoScraperService: 找到 episode.nfo'); // 减少日志输出
           return _parseNfoContent(content);
         } on Exception catch (e) {
           logger.w('NfoScraperService: 读取 episode.nfo 失败', e);
@@ -299,7 +303,7 @@ class NfoScraperService {
       if (fileName == 'movie.nfo' || fileName == 'tvshow.nfo') {
         try {
           final content = await _readFileAsString(fileSystem, file.path);
-          logger.d('NfoScraperService: 找到 $fileName');
+          // logger.d('NfoScraperService: 找到 $fileName'); // 减少日志输出
           return _parseNfoContent(content);
         } on Exception catch (e) {
           logger.w('NfoScraperService: 读取 $fileName 失败', e);
@@ -383,7 +387,7 @@ class NfoScraperService {
   }) {
     // 如果都没有数据，返回 null
     if (episodeNfo == null && showNfo == null) {
-      logger.d('NfoScraperService: 未找到任何 NFO 文件');
+      // logger.d('NfoScraperService: 未找到任何 NFO 文件'); // 减少日志输出
       return null;
     }
 
@@ -510,6 +514,8 @@ class NfoScraperService {
             ? _getElementText(root, 'title') 
             : null,
         aired: _getElementText(root, 'aired') ?? _getElementText(root, 'premiered'),
+        setName: _parseSetName(root),
+        setOverview: _parseSetOverview(root),
       );
     } on Exception catch (e) {
       logger.e('NfoScraperService: 解析 NFO XML 失败', e);
@@ -617,6 +623,56 @@ class NfoScraperService {
       }
     } on Exception catch (_) {}
 
+    return null;
+  }
+
+  /// 解析电影系列名称
+  ///
+  /// 支持以下 NFO 格式：
+  /// ```xml
+  /// <set>
+  ///   <name>漫威电影宇宙</name>
+  ///   <overview>...</overview>
+  /// </set>
+  /// ```
+  /// 或简化格式：
+  /// ```xml
+  /// <set>漫威电影宇宙</set>
+  /// ```
+  String? _parseSetName(XmlElement root) {
+    try {
+      final setElement = root.findElements('set').firstOrNull;
+      if (setElement == null) return null;
+
+      // 尝试获取嵌套的 <name> 元素
+      final nameElement = setElement.findElements('name').firstOrNull;
+      if (nameElement != null) {
+        final name = nameElement.innerText.trim();
+        return name.isNotEmpty ? name : null;
+      }
+
+      // 如果没有 <name>，直接使用 <set> 的文本（简化格式）
+      final directText = setElement.innerText.trim();
+      // 确保不是空的或只包含子元素的文本
+      if (directText.isNotEmpty && !directText.contains('<')) {
+        return directText;
+      }
+    } on Exception catch (_) {}
+    return null;
+  }
+
+  /// 解析电影系列描述
+  String? _parseSetOverview(XmlElement root) {
+    try {
+      final setElement = root.findElements('set').firstOrNull;
+      if (setElement == null) return null;
+
+      final overviewElement = setElement.findElements('overview').firstOrNull;
+      if (overviewElement != null) {
+        final overview = overviewElement.innerText.trim();
+        return overview.isNotEmpty ? overview : null;
+      }
+    } on Exception catch (_) {}
     return null;
   }
 

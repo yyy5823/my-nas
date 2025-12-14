@@ -33,9 +33,17 @@ class VideoDetailPage extends ConsumerStatefulWidget {
 
 class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
   bool _isPlaying = false;
+  /// 当前选中的视频版本（用于质量切换）
+  late VideoMetadata _selectedMetadata;
 
-  bool get _isTvShow => widget.metadata.category == MediaCategory.tvShow;
-  bool get _hasTmdbId => widget.metadata.tmdbId != null && widget.metadata.tmdbId! > 0;
+  @override
+  void initState() {
+    super.initState();
+    _selectedMetadata = widget.metadata;
+  }
+
+  bool get _isTvShow => _selectedMetadata.category == MediaCategory.tvShow;
+  bool get _hasTmdbId => _selectedMetadata.tmdbId != null && _selectedMetadata.tmdbId! > 0;
 
   @override
   Widget build(BuildContext context) {
@@ -44,15 +52,15 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     final isWide = size.width > 800;
 
     // 获取播放进度
-    final progressAsync = ref.watch(videoProgressProvider(widget.metadata.filePath));
+    final progressAsync = ref.watch(videoProgressProvider(_selectedMetadata.filePath));
     final watchProgress = progressAsync.whenOrNull(data: (p) => p?.progressPercent);
 
     // 获取收藏状态
-    final isFavoriteAsync = ref.watch(isFavoriteProvider(widget.metadata.filePath));
+    final isFavoriteAsync = ref.watch(isFavoriteProvider(_selectedMetadata.filePath));
     final isFavorite = isFavoriteAsync.valueOrNull ?? false;
 
     // 获取已观看状态
-    final isWatchedAsync = ref.watch(isWatchedProvider(widget.metadata.filePath));
+    final isWatchedAsync = ref.watch(isWatchedProvider(_selectedMetadata.filePath));
     final isWatched = isWatchedAsync.valueOrNull ?? false;
 
     return Scaffold(
@@ -128,7 +136,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     overview ??= widget.metadata.overview;
 
     return DetailHeroSection(
-      metadata: widget.metadata,
+      metadata: _selectedMetadata,
       onPlay: _isPlaying ? () {} : _playVideo,
       onFavorite: _toggleFavorite,
       onToggleWatched: _toggleWatched,
@@ -308,23 +316,55 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    collection.name,
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '共 ${sortedParts.length} 部电影',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: isDark
-                          ? AppColors.darkOnSurfaceVariant
-                          : AppColors.lightOnSurfaceVariant,
-                    ),
+                  // 标题行：系列名称 + 查看全部
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              collection.name,
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '共 ${sortedParts.length} 部电影',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: isDark
+                                    ? AppColors.darkOnSurfaceVariant
+                                    : AppColors.lightOnSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      // 查看全部按钮
+                      TextButton.icon(
+                        onPressed: () => _openMovieCollectionPage(
+                          collection,
+                          widget.metadata.tmdbId!,
+                          isDark,
+                        ),
+                        icon: Icon(
+                          Icons.grid_view_rounded,
+                          size: 16,
+                          color: AppColors.primary,
+                        ),
+                        label: Text(
+                          '查看全部',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 16),
                   SizedBox(
@@ -496,6 +536,23 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     );
   }
 
+  /// 打开电影系列完整列表页面
+  void _openMovieCollectionPage(
+    TmdbCollection collection,
+    int currentMovieId,
+    bool isDark,
+  ) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => MovieCollectionListPage(
+          collection: collection,
+          currentMovieId: currentMovieId,
+          sourceId: widget.sourceId,
+        ),
+      ),
+    );
+  }
+
   Widget _buildInfoRow(String label, String value, bool isDark) => Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
@@ -533,7 +590,58 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       onItemTap: _onRecommendationTap,
     );
 
-  Widget _buildFileInfoSection(bool isDark) => Container(
+  Widget _buildFileInfoSection(bool isDark) {
+    // 电视剧：显示剧集统计信息
+    if (_isTvShow && _hasTmdbId) {
+      return _buildTvShowFileInfo(isDark);
+    }
+
+    // 电影：显示单个文件信息 + 质量选择器
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurfaceVariant : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark ? AppColors.darkOutline : Colors.grey[300]!,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                '文件信息',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                ),
+              ),
+              const Spacer(),
+              // 质量选择器（仅电影）
+              _buildQualitySelector(isDark),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _buildInfoRow('文件名', _selectedMetadata.fileName, isDark),
+          _buildInfoRow('路径', _selectedMetadata.filePath, isDark),
+          _buildInfoRow('来源', widget.sourceId, isDark),
+          if (_selectedMetadata.resolution != null)
+            _buildInfoRow('分辨率', _selectedMetadata.resolution!, isDark),
+          if (_selectedMetadata.fileSizeText.isNotEmpty)
+            _buildInfoRow('文件大小', _selectedMetadata.fileSizeText, isDark),
+        ],
+      ),
+    );
+  }
+
+  /// 电视剧文件信息统计
+  Widget _buildTvShowFileInfo(bool isDark) {
+    final episodesAsync = ref.watch(relatedLocalVideosProvider(_selectedMetadata.tmdbId!));
+
+    return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurfaceVariant : Colors.white,
@@ -546,7 +654,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '文件信息',
+            '本地剧集',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
@@ -554,12 +662,78 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
             ),
           ),
           const SizedBox(height: 12),
-          _buildInfoRow('文件名', widget.metadata.fileName, isDark),
-          _buildInfoRow('路径', widget.metadata.filePath, isDark),
-          _buildInfoRow('来源', widget.sourceId, isDark),
+          episodesAsync.when(
+            loading: () => const Center(
+              child: Padding(
+                padding: EdgeInsets.all(8),
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+            error: (_, _) => Text(
+              '加载失败',
+              style: TextStyle(
+                color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+              ),
+            ),
+            data: (episodes) {
+              if (episodes.isEmpty) {
+                return Text(
+                  '无本地剧集',
+                  style: TextStyle(
+                    color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+                  ),
+                );
+              }
+
+              // 统计信息
+              final totalSize = episodes.fold<int>(0, (sum, e) => sum + (e.fileSize ?? 0));
+              final totalSizeText = _formatFileSize(totalSize);
+              final seasonNumbers = episodes
+                  .where((e) => e.seasonNumber != null)
+                  .map((e) => e.seasonNumber!)
+                  .toSet()
+                  .toList()
+                ..sort();
+              final showDirectory = episodes.first.showDirectory ?? '';
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildInfoRow('剧集数量', '${episodes.length} 集', isDark),
+                  if (seasonNumbers.isNotEmpty)
+                    _buildInfoRow(
+                      '季数',
+                      seasonNumbers.length == 1
+                          ? '第 ${seasonNumbers.first} 季'
+                          : '${seasonNumbers.length} 季 (${seasonNumbers.first}-${seasonNumbers.last})',
+                      isDark,
+                    ),
+                  _buildInfoRow('总大小', totalSizeText, isDark),
+                  if (showDirectory.isNotEmpty)
+                    _buildInfoRow('目录', showDirectory, isDark),
+                  _buildInfoRow('来源', widget.sourceId, isDark),
+                ],
+              );
+            },
+          ),
         ],
       ),
     );
+  }
+
+  String _formatFileSize(int bytes) {
+    const kb = 1024;
+    const mb = kb * 1024;
+    const gb = mb * 1024;
+    if (bytes >= gb) {
+      return '${(bytes / gb).toStringAsFixed(2)} GB';
+    } else if (bytes >= mb) {
+      return '${(bytes / mb).toStringAsFixed(1)} MB';
+    } else if (bytes >= kb) {
+      return '${(bytes / kb).toStringAsFixed(0)} KB';
+    }
+    return '$bytes B';
+  }
 
   Widget _buildBackButton(BuildContext context, bool isDark) => Positioned(
       top: MediaQuery.of(context).padding.top + 8,
@@ -583,13 +757,135 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       ),
     );
 
+  /// 构建质量选择器
+  ///
+  /// 如果同一电影有多个质量版本，显示下拉选择器
+  Widget _buildQualitySelector(bool isDark) {
+    // 仅对有 TMDB ID 的电影显示质量选择器
+    if (!_hasTmdbId || _isTvShow) {
+      return const SizedBox.shrink();
+    }
+
+    final variantsAsync = ref.watch(relatedLocalVideosProvider(_selectedMetadata.tmdbId!));
+
+    return variantsAsync.when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, _) => const SizedBox.shrink(),
+      data: (variants) {
+        // 只有一个版本，不显示选择器
+        if (variants.length <= 1) {
+          return const SizedBox.shrink();
+        }
+
+        // 按分辨率排序（4K > 2160p > 1080p > 720p > 480p > 无）
+        final sortedVariants = _sortByResolution(variants);
+
+        return PopupMenuButton<VideoMetadata>(
+          onSelected: (selected) {
+            setState(() => _selectedMetadata = selected);
+          },
+          offset: const Offset(0, 40),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: AppColors.primary.withValues(alpha: 0.3),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.hd_rounded,
+                  size: 16,
+                  color: AppColors.primary,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  _selectedMetadata.resolution ?? '原始',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.primary,
+                  ),
+                ),
+                const SizedBox(width: 2),
+                Icon(
+                  Icons.arrow_drop_down_rounded,
+                  size: 18,
+                  color: AppColors.primary,
+                ),
+              ],
+            ),
+          ),
+          itemBuilder: (context) => sortedVariants.map((v) {
+            final isSelected = v.filePath == _selectedMetadata.filePath;
+            return PopupMenuItem<VideoMetadata>(
+              value: v,
+              child: Row(
+                children: [
+                  if (isSelected)
+                    Icon(Icons.check_rounded, size: 18, color: AppColors.primary)
+                  else
+                    const SizedBox(width: 18),
+                  const SizedBox(width: 8),
+                  Text(
+                    v.resolution ?? '原始',
+                    style: TextStyle(
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    v.fileSizeText,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark
+                          ? AppColors.darkOnSurfaceVariant
+                          : AppColors.lightOnSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+        );
+      },
+    );
+  }
+
+  /// 按分辨率排序（高到低）
+  List<VideoMetadata> _sortByResolution(List<VideoMetadata> variants) {
+    const resolutionOrder = <String, int>{
+      '4K': 0,
+      '2160P': 1,
+      '2160p': 1,
+      '1080P': 2,
+      '1080p': 2,
+      '720P': 3,
+      '720p': 3,
+      '480P': 4,
+      '480p': 4,
+    };
+
+    final sorted = List<VideoMetadata>.from(variants);
+    sorted.sort((a, b) {
+      final orderA = resolutionOrder[a.resolution] ?? 99;
+      final orderB = resolutionOrder[b.resolution] ?? 99;
+      return orderA.compareTo(orderB);
+    });
+    return sorted;
+  }
+
   Future<void> _toggleFavorite() async {
     final favoritesNotifier = ref.read(favoritesProvider.notifier);
     final item = VideoFavoriteItem(
-      videoPath: widget.metadata.filePath,
-      videoName: widget.metadata.displayTitle,
+      videoPath: _selectedMetadata.filePath,
+      videoName: _selectedMetadata.displayTitle,
       videoUrl: '', // URL 将在播放时获取
-      thumbnailUrl: widget.metadata.displayPosterUrl,
+      thumbnailUrl: _selectedMetadata.displayPosterUrl,
       addedAt: DateTime.now(),
     );
     await favoritesNotifier.toggleFavorite(item);
@@ -609,12 +905,12 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       if (!mounted) return;
 
       final videoItem = VideoItem(
-        name: widget.metadata.displayTitle,
-        path: widget.metadata.filePath,
+        name: _selectedMetadata.displayTitle,
+        path: _selectedMetadata.filePath,
         url: videoInfo.url,
         sourceId: widget.sourceId,
         size: videoInfo.size,
-        thumbnailUrl: widget.metadata.displayPosterUrl,
+        thumbnailUrl: _selectedMetadata.displayPosterUrl,
       );
 
       await Navigator.of(context, rootNavigator: true).push(
@@ -625,7 +921,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
 
       // 刷新播放历史
       ref..invalidate(continueWatchingProvider)
-      ..invalidate(videoProgressProvider(widget.metadata.filePath));
+      ..invalidate(videoProgressProvider(_selectedMetadata.filePath));
     } finally {
       if (mounted) {
         setState(() => _isPlaying = false);
@@ -764,4 +1060,354 @@ class _VideoPlayInfo {
 
   final String url;
   final int size;
+}
+
+/// 电影系列完整列表页面
+class MovieCollectionListPage extends ConsumerWidget {
+  const MovieCollectionListPage({
+    required this.collection,
+    required this.currentMovieId,
+    required this.sourceId,
+    super.key,
+  });
+
+  final TmdbCollection collection;
+  final int currentMovieId;
+  final String sourceId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final sortedParts = collection.sortedParts;
+
+    return Scaffold(
+      backgroundColor: isDark ? AppColors.darkBackground : Colors.grey[50],
+      body: CustomScrollView(
+        slivers: [
+          // 顶部 AppBar 带背景图
+          SliverAppBar(
+            expandedHeight: 200,
+            pinned: true,
+            backgroundColor: isDark ? AppColors.darkSurface : Colors.white,
+            flexibleSpace: FlexibleSpaceBar(
+              title: Text(
+                collection.name,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  shadows: [
+                    Shadow(
+                      offset: Offset(0, 1),
+                      blurRadius: 4,
+                      color: Colors.black54,
+                    ),
+                  ],
+                ),
+              ),
+              background: collection.backdropUrl.isNotEmpty
+                  ? Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        Image.network(
+                          collection.backdropUrl,
+                          fit: BoxFit.cover,
+                        ),
+                        // 渐变遮罩
+                        DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.transparent,
+                                Colors.black.withValues(alpha: 0.7),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
+                  : DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: isDark ? AppColors.darkSurfaceVariant : Colors.grey[300],
+                      ),
+                    ),
+            ),
+          ),
+
+          // 系列简介
+          if (collection.overview.isNotEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  collection.overview,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+                    height: 1.5,
+                  ),
+                ),
+              ),
+            ),
+
+          // 电影数量
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Text(
+                '共 ${sortedParts.length} 部电影',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                ),
+              ),
+            ),
+          ),
+
+          // 电影网格
+          SliverPadding(
+            padding: const EdgeInsets.all(16),
+            sliver: SliverGrid(
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 160,
+                childAspectRatio: 0.55,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 16,
+              ),
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  final part = sortedParts[index];
+                  final isCurrentMovie = part.id == currentMovieId;
+
+                  return _CollectionMovieGridItem(
+                    part: part,
+                    isCurrentMovie: isCurrentMovie,
+                    sourceId: sourceId,
+                    isDark: isDark,
+                  );
+                },
+                childCount: sortedParts.length,
+              ),
+            ),
+          ),
+
+          // 底部留白
+          const SliverPadding(padding: EdgeInsets.only(bottom: 40)),
+        ],
+      ),
+    );
+  }
+}
+
+/// 电影系列网格项
+class _CollectionMovieGridItem extends ConsumerWidget {
+  const _CollectionMovieGridItem({
+    required this.part,
+    required this.isCurrentMovie,
+    required this.sourceId,
+    required this.isDark,
+  });
+
+  final TmdbCollectionPart part;
+  final bool isCurrentMovie;
+  final String sourceId;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // 检查本地是否有该电影
+    final localVideoAsync = ref.watch(localVideoByTmdbIdProvider(part.id));
+    final localVideo = localVideoAsync.valueOrNull;
+    final hasLocal = localVideo != null;
+
+    return GestureDetector(
+      onTap: () => _onTap(context, localVideo),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: isCurrentMovie
+              ? Border.all(color: AppColors.primary, width: 2)
+              : null,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 海报
+            Expanded(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // 海报图片
+                    if (part.posterUrl.isNotEmpty)
+                      Image.network(
+                        part.posterUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => _buildPlaceholder(),
+                      )
+                    else
+                      _buildPlaceholder(),
+
+                    // 当前电影标识
+                    if (isCurrentMovie)
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Text(
+                            '当前',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                    // 本地可用标识
+                    if (hasLocal && !isCurrentMovie)
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: Colors.green,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.check_rounded,
+                            size: 12,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+
+                    // 评分
+                    if (part.voteAverage > 0)
+                      Positioned(
+                        bottom: 8,
+                        left: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.7),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.star_rounded,
+                                size: 12,
+                                color: Colors.amber,
+                              ),
+                              const SizedBox(width: 2),
+                              Text(
+                                part.ratingText,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+
+            // 标题
+            Text(
+              part.title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+              ),
+            ),
+
+            // 年份
+            if (part.year != null)
+              Text(
+                '${part.year}',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isDark
+                      ? AppColors.darkOnSurfaceVariant
+                      : AppColors.lightOnSurfaceVariant,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPlaceholder() => Container(
+        color: isDark ? AppColors.darkSurfaceVariant : Colors.grey[300],
+        child: Center(
+          child: Icon(
+            Icons.movie_rounded,
+            size: 40,
+            color: isDark ? Colors.grey[600] : Colors.grey[500],
+          ),
+        ),
+      );
+
+  void _onTap(BuildContext context, VideoMetadata? localVideo) {
+    if (isCurrentMovie) {
+      Navigator.of(context).pop(); // 返回当前详情页
+      return;
+    }
+
+    if (localVideo != null) {
+      // 本地有该电影，跳转到详情页
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute<void>(
+          builder: (context) => VideoDetailPage(
+            metadata: localVideo,
+            sourceId: localVideo.sourceId,
+          ),
+        ),
+      );
+    } else {
+      // 本地没有该电影，显示提示
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.cloud_off_rounded, color: Colors.white, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('本地未找到 "${part.title}"'),
+              ),
+            ],
+          ),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
 }

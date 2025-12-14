@@ -112,6 +112,9 @@ class VideoDatabaseService {
   static const String _colCollectionName = 'collection_name';
   static const String _colHasNfo = 'has_nfo'; // 是否检测到 NFO 文件
   static const String _colScrapePriority = 'scrape_priority'; // 刮削优先级
+  static const String _colShowDirectory = 'show_directory'; // TV 剧集所属剧目录
+  static const String _colMovieDirectory = 'movie_directory'; // 电影所在目录
+  static const String _colResolution = 'resolution'; // 视频分辨率 (4K, 1080p, 720p 等)
 
   // 字幕表
   static const String _tableSubtitles = 'video_subtitles';
@@ -122,6 +125,36 @@ class VideoDatabaseService {
   static const String _subColFileName = 'file_name'; // 字幕文件名
   static const String _subColFormat = 'format'; // 字幕格式 (srt, ass, vtt)
   static const String _subColLanguage = 'language'; // 语言
+
+  // TV 剧集分组表（预计算聚合数据，避免 GROUP BY）
+  static const String _tableTvShowGroups = 'tv_show_groups';
+  static const String _tvgColId = 'id';
+  static const String _tvgColGroupKey = 'group_key'; // 'tmdb_123' 或 'title_xxx'
+  static const String _tvgColTmdbId = 'tmdb_id';
+  static const String _tvgColTitle = 'title';
+  static const String _tvgColNormalizedTitle = 'normalized_title';
+  static const String _tvgColOriginalTitle = 'original_title';
+  static const String _tvgColYear = 'year';
+  static const String _tvgColOverview = 'overview';
+  static const String _tvgColPosterUrl = 'poster_url';
+  static const String _tvgColBackdropUrl = 'backdrop_url';
+  static const String _tvgColRating = 'rating';
+  static const String _tvgColGenres = 'genres';
+  static const String _tvgColSeasonCount = 'season_count';
+  static const String _tvgColEpisodeCount = 'episode_count';
+  static const String _tvgColRepresentativeRowid = 'representative_rowid';
+  static const String _tvgColLastSynced = 'last_synced';
+
+  // 电影系列分组表
+  static const String _tableMovieCollectionGroups = 'movie_collection_groups';
+  static const String _mcgColId = 'id';
+  static const String _mcgColTmdbCollectionId = 'tmdb_collection_id';
+  static const String _mcgColName = 'name';
+  static const String _mcgColPosterUrl = 'poster_url';
+  static const String _mcgColBackdropUrl = 'backdrop_url';
+  static const String _mcgColOverview = 'overview';
+  static const String _mcgColMovieCount = 'movie_count';
+  static const String _mcgColLastSynced = 'last_synced';
 
   // 目录扫描状态表（用于增量扫描和断点续扫）
   static const String _tableScanProgress = 'scan_progress';
@@ -148,7 +181,7 @@ class VideoDatabaseService {
 
       _db = await openDatabase(
         dbPath,
-        version: 7, // 升级版本以添加扫描进度表
+        version: 11, // 升级版本以添加 resolution 字段
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onConfigure: _onConfigure,
@@ -304,6 +337,278 @@ class VideoDatabaseService {
     logger.i('VideoDatabaseService: 扫描进度表创建完成');
   }
 
+  /// 创建 TV 剧集分组表
+  ///
+  /// 预计算的聚合表，每部剧一行，避免 GROUP BY 查询
+  Future<void> _createTvShowGroupsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $_tableTvShowGroups (
+        $_tvgColId INTEGER PRIMARY KEY AUTOINCREMENT,
+        $_tvgColGroupKey TEXT UNIQUE NOT NULL,
+        $_tvgColTmdbId INTEGER,
+        $_tvgColTitle TEXT NOT NULL,
+        $_tvgColNormalizedTitle TEXT NOT NULL,
+        $_tvgColOriginalTitle TEXT,
+        $_tvgColYear INTEGER,
+        $_tvgColOverview TEXT,
+        $_tvgColPosterUrl TEXT,
+        $_tvgColBackdropUrl TEXT,
+        $_tvgColRating REAL,
+        $_tvgColGenres TEXT,
+        $_tvgColSeasonCount INTEGER DEFAULT 0,
+        $_tvgColEpisodeCount INTEGER DEFAULT 0,
+        $_tvgColRepresentativeRowid INTEGER,
+        $_tvgColLastSynced INTEGER
+      )
+    ''');
+
+    // 创建索引
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_tvg_tmdb_id ON $_tableTvShowGroups($_tvgColTmdbId)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_tvg_rating ON $_tableTvShowGroups($_tvgColRating DESC)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_tvg_normalized_title ON $_tableTvShowGroups($_tvgColNormalizedTitle)');
+
+    logger.i('VideoDatabaseService: TV剧集分组表创建完成');
+  }
+
+  /// 创建电影系列分组表
+  Future<void> _createMovieCollectionGroupsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $_tableMovieCollectionGroups (
+        $_mcgColId INTEGER PRIMARY KEY AUTOINCREMENT,
+        $_mcgColTmdbCollectionId INTEGER UNIQUE,
+        $_mcgColName TEXT NOT NULL,
+        $_mcgColPosterUrl TEXT,
+        $_mcgColBackdropUrl TEXT,
+        $_mcgColOverview TEXT,
+        $_mcgColMovieCount INTEGER DEFAULT 0,
+        $_mcgColLastSynced INTEGER
+      )
+    ''');
+
+    // 创建索引
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_mcg_tmdb_id ON $_tableMovieCollectionGroups($_mcgColTmdbCollectionId)');
+
+    logger.i('VideoDatabaseService: 电影系列分组表创建完成');
+  }
+
+  /// 迁移 TV 剧集的 show_directory 字段
+  ///
+  /// 从现有 TV 剧集记录的 file_path 解析出 show_directory
+  /// 这是一次性迁移，在数据库升级到版本 9 时执行
+  Future<void> _migrateShowDirectories(Database db) async {
+    // 获取所有 TV 剧集记录
+    final tvShows = await db.query(
+      _tableMetadata,
+      columns: [_colId, _colFilePath],
+      where: '$_colCategory = ?',
+      whereArgs: [MediaCategory.tvShow.index],
+    );
+
+    if (tvShows.isEmpty) {
+      logger.d('VideoDatabaseService: 无 TV 剧集需要迁移 show_directory');
+      return;
+    }
+
+    logger.i('VideoDatabaseService: 开始迁移 ${tvShows.length} 条 TV 剧集的 show_directory');
+
+    // 批量更新
+    final batch = db.batch();
+    for (final row in tvShows) {
+      final id = row[_colId] as int?;
+      final filePath = row[_colFilePath] as String?;
+      if (id == null || filePath == null) continue;
+      final showDir = extractShowDirectory(filePath);
+
+      if (showDir != null) {
+        batch.update(
+          _tableMetadata,
+          {_colShowDirectory: showDir},
+          where: '$_colId = ?',
+          whereArgs: [id],
+        );
+      }
+    }
+
+    await batch.commit(noResult: true);
+    logger.i('VideoDatabaseService: show_directory 迁移完成');
+  }
+
+  /// 从文件路径提取剧目录
+  ///
+  /// 识别常见的电视剧目录结构：
+  /// - `/TV/Breaking Bad/Season 1/S01E01.mkv` → `/TV/Breaking Bad`
+  /// - `/TV/剧名.S01/S01E01.mkv` → `/TV/剧名.S01`
+  /// - `/TV/剧名/S01E01.mkv` → `/TV/剧名`
+  ///
+  /// 规则：
+  /// 1. 如果父目录名匹配季目录模式（Season X, S01 等），取祖父目录
+  /// 2. 否则取父目录
+  static String? extractShowDirectory(String filePath) {
+    if (filePath.isEmpty) return null;
+
+    // 标准化路径分隔符
+    final normalizedPath = filePath.replaceAll(r'\', '/');
+    final parts = normalizedPath.split('/').where((p) => p.isNotEmpty).toList();
+
+    if (parts.length < 2) return null;
+
+    // 文件名是最后一个部分
+    // parts.removeLast(); // 移除文件名
+
+    // 检查父目录是否是季目录
+    final parentDir = parts.length >= 2 ? parts[parts.length - 2] : null;
+
+    if (parentDir != null && _isSeasonDirectory(parentDir)) {
+      // 父目录是季目录，取祖父目录作为剧目录
+      if (parts.length >= 3) {
+        // 返回从根到祖父目录的完整路径
+        return '/${parts.sublist(0, parts.length - 2).join('/')}';
+      }
+      return null;
+    }
+
+    // 父目录不是季目录，父目录本身就是剧目录
+    if (parts.length >= 2) {
+      return '/${parts.sublist(0, parts.length - 1).join('/')}';
+    }
+
+    return null;
+  }
+
+  /// 检查目录名是否是季目录
+  static bool _isSeasonDirectory(String dirName) {
+    final name = dirName.toLowerCase().trim();
+
+    // 常见季目录模式
+    // Season 1, Season 01, Season1
+    if (RegExp(r'^season\s*\d+$', caseSensitive: false).hasMatch(name)) {
+      return true;
+    }
+
+    // S01, S1
+    if (RegExp(r'^s\d{1,2}$', caseSensitive: false).hasMatch(name)) {
+      return true;
+    }
+
+    // 第1季, 第一季
+    if (RegExp(r'^第[\d一二三四五六七八九十]+季$').hasMatch(name)) {
+      return true;
+    }
+
+    // Specials, 特典
+    if (name == 'specials' || name == '特典' || name == 'sp') {
+      return true;
+    }
+
+    return false;
+  }
+
+  /// 迁移电影的 movie_directory 字段
+  ///
+  /// 从现有电影记录的 file_path 解析出 movie_directory
+  /// 这是一次性迁移，在数据库升级到版本 10 时执行
+  Future<void> _migrateMovieDirectories(Database db) async {
+    // 获取所有电影记录
+    final movies = await db.query(
+      _tableMetadata,
+      columns: [_colId, _colFilePath],
+      where: '$_colCategory = ?',
+      whereArgs: [MediaCategory.movie.index],
+    );
+
+    if (movies.isEmpty) {
+      logger.d('VideoDatabaseService: 无电影需要迁移 movie_directory');
+      return;
+    }
+
+    logger.i('VideoDatabaseService: 开始迁移 ${movies.length} 条电影的 movie_directory');
+
+    // 批量更新
+    final batch = db.batch();
+    for (final row in movies) {
+      final id = row[_colId] as int?;
+      final filePath = row[_colFilePath] as String?;
+      if (id == null || filePath == null) continue;
+      final movieDir = extractMovieDirectory(filePath);
+
+      if (movieDir != null) {
+        batch.update(
+          _tableMetadata,
+          {_colMovieDirectory: movieDir},
+          where: '$_colId = ?',
+          whereArgs: [id],
+        );
+      }
+    }
+
+    await batch.commit(noResult: true);
+    logger.i('VideoDatabaseService: movie_directory 迁移完成');
+  }
+
+  /// 从文件路径提取电影所在目录
+  ///
+  /// 电影目录结构比 TV 剧集简单，直接取父目录
+  /// 例如：
+  /// - `/Movies/漫威电影宇宙/钢铁侠.mkv` → `/Movies/漫威电影宇宙`
+  /// - `/Movies/2023/Oppenheimer.mkv` → `/Movies/2023`
+  static String? extractMovieDirectory(String filePath) {
+    if (filePath.isEmpty) return null;
+
+    // 标准化路径分隔符
+    final normalizedPath = filePath.replaceAll(r'\', '/');
+    final parts = normalizedPath.split('/').where((p) => p.isNotEmpty).toList();
+
+    if (parts.length < 2) return null;
+
+    // 直接返回父目录路径
+    return '/${parts.sublist(0, parts.length - 1).join('/')}';
+  }
+
+  /// 迁移视频的 resolution 字段
+  ///
+  /// 从现有视频记录的 file_name 解析出分辨率
+  /// 这是一次性迁移，在数据库升级到版本 11 时执行
+  Future<void> _migrateResolutions(Database db) async {
+    // 获取所有没有 resolution 的记录
+    final videos = await db.query(
+      _tableMetadata,
+      columns: [_colId, _colFileName],
+      where: '$_colResolution IS NULL',
+    );
+
+    if (videos.isEmpty) {
+      logger.d('VideoDatabaseService: 无视频需要迁移 resolution');
+      return;
+    }
+
+    logger.i('VideoDatabaseService: 开始迁移 ${videos.length} 条视频的 resolution');
+
+    // 批量更新
+    final batch = db.batch();
+    for (final row in videos) {
+      final id = row[_colId] as int?;
+      final fileName = row[_colFileName] as String?;
+      if (id == null || fileName == null) continue;
+
+      final fileInfo = VideoFileNameParser.parse(fileName);
+      if (fileInfo.resolution != null) {
+        batch.update(
+          _tableMetadata,
+          {_colResolution: fileInfo.resolution},
+          where: '$_colId = ?',
+          whereArgs: [id],
+        );
+      }
+    }
+
+    await batch.commit(noResult: true);
+    logger.i('VideoDatabaseService: resolution 迁移完成');
+  }
+
   /// 数据库升级
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     logger.i('VideoDatabaseService: 数据库升级 $oldVersion -> $newVersion');
@@ -385,6 +690,59 @@ class VideoDatabaseService {
       await _createScanProgressTable(db);
 
       logger.i('VideoDatabaseService: 版本6->7 升级完成（添加扫描进度表）');
+    }
+
+    // 从版本7升级到版本8
+    if (oldVersion < 8) {
+      // 添加 TV 剧集分组表
+      await _createTvShowGroupsTable(db);
+      // 添加电影系列分组表
+      await _createMovieCollectionGroupsTable(db);
+
+      logger.i('VideoDatabaseService: 版本7->8 升级完成（添加聚合表）');
+    }
+
+    // 从版本8升级到版本9
+    if (oldVersion < 9) {
+      // 添加 show_directory 字段（TV 剧集所属剧目录，用于分组）
+      await db.execute(
+          'ALTER TABLE $_tableMetadata ADD COLUMN $_colShowDirectory TEXT');
+      // 创建索引
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_show_directory ON $_tableMetadata($_colShowDirectory)');
+
+      // 迁移现有 TV 剧集数据：从 file_path 解析 show_directory
+      // 使用 _extractShowDirectory 逻辑在 Dart 层处理
+      await _migrateShowDirectories(db);
+
+      logger.i('VideoDatabaseService: 版本8->9 升级完成（添加 show_directory 字段）');
+    }
+
+    // 从版本9升级到版本10
+    if (oldVersion < 10) {
+      // 添加 movie_directory 字段（电影所在目录，用于目录系列识别）
+      await db.execute(
+          'ALTER TABLE $_tableMetadata ADD COLUMN $_colMovieDirectory TEXT');
+      // 创建索引
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_movie_directory ON $_tableMetadata($_colMovieDirectory)');
+
+      // 迁移现有电影数据：从 file_path 解析 movie_directory
+      await _migrateMovieDirectories(db);
+
+      logger.i('VideoDatabaseService: 版本9->10 升级完成（添加 movie_directory 字段）');
+    }
+
+    // 从版本10升级到版本11
+    if (oldVersion < 11) {
+      // 添加 resolution 字段（视频分辨率，用于质量分组）
+      await db.execute(
+          'ALTER TABLE $_tableMetadata ADD COLUMN $_colResolution TEXT');
+
+      // 迁移现有数据：从文件名解析 resolution
+      await _migrateResolutions(db);
+
+      logger.i('VideoDatabaseService: 版本10->11 升级完成（添加 resolution 字段）');
     }
   }
 
@@ -1000,6 +1358,67 @@ class VideoDatabaseService {
     return withTmdbIdCount + withoutTmdbIdCount;
   }
 
+  /// 批量获取剧集分组的季集统计（用于懒加载）
+  ///
+  /// 返回每个分组的季数和集数，无需加载完整剧集列表
+  /// 键为分组键（tmdb_XXX 或 title_xxx），值为 (seasonCount, episodeCount)
+  Future<Map<String, ({int seasonCount, int episodeCount})>> getTvShowGroupStats({
+    List<int>? tmdbIds,
+    List<String>? titles,
+  }) async {
+    if (!_initialized) await init();
+
+    final result = <String, ({int seasonCount, int episodeCount})>{};
+
+    // 有 TMDB ID 的分组统计
+    if (tmdbIds != null && tmdbIds.isNotEmpty) {
+      final placeholders = List.filled(tmdbIds.length, '?').join(', ');
+      final statsResult = await _db!.rawQuery('''
+        SELECT 
+          $_colTmdbId,
+          COUNT(DISTINCT CASE WHEN $_colSeasonNumber > 0 THEN $_colSeasonNumber ELSE NULL END) as season_count,
+          COUNT(*) as episode_count
+        FROM $_tableMetadata
+        WHERE $_colTmdbId IN ($placeholders) AND $_colCategory = 1
+        GROUP BY $_colTmdbId
+      ''', tmdbIds);
+
+      for (final row in statsResult) {
+        final tmdbId = row[_colTmdbId] as int?;
+        if (tmdbId != null) {
+          final seasonCount = (row['season_count'] as int?) ?? 1;
+          final episodeCount = (row['episode_count'] as int?) ?? 1;
+          result['tmdb_$tmdbId'] = (seasonCount: seasonCount, episodeCount: episodeCount);
+        }
+      }
+    }
+
+    // 按标题分组的统计
+    if (titles != null && titles.isNotEmpty) {
+      final placeholders = List.filled(titles.length, '?').join(', ');
+      final statsResult = await _db!.rawQuery('''
+        SELECT 
+          LOWER($_colTitle) as lower_title,
+          COUNT(DISTINCT CASE WHEN $_colSeasonNumber > 0 THEN $_colSeasonNumber ELSE NULL END) as season_count,
+          COUNT(*) as episode_count
+        FROM $_tableMetadata
+        WHERE LOWER($_colTitle) IN ($placeholders) AND $_colCategory = 1 AND $_colTmdbId IS NULL
+        GROUP BY LOWER($_colTitle)
+      ''', titles.map((t) => t.toLowerCase()).toList());
+
+      for (final row in statsResult) {
+        final lowerTitle = row['lower_title'] as String?;
+        if (lowerTitle != null) {
+          final seasonCount = (row['season_count'] as int?) ?? 1;
+          final episodeCount = (row['episode_count'] as int?) ?? 1;
+          result['title_$lowerTitle'] = (seasonCount: seasonCount, episodeCount: episodeCount);
+        }
+      }
+    }
+
+    return result;
+  }
+
   /// 获取剧集分组的代表性元数据（用于分页显示剧集列表）
   ///
   /// 返回每个剧集分组的一条代表性记录（按 tmdbId 或 title 分组，取评分最高的）
@@ -1025,15 +1444,16 @@ class VideoDatabaseService {
     // 策略：分两部分查询，合并结果
     // 1a: 有 tmdb_id 的剧集 - 按 tmdb_id 分组
     // 1b: 无 tmdb_id 的剧集 - 按 title 分组
-    
+
     final representativeRowIds = <int>[];
-    
+
     // 1a: 有 tmdb_id 的剧集 - 使用 JOIN + GROUP BY 策略
-    
+
     // 更高效的方法：使用简单分组，每个 tmdb_id 取 MAX(rating) 对应的记录
     // SQLite 的 `GROUP BY` 会返回任意一行，我们用子查询确保取评分最高的
+    // 注意：使用 AS rid 显式别名，因为 SQLite 返回的列名可能是 't1.rowid' 而不是 'rowid'
     final withTmdbSqlOptimized = '''
-      SELECT t1.rowid
+      SELECT t1.rowid AS rid
       FROM $_tableMetadata t1
       INNER JOIN (
         SELECT $_colTmdbId, MAX($_colRating) as max_rating
@@ -1044,17 +1464,18 @@ class VideoDatabaseService {
       WHERE t1.$_colCategory = 1 AND t1.$_colTmdbId IS NOT NULL${pathFilter.andWhere}
       GROUP BY t1.$_colTmdbId
     ''';
-    
+
     final withTmdbResult = await _db!.rawQuery(withTmdbSqlOptimized, [...pathFilter.args, ...pathFilter.args]);
     representativeRowIds.addAll(
       withTmdbResult
-        .map((r) => r['rowid'] as int?)
+        .map((r) => r['rid'] as int?)
         .whereType<int>(),
     );
-    
+
     // 1b: 无 tmdb_id 的剧集 - 按 LOWER(title) 分组
+    // 同样使用 AS rid 显式别名
     final withoutTmdbSql = '''
-      SELECT t1.rowid
+      SELECT t1.rowid AS rid
       FROM $_tableMetadata t1
       INNER JOIN (
         SELECT LOWER($_colTitle) as lower_title, MAX($_colRating) as max_rating
@@ -1065,18 +1486,18 @@ class VideoDatabaseService {
       WHERE t1.$_colCategory = 1 AND t1.$_colTmdbId IS NULL AND t1.$_colTitle IS NOT NULL${pathFilter.andWhere}
       GROUP BY LOWER(t1.$_colTitle)
     ''';
-    
+
     final withoutTmdbResult = await _db!.rawQuery(withoutTmdbSql, [...pathFilter.args, ...pathFilter.args]);
     representativeRowIds.addAll(
       withoutTmdbResult
-        .map((r) => r['rowid'] as int?)
+        .map((r) => r['rid'] as int?)
         .whereType<int>(),
     );
-    
+
     if (representativeRowIds.isEmpty) {
       return [];
     }
-    
+
     // 阶段2：根据 rowid 列表获取完整记录，应用排序和分页
     // 注意：需要在获取完整数据后再排序
     final placeholders = List.filled(representativeRowIds.length, '?').join(', ');
@@ -1086,9 +1507,9 @@ class VideoDatabaseService {
       ORDER BY $_colRating DESC NULLS LAST, $_colTitle
       LIMIT ? OFFSET ?
     ''';
-    
+
     final results = await _db!.rawQuery(
-      fullDataSql, 
+      fullDataSql,
       [...representativeRowIds, limit, offset],
     );
     return results.map(_fromRow).toList();
@@ -1350,6 +1771,9 @@ class VideoDatabaseService {
         _colFileModifiedTime: m.fileModifiedTime?.millisecondsSinceEpoch,
         _colCollectionId: m.collectionId,
         _colCollectionName: m.collectionName,
+        _colShowDirectory: m.showDirectory,
+        _colMovieDirectory: m.movieDirectory,
+        _colResolution: m.resolution,
       };
 
   /// 从数据库行转换
@@ -1391,6 +1815,9 @@ class VideoDatabaseService {
             : null,
         collectionId: row[_colCollectionId] as int?,
         collectionName: row[_colCollectionName] as String?,
+        showDirectory: row[_colShowDirectory] as String?,
+        movieDirectory: row[_colMovieDirectory] as String?,
+        resolution: row[_colResolution] as String?,
       );
 
   /// 获取刮削统计信息
@@ -1681,8 +2108,8 @@ class VideoDatabaseService {
 
   /// 获取所有电影系列（按系列分组，返回每个系列的电影列表）
   ///
-  /// 只返回有2部或更多电影的系列
-  Future<List<MovieCollection>> getMovieCollections({int minCount = 2}) async {
+  /// 返回所有有 collectionId 的电影系列（包括本地只有1部的系列）
+  Future<List<MovieCollection>> getMovieCollections({int minCount = 1}) async {
     if (!_initialized) await init();
 
     // 先获取所有有 collectionId 的电影，按系列分组
@@ -1695,6 +2122,20 @@ class VideoDatabaseService {
       HAVING COUNT(*) >= ?
       ORDER BY count DESC
     ''', [minCount]);
+
+    // 调试：检查有多少电影有 collectionId
+    final totalWithCollection = Sqflite.firstIntValue(await _db!.rawQuery('''
+      SELECT COUNT(*) FROM $_tableMetadata
+      WHERE $_colCollectionId IS NOT NULL AND $_colCategory = 0
+    ''')) ?? 0;
+
+    final totalMovies = Sqflite.firstIntValue(await _db!.rawQuery('''
+      SELECT COUNT(*) FROM $_tableMetadata WHERE $_colCategory = 0
+    ''')) ?? 0;
+
+    logger.d('VideoDB: getMovieCollections - totalMovies=$totalMovies, '
+        'moviesWithCollectionId=$totalWithCollection, '
+        'uniqueCollections=${results.length}, minCount=$minCount');
 
     final collections = <MovieCollection>[];
 
@@ -2383,6 +2824,495 @@ class VideoDatabaseService {
             ? DateTime.fromMillisecondsSinceEpoch(row[_scanColLastScanned] as int)
             : null,
       );
+
+  // ============================================
+  // 聚合表同步方法
+  // ============================================
+
+  /// 同步 TV 剧集分组表
+  ///
+  /// 新分组策略（基于 show_directory）：
+  /// 1. 优先按 show_directory 分组（最可靠，基于目录结构）
+  /// 2. 在同目录组内，选择众数 tmdbId（处理部分集刮削成功的情况）
+  /// 3. 合并相同 tmdbId 的不同目录（处理跨路径的同一部剧）
+  ///
+  /// 分组键优先级：
+  /// 1. tmdb_{id} - 有 tmdbId 时使用
+  /// 2. dir_{show_directory_hash} - 无 tmdbId 但有目录结构
+  Future<int> syncTvShowGroups() async {
+    if (!_initialized) await init();
+
+    final stopwatch = Stopwatch()..start();
+
+    // 步骤 1: 清空旧数据
+    await _db!.delete(_tableTvShowGroups);
+
+    // 步骤 2: 按 show_directory 聚合，找出每个目录的众数 tmdbId
+    // 这样可以处理同一目录下部分集有 tmdbId、部分没有的情况
+    final directoryGroups = await _db!.rawQuery('''
+      SELECT 
+        $_colShowDirectory as show_directory,
+        $_colTmdbId as tmdb_id,
+        COUNT(*) as count
+      FROM $_tableMetadata
+      WHERE $_colCategory = 1 AND $_colShowDirectory IS NOT NULL
+      GROUP BY $_colShowDirectory, $_colTmdbId
+      ORDER BY $_colShowDirectory, count DESC
+    ''');
+
+    // 构建目录到最佳 tmdbId 的映射（取众数）
+    final directoryTmdbMap = <String, int?>{};
+    String? lastDir;
+    for (final row in directoryGroups) {
+      final dir = row['show_directory'] as String?;
+      if (dir == null) continue;
+
+      // 每个目录只取第一个（count 最大的）
+      if (dir != lastDir) {
+        lastDir = dir;
+        final tmdbId = row['tmdb_id'] as int?;
+        directoryTmdbMap[dir] = tmdbId;
+      }
+    }
+
+    // 步骤 3: 收集需要合并的目录（相同 tmdbId）
+    final tmdbDirectories = <int, List<String>>{};
+    final orphanDirectories = <String>[]; // 没有 tmdbId 的目录
+
+    for (final entry in directoryTmdbMap.entries) {
+      if (entry.value != null) {
+        tmdbDirectories.putIfAbsent(entry.value!, () => []).add(entry.key);
+      } else {
+        orphanDirectories.add(entry.key);
+      }
+    }
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    var insertedCount = 0;
+
+    // 步骤 4: 为每个有 tmdbId 的分组创建记录
+    for (final entry in tmdbDirectories.entries) {
+      final tmdbId = entry.key;
+      final directories = entry.value;
+
+      // 构建 WHERE 子句来匹配所有相关目录
+      final placeholders = directories.map((_) => '?').join(', ');
+
+      final aggregated = await _db!.rawQuery('''
+        SELECT 
+          MAX($_colTitle) as title,
+          LOWER(MAX($_colTitle)) as normalized_title,
+          MAX($_colOriginalTitle) as original_title,
+          MAX($_colYear) as year,
+          MAX($_colOverview) as overview,
+          MAX($_colPosterUrl) as poster_url,
+          MAX($_colBackdropUrl) as backdrop_url,
+          MAX($_colRating) as rating,
+          MAX($_colGenres) as genres,
+          COUNT(DISTINCT CASE WHEN $_colSeasonNumber > 0 THEN $_colSeasonNumber END) as season_count,
+          COUNT(*) as episode_count,
+          MAX(rowid) as representative_rowid
+        FROM $_tableMetadata
+        WHERE $_colCategory = 1 AND $_colShowDirectory IN ($placeholders)
+      ''', directories);
+
+      if (aggregated.isEmpty) continue;
+
+      final row = aggregated.first;
+      final title = row['title'] as String?;
+      if (title == null) continue;
+
+      final groupKey = 'tmdb_$tmdbId';
+
+      await _db!.rawInsert('''
+        INSERT OR REPLACE INTO $_tableTvShowGroups (
+          $_tvgColGroupKey,
+          $_tvgColTmdbId,
+          $_tvgColTitle,
+          $_tvgColNormalizedTitle,
+          $_tvgColOriginalTitle,
+          $_tvgColYear,
+          $_tvgColOverview,
+          $_tvgColPosterUrl,
+          $_tvgColBackdropUrl,
+          $_tvgColRating,
+          $_tvgColGenres,
+          $_tvgColSeasonCount,
+          $_tvgColEpisodeCount,
+          $_tvgColRepresentativeRowid,
+          $_tvgColLastSynced
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ''', [
+        groupKey,
+        tmdbId,
+        title,
+        row['normalized_title'] as String? ?? title.toLowerCase(),
+        row['original_title'] as String?,
+        row['year'] as int?,
+        row['overview'] as String?,
+        row['poster_url'] as String?,
+        row['backdrop_url'] as String?,
+        row['rating'] as double?,
+        row['genres'] as String?,
+        row['season_count'] as int? ?? 1,
+        row['episode_count'] as int? ?? 1,
+        row['representative_rowid'] as int?,
+        now,
+      ]);
+
+      insertedCount++;
+    }
+
+    // 步骤 5: 为没有 tmdbId 的目录单独创建分组
+    for (final directory in orphanDirectories) {
+      final aggregated = await _db!.rawQuery('''
+        SELECT 
+          MAX($_colTitle) as title,
+          LOWER(MAX($_colTitle)) as normalized_title,
+          MAX($_colOriginalTitle) as original_title,
+          MAX($_colYear) as year,
+          MAX($_colOverview) as overview,
+          MAX($_colPosterUrl) as poster_url,
+          MAX($_colBackdropUrl) as backdrop_url,
+          MAX($_colRating) as rating,
+          MAX($_colGenres) as genres,
+          COUNT(DISTINCT CASE WHEN $_colSeasonNumber > 0 THEN $_colSeasonNumber END) as season_count,
+          COUNT(*) as episode_count,
+          MAX(rowid) as representative_rowid
+        FROM $_tableMetadata
+        WHERE $_colCategory = 1 AND $_colShowDirectory = ?
+      ''', [directory]);
+
+      if (aggregated.isEmpty) continue;
+
+      final row = aggregated.first;
+      final title = row['title'] as String?;
+      if (title == null) continue;
+
+      // 使用目录路径的哈希作为 group_key
+      final groupKey = 'dir_${directory.hashCode.abs()}';
+
+      await _db!.rawInsert('''
+        INSERT OR REPLACE INTO $_tableTvShowGroups (
+          $_tvgColGroupKey,
+          $_tvgColTmdbId,
+          $_tvgColTitle,
+          $_tvgColNormalizedTitle,
+          $_tvgColOriginalTitle,
+          $_tvgColYear,
+          $_tvgColOverview,
+          $_tvgColPosterUrl,
+          $_tvgColBackdropUrl,
+          $_tvgColRating,
+          $_tvgColGenres,
+          $_tvgColSeasonCount,
+          $_tvgColEpisodeCount,
+          $_tvgColRepresentativeRowid,
+          $_tvgColLastSynced
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ''', [
+        groupKey,
+        null, // no tmdbId
+        title,
+        row['normalized_title'] as String? ?? title.toLowerCase(),
+        row['original_title'] as String?,
+        row['year'] as int?,
+        row['overview'] as String?,
+        row['poster_url'] as String?,
+        row['backdrop_url'] as String?,
+        row['rating'] as double?,
+        row['genres'] as String?,
+        row['season_count'] as int? ?? 1,
+        row['episode_count'] as int? ?? 1,
+        row['representative_rowid'] as int?,
+        now,
+      ]);
+
+      insertedCount++;
+    }
+
+    // 步骤 6: 处理没有 show_directory 的剧集（兼容旧数据）
+    final noDirectoryCount = Sqflite.firstIntValue(await _db!.rawQuery('''
+      SELECT COUNT(DISTINCT COALESCE($_colTmdbId, $_colTitle))
+      FROM $_tableMetadata
+      WHERE $_colCategory = 1 AND $_colShowDirectory IS NULL
+    ''')) ?? 0;
+
+    if (noDirectoryCount > 0) {
+      // 按 tmdbId 或 title 分组（旧逻辑兜底）
+      final fallbackResult = await _db!.rawQuery('''
+        SELECT 
+          $_colTmdbId as tmdb_id,
+          MAX($_colTitle) as title,
+          LOWER(MAX($_colTitle)) as normalized_title,
+          MAX($_colOriginalTitle) as original_title,
+          MAX($_colYear) as year,
+          MAX($_colOverview) as overview,
+          MAX($_colPosterUrl) as poster_url,
+          MAX($_colBackdropUrl) as backdrop_url,
+          MAX($_colRating) as rating,
+          MAX($_colGenres) as genres,
+          COUNT(DISTINCT CASE WHEN $_colSeasonNumber > 0 THEN $_colSeasonNumber END) as season_count,
+          COUNT(*) as episode_count,
+          MAX(rowid) as representative_rowid
+        FROM $_tableMetadata
+        WHERE $_colCategory = 1 AND $_colShowDirectory IS NULL
+        GROUP BY COALESCE($_colTmdbId, LOWER($_colTitle))
+      ''');
+
+      for (final row in fallbackResult) {
+        final tmdbId = row['tmdb_id'] as int?;
+        final title = row['title'] as String?;
+        if (title == null) continue;
+
+        final groupKey = tmdbId != null
+            ? 'tmdb_$tmdbId'
+            : 'title_${(row['normalized_title'] as String? ?? title.toLowerCase()).hashCode.abs()}';
+
+        await _db!.rawInsert('''
+          INSERT OR IGNORE INTO $_tableTvShowGroups (
+            $_tvgColGroupKey,
+            $_tvgColTmdbId,
+            $_tvgColTitle,
+            $_tvgColNormalizedTitle,
+            $_tvgColOriginalTitle,
+            $_tvgColYear,
+            $_tvgColOverview,
+            $_tvgColPosterUrl,
+            $_tvgColBackdropUrl,
+            $_tvgColRating,
+            $_tvgColGenres,
+            $_tvgColSeasonCount,
+            $_tvgColEpisodeCount,
+            $_tvgColRepresentativeRowid,
+            $_tvgColLastSynced
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', [
+          groupKey,
+          tmdbId,
+          title,
+          row['normalized_title'] as String? ?? title.toLowerCase(),
+          row['original_title'] as String?,
+          row['year'] as int?,
+          row['overview'] as String?,
+          row['poster_url'] as String?,
+          row['backdrop_url'] as String?,
+          row['rating'] as double?,
+          row['genres'] as String?,
+          row['season_count'] as int? ?? 1,
+          row['episode_count'] as int? ?? 1,
+          row['representative_rowid'] as int?,
+          now,
+        ]);
+
+        insertedCount++;
+      }
+    }
+
+    stopwatch.stop();
+    logger.i('VideoDatabaseService: TV剧集分组同步完成, '
+        '插入/更新 $insertedCount 条, 耗时 ${stopwatch.elapsedMilliseconds}ms');
+
+    return insertedCount;
+  }
+
+  /// 同步电影系列分组表
+  ///
+  /// 新策略：
+  /// 1. 聚合 TMDB collection_id 系列（官方系列）
+  /// 2. 识别目录系列（同目录下 ≥2 部电影且无 TMDB 系列）
+  Future<int> syncMovieCollectionGroups() async {
+    if (!_initialized) await init();
+
+    final stopwatch = Stopwatch()..start();
+
+    // 步骤 1: 清空旧数据
+    await _db!.delete(_tableMovieCollectionGroups);
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    var insertedCount = 0;
+
+    // 步骤 2: 聚合有 collection_id 的电影（TMDB 官方系列）
+    final tmdbCollections = await _db!.rawQuery('''
+      SELECT 
+        $_colCollectionId,
+        MAX($_colCollectionName) as name,
+        MAX($_colPosterUrl) as poster_url,
+        MAX($_colBackdropUrl) as backdrop_url,
+        MAX($_colOverview) as overview,
+        COUNT(*) as movie_count
+      FROM $_tableMetadata
+      WHERE $_colCategory = 0 AND $_colCollectionId IS NOT NULL
+      GROUP BY $_colCollectionId
+    ''');
+
+    for (final row in tmdbCollections) {
+      final collectionId = row[_colCollectionId] as int?;
+      if (collectionId == null) continue;
+
+      await _db!.rawInsert('''
+        INSERT OR REPLACE INTO $_tableMovieCollectionGroups (
+          $_mcgColTmdbCollectionId,
+          $_mcgColName,
+          $_mcgColPosterUrl,
+          $_mcgColBackdropUrl,
+          $_mcgColOverview,
+          $_mcgColMovieCount,
+          $_mcgColLastSynced
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ''', [
+        collectionId,
+        row['name'] as String? ?? '未知系列',
+        row['poster_url'] as String?,
+        row['backdrop_url'] as String?,
+        row['overview'] as String?,
+        row['movie_count'] as int? ?? 1,
+        now,
+      ]);
+
+      insertedCount++;
+    }
+
+    // 步骤 3: 识别目录系列（同目录下多部电影且无 TMDB 系列）
+    // 条件：
+    // - 电影分类（category = 0）
+    // - 有 movie_directory
+    // - 无 collection_id（避免与 TMDB 系列重复）
+    // - 同目录下至少 2 部电影
+    final directoryCollections = await _db!.rawQuery('''
+      SELECT 
+        $_colMovieDirectory as directory,
+        COUNT(*) as movie_count,
+        MAX($_colPosterUrl) as poster_url,
+        MAX($_colBackdropUrl) as backdrop_url
+      FROM $_tableMetadata
+      WHERE $_colCategory = 0 
+        AND $_colMovieDirectory IS NOT NULL 
+        AND $_colCollectionId IS NULL
+      GROUP BY $_colMovieDirectory
+      HAVING COUNT(*) >= 2
+    ''');
+
+    for (final row in directoryCollections) {
+      final directory = row['directory'] as String?;
+      if (directory == null) continue;
+
+      // 从目录路径提取系列名（取最后一级目录名）
+      final parts = directory.split('/').where((p) => p.isNotEmpty).toList();
+      final collectionName = parts.isNotEmpty ? parts.last : '未知系列';
+
+      // 使用目录哈希作为负数 ID（与 TMDB 正数 ID 区分）
+      final dirCollectionId = -1 * directory.hashCode.abs();
+
+      await _db!.rawInsert('''
+        INSERT OR REPLACE INTO $_tableMovieCollectionGroups (
+          $_mcgColTmdbCollectionId,
+          $_mcgColName,
+          $_mcgColPosterUrl,
+          $_mcgColBackdropUrl,
+          $_mcgColOverview,
+          $_mcgColMovieCount,
+          $_mcgColLastSynced
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ''', [
+        dirCollectionId,
+        collectionName,
+        row['poster_url'] as String?,
+        row['backdrop_url'] as String?,
+        null, // 目录系列没有 overview
+        row['movie_count'] as int? ?? 2,
+        now,
+      ]);
+
+      insertedCount++;
+    }
+
+    stopwatch.stop();
+    logger.i('VideoDatabaseService: 电影系列分组同步完成, '
+        'TMDB: ${tmdbCollections.length}, 目录: ${directoryCollections.length}, '
+        '总计 $insertedCount 条, 耗时 ${stopwatch.elapsedMilliseconds}ms');
+
+    return insertedCount;
+  }
+
+  /// 获取 TV 剧集分组列表（从聚合表读取）
+  ///
+  /// 这是首页使用的高性能查询，无需 GROUP BY
+  Future<List<TvShowGroupRow>> getTvShowGroupList({
+    int limit = 50,
+    int offset = 0,
+    String orderBy = 'rating DESC',
+  }) async {
+    if (!_initialized) await init();
+
+    final results = await _db!.query(
+      _tableTvShowGroups,
+      orderBy: '$_tvgColRating DESC NULLS LAST, $_tvgColTitle',
+      limit: limit,
+      offset: offset,
+    );
+
+    return results.map((row) => TvShowGroupRow(
+      id: row[_tvgColId]! as int,
+      groupKey: row[_tvgColGroupKey]! as String,
+      tmdbId: row[_tvgColTmdbId] as int?,
+      title: row[_tvgColTitle]! as String,
+      normalizedTitle: row[_tvgColNormalizedTitle]! as String,
+      originalTitle: row[_tvgColOriginalTitle] as String?,
+      year: row[_tvgColYear] as int?,
+      overview: row[_tvgColOverview] as String?,
+      posterUrl: row[_tvgColPosterUrl] as String?,
+      backdropUrl: row[_tvgColBackdropUrl] as String?,
+      rating: row[_tvgColRating] as double?,
+      genres: row[_tvgColGenres] as String?,
+      seasonCount: row[_tvgColSeasonCount] as int? ?? 0,
+      episodeCount: row[_tvgColEpisodeCount] as int? ?? 0,
+      representativeRowid: row[_tvgColRepresentativeRowid] as int?,
+    )).toList();
+  }
+
+  /// 获取 TV 剧集分组总数（从聚合表读取）
+  Future<int> getTvShowGroupListCount() async {
+    if (!_initialized) await init();
+
+    return Sqflite.firstIntValue(
+      await _db!.rawQuery('SELECT COUNT(*) FROM $_tableTvShowGroups'),
+    ) ?? 0;
+  }
+
+  /// 获取电影系列分组列表（从聚合表读取）
+  Future<List<MovieCollectionGroupRow>> getMovieCollectionGroupList({
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    if (!_initialized) await init();
+
+    final results = await _db!.query(
+      _tableMovieCollectionGroups,
+      orderBy: '$_mcgColMovieCount DESC',
+      limit: limit,
+      offset: offset,
+    );
+
+    return results.map((row) => MovieCollectionGroupRow(
+      id: row[_mcgColId]! as int,
+      tmdbCollectionId: row[_mcgColTmdbCollectionId] as int?,
+      name: row[_mcgColName]! as String,
+      posterUrl: row[_mcgColPosterUrl] as String?,
+      backdropUrl: row[_mcgColBackdropUrl] as String?,
+      overview: row[_mcgColOverview] as String?,
+      movieCount: row[_mcgColMovieCount] as int? ?? 0,
+    )).toList();
+  }
+
+  /// 获取电影系列分组总数（从聚合表读取）
+  Future<int> getMovieCollectionGroupListCount() async {
+    if (!_initialized) await init();
+
+    return Sqflite.firstIntValue(
+      await _db!.rawQuery('SELECT COUNT(*) FROM $_tableMovieCollectionGroups'),
+    ) ?? 0;
+  }
 }
 
 /// 字幕索引实体
@@ -2443,6 +3373,74 @@ class MovieCollection {
       ..sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
     return sortedByRating.first.backdropUrl;
   }
+}
+
+/// TV 剧集分组行数据（从聚合表读取）
+class TvShowGroupRow {
+  const TvShowGroupRow({
+    required this.id,
+    required this.groupKey,
+    this.tmdbId,
+    required this.title,
+    required this.normalizedTitle,
+    this.originalTitle,
+    this.year,
+    this.overview,
+    this.posterUrl,
+    this.backdropUrl,
+    this.rating,
+    this.genres,
+    required this.seasonCount,
+    required this.episodeCount,
+    this.representativeRowid,
+  });
+
+  final int id;
+  final String groupKey;
+  final int? tmdbId;
+  final String title;
+  final String normalizedTitle;
+  final String? originalTitle;
+  final int? year;
+  final String? overview;
+  final String? posterUrl;
+  final String? backdropUrl;
+  final double? rating;
+  final String? genres;
+  final int seasonCount;
+  final int episodeCount;
+  final int? representativeRowid;
+
+  /// 获取类型列表
+  List<String> get genreList =>
+      genres?.split(',').map((e) => e.trim()).toList() ?? [];
+
+  /// 显示用的海报 URL
+  String? get displayPosterUrl => posterUrl;
+
+  /// 显示用的背景 URL
+  String? get displayBackdropUrl => backdropUrl;
+}
+
+/// 电影系列分组行数据（从聚合表读取）
+class MovieCollectionGroupRow {
+  const MovieCollectionGroupRow({
+    required this.id,
+    this.tmdbCollectionId,
+    required this.name,
+    this.posterUrl,
+    this.backdropUrl,
+    this.overview,
+    required this.movieCount,
+  });
+
+  final int id;
+  final int? tmdbCollectionId;
+  final String name;
+  final String? posterUrl;
+  final String? backdropUrl;
+  final String? overview;
+  final int movieCount;
 }
 
 /// 刮削统计信息
