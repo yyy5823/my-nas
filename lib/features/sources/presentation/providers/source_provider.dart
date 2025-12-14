@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:my_nas/core/services/nas_file_system_registry.dart';
 import 'package:my_nas/features/book/data/services/book_database_service.dart';
 import 'package:my_nas/features/comic/data/services/comic_library_cache_service.dart';
 import 'package:my_nas/features/music/data/services/music_database_service.dart';
@@ -161,6 +162,13 @@ class ActiveConnectionsNotifier
       final conn = manager.getConnection(source.id);
       if (conn != null) {
         connections[source.id] = conn;
+        // 注册 fileSystem 到全局 Registry
+        if (conn.status == SourceStatus.connected) {
+          NasFileSystemRegistry.instance.register(
+            source.id,
+            conn.adapter.fileSystem,
+          );
+        }
       }
     }
     state = connections;
@@ -178,6 +186,13 @@ class ActiveConnectionsNotifier
       saveCredential: saveCredential,
     );
     state = {...state, source.id: connection};
+    // 注册 fileSystem 到全局 Registry
+    if (connection.status == SourceStatus.connected) {
+      NasFileSystemRegistry.instance.register(
+        source.id,
+        connection.adapter.fileSystem,
+      );
+    }
     return connection;
   }
 
@@ -216,12 +231,16 @@ class ActiveConnectionsNotifier
   Future<void> disconnect(String sourceId) async {
     final manager = _ref.read(sourceManagerProvider);
     await manager.disconnect(sourceId);
+    // 从全局 Registry 注销 fileSystem
+    NasFileSystemRegistry.instance.unregister(sourceId);
     state = Map.from(state)..remove(sourceId);
   }
 
   Future<void> disconnectAll() async {
     final manager = _ref.read(sourceManagerProvider);
     await manager.disconnectAll();
+    // 清空全局 Registry
+    NasFileSystemRegistry.instance.clear();
     state = {};
   }
 

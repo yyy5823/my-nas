@@ -340,7 +340,7 @@ class _TmdbPreviewPageState extends ConsumerState<TmdbPreviewPage> {
     if (_detail is TmdbMovieDetail) {
       return (_detail! as TmdbMovieDetail).overview;
     } else if (_detail is TmdbTvDetail) {
-      return (_detail! as TmdbTvDetail).overview ?? '';
+      return (_detail! as TmdbTvDetail).overview;
     }
     return '';
   }

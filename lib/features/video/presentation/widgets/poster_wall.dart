@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
-import 'package:my_nas/shared/widgets/adaptive_image.dart';
+import 'package:my_nas/features/video/presentation/widgets/video_poster.dart';
 
 /// 海报墙组件
 class PosterWall extends StatelessWidget {
@@ -145,10 +145,11 @@ class _PosterCardState extends State<PosterCard> with SingleTickerProviderStateM
 
     // 预先构建海报内容，避免 hover 时重建
     final posterContent = hasPoster
-        ? AdaptiveImage(
-            imageUrl: displayPoster,
-            placeholder: (_) => _buildPlaceholder(isDark),
-            errorWidget: (_, _) => _buildPlaceholder(isDark),
+        ? VideoPoster(
+            posterUrl: displayPoster,
+            sourceId: widget.metadata.sourceId,
+            placeholder: _buildPlaceholder(isDark),
+            errorWidget: _buildPlaceholder(isDark),
           )
         : _buildPlaceholder(isDark);
 
@@ -467,11 +468,12 @@ class PosterRow extends StatelessWidget {
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(8),
                               child: hasPoster
-                                  ? AdaptiveImage(
-                                      imageUrl: displayPoster,
+                                  ? VideoPoster(
+                                      posterUrl: displayPoster,
+                                      sourceId: metadata.sourceId,
                                       width: itemWidth,
-                                      placeholder: (_) => _buildMiniPlaceholder(isDark, metadata),
-                                      errorWidget: (_, _) => _buildMiniPlaceholder(isDark, metadata),
+                                      placeholder: _buildMiniPlaceholder(isDark, metadata),
+                                      errorWidget: _buildMiniPlaceholder(isDark, metadata),
                                     )
                                   : _buildMiniPlaceholder(isDark, metadata),
                             ),

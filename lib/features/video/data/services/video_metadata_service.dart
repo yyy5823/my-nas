@@ -401,26 +401,17 @@ class VideoMetadataService {
           logger.d('VideoMetadataService: 从 NFO 获取到电影系列 "${nfoData.setName}"');
         }
 
+        // 存储本地海报路径（用于 StreamImage 流式加载）
         if (nfoData.posterPath != null) {
-          try {
-            final posterUrl = await fileSystem.getFileUrl(nfoData.posterPath!);
-            if (posterUrl.startsWith('http') || posterUrl.startsWith('file')) {
-              metadata.posterUrl = posterUrl;
-            }
-          } on Exception catch (e) {
-            logger.w('VideoMetadataService: 获取本地海报 URL 失败', e);
-          }
+          metadata.localPosterUrl = nfoData.posterPath;
         }
 
+        // 存储本地背景图路径（用于 StreamImage 流式加载）
         if (nfoData.fanartPath != null) {
-          try {
-            final backdropUrl = await fileSystem.getFileUrl(nfoData.fanartPath!);
-            if (backdropUrl.startsWith('http') || backdropUrl.startsWith('file')) {
-              metadata.backdropUrl = backdropUrl;
-            }
-          } on Exception catch (e) {
-            logger.w('VideoMetadataService: 获取本地背景图 URL 失败', e);
-          }
+          // 背景图使用 localPosterUrl 以外的字段无法存储，暂时不处理
+          // TODO: 考虑添加 localBackdropUrl 字段
+          // 目前使用 backdropUrl 存储路径，显示时需要识别并使用流式加载
+          metadata.backdropUrl = nfoData.fanartPath;
         }
 
         logger.d('VideoMetadataService: 从 NFO 获取到元数据 "${nfoData.title}"');

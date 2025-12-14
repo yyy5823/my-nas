@@ -131,7 +131,7 @@ class SmbConnectionPool {
           }
 
           conn.acquire();
-          logger.d('SMB Pool: 复用 $type 连接 (活跃: $activeConnectionCount/$connectionCount)');
+          // logger.d('SMB Pool: 复用 $type 连接 (活跃: $activeConnectionCount/$connectionCount)');
           return conn.client;
         }
       }
@@ -157,7 +157,7 @@ class SmbConnectionPool {
       orElse: () => throw StateError('连接不在池中'),
     )
     ..release();
-    logger.d('SMB Pool: 释放连接 (活跃: $activeConnectionCount/$connectionCount)');
+    // logger.d('SMB Pool: 释放连接 (活跃: $activeConnectionCount/$connectionCount)');
   }
 
   /// 使用连接执行操作
