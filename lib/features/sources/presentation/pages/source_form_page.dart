@@ -49,6 +49,7 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
   late final Map<String, dynamic> _formValues;
   late final Map<String, TextEditingController> _controllers;
   late final Set<String> _expandedSections;
+  late final Map<String, GlobalKey> _sectionKeys;
 
   bool _isSubmitting = false;
   bool _isTesting = false;
@@ -62,6 +63,7 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
     _formValues = {};
     _controllers = {};
     _expandedSections = {};
+    _sectionKeys = {};
 
     _initializeFormValues();
   }
@@ -203,6 +205,7 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
           // 确保 ExpansionTile 内容在收起时正确裁剪
           data: theme.copyWith(dividerColor: Colors.transparent),
           child: ClipRect(
+            key: _sectionKeys.putIfAbsent(section.title, GlobalKey.new),
             child: ExpansionTile(
               title: Text(
                 section.title,
@@ -226,6 +229,18 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
                 setState(() {
                   if (expanded) {
                     _expandedSections.add(section.title);
+                    // 展开后滚动到该区块，确保内容可见
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      final key = _sectionKeys[section.title];
+                      if (key?.currentContext != null) {
+                        Scrollable.ensureVisible(
+                          key!.currentContext!,
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeInOut,
+                          alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtStart,
+                        );
+                      }
+                    });
                   } else {
                     _expandedSections.remove(section.title);
                   }

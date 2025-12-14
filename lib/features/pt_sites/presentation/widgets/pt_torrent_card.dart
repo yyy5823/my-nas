@@ -57,6 +57,23 @@ class PTTorrentCard extends StatelessWidget {
                 ],
               ),
 
+              // 描述（副标题）
+              if (torrent.smallDescr != null &&
+                  torrent.smallDescr!.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  torrent.smallDescr!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark
+                        ? AppColors.darkOnSurfaceVariant
+                        : AppColors.lightOnSurfaceVariant,
+                  ),
+                ),
+              ],
+
               const SizedBox(height: 8),
 
               // 第二行：大小、分类、标签

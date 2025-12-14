@@ -325,8 +325,8 @@ class MTeamApi extends PTSiteApi {
       final sortField = switch (sortBy) {
         PTTorrentSortBy.uploadTime => 'CREATED_DATE',
         PTTorrentSortBy.size => 'SIZE',
-        PTTorrentSortBy.seeders => 'LEECHERS',
-        PTTorrentSortBy.leechers => 'SEEDERS',
+        PTTorrentSortBy.seeders => 'SEEDERS',
+        PTTorrentSortBy.leechers => 'LEECHERS',
         PTTorrentSortBy.snatched => 'TIMES_COMPLETED',
         PTTorrentSortBy.name => 'NAME',
       };
@@ -618,6 +618,8 @@ class GenericPTSiteApi extends PTSiteApi {
       }
 
       final uri = Uri.parse('$baseUrl/torrents.php').replace(queryParameters: params);
+      _logger..d('GenericPTSiteApi.getTorrents: 请求 URL = $uri')
+      ..d('GenericPTSiteApi.getTorrents: headers = $headers');
 
       final httpClient = HttpClient();
       // ignore: cascade_invocations
@@ -634,12 +636,32 @@ class GenericPTSiteApi extends PTSiteApi {
       final body = await response.transform(utf8.decoder).join();
       httpClient.close();
 
+      _logger..d('GenericPTSiteApi.getTorrents: HTTP ${response.statusCode}')
+      ..d('GenericPTSiteApi.getTorrents: 响应长度 = ${body.length} 字符');
+
       if (response.statusCode != 200) {
+        _logger.e('GenericPTSiteApi.getTorrents: HTTP 状态错误 ${response.statusCode}');
         throw Exception('获取种子列表失败: ${response.statusCode}');
       }
 
+      // 检测是否被重定向到登录页
+      if (body.contains('login.php') ||
+          body.contains('请先登录') ||
+          body.contains('Please login') ||
+          body.contains('class="login"')) {
+        _logger.w('GenericPTSiteApi.getTorrents: 检测到登录页面，Cookie 可能已失效');
+        return [];
+      }
+
+      // 打印响应内容预览（用于调试）
+      final preview = body.length > 500 ? body.substring(0, 500) : body;
+      _logger.d('GenericPTSiteApi.getTorrents: 响应预览 = $preview');
+
       // 解析 HTML 获取种子列表
-      return _parseNexusPHPTorrents(body);
+      final torrents = _parseNexusPHPTorrents(body);
+      _logger.i('GenericPTSiteApi.getTorrents: 解析到 ${torrents.length} 个种子');
+
+      return torrents;
     } on Exception catch (e, st) {
       _logger.e('GenericPTSiteApi.getTorrents: $e');
       AppError.ignore(e, st, '获取种子列表失败');

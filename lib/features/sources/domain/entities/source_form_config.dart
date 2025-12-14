@@ -1053,8 +1053,17 @@ class SourceFormConfig {
               key: 'enableBrowserEmulation',
               label: '开启浏览器仿真',
               type: SourceFormFieldType.toggle,
-              defaultValue: 'false',
+              defaultValue: 'true',
               helpText: '模拟浏览器请求，降低被检测风险',
+            ),
+            SourceFormField(
+              key: 'userAgent',
+              label: 'User-Agent',
+              defaultValue: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
+                  'AppleWebKit/537.36 (KHTML, like Gecko) '
+                  'Chrome/120.0.0.0 Safari/537.36',
+              required: false,
+              helpText: '自定义请求的 User-Agent，留空使用默认值',
             ),
             SourceFormField(
               key: 'useProxy',
@@ -1073,13 +1082,6 @@ class SourceFormConfig {
               label: '下载器添加站点标签',
               type: SourceFormFieldType.toggle,
               defaultValue: 'false',
-            ),
-            SourceFormField(
-              key: 'userAgent',
-              label: 'User-Agent',
-              placeholder: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)...',
-              required: false,
-              helpText: '自定义请求的 User-Agent',
             ),
           ],
         ),
@@ -1110,7 +1112,21 @@ class SourceFormConfig {
             ),
           ],
         ),
-        _advancedSection(defaultAutoConnect: false),
+        // 高级选项 - PT 站点只保留记住设备选项
+        const SourceFormSection(
+          title: '高级选项',
+          collapsible: true,
+          defaultExpanded: false,
+          fields: [
+            SourceFormField(
+              key: 'rememberDevice',
+              label: '记住设备（跳过二次验证）',
+              type: SourceFormFieldType.toggle,
+              defaultValue: 'false',
+              helpText: '某些站点可能需要二次验证',
+            ),
+          ],
+        ),
       ],
     );
 

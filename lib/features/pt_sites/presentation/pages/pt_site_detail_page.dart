@@ -59,6 +59,11 @@ class _PTSiteDetailPageState extends ConsumerState<PTSiteDetailPage> {
         .read(ptSiteConnectionProvider(widget.source.id).notifier)
         .connect(widget.source);
 
+    // 等待状态同步（Riverpod 状态更新可能在下一个事件循环）
+    await Future<void>.delayed(Duration.zero);
+
+    if (!mounted) return;
+
     final connection = ref.read(ptSiteConnectionProvider(widget.source.id));
     if (connection.status == PTSiteConnectionStatus.connected) {
       await ref
@@ -124,12 +129,12 @@ class _PTSiteDetailPageState extends ConsumerState<PTSiteDetailPage> {
           ),
           // 筛选按钮
           IconButton(
-            icon: const Icon(Icons.filter_list),
+            icon: const Icon(Icons.tune),
             onPressed: () => _showFilterSheet(context),
           ),
           // 排序按钮
           IconButton(
-            icon: const Icon(Icons.sort),
+            icon: const Icon(Icons.swap_vert),
             onPressed: () => _showSortSheet(context),
           ),
           // 更多菜单
@@ -598,6 +603,25 @@ class _PTSiteDetailPageState extends ConsumerState<PTSiteDetailPage> {
 
                       if (torrent.category != null)
                         _buildDetailRow(Icons.folder, '分类', torrent.category!),
+
+                      if (torrent.subCategory != null &&
+                          torrent.subCategory!.isNotEmpty)
+                        _buildDetailRow(
+                            Icons.folder_open, '子分类', torrent.subCategory!),
+
+                      // IMDB / 豆瓣 信息
+                      if (torrent.imdbId != null &&
+                          torrent.imdbId!.isNotEmpty)
+                        _buildDetailRow(
+                            Icons.movie, 'IMDB', torrent.imdbId!),
+
+                      if (torrent.doubanId != null &&
+                          torrent.doubanId!.isNotEmpty)
+                        _buildDetailRow(
+                            Icons.star, '豆瓣', torrent.doubanId!),
+
+                      // 种子 ID
+                      _buildDetailRow(Icons.tag, '种子ID', torrent.id),
 
                       if (torrent.smallDescr != null &&
                           torrent.smallDescr!.isNotEmpty) ...[
