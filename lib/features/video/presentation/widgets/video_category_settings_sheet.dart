@@ -95,6 +95,7 @@ class _VideoCategorySettingsSheetState
             Expanded(
               child: ReorderableListView.builder(
                 scrollController: scrollController,
+                buildDefaultDragHandles: false, // 禁用默认的右侧拖动手柄
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 itemCount: sortedSections.length,
                 onReorder: (oldIndex, newIndex) {

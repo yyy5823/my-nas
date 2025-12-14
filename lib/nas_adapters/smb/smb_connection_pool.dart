@@ -155,8 +155,8 @@ class SmbConnectionPool {
     final conn = _connections.firstWhere(
       (c) => c.client == client,
       orElse: () => throw StateError('连接不在池中'),
-    );
-    conn.release();
+    )
+    ..release();
     logger.d('SMB Pool: 释放连接 (活跃: $activeConnectionCount/$connectionCount)');
   }
 
@@ -216,8 +216,8 @@ class SmbConnectionPool {
       // 检查是否有空闲连接
       final idle = _connections.where((c) => !c.inUse).toList();
       if (idle.isNotEmpty) {
-        final conn = idle.first;
-        conn.acquire();
+        final conn = idle.first
+        ..acquire();
         return conn.client;
       }
 

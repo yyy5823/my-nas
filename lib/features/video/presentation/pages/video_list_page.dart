@@ -755,24 +755,39 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     List<Object?> results;
     try {
       // 批次1：高优先级数据（首屏展示）
+      final batch1Stopwatch = Stopwatch()..start();
       final batch1 = await Future.wait([
         _db.getTopRated(limit: 30, enabledPaths: effectiveEnabledPaths),
         _db.getRecentlyUpdated(limit: 20, enabledPaths: effectiveEnabledPaths),
         _db.getByCategory(MediaCategory.movie, limit: 30, enabledPaths: effectiveEnabledPaths),
       ]).timeout(
         const Duration(seconds: 5),
-        onTimeout: () => [<VideoMetadata>[], <VideoMetadata>[], <VideoMetadata>[]],
+        onTimeout: () {
+          logger.w('VideoListNotifier: 批次1查询超时（5秒）');
+          return [<VideoMetadata>[], <VideoMetadata>[], <VideoMetadata>[]];
+        },
       );
+      batch1Stopwatch.stop();
+      logger.d('VideoListNotifier: 批次1完成，耗时 ${batch1Stopwatch.elapsedMilliseconds}ms');
 
-      // 批次2：次优先级数据
+       // 批次2：次优先级数据
+      // 优化后的查询使用 JOIN + GROUP BY 策略，复杂度 O(n)，可以并行执行
+      final batch2Stopwatch = Stopwatch()..start();
       final batch2 = await Future.wait([
         _db.getTvShowGroupRepresentatives(limit: 30, enabledPaths: effectiveEnabledPaths),
         _db.getMovieCollections(),
         _db.getByCategory(MediaCategory.unknown, limit: 30, enabledPaths: effectiveEnabledPaths),
       ]).timeout(
         const Duration(seconds: 5),
-        onTimeout: () => [<VideoMetadata>[], <MovieCollection>[], <VideoMetadata>[]],
+        onTimeout: () {
+          logger.w('VideoListNotifier: 批次2查询超时（5秒）');
+          return [<VideoMetadata>[], <MovieCollection>[], <VideoMetadata>[]];
+        },
       );
+      batch2Stopwatch.stop();
+      logger.d('VideoListNotifier: 批次2完成，耗时 ${batch2Stopwatch.elapsedMilliseconds}ms, '
+          'tvShows=${(batch2[0] as List).length}, collections=${(batch2[1] as List).length}, '
+          'others=${(batch2[2] as List).length}');
 
       results = [...batch1, ...batch2];
     } on Exception catch (e) {
@@ -1242,7 +1257,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
   ) {
     final videoCount = state is VideoListLoaded ? state.totalCount : 0;
     final movieCount = state is VideoListLoaded ? state.movieCount : 0;
-    final tvShowCount = state is VideoListLoaded ? state.tvShowGroups.length : 0;
+    final tvShowCount = state is VideoListLoaded ? state.tvShowGroupCount : 0;
     final otherCount = state is VideoListLoaded ? state.otherCount : 0;
 
     // 判断是否正在刮削

@@ -9,13 +9,13 @@ import 'package:my_nas/features/video/domain/entities/video_category_config.dart
 ///
 /// 使用 Hive 持久化存储用户的分类配置（顺序、可见性、类型分类等）
 class VideoCategorySettingsService {
+
+  factory VideoCategorySettingsService() => _instance;
   VideoCategorySettingsService._();
 
   static final VideoCategorySettingsService _instance =
       VideoCategorySettingsService._();
   static VideoCategorySettingsService get instance => _instance;
-
-  factory VideoCategorySettingsService() => _instance;
 
   static const String _boxName = 'video_category_settings';
   static const String _settingsKey = 'settings';

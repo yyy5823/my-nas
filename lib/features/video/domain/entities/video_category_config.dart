@@ -237,15 +237,15 @@ class VideoCategorySettings {
 
   /// 获取可见的分类（已排序）
   List<VideoCategorySectionConfig> get visibleSections {
-    final visible = sections.where((s) => s.visible).toList();
-    visible.sort((a, b) => a.order.compareTo(b.order));
+    final visible = sections.where((s) => s.visible).toList()
+    ..sort((a, b) => a.order.compareTo(b.order));
     return visible;
   }
 
   /// 获取所有分类（已排序）
   List<VideoCategorySectionConfig> get sortedSections {
-    final sorted = List<VideoCategorySectionConfig>.from(sections);
-    sorted.sort((a, b) => a.order.compareTo(b.order));
+    final sorted = List<VideoCategorySectionConfig>.from(sections)
+    ..sort((a, b) => a.order.compareTo(b.order));
     return sorted;
   }
 

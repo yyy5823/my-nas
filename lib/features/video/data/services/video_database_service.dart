@@ -1004,6 +1004,11 @@ class VideoDatabaseService {
   ///
   /// 返回每个剧集分组的一条代表性记录（按 tmdbId 或 title 分组，取评分最高的）
   /// [enabledPaths] 启用的路径列表
+  ///
+  /// 性能优化说明：
+  /// 使用两阶段查询策略，避免 O(n²) 的关联子查询：
+  /// - 阶段1：使用 GROUP BY 获取唯一分组，复杂度 O(n)
+  /// - 阶段2：使用 IN 子句获取完整记录，复杂度 O(m)（m为分组数）
   Future<List<VideoMetadata>> getTvShowGroupRepresentatives({
     int limit = 50,
     int offset = 0,
@@ -1013,27 +1018,79 @@ class VideoDatabaseService {
 
     final pathFilter = _buildPathFilter(enabledPaths);
 
-    // 使用子查询获取每个分组的代表性记录
-    // 优先使用 tmdbId 分组，否则使用 title
-    // 注意：子查询也需要应用路径过滤，否则可能返回其他源的记录导致 rowid 不匹配
-    final sql = '''
-      SELECT * FROM $_tableMetadata m1
-      WHERE $_colCategory = 1${pathFilter.andWhere}
-        AND m1.rowid = (
-          SELECT m2.rowid FROM $_tableMetadata m2
-          WHERE m2.$_colCategory = 1${pathFilter.andWhere}
-            AND (
-              (m1.$_colTmdbId IS NOT NULL AND m2.$_colTmdbId = m1.$_colTmdbId)
-              OR (m1.$_colTmdbId IS NULL AND m2.$_colTmdbId IS NULL AND LOWER(m2.$_colTitle) = LOWER(m1.$_colTitle))
-            )
-          ORDER BY m2.$_colRating DESC NULLS LAST, m2.$_colSeasonNumber ASC, m2.$_colEpisodeNumber ASC
-          LIMIT 1
-        )
+    // 阶段1：使用 GROUP BY 获取每个分组的代表性 rowid
+    // 按 tmdbId 分组（有值的），按 LOWER(title) 分组（tmdbId 为空的）
+    // 使用 MAX(rating) 和 MIN(season_number) 等条件选择最佳代表
+    //
+    // 策略：分两部分查询，合并结果
+    // 1a: 有 tmdb_id 的剧集 - 按 tmdb_id 分组
+    // 1b: 无 tmdb_id 的剧集 - 按 title 分组
+    
+    final representativeRowIds = <int>[];
+    
+    // 1a: 有 tmdb_id 的剧集 - 使用 JOIN + GROUP BY 策略
+    
+    // 更高效的方法：使用简单分组，每个 tmdb_id 取 MAX(rating) 对应的记录
+    // SQLite 的 `GROUP BY` 会返回任意一行，我们用子查询确保取评分最高的
+    final withTmdbSqlOptimized = '''
+      SELECT t1.rowid
+      FROM $_tableMetadata t1
+      INNER JOIN (
+        SELECT $_colTmdbId, MAX($_colRating) as max_rating
+        FROM $_tableMetadata
+        WHERE $_colCategory = 1 AND $_colTmdbId IS NOT NULL${pathFilter.andWhere}
+        GROUP BY $_colTmdbId
+      ) t2 ON t1.$_colTmdbId = t2.$_colTmdbId AND (t1.$_colRating = t2.max_rating OR (t1.$_colRating IS NULL AND t2.max_rating IS NULL))
+      WHERE t1.$_colCategory = 1 AND t1.$_colTmdbId IS NOT NULL${pathFilter.andWhere}
+      GROUP BY t1.$_colTmdbId
+    ''';
+    
+    final withTmdbResult = await _db!.rawQuery(withTmdbSqlOptimized, [...pathFilter.args, ...pathFilter.args]);
+    representativeRowIds.addAll(
+      withTmdbResult
+        .map((r) => r['rowid'] as int?)
+        .whereType<int>(),
+    );
+    
+    // 1b: 无 tmdb_id 的剧集 - 按 LOWER(title) 分组
+    final withoutTmdbSql = '''
+      SELECT t1.rowid
+      FROM $_tableMetadata t1
+      INNER JOIN (
+        SELECT LOWER($_colTitle) as lower_title, MAX($_colRating) as max_rating
+        FROM $_tableMetadata
+        WHERE $_colCategory = 1 AND $_colTmdbId IS NULL AND $_colTitle IS NOT NULL${pathFilter.andWhere}
+        GROUP BY LOWER($_colTitle)
+      ) t2 ON LOWER(t1.$_colTitle) = t2.lower_title AND (t1.$_colRating = t2.max_rating OR (t1.$_colRating IS NULL AND t2.max_rating IS NULL))
+      WHERE t1.$_colCategory = 1 AND t1.$_colTmdbId IS NULL AND t1.$_colTitle IS NOT NULL${pathFilter.andWhere}
+      GROUP BY LOWER(t1.$_colTitle)
+    ''';
+    
+    final withoutTmdbResult = await _db!.rawQuery(withoutTmdbSql, [...pathFilter.args, ...pathFilter.args]);
+    representativeRowIds.addAll(
+      withoutTmdbResult
+        .map((r) => r['rowid'] as int?)
+        .whereType<int>(),
+    );
+    
+    if (representativeRowIds.isEmpty) {
+      return [];
+    }
+    
+    // 阶段2：根据 rowid 列表获取完整记录，应用排序和分页
+    // 注意：需要在获取完整数据后再排序
+    final placeholders = List.filled(representativeRowIds.length, '?').join(', ');
+    final fullDataSql = '''
+      SELECT * FROM $_tableMetadata
+      WHERE rowid IN ($placeholders)
       ORDER BY $_colRating DESC NULLS LAST, $_colTitle
       LIMIT ? OFFSET ?
     ''';
-
-    final results = await _db!.rawQuery(sql, [...pathFilter.args, ...pathFilter.args, limit, offset]);
+    
+    final results = await _db!.rawQuery(
+      fullDataSql, 
+      [...representativeRowIds, limit, offset],
+    );
     return results.map(_fromRow).toList();
   }
 
