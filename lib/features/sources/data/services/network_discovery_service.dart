@@ -164,7 +164,9 @@ class NetworkDiscoveryNotifier extends StateNotifier<NetworkDiscoveryState> {
       case BonsoirDiscoveryServiceFoundEvent():
         logger.d('NetworkDiscovery: 发现服务 ${event.service.name} ($serviceType)');
         // 服务发现后需要解析获取 IP 和端口
-        event.service.resolve(_discoveries[serviceType]!.serviceResolver);
+        final discovery = _discoveries[serviceType];
+        if (discovery == null) return; // 发现服务已被清理
+        event.service.resolve(discovery.serviceResolver);
 
       case BonsoirDiscoveryServiceResolvedEvent():
         final service = event.service;

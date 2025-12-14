@@ -1077,6 +1077,7 @@ class _PathCardState extends ConsumerState<_PathCard> {
             paths: [widget.path],
             connections: widget.connections,
           );
+          if (!mounted) return;
           await ref.read(videoListProvider.notifier).reloadFromCache();
           await _loadStats();
           if (mounted) {
@@ -1085,12 +1086,14 @@ class _PathCardState extends ConsumerState<_PathCard> {
             );
           }
           // 扫描完成后自动触发后台刮削（使用最新连接状态）
+          if (!mounted) return;
           final currentConnections = ref.read(activeConnectionsProvider);
           if (currentConnections.values.any((c) => c.status == SourceStatus.connected)) {
             unawaited(VideoScannerService().scrapeMetadata(connections: currentConnections));
           }
         case MediaType.music:
           // 使用单目录扫描
+          if (!mounted) return;
           count = await ref.read(musicListProvider.notifier).scanSinglePath(
             path: widget.path,
             connections: widget.connections,
@@ -1102,6 +1105,7 @@ class _PathCardState extends ConsumerState<_PathCard> {
             );
           }
         case MediaType.photo:
+          if (!mounted) return;
           count = await ref.read(photoListProvider.notifier).scanSinglePath(
             path: widget.path,
             connections: widget.connections,
@@ -1113,6 +1117,7 @@ class _PathCardState extends ConsumerState<_PathCard> {
             );
           }
         case MediaType.comic:
+          if (!mounted) return;
           count = await ref.read(comicListProvider.notifier).scanSinglePath(
             path: widget.path,
             connections: widget.connections,
@@ -1124,6 +1129,7 @@ class _PathCardState extends ConsumerState<_PathCard> {
             );
           }
         case MediaType.book:
+          if (!mounted) return;
           count = await ref.read(bookListProvider.notifier).scanSinglePath(
             path: widget.path,
             connections: widget.connections,
