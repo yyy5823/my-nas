@@ -923,6 +923,31 @@ class VideoDatabaseService {
     return episodeMap;
   }
 
+  /// 根据 showDirectory 获取剧集映射（用于无 TMDB 的剧集）
+  Future<Map<int, Map<int, VideoMetadata>>> getEpisodesByShowDirectory(
+      String showDirectory) async {
+    if (!_initialized) await init();
+
+    final results = await _db!.query(
+      _tableMetadata,
+      where:
+          '$_colShowDirectory = ? AND $_colSeasonNumber IS NOT NULL AND $_colEpisodeNumber IS NOT NULL',
+      whereArgs: [showDirectory],
+      orderBy: '$_colSeasonNumber, $_colEpisodeNumber',
+    );
+
+    final episodeMap = <int, Map<int, VideoMetadata>>{};
+    for (final row in results) {
+      final metadata = _fromRow(row);
+      if (metadata.seasonNumber != null && metadata.episodeNumber != null) {
+        episodeMap
+            .putIfAbsent(metadata.seasonNumber!, () => {})[metadata.episodeNumber!] = metadata;
+      }
+    }
+
+    return episodeMap;
+  }
+
   /// 获取所有 TMDB ID 集合（使用索引）
   Future<Set<int>> getAllTmdbIds() async {
     if (!_initialized) await init();
@@ -1420,6 +1445,7 @@ class VideoDatabaseService {
   /// 键为分组键（tmdb_XXX 或 title_xxx），值为 (seasonCount, episodeCount)
   Future<Map<String, ({int seasonCount, int episodeCount})>> getTvShowGroupStats({
     List<int>? tmdbIds,
+    List<String>? showDirectories,
     List<String>? titles,
   }) async {
     if (!_initialized) await init();
@@ -1430,7 +1456,7 @@ class VideoDatabaseService {
     if (tmdbIds != null && tmdbIds.isNotEmpty) {
       final placeholders = List.filled(tmdbIds.length, '?').join(', ');
       final statsResult = await _db!.rawQuery('''
-        SELECT 
+        SELECT
           $_colTmdbId,
           COUNT(DISTINCT CASE WHEN $_colSeasonNumber > 0 THEN $_colSeasonNumber ELSE NULL END) as season_count,
           COUNT(*) as episode_count
@@ -1449,16 +1475,39 @@ class VideoDatabaseService {
       }
     }
 
-    // 按标题分组的统计
+    // 按 showDirectory 分组的统计（优先于 title）
+    if (showDirectories != null && showDirectories.isNotEmpty) {
+      final placeholders = List.filled(showDirectories.length, '?').join(', ');
+      final statsResult = await _db!.rawQuery('''
+        SELECT
+          $_colShowDirectory,
+          COUNT(DISTINCT CASE WHEN $_colSeasonNumber > 0 THEN $_colSeasonNumber ELSE NULL END) as season_count,
+          COUNT(*) as episode_count
+        FROM $_tableMetadata
+        WHERE $_colShowDirectory IN ($placeholders) AND $_colCategory = 1 AND $_colTmdbId IS NULL
+        GROUP BY $_colShowDirectory
+      ''', showDirectories);
+
+      for (final row in statsResult) {
+        final showDirectory = row[_colShowDirectory] as String?;
+        if (showDirectory != null) {
+          final seasonCount = (row['season_count'] as int?) ?? 1;
+          final episodeCount = (row['episode_count'] as int?) ?? 1;
+          result['dir_$showDirectory'] = (seasonCount: seasonCount, episodeCount: episodeCount);
+        }
+      }
+    }
+
+    // 按标题分组的统计（仅用于无 tmdbId 且无 showDirectory 的剧集）
     if (titles != null && titles.isNotEmpty) {
       final placeholders = List.filled(titles.length, '?').join(', ');
       final statsResult = await _db!.rawQuery('''
-        SELECT 
+        SELECT
           LOWER($_colTitle) as lower_title,
           COUNT(DISTINCT CASE WHEN $_colSeasonNumber > 0 THEN $_colSeasonNumber ELSE NULL END) as season_count,
           COUNT(*) as episode_count
         FROM $_tableMetadata
-        WHERE LOWER($_colTitle) IN ($placeholders) AND $_colCategory = 1 AND $_colTmdbId IS NULL
+        WHERE LOWER($_colTitle) IN ($placeholders) AND $_colCategory = 1 AND $_colTmdbId IS NULL AND $_colShowDirectory IS NULL
         GROUP BY LOWER($_colTitle)
       ''', titles.map((t) => t.toLowerCase()).toList());
 
@@ -1528,19 +1577,20 @@ class VideoDatabaseService {
         .whereType<int>(),
     );
 
-    // 1b: 无 tmdb_id 的剧集 - 按 LOWER(title) 分组
+    // 1b: 无 tmdb_id 的剧集 - 优先按 show_directory 分组，其次按 LOWER(title) 分组
+    // 使用 COALESCE 确保有 show_directory 的优先使用目录分组，没有的回退到标题分组
     // 同样使用 AS rid 显式别名
     final withoutTmdbSql = '''
       SELECT t1.rowid AS rid
       FROM $_tableMetadata t1
       INNER JOIN (
-        SELECT LOWER($_colTitle) as lower_title, MAX($_colRating) as max_rating
+        SELECT COALESCE($_colShowDirectory, LOWER($_colTitle)) as group_key, MAX($_colRating) as max_rating
         FROM $_tableMetadata
-        WHERE $_colCategory = 1 AND $_colTmdbId IS NULL AND $_colTitle IS NOT NULL${pathFilter.andWhere}
-        GROUP BY LOWER($_colTitle)
-      ) t2 ON LOWER(t1.$_colTitle) = t2.lower_title AND (t1.$_colRating = t2.max_rating OR (t1.$_colRating IS NULL AND t2.max_rating IS NULL))
-      WHERE t1.$_colCategory = 1 AND t1.$_colTmdbId IS NULL AND t1.$_colTitle IS NOT NULL${pathFilter.andWhere}
-      GROUP BY LOWER(t1.$_colTitle)
+        WHERE $_colCategory = 1 AND $_colTmdbId IS NULL AND ($_colShowDirectory IS NOT NULL OR $_colTitle IS NOT NULL)${pathFilter.andWhere}
+        GROUP BY COALESCE($_colShowDirectory, LOWER($_colTitle))
+      ) t2 ON COALESCE(t1.$_colShowDirectory, LOWER(t1.$_colTitle)) = t2.group_key AND (t1.$_colRating = t2.max_rating OR (t1.$_colRating IS NULL AND t2.max_rating IS NULL))
+      WHERE t1.$_colCategory = 1 AND t1.$_colTmdbId IS NULL AND (t1.$_colShowDirectory IS NOT NULL OR t1.$_colTitle IS NOT NULL)${pathFilter.andWhere}
+      GROUP BY COALESCE(t1.$_colShowDirectory, LOWER(t1.$_colTitle))
     ''';
 
     final withoutTmdbResult = await _db!.rawQuery(withoutTmdbSql, [...pathFilter.args, ...pathFilter.args]);

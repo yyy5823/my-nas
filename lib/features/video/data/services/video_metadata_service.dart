@@ -107,6 +107,12 @@ class VideoMetadataService {
     return _db.getEpisodesByTmdbId(tmdbId);
   }
 
+  /// 根据 showDirectory 获取剧集映射（用于无 TMDB 的剧集）
+  Future<Map<int, Map<int, VideoMetadata>>> getEpisodesByShowDirectory(String showDirectory) async {
+    if (!_initialized) await init();
+    return _db.getEpisodesByShowDirectory(showDirectory);
+  }
+
   /// 获取所有 TMDB ID 集合
   Future<Set<int>> getAllTmdbIds() async {
     if (!_initialized) await init();

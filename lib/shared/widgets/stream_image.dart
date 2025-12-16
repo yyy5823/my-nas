@@ -84,9 +84,26 @@ class StreamImage extends StatefulWidget {
   // 最多缓存 200 张图片（海报通常 50-100KB，总共约 10-20MB）
   static const int _maxCacheSize = 200;
 
+  // 并发加载控制
+  static int _activeLoads = 0;
+  static const int _maxConcurrentLoads = 6; // 最多同时加载 6 张图片
+  static final List<Future<void> Function()> _loadQueue = [];
+
   /// 清除所有内存缓存
   static void clearCache() {
     _memoryCache.clear();
+  }
+
+  /// 处理加载队列
+  static void _processQueue() {
+    while (_activeLoads < _maxConcurrentLoads && _loadQueue.isNotEmpty) {
+      final loader = _loadQueue.removeAt(0);
+      _activeLoads++;
+      loader().whenComplete(() {
+        _activeLoads--;
+        _processQueue();
+      });
+    }
   }
 
   @override
@@ -250,68 +267,75 @@ class _StreamImageState extends State<StreamImage> {
       _hasError = false;
     });
 
-    try {
-      Stream<List<int>>? stream;
+    // 使用队列控制并发加载
+    Future<void> doLoad() async {
+      try {
+        Stream<List<int>>? stream;
 
-      // 优先使用 URL 加载（可以加载缩略图）
-      if (_hasValidHttpUrl) {
-        try {
-          stream = await widget.fileSystem!.getUrlStream(widget.url!);
-        } on Exception catch (e, st) {
-          AppError.ignore(e, st, 'URL stream 失败，降级到 file stream');
-          // URL 加载失败，继续尝试文件流
-        }
-      }
-
-      // 如果 URL 加载失败或没有 URL，使用文件流
-      if (stream == null) {
-        if (widget.path == null) {
-          throw Exception('无法加载图片：没有可用的 URL 或路径');
-        }
-        stream = await widget.fileSystem!.getFileStream(widget.path!);
-      }
-
-      final bytes = <int>[];
-      await for (final chunk in stream) {
-        bytes.addAll(chunk);
-        // 限制图片大小，防止内存溢出
-        if (bytes.length > 50 * 1024 * 1024) {
-          // 50MB 限制
-          throw Exception('图片文件过大');
-        }
-      }
-
-      final imageData = Uint8List.fromList(bytes);
-
-      // 添加到缓存
-      if (_cacheKey.isNotEmpty) {
-        // 如果缓存满了，清除一半
-        if (StreamImage._memoryCache.length >= StreamImage._maxCacheSize) {
-          final keysToRemove = StreamImage._memoryCache.keys
-              .take(StreamImage._maxCacheSize ~/ 2)
-              .toList();
-          for (final key in keysToRemove) {
-            StreamImage._memoryCache.remove(key);
+        // 优先使用 URL 加载（可以加载缩略图）
+        if (_hasValidHttpUrl) {
+          try {
+            stream = await widget.fileSystem!.getUrlStream(widget.url!);
+          } on Exception catch (e, st) {
+            AppError.ignore(e, st, 'URL stream 失败，降级到 file stream');
+            // URL 加载失败，继续尝试文件流
           }
         }
-        StreamImage._memoryCache[_cacheKey] = imageData;
-      }
 
-      if (mounted) {
-        setState(() {
-          _imageBytes = imageData;
-          _isLoading = false;
-        });
-      }
-    } on Exception catch (e, st) {
-      AppError.handle(e, st, 'loadImageViaStream');
-      if (mounted) {
-        setState(() {
-          _hasError = true;
-          _isLoading = false;
-        });
+        // 如果 URL 加载失败或没有 URL，使用文件流
+        if (stream == null) {
+          if (widget.path == null) {
+            throw Exception('无法加载图片：没有可用的 URL 或路径');
+          }
+          stream = await widget.fileSystem!.getFileStream(widget.path!);
+        }
+
+        final bytes = <int>[];
+        await for (final chunk in stream) {
+          bytes.addAll(chunk);
+          // 限制图片大小，防止内存溢出
+          if (bytes.length > 50 * 1024 * 1024) {
+            // 50MB 限制
+            throw Exception('图片文件过大');
+          }
+        }
+
+        final imageData = Uint8List.fromList(bytes);
+
+        // 添加到缓存
+        if (_cacheKey.isNotEmpty) {
+          // 如果缓存满了，清除一半
+          if (StreamImage._memoryCache.length >= StreamImage._maxCacheSize) {
+            final keysToRemove = StreamImage._memoryCache.keys
+                .take(StreamImage._maxCacheSize ~/ 2)
+                .toList();
+            for (final key in keysToRemove) {
+              StreamImage._memoryCache.remove(key);
+            }
+          }
+          StreamImage._memoryCache[_cacheKey] = imageData;
+        }
+
+        if (mounted) {
+          setState(() {
+            _imageBytes = imageData;
+            _isLoading = false;
+          });
+        }
+      } on Exception catch (e, st) {
+        AppError.ignore(e, st, 'loadImageViaStream');
+        if (mounted) {
+          setState(() {
+            _hasError = true;
+            _isLoading = false;
+          });
+        }
       }
     }
+
+    // 添加到加载队列
+    StreamImage._loadQueue.add(doLoad);
+    StreamImage._processQueue();
   }
 
   @override

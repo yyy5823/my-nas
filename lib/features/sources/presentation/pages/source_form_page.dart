@@ -6,6 +6,7 @@ import 'package:my_nas/features/sources/data/services/source_manager_service.dar
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/domain/entities/source_form_config.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
+import 'package:my_nas/features/sources/presentation/widgets/two_fa_sheet.dart';
 
 /// 表单模式
 enum SourceFormMode {
@@ -776,11 +777,10 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
       final source = _buildSourceEntity();
       final password = _formValues['password'] as String? ?? '';
       final sourcesNotifier = ref.read(sourcesProvider.notifier);
-
       final sourceManager = ref.read(sourceManagerProvider);
 
       if (widget.mode == SourceFormMode.edit) {
-        // 编辑模式
+        // 编辑模式 - 直接保存
         await sourcesNotifier.updateSource(source);
 
         // 如果输入了新密码，更新凭证
@@ -790,60 +790,170 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
             SourceCredential(password: password),
           );
         }
+
+        if (!mounted) return;
+        _showSuccessAndPop(source, '源已更新');
       } else {
-        // 创建模式
-        await sourcesNotifier.addSource(source);
-
-        // 保存凭证
-        if (password.isNotEmpty) {
-          await sourceManager.saveCredential(
-            source.id,
-            SourceCredential(password: password),
-          );
-        }
-
-        // 尝试连接（通过 provider 以更新 UI 状态）
-        if (source.autoConnect) {
-          await ref
-              .read(activeConnectionsProvider.notifier)
-              .connect(source, password: password);
-        }
-      }
-
-      if (!mounted) return;
-
-      // 返回上一页
-      Navigator.pop(context, source);
-
-      // 如果是从类型选择页进入的，再返回一次
-      if (widget.popTwice && mounted && Navigator.canPop(context)) {
-        Navigator.pop(context);
+        // 创建模式 - 先验证连接再保存源
+        await _submitNewSource(source, password);
       }
     } on Exception catch (e) {
       if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.error, color: Colors.white),
-              const SizedBox(width: 8),
-              Expanded(child: Text('保存失败: $e')),
-            ],
-          ),
-          backgroundColor: Colors.red,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
-        ),
-      );
+      _showErrorSnackBar('保存失败: $e');
     } finally {
       if (mounted) {
         setState(() {
           _isSubmitting = false;
         });
       }
+    }
+  }
+
+  /// 提交新源（创建模式）
+  ///
+  /// 流程：先验证连接 → 如果需要2FA则弹框验证 → 成功后再保存源
+  Future<void> _submitNewSource(SourceEntity source, String password) async {
+    final sourceManager = ref.read(sourceManagerProvider);
+
+    // 先尝试连接验证（不保存凭证）
+    final connection = await sourceManager.connect(
+      source,
+      password: password,
+      saveCredential: false,
+    );
+
+    if (!mounted) return;
+
+    switch (connection.status) {
+      case SourceStatus.connected:
+        // 连接成功，保存源和凭证
+        await _saveSourceAndCredential(source, password);
+        if (mounted) {
+          // 再次连接以更新状态（这次保存凭证）
+          await ref
+              .read(activeConnectionsProvider.notifier)
+              .connect(source, password: password);
+          _showSuccessAndPop(source, '已连接到 ${source.displayName}');
+        }
+
+      case SourceStatus.requires2FA:
+        // 需要二次验证 - 弹出验证弹框
+        await _handle2FAVerification(source, password);
+
+      case SourceStatus.error:
+        // 连接失败
+        // 断开临时连接
+        await sourceManager.disconnect(source.id);
+        _showErrorSnackBar('连接失败: ${connection.errorMessage ?? "未知错误"}');
+
+      default:
+        // 其他状态
+        await sourceManager.disconnect(source.id);
+        _showErrorSnackBar('连接状态异常');
+    }
+  }
+
+  /// 处理2FA验证流程
+  Future<void> _handle2FAVerification(
+    SourceEntity source,
+    String password,
+  ) async {
+    final sourceManager = ref.read(sourceManagerProvider);
+    final sourcesNotifier = ref.read(sourcesProvider.notifier);
+
+    // 弹出带在线验证的2FA弹框
+    final result = await showTwoFASheetWithVerify(
+      context,
+      sourceName: source.displayName,
+      initialRememberDevice: source.rememberDevice,
+      onVerify: (otpCode, rememberDevice) async {
+        // 在线验证OTP
+        final verifyResult = await sourceManager.verify2FA(
+          source.id,
+          otpCode,
+          rememberDevice: rememberDevice,
+          password: password,
+        );
+        return verifyResult.status == SourceStatus.connected;
+      },
+    );
+
+    if (!mounted) return;
+
+    if (result == null) {
+      // 用户直接关闭弹框（不保存）
+      await sourceManager.disconnect(source.id);
+      return;
+    }
+
+    switch (result.resultType) {
+      case TwoFAResultType.verified:
+        // 验证成功，保存源和凭证
+        await _saveSourceAndCredential(source, password, result.rememberDevice);
+        if (mounted) {
+          _showSuccessAndPop(source, '已连接到 ${source.displayName}');
+        }
+
+      case TwoFAResultType.skipped:
+        // 用户选择跳过验证，先保存源
+        await sourcesNotifier.addSource(source);
+        if (password.isNotEmpty) {
+          await sourceManager.saveCredential(
+            source.id,
+            SourceCredential(password: password),
+          );
+        }
+        // 更新连接状态（状态为 requires2FA）
+        ref.read(activeConnectionsProvider.notifier).refresh();
+        if (mounted) {
+          _showWarningSnackBar('源已添加，需要完成二次验证后才能使用');
+          Navigator.pop(context, source);
+          if (widget.popTwice && mounted && Navigator.canPop(context)) {
+            Navigator.pop(context);
+          }
+        }
+
+      case TwoFAResultType.cancelled:
+        // 用户取消（理论上不会到这里，因为取消时 result 为 null）
+        await sourceManager.disconnect(source.id);
+    }
+  }
+
+  /// 保存源和凭证
+  Future<void> _saveSourceAndCredential(
+    SourceEntity source,
+    String password, [
+    bool? rememberDevice,
+  ]) async {
+    final sourceManager = ref.read(sourceManagerProvider);
+    final sourcesNotifier = ref.read(sourcesProvider.notifier);
+
+    // 如果指定了 rememberDevice，更新源配置
+    final sourceToSave = rememberDevice != null
+        ? source.copyWith(rememberDevice: rememberDevice)
+        : source;
+
+    await sourcesNotifier.addSource(sourceToSave);
+
+    if (password.isNotEmpty) {
+      // 获取已保存的凭证（可能包含 deviceId）
+      final existingCredential = await sourceManager.getCredential(source.id);
+      await sourceManager.saveCredential(
+        source.id,
+        SourceCredential(
+          password: password,
+          deviceId: existingCredential?.deviceId,
+        ),
+      );
+    }
+  }
+
+  /// 显示成功提示并返回
+  void _showSuccessAndPop(SourceEntity source, String message) {
+    _showSuccessSnackBar(message);
+    Navigator.pop(context, source);
+    if (widget.popTwice && mounted && Navigator.canPop(context)) {
+      Navigator.pop(context);
     }
   }
 

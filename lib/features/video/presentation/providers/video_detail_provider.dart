@@ -72,6 +72,15 @@ final localEpisodeFilesProvider = FutureProvider.autoDispose.family<Map<int, Map
   return metadataService.getEpisodesByTmdbId(tmdbId);
 });
 
+/// 根据 showDirectory 获取本地剧集文件 Provider
+/// 用于没有 TMDB ID 的剧集（无 TMDB 配置或刮削失败）
+/// 返回: `Map<seasonNumber, Map<episodeNumber, VideoMetadata>>`
+final localEpisodesByShowDirProvider = FutureProvider.autoDispose.family<Map<int, Map<int, VideoMetadata>>, String>((ref, showDirectory) async {
+  final metadataService = ref.watch(videoMetadataServiceProvider);
+  await metadataService.init();
+  return metadataService.getEpisodesByShowDirectory(showDirectory);
+});
+
 /// 同系列本地内容 Provider（autoDispose + SQLite 索引优化）
 /// 根据当前视频的 TMDB ID 查找同系列的其他本地文件
 final relatedLocalVideosProvider = FutureProvider.autoDispose.family<List<VideoMetadata>, int>((ref, tmdbId) async {

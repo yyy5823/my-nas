@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -905,20 +906,31 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
         .where((r) => r.tmdbId != null)
         .map((r) => r.tmdbId!)
         .toList();
+    // 无 TMDB ID 的剧集优先用 showDirectory，否则用 title
+    final showDirectories = tvShowRepresentatives
+        .where((r) => r.tmdbId == null && r.showDirectory != null)
+        .map((r) => r.showDirectory!)
+        .toList();
     final titles = tvShowRepresentatives
-        .where((r) => r.tmdbId == null && r.title != null)
+        .where((r) => r.tmdbId == null && r.showDirectory == null && r.title != null)
         .map((r) => r.title!)
         .toList();
 
     // 批量获取季集统计
     final groupStats = await _db.getTvShowGroupStats(
       tmdbIds: tmdbIds.isNotEmpty ? tmdbIds : null,
+      showDirectories: showDirectories.isNotEmpty ? showDirectories : null,
       titles: titles.isNotEmpty ? titles : null,
     );
 
     final tvShowGroups = <String, TvShowGroup>{};
     for (final rep in tvShowRepresentatives) {
-      final groupKey = rep.tmdbId != null ? 'tmdb_${rep.tmdbId}' : 'title_${rep.title?.toLowerCase()}';
+      // 生成分组键：优先 tmdbId，其次 showDirectory，最后 title
+      final groupKey = rep.tmdbId != null
+          ? 'tmdb_${rep.tmdbId}'
+          : (rep.showDirectory != null
+              ? 'dir_${rep.showDirectory}'
+              : 'title_${rep.title?.toLowerCase()}');
       final stats = groupStats[groupKey];
       tvShowGroups[groupKey] = TvShowGroup(
         groupKey: groupKey,
@@ -1238,10 +1250,45 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
   ScrapeStats? _scrapeStats;
   bool _showScrapeDetails = false;
 
+  // 精选推荐随机 seed（每次打开 app 随机变化）
+  late final int _heroBannerSeed;
+
   @override
   void initState() {
     super.initState();
+    _heroBannerSeed = DateTime.now().millisecondsSinceEpoch;
     _initScrapeListener();
+  }
+
+  /// 随机选择精选推荐项目（优先选择有背景图的）
+  List<VideoMetadata> _selectRandomHeroItems(List<VideoMetadata> candidates, int count) {
+    if (candidates.isEmpty) return [];
+    if (candidates.length <= count) return candidates;
+
+    // 优先选择有背景图的视频
+    final withBackdrop = candidates.where((v) =>
+        v.backdropUrl != null && v.backdropUrl!.isNotEmpty).toList();
+    final withoutBackdrop = candidates.where((v) =>
+        v.backdropUrl == null || v.backdropUrl!.isEmpty).toList();
+
+    // 使用固定 seed 的随机数生成器，确保同一会话内一致
+    final random = Random(_heroBannerSeed);
+
+    final result = <VideoMetadata>[];
+
+    // 先从有背景图的中随机选择
+    if (withBackdrop.isNotEmpty) {
+      final shuffled = List<VideoMetadata>.from(withBackdrop)..shuffle(random);
+      result.addAll(shuffled.take(count));
+    }
+
+    // 如果不够，从没有背景图的中补充
+    if (result.length < count && withoutBackdrop.isNotEmpty) {
+      final shuffled = List<VideoMetadata>.from(withoutBackdrop)..shuffle(random);
+      result.addAll(shuffled.take(count - result.length));
+    }
+
+    return result;
   }
 
   void _initScrapeListener() {
@@ -2013,17 +2060,19 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     switch (section.category) {
       case VideoHomeCategory.heroBanner:
         if (topRated.isEmpty) return [];
+        // 使用随机 seed 选择精选推荐，每次打开 app 会变化
+        final heroItems = _selectRandomHeroItems(topRated, 5);
         return [
           SliverToBoxAdapter(
             child: isDesktop
                 ? HeroBanner(
-                    items: topRated.take(5).toList(),
+                    items: heroItems,
                     height: 450,
                     onItemTap: (item) => _openVideoDetail(context, ref, item),
                     onPlayTap: (item) => _playVideo(context, ref, item),
                   )
                 : CompactHeroBanner(
-                    items: topRated.take(5).toList(),
+                    items: heroItems,
                     onItemTap: (item) => _openVideoDetail(context, ref, item),
                   ),
           ),
