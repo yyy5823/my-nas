@@ -115,6 +115,8 @@ class VideoDatabaseService {
   static const String _colShowDirectory = 'show_directory'; // TV 剧集所属剧目录
   static const String _colMovieDirectory = 'movie_directory'; // 电影所在目录
   static const String _colResolution = 'resolution'; // 视频分辨率 (4K, 1080p, 720p 等)
+  static const String _colLocalizedTitles = 'localized_titles'; // 多语言标题 JSON
+  static const String _colLocalizedOverviews = 'localized_overviews'; // 多语言简介 JSON
 
   // 字幕表
   static const String _tableSubtitles = 'video_subtitles';
@@ -183,7 +185,7 @@ class VideoDatabaseService {
 
       _db = await openDatabase(
         dbPath,
-        version: 12, // 升级版本以添加聚合表的 local_poster_url 字段
+        version: 13, // 升级版本以添加多语言元数据字段
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onConfigure: _onConfigure,
@@ -256,6 +258,8 @@ class VideoDatabaseService {
         $_colShowDirectory TEXT,
         $_colMovieDirectory TEXT,
         $_colResolution TEXT,
+        $_colLocalizedTitles TEXT,
+        $_colLocalizedOverviews TEXT,
         UNIQUE($_colSourceId, $_colFilePath)
       )
     ''');
@@ -784,6 +788,17 @@ class VideoDatabaseService {
       ''');
 
       logger.i('VideoDatabaseService: 版本11->12 升级完成（添加聚合表 local_poster_url 字段）');
+    }
+
+    // 从版本12升级到版本13
+    if (oldVersion < 13) {
+      // 添加多语言元数据字段
+      await db.execute(
+          'ALTER TABLE $_tableMetadata ADD COLUMN $_colLocalizedTitles TEXT');
+      await db.execute(
+          'ALTER TABLE $_tableMetadata ADD COLUMN $_colLocalizedOverviews TEXT');
+
+      logger.i('VideoDatabaseService: 版本12->13 升级完成（添加多语言元数据字段）');
     }
   }
 
@@ -1821,7 +1836,29 @@ class VideoDatabaseService {
         _colShowDirectory: m.showDirectory,
         _colMovieDirectory: m.movieDirectory,
         _colResolution: m.resolution,
+        _colLocalizedTitles: m.localizedTitles != null
+            ? _encodeLocalizedMap(m.localizedTitles!)
+            : null,
+        _colLocalizedOverviews: m.localizedOverviews != null
+            ? _encodeLocalizedMap(m.localizedOverviews!)
+            : null,
       };
+
+  /// 编码多语言 Map 为 JSON 字符串
+  String _encodeLocalizedMap(Map<String, String> map) {
+    // 简单的 JSON 编码（不依赖 dart:convert）
+    final pairs = map.entries.map((e) =>
+        '"${_escapeJson(e.key)}":"${_escapeJson(e.value)}"');
+    return '{${pairs.join(',')}}';
+  }
+
+  /// 转义 JSON 字符串中的特殊字符
+  String _escapeJson(String s) => s
+      .replaceAll(r'\', r'\\')
+      .replaceAll('"', r'\"')
+      .replaceAll('\n', r'\n')
+      .replaceAll('\r', r'\r')
+      .replaceAll('\t', r'\t');
 
   /// 从数据库行转换
   VideoMetadata _fromRow(Map<String, dynamic> row) => VideoMetadata(
@@ -1865,7 +1902,44 @@ class VideoDatabaseService {
         showDirectory: row[_colShowDirectory] as String?,
         movieDirectory: row[_colMovieDirectory] as String?,
         resolution: row[_colResolution] as String?,
+        localizedTitles: _parseLocalizedJson(row[_colLocalizedTitles] as String?),
+        localizedOverviews: _parseLocalizedJson(row[_colLocalizedOverviews] as String?),
       );
+
+  /// 解析 JSON 字符串为多语言 Map
+  Map<String, String>? _parseLocalizedJson(String? json) {
+    if (json == null || json.isEmpty) return null;
+    try {
+      // 简单的 JSON 解析
+      final content = json.trim();
+      if (!content.startsWith('{') || !content.endsWith('}')) return null;
+
+      final inner = content.substring(1, content.length - 1).trim();
+      if (inner.isEmpty) return null;
+
+      final result = <String, String>{};
+
+      // 匹配 "key":"value" 对
+      final regex = RegExp(r'"([^"\\]*(?:\\.[^"\\]*)*)"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"');
+      for (final match in regex.allMatches(inner)) {
+        final key = _unescapeJson(match.group(1)!);
+        final value = _unescapeJson(match.group(2)!);
+        result[key] = value;
+      }
+
+      return result.isNotEmpty ? result : null;
+    } on Exception {
+      return null;
+    }
+  }
+
+  /// 反转义 JSON 字符串
+  String _unescapeJson(String s) => s
+      .replaceAll(r'\n', '\n')
+      .replaceAll(r'\r', '\r')
+      .replaceAll(r'\t', '\t')
+      .replaceAll(r'\"', '"')
+      .replaceAll(r'\\', r'\');
 
   /// 获取刮削统计信息
   ///

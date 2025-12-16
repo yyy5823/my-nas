@@ -515,6 +515,14 @@ class VideoMetadataService {
               episode: info.episode,
               epTitle: episodeTitle,
             );
+
+            // 获取多语言翻译（后台异步，不阻塞）
+            _fetchAndStoreTranslations(
+              metadata: metadata,
+              tmdbId: tvDetail.id,
+              isMovie: false,
+            );
+
             logger.i('VideoMetadataService: 匹配到电视剧 "${tvDetail.name}"');
           }
         }
@@ -530,6 +538,14 @@ class VideoMetadataService {
 
           if (movieDetail != null) {
             metadata.updateFromMovie(movieDetail);
+
+            // 获取多语言翻译（后台异步，不阻塞）
+            _fetchAndStoreTranslations(
+              metadata: metadata,
+              tmdbId: movieDetail.id,
+              isMovie: true,
+            );
+
             logger.i('VideoMetadataService: 匹配到电影 "${movieDetail.title}"');
           }
         }
@@ -566,6 +582,63 @@ class VideoMetadataService {
       return filePath.substring(0, lastSlash);
     }
     return '/';
+  }
+
+  /// 异步获取并存储多语言翻译
+  ///
+  /// 后台运行，不阻塞主刮削流程
+  void _fetchAndStoreTranslations({
+    required VideoMetadata metadata,
+    required int tmdbId,
+    required bool isMovie,
+  }) {
+    // 使用 fire-and-forget 模式，后台异步执行
+    BackgroundTaskPool.media.addFireAndForget(
+      () async {
+        try {
+          final translations = isMovie
+              ? await _tmdbService.getMovieTranslations(tmdbId)
+              : await _tmdbService.getTvTranslations(tmdbId);
+
+          if (translations != null && translations.translations.isNotEmpty) {
+            // 获取用户偏好的语言列表
+            final preferredLangs = _tmdbService.getPreferredLanguageCodes();
+
+            // 为每个偏好语言存储翻译（如果有的话）
+            for (final langCode in preferredLangs) {
+              final translation = translations.getTranslation(langCode);
+              if (translation != null) {
+                if (translation.title != null && translation.title!.isNotEmpty) {
+                  metadata.addLocalizedTitle(langCode, translation.title!);
+                }
+                if (translation.overview != null && translation.overview!.isNotEmpty) {
+                  metadata.addLocalizedOverview(langCode, translation.overview!);
+                }
+              }
+            }
+
+            // 也存储原语言数据（通常是英文）
+            final enTranslation = translations.getTranslation('en');
+            if (enTranslation != null) {
+              if (enTranslation.title != null && enTranslation.title!.isNotEmpty) {
+                metadata.addLocalizedTitle('en', enTranslation.title!);
+              }
+              if (enTranslation.overview != null && enTranslation.overview!.isNotEmpty) {
+                metadata.addLocalizedOverview('en', enTranslation.overview!);
+              }
+            }
+
+            // 保存更新后的元数据
+            await save(metadata);
+            logger.d('VideoMetadataService: 已保存多语言翻译 for ${metadata.title}');
+          }
+        } on Exception catch (e) {
+          // 翻译获取失败不影响主流程，仅记录日志
+          logger.w('VideoMetadataService: 获取翻译失败', e);
+        }
+      },
+      taskName: 'fetchTranslations:${metadata.fileName}',
+    );
   }
 
   /// 将 NFO 和海报写入远程目录

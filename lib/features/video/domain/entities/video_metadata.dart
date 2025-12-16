@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:my_nas/features/video/data/services/tmdb_service.dart';
 
 /// 媒体类型
@@ -59,6 +61,8 @@ class VideoMetadata {
     this.showDirectory,
     this.movieDirectory,
     this.resolution,
+    this.localizedTitles,
+    this.localizedOverviews,
   });
 
   /// 从 Map 创建
@@ -98,7 +102,26 @@ class VideoMetadata {
       showDirectory: map['showDirectory'] as String?,
       movieDirectory: map['movieDirectory'] as String?,
       resolution: map['resolution'] as String?,
+      localizedTitles: _parseLocalizedMap(map['localizedTitles']),
+      localizedOverviews: _parseLocalizedMap(map['localizedOverviews']),
     );
+
+  /// 解析多语言 Map（从 JSON 字符串或 Map）
+  static Map<String, String>? _parseLocalizedMap(dynamic value) {
+    if (value == null) return null;
+    if (value is String && value.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(value) as Map<String, dynamic>;
+        return decoded.map((k, v) => MapEntry(k, v.toString()));
+      } on Exception {
+        return null;
+      }
+    }
+    if (value is Map) {
+      return value.map((k, v) => MapEntry(k.toString(), v.toString()));
+    }
+    return null;
+  }
 
   final String filePath;
   final String sourceId;
@@ -131,6 +154,13 @@ class VideoMetadata {
   String? showDirectory; // 所属剧目录（TV 剧集专用，用于分组）
   String? movieDirectory; // 电影所在目录（用于目录系列识别）
   String? resolution; // 视频分辨率（4K, 1080p, 720p 等）
+
+  /// 多语言标题（语言代码 -> 标题）
+  /// 例如：{'zh-CN': '霸王别姬', 'en': 'Farewell My Concubine', 'ja': '覇王別姫'}
+  Map<String, String>? localizedTitles;
+
+  /// 多语言简介（语言代码 -> 简介）
+  Map<String, String>? localizedOverviews;
 
   /// 海报显示优先级：
   /// 1. 本地缓存的海报（离线可用，file:// 路径）
@@ -180,8 +210,103 @@ class VideoMetadata {
     return '$fileSize B';
   }
 
-  /// 显示标题
+  /// 显示标题（简单版本，兼容旧代码）
   String get displayTitle => title ?? fileName;
+
+  /// 根据语言偏好获取标题
+  ///
+  /// [preferredLanguages] 语言代码优先级列表，例如 ['zh-CN', 'zh-TW', 'en']
+  /// 返回优先级最高的可用标题，如果都没有则返回 title 或 originalTitle 或 fileName
+  String getLocalizedTitle(List<String> preferredLanguages) {
+    // 1. 尝试从多语言数据中按优先级查找
+    if (localizedTitles != null && localizedTitles!.isNotEmpty) {
+      for (final lang in preferredLanguages) {
+        final localized = localizedTitles![lang];
+        if (localized != null && localized.isNotEmpty) {
+          return localized;
+        }
+        // 尝试语言前缀匹配（zh-CN 匹配 zh）
+        final langPrefix = lang.split('-').first;
+        for (final entry in localizedTitles!.entries) {
+          if (entry.key.startsWith(langPrefix) && entry.value.isNotEmpty) {
+            return entry.value;
+          }
+        }
+      }
+    }
+
+    // 2. 检查主标题是否匹配偏好语言
+    // 如果偏好中文且 title 包含中文字符，使用 title
+    if (title != null && title!.isNotEmpty) {
+      for (final lang in preferredLanguages) {
+        if (lang.startsWith('zh') && _containsChinese(title!)) {
+          return title!;
+        }
+        if (lang == 'ja' && _containsJapanese(title!)) {
+          return title!;
+        }
+        if (lang == 'ko' && _containsKorean(title!)) {
+          return title!;
+        }
+        // 英文或其他拉丁语系
+        if ((lang == 'en' || lang.startsWith('en-')) && _isLatin(title!)) {
+          return title!;
+        }
+      }
+    }
+
+    // 3. 检查是否有 original 偏好
+    for (final lang in preferredLanguages) {
+      if (lang == 'original' && originalTitle != null && originalTitle!.isNotEmpty) {
+        return originalTitle!;
+      }
+    }
+
+    // 4. 回退到默认标题
+    return title ?? originalTitle ?? fileName;
+  }
+
+  /// 根据语言偏好获取简介
+  String? getLocalizedOverview(List<String> preferredLanguages) {
+    // 1. 尝试从多语言数据中按优先级查找
+    if (localizedOverviews != null && localizedOverviews!.isNotEmpty) {
+      for (final lang in preferredLanguages) {
+        final localized = localizedOverviews![lang];
+        if (localized != null && localized.isNotEmpty) {
+          return localized;
+        }
+        // 尝试语言前缀匹配
+        final langPrefix = lang.split('-').first;
+        for (final entry in localizedOverviews!.entries) {
+          if (entry.key.startsWith(langPrefix) && entry.value.isNotEmpty) {
+            return entry.value;
+          }
+        }
+      }
+    }
+
+    // 2. 回退到默认简介
+    return overview;
+  }
+
+  /// 检查字符串是否包含中文字符
+  static bool _containsChinese(String text) =>
+      RegExp(r'[\u4e00-\u9fff]').hasMatch(text);
+
+  /// 检查字符串是否包含日文字符（假名）
+  static bool _containsJapanese(String text) =>
+      RegExp(r'[\u3040-\u309f\u30a0-\u30ff]').hasMatch(text);
+
+  /// 检查字符串是否包含韩文字符
+  static bool _containsKorean(String text) =>
+      RegExp(r'[\uac00-\ud7af]').hasMatch(text);
+
+  /// 检查字符串是否主要是拉丁字符
+  static bool _isLatin(String text) {
+    // 使用 Unicode 范围检查：基本拉丁字母、拉丁扩展、常见标点符号
+    final latinPattern = RegExp(r'^[\u0000-\u007F\u0080-\u00FF\u0100-\u017F]+$');
+    return latinPattern.hasMatch(text);
+  }
 
   /// 评分文本
   String get ratingText => rating != null ? rating!.toStringAsFixed(1) : '';
@@ -294,6 +419,8 @@ class VideoMetadata {
       'showDirectory': showDirectory,
       'movieDirectory': movieDirectory,
       'resolution': resolution,
+      'localizedTitles': localizedTitles != null ? jsonEncode(localizedTitles) : null,
+      'localizedOverviews': localizedOverviews != null ? jsonEncode(localizedOverviews) : null,
     };
 
   /// 复制
@@ -329,6 +456,8 @@ class VideoMetadata {
     String? showDirectory,
     String? movieDirectory,
     String? resolution,
+    Map<String, String>? localizedTitles,
+    Map<String, String>? localizedOverviews,
   }) => VideoMetadata(
       filePath: filePath ?? this.filePath,
       sourceId: sourceId ?? this.sourceId,
@@ -361,7 +490,32 @@ class VideoMetadata {
       showDirectory: showDirectory ?? this.showDirectory,
       movieDirectory: movieDirectory ?? this.movieDirectory,
       resolution: resolution ?? this.resolution,
+      localizedTitles: localizedTitles ?? this.localizedTitles,
+      localizedOverviews: localizedOverviews ?? this.localizedOverviews,
     );
+
+  /// 添加或更新多语言标题
+  void addLocalizedTitle(String languageCode, String localizedTitle) {
+    localizedTitles ??= {};
+    localizedTitles![languageCode] = localizedTitle;
+  }
+
+  /// 添加或更新多语言简介
+  void addLocalizedOverview(String languageCode, String localizedOverview) {
+    localizedOverviews ??= {};
+    localizedOverviews![languageCode] = localizedOverview;
+  }
+
+  /// 从 TMDB 数据更新多语言信息
+  /// [languageCode] 用于获取此数据的语言代码
+  void updateLocalizedFromTmdb(String languageCode, String? tmdbTitle, String? tmdbOverview) {
+    if (tmdbTitle != null && tmdbTitle.isNotEmpty) {
+      addLocalizedTitle(languageCode, tmdbTitle);
+    }
+    if (tmdbOverview != null && tmdbOverview.isNotEmpty) {
+      addLocalizedOverview(languageCode, tmdbOverview);
+    }
+  }
 }
 
 /// 视频文件名解析结果

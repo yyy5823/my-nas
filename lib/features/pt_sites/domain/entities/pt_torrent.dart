@@ -256,6 +256,59 @@ class PTUserInfo {
     return ratio!.toStringAsFixed(2);
   }
 
+  /// 格式化魔力值（大数字友好显示）
+  String get formattedBonus {
+    if (bonus >= 1000000) {
+      return '${(bonus / 1000000).toStringAsFixed(1)}M';
+    }
+    if (bonus >= 1000) {
+      return '${(bonus / 1000).toStringAsFixed(1)}K';
+    }
+    return bonus.toStringAsFixed(0);
+  }
+
+  /// 格式化注册时间
+  String? get formattedJoinTime {
+    if (joinTime == null) return null;
+    final diff = DateTime.now().difference(joinTime!);
+    if (diff.inDays > 365) {
+      final years = (diff.inDays / 365).floor();
+      return '$years 年前';
+    }
+    if (diff.inDays > 30) {
+      final months = (diff.inDays / 30).floor();
+      return '$months 个月前';
+    }
+    if (diff.inDays > 0) {
+      return '${diff.inDays} 天前';
+    }
+    return '今天';
+  }
+
+  /// 格式化最后访问时间
+  String? get formattedLastAccess {
+    if (lastAccess == null) return null;
+    final diff = DateTime.now().difference(lastAccess!);
+    if (diff.inDays > 365) {
+      final years = (diff.inDays / 365).floor();
+      return '$years 年前';
+    }
+    if (diff.inDays > 30) {
+      final months = (diff.inDays / 30).floor();
+      return '$months 个月前';
+    }
+    if (diff.inDays > 0) {
+      return '${diff.inDays} 天前';
+    }
+    if (diff.inHours > 0) {
+      return '${diff.inHours} 小时前';
+    }
+    if (diff.inMinutes > 0) {
+      return '${diff.inMinutes} 分钟前';
+    }
+    return '刚刚';
+  }
+
   String _formatBytes(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(2)} KB';

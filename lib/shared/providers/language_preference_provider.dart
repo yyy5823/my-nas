@@ -85,6 +85,25 @@ class LanguagePreference {
     return languages.isNotEmpty ? languages.first : LanguageOption.auto;
   }
 
+  /// 获取元数据语言代码列表（用于多语言查找）
+  ///
+  /// [systemLocale] 系统语言环境，用于解析 'auto' 选项
+  /// 返回按优先级排序的语言代码列表
+  List<String> getMetadataLanguageCodes(Locale systemLocale) {
+    final codes = <String>[];
+    for (final lang in metadataLanguages) {
+      final code = lang.getActualCode(systemLocale);
+      if (code.isNotEmpty && !codes.contains(code)) {
+        codes.add(code);
+      }
+    }
+    // 确保至少有一个语言
+    if (codes.isEmpty) {
+      codes.add('zh-CN');
+    }
+    return codes;
+  }
+
   Map<String, dynamic> toJson() => {
         'audioLanguages': audioLanguages.map((e) => e.code).join(','),
         'subtitleLanguages': subtitleLanguages.map((e) => e.code).join(','),

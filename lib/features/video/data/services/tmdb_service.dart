@@ -427,6 +427,187 @@ class TmdbService {
       return null;
     }
   }
+
+  /// 获取电影的多语言翻译
+  ///
+  /// 返回所有可用语言的标题和简介
+  Future<TmdbTranslations?> getMovieTranslations(int movieId) async {
+    if (!hasApiKey) return null;
+
+    try {
+      final params = {'api_key': _apiKey};
+      final uri = Uri.parse('$_baseUrl/movie/$movieId/translations')
+          .replace(queryParameters: params);
+      final response = await _httpGet(uri);
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body) as Map<String, dynamic>;
+        return TmdbTranslations.fromJson(data);
+      } else {
+        logger.e('TMDB获取电影翻译失败: ${response.statusCode}');
+        return null;
+      }
+    } on Exception catch (e) {
+      logger.e('TMDB获取电影翻译异常', e);
+      return null;
+    }
+  }
+
+  /// 获取电视剧的多语言翻译
+  ///
+  /// 返回所有可用语言的标题和简介
+  Future<TmdbTranslations?> getTvTranslations(int tvId) async {
+    if (!hasApiKey) return null;
+
+    try {
+      final params = {'api_key': _apiKey};
+      final uri = Uri.parse('$_baseUrl/tv/$tvId/translations')
+          .replace(queryParameters: params);
+      final response = await _httpGet(uri);
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body) as Map<String, dynamic>;
+        return TmdbTranslations.fromJson(data);
+      } else {
+        logger.e('TMDB获取电视剧翻译失败: ${response.statusCode}');
+        return null;
+      }
+    } on Exception catch (e) {
+      logger.e('TMDB获取电视剧翻译异常', e);
+      return null;
+    }
+  }
+
+  /// 获取用户偏好的语言代码列表
+  ///
+  /// 用于多语言获取和显示
+  List<String> getPreferredLanguageCodes() {
+    if (_languagePreference == null) {
+      return ['zh-CN', 'en'];
+    }
+
+    final codes = <String>[];
+    for (final lang in _languagePreference!.metadataLanguages) {
+      final code = lang.getActualCode(_systemLocale);
+      if (code.isNotEmpty && !codes.contains(code)) {
+        codes.add(code);
+      }
+    }
+
+    // 确保至少有一个语言
+    if (codes.isEmpty) {
+      codes.add('zh-CN');
+    }
+
+    return codes;
+  }
+}
+
+/// TMDB 翻译信息
+class TmdbTranslation {
+  TmdbTranslation({
+    required this.iso31661,
+    required this.iso6391,
+    required this.name,
+    required this.englishName,
+    this.title,
+    this.overview,
+    this.tagline,
+  });
+
+  factory TmdbTranslation.fromJson(Map<String, dynamic> json) {
+    final data = json['data'] as Map<String, dynamic>? ?? {};
+    return TmdbTranslation(
+      iso31661: json['iso_3166_1'] as String? ?? '',
+      iso6391: json['iso_639_1'] as String? ?? '',
+      name: json['name'] as String? ?? '',
+      englishName: json['english_name'] as String? ?? '',
+      title: data['title'] as String? ?? data['name'] as String?,
+      overview: data['overview'] as String?,
+      tagline: data['tagline'] as String?,
+    );
+  }
+
+  final String iso31661;
+  final String iso6391;
+  final String name;
+  final String englishName;
+  final String? title;
+  final String? overview;
+  final String? tagline;
+
+  /// 获取完整的语言代码（如 zh-CN, en-US）
+  String get languageCode {
+    if (iso6391.isEmpty) return '';
+    if (iso31661.isEmpty) return iso6391;
+    return '$iso6391-$iso31661';
+  }
+
+  /// 获取简短语言代码（如 zh, en）
+  String get shortLanguageCode => iso6391;
+}
+
+/// TMDB 翻译列表
+class TmdbTranslations {
+  TmdbTranslations({
+    required this.id,
+    required this.translations,
+  });
+
+  factory TmdbTranslations.fromJson(Map<String, dynamic> json) => TmdbTranslations(
+      id: json['id'] as int? ?? 0,
+      translations: (json['translations'] as List?)
+              ?.map((e) => TmdbTranslation.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+    );
+
+  final int id;
+  final List<TmdbTranslation> translations;
+
+  /// 获取指定语言的翻译
+  TmdbTranslation? getTranslation(String languageCode) {
+    // 精确匹配（如 zh-CN）
+    for (final t in translations) {
+      if (t.languageCode == languageCode) return t;
+    }
+    // 前缀匹配（如 zh 匹配 zh-CN, zh-TW）
+    final prefix = languageCode.split('-').first;
+    for (final t in translations) {
+      if (t.shortLanguageCode == prefix) return t;
+    }
+    return null;
+  }
+
+  /// 转换为多语言 Map（语言代码 -> 标题）
+  Map<String, String> toTitleMap() {
+    final map = <String, String>{};
+    for (final t in translations) {
+      if (t.title != null && t.title!.isNotEmpty) {
+        // 使用完整语言代码
+        map[t.languageCode] = t.title!;
+        // 也存储简短代码，方便查找
+        if (!map.containsKey(t.shortLanguageCode)) {
+          map[t.shortLanguageCode] = t.title!;
+        }
+      }
+    }
+    return map;
+  }
+
+  /// 转换为多语言 Map（语言代码 -> 简介）
+  Map<String, String> toOverviewMap() {
+    final map = <String, String>{};
+    for (final t in translations) {
+      if (t.overview != null && t.overview!.isNotEmpty) {
+        map[t.languageCode] = t.overview!;
+        if (!map.containsKey(t.shortLanguageCode)) {
+          map[t.shortLanguageCode] = t.overview!;
+        }
+      }
+    }
+    return map;
+  }
 }
 
 /// 图片尺寸

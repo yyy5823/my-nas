@@ -660,9 +660,9 @@ class _PTSiteDetailPageState extends ConsumerState<PTSiteDetailPage> {
         child: GestureDetector(
           onTap: () {}, // 阻止内部点击事件冒泡
           child: DraggableScrollableSheet(
-            initialChildSize: 0.55,
-            minChildSize: 0.3,
-            maxChildSize: 0.8,
+            initialChildSize: 0.7,
+            minChildSize: 0.4,
+            maxChildSize: 0.9,
             expand: false,
             builder: (context, scrollController) {
               final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -780,7 +780,10 @@ class _PTSiteDetailPageState extends ConsumerState<PTSiteDetailPage> {
                             ],
                           ),
                           const SizedBox(height: 24),
-                          // 统计信息网格
+
+                          // 分享数据统计
+                          _buildSectionHeader(context, '数据统计', isDark),
+                          const SizedBox(height: 8),
                           DecoratedBox(
                             decoration: BoxDecoration(
                               color: isDark ? Colors.white10 : Colors.grey[50],
@@ -814,13 +817,27 @@ class _PTSiteDetailPageState extends ConsumerState<PTSiteDetailPage> {
                                   value: userInfo.formattedRatio,
                                   isDark: isDark,
                                 ),
-                                Divider(height: 1, indent: 56, color: isDark ? Colors.white10 : Colors.grey[200]),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+
+                          // 活动数据
+                          _buildSectionHeader(context, '活动数据', isDark),
+                          const SizedBox(height: 8),
+                          DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: isDark ? Colors.white10 : Colors.grey[50],
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Column(
+                              children: [
                                 _buildUserInfoTile(
                                   context,
                                   icon: Icons.auto_awesome,
                                   iconColor: Colors.purple,
                                   label: '魔力值',
-                                  value: userInfo.bonus.toStringAsFixed(0),
+                                  value: userInfo.formattedBonus,
                                   isDark: isDark,
                                 ),
                                 Divider(height: 1, indent: 56, color: isDark ? Colors.white10 : Colors.grey[200]),
@@ -841,9 +858,60 @@ class _PTSiteDetailPageState extends ConsumerState<PTSiteDetailPage> {
                                   value: userInfo.leechingCount.toString(),
                                   isDark: isDark,
                                 ),
+                                if (userInfo.invites > 0) ...[
+                                  Divider(height: 1, indent: 56, color: isDark ? Colors.white10 : Colors.grey[200]),
+                                  _buildUserInfoTile(
+                                    context,
+                                    icon: Icons.card_giftcard,
+                                    iconColor: Colors.teal,
+                                    label: '邀请数',
+                                    value: userInfo.invites.toString(),
+                                    isDark: isDark,
+                                  ),
+                                ],
                               ],
                             ),
                           ),
+
+                          // 账户信息（如果有日期数据）
+                          if (userInfo.joinTime != null || userInfo.lastAccess != null) ...[
+                            const SizedBox(height: 16),
+                            _buildSectionHeader(context, '账户信息', isDark),
+                            const SizedBox(height: 8),
+                            DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: isDark ? Colors.white10 : Colors.grey[50],
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Column(
+                                children: [
+                                  if (userInfo.joinTime != null)
+                                    _buildUserInfoTile(
+                                      context,
+                                      icon: Icons.calendar_today,
+                                      iconColor: Colors.blue,
+                                      label: '注册时间',
+                                      value: userInfo.formattedJoinTime ?? '-',
+                                      isDark: isDark,
+                                    ),
+                                  if (userInfo.joinTime != null && userInfo.lastAccess != null)
+                                    Divider(height: 1, indent: 56, color: isDark ? Colors.white10 : Colors.grey[200]),
+                                  if (userInfo.lastAccess != null)
+                                    _buildUserInfoTile(
+                                      context,
+                                      icon: Icons.access_time,
+                                      iconColor: Colors.grey,
+                                      label: '最后访问',
+                                      value: userInfo.formattedLastAccess ?? '-',
+                                      isDark: isDark,
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ],
+
+                          // 底部留白
+                          const SizedBox(height: 16),
                         ],
                       ),
                     ),
@@ -856,6 +924,19 @@ class _PTSiteDetailPageState extends ConsumerState<PTSiteDetailPage> {
       ),
     );
   }
+
+  Widget _buildSectionHeader(BuildContext context, String title, bool isDark) => Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+        ),
+      ),
+    );
+
 
   Widget _buildUserInfoTile(
     BuildContext context, {

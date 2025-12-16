@@ -21,6 +21,7 @@ class DetailHeroSection extends StatelessWidget {
     this.watchProgress,
     this.backdropUrl,
     this.tagline,
+    this.displayTitle,
     this.overview,
     this.tmdbRating,
     this.traktRating,
@@ -37,6 +38,7 @@ class DetailHeroSection extends StatelessWidget {
   final double? watchProgress;
   final String? backdropUrl;
   final String? tagline;
+  final String? displayTitle;
   final String? overview;
   final double? tmdbRating;
   final double? traktRating;
@@ -269,9 +271,9 @@ class DetailHeroSection extends StatelessWidget {
   Widget _buildTitleSection(bool isDark, {bool large = false}) => Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 主标题
+        // 主标题（优先使用传入的本地化标题）
         Text(
-          metadata.displayTitle,
+          displayTitle ?? metadata.displayTitle,
           style: TextStyle(
             fontSize: large ? 32 : 22,
             fontWeight: FontWeight.bold,

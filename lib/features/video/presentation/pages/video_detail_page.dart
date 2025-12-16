@@ -7,6 +7,7 @@ import 'package:my_nas/features/video/data/services/tmdb_service.dart';
 import 'package:my_nas/features/video/data/services/video_favorites_service.dart';
 import 'package:my_nas/features/video/domain/entities/video_item.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
+import 'package:my_nas/features/video/domain/utils/video_localization.dart';
 import 'package:my_nas/features/video/presentation/pages/tmdb_preview_page.dart';
 import 'package:my_nas/features/video/presentation/pages/video_player_page.dart';
 import 'package:my_nas/features/video/presentation/providers/video_detail_provider.dart';
@@ -136,6 +137,16 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     // 使用 metadata 的简介作为后备
     overview ??= widget.metadata.overview;
 
+    // 获取本地化标题
+    final titleGetter = ref.watch(videoTitleGetterProvider);
+    final localizedTitle = titleGetter(_selectedMetadata);
+
+    // 获取本地化简介（如果没有从 TMDB 获取到的话）
+    if (overview == null || overview!.isEmpty) {
+      final overviewGetter = ref.watch(videoOverviewGetterProvider);
+      overview = overviewGetter(_selectedMetadata);
+    }
+
     return DetailHeroSection(
       metadata: _selectedMetadata,
       onPlay: _isPlaying ? () {} : _playVideo,
@@ -146,6 +157,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       watchProgress: watchProgress,
       backdropUrl: backdropUrl,
       tagline: tagline,
+      displayTitle: localizedTitle,
       overview: overview,
       tmdbRating: tmdbRating,
       voteCount: voteCount,
