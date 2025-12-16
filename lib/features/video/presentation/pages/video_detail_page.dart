@@ -161,6 +161,9 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       overview: overview,
       tmdbRating: tmdbRating,
       voteCount: voteCount,
+      sourceId: widget.sourceId,
+      // 电视剧详情页隐藏季集信息，因为这是剧的总览页，不是单集页
+      hideEpisodeInfo: _isTvShow && _hasTmdbId,
     );
   }
 

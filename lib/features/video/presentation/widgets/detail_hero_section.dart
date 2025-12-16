@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
+import 'package:my_nas/features/video/presentation/widgets/video_poster.dart';
 import 'package:my_nas/shared/widgets/adaptive_image.dart';
 
 /// 详情页 Hero 区域组件
@@ -26,6 +27,8 @@ class DetailHeroSection extends StatelessWidget {
     this.tmdbRating,
     this.traktRating,
     this.voteCount,
+    this.sourceId,
+    this.hideEpisodeInfo = false,
     super.key,
   });
 
@@ -43,6 +46,10 @@ class DetailHeroSection extends StatelessWidget {
   final double? tmdbRating;
   final double? traktRating;
   final int? voteCount;
+  /// 用于加载 NAS 路径图片的 sourceId
+  final String? sourceId;
+  /// 是否隐藏剧集信息（S/E 标记），用于电视剧总览页
+  final bool hideEpisodeInfo;
 
   @override
   Widget build(BuildContext context) {
@@ -68,10 +75,10 @@ class DetailHeroSection extends StatelessWidget {
         children: [
           // 背景图
           if (hasBackdrop)
-            AdaptiveImage(
-              imageUrl: displayBackdrop,
-              placeholder: (_) => _buildBackdropPlaceholder(isDark),
-              errorWidget: (_, _) => _buildBackdropPlaceholder(isDark),
+            _buildSmartImage(
+              displayBackdrop,
+              placeholder: _buildBackdropPlaceholder(isDark),
+              fit: BoxFit.cover,
             )
           else
             _buildBackdropPlaceholder(isDark),
@@ -153,10 +160,9 @@ class DetailHeroSection extends StatelessWidget {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
-                child: AdaptiveImage(
-                  imageUrl: displayPoster!,
-                  placeholder: (_) => _buildPosterPlaceholder(isDark),
-                  errorWidget: (_, _) => _buildPosterPlaceholder(isDark),
+                child: _buildSmartImage(
+                  displayPoster!,
+                  placeholder: _buildPosterPlaceholder(isDark),
                 ),
               ),
             ),
@@ -230,10 +236,9 @@ class DetailHeroSection extends StatelessWidget {
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(8),
-                    child: AdaptiveImage(
-                      imageUrl: displayPoster!,
-                      placeholder: (_) => _buildPosterPlaceholder(isDark),
-                      errorWidget: (_, _) => _buildPosterPlaceholder(isDark),
+                    child: _buildSmartImage(
+                      displayPoster!,
+                      placeholder: _buildPosterPlaceholder(isDark),
                     ),
                   ),
                 ),
@@ -333,8 +338,8 @@ class DetailHeroSection extends StatelessWidget {
       items.add(_buildMetadataChip(text: metadata.genres));
     }
 
-    // 剧集信息
-    if (metadata.category == MediaCategory.tvShow) {
+    // 剧集信息（如果不是电视剧总览页）
+    if (metadata.category == MediaCategory.tvShow && !hideEpisodeInfo) {
       if (metadata.seasonNumber != null && metadata.episodeNumber != null) {
         items.add(_buildMetadataChip(
           text: 'S${metadata.seasonNumber} E${metadata.episodeNumber}',
@@ -637,6 +642,38 @@ class DetailHeroSection extends StatelessWidget {
         ),
       ),
     );
+
+  /// 智能图片加载 - 根据 URL 类型选择合适的加载方式
+  Widget _buildSmartImage(
+    String imageUrl, {
+    required Widget placeholder,
+    BoxFit fit = BoxFit.cover,
+  }) {
+    // 检查是否是 NAS 路径（本地缓存的图片）
+    final isNasPath = imageUrl.startsWith('/') &&
+        !imageUrl.startsWith('//') &&
+        !imageUrl.contains('://');
+
+    final effectiveSourceId = sourceId;
+    if (isNasPath && effectiveSourceId != null && effectiveSourceId.isNotEmpty) {
+      // NAS 路径 - 使用 VideoPoster
+      return VideoPoster(
+        posterUrl: imageUrl,
+        sourceId: effectiveSourceId,
+        placeholder: placeholder,
+        errorWidget: placeholder,
+        fit: fit,
+      );
+    }
+
+    // 网络 URL 或没有 sourceId - 使用 AdaptiveImage
+    return AdaptiveImage(
+      imageUrl: imageUrl,
+      fit: fit,
+      placeholder: (_) => placeholder,
+      errorWidget: (_, _) => placeholder,
+    );
+  }
 
   String _formatRuntime(int minutes) {
     if (minutes < 60) {

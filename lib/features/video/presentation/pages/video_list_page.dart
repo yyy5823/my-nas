@@ -3539,9 +3539,9 @@ class _ViewMoreCardState extends State<_ViewMoreCard> {
 
 /// 懒加载海报卡片包装器
 ///
-/// 使用 AutomaticKeepAliveClientMixin 保持已加载的卡片状态，
-/// 滚动回来时不需要重新加载图片
-class _LazyPosterCard extends ConsumerStatefulWidget {
+/// 注意：不再使用 AutomaticKeepAliveClientMixin，让不在视野内的组件可以被回收。
+/// StreamImage 有内存缓存，所以重新创建时可以快速从缓存获取图片数据。
+class _LazyPosterCard extends ConsumerWidget {
   const _LazyPosterCard({
     required this.metadata, required this.onTap, required this.isDark, super.key,
     this.width = 130,
@@ -3553,24 +3553,12 @@ class _LazyPosterCard extends ConsumerStatefulWidget {
   final double width;
 
   @override
-  ConsumerState<_LazyPosterCard> createState() => _LazyPosterCardState();
-}
-
-class _LazyPosterCardState extends ConsumerState<_LazyPosterCard>
-    with AutomaticKeepAliveClientMixin {
-  @override
-  bool get wantKeepAlive => true;
-
-  @override
-  Widget build(BuildContext context) {
-    super.build(context); // Required for AutomaticKeepAliveClientMixin
-    return _VerticalPosterCard(
-      metadata: widget.metadata,
-      onTap: widget.onTap,
-      isDark: widget.isDark,
-      width: widget.width,
+  Widget build(BuildContext context, WidgetRef ref) => _VerticalPosterCard(
+      metadata: metadata,
+      onTap: onTap,
+      isDark: isDark,
+      width: width,
     );
-  }
 }
 
 /// 纵向海报卡片（2:3 比例，Netflix 风格）

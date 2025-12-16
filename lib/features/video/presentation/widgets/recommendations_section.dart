@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/video/data/services/tmdb_service.dart';
+import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
 import 'package:my_nas/features/video/presentation/providers/video_detail_provider.dart';
+import 'package:my_nas/features/video/presentation/widgets/video_poster.dart';
 import 'package:my_nas/shared/widgets/adaptive_image.dart';
 
 /// 推荐内容区域组件
@@ -225,11 +227,10 @@ class _RecommendationCardState extends ConsumerState<_RecommendationCard> {
                         fit: StackFit.expand,
                         children: [
                           // 图片 - 优先使用本地缓存的封面
-                          if (hasPoster) AdaptiveImage(
-                                  imageUrl: posterUrl,
-                                  placeholder: (_) => _buildPlaceholder(isDark),
-                                  errorWidget: (_, _) => _buildPlaceholder(isDark),
-                                ) else _buildPlaceholder(isDark),
+                          if (hasPoster)
+                            _buildPosterImage(posterUrl, localVideoAsync, isDark)
+                          else
+                            _buildPlaceholder(isDark),
                           // 渐变遮罩
                           Positioned(
                             left: 0,
@@ -365,6 +366,37 @@ class _RecommendationCardState extends ConsumerState<_RecommendationCard> {
         ),
       ),
     );
+
+  /// 构建海报图片 - 根据是否有本地视频选择合适的加载方式
+  Widget _buildPosterImage(
+    String posterUrl,
+    AsyncValue<VideoMetadata?> localVideoAsync,
+    bool isDark,
+  ) {
+    // 检查是否是 NAS 路径（本地缓存的海报）
+    final isNasPath = posterUrl.startsWith('/') &&
+        !posterUrl.startsWith('//') &&
+        !posterUrl.contains('://');
+
+    if (isNasPath) {
+      // NAS 路径 - 使用 VideoPoster
+      final localVideo = localVideoAsync.valueOrNull;
+      final sourceId = localVideo?.sourceId ?? '';
+      return VideoPoster(
+        posterUrl: posterUrl,
+        sourceId: sourceId,
+        placeholder: _buildPlaceholder(isDark),
+        errorWidget: _buildPlaceholder(isDark),
+      );
+    }
+
+    // 网络 URL - 使用 AdaptiveImage
+    return AdaptiveImage(
+      imageUrl: posterUrl,
+      placeholder: (_) => _buildPlaceholder(isDark),
+      errorWidget: (_, _) => _buildPlaceholder(isDark),
+    );
+  }
 
   Color _getRatingColor(double rating) {
     if (rating >= 8) return Colors.green;
