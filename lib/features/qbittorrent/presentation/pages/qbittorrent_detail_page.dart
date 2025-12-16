@@ -313,7 +313,14 @@ class _QBittorrentDetailPageState extends ConsumerState<QBittorrentDetailPage> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => _SpeedLimitSheet(sourceId: widget.source.id),
+      builder: (context) => GestureDetector(
+        onTap: () => Navigator.of(context).pop(),
+        behavior: HitTestBehavior.opaque,
+        child: GestureDetector(
+          onTap: () {}, // 阻止内部点击事件冒泡
+          child: _SpeedLimitSheet(sourceId: widget.source.id),
+        ),
+      ),
     );
   }
 

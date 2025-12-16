@@ -445,9 +445,21 @@ class VideoScannerService {
 
         // 创建基础元数据（包含 NFO 基础信息，如果有的话）
         final nfoInfo = video.nfoBasicInfo;
-        final category = _inferCategory(nfoInfo, fileName: video.file.name);
-        // 解析文件名获取分辨率
+        // 解析文件名获取分辨率和剧集信息
         final fileInfo = VideoFileNameParser.parse(video.file.name);
+
+        // 先分析目录结构（用于辅助分类判断）
+        final showDirectory = VideoDatabaseService.extractShowDirectory(video.file.path);
+        final isInSeasonDir = _isInSeasonDirectory(video.file.path);
+
+        // 推断分类（使用 NFO、文件名、目录结构综合判断）
+        final category = _inferCategory(
+          nfoInfo,
+          fileName: video.file.name,
+          filePath: video.file.path,
+          isInSeasonDir: isInSeasonDir,
+        );
+
         final metadata = VideoMetadata(
           sourceId: video.sourceId,
           filePath: video.file.path,
@@ -462,16 +474,14 @@ class VideoScannerService {
           rating: nfoInfo?.rating,
           tmdbId: nfoInfo?.tmdbId,
           genres: nfoInfo?.genres,
-          seasonNumber: nfoInfo?.seasonNumber,
-          episodeNumber: nfoInfo?.episodeNumber,
-          // 如果有 NFO 信息，设置分类
+          seasonNumber: nfoInfo?.seasonNumber ?? fileInfo.season,
+          episodeNumber: nfoInfo?.episodeNumber ?? fileInfo.episode,
+          // 分类
           category: category,
-          // 海报路径（本地 NAS 路径，需要后续转换为 URL）
-          posterUrl: nfoInfo?.posterPath,
-          // TV 剧集的剧目录（用于分组）
-          showDirectory: category == MediaCategory.tvShow
-              ? VideoDatabaseService.extractShowDirectory(video.file.path)
-              : null,
+          // 本地海报路径（NAS 路径，用于 StreamImage 流式加载）
+          localPosterUrl: nfoInfo?.posterPath,
+          // TV 剧集的剧目录（用于分组）- 剧集和 unknown 都尝试设置
+          showDirectory: category != MediaCategory.movie ? showDirectory : null,
           // 电影所在目录（用于目录系列识别）
           movieDirectory: category == MediaCategory.movie
               ? VideoDatabaseService.extractMovieDirectory(video.file.path)
@@ -507,39 +517,74 @@ class VideoScannerService {
     }
   }
 
-  /// 根据 NFO 信息和文件名推断媒体分类
+  /// 根据 NFO 信息、文件名和目录结构推断媒体分类
   ///
   /// 优先顺序：
   /// 1. NFO 信息中的季集号（最可靠）
-  /// 2. 文件名模式（如 S01E01、1x01、第X集）
-  /// 3. NFO 有数据但无季集信息 -> 电影
-  /// 4. 都没有 -> unknown
-  MediaCategory _inferCategory(NfoBasicInfo? nfoInfo, {String? fileName}) {
-    // 1. 优先使用 NFO 信息
+  /// 2. 目录结构（位于 Season X 等季目录中 → tvShow）
+  /// 3. 文件名模式（如 S01E01、1x01、第X集、EP01）
+  /// 4. NFO 有数据但无季集信息 → 电影
+  /// 5. 文件名有年份且不是剧集 → 电影
+  /// 6. 都没有 → unknown
+  MediaCategory _inferCategory(
+    NfoBasicInfo? nfoInfo, {
+    String? fileName,
+    String? filePath,
+    bool isInSeasonDir = false,
+  }) {
+    // 1. 优先使用 NFO 信息中的季集号
     if (nfoInfo != null) {
       if (nfoInfo.seasonNumber != null || nfoInfo.episodeNumber != null) {
         return MediaCategory.tvShow;
       }
-      // NFO 有数据但无季集信息，认为是电影
-      if (nfoInfo.hasData) {
-        return MediaCategory.movie;
-      }
     }
 
-    // 2. 尝试从文件名推断
+    // 2. 目录结构判断：如果在季目录中，强制识别为剧集
+    // 这比文件名更可靠，即使文件名不规范也能正确分类
+    if (isInSeasonDir) {
+      return MediaCategory.tvShow;
+    }
+
+    // 3. 尝试从文件名推断
     if (fileName != null && fileName.isNotEmpty) {
       // 使用 VideoFileNameParser 检测剧集模式
       final info = VideoFileNameParser.parse(fileName);
       if (info.isTvShow) {
         return MediaCategory.tvShow;
       }
-      // 如果文件名有年份且不是剧集，可能是电影
+    }
+
+    // 4. NFO 有数据但无季集信息，认为是电影
+    if (nfoInfo != null && nfoInfo.hasData) {
+      return MediaCategory.movie;
+    }
+
+    // 5. 如果文件名有年份且不是剧集，可能是电影
+    if (fileName != null && fileName.isNotEmpty) {
+      final info = VideoFileNameParser.parse(fileName);
       if (info.year != null) {
         return MediaCategory.movie;
       }
     }
 
     return MediaCategory.unknown;
+  }
+
+  /// 检查文件是否位于季目录中
+  ///
+  /// 季目录模式：Season X, S01, 第X季, Specials 等
+  bool _isInSeasonDirectory(String filePath) {
+    if (filePath.isEmpty) return false;
+
+    // 标准化路径分隔符
+    final normalizedPath = filePath.replaceAll(r'\', '/');
+    final parts = normalizedPath.split('/').where((p) => p.isNotEmpty).toList();
+
+    if (parts.length < 2) return false;
+
+    // 检查父目录是否是季目录
+    final parentDir = parts[parts.length - 2];
+    return VideoDatabaseService.isSeasonDirectory(parentDir);
   }
 
   /// 完整扫描（扫描文件 + 刮削元数据）

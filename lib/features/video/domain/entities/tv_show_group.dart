@@ -1,3 +1,4 @@
+import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
 
 /// 剧集分组模型
@@ -16,6 +17,7 @@ class TvShowGroup {
     this.genres,
     this.precomputedSeasonCount,
     this.precomputedEpisodeCount,
+    this.localPosterUrl,
   });
 
   /// 分组键（优先使用 tmdbId，否则使用标准化的标题）
@@ -27,8 +29,11 @@ class TvShowGroup {
   /// TMDB ID（如果有）
   final int? tmdbId;
 
-  /// 海报 URL
+  /// 海报 URL（TMDB 网络链接）
   final String? posterUrl;
+
+  /// 本地海报路径（NAS 路径或 file:// 缓存路径）
+  final String? localPosterUrl;
 
   /// 背景图 URL
   final String? backdropUrl;
@@ -80,9 +85,16 @@ class TvShowGroup {
     return seasonEpisodes.values.first.first;
   }
 
-  /// 获取显示用的海报 URL
-  String? get displayPosterUrl =>
-      posterUrl ?? representative.posterUrl ?? representative.generatedThumbnailUrl;
+  /// 获取显示用的海报 URL（优先本地缓存）
+  String? get displayPosterUrl {
+    final result = localPosterUrl ?? posterUrl ?? representative.displayPosterUrl;
+    // 调试日志
+    if (result != null) {
+      logger.d('TvShowGroup.displayPosterUrl: title=$title, localPosterUrl=$localPosterUrl, '
+          'posterUrl=$posterUrl, result=$result');
+    }
+    return result;
+  }
 
   /// 获取显示用的标题
   String get displayTitle => title;
@@ -194,7 +206,11 @@ class _TvShowGroupBuilder {
     if (a.tmdbId != null && b.tmdbId == null) return true;
     if (a.tmdbId == null && b.tmdbId != null) return false;
 
-    // 有海报的优先
+    // 有本地海报的优先（NAS 路径或缓存路径）
+    if (a.localPosterUrl != null && b.localPosterUrl == null) return true;
+    if (a.localPosterUrl == null && b.localPosterUrl != null) return false;
+
+    // 有网络海报的优先
     if (a.posterUrl != null && b.posterUrl == null) return true;
     if (a.posterUrl == null && b.posterUrl != null) return false;
 
@@ -221,6 +237,7 @@ class _TvShowGroupBuilder {
       title: best.title ?? best.fileName,
       tmdbId: best.tmdbId,
       posterUrl: best.posterUrl,
+      localPosterUrl: best.localPosterUrl,
       backdropUrl: best.backdropUrl,
       rating: best.rating,
       overview: best.overview,

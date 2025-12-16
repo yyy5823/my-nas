@@ -502,14 +502,14 @@ class FaceRecognitionService {
         final pixel = image.getPixel(x, y);
         if (normalize) {
           // 归一化到 [-1, 1]
-          result.add((pixel.r / 127.5) - 1.0);
-          result.add((pixel.g / 127.5) - 1.0);
-          result.add((pixel.b / 127.5) - 1.0);
+          result..add((pixel.r / 127.5) - 1.0)
+          ..add((pixel.g / 127.5) - 1.0)
+          ..add((pixel.b / 127.5) - 1.0);
         } else {
           // 归一化到 [0, 1]
-          result.add(pixel.r / 255.0);
-          result.add(pixel.g / 255.0);
-          result.add(pixel.b / 255.0);
+          result..add(pixel.r / 255.0)
+          ..add(pixel.g / 255.0)
+          ..add(pixel.b / 255.0);
         }
       }
     }

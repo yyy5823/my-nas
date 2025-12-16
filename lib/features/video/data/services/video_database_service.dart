@@ -144,6 +144,7 @@ class VideoDatabaseService {
   static const String _tvgColEpisodeCount = 'episode_count';
   static const String _tvgColRepresentativeRowid = 'representative_rowid';
   static const String _tvgColLastSynced = 'last_synced';
+  static const String _tvgColLocalPosterUrl = 'local_poster_url'; // 本地海报路径（NAS 路径或 file:// 路径）
 
   // 电影系列分组表
   static const String _tableMovieCollectionGroups = 'movie_collection_groups';
@@ -155,6 +156,7 @@ class VideoDatabaseService {
   static const String _mcgColOverview = 'overview';
   static const String _mcgColMovieCount = 'movie_count';
   static const String _mcgColLastSynced = 'last_synced';
+  static const String _mcgColLocalPosterUrl = 'local_poster_url'; // 本地海报路径
 
   // 目录扫描状态表（用于增量扫描和断点续扫）
   static const String _tableScanProgress = 'scan_progress';
@@ -181,7 +183,7 @@ class VideoDatabaseService {
 
       _db = await openDatabase(
         dbPath,
-        version: 11, // 升级版本以添加 resolution 字段
+        version: 12, // 升级版本以添加聚合表的 local_poster_url 字段
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onConfigure: _onConfigure,
@@ -365,7 +367,8 @@ class VideoDatabaseService {
         $_tvgColSeasonCount INTEGER DEFAULT 0,
         $_tvgColEpisodeCount INTEGER DEFAULT 0,
         $_tvgColRepresentativeRowid INTEGER,
-        $_tvgColLastSynced INTEGER
+        $_tvgColLastSynced INTEGER,
+        $_tvgColLocalPosterUrl TEXT
       )
     ''');
 
@@ -391,7 +394,8 @@ class VideoDatabaseService {
         $_mcgColBackdropUrl TEXT,
         $_mcgColOverview TEXT,
         $_mcgColMovieCount INTEGER DEFAULT 0,
-        $_mcgColLastSynced INTEGER
+        $_mcgColLastSynced INTEGER,
+        $_mcgColLocalPosterUrl TEXT
       )
     ''');
 
@@ -487,7 +491,13 @@ class VideoDatabaseService {
   }
 
   /// 检查目录名是否是季目录
-  static bool _isSeasonDirectory(String dirName) {
+  ///
+  /// 季目录模式包括：
+  /// - Season X, Season 01, Season1
+  /// - S01, S1
+  /// - 第X季, 第一季
+  /// - Specials, 特典, SP
+  static bool isSeasonDirectory(String dirName) {
     final name = dirName.toLowerCase().trim();
 
     // 常见季目录模式
@@ -513,6 +523,9 @@ class VideoDatabaseService {
 
     return false;
   }
+
+  // 保留私有别名以保持内部兼容性
+  static bool _isSeasonDirectory(String dirName) => isSeasonDirectory(dirName);
 
   /// 迁移电影的 movie_directory 字段
   ///
@@ -750,6 +763,27 @@ class VideoDatabaseService {
       await _migrateResolutions(db);
 
       logger.i('VideoDatabaseService: 版本10->11 升级完成（添加 resolution 字段）');
+    }
+
+    // 从版本11升级到版本12
+    if (oldVersion < 12) {
+      // 添加 local_poster_url 列到聚合表
+      await db.execute(
+          'ALTER TABLE $_tableTvShowGroups ADD COLUMN $_tvgColLocalPosterUrl TEXT');
+      await db.execute(
+          'ALTER TABLE $_tableMovieCollectionGroups ADD COLUMN $_mcgColLocalPosterUrl TEXT');
+
+      // 从 video_metadata 同步 local_poster_url 到 tv_show_groups
+      await db.execute('''
+        UPDATE $_tableTvShowGroups
+        SET $_tvgColLocalPosterUrl = (
+          SELECT vm.$_colLocalPosterUrl
+          FROM $_tableMetadata vm
+          WHERE vm.rowid = $_tableTvShowGroups.$_tvgColRepresentativeRowid
+        )
+      ''');
+
+      logger.i('VideoDatabaseService: 版本11->12 升级完成（添加聚合表 local_poster_url 字段）');
     }
   }
 
@@ -2952,7 +2986,8 @@ class VideoDatabaseService {
           MAX($_colGenres) as genres,
           COUNT(DISTINCT CASE WHEN $_colSeasonNumber > 0 THEN $_colSeasonNumber END) as season_count,
           COUNT(*) as episode_count,
-          MAX(rowid) as representative_rowid
+          MAX(rowid) as representative_rowid,
+          MAX($_colLocalPosterUrl) as local_poster_url
         FROM $_tableMetadata
         WHERE $_colCategory = 1 AND $_colShowDirectory IN ($placeholders)
       ''', directories);
@@ -2981,8 +3016,9 @@ class VideoDatabaseService {
           $_tvgColSeasonCount,
           $_tvgColEpisodeCount,
           $_tvgColRepresentativeRowid,
-          $_tvgColLastSynced
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          $_tvgColLastSynced,
+          $_tvgColLocalPosterUrl
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ''', [
         groupKey,
         tmdbId,
@@ -2999,6 +3035,7 @@ class VideoDatabaseService {
         row['episode_count'] as int? ?? 1,
         row['representative_rowid'] as int?,
         now,
+        row['local_poster_url'] as String?,
       ]);
 
       insertedCount++;
@@ -3019,7 +3056,8 @@ class VideoDatabaseService {
           MAX($_colGenres) as genres,
           COUNT(DISTINCT CASE WHEN $_colSeasonNumber > 0 THEN $_colSeasonNumber END) as season_count,
           COUNT(*) as episode_count,
-          MAX(rowid) as representative_rowid
+          MAX(rowid) as representative_rowid,
+          MAX($_colLocalPosterUrl) as local_poster_url
         FROM $_tableMetadata
         WHERE $_colCategory = 1 AND $_colShowDirectory = ?
       ''', [directory]);
@@ -3049,8 +3087,9 @@ class VideoDatabaseService {
           $_tvgColSeasonCount,
           $_tvgColEpisodeCount,
           $_tvgColRepresentativeRowid,
-          $_tvgColLastSynced
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          $_tvgColLastSynced,
+          $_tvgColLocalPosterUrl
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ''', [
         groupKey,
         null, // no tmdbId
@@ -3067,6 +3106,7 @@ class VideoDatabaseService {
         row['episode_count'] as int? ?? 1,
         row['representative_rowid'] as int?,
         now,
+        row['local_poster_url'] as String?,
       ]);
 
       insertedCount++;
@@ -3309,6 +3349,7 @@ class VideoDatabaseService {
       seasonCount: row[_tvgColSeasonCount] as int? ?? 0,
       episodeCount: row[_tvgColEpisodeCount] as int? ?? 0,
       representativeRowid: row[_tvgColRepresentativeRowid] as int?,
+      localPosterUrl: row[_tvgColLocalPosterUrl] as String?,
     )).toList();
   }
 
@@ -3434,6 +3475,7 @@ class TvShowGroupRow {
     required this.seasonCount,
     required this.episodeCount,
     this.representativeRowid,
+    this.localPosterUrl,
   });
 
   final int id;
@@ -3451,13 +3493,14 @@ class TvShowGroupRow {
   final int seasonCount;
   final int episodeCount;
   final int? representativeRowid;
+  final String? localPosterUrl; // 本地海报路径（NAS 路径或 file://）
 
   /// 获取类型列表
   List<String> get genreList =>
       genres?.split(',').map((e) => e.trim()).toList() ?? [];
 
-  /// 显示用的海报 URL
-  String? get displayPosterUrl => posterUrl;
+  /// 显示用的海报 URL（优先本地缓存）
+  String? get displayPosterUrl => localPosterUrl ?? posterUrl;
 
   /// 显示用的背景 URL
   String? get displayBackdropUrl => backdropUrl;

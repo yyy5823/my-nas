@@ -82,6 +82,8 @@ class VideoMetadataService {
   /// 删除元数据
   Future<void> delete(String sourceId, String filePath) async {
     if (!_initialized) await init();
+    // 清理海报缓存
+    await _posterCacheService.deleteCachedPoster(sourceId, filePath);
     await _db.delete(sourceId, filePath);
   }
 
@@ -307,9 +309,38 @@ class VideoMetadataService {
         metadata.localPosterUrl = localUrl;
         await save(metadata);
         logger.d('VideoMetadataService: 海报已缓存到本地 "${metadata.fileName}"');
+
+        // 异步写入远程目录（不阻塞，不更新 localPosterUrl）
+        // 仅当海报来自 TMDB（网络 URL）时才写入远程
+        if (fileSystem != null && metadata.posterUrl!.startsWith('http')) {
+          BackgroundTaskPool.media.addFireAndForget(
+            () => _uploadPosterToRemote(metadata, fileSystem),
+            taskName: 'uploadPosterRemote:${metadata.fileName}',
+          );
+        }
       }
     } on Exception catch (e) {
       logger.w('VideoMetadataService: 下载海报失败 "${metadata.fileName}"', e);
+    }
+  }
+
+  /// 异步上传海报到远程目录（后台任务，仅作为备份/Kodi兼容）
+  Future<void> _uploadPosterToRemote(
+    VideoMetadata metadata,
+    NasFileSystem fileSystem,
+  ) async {
+    try {
+      final videoDir = _getParentPath(metadata.filePath);
+      await _remotePosterService.downloadAndSavePoster(
+        fileSystem: fileSystem,
+        videoDir: videoDir,
+        posterUrl: metadata.posterUrl!,
+        type: PosterType.poster,
+        videoFileName: metadata.fileName,
+      );
+      logger.d('VideoMetadataService: 海报已上传到远程目录 "$videoDir"');
+    } on Exception catch (e) {
+      logger.w('VideoMetadataService: 上传海报到远程目录失败 "${metadata.fileName}"', e);
     }
   }
 
@@ -419,7 +450,9 @@ class VideoMetadataService {
           metadata.backdropUrl = nfoData.fanartPath;
         }
 
-        logger.d('VideoMetadataService: 从 NFO 获取到元数据 "${nfoData.title}"');
+        logger.d('VideoMetadataService: 从 NFO 获取到元数据 "${nfoData.title}"'
+            '${nfoData.posterPath != null ? ", poster: ${nfoData.posterPath}" : ""}'
+            '${nfoData.fanartPath != null ? ", fanart: ${nfoData.fanartPath}" : ""}');
         return true;
       }
     } on Exception catch (e) {
@@ -567,25 +600,8 @@ class VideoMetadataService {
         videoFileName: videoFileName,
       );
 
-      // 2. 下载并保存海报到远程目录
-      if (metadata.posterUrl != null && metadata.posterUrl!.isNotEmpty) {
-        final remotePosterPath = await _remotePosterService.downloadAndSavePoster(
-          fileSystem: fileSystem,
-          videoDir: videoDir,
-          posterUrl: metadata.posterUrl!,
-          type: PosterType.poster,
-          videoFileName: videoFileName,
-        );
-
-        if (remotePosterPath != null) {
-          // 更新 localPosterUrl 为远程路径
-          metadata.localPosterUrl = remotePosterPath;
-          await save(metadata);
-          logger.i('VideoMetadataService: 海报已保存到远程目录 "$remotePosterPath"');
-        }
-      }
-
-      // 3. 可选：下载背景图（fanart）
+      // 2. 下载背景图（fanart）到远程目录
+      // 注意：海报已在 _downloadPosterAndSave 中异步处理，这里只需处理背景图
       if (metadata.backdropUrl != null && 
           metadata.backdropUrl!.isNotEmpty &&
           metadata.backdropUrl!.startsWith('http')) {
@@ -598,7 +614,7 @@ class VideoMetadataService {
         );
       }
 
-      logger.i('VideoMetadataService: NFO 和海报已写入远程目录 "$videoDir"');
+      logger.i('VideoMetadataService: NFO 已写入远程目录 "$videoDir"');
     } on Exception catch (e, st) {
       // 写入失败不影响主流程，仅记录警告
       logger.w('VideoMetadataService: 写入 NFO/海报到远程目录失败', e, st);

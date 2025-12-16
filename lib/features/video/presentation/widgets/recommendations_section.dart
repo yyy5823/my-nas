@@ -162,7 +162,7 @@ class SimilarContentSection extends ConsumerWidget {
 }
 
 /// 推荐卡片组件
-class _RecommendationCard extends StatefulWidget {
+class _RecommendationCard extends ConsumerStatefulWidget {
   const _RecommendationCard({
     required this.item,
     required this.onTap,
@@ -172,17 +172,26 @@ class _RecommendationCard extends StatefulWidget {
   final VoidCallback onTap;
 
   @override
-  State<_RecommendationCard> createState() => _RecommendationCardState();
+  ConsumerState<_RecommendationCard> createState() => _RecommendationCardState();
 }
 
-class _RecommendationCardState extends State<_RecommendationCard> {
+class _RecommendationCardState extends ConsumerState<_RecommendationCard> {
   bool _isHovered = false;
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final hasPoster = widget.item.posterPath != null && widget.item.posterPath!.isNotEmpty;
     const cardWidth = 120.0;
+
+    // 查询本地是否有该视频的元数据
+    final localVideoAsync = ref.watch(localVideoByTmdbIdProvider(widget.item.id));
+
+    // 确定要使用的封面 URL：优先本地缓存，其次 TMDB 网络 URL
+    final localPosterUrl = localVideoAsync.whenOrNull(
+      data: (localVideo) => localVideo?.displayPosterUrl,
+    );
+    final posterUrl = localPosterUrl ?? widget.item.posterUrl;
+    final hasPoster = posterUrl.isNotEmpty;
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
@@ -215,9 +224,9 @@ class _RecommendationCardState extends State<_RecommendationCard> {
                       child: Stack(
                         fit: StackFit.expand,
                         children: [
-                          // 图片
+                          // 图片 - 优先使用本地缓存的封面
                           if (hasPoster) AdaptiveImage(
-                                  imageUrl: widget.item.posterUrl,
+                                  imageUrl: posterUrl,
                                   placeholder: (_) => _buildPlaceholder(isDark),
                                   errorWidget: (_, _) => _buildPlaceholder(isDark),
                                 ) else _buildPlaceholder(isDark),

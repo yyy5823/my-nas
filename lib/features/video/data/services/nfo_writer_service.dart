@@ -407,4 +407,3 @@ class NfoWriterService {
         .replaceAll('"', '&quot;')
         .replaceAll("'", '&apos;');
 }
-
