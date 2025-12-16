@@ -637,6 +637,9 @@ class VideoFileNameParser {
   /// - Part 1, Part.1, Pt.1 (部分)
   /// - Chapter 01, Ch.01 (章节)
   ///
+  /// 【港剧特殊格式】
+  /// - 剧名.S21.HD1080p (S后跟数字，再跟分辨率标记，S表示集号而非季号)
+  ///
   /// 【紧凑格式】
   /// - 101, 201, 1201 (3-4位数，首位是季号: 1季01集, 12季01集)
   ///
@@ -664,11 +667,14 @@ class VideoFileNameParser {
     r'|(?:Part|Pt)[\s._-]*(\d{1,2})'         // G16: Part 1, Pt.1
     r'|(?:Chapter|Ch)[\s._-]*(\d{1,3})'      // G17: Chapter 01, Ch.01
 
+    // === 港剧格式：.S数字.分辨率（S表示集号，不是季号）===
+    r'|[\s._-][Ss](\d{1,3})[\s._-](?:HD|4K|2160|1080|720|480)' // G18: .S21.HD1080p
+
     // === 紧凑数字格式（仅限3位数，避免匹配年份）===
-    r'|(?:^|[\s._-])(\d{3})(?:[\s._-]|$)'    // G18: 101=S1E01（仅3位数，4位可能是年份）
+    r'|(?:^|[\s._-])(\d{3})(?:[\s._-]|$)'    // G19: 101=S1E01（仅3位数，4位可能是年份）
 
     // === 最低优先级：末尾数字（最宽松）===
-    r'|[\s._-](\d{1,3})$',                   // G19: 末尾集号 .01, -01, _01
+    r'|[\s._-](\d{1,3})$',                   // G20: 末尾集号 .01, -01, _01
     caseSensitive: false,
   );
 
@@ -772,10 +778,16 @@ class VideoFileNameParser {
         episode = int.tryParse(tvMatch.group(17)!);
         season = 1;
       }
-      // === 紧凑数字格式（仅限3位数）===
+      // === 港剧格式：.S数字.分辨率（S表示集号，不是季号）===
       else if (tvMatch.group(18) != null) {
-        // G18: 101=S1E01（仅3位数）
-        final compact = tvMatch.group(18)!;
+        // G18: .S21.HD1080p - S后面的数字是集号
+        episode = int.tryParse(tvMatch.group(18)!);
+        season = 1;
+      }
+      // === 紧凑数字格式（仅限3位数）===
+      else if (tvMatch.group(19) != null) {
+        // G19: 101=S1E01（仅3位数）
+        final compact = tvMatch.group(19)!;
         final compactNum = int.tryParse(compact);
         if (compactNum != null && compact.length == 3) {
           // 101 → S1E01
@@ -789,9 +801,9 @@ class VideoFileNameParser {
         }
       }
       // === 最低优先级：末尾数字 ===
-      else if (tvMatch.group(19) != null) {
-        // G19: 末尾集号 .01, -01, _01
-        episode = int.tryParse(tvMatch.group(19)!);
+      else if (tvMatch.group(20) != null) {
+        // G20: 末尾集号 .01, -01, _01
+        episode = int.tryParse(tvMatch.group(20)!);
         season = 1;
       }
     }

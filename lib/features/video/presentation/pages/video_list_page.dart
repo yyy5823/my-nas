@@ -29,6 +29,7 @@ import 'package:my_nas/features/video/presentation/providers/video_category_sett
 import 'package:my_nas/features/video/presentation/providers/video_history_provider.dart';
 import 'package:my_nas/features/video/presentation/widgets/hero_banner.dart';
 import 'package:my_nas/features/video/presentation/widgets/video_category_settings_sheet.dart';
+import 'package:my_nas/features/video/presentation/widgets/video_poster.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/adaptive_image.dart';
 import 'package:my_nas/shared/widgets/context_menu_region.dart';
@@ -2841,12 +2842,13 @@ class _PosterCardState extends ConsumerState<_PosterCard> {
                       child: Stack(
                         fit: StackFit.expand,
                         children: [
-                          // 海报图片
+                          // 海报图片（使用 VideoPoster 支持 NAS 路径）
                           if (hasPoster)
-                            AdaptiveImage(
-                              imageUrl: displayPoster,
-                              placeholder: (_) => _buildPlaceholder(),
-                              errorWidget: (_, _) => _buildPlaceholder(),
+                            VideoPoster(
+                              posterUrl: displayPoster,
+                              sourceId: widget.metadata.sourceId,
+                              placeholder: _buildPlaceholder(),
+                              errorWidget: _buildPlaceholder(),
                             )
                           else
                             _buildPlaceholder(),
@@ -3668,14 +3670,15 @@ class _VerticalPosterCardState extends ConsumerState<_VerticalPosterCard> {
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        // 海报图片 - 使用 RepaintBoundary 防止重绘
+                        // 海报图片 - 使用 VideoPoster 支持 NAS 路径
                         RepaintBoundary(
                           child: _hasPoster
-                              ? AdaptiveImage(
+                              ? VideoPoster(
                                   key: ValueKey(_posterUrl),
-                                  imageUrl: _posterUrl!,
-                                  placeholder: (_) => _buildPlaceholder(),
-                                  errorWidget: (_, _) => _buildPlaceholder(),
+                                  posterUrl: _posterUrl,
+                                  sourceId: widget.metadata.sourceId,
+                                  placeholder: _buildPlaceholder(),
+                                  errorWidget: _buildPlaceholder(),
                                 )
                               : _buildPlaceholder(),
                         ),
@@ -3982,14 +3985,15 @@ class _HorizontalVideoCardState extends ConsumerState<_HorizontalVideoCard> {
                       child: Stack(
                         fit: StackFit.expand,
                         children: [
-                          // 缩略图 - 使用 RepaintBoundary 防止重绘
+                          // 缩略图 - 使用 VideoPoster 支持 NAS 路径
                           RepaintBoundary(
                             child: _hasPoster
-                                ? AdaptiveImage(
+                                ? VideoPoster(
                                     key: ValueKey(_posterUrl),
-                                    imageUrl: _posterUrl!,
-                                    placeholder: (_) => _buildPlaceholder(),
-                                    errorWidget: (_, _) => _buildPlaceholder(),
+                                    posterUrl: _posterUrl,
+                                    sourceId: widget.metadata.sourceId,
+                                    placeholder: _buildPlaceholder(),
+                                    errorWidget: _buildPlaceholder(),
                                   )
                                 : _buildPlaceholder(),
                           ),
@@ -4969,14 +4973,15 @@ class _TvShowPosterCardState extends State<_TvShowPosterCard> {
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        // 海报图片
+                        // 海报图片（使用 VideoPoster 支持 NAS 路径）
                         RepaintBoundary(
                           child: _hasPoster
-                              ? AdaptiveImage(
+                              ? VideoPoster(
                                   key: ValueKey(_posterUrl),
-                                  imageUrl: _posterUrl!,
-                                  placeholder: (_) => _buildPlaceholder(),
-                                  errorWidget: (_, _) => _buildPlaceholder(),
+                                  posterUrl: _posterUrl,
+                                  sourceId: widget.group.representative.sourceId,
+                                  placeholder: _buildPlaceholder(),
+                                  errorWidget: _buildPlaceholder(),
                                 )
                               : _buildPlaceholder(),
                         ),
@@ -6990,10 +6995,12 @@ class _MovieCollectionGridCard extends StatelessWidget {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    if (hasPoster) AdaptiveImage(
-                            imageUrl: posterUrl,
-                            placeholder: (_) => _buildPlaceholder(),
-                            errorWidget: (_, _) => _buildPlaceholder(),
+                    // 海报（使用 VideoPoster 支持 NAS 路径）
+                    if (hasPoster) VideoPoster(
+                            posterUrl: posterUrl,
+                            sourceId: collection.movies.first.sourceId,
+                            placeholder: _buildPlaceholder(),
+                            errorWidget: _buildPlaceholder(),
                           ) else _buildPlaceholder(),
                     // 电影数量徽章
                     Positioned(
