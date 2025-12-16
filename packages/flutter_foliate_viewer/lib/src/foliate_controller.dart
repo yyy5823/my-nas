@@ -100,7 +100,7 @@ class FoliateController {
         return null;
       }
       return FoliateLocation.fromMap(map);
-    } catch (_) {
+    } on Exception catch (_) {
       return null;
     }
   }
@@ -137,7 +137,7 @@ class FoliateController {
         return null;
       }
       return FoliateBookInfo.fromMap(map);
-    } catch (_) {
+    } on Exception catch (_) {
       return null;
     }
   }
@@ -166,7 +166,7 @@ class FoliateController {
       return list
           .map((e) => FoliateTocItem.fromMap(Map<String, dynamic>.from(e as Map)))
           .toList();
-    } catch (_) {
+    } on Exception catch (_) {
       return [];
     }
   }
