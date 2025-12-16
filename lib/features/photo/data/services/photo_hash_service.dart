@@ -137,20 +137,28 @@ class PhotoHashService {
         chunks.add(chunk);
       }
       final bytes = Uint8List.fromList(chunks.expand((c) => c).toList());
-      if (bytes.isEmpty) return null;
+      if (bytes.isEmpty) {
+        logger.w('PhotoHashService: 文件内容为空 - ${photo.filePath}');
+        return null;
+      }
 
       // 计算 MD5 哈希
       final fileHash = _computeMD5(bytes);
 
-      // 计算感知哈希
-      final perceptualHash = await compute(_computePerceptualHash, bytes);
+      // 计算感知哈希（空字符串表示失败，转为 null 以便后续重试）
+      final perceptualHashResult = await compute(_computePerceptualHash, bytes);
+      final perceptualHash = perceptualHashResult.isEmpty ? null : perceptualHashResult;
+
+      if (perceptualHash == null) {
+        logger.w('PhotoHashService: pHash 计算失败 - ${photo.filePath}');
+      }
 
       return photo.copyWith(
         fileHash: fileHash,
         perceptualHash: perceptualHash,
       );
     } on Exception catch (e, st) {
-      AppError.ignore(e, st, '单张照片处理失败，继续处理下一张');
+      AppError.ignore(e, st, '单张照片处理失败: ${photo.filePath}');
       return null;
     }
   }
@@ -159,6 +167,134 @@ class PhotoHashService {
   String _computeMD5(Uint8List bytes) {
     final digest = md5.convert(bytes);
     return digest.toString();
+  }
+
+  /// 查找相似照片组
+  /// [threshold] 汉明距离阈值，越小越严格（推荐 5-10）
+  /// 返回相似照片组列表，每组包含相似的照片
+  Future<List<List<PhotoEntity>>> findSimilarPhotos({
+    int threshold = 8,
+    void Function(int processed, int total)? onProgress,
+  }) async {
+    logger.i('PhotoHashService: 开始查找相似照片，阈值=$threshold');
+
+    // 获取所有有 pHash 的照片
+    final photos = await _db.getPhotosWithPerceptualHash();
+    if (photos.length < 2) return [];
+
+    logger.i('PhotoHashService: 共 ${photos.length} 张照片待比较');
+
+    // 使用 Union-Find 算法分组
+    final parent = <String, String>{};
+    final rank = <String, int>{};
+
+    String find(String x) {
+      if (parent[x] != x) {
+        parent[x] = find(parent[x]!);
+      }
+      return parent[x]!;
+    }
+
+    void union(String x, String y) {
+      final rootX = find(x);
+      final rootY = find(y);
+      if (rootX == rootY) return;
+
+      final rankX = rank[rootX] ?? 0;
+      final rankY = rank[rootY] ?? 0;
+      if (rankX < rankY) {
+        parent[rootX] = rootY;
+      } else if (rankX > rankY) {
+        parent[rootY] = rootX;
+      } else {
+        parent[rootY] = rootX;
+        rank[rootX] = rankX + 1;
+      }
+    }
+
+    // 初始化并查集
+    for (final photo in photos) {
+      parent[photo.uniqueKey] = photo.uniqueKey;
+      rank[photo.uniqueKey] = 0;
+    }
+
+    // 按 pHash 前缀分桶，减少比较次数
+    // 使用前 2 个字符（256 个桶）
+    final buckets = <String, List<PhotoEntity>>{};
+    for (final photo in photos) {
+      final hash = photo.perceptualHash!;
+      if (hash.length >= 2) {
+        final prefix = hash.substring(0, 2);
+        buckets.putIfAbsent(prefix, () => []).add(photo);
+      }
+    }
+
+    // 生成需要比较的相邻前缀（汉明距离 1-2 的前缀）
+    Set<String> getNeighborPrefixes(String prefix) {
+      final neighbors = <String>{prefix};
+      final prefixValue = int.parse(prefix, radix: 16);
+
+      // 单 bit 翻转（汉明距离 1）
+      for (var i = 0; i < 8; i++) {
+        final neighbor = prefixValue ^ (1 << i);
+        neighbors.add(neighbor.toRadixString(16).padLeft(2, '0'));
+      }
+
+      return neighbors;
+    }
+
+    var processed = 0;
+    final totalBuckets = buckets.length;
+
+    // 比较桶内和相邻桶的照片
+    for (final entry in buckets.entries) {
+      final currentBucket = entry.value;
+      final neighborPrefixes = getNeighborPrefixes(entry.key);
+
+      // 收集当前桶和相邻桶的所有照片
+      final photosToCompare = <PhotoEntity>[];
+      for (final prefix in neighborPrefixes) {
+        if (buckets.containsKey(prefix)) {
+          photosToCompare.addAll(buckets[prefix]!);
+        }
+      }
+
+      // 比较当前桶内的照片与所有相关照片
+      for (final photo1 in currentBucket) {
+        for (final photo2 in photosToCompare) {
+          if (photo1.uniqueKey == photo2.uniqueKey) continue;
+          if (find(photo1.uniqueKey) == find(photo2.uniqueKey)) continue;
+
+          final distance = hammingDistance(
+            photo1.perceptualHash!,
+            photo2.perceptualHash!,
+          );
+
+          if (distance >= 0 && distance <= threshold) {
+            union(photo1.uniqueKey, photo2.uniqueKey);
+          }
+        }
+      }
+
+      processed++;
+      onProgress?.call(processed, totalBuckets);
+    }
+
+    // 收集分组结果
+    final groups = <String, List<PhotoEntity>>{};
+    for (final photo in photos) {
+      final root = find(photo.uniqueKey);
+      groups.putIfAbsent(root, () => []).add(photo);
+    }
+
+    // 只返回有多个照片的组，按组大小排序
+    final result = groups.values
+        .where((g) => g.length > 1)
+        .toList()
+      ..sort((a, b) => b.length.compareTo(a.length));
+
+    logger.i('PhotoHashService: 找到 ${result.length} 组相似照片');
+    return result;
   }
 
   /// 释放资源

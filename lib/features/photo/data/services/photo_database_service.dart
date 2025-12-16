@@ -719,12 +719,16 @@ class PhotoDatabaseService {
   }
 
   /// 获取没有哈希值的照片（用于增量计算）
+  /// 包括 NULL 和空字符串的情况（计算失败时会返回空字符串）
   Future<List<PhotoEntity>> getPhotosWithoutHash({int limit = 100}) async {
     if (!_initialized) await init();
 
     final results = await _db!.query(
       _tablePhotos,
-      where: '$_colFileHash IS NULL OR $_colPerceptualHash IS NULL',
+      where: '''
+        ($_colFileHash IS NULL OR $_colFileHash = '')
+        OR ($_colPerceptualHash IS NULL OR $_colPerceptualHash = '')
+      ''',
       limit: limit,
     );
 
@@ -733,7 +737,10 @@ class PhotoDatabaseService {
 
   /// 获取重复的照片组（基于文件哈希）
   /// 返回 Map<哈希值, 照片列表>
-  Future<Map<String, List<PhotoEntity>>> getDuplicatesByFileHash() async {
+  /// [crossSource] 是否跨数据源检测（默认 true）
+  Future<Map<String, List<PhotoEntity>>> getDuplicatesByFileHash({
+    bool crossSource = true,
+  }) async {
     if (!_initialized) await init();
 
     // 先找出有重复的哈希值
@@ -757,7 +764,23 @@ class PhotoDatabaseService {
         whereArgs: [hash],
         orderBy: '$_colModifiedTime DESC',
       );
-      result[hash] = photos.map(_fromRow).toList();
+      final photoList = photos.map(_fromRow).toList();
+
+      // 如果不跨数据源，按 sourceId 分组后只保留有多个的组
+      if (!crossSource) {
+        final bySource = <String, List<PhotoEntity>>{};
+        for (final photo in photoList) {
+          bySource.putIfAbsent(photo.sourceId, () => []).add(photo);
+        }
+        // 只保留同一数据源内有多个的
+        for (final entry in bySource.entries) {
+          if (entry.value.length > 1) {
+            result['${hash}_${entry.key}'] = entry.value;
+          }
+        }
+      } else {
+        result[hash] = photoList;
+      }
     }
 
     return result;
@@ -830,6 +853,50 @@ class PhotoDatabaseService {
       perceptualHashDuplicates: perceptualHashCount,
       totalDuplicatePhotos: totalDuplicatePhotos,
     );
+  }
+
+  /// 获取所有有感知哈希的照片（用于相似度比较）
+  Future<List<PhotoEntity>> getPhotosWithPerceptualHash() async {
+    if (!_initialized) await init();
+
+    final results = await _db!.query(
+      _tablePhotos,
+      where: "$_colPerceptualHash IS NOT NULL AND $_colPerceptualHash != ''",
+      orderBy: _colPerceptualHash, // 按哈希排序便于分桶
+    );
+
+    return results.map(_fromRow).toList();
+  }
+
+  /// 获取哈希计算状态统计
+  /// 返回：总照片数、已计算哈希数、待计算数
+  Future<({int total, int hashed, int pending, int failed})> getHashStats() async {
+    if (!_initialized) await init();
+
+    final total = Sqflite.firstIntValue(
+        await _db!.rawQuery('SELECT COUNT(*) FROM $_tablePhotos')) ?? 0;
+
+    // 已计算完成（fileHash 和 perceptualHash 都有有效值）
+    final hashed = Sqflite.firstIntValue(await _db!.rawQuery('''
+      SELECT COUNT(*) FROM $_tablePhotos
+      WHERE $_colFileHash IS NOT NULL AND $_colFileHash != ''
+        AND $_colPerceptualHash IS NOT NULL AND $_colPerceptualHash != ''
+    ''')) ?? 0;
+
+    // 待计算（fileHash 或 perceptualHash 为 NULL）
+    final pending = Sqflite.firstIntValue(await _db!.rawQuery('''
+      SELECT COUNT(*) FROM $_tablePhotos
+      WHERE $_colFileHash IS NULL OR $_colPerceptualHash IS NULL
+    ''')) ?? 0;
+
+    // 计算失败（有空字符串，表示之前计算失败）
+    final failed = Sqflite.firstIntValue(await _db!.rawQuery('''
+      SELECT COUNT(*) FROM $_tablePhotos
+      WHERE ($_colFileHash = '' OR $_colPerceptualHash = '')
+        AND NOT ($_colFileHash IS NULL AND $_colPerceptualHash IS NULL)
+    ''')) ?? 0;
+
+    return (total: total, hashed: hashed, pending: pending, failed: failed);
   }
 }
 

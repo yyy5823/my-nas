@@ -89,7 +89,6 @@ class VideoControls extends ConsumerWidget {
 
   Widget _buildTopBar(BuildContext context, WidgetRef ref) {
     final subtitleEnabled = state.subtitleEnabled;
-    final playerNotifier = ref.read(videoPlayerControllerProvider.notifier);
 
     return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -109,14 +108,11 @@ class VideoControls extends ConsumerWidget {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            // 字幕按钮：单击切换开关，长按打开选择器
+            // 字幕按钮：点击打开选择器
             GestureDetector(
-              onTap: hasSubtitles ? playerNotifier.toggleSubtitle : null,
-              onLongPress: () => showSubtitleSelector(context),
+              onTap: () => showSubtitleSelector(context),
               child: Tooltip(
-                message: hasSubtitles
-                    ? (subtitleEnabled ? '点击关闭字幕 / 长按选择字幕' : '点击开启字幕 / 长按选择字幕')
-                    : '长按选择字幕',
+                message: '字幕设置',
                 child: Padding(
                   padding: const EdgeInsets.all(8),
                   child: Icon(

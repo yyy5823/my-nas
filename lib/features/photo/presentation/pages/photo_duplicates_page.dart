@@ -26,6 +26,7 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
   // 状态
   bool _isLoading = true;
   bool _isScanning = false;
+  bool _isFindingSimilar = false;
   String? _errorMessage;
 
   // 重复照片数据 - 基于文件名+大小的快速检测
@@ -36,6 +37,12 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
   Map<String, List<PhotoEntity>> _hashDuplicates = {};
   ({int fileHashDuplicates, int perceptualHashDuplicates, int totalDuplicatePhotos})? _hashStats;
 
+  // 相似照片数据 - 基于 pHash 汉明距离
+  List<List<PhotoEntity>> _similarGroups = [];
+
+  // 哈希计算状态
+  ({int total, int hashed, int pending, int failed})? _hashCalcStats;
+
   // 选中的照片（用于删除）
   final Set<String> _selectedPhotos = {}; // 存储 uniqueKey
 
@@ -43,8 +50,11 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
   HashProgress? _scanProgress;
   StreamSubscription<HashProgress>? _progressSubscription;
 
-  // 当前显示模式
-  bool _showHashMode = false;
+  // 当前显示模式: 0=快速检测, 1=完全相同, 2=视觉相似
+  int _currentMode = 0;
+
+  // 相似度阈值（汉明距离）
+  int _similarityThreshold = 8;
 
   @override
   void initState() {
@@ -71,15 +81,19 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
       final nameSizeStats = await _db.getNameSizeDuplicateStats();
       final nameSizeDups = await _db.getPotentialDuplicatesByNameAndSize();
 
-      // 同时加载哈希检测结果
+      // 同时加载哈希检测结果（跨数据源）
       final hashStats = await _db.getDuplicateStats();
-      final hashDups = await _db.getDuplicatesByFileHash();
+      final hashDups = await _db.getDuplicatesByFileHash(crossSource: true);
+
+      // 加载哈希计算状态
+      final hashCalcStats = await _db.getHashStats();
 
       setState(() {
         _nameSizeStats = nameSizeStats;
         _nameSizeDuplicates = nameSizeDups;
         _hashStats = hashStats;
         _hashDuplicates = hashDups;
+        _hashCalcStats = hashCalcStats;
         _isLoading = false;
       });
     } on Exception catch (e) {
@@ -123,6 +137,28 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
     // 使用第一个连接的文件系统
     final fileSystem = connectedSources.first.adapter.fileSystem;
     await _hashService.processAllPhotos(fileSystem);
+  }
+
+  Future<void> _findSimilarPhotos() async {
+    setState(() {
+      _isFindingSimilar = true;
+    });
+
+    try {
+      final groups = await _hashService.findSimilarPhotos(
+        threshold: _similarityThreshold,
+      );
+
+      setState(() {
+        _similarGroups = groups;
+        _isFindingSimilar = false;
+      });
+    } on Exception catch (e) {
+      setState(() {
+        _errorMessage = '查找相似照片失败: $e';
+        _isFindingSimilar = false;
+      });
+    }
   }
 
   void _cancelScan() {
@@ -284,9 +320,6 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
       );
     }
 
-    // 根据模式选择显示的数据
-    final duplicates = _showHashMode ? _hashDuplicates : _nameSizeDuplicates;
-
     return CustomScrollView(
       slivers: [
         // 扫描进度卡片
@@ -299,20 +332,298 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
         // 统计信息卡片
         SliverToBoxAdapter(child: _buildStatsCard(isDark)),
 
-        // 重复照片组列表
-        if (duplicates.isEmpty)
-          SliverFillRemaining(child: _buildEmptyState(isDark))
-        else
+        // 相似照片查找进度
+        if (_currentMode == 2 && _isFindingSimilar)
+          SliverToBoxAdapter(child: _buildFindingSimilarCard(isDark)),
+
+        // 根据模式显示不同内容
+        ..._buildContentByMode(isDark),
+      ],
+    );
+  }
+
+  List<Widget> _buildContentByMode(bool isDark) {
+    switch (_currentMode) {
+      case 0: // 快速检测
+        if (_nameSizeDuplicates.isEmpty) {
+          return [SliverFillRemaining(child: _buildEmptyState(isDark))];
+        }
+        return [
           SliverList(
             delegate: SliverChildBuilderDelegate(
               (context, index) {
-                final entry = duplicates.entries.elementAt(index);
+                final entry = _nameSizeDuplicates.entries.elementAt(index);
                 return _buildDuplicateGroup(entry.key, entry.value, isDark);
               },
-              childCount: duplicates.length,
+              childCount: _nameSizeDuplicates.length,
             ),
           ),
-      ],
+        ];
+
+      case 1: // 精确匹配（MD5）
+        if (_hashDuplicates.isEmpty) {
+          return [SliverFillRemaining(child: _buildEmptyState(isDark))];
+        }
+        return [
+          SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, index) {
+                final entry = _hashDuplicates.entries.elementAt(index);
+                return _buildDuplicateGroup(entry.key, entry.value, isDark);
+              },
+              childCount: _hashDuplicates.length,
+            ),
+          ),
+        ];
+
+      case 2: // 视觉相似
+        if (_isFindingSimilar) {
+          return [const SliverToBoxAdapter(child: SizedBox.shrink())];
+        }
+        if (_similarGroups.isEmpty) {
+          return [SliverFillRemaining(child: _buildEmptyState(isDark))];
+        }
+        return [
+          SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, index) {
+                final group = _similarGroups[index];
+                return _buildSimilarGroup(index, group, isDark);
+              },
+              childCount: _similarGroups.length,
+            ),
+          ),
+        ];
+
+      default:
+        return [SliverFillRemaining(child: _buildEmptyState(isDark))];
+    }
+  }
+
+  Widget _buildFindingSimilarCard(bool isDark) => Card(
+      margin: const EdgeInsets.all(16),
+      color: isDark ? AppColors.darkSurfaceElevated : null,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                '正在分析照片相似度...',
+                style: context.textTheme.titleMedium,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+  Widget _buildSimilarGroup(int index, List<PhotoEntity> photos, bool isDark) {
+    final connections = ref.watch(activeConnectionsProvider);
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      color: isDark ? AppColors.darkSurfaceElevated : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 组头部
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.purple.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    '${photos.length} 张相似',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.purple,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: () => _selectAllExceptFirst(photos),
+                  icon: const Icon(Icons.select_all, size: 18),
+                  label: const Text('选择其他'),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // 照片网格
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: photos.asMap().entries.map((entry) {
+                final photoIndex = entry.key;
+                final photo = entry.value;
+                final isSelected = _selectedPhotos.contains(photo.uniqueKey);
+                final connection = connections[photo.sourceId];
+                final fileSystem = connection?.adapter.fileSystem;
+
+                return GestureDetector(
+                  onTap: () => _togglePhotoSelection(photo),
+                  child: Stack(
+                    children: [
+                      Container(
+                        width: 100,
+                        height: 100,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          border: isSelected
+                              ? Border.all(color: Colors.red, width: 3)
+                              : null,
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: StreamImage(
+                            url: photo.thumbnailUrl,
+                            path: photo.filePath,
+                            fileSystem: fileSystem,
+                            placeholder: Container(
+                              color: isDark ? Colors.grey[800] : Colors.grey[200],
+                              child: const Icon(Icons.photo),
+                            ),
+                            errorWidget: Container(
+                              color: isDark ? Colors.grey[800] : Colors.grey[200],
+                              child: const Icon(Icons.broken_image),
+                            ),
+                            cacheKey: photo.filePath,
+                          ),
+                        ),
+                      ),
+                      // 第一张标记
+                      if (photoIndex == 0)
+                        Positioned(
+                          top: 4,
+                          left: 4,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.green,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text(
+                              '推荐保留',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      // 选中标记
+                      if (isSelected)
+                        Positioned(
+                          top: 4,
+                          right: 4,
+                          child: Container(
+                            padding: const EdgeInsets.all(2),
+                            decoration: const BoxDecoration(
+                              color: Colors.red,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.delete,
+                              color: Colors.white,
+                              size: 16,
+                            ),
+                          ),
+                        ),
+                      // 文件大小
+                      Positioned(
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.bottomCenter,
+                              end: Alignment.topCenter,
+                              colors: [
+                                Colors.black.withValues(alpha: 0.7),
+                                Colors.transparent,
+                              ],
+                            ),
+                            borderRadius: const BorderRadius.vertical(
+                              bottom: Radius.circular(8),
+                            ),
+                          ),
+                          child: Text(
+                            photo.displaySize,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          // 文件路径
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: photos.map((photo) {
+                final isSelected = _selectedPhotos.contains(photo.uniqueKey);
+                return Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Row(
+                    children: [
+                      Icon(
+                        isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
+                        size: 16,
+                        color: isSelected ? Colors.red : Colors.grey,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          photo.filePath,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isDark ? Colors.grey[400] : Colors.grey[600],
+                            decoration: isSelected ? TextDecoration.lineThrough : null,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -328,22 +639,38 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
         children: [
           Expanded(
             child: _buildModeTab(
-              title: '快速检测',
-              subtitle: '文件名+大小',
-              isSelected: !_showHashMode,
+              title: '快速',
+              subtitle: '名称+大小',
+              isSelected: _currentMode == 0,
               count: _nameSizeStats?.duplicateGroups ?? 0,
               isDark: isDark,
-              onTap: () => setState(() => _showHashMode = false),
+              onTap: () => setState(() => _currentMode = 0),
             ),
           ),
           Expanded(
             child: _buildModeTab(
-              title: '深度检测',
-              subtitle: '内容哈希',
-              isSelected: _showHashMode,
+              title: '精确',
+              subtitle: 'MD5哈希',
+              isSelected: _currentMode == 1,
               count: _hashStats?.fileHashDuplicates ?? 0,
               isDark: isDark,
-              onTap: () => setState(() => _showHashMode = true),
+              onTap: () => setState(() => _currentMode = 1),
+            ),
+          ),
+          Expanded(
+            child: _buildModeTab(
+              title: '相似',
+              subtitle: '视觉匹配',
+              isSelected: _currentMode == 2,
+              count: _similarGroups.length,
+              isDark: isDark,
+              onTap: () {
+                setState(() => _currentMode = 2);
+                // 如果还没有查找过相似照片，自动开始查找
+                if (_similarGroups.isEmpty && !_isFindingSimilar) {
+                  _findSimilarPhotos();
+                }
+              },
             ),
           ),
         ],
@@ -508,36 +835,154 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
   }
 
   Widget _buildStatsCard(bool isDark) {
+    final calcStats = _hashCalcStats;
+    final needsScan = (calcStats?.pending ?? 0) > 0 || (calcStats?.failed ?? 0) > 0;
+
     // 根据当前模式显示对应的统计
-    if (_showHashMode) {
+    if (_currentMode == 1) {
+      // 精确匹配模式
       final stats = _hashStats;
       return Card(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         color: isDark ? AppColors.darkSurfaceElevated : null,
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildStatItem(
-                '重复组',
-                '${stats?.fileHashDuplicates ?? 0}',
-                Icons.collections_rounded,
-                isDark,
+              Row(
+                children: [
+                  _buildStatItem(
+                    '重复组',
+                    '${stats?.fileHashDuplicates ?? 0}',
+                    Icons.collections_rounded,
+                    isDark,
+                  ),
+                  const SizedBox(width: 24),
+                  _buildStatItem(
+                    '涉及照片',
+                    '${stats?.totalDuplicatePhotos ?? 0}',
+                    Icons.photo_library_rounded,
+                    isDark,
+                  ),
+                ],
               ),
-              const SizedBox(width: 24),
-              _buildStatItem(
-                '涉及照片',
-                '${stats?.totalDuplicatePhotos ?? 0}',
-                Icons.photo_library_rounded,
-                isDark,
+              // 哈希计算状态
+              if (calcStats != null) ...[
+                const SizedBox(height: 12),
+                _buildHashStatusHint(calcStats, needsScan, isDark),
+              ],
+            ],
+          ),
+        ),
+      );
+    } else if (_currentMode == 2) {
+      // 视觉相似模式
+      final totalSimilarPhotos = _similarGroups.fold(0, (sum, g) => sum + g.length);
+      return Card(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        color: isDark ? AppColors.darkSurfaceElevated : null,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  _buildStatItem(
+                    '相似组',
+                    '${_similarGroups.length}',
+                    Icons.compare_rounded,
+                    isDark,
+                  ),
+                  const SizedBox(width: 24),
+                  _buildStatItem(
+                    '涉及照片',
+                    '$totalSimilarPhotos',
+                    Icons.photo_library_rounded,
+                    isDark,
+                  ),
+                ],
               ),
-              const SizedBox(width: 24),
-              _buildStatItem(
-                '相似组',
-                '${stats?.perceptualHashDuplicates ?? 0}',
-                Icons.compare_rounded,
-                isDark,
+              const SizedBox(height: 12),
+              // 相似度阈值设置
+              Row(
+                children: [
+                  Text(
+                    '相似度阈值: ',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    ),
+                  ),
+                  Expanded(
+                    child: SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        trackHeight: 4,
+                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+                      ),
+                      child: Slider(
+                        value: _similarityThreshold.toDouble(),
+                        min: 1,
+                        max: 15,
+                        divisions: 14,
+                        label: _getThresholdLabel(_similarityThreshold),
+                        onChanged: (value) {
+                          setState(() => _similarityThreshold = value.round());
+                        },
+                        onChangeEnd: (value) {
+                          // 阈值变化后重新查找
+                          _findSimilarPhotos();
+                        },
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _getThresholdColor(_similarityThreshold).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      _getThresholdLabel(_similarityThreshold),
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: _getThresholdColor(_similarityThreshold),
+                      ),
+                    ),
+                  ),
+                ],
               ),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.purple.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline, size: 16, color: Colors.purple),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '视觉相似检测可找出经过压缩、裁剪、调色后的相同照片。'
+                        '阈值越低越严格，越高则匹配更宽松。',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark ? Colors.grey[400] : Colors.grey[600],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // 哈希计算状态
+              if (calcStats != null && needsScan) ...[
+                const SizedBox(height: 8),
+                _buildHashStatusHint(calcStats, needsScan, isDark),
+              ],
             ],
           ),
         ),
@@ -622,34 +1067,102 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
         ),
       );
 
-  Widget _buildEmptyState(bool isDark) => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.check_circle_outline_rounded,
-              size: 64,
-              color: Colors.green[300],
-            ),
-            const SizedBox(height: 16),
-            Text(
-              _showHashMode ? '没有发现重复照片' : '没有发现疑似重复',
-              style: context.textTheme.titleMedium?.copyWith(
-                color: isDark ? Colors.white : null,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _showHashMode
-                  ? '点击右上角刷新按钮扫描照片哈希值'
-                  : '快速检测未发现相同文件名和大小的照片',
-              style: context.textTheme.bodyMedium?.copyWith(
+  Widget _buildHashStatusHint(
+    ({int total, int hashed, int pending, int failed}) calcStats,
+    bool needsScan,
+    bool isDark,
+  ) => Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: needsScan
+            ? Colors.orange.withValues(alpha: 0.1)
+            : Colors.green.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            needsScan ? Icons.info_outline : Icons.check_circle_outline,
+            size: 16,
+            color: needsScan ? Colors.orange : Colors.green,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              needsScan
+                  ? '已扫描 ${calcStats.hashed}/${calcStats.total} 张'
+                      '${calcStats.pending > 0 ? '，待扫描 ${calcStats.pending}' : ''}'
+                      '${calcStats.failed > 0 ? '，失败 ${calcStats.failed}' : ''}'
+                      '\n点击右上角刷新按钮继续扫描'
+                  : '全部 ${calcStats.total} 张照片已完成扫描',
+              style: TextStyle(
+                fontSize: 12,
                 color: isDark ? Colors.grey[400] : Colors.grey[600],
               ),
             ),
+          ),
+        ],
+      ),
+    );
+
+  String _getThresholdLabel(int threshold) {
+    if (threshold <= 3) return '严格';
+    if (threshold <= 6) return '较严格';
+    if (threshold <= 10) return '适中';
+    return '宽松';
+  }
+
+  Color _getThresholdColor(int threshold) {
+    if (threshold <= 3) return Colors.green;
+    if (threshold <= 6) return Colors.blue;
+    if (threshold <= 10) return Colors.orange;
+    return Colors.red;
+  }
+
+  Widget _buildEmptyState(bool isDark) {
+    final (title, subtitle) = switch (_currentMode) {
+      0 => ('没有发现疑似重复', '快速检测未发现相同文件名和大小的照片'),
+      1 => ('没有发现重复照片', '点击右上角刷新按钮扫描照片哈希值'),
+      2 => ('没有发现相似照片', '尝试调高相似度阈值，或点击刷新按钮重新分析'),
+      _ => ('没有数据', ''),
+    };
+
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.check_circle_outline_rounded,
+            size: 64,
+            color: Colors.green[300],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            title,
+            style: context.textTheme.titleMedium?.copyWith(
+              color: isDark ? Colors.white : null,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            subtitle,
+            style: context.textTheme.bodyMedium?.copyWith(
+              color: isDark ? Colors.grey[400] : Colors.grey[600],
+            ),
+            textAlign: TextAlign.center,
+          ),
+          if (_currentMode == 2) ...[
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: _findSimilarPhotos,
+              icon: const Icon(Icons.refresh),
+              label: const Text('重新分析'),
+            ),
           ],
-        ),
-      );
+        ],
+      ),
+    );
+  }
 
   Widget _buildDuplicateGroup(
     String hash,
@@ -779,6 +1292,32 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
                               Icons.delete,
                               color: Colors.white,
                               size: 16,
+                            ),
+                          ),
+                        ),
+                      // 数据源标识（跨数据源时显示）
+                      if (_currentMode == 1 && photos.map((p) => p.sourceId).toSet().length > 1)
+                        Positioned(
+                          top: index == 0 ? 24 : 4,
+                          left: 4,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 4,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.withValues(alpha: 0.9),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              photo.sourceId.length > 8
+                                  ? '${photo.sourceId.substring(0, 8)}...'
+                                  : photo.sourceId,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 8,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
                         ),
