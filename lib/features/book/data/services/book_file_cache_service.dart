@@ -98,6 +98,39 @@ class BookFileCacheService {
     }
   }
 
+  /// 从流保存文件到缓存（避免大文件占用过多内存）
+  Future<File?> saveToCacheFromStream(
+    String? sourceId,
+    String filePath,
+    Future<Stream<List<int>>> Function() streamFactory,
+  ) async {
+    if (!_initialized) await init();
+
+    try {
+      final file = await getCacheFile(sourceId, filePath);
+      final sink = file.openWrite();
+
+      try {
+        final stream = await streamFactory();
+        await for (final chunk in stream) {
+          sink.add(chunk);
+        }
+        await sink.flush();
+        logger.i('BookFileCacheService: 流式缓存文件成功 ${file.path}');
+      } finally {
+        await sink.close();
+      }
+
+      // 异步清理过期缓存（不等待完成）
+      unawaited(_cleanupIfNeeded());
+
+      return file;
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'BookFileCacheService.saveToCacheFromStream');
+      return null;
+    }
+  }
+
   /// 获取缓存的文件（如果存在）
   Future<File?> getCachedFile(String? sourceId, String filePath) async {
     if (!_initialized) await init();

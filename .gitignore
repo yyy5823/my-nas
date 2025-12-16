@@ -204,3 +204,9 @@ CLAUDE.md
 # Windows null device file
 nul
 test_file
+
+# Temporary analysis output
+analyze_output.txt
+
+# Example project build directories
+**/example/**/build/

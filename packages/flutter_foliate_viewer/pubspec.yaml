@@ -1,0 +1,32 @@
+name: flutter_foliate_viewer
+description: "A Flutter package for viewing e-books (EPUB, MOBI, AZW3) using foliate-js"
+version: 1.0.0
+homepage: https://github.com/johnfactotum/foliate-js
+
+environment:
+  sdk: '>=3.8.0 <4.0.0'
+  flutter: ">=1.17.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_inappwebview: ^6.1.5
+
+platforms:
+  android:
+  ios:
+  macos:
+  windows:
+  linux:
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  assets:
+    - lib/assets/foliate-js/
+    - lib/assets/foliate-js/src/
+    - lib/assets/foliate-js/src/vendor/
+    - lib/assets/foliate-js/dist/

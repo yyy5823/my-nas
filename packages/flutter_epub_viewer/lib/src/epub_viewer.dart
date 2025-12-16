@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../flutter_epub_viewer.dart';
+import 'epub_webview_content_loader.dart';
 import 'utils.dart';
 
 /// Callback for text selection events with WebView-relative coordinates.
@@ -200,6 +201,10 @@ class _EpubViewerState extends State<EpubViewer> {
 
   InAppWebViewController? webViewController;
 
+  /// 桌面端内联 HTML 内容
+  String? _desktopHtmlContent;
+  bool _isLoadingDesktopContent = false;
+
   InAppWebViewSettings settings = InAppWebViewSettings(
     isInspectable: kDebugMode,
     javaScriptEnabled: true,
@@ -217,6 +222,29 @@ class _EpubViewerState extends State<EpubViewer> {
   @override
   void initState() {
     super.initState();
+    // 在桌面端预加载内联 HTML 内容
+    if (EpubWebViewContentLoader.needsInlineHtml) {
+      _loadDesktopContent();
+    }
+  }
+
+  /// 加载桌面端 HTML 内容
+  Future<void> _loadDesktopContent() async {
+    if (_isLoadingDesktopContent) return;
+    _isLoadingDesktopContent = true;
+    
+    try {
+      final content = await EpubWebViewContentLoader().getInlineHtmlContent();
+      if (mounted) {
+        setState(() {
+          _desktopHtmlContent = content;
+        });
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('Failed to load desktop HTML content: $e');
+      }
+    }
   }
 
   /// Block or unblock gestures using CSS touch-action when selection is active
@@ -539,6 +567,16 @@ class _EpubViewerState extends State<EpubViewer> {
 
   @override
   Widget build(BuildContext context) {
+    // 桌面端需要等待 HTML 内容加载完成
+    if (EpubWebViewContentLoader.needsInlineHtml && _desktopHtmlContent == null) {
+      return Container(
+        decoration: widget.displaySettings?.theme?.backgroundDecoration,
+        child: const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
     return Container(
       decoration: widget.displaySettings?.theme?.backgroundDecoration,
       child: InAppWebView(
@@ -546,7 +584,15 @@ class _EpubViewerState extends State<EpubViewer> {
             ? ContextMenu(menuItems: [], settings: ContextMenuSettings(hideDefaultSystemContextMenuItems: true))
             : widget.selectionContextMenu,
         key: webViewKey,
-        initialFile: 'packages/flutter_epub_viewer/lib/assets/webpage/html/swipe.html',
+        // 桌面端使用内联 HTML，移动端使用 initialFile
+        initialFile: EpubWebViewContentLoader.needsInlineHtml ? null : EpubWebViewContentLoader.initialFilePath,
+        initialData: EpubWebViewContentLoader.needsInlineHtml && _desktopHtmlContent != null
+            ? InAppWebViewInitialData(
+                data: _desktopHtmlContent!,
+                mimeType: 'text/html',
+                encoding: 'utf-8',
+              )
+            : null,
         initialSettings: settings..disableVerticalScroll = widget.displaySettings?.snap ?? false,
         onWebViewCreated: (controller) async {
           webViewController = controller;

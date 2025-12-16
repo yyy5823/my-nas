@@ -22,10 +22,42 @@ import 'package:my_nas/shared/widgets/loading_widget.dart';
 import 'package:my_nas/shared/widgets/reader_settings_sheet.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+/// EPUB 阅读器参数（包含原始书籍路径用于进度追踪）
+class EpubReaderParams {
+  const EpubReaderParams({
+    required this.book,
+    this.originalBookPath,
+    this.originalSourceId,
+  });
+
+  final BookItem book;
+  /// 原始书籍路径（用于 MOBI/AZW3 转换后保持进度关联）
+  final String? originalBookPath;
+  /// 原始 sourceId（用于 MOBI/AZW3 转换后保持进度关联）
+  final String? originalSourceId;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is EpubReaderParams &&
+          runtimeType == other.runtimeType &&
+          book.id == other.book.id &&
+          book.path == other.book.path &&
+          originalBookPath == other.originalBookPath &&
+          originalSourceId == other.originalSourceId;
+
+  @override
+  int get hashCode =>
+      book.id.hashCode ^
+      book.path.hashCode ^
+      originalBookPath.hashCode ^
+      originalSourceId.hashCode;
+}
+
 /// EPUB 阅读器状态
 final epubReaderProvider =
-    StateNotifierProvider.family<EpubReaderNotifier, EpubReaderState, BookItem>(
-      (ref, book) => EpubReaderNotifier(book, ref),
+    StateNotifierProvider.family<EpubReaderNotifier, EpubReaderState, EpubReaderParams>(
+      (ref, params) => EpubReaderNotifier(params, ref),
     );
 
 sealed class EpubReaderState {}
@@ -65,14 +97,23 @@ class EpubReaderError extends EpubReaderState {
 }
 
 class EpubReaderNotifier extends StateNotifier<EpubReaderState> {
-  EpubReaderNotifier(this.book, this._ref) : super(EpubReaderLoading()) {
+  EpubReaderNotifier(this._params, this._ref) : super(EpubReaderLoading()) {
     _loadEpub();
   }
 
-  final BookItem book;
+  final EpubReaderParams _params;
   final Ref _ref;
   final ReadingProgressService _progressService = ReadingProgressService();
   final BookFileCacheService _cacheService = BookFileCacheService();
+
+  /// 获取当前书籍
+  BookItem get book => _params.book;
+
+  /// 获取用于进度追踪的路径（优先使用原始路径）
+  String get _progressPath => _params.originalBookPath ?? book.path;
+
+  /// 获取用于进度追踪的 sourceId（优先使用原始 sourceId）
+  String get _progressSourceId => _params.originalSourceId ?? book.sourceId ?? 'local';
 
   /// 获取文件系统（如果有 sourceId）
   NasFileSystem? _getFileSystem() {
@@ -165,8 +206,9 @@ class EpubReaderNotifier extends StateNotifier<EpubReaderState> {
       }
 
       // 恢复阅读进度（使用 CFI）
+      // 注意：使用原始路径生成 itemId 以保持 MOBI/AZW3 转换后的进度关联
       await _progressService.init();
-      final itemId = _progressService.generateItemId(book.id, book.path);
+      final itemId = _progressService.generateItemId(_progressSourceId, _progressPath);
       final progress = _progressService.getProgress(itemId);
       final initialCfi = progress?.cfi;
 
@@ -191,8 +233,9 @@ class EpubReaderNotifier extends StateNotifier<EpubReaderState> {
   }
 
   /// 保存阅读进度（使用 CFI）
+  /// 注意：使用原始路径生成 itemId 以保持 MOBI/AZW3 转换后的进度关联
   Future<void> saveProgress(EpubLocation location) async {
-    final itemId = _progressService.generateItemId(book.id, book.path);
+    final itemId = _progressService.generateItemId(_progressSourceId, _progressPath);
     await _progressService.saveProgress(
       ReadingProgress(
         itemId: itemId,
@@ -207,9 +250,20 @@ class EpubReaderNotifier extends StateNotifier<EpubReaderState> {
 }
 
 class EpubReaderPage extends ConsumerStatefulWidget {
-  const EpubReaderPage({required this.book, super.key});
+  const EpubReaderPage({
+    required this.book,
+    this.originalBookPath,
+    this.originalSourceId,
+    super.key,
+  });
 
   final BookItem book;
+
+  /// 原始书籍路径（用于 MOBI/AZW3 转换后保持进度关联）
+  final String? originalBookPath;
+
+  /// 原始 sourceId（用于 MOBI/AZW3 转换后保持进度关联）
+  final String? originalSourceId;
 
   @override
   ConsumerState<EpubReaderPage> createState() => _EpubReaderPageState();
@@ -224,6 +278,14 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
   String _currentChapterTitle = '';
   bool _isEpubReady = false; // 标记 EPUB 是否已完全加载
 
+  /// 阅读器参数（包含原始书籍路径用于进度追踪）
+  /// 使用 late final 避免每次 build 重建
+  late final EpubReaderParams _readerParams = EpubReaderParams(
+    book: widget.book,
+    originalBookPath: widget.originalBookPath,
+    originalSourceId: widget.originalSourceId,
+  );
+
   // 触摸检测：区分点击和滑动
   Offset? _touchDownPosition;
   // 点击阈值：屏幕宽度的 5%（规范化坐标 0-1）
@@ -235,6 +297,11 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
   BatteryState _batteryState = BatteryState.unknown;
   String _currentTime = '';
   Timer? _timeTimer;
+
+  // 进度保存防抖
+  Timer? _saveProgressTimer;
+  EpubLocation? _pendingLocation;
+  static const _saveProgressDebounce = Duration(milliseconds: 800);
 
   @override
   void initState() {
@@ -286,10 +353,32 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
 
   @override
   void dispose() {
+    // 页面关闭时立即保存待保存的进度
+    _saveProgressTimer?.cancel();
+    if (_pendingLocation != null) {
+      _saveProgressImmediately(_pendingLocation!);
+    }
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     WakelockPlus.disable();
     _timeTimer?.cancel();
     super.dispose();
+  }
+
+  /// 防抖保存进度（800ms 内的多次变化只保存最后一次）
+  void _saveProgressDebounced(EpubLocation location) {
+    _pendingLocation = location;
+    _saveProgressTimer?.cancel();
+    _saveProgressTimer = Timer(_saveProgressDebounce, () {
+      if (_pendingLocation != null) {
+        _saveProgressImmediately(_pendingLocation!);
+        _pendingLocation = null;
+      }
+    });
+  }
+
+  /// 立即保存进度
+  void _saveProgressImmediately(EpubLocation location) {
+    ref.read(epubReaderProvider(_readerParams).notifier).saveProgress(location);
   }
 
   void _toggleControls() {
@@ -584,7 +673,7 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
 
   @override
   Widget build(BuildContext context) {
-    final state = ref.watch(epubReaderProvider(widget.book));
+    final state = ref.watch(epubReaderProvider(_readerParams));
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -662,7 +751,7 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
                   _chapters = chapters;
                 });
                 ref
-                    .read(epubReaderProvider(widget.book).notifier)
+                    .read(epubReaderProvider(_readerParams).notifier)
                     .updateChapters(chapters);
               },
               onEpubLoaded: () {
@@ -677,10 +766,8 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
                   // 更新当前章节标题
                   _updateCurrentChapter(location);
                 });
-                // 保存阅读进度
-                ref
-                    .read(epubReaderProvider(widget.book).notifier)
-                    .saveProgress(location);
+                // 保存阅读进度（防抖）
+                _saveProgressDebounced(location);
               },
               // 使用原生触摸事件处理，区分点击和滑动
               onTouchDown: (x, y) {
@@ -1099,7 +1186,7 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
               title: const Text('刷新内容', style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.pop(context);
-                ref.invalidate(epubReaderProvider(widget.book));
+                ref.invalidate(epubReaderProvider(_readerParams));
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('正在重新加载...'),

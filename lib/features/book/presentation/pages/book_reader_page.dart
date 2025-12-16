@@ -753,6 +753,10 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
               url: 'file://$epubPath',
               sourceId: null, // 关键：本地文件不需要 sourceId
             ),
+            // 传递原始书籍路径用于进度追踪
+            // 这样 MOBI/AZW3 转换后仍能恢复之前的阅读进度
+            originalBookPath: widget.book.path,
+            originalSourceId: widget.book.sourceId,
           ),
         ),
       );
