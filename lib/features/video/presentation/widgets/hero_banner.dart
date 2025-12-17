@@ -431,6 +431,7 @@ class _HeroBannerItem extends StatelessWidget {
         path: imageUrl,
         fileSystem: fileSystem,
         fit: BoxFit.cover,
+        alignment: Alignment.topCenter, // 顶部对齐，优先显示图片上半部分
         placeholder: _buildPlaceholder(),
         errorWidget: _buildPlaceholder(),
       );
@@ -441,6 +442,7 @@ class _HeroBannerItem extends StatelessWidget {
       return CachedNetworkImage(
         imageUrl: imageUrl,
         fit: BoxFit.cover,
+        alignment: Alignment.topCenter, // 顶部对齐，优先显示图片上半部分
         placeholder: (_, _) => _buildPlaceholder(),
         errorWidget: (_, _, _) => _buildPlaceholder(),
       );
@@ -711,6 +713,7 @@ class _CompactBannerCard extends StatelessWidget {
         path: imageUrl,
         fileSystem: fileSystem,
         fit: BoxFit.cover,
+        alignment: Alignment.topCenter, // 顶部对齐，优先显示图片上半部分
         placeholder: _buildPlaceholder(),
         errorWidget: _buildPlaceholder(),
       );
@@ -720,6 +723,7 @@ class _CompactBannerCard extends StatelessWidget {
       return CachedNetworkImage(
         imageUrl: imageUrl,
         fit: BoxFit.cover,
+        alignment: Alignment.topCenter, // 顶部对齐，优先显示图片上半部分
       );
     }
 

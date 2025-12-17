@@ -96,17 +96,42 @@ class VideoCategorySettingsService {
     await _saveSettings();
   }
 
-  /// 添加类型分类
-  Future<void> addGenre(String genre) async {
+  /// 添加动态分类
+  Future<void> addDynamicCategory(
+    VideoHomeCategory category,
+    String filter,
+  ) async {
     await init();
-    _currentSettings = settings.addGenre(genre);
+    _currentSettings = settings.addDynamicCategory(category, filter);
     await _saveSettings();
   }
 
-  /// 移除类型分类
-  Future<void> removeGenre(String genre) async {
+  /// 移除动态分类
+  Future<void> removeDynamicCategory(
+    VideoHomeCategory category,
+    String filter,
+  ) async {
     await init();
-    _currentSettings = settings.removeGenre(genre);
+    _currentSettings = settings.removeDynamicCategory(category, filter);
+    await _saveSettings();
+  }
+
+  /// 批量添加动态分类
+  Future<void> addDynamicCategories(
+    VideoHomeCategory category,
+    List<String> filters,
+  ) async {
+    await init();
+    _currentSettings = settings.addDynamicCategories(category, filters);
+    await _saveSettings();
+  }
+
+  /// 批量移除某类型的所有动态分类
+  Future<void> removeAllDynamicCategoriesOfType(
+    VideoHomeCategory category,
+  ) async {
+    await init();
+    _currentSettings = settings.removeAllDynamicCategoriesOfType(category);
     await _saveSettings();
   }
 

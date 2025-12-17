@@ -30,6 +30,7 @@ import 'package:my_nas/features/video/presentation/pages/video_player_page.dart'
 import 'package:my_nas/features/video/presentation/providers/video_category_settings_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/video_history_provider.dart';
 import 'package:my_nas/features/video/presentation/widgets/hero_banner.dart';
+import 'package:my_nas/features/video/presentation/widgets/category_browse_cards.dart';
 import 'package:my_nas/features/video/presentation/widgets/video_category_settings_sheet.dart';
 import 'package:my_nas/features/video/presentation/widgets/video_poster.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
@@ -2220,15 +2221,123 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
           ),
         ];
 
-      case VideoHomeCategory.byGenre:
-        // 类型分类 - 根据 genreFilter 加载对应类型的视频
-        if (section.genreFilter == null) return [];
+      case VideoHomeCategory.byMovieGenre:
+        // 电影类型分类
+        if (section.filter == null) return [];
         return [
-          _GenreCategorySection(
-            genre: section.genreFilter!,
+          _DynamicCategorySection(
+            category: section.category,
+            filter: section.filter!,
             isDark: isDark,
             onItemTap: (m) => _openVideoDetail(context, ref, m),
             onItemContextMenu: (m) => _showVideoContextMenu(context, ref, m),
+          ),
+        ];
+
+      case VideoHomeCategory.byMovieRegion:
+        // 电影地区分类
+        if (section.filter == null) return [];
+        return [
+          _DynamicCategorySection(
+            category: section.category,
+            filter: section.filter!,
+            isDark: isDark,
+            onItemTap: (m) => _openVideoDetail(context, ref, m),
+            onItemContextMenu: (m) => _showVideoContextMenu(context, ref, m),
+          ),
+        ];
+
+      case VideoHomeCategory.byTvGenre:
+        // 电视剧类型分类
+        if (section.filter == null) return [];
+        return [
+          _DynamicCategorySection(
+            category: section.category,
+            filter: section.filter!,
+            isDark: isDark,
+            onItemTap: (m) => _openVideoDetail(context, ref, m),
+            onItemContextMenu: (m) => _showVideoContextMenu(context, ref, m),
+          ),
+        ];
+
+      case VideoHomeCategory.byTvRegion:
+        // 电视剧地区分类
+        if (section.filter == null) return [];
+        return [
+          _DynamicCategorySection(
+            category: section.category,
+            filter: section.filter!,
+            isDark: isDark,
+            onItemTap: (m) => _openVideoDetail(context, ref, m),
+            onItemContextMenu: (m) => _showVideoContextMenu(context, ref, m),
+          ),
+        ];
+
+      case VideoHomeCategory.browseMovieGenres:
+        // 浏览电影类型（卡片式）
+        return [
+          SliverToBoxAdapter(
+            child: CategoryBrowseCardsRow(
+              category: section.category,
+              isDark: isDark,
+              onCategoryTap: (filter) => _showFilteredVideosPage(
+                context,
+                ref,
+                VideoHomeCategory.byMovieGenre,
+                filter,
+              ),
+            ),
+          ),
+        ];
+
+      case VideoHomeCategory.browseMovieRegions:
+        // 浏览电影地区（卡片式）
+        return [
+          SliverToBoxAdapter(
+            child: CategoryBrowseCardsRow(
+              category: section.category,
+              isDark: isDark,
+              onCategoryTap: (filter) => _showFilteredVideosPage(
+                context,
+                ref,
+                VideoHomeCategory.byMovieRegion,
+                filter,
+              ),
+            ),
+          ),
+        ];
+
+      case VideoHomeCategory.browseTvGenres:
+        // 浏览电视剧类型（卡片式）
+        return [
+          SliverToBoxAdapter(
+            child: CategoryBrowseCardsRow(
+              category: section.category,
+              isDark: isDark,
+              onCategoryTap: (filter) => _showFilteredVideosPage(
+                context,
+                ref,
+                VideoHomeCategory.byTvGenre,
+                filter,
+              ),
+            ),
+          ),
+        ];
+
+      case VideoHomeCategory.browseTvRegions:
+        // 浏览电视剧地区（卡片式）
+        return [
+          SliverToBoxAdapter(
+            child: CategoryBrowseCardsRow(
+              category: section.category,
+              isDark: isDark,
+              onCategoryTap: (filter) => _showFilteredVideosPage(
+                context,
+                ref,
+                VideoHomeCategory.byTvRegion,
+                filter,
+              ),
+            ),
           ),
         ];
     }
@@ -2280,6 +2389,24 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
       MaterialPageRoute<void>(
         builder: (context) => _OthersPaginatedPage(
           title: title,
+        ),
+      ),
+    );
+  }
+
+  /// 显示筛选视频页面（用于动态分类卡片点击）
+  void _showFilteredVideosPage(
+    BuildContext context,
+    WidgetRef ref,
+    VideoHomeCategory category,
+    String filter,
+  ) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => _FilteredVideosPaginatedPage(
+          category: category,
+          filter: filter,
+          onVideoTap: (video) => _openVideoDetail(context, ref, video),
         ),
       ),
     );
@@ -7298,25 +7425,27 @@ class _UnwatchedSectionState extends State<_UnwatchedSection> {
   }
 }
 
-/// 类型分类区块（异步加载）
-class _GenreCategorySection extends StatefulWidget {
-  const _GenreCategorySection({
-    required this.genre,
+/// 动态分类区块（支持电影类型、电影地区、电视剧类型、电视剧地区）
+class _DynamicCategorySection extends StatefulWidget {
+  const _DynamicCategorySection({
+    required this.category,
+    required this.filter,
     required this.isDark,
     required this.onItemTap,
     required this.onItemContextMenu,
   });
 
-  final String genre;
+  final VideoHomeCategory category;
+  final String filter;
   final bool isDark;
   final void Function(VideoMetadata) onItemTap;
   final void Function(VideoMetadata) onItemContextMenu;
 
   @override
-  State<_GenreCategorySection> createState() => _GenreCategorySectionState();
+  State<_DynamicCategorySection> createState() => _DynamicCategorySectionState();
 }
 
-class _GenreCategorySectionState extends State<_GenreCategorySection> {
+class _DynamicCategorySectionState extends State<_DynamicCategorySection> {
   List<VideoMetadata>? _videos;
   bool _loading = true;
 
@@ -7330,7 +7459,21 @@ class _GenreCategorySectionState extends State<_GenreCategorySection> {
     try {
       final db = VideoDatabaseService();
       await db.init();
-      final videos = await db.getByGenreCombined(widget.genre, limit: 20);
+
+      List<VideoMetadata> videos;
+
+      switch (widget.category) {
+        case VideoHomeCategory.byMovieGenre:
+          videos = await db.getMoviesByGenre(widget.filter, limit: 20);
+        case VideoHomeCategory.byMovieRegion:
+          videos = await db.getMoviesByCountry(widget.filter, limit: 20);
+        case VideoHomeCategory.byTvGenre:
+          videos = await db.getTvShowsByGenre(widget.filter, limit: 20);
+        case VideoHomeCategory.byTvRegion:
+          videos = await db.getTvShowsByCountry(widget.filter, limit: 20);
+        default:
+          videos = [];
+      }
 
       if (mounted) {
         setState(() {
@@ -7339,7 +7482,7 @@ class _GenreCategorySectionState extends State<_GenreCategorySection> {
         });
       }
     } on Exception catch (e) {
-      logger.w('_GenreCategorySection: 加载类型视频失败', e);
+      logger.w('_DynamicCategorySection: 加载${widget.category.displayName}视频失败', e);
       if (mounted) {
         setState(() {
           _videos = [];
@@ -7361,14 +7504,212 @@ class _GenreCategorySectionState extends State<_GenreCategorySection> {
 
     return SliverToBoxAdapter(
       child: _CategoryRow(
-        title: widget.genre,
+        title: widget.filter,
         items: _videos!,
         onItemTap: widget.onItemTap,
         onItemContextMenu: widget.onItemContextMenu,
         isDark: widget.isDark,
-        icon: Icons.category_rounded,
-        iconColor: Colors.indigo,
+        icon: _getIcon(),
+        iconColor: _getIconColor(),
       ),
+    );
+  }
+
+  IconData _getIcon() {
+    switch (widget.category) {
+      case VideoHomeCategory.byMovieGenre:
+        return Icons.category_rounded;
+      case VideoHomeCategory.byMovieRegion:
+        return Icons.public_rounded;
+      case VideoHomeCategory.byTvGenre:
+        return Icons.category_rounded;
+      case VideoHomeCategory.byTvRegion:
+        return Icons.language_rounded;
+      default:
+        return Icons.category_rounded;
+    }
+  }
+
+  Color _getIconColor() {
+    switch (widget.category) {
+      case VideoHomeCategory.byMovieGenre:
+        return Colors.blue;
+      case VideoHomeCategory.byMovieRegion:
+        return Colors.green;
+      case VideoHomeCategory.byTvGenre:
+        return Colors.orange;
+      case VideoHomeCategory.byTvRegion:
+        return Colors.purple;
+      default:
+        return Colors.indigo;
+    }
+  }
+}
+
+/// 筛选视频分页页面（用于动态分类卡片点击后的全部视频展示）
+class _FilteredVideosPaginatedPage extends StatefulWidget {
+  const _FilteredVideosPaginatedPage({
+    required this.category,
+    required this.filter,
+    required this.onVideoTap,
+  });
+
+  final VideoHomeCategory category;
+  final String filter;
+  final void Function(VideoMetadata) onVideoTap;
+
+  @override
+  State<_FilteredVideosPaginatedPage> createState() =>
+      _FilteredVideosPaginatedPageState();
+}
+
+class _FilteredVideosPaginatedPageState
+    extends State<_FilteredVideosPaginatedPage> {
+  final List<VideoMetadata> _videos = [];
+  final ScrollController _scrollController = ScrollController();
+  bool _isLoading = false;
+  bool _hasMore = true;
+  int _offset = 0;
+  static const int _pageSize = 50;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMore();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      _loadMore();
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_isLoading || !_hasMore || !mounted) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final db = VideoDatabaseService();
+      await db.init();
+
+      List<VideoMetadata> newVideos;
+
+      switch (widget.category) {
+        case VideoHomeCategory.byMovieGenre:
+          newVideos = await db.getMoviesByGenre(
+            widget.filter,
+            limit: _pageSize,
+            offset: _offset,
+          );
+        case VideoHomeCategory.byMovieRegion:
+          newVideos = await db.getMoviesByCountry(
+            widget.filter,
+            limit: _pageSize,
+            offset: _offset,
+          );
+        case VideoHomeCategory.byTvGenre:
+          newVideos = await db.getTvShowsByGenre(
+            widget.filter,
+            limit: _pageSize,
+            offset: _offset,
+          );
+        case VideoHomeCategory.byTvRegion:
+          newVideos = await db.getTvShowsByCountry(
+            widget.filter,
+            limit: _pageSize,
+            offset: _offset,
+          );
+        default:
+          newVideos = [];
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        _videos.addAll(newVideos);
+        _offset += newVideos.length;
+        _hasMore = newVideos.length >= _pageSize;
+        _isLoading = false;
+      });
+    } on Exception catch (e) {
+      logger.e('_FilteredVideosPaginatedPage: 加载更多失败', e);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.filter),
+        centerTitle: false,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+      ),
+      body: _videos.isEmpty && _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _videos.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.movie_outlined,
+                        size: 64,
+                        color: isDark ? Colors.grey[600] : Colors.grey[400],
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        '暂无视频',
+                        style: TextStyle(
+                          color: isDark ? Colors.grey[400] : Colors.grey[600],
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              : GridView.builder(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.all(12),
+                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: 150,
+                    childAspectRatio: 0.6,
+                    crossAxisSpacing: 10,
+                    mainAxisSpacing: 12,
+                  ),
+                  itemCount: _videos.length + (_hasMore ? 1 : 0),
+                  itemBuilder: (context, index) {
+                    if (index >= _videos.length) {
+                      return const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(16),
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      );
+                    }
+
+                    final video = _videos[index];
+                    return _VerticalPosterCard(
+                      metadata: video,
+                      isDark: isDark,
+                      onTap: () => widget.onVideoTap(video),
+                    );
+                  },
+                ),
     );
   }
 }

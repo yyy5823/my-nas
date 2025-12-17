@@ -97,6 +97,7 @@ class VideoDatabaseService {
   static const String _colRating = 'rating';
   static const String _colRuntime = 'runtime';
   static const String _colGenres = 'genres';
+  static const String _colCountries = 'countries';
   static const String _colDirector = 'director';
   static const String _colCast = 'cast_members';
   static const String _colSeasonNumber = 'season_number';
@@ -185,7 +186,7 @@ class VideoDatabaseService {
 
       _db = await openDatabase(
         dbPath,
-        version: 13, // 升级版本以添加多语言元数据字段
+        version: 14, // 升级版本以添加 countries 字段
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onConfigure: _onConfigure,
@@ -240,6 +241,7 @@ class VideoDatabaseService {
         $_colRating REAL,
         $_colRuntime INTEGER,
         $_colGenres TEXT,
+        $_colCountries TEXT,
         $_colDirector TEXT,
         $_colCast TEXT,
         $_colSeasonNumber INTEGER,
@@ -799,6 +801,15 @@ class VideoDatabaseService {
           'ALTER TABLE $_tableMetadata ADD COLUMN $_colLocalizedOverviews TEXT');
 
       logger.i('VideoDatabaseService: 版本12->13 升级完成（添加多语言元数据字段）');
+    }
+
+    // 从版本13升级到版本14
+    if (oldVersion < 14) {
+      // 添加国家/地区字段
+      await db.execute(
+          'ALTER TABLE $_tableMetadata ADD COLUMN $_colCountries TEXT');
+
+      logger.i('VideoDatabaseService: 版本13->14 升级完成（添加国家/地区字段）');
     }
   }
 
@@ -1680,6 +1691,152 @@ class VideoDatabaseService {
     return sortedGenres;
   }
 
+  /// 获取所有存在的国家/地区（去重）
+  ///
+  /// 返回数据库中所有视频的国家/地区列表
+  Future<List<String>> getAllCountries() async {
+    if (!_initialized) await init();
+
+    final results = await _db!.query(
+      _tableMetadata,
+      columns: [_colCountries],
+      where: '$_colCountries IS NOT NULL AND $_colCountries != ?',
+      whereArgs: [''],
+      distinct: true,
+    );
+
+    // 收集所有国家并去重
+    final countrySet = <String>{};
+    for (final row in results) {
+      final countriesStr = row[_colCountries] as String?;
+      if (countriesStr != null && countriesStr.isNotEmpty) {
+        final countries = countriesStr.split(',').map((c) => c.trim());
+        countrySet.addAll(countries.where((c) => c.isNotEmpty));
+      }
+    }
+
+    // 按字母排序
+    final sortedCountries = countrySet.toList()..sort();
+    return sortedCountries;
+  }
+
+  /// 获取可用的国家/地区列表（按分类筛选）
+  Future<List<String>> getAvailableCountries({MediaCategory? category}) async {
+    if (!_initialized) await init();
+
+    var sql = '''
+      SELECT DISTINCT $_colCountries FROM $_tableMetadata
+      WHERE $_colCountries IS NOT NULL AND $_colCountries != ''
+    ''';
+    final args = <Object>[];
+
+    if (category != null) {
+      sql += ' AND $_colCategory = ?';
+      args.add(category.index);
+    }
+
+    final results = await _db!.rawQuery(sql, args);
+
+    // 解析所有国家并去重
+    final countrySet = <String>{};
+    for (final row in results) {
+      final countries = row[_colCountries] as String?;
+      if (countries != null && countries.isNotEmpty) {
+        countrySet.addAll(countries.split(',').map((c) => c.trim()));
+      }
+    }
+
+    final sortedCountries = countrySet.toList()..sort();
+    return sortedCountries;
+  }
+
+  /// 根据国家/地区获取电影
+  Future<List<VideoMetadata>> getMoviesByCountry(
+    String country, {
+    int limit = 30,
+    int offset = 0,
+    List<({String sourceId, String path})>? enabledPaths,
+  }) async {
+    if (!_initialized) await init();
+
+    final pathFilter = _buildPathFilter(enabledPaths);
+
+    var where = '$_colCategory = 0 AND $_colCountries LIKE ?';
+    final whereArgs = <Object>['%$country%'];
+
+    if (pathFilter.andWhere.isNotEmpty) {
+      where += pathFilter.andWhere;
+      whereArgs.addAll(pathFilter.args);
+    }
+
+    final results = await _db!.query(
+      _tableMetadata,
+      where: where,
+      whereArgs: whereArgs,
+      orderBy: '$_colRating DESC NULLS LAST',
+      limit: limit,
+      offset: offset,
+    );
+
+    return results.map(_fromRow).toList();
+  }
+
+  /// 根据国家/地区获取电视剧（每部剧只返回一条记录）
+  Future<List<VideoMetadata>> getTvShowsByCountry(
+    String country, {
+    int limit = 30,
+    int offset = 0,
+    List<({String sourceId, String path})>? enabledPaths,
+  }) async {
+    if (!_initialized) await init();
+
+    final pathFilter = _buildPathFilter(enabledPaths);
+
+    // 使用子查询获取每个剧集的代表性记录
+    final sql = '''
+      SELECT * FROM $_tableMetadata m1
+      WHERE $_colCategory = 1 AND $_colCountries LIKE ?${pathFilter.andWhere}
+        AND m1.rowid = (
+          SELECT m2.rowid FROM $_tableMetadata m2
+          WHERE m2.$_colCategory = 1 AND m2.$_colCountries LIKE ?${pathFilter.andWhere}
+            AND (
+              (m1.$_colTmdbId IS NOT NULL AND m2.$_colTmdbId = m1.$_colTmdbId)
+              OR (m1.$_colTmdbId IS NULL AND m2.$_colTmdbId IS NULL AND LOWER(m2.$_colTitle) = LOWER(m1.$_colTitle))
+            )
+          ORDER BY m2.$_colRating DESC NULLS LAST, m2.$_colSeasonNumber ASC, m2.$_colEpisodeNumber ASC
+          LIMIT 1
+        )
+      ORDER BY m1.$_colRating DESC NULLS LAST
+      LIMIT $limit OFFSET $offset
+    ''';
+
+    final args = ['%$country%', ...pathFilter.args, '%$country%', ...pathFilter.args];
+    final results = await _db!.rawQuery(sql, args);
+
+    return results.map(_fromRow).toList();
+  }
+
+  /// 根据国家/地区获取所有视频（电影+剧集）
+  Future<List<VideoMetadata>> getByCountryCombined(
+    String country, {
+    int limit = 30,
+    List<({String sourceId, String path})>? enabledPaths,
+  }) async {
+    final futures = await Future.wait([
+      getMoviesByCountry(country, limit: limit ~/ 2 + 5, enabledPaths: enabledPaths),
+      getTvShowsByCountry(country, limit: limit ~/ 2 + 5, enabledPaths: enabledPaths),
+    ]);
+
+    final movies = futures[0];
+    final tvShows = futures[1];
+
+    // 合并并按评分排序
+    final combined = [...movies, ...tvShows]
+      ..sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
+
+    return combined.take(limit).toList();
+  }
+
   /// 根据类型获取电影
   ///
   /// [genre] 类型名称（如：动作、科幻、喜剧）
@@ -1870,6 +2027,7 @@ class VideoDatabaseService {
         _colRating: m.rating,
         _colRuntime: m.runtime,
         _colGenres: m.genres,
+        _colCountries: m.countries,
         _colDirector: m.director,
         _colCast: m.cast,
         _colSeasonNumber: m.seasonNumber,
@@ -1931,6 +2089,7 @@ class VideoDatabaseService {
         rating: row[_colRating] as double?,
         runtime: row[_colRuntime] as int?,
         genres: row[_colGenres] as String?,
+        countries: row[_colCountries] as String?,
         director: row[_colDirector] as String?,
         cast: row[_colCast] as String?,
         seasonNumber: row[_colSeasonNumber] as int?,

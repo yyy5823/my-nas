@@ -46,6 +46,7 @@ class VideoMetadata {
     this.rating,
     this.runtime,
     this.genres,
+    this.countries,
     this.director,
     this.cast,
     this.seasonNumber,
@@ -84,6 +85,7 @@ class VideoMetadata {
       rating: (map['rating'] as num?)?.toDouble(),
       runtime: map['runtime'] as int?,
       genres: map['genres'] as String?,
+      countries: map['countries'] as String?,
       director: map['director'] as String?,
       cast: map['cast'] as String?,
       seasonNumber: map['seasonNumber'] as int?,
@@ -141,6 +143,7 @@ class VideoMetadata {
   double? rating;
   int? runtime;
   String? genres;
+  String? countries; // 国家/地区（逗号分隔）
   String? director;
   String? cast;
   int? seasonNumber;
@@ -328,6 +331,9 @@ class VideoMetadata {
   /// 类型列表
   List<String> get genreList => genres?.split(',').map((e) => e.trim()).toList() ?? [];
 
+  /// 国家/地区列表
+  List<String> get countryList => countries?.split(',').map((e) => e.trim()).toList() ?? [];
+
   /// 演员列表
   List<String> get castList => cast?.split(',').map((e) => e.trim()).toList() ?? [];
 
@@ -344,6 +350,7 @@ class VideoMetadata {
     rating = movie.voteAverage;
     runtime = movie.runtime;
     genres = movie.genresText;
+    countries = movie.countriesText;
     director = movie.director?.name;
     cast = movie.cast.take(5).map((c) => c.name).join(', ');
     // 保存电影系列信息
@@ -365,6 +372,7 @@ class VideoMetadata {
     rating = tv.voteAverage;
     runtime = tv.episodeRunTime.isNotEmpty ? tv.episodeRunTime.first : null;
     genres = tv.genresText;
+    countries = tv.countriesText;
     cast = tv.cast.take(5).map((c) => c.name).join(', ');
     seasonNumber = season;
     episodeNumber = episode;
@@ -407,6 +415,7 @@ class VideoMetadata {
       'rating': rating,
       'runtime': runtime,
       'genres': genres,
+      'countries': countries,
       'director': director,
       'cast': cast,
       'seasonNumber': seasonNumber,
@@ -445,6 +454,7 @@ class VideoMetadata {
     double? rating,
     int? runtime,
     String? genres,
+    String? countries,
     String? director,
     String? cast,
     int? seasonNumber,
@@ -480,6 +490,7 @@ class VideoMetadata {
       rating: rating ?? this.rating,
       runtime: runtime ?? this.runtime,
       genres: genres ?? this.genres,
+      countries: countries ?? this.countries,
       director: director ?? this.director,
       cast: cast ?? this.cast,
       seasonNumber: seasonNumber ?? this.seasonNumber,

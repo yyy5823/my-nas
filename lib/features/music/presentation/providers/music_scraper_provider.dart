@@ -49,7 +49,7 @@ class MusicScraperSourcesNotifier extends StateNotifier<MusicScraperSourcesState
       await _manager.init();
       final sources = await _manager.getSources();
       state = state.copyWith(sources: sources, isLoading: false);
-    } on Exception catch (e) {
+    } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
     }
   }
@@ -59,7 +59,7 @@ class MusicScraperSourcesNotifier extends StateNotifier<MusicScraperSourcesState
     try {
       await _manager.addSource(source);
       await load();
-    } on Exception catch (e) {
+    } catch (e) {
       state = state.copyWith(error: e.toString());
     }
   }
@@ -69,7 +69,7 @@ class MusicScraperSourcesNotifier extends StateNotifier<MusicScraperSourcesState
     try {
       await _manager.updateSource(source);
       await load();
-    } on Exception catch (e) {
+    } catch (e) {
       state = state.copyWith(error: e.toString());
     }
   }
@@ -79,7 +79,7 @@ class MusicScraperSourcesNotifier extends StateNotifier<MusicScraperSourcesState
     try {
       await _manager.removeSource(id);
       await load();
-    } on Exception catch (e) {
+    } catch (e) {
       state = state.copyWith(error: e.toString());
     }
   }
@@ -89,7 +89,7 @@ class MusicScraperSourcesNotifier extends StateNotifier<MusicScraperSourcesState
     try {
       await _manager.toggleSource(id, isEnabled: isEnabled);
       await load();
-    } on Exception catch (e) {
+    } catch (e) {
       state = state.copyWith(error: e.toString());
     }
   }
@@ -109,7 +109,7 @@ class MusicScraperSourcesNotifier extends StateNotifier<MusicScraperSourcesState
     // 保存到存储
     try {
       await _manager.reorderSources(sources.map((s) => s.id).toList());
-    } on Exception catch (e) {
+    } catch (e) {
       // 恢复原状态
       await load();
       state = state.copyWith(error: e.toString());

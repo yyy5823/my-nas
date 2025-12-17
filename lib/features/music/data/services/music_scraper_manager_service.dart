@@ -21,13 +21,13 @@ class MusicScraperManagerService {
   static const String _credentialPrefix = 'music_scraper_credential_';
 
   late final FlutterSecureStorage _secureStorage;
-  Box<Map<String, dynamic>>? _box;
+  Box<dynamic>? _box;
   final Map<String, MusicScraper> _scraperCache = {};
 
   /// 初始化
   Future<void> init() async {
     if (_box != null && _box!.isOpen) return;
-    _box = await Hive.openBox<Map<String, dynamic>>(_boxName);
+    _box = await Hive.openBox<dynamic>(_boxName);
   }
 
   /// 确保已初始化
@@ -46,7 +46,7 @@ class MusicScraperManagerService {
     final sources = <MusicScraperSourceEntity>[];
     for (final key in _box!.keys) {
       final data = _box!.get(key);
-      if (data != null) {
+      if (data != null && data is Map) {
         try {
           final source = MusicScraperSourceEntity.fromJson(
             Map<String, dynamic>.from(data),
@@ -77,7 +77,7 @@ class MusicScraperManagerService {
     await _ensureInit();
 
     final data = _box!.get(id);
-    if (data == null) return null;
+    if (data == null || data is! Map) return null;
 
     try {
       final source = MusicScraperSourceEntity.fromJson(

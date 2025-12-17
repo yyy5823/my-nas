@@ -3,11 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/video/data/services/video_database_service.dart';
 import 'package:my_nas/features/video/domain/entities/video_category_config.dart';
+import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
 import 'package:my_nas/features/video/presentation/providers/video_category_settings_provider.dart';
 
 /// 视频分类设置弹窗
 ///
-/// 允许用户调整分类显示顺序、切换可见性、添加/移除类型分类
+/// 允许用户调整分类显示顺序、切换可见性、添加/移除动态分类
 class VideoCategorySettingsSheet extends ConsumerStatefulWidget {
   const VideoCategorySettingsSheet({super.key});
 
@@ -26,9 +27,12 @@ class VideoCategorySettingsSheet extends ConsumerStatefulWidget {
 
 class _VideoCategorySettingsSheetState
     extends ConsumerState<VideoCategorySettingsSheet> {
-  bool _showGenrePicker = false;
-  List<String>? _availableGenres;
-  bool _loadingGenres = false;
+  /// 当前选择的动态分类类型（用于显示选择器）
+  VideoHomeCategory? _selectedDynamicCategory;
+
+  /// 可用的筛选项
+  List<String>? _availableFilters;
+  bool _loadingFilters = false;
 
   @override
   Widget build(BuildContext context) {
@@ -112,84 +116,253 @@ class _VideoCategorySettingsSheetState
                     onToggle: () => ref
                         .read(videoCategorySettingsProvider.notifier)
                         .toggleVisibility(section.uniqueKey),
-                    onRemoveGenre: section.category == VideoHomeCategory.byGenre
+                    onRemove: section.category.isDynamic
                         ? () => ref
                             .read(videoCategorySettingsProvider.notifier)
-                            .removeGenre(section.genreFilter!)
+                            .removeDynamicCategory(
+                              section.category,
+                              section.filter!,
+                            )
                         : null,
                   );
                 },
               ),
             ),
-            // 添加类型分类按钮
+            // 添加动态分类按钮
             const Divider(height: 1),
-            _buildAddGenreSection(isDark),
+            _buildAddDynamicCategorySection(isDark),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildAddGenreSection(bool isDark) {
-    if (_showGenrePicker) {
-      return _buildGenrePicker(isDark);
+  Widget _buildAddDynamicCategorySection(bool isDark) {
+    if (_selectedDynamicCategory != null) {
+      return _buildFilterPicker(isDark);
     }
 
-    return ListTile(
-      leading: Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: AppColors.primary.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(8),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  Icons.add_rounded,
+                  color: AppColors.primary,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  '添加动态分类',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-        child: Icon(
-          Icons.add_rounded,
-          color: AppColors.primary,
-          size: 20,
+        // 单项分类（需要选择具体项目）
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildCategoryTypeChip(
+                isDark,
+                VideoHomeCategory.byMovieGenre,
+                Icons.movie_rounded,
+                Colors.blue,
+              ),
+              _buildCategoryTypeChip(
+                isDark,
+                VideoHomeCategory.byMovieRegion,
+                Icons.public_rounded,
+                Colors.green,
+              ),
+              _buildCategoryTypeChip(
+                isDark,
+                VideoHomeCategory.byTvGenre,
+                Icons.live_tv_rounded,
+                Colors.orange,
+              ),
+              _buildCategoryTypeChip(
+                isDark,
+                VideoHomeCategory.byTvRegion,
+                Icons.language_rounded,
+                Colors.purple,
+              ),
+            ],
+          ),
         ),
-      ),
-      title: const Text('添加类型分类'),
-      subtitle: const Text('按电影/剧集类型添加分类'),
-      trailing: const Icon(Icons.chevron_right),
-      onTap: _loadGenresAndShowPicker,
+        // 浏览分类（卡片式入口）
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+          child: Row(
+            children: [
+              Text(
+                '分类入口',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isDark ? Colors.grey[500] : Colors.grey[600],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Divider(
+                  color: isDark ? Colors.grey[800] : Colors.grey[300],
+                ),
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildBrowseCategoryChip(
+                isDark,
+                VideoHomeCategory.browseMovieGenres,
+                Icons.category_rounded,
+                Colors.blue,
+              ),
+              _buildBrowseCategoryChip(
+                isDark,
+                VideoHomeCategory.browseMovieRegions,
+                Icons.public_rounded,
+                Colors.green,
+              ),
+              _buildBrowseCategoryChip(
+                isDark,
+                VideoHomeCategory.browseTvGenres,
+                Icons.category_rounded,
+                Colors.orange,
+              ),
+              _buildBrowseCategoryChip(
+                isDark,
+                VideoHomeCategory.browseTvRegions,
+                Icons.language_rounded,
+                Colors.purple,
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
-  Widget _buildGenrePicker(bool isDark) {
-    if (_loadingGenres) {
+  Widget _buildBrowseCategoryChip(
+    bool isDark,
+    VideoHomeCategory category,
+    IconData icon,
+    Color color,
+  ) {
+    final settings = ref.watch(videoCategorySettingsProvider);
+    final isAdded = settings.sections.any((s) => s.category == category);
+
+    return FilterChip(
+      avatar: Icon(icon, size: 18, color: isAdded ? Colors.white : color),
+      label: Text(category.displayName),
+      labelStyle: TextStyle(
+        color: isAdded ? Colors.white : (isDark ? Colors.white : Colors.black87),
+        fontSize: 13,
+      ),
+      selected: isAdded,
+      selectedColor: color,
+      backgroundColor: color.withValues(alpha: 0.1),
+      side: BorderSide(color: color.withValues(alpha: 0.3)),
+      checkmarkColor: Colors.white,
+      onSelected: (selected) {
+        if (selected) {
+          ref
+              .read(videoCategorySettingsProvider.notifier)
+              .addDynamicCategory(category, '');
+        } else {
+          ref
+              .read(videoCategorySettingsProvider.notifier)
+              .removeDynamicCategory(category, '');
+        }
+      },
+    );
+  }
+
+  Widget _buildCategoryTypeChip(
+    bool isDark,
+    VideoHomeCategory category,
+    IconData icon,
+    Color color,
+  ) {
+    return ActionChip(
+      avatar: Icon(icon, size: 18, color: color),
+      label: Text(category.displayName),
+      labelStyle: TextStyle(
+        color: isDark ? Colors.white : Colors.black87,
+        fontSize: 13,
+      ),
+      backgroundColor: color.withValues(alpha: 0.1),
+      side: BorderSide(color: color.withValues(alpha: 0.3)),
+      onPressed: () => _loadFiltersAndShowPicker(category),
+    );
+  }
+
+  Widget _buildFilterPicker(bool isDark) {
+    if (_loadingFilters) {
       return const Padding(
         padding: EdgeInsets.all(24),
         child: Center(child: CircularProgressIndicator()),
       );
     }
 
-    final genres = _availableGenres ?? [];
+    final filters = _availableFilters ?? [];
     final settings = ref.watch(videoCategorySettingsProvider);
-    final addedGenres =
-        settings.genreSections.map((s) => s.genreFilter).toSet();
+    final addedFilters =
+        settings.getFiltersForCategory(_selectedDynamicCategory!);
 
-    if (genres.isEmpty) {
+    if (filters.isEmpty) {
       return Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              Icons.category_outlined,
+              _selectedDynamicCategory!.isRegionCategory
+                  ? Icons.public_outlined
+                  : Icons.category_outlined,
               size: 48,
               color: isDark ? Colors.grey[600] : Colors.grey[400],
             ),
             const SizedBox(height: 12),
             Text(
-              '暂无可用类型',
+              _selectedDynamicCategory!.isRegionCategory
+                  ? '暂无可用地区'
+                  : '暂无可用类型',
               style: TextStyle(
                 color: isDark ? Colors.grey[400] : Colors.grey[600],
               ),
             ),
             const SizedBox(height: 8),
             TextButton(
-              onPressed: () => setState(() => _showGenrePicker = false),
+              onPressed: () => setState(() {
+                _selectedDynamicCategory = null;
+                _availableFilters = null;
+              }),
               child: const Text('返回'),
             ),
           ],
@@ -205,16 +378,21 @@ class _VideoCategorySettingsSheetState
           child: Row(
             children: [
               IconButton(
-                onPressed: () => setState(() => _showGenrePicker = false),
+                onPressed: () => setState(() {
+                  _selectedDynamicCategory = null;
+                  _availableFilters = null;
+                }),
                 icon: const Icon(Icons.arrow_back),
               ),
               const SizedBox(width: 8),
-              Text(
-                '选择类型',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: isDark ? Colors.white : Colors.black87,
+              Expanded(
+                child: Text(
+                  '选择${_selectedDynamicCategory!.displayName}',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
                 ),
               ),
             ],
@@ -227,20 +405,26 @@ class _VideoCategorySettingsSheetState
             child: Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: genres.map((genre) {
-                final isAdded = addedGenres.contains(genre);
+              children: filters.map((filter) {
+                final isAdded = addedFilters.contains(filter);
                 return FilterChip(
-                  label: Text(genre),
+                  label: Text(filter),
                   selected: isAdded,
                   onSelected: (selected) {
                     if (selected) {
                       ref
                           .read(videoCategorySettingsProvider.notifier)
-                          .addGenre(genre);
+                          .addDynamicCategory(
+                            _selectedDynamicCategory!,
+                            filter,
+                          );
                     } else {
                       ref
                           .read(videoCategorySettingsProvider.notifier)
-                          .removeGenre(genre);
+                          .removeDynamicCategory(
+                            _selectedDynamicCategory!,
+                            filter,
+                          );
                     }
                   },
                   selectedColor: AppColors.primary.withValues(alpha: 0.2),
@@ -255,27 +439,43 @@ class _VideoCategorySettingsSheetState
     );
   }
 
-  Future<void> _loadGenresAndShowPicker() async {
+  Future<void> _loadFiltersAndShowPicker(VideoHomeCategory category) async {
     setState(() {
-      _showGenrePicker = true;
-      _loadingGenres = true;
+      _selectedDynamicCategory = category;
+      _loadingFilters = true;
+      _availableFilters = null;
     });
 
     try {
       final db = VideoDatabaseService();
       await db.init();
-      final genres = await db.getAllGenres();
+
+      List<String> filters;
+
+      switch (category) {
+        case VideoHomeCategory.byMovieGenre:
+          filters = await db.getAvailableGenres(category: MediaCategory.movie);
+        case VideoHomeCategory.byMovieRegion:
+          filters = await db.getAvailableCountries(category: MediaCategory.movie);
+        case VideoHomeCategory.byTvGenre:
+          filters = await db.getAvailableGenres(category: MediaCategory.tvShow);
+        case VideoHomeCategory.byTvRegion:
+          filters = await db.getAvailableCountries(category: MediaCategory.tvShow);
+        default:
+          filters = [];
+      }
+
       if (mounted) {
         setState(() {
-          _availableGenres = genres;
-          _loadingGenres = false;
+          _availableFilters = filters;
+          _loadingFilters = false;
         });
       }
     } on Exception {
       if (mounted) {
         setState(() {
-          _availableGenres = [];
-          _loadingGenres = false;
+          _availableFilters = [];
+          _loadingFilters = false;
         });
       }
     }
@@ -289,17 +489,17 @@ class _CategoryTile extends StatelessWidget {
     required this.section,
     required this.isDark,
     required this.onToggle,
-    this.onRemoveGenre,
+    this.onRemove,
   });
 
   final VideoCategorySectionConfig section;
   final bool isDark;
   final VoidCallback onToggle;
-  final VoidCallback? onRemoveGenre;
+  final VoidCallback? onRemove;
 
   @override
   Widget build(BuildContext context) {
-    final isGenre = section.category == VideoHomeCategory.byGenre;
+    final isDynamic = section.category.isDynamic;
 
     return ColoredBox(
       color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
@@ -342,9 +542,9 @@ class _CategoryTile extends StatelessWidget {
                 : (isDark ? Colors.grey[600] : Colors.grey[400]),
           ),
         ),
-        subtitle: isGenre
+        subtitle: isDynamic && section.subtitle.isNotEmpty
             ? Text(
-                '类型分类',
+                section.subtitle,
                 style: TextStyle(
                   fontSize: 12,
                   color: isDark ? Colors.grey[600] : Colors.grey[500],
@@ -354,9 +554,9 @@ class _CategoryTile extends StatelessWidget {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (isGenre && onRemoveGenre != null)
+            if (isDynamic && onRemove != null)
               IconButton(
-                onPressed: onRemoveGenre,
+                onPressed: onRemove,
                 icon: Icon(
                   Icons.remove_circle_outline,
                   color: Colors.red[400],
@@ -400,8 +600,18 @@ class _CategoryTile extends StatelessWidget {
         return Icons.visibility_off_rounded;
       case VideoHomeCategory.others:
         return Icons.video_file_rounded;
-      case VideoHomeCategory.byGenre:
+      case VideoHomeCategory.byMovieGenre:
+      case VideoHomeCategory.browseMovieGenres:
         return Icons.category_rounded;
+      case VideoHomeCategory.byMovieRegion:
+      case VideoHomeCategory.browseMovieRegions:
+        return Icons.public_rounded;
+      case VideoHomeCategory.byTvGenre:
+      case VideoHomeCategory.browseTvGenres:
+        return Icons.category_rounded;
+      case VideoHomeCategory.byTvRegion:
+      case VideoHomeCategory.browseTvRegions:
+        return Icons.language_rounded;
     }
   }
 
@@ -425,8 +635,18 @@ class _CategoryTile extends StatelessWidget {
         return Colors.teal;
       case VideoHomeCategory.others:
         return Colors.grey;
-      case VideoHomeCategory.byGenre:
-        return Colors.indigo;
+      case VideoHomeCategory.byMovieGenre:
+      case VideoHomeCategory.browseMovieGenres:
+        return Colors.blue;
+      case VideoHomeCategory.byMovieRegion:
+      case VideoHomeCategory.browseMovieRegions:
+        return Colors.green;
+      case VideoHomeCategory.byTvGenre:
+      case VideoHomeCategory.browseTvGenres:
+        return Colors.orange;
+      case VideoHomeCategory.byTvRegion:
+      case VideoHomeCategory.browseTvRegions:
+        return Colors.purple;
     }
   }
 }

@@ -50,14 +50,35 @@ class VideoCategorySettingsNotifier extends StateNotifier<VideoCategorySettings>
     await _service.reorder(oldIndex, actualNewIndex);
   }
 
-  /// 添加类型分类
-  Future<void> addGenre(String genre) async {
-    await _service.addGenre(genre);
+  /// 添加动态分类
+  Future<void> addDynamicCategory(
+    VideoHomeCategory category,
+    String filter,
+  ) async {
+    await _service.addDynamicCategory(category, filter);
   }
 
-  /// 移除类型分类
-  Future<void> removeGenre(String genre) async {
-    await _service.removeGenre(genre);
+  /// 移除动态分类
+  Future<void> removeDynamicCategory(
+    VideoHomeCategory category,
+    String filter,
+  ) async {
+    await _service.removeDynamicCategory(category, filter);
+  }
+
+  /// 批量添加动态分类
+  Future<void> addDynamicCategories(
+    VideoHomeCategory category,
+    List<String> filters,
+  ) async {
+    await _service.addDynamicCategories(category, filters);
+  }
+
+  /// 批量移除某类型的所有动态分类
+  Future<void> removeAllDynamicCategoriesOfType(
+    VideoHomeCategory category,
+  ) async {
+    await _service.removeAllDynamicCategoriesOfType(category);
   }
 
   /// 重置为默认

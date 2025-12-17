@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/video/domain/entities/scraper_source.dart';
-import 'package:my_nas/features/video/presentation/pages/scraper_form_page.dart';
 import 'package:my_nas/features/video/presentation/providers/scraper_provider.dart';
 
-/// 刮削源管理页面
+/// 刮削源管理页面 - 简化版
+/// 所有刮削源类型直接显示，可展开配置，支持拖拽排序
 class ScraperSourcesPage extends ConsumerStatefulWidget {
   const ScraperSourcesPage({super.key});
 
@@ -13,32 +14,51 @@ class ScraperSourcesPage extends ConsumerStatefulWidget {
 }
 
 class _ScraperSourcesPageState extends ConsumerState<ScraperSourcesPage> {
-  bool _isReorderMode = false;
+  // 展开状态管理
+  final Set<ScraperType> _expandedTypes = {};
+
+  // 各类型的配置控制器
+  final Map<ScraperType, _ScraperConfig> _configs = {};
+
+  @override
+  void initState() {
+    super.initState();
+    // 初始化所有类型的配置控制器
+    for (final type in ScraperType.values) {
+      _configs[type] = _ScraperConfig();
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final config in _configs.values) {
+      config.dispose();
+    }
+    super.dispose();
+  }
+
+  /// 从现有数据加载配置到控制器
+  void _loadConfigFromSource(ScraperSourceEntity source) {
+    final config = _configs[source.type];
+    if (config == null) return;
+
+    config.apiKeyController.text = source.apiKey ?? '';
+    config.apiUrlController.text = source.apiUrl ?? '';
+    config.cookieController.text = source.cookie ?? '';
+  }
 
   @override
   Widget build(BuildContext context) {
     final sourcesAsync = ref.watch(scraperSourcesProvider);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
+      backgroundColor: isDark ? AppColors.darkBackground : Colors.grey[50],
       appBar: AppBar(
-        title: const Text('刮削源'),
-        actions: [
-          // 排序模式切换按钮
-          IconButton(
-            icon: Icon(_isReorderMode ? Icons.done : Icons.reorder),
-            onPressed: () {
-              setState(() {
-                _isReorderMode = !_isReorderMode;
-              });
-            },
-            tooltip: _isReorderMode ? '完成排序' : '调整顺序',
-          ),
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: () => _showAddScraperSheet(context),
-            tooltip: '添加刮削源',
-          ),
-        ],
+        title: const Text('视频刮削源'),
+        centerTitle: false,
+        backgroundColor: isDark ? AppColors.darkSurface : null,
       ),
       body: sourcesAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -57,145 +77,264 @@ class _ScraperSourcesPageState extends ConsumerState<ScraperSourcesPage> {
             ],
           ),
         ),
-        data: (sources) {
-          if (sources.isEmpty) {
-            return _buildEmptyState(context);
-          }
-
-          if (_isReorderMode) {
-            return _buildReorderableList(sources);
-          }
-
-          return _buildSourcesList(sources);
-        },
+        data: (sources) => _buildContent(sources, isDark),
       ),
     );
   }
 
-  Widget _buildEmptyState(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+  Widget _buildContent(List<ScraperSourceEntity> sources, bool isDark) {
+    // 创建一个包含所有类型的列表，已配置的优先
+    final configuredTypes = sources.map((s) => s.type).toSet();
+    final allTypes = [
+      ...ScraperType.values.where(configuredTypes.contains),
+      ...ScraperType.values.where((t) => !configuredTypes.contains(t)),
+    ];
 
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.video_library_outlined,
-            size: 64,
-            color: colorScheme.outline,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            '暂无刮削源',
-            style: theme.textTheme.titleMedium?.copyWith(
-              color: colorScheme.onSurfaceVariant,
+    // 按已配置的源的优先级排序
+    final sortedTypes = <ScraperType>[];
+    for (final source in sources) {
+      if (!sortedTypes.contains(source.type)) {
+        sortedTypes.add(source.type);
+      }
+    }
+    for (final type in allTypes) {
+      if (!sortedTypes.contains(type)) {
+        sortedTypes.add(type);
+      }
+    }
+
+    return Column(
+      children: [
+        // 顶部说明
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: isDark ? AppColors.darkSurfaceElevated : Colors.white,
+            border: Border(
+              bottom: BorderSide(
+                color: isDark ? Colors.grey[800]! : Colors.grey[200]!,
+              ),
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            '添加刮削源以获取影视元数据',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: colorScheme.outline,
+          child: Row(
+            children: [
+              Icon(
+                Icons.info_outline_rounded,
+                size: 20,
+                color: isDark ? Colors.grey[400] : Colors.grey[600],
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  '拖拽调整优先级，优先级高的刮削源将优先使用',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // 刮削源列表
+        Expanded(
+          child: ReorderableListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: sortedTypes.length,
+            onReorder: (oldIndex, newIndex) => _handleReorder(
+              sources,
+              sortedTypes,
+              oldIndex,
+              newIndex,
             ),
+            proxyDecorator: (child, index, animation) => Material(
+              elevation: 8,
+              borderRadius: BorderRadius.circular(16),
+              child: child,
+            ),
+            itemBuilder: (context, index) {
+              final type = sortedTypes[index];
+              final source = sources.where((s) => s.type == type).firstOrNull;
+              final isExpanded = _expandedTypes.contains(type);
+
+              // 如果有已配置的源，加载配置
+              if (source != null && !_expandedTypes.contains(type)) {
+                _loadConfigFromSource(source);
+              }
+
+              return _ScraperTypeCard(
+                key: ValueKey(type),
+                type: type,
+                source: source,
+                priorityNumber: index + 1,
+                isExpanded: isExpanded,
+                config: _configs[type]!,
+                onToggle: (enabled) => _handleToggle(type, source, enabled),
+                onExpandToggle: () => _toggleExpanded(type),
+                onSave: () => _saveConfig(type, source),
+                onTest: source != null ? () => _testConnection(source) : null,
+                isDark: Theme.of(context).brightness == Brightness.dark,
+              );
+            },
           ),
-          const SizedBox(height: 24),
-          FilledButton.icon(
-            onPressed: () => _showAddScraperSheet(context),
-            icon: const Icon(Icons.add),
-            label: const Text('添加刮削源'),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
-  Widget _buildSourcesList(List<ScraperSourceEntity> sources) => ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: sources.length,
-      itemBuilder: (context, index) {
-        final source = sources[index];
-        return _ScraperSourceCard(
-          source: source,
-          priorityNumber: index + 1,
-          onToggle: (enabled) => ref
-              .read(scraperSourcesProvider.notifier)
-              .toggleSource(source.id, enabled: enabled),
-          onEdit: () => _editSource(source),
-          onDelete: () => _confirmDelete(source),
-          onTest: () => _testConnection(source),
-        );
-      },
-    );
+  void _handleReorder(
+    List<ScraperSourceEntity> sources,
+    List<ScraperType> sortedTypes,
+    int oldIndex,
+    int newIndex,
+  ) {
+    var adjustedNewIndex = newIndex;
+    if (oldIndex < adjustedNewIndex) {
+      adjustedNewIndex -= 1;
+    }
 
-  Widget _buildReorderableList(List<ScraperSourceEntity> sources) => ReorderableListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: sources.length,
-      onReorder: (oldIndex, newIndex) {
-        ref.read(scraperSourcesProvider.notifier).reorderSources(oldIndex, newIndex);
-      },
-      itemBuilder: (context, index) {
-        final source = sources[index];
-        return _ScraperSourceReorderCard(
-          key: ValueKey(source.id),
-          source: source,
-          priorityNumber: index + 1,
-        );
-      },
-    );
+    // 获取要移动的类型
+    final type = sortedTypes[oldIndex];
 
-  void _showAddScraperSheet(BuildContext context) {
-    showModalBottomSheet<ScraperType>(
-      context: context,
-      builder: (context) => const _ScraperTypeSelectionSheet(),
-    ).then((type) {
-      if (type != null && mounted) {
-        Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => ScraperFormPage(type: type),
-          ),
-        );
+    // 找到对应的源
+    final sourceIndex = sources.indexWhere((s) => s.type == type);
+    if (sourceIndex == -1) return;
+
+    // 计算新的目标位置（在已配置的源中）
+    final targetType = sortedTypes[adjustedNewIndex];
+    final targetSourceIndex = sources.indexWhere((s) => s.type == targetType);
+    if (targetSourceIndex == -1) return;
+
+    ref.read(scraperSourcesProvider.notifier).reorderSources(sourceIndex, targetSourceIndex);
+  }
+
+  void _toggleExpanded(ScraperType type) {
+    setState(() {
+      if (_expandedTypes.contains(type)) {
+        _expandedTypes.remove(type);
+      } else {
+        _expandedTypes.add(type);
       }
     });
   }
 
-  void _editSource(ScraperSourceEntity source) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => ScraperFormPage(
-          type: source.type,
-          existingSource: source,
-        ),
-      ),
-    );
+  Future<void> _handleToggle(ScraperType type, ScraperSourceEntity? source, bool enabled) async {
+    if (source != null) {
+      // 已有配置，直接切换启用状态
+      await ref.read(scraperSourcesProvider.notifier).toggleSource(source.id, enabled: enabled);
+    } else if (enabled) {
+      // 没有配置，需要检查是否需要必填项
+      if (_needsConfiguration(type)) {
+        // 需要配置，展开卡片
+        setState(() {
+          _expandedTypes.add(type);
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('请先填写 ${type.displayName} 的配置信息'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      } else {
+        // 不需要配置，直接创建并启用
+        await _createAndEnableSource(type);
+      }
+    }
   }
 
-  Future<void> _confirmDelete(ScraperSourceEntity source) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('删除刮削源'),
-        content: Text('确定要删除「${source.displayName}」吗？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
-    );
+  bool _needsConfiguration(ScraperType type) =>
+      type.requiresApiKey || type.requiresApiUrl || type.requiresCookie;
 
-    if ((confirmed ?? false) && mounted) {
-      await ref.read(scraperSourcesProvider.notifier).removeSource(source.id);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已删除「${source.displayName}」')),
-        );
-      }
+  Future<void> _createAndEnableSource(ScraperType type) async {
+    final newSource = ScraperSourceEntity(
+      name: '',
+      type: type,
+      isEnabled: true,
+    );
+    await ref.read(scraperSourcesProvider.notifier).addSource(newSource);
+  }
+
+  Future<void> _saveConfig(ScraperType type, ScraperSourceEntity? existingSource) async {
+    final config = _configs[type]!;
+
+    // 验证必填项
+    if (type.requiresApiKey && config.apiKeyController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('请填写 API Key'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    if (type.requiresApiUrl && config.apiUrlController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('请填写 API 地址'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    if (type.requiresCookie && config.cookieController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('请填写 Cookie'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    if (existingSource != null) {
+      // 更新现有配置
+      final updated = existingSource.copyWith(
+        apiKey: config.apiKeyController.text.trim().isEmpty
+            ? null
+            : config.apiKeyController.text.trim(),
+        apiUrl: config.apiUrlController.text.trim().isEmpty
+            ? null
+            : config.apiUrlController.text.trim(),
+        cookie: config.cookieController.text.trim().isEmpty
+            ? null
+            : config.cookieController.text.trim(),
+      );
+      await ref.read(scraperSourcesProvider.notifier).updateSource(updated);
+    } else {
+      // 创建新配置
+      final newSource = ScraperSourceEntity(
+        name: '',
+        type: type,
+        isEnabled: true,
+        apiKey: config.apiKeyController.text.trim().isEmpty
+            ? null
+            : config.apiKeyController.text.trim(),
+        apiUrl: config.apiUrlController.text.trim().isEmpty
+            ? null
+            : config.apiUrlController.text.trim(),
+        cookie: config.cookieController.text.trim().isEmpty
+            ? null
+            : config.cookieController.text.trim(),
+      );
+      await ref.read(scraperSourcesProvider.notifier).addSource(newSource);
+    }
+
+    // 收起卡片
+    setState(() {
+      _expandedTypes.remove(type);
+    });
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${type.displayName} 配置已保存'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
   }
 
@@ -222,314 +361,389 @@ class _ScraperSourcesPageState extends ConsumerState<ScraperSourcesPage> {
           await ref.read(scraperSourcesProvider.notifier).testConnection(source);
 
       if (!mounted) return;
-      Navigator.pop(context); // 关闭加载对话框
+      Navigator.pop(context);
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(success ? '连接成功' : '连接失败'),
           backgroundColor: success ? Colors.green : Colors.red,
+          behavior: SnackBarBehavior.floating,
         ),
       );
     } on Exception catch (e) {
       if (!mounted) return;
-      Navigator.pop(context); // 关闭加载对话框
+      Navigator.pop(context);
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('连接失败: $e'),
           backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
         ),
       );
     }
   }
 }
 
-/// 刮削源卡片
-class _ScraperSourceCard extends StatelessWidget {
-  const _ScraperSourceCard({
+/// 刮削源配置控制器
+class _ScraperConfig {
+  final apiKeyController = TextEditingController();
+  final apiUrlController = TextEditingController();
+  final cookieController = TextEditingController();
+
+  void dispose() {
+    apiKeyController.dispose();
+    apiUrlController.dispose();
+    cookieController.dispose();
+  }
+}
+
+/// 刮削源类型卡片
+class _ScraperTypeCard extends StatefulWidget {
+  const _ScraperTypeCard({
+    super.key,
+    required this.type,
     required this.source,
     required this.priorityNumber,
+    required this.isExpanded,
+    required this.config,
     required this.onToggle,
-    required this.onEdit,
-    required this.onDelete,
+    required this.onExpandToggle,
+    required this.onSave,
     required this.onTest,
+    required this.isDark,
   });
 
-  final ScraperSourceEntity source;
+  final ScraperType type;
+  final ScraperSourceEntity? source;
   final int priorityNumber;
+  final bool isExpanded;
+  final _ScraperConfig config;
   final void Function(bool) onToggle;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
-  final VoidCallback onTest;
+  final VoidCallback onExpandToggle;
+  final VoidCallback onSave;
+  final VoidCallback? onTest;
+  final bool isDark;
+
+  @override
+  State<_ScraperTypeCard> createState() => _ScraperTypeCardState();
+}
+
+class _ScraperTypeCardState extends State<_ScraperTypeCard> {
+  bool _obscureApiKey = true;
+  bool _obscureCookie = true;
+
+  bool get _isEnabled => widget.source?.isEnabled ?? false;
+  bool get _isConfigured => widget.source?.isConfigured ?? false;
+  bool get _needsConfig =>
+      widget.type.requiresApiKey ||
+      widget.type.requiresApiUrl ||
+      widget.type.requiresCookie;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
 
-    return Card(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
       margin: const EdgeInsets.only(bottom: 12),
-      child: InkWell(
-        onTap: onEdit,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              // 优先级序号
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: source.isEnabled
-                      ? colorScheme.primaryContainer
-                      : colorScheme.surfaceContainerHighest,
-                  shape: BoxShape.circle,
-                ),
-                child: Center(
-                  child: Text(
-                    '$priorityNumber',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      color: source.isEnabled
-                          ? colorScheme.onPrimaryContainer
-                          : colorScheme.onSurfaceVariant,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 16),
-
-              // 图标
-              Icon(
-                source.type.icon,
-                size: 40,
-                color: source.isEnabled
-                    ? colorScheme.primary
-                    : colorScheme.outline,
-              ),
-              const SizedBox(width: 16),
-
-              // 名称和类型
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+      child: Material(
+        color: widget.isDark ? AppColors.darkSurfaceElevated : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        elevation: widget.isExpanded ? 4 : 1,
+        shadowColor: widget.type.themeColor.withValues(alpha: 0.3),
+        child: Column(
+          children: [
+            // 主卡片内容
+            InkWell(
+              onTap: _needsConfig ? widget.onExpandToggle : null,
+              borderRadius: BorderRadius.circular(16),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
                   children: [
-                    Text(
-                      source.displayName,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        color: source.isEnabled
-                            ? colorScheme.onSurface
-                            : colorScheme.onSurfaceVariant,
+                    // 图标（带主题色背景）
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: _isEnabled
+                            ? widget.type.themeColor.withValues(alpha: 0.15)
+                            : (widget.isDark ? Colors.grey[800] : Colors.grey[200]),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        widget.type.icon,
+                        size: 26,
+                        color: _isEnabled
+                            ? widget.type.themeColor
+                            : (widget.isDark ? Colors.grey[600] : Colors.grey[400]),
                       ),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      source.type.displayName,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colorScheme.outline,
+                    const SizedBox(width: 16),
+
+                    // 名称和描述
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                widget.type.displayName,
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                  color: _isEnabled
+                                      ? null
+                                      : (widget.isDark
+                                          ? Colors.grey[500]
+                                          : Colors.grey[600]),
+                                ),
+                              ),
+                              if (_isConfigured) ...[
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.green.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: const Text(
+                                    '已配置',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.green,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _getDescription(),
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: widget.isDark ? Colors.grey[500] : Colors.grey[600],
+                            ),
+                          ),
+                        ],
                       ),
+                    ),
+
+                    // 展开/收起指示器（如果需要配置）
+                    if (_needsConfig) ...[
+                      Icon(
+                        widget.isExpanded
+                            ? Icons.expand_less_rounded
+                            : Icons.expand_more_rounded,
+                        color: widget.isDark ? Colors.grey[500] : Colors.grey[400],
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+
+                    // 启用开关
+                    Switch(
+                      value: _isEnabled,
+                      onChanged: widget.onToggle,
+                      activeTrackColor: widget.type.themeColor.withValues(alpha: 0.5),
+                      activeThumbColor: widget.type.themeColor,
                     ),
                   ],
                 ),
               ),
+            ),
 
-              // 启用开关
-              Switch(
-                value: source.isEnabled,
-                onChanged: onToggle,
-              ),
+            // 展开的配置区域
+            if (widget.isExpanded) _buildExpandedContent(theme),
+          ],
+        ),
+      ),
+    );
+  }
 
-              // 更多操作
-              PopupMenuButton<String>(
-                onSelected: (value) {
-                  switch (value) {
-                    case 'test':
-                      onTest();
-                    case 'edit':
-                      onEdit();
-                    case 'delete':
-                      onDelete();
-                  }
-                },
-                itemBuilder: (context) => [
-                  const PopupMenuItem(
-                    value: 'test',
-                    child: ListTile(
-                      leading: Icon(Icons.wifi_tethering),
-                      title: Text('测试连接'),
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'edit',
-                    child: ListTile(
-                      leading: Icon(Icons.edit),
-                      title: Text('编辑'),
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'delete',
-                    child: ListTile(
-                      leading: Icon(Icons.delete, color: Colors.red),
-                      title: Text('删除', style: TextStyle(color: Colors.red)),
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ),
-                ],
-              ),
-            ],
+  String _getDescription() {
+    if (!_needsConfig) {
+      return '内置服务，无需配置';
+    }
+    if (widget.type.requiresApiKey) {
+      return '需要 API Key';
+    }
+    if (widget.type.requiresApiUrl) {
+      return '需要 API 地址';
+    }
+    if (widget.type.requiresCookie) {
+      return '需要登录 Cookie';
+    }
+    return widget.type.description;
+  }
+
+  Widget _buildExpandedContent(ThemeData theme) => Container(
+        decoration: BoxDecoration(
+          color: widget.isDark
+              ? Colors.black.withValues(alpha: 0.2)
+              : Colors.grey[50],
+          borderRadius: const BorderRadius.only(
+            bottomLeft: Radius.circular(16),
+            bottomRight: Radius.circular(16),
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// 排序模式下的刮削源卡片
-class _ScraperSourceReorderCard extends StatelessWidget {
-  const _ScraperSourceReorderCard({
-    super.key,
-    required this.source,
-    required this.priorityNumber,
-  });
-
-  final ScraperSourceEntity source;
-  final int priorityNumber;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            // 拖动手柄
-            const Icon(Icons.drag_handle),
-            const SizedBox(width: 12),
-
-            // 优先级序号
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: colorScheme.primaryContainer,
-                shape: BoxShape.circle,
-              ),
-              child: Center(
-                child: Text(
-                  '$priorityNumber',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    color: colorScheme.onPrimaryContainer,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 16),
-
-            // 图标
-            Icon(
-              source.type.icon,
-              size: 32,
-              color: colorScheme.primary,
-            ),
-            const SizedBox(width: 16),
-
-            // 名称
-            Expanded(
-              child: Text(
-                source.displayName,
-                style: theme.textTheme.titleMedium,
-              ),
-            ),
-
-            // 状态指示
-            if (!source.isEnabled)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  '已禁用',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// 刮削源类型选择弹窗
-class _ScraperTypeSelectionSheet extends StatelessWidget {
-  const _ScraperTypeSelectionSheet();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return SafeArea(
-      child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              '选择刮削源类型',
-              style: theme.textTheme.titleLarge,
+            // API Key 输入
+            if (widget.type.requiresApiKey || widget.type == ScraperType.doubanApi) ...[
+              _buildConfigField(
+                label: 'API Key',
+                hint: widget.type == ScraperType.tmdb
+                    ? '从 themoviedb.org 获取'
+                    : '可选',
+                controller: widget.config.apiKeyController,
+                isRequired: widget.type.requiresApiKey,
+                isObscure: _obscureApiKey,
+                onToggleObscure: () => setState(() => _obscureApiKey = !_obscureApiKey),
+              ),
+              const SizedBox(height: 16),
+            ],
+
+            // API URL 输入
+            if (widget.type.requiresApiUrl) ...[
+              _buildConfigField(
+                label: 'API 地址',
+                hint: '第三方豆瓣 API 服务地址',
+                controller: widget.config.apiUrlController,
+                isRequired: true,
+                isUrl: true,
+              ),
+              const SizedBox(height: 16),
+            ],
+
+            // Cookie 输入
+            if (widget.type.requiresCookie) ...[
+              _buildConfigField(
+                label: 'Cookie',
+                hint: '从浏览器复制登录后的 Cookie',
+                controller: widget.config.cookieController,
+                isRequired: true,
+                isObscure: _obscureCookie,
+                onToggleObscure: () => setState(() => _obscureCookie = !_obscureCookie),
+                isMultiline: true,
+              ),
+              const SizedBox(height: 16),
+            ],
+
+            // 操作按钮
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                if (widget.onTest != null)
+                  TextButton.icon(
+                    onPressed: widget.onTest,
+                    icon: const Icon(Icons.wifi_tethering_rounded, size: 18),
+                    label: const Text('测试'),
+                  ),
+                const SizedBox(width: 8),
+                FilledButton.icon(
+                  onPressed: widget.onSave,
+                  icon: const Icon(Icons.check_rounded, size: 18),
+                  label: const Text('保存'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: widget.type.themeColor,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            ...ScraperType.values.map((type) => _ScraperTypeTile(type: type)),
           ],
         ),
-      ),
-    );
-  }
-}
+      );
 
-/// 刮削源类型选项
-class _ScraperTypeTile extends StatelessWidget {
-  const _ScraperTypeTile({required this.type});
-
-  final ScraperType type;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return ListTile(
-      leading: Icon(type.icon, color: colorScheme.primary),
-      title: Text(type.displayName),
-      subtitle: Text(_getDescription(type)),
-      onTap: () => Navigator.pop(context, type),
-    );
-  }
-
-  String _getDescription(ScraperType type) => switch (type) {
-        ScraperType.tmdb => '全球最大的影视数据库，数据全面',
-        ScraperType.doubanApi => '使用第三方 API 获取豆瓣数据',
-        ScraperType.doubanWeb => '直接解析豆瓣网页，需要登录 Cookie',
-      };
-}
-
-/// ScraperType 扩展 - 图标
-extension ScraperTypeIcon on ScraperType {
-  IconData get icon => switch (this) {
-        ScraperType.tmdb => Icons.movie_outlined,
-        ScraperType.doubanApi => Icons.api,
-        ScraperType.doubanWeb => Icons.language,
-      };
+  Widget _buildConfigField({
+    required String label,
+    required String hint,
+    required TextEditingController controller,
+    bool isRequired = false,
+    bool isObscure = false,
+    bool isUrl = false,
+    bool isMultiline = false,
+    VoidCallback? onToggleObscure,
+  }) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: widget.isDark ? Colors.grey[300] : Colors.grey[700],
+                ),
+              ),
+              if (isRequired) ...[
+                const SizedBox(width: 4),
+                const Text(
+                  '*',
+                  style: TextStyle(color: Colors.red, fontSize: 13),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: controller,
+            obscureText: isObscure,
+            maxLines: isMultiline ? 3 : 1,
+            keyboardType: isUrl ? TextInputType.url : TextInputType.text,
+            style: const TextStyle(fontSize: 14),
+            decoration: InputDecoration(
+              hintText: hint,
+              hintStyle: TextStyle(
+                fontSize: 13,
+                color: widget.isDark ? Colors.grey[600] : Colors.grey[400],
+              ),
+              filled: true,
+              fillColor: widget.isDark ? Colors.grey[900] : Colors.white,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 12,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(
+                  color: widget.isDark ? Colors.grey[700]! : Colors.grey[300]!,
+                ),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(
+                  color: widget.isDark ? Colors.grey[700]! : Colors.grey[300]!,
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(
+                  color: widget.type.themeColor,
+                  width: 2,
+                ),
+              ),
+              suffixIcon: onToggleObscure != null
+                  ? IconButton(
+                      icon: Icon(
+                        isObscure
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                        size: 20,
+                        color: widget.isDark ? Colors.grey[500] : Colors.grey[600],
+                      ),
+                      onPressed: onToggleObscure,
+                    )
+                  : null,
+            ),
+          ),
+        ],
+      );
 }

@@ -9,6 +9,7 @@ import 'package:my_nas/features/video/domain/entities/video_item.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
 import 'package:my_nas/features/video/domain/utils/video_localization.dart';
 import 'package:my_nas/features/video/presentation/pages/manual_scraper_page.dart';
+import 'package:my_nas/features/video/presentation/pages/season_scraper_page.dart';
 import 'package:my_nas/features/video/presentation/pages/tmdb_preview_page.dart';
 import 'package:my_nas/features/video/presentation/pages/video_player_page.dart';
 import 'package:my_nas/features/video/presentation/providers/video_detail_provider.dart';
@@ -1086,7 +1087,8 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     await toggleWatchedStatus(ref, widget.metadata.filePath);
   }
 
-  /// 打开手动刮削页面
+  /// 打开刮削页面
+  /// 电视剧使用整季刮削页面，电影使用单个刮削页面
   Future<void> _openManualScraper() async {
     final connections = ref.read(activeConnectionsProvider);
     final connection = connections[widget.sourceId];
@@ -1094,14 +1096,32 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         ? connection!.adapter.fileSystem
         : null;
 
-    final result = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => ManualScraperPage(
-          metadata: _selectedMetadata,
-          fileSystem: fileSystem,
+    bool? result;
+
+    if (_isTvShow && _selectedMetadata.showDirectory != null) {
+      // 电视剧：使用整季刮削页面
+      result = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) => SeasonScraperPage(
+            showDirectory: _selectedMetadata.showDirectory!,
+            sourceId: widget.sourceId,
+            tmdbId: _selectedMetadata.tmdbId,
+            fileSystem: fileSystem,
+            initialSeasonNumber: _selectedMetadata.seasonNumber,
+          ),
         ),
-      ),
-    );
+      );
+    } else {
+      // 电影或无 showDirectory 的视频：使用单个刮削页面
+      result = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) => ManualScraperPage(
+            metadata: _selectedMetadata,
+            fileSystem: fileSystem,
+          ),
+        ),
+      );
+    }
 
     // 刮削成功后刷新详情页
     if ((result ?? false) && mounted) {

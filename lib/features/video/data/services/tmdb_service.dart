@@ -737,6 +737,7 @@ class TmdbMovieDetail {
     required this.voteCount,
     required this.genres,
     required this.productionCompanies,
+    required this.productionCountries,
     required this.cast,
     required this.crew,
     required this.tagline,
@@ -767,6 +768,10 @@ class TmdbMovieDetail {
           [],
       productionCompanies: (json['production_companies'] as List?)
               ?.map((e) => TmdbCompany.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+      productionCountries: (json['production_countries'] as List?)
+              ?.map((e) => TmdbCountry.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
       cast: (credits?['cast'] as List?)
@@ -800,6 +805,7 @@ class TmdbMovieDetail {
   final int voteCount;
   final List<TmdbGenre> genres;
   final List<TmdbCompany> productionCompanies;
+  final List<TmdbCountry> productionCountries;
   final List<TmdbCast> cast;
   final List<TmdbCrew> crew;
   final String tagline;
@@ -828,6 +834,9 @@ class TmdbMovieDetail {
 
   String get genresText => genres.map((g) => g.name).join(' / ');
 
+  /// 国家/地区文本（用于存储）
+  String get countriesText => productionCountries.map((c) => c.name).join(', ');
+
   TmdbCrew? get director => crew.where((c) => c.job == 'Director').firstOrNull;
 }
 
@@ -845,6 +854,8 @@ class TmdbTvDetail {
     required this.voteAverage,
     required this.voteCount,
     required this.genres,
+    required this.originCountry,
+    required this.productionCountries,
     required this.seasons,
     required this.numberOfSeasons,
     required this.numberOfEpisodes,
@@ -872,6 +883,14 @@ class TmdbTvDetail {
       voteCount: json['vote_count'] as int? ?? 0,
       genres: (json['genres'] as List?)
               ?.map((e) => TmdbGenre.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+      originCountry: (json['origin_country'] as List?)
+              ?.map((e) => e as String)
+              .toList() ??
+          [],
+      productionCountries: (json['production_countries'] as List?)
+              ?.map((e) => TmdbCountry.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
       seasons: (json['seasons'] as List?)
@@ -913,6 +932,8 @@ class TmdbTvDetail {
   final double voteAverage;
   final int voteCount;
   final List<TmdbGenre> genres;
+  final List<String> originCountry;
+  final List<TmdbCountry> productionCountries;
   final List<TmdbSeason> seasons;
   final int numberOfSeasons;
   final int numberOfEpisodes;
@@ -932,6 +953,60 @@ class TmdbTvDetail {
   }
 
   String get genresText => genres.map((g) => g.name).join(' / ');
+
+  /// 国家/地区文本（用于存储）
+  /// 优先使用 production_countries（有完整名称），回退到 origin_country（ISO代码）
+  String get countriesText {
+    if (productionCountries.isNotEmpty) {
+      return productionCountries.map((c) => c.name).join(', ');
+    }
+    // origin_country 是 ISO 代码列表，转换为可读名称
+    return originCountry.map((code) => _countryCodeToName(code)).join(', ');
+  }
+
+  /// ISO 国家代码转换为中文名称
+  static String _countryCodeToName(String code) {
+    const countryNames = {
+      'US': '美国',
+      'CN': '中国',
+      'JP': '日本',
+      'KR': '韩国',
+      'GB': '英国',
+      'FR': '法国',
+      'DE': '德国',
+      'IT': '意大利',
+      'ES': '西班牙',
+      'CA': '加拿大',
+      'AU': '澳大利亚',
+      'IN': '印度',
+      'TW': '中国台湾',
+      'HK': '中国香港',
+      'TH': '泰国',
+      'RU': '俄罗斯',
+      'BR': '巴西',
+      'MX': '墨西哥',
+      'NL': '荷兰',
+      'SE': '瑞典',
+      'DK': '丹麦',
+      'NO': '挪威',
+      'FI': '芬兰',
+      'BE': '比利时',
+      'AT': '奥地利',
+      'CH': '瑞士',
+      'NZ': '新西兰',
+      'IE': '爱尔兰',
+      'PL': '波兰',
+      'TR': '土耳其',
+      'AR': '阿根廷',
+      'ZA': '南非',
+      'SG': '新加坡',
+      'MY': '马来西亚',
+      'ID': '印度尼西亚',
+      'PH': '菲律宾',
+      'VN': '越南',
+    };
+    return countryNames[code] ?? code;
+  }
 }
 
 /// 季详情
@@ -1052,6 +1127,19 @@ class TmdbGenre {
     );
 
   final int id;
+  final String name;
+}
+
+/// 国家/地区
+class TmdbCountry {
+  TmdbCountry({required this.iso31661, required this.name});
+
+  factory TmdbCountry.fromJson(Map<String, dynamic> json) => TmdbCountry(
+      iso31661: json['iso_3166_1'] as String? ?? '',
+      name: json['name'] as String? ?? '',
+    );
+
+  final String iso31661;
   final String name;
 }
 

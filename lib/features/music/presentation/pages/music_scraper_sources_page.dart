@@ -2,10 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/features/music/data/services/music_scraper_factory.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_source.dart';
-import 'package:my_nas/features/music/presentation/pages/music_scraper_form_page.dart';
 import 'package:my_nas/features/music/presentation/providers/music_scraper_provider.dart';
 
 /// 音乐刮削源管理页面
+///
+/// 简化设计：
+/// - 直接展示所有刮削源类型
+/// - 可拖拽排序
+/// - 可展开配置（API Key、Cookie）
+/// - 内置源无需配置，只需调整顺序
 class MusicScraperSourcesPage extends ConsumerStatefulWidget {
   const MusicScraperSourcesPage({super.key});
 
@@ -14,7 +19,43 @@ class MusicScraperSourcesPage extends ConsumerStatefulWidget {
 }
 
 class _MusicScraperSourcesPageState extends ConsumerState<MusicScraperSourcesPage> {
-  bool _isReorderMode = false;
+  // 每个刮削源类型的配置状态
+  final Map<MusicScraperType, _MusicScraperConfig> _configs = {};
+
+  // 展开状态
+  final Set<MusicScraperType> _expandedTypes = {};
+
+  @override
+  void initState() {
+    super.initState();
+    // 初始化所有类型的配置
+    for (final type in MusicScraperType.values) {
+      _configs[type] = _MusicScraperConfig();
+    }
+    // 加载完成后同步配置
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncConfigs());
+  }
+
+  @override
+  void dispose() {
+    // 释放所有 TextEditingController
+    for (final config in _configs.values) {
+      config.dispose();
+    }
+    super.dispose();
+  }
+
+  /// 同步已保存的配置到 TextEditingController
+  void _syncConfigs() {
+    final state = ref.read(musicScraperSourcesProvider);
+    for (final source in state.sources) {
+      final config = _configs[source.type];
+      if (config != null) {
+        config.apiKeyController.text = source.apiKey ?? '';
+        config.cookieController.text = source.cookie ?? '';
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -24,21 +65,10 @@ class _MusicScraperSourcesPageState extends ConsumerState<MusicScraperSourcesPag
       appBar: AppBar(
         title: const Text('音乐刮削源'),
         actions: [
-          // 排序模式切换按钮
-          if (state.sources.isNotEmpty)
-            IconButton(
-              icon: Icon(_isReorderMode ? Icons.done : Icons.reorder),
-              onPressed: () {
-                setState(() {
-                  _isReorderMode = !_isReorderMode;
-                });
-              },
-              tooltip: _isReorderMode ? '完成排序' : '调整顺序',
-            ),
           IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: () => _showAddScraperSheet(context),
-            tooltip: '添加刮削源',
+            icon: const Icon(Icons.help_outline),
+            onPressed: () => _showHelpDialog(context),
+            tooltip: '帮助',
           ),
         ],
       ),
@@ -69,144 +99,168 @@ class _MusicScraperSourcesPageState extends ConsumerState<MusicScraperSourcesPag
       );
     }
 
-    if (state.sources.isEmpty) {
-      return _buildEmptyState(context);
-    }
-
-    if (_isReorderMode) {
-      return _buildReorderableList(state.sources);
-    }
-
-    return _buildSourcesList(state.sources);
+    return _buildScraperList(state);
   }
 
-  Widget _buildEmptyState(BuildContext context) {
+  Widget _buildScraperList(MusicScraperSourcesState state) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.music_note_outlined,
-            size: 64,
-            color: colorScheme.outline,
+    // 构建排序后的类型列表
+    final sortedTypes = _getSortedTypes(state.sources);
+
+    return Column(
+      children: [
+        // 说明文字
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          child: Row(
+            children: [
+              Icon(Icons.info_outline, size: 16, color: colorScheme.outline),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '拖拽调整优先级，点击展开配置',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colorScheme.outline,
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 16),
-          Text(
-            '暂无刮削源',
-            style: theme.textTheme.titleMedium?.copyWith(
-              color: colorScheme.onSurfaceVariant,
+        ),
+        // 刮削源列表
+        Expanded(
+          child: ReorderableListView.builder(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            itemCount: sortedTypes.length,
+            onReorder: (oldIndex, newIndex) => _onReorder(oldIndex, newIndex, sortedTypes, state),
+            proxyDecorator: (child, index, animation) => Material(
+              elevation: 4,
+              borderRadius: BorderRadius.circular(12),
+              child: child,
             ),
+            itemBuilder: (context, index) {
+              final type = sortedTypes[index];
+              final source = state.sources.where((s) => s.type == type).firstOrNull;
+              final isExpanded = _expandedTypes.contains(type);
+              final config = _configs[type]!;
+
+              return _MusicScraperTypeCard(
+                key: ValueKey(type),
+                type: type,
+                source: source,
+                priorityNumber: index + 1,
+                isExpanded: isExpanded,
+                config: config,
+                onToggle: (enabled) => _toggleSource(type, source, enabled),
+                onExpandToggle: () => _toggleExpand(type),
+                onSave: () => _saveConfig(type, source, config),
+                onTest: source != null ? () => _testConnection(source) : null,
+              );
+            },
           ),
-          const SizedBox(height: 8),
-          Text(
-            '添加刮削源以获取音乐元数据、封面和歌词',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: colorScheme.outline,
-            ),
-          ),
-          const SizedBox(height: 24),
-          FilledButton.icon(
-            onPressed: () => _showAddScraperSheet(context),
-            icon: const Icon(Icons.add),
-            label: const Text('添加刮削源'),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
-  Widget _buildSourcesList(List<MusicScraperSourceEntity> sources) => ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: sources.length,
-        itemBuilder: (context, index) {
-          final source = sources[index];
-          return _MusicScraperSourceCard(
-            source: source,
-            priorityNumber: index + 1,
-            onToggle: (enabled) => ref
-                .read(musicScraperSourcesProvider.notifier)
-                .toggleSource(source.id, isEnabled: enabled),
-            onEdit: () => _editSource(source),
-            onDelete: () => _confirmDelete(source),
-            onTest: () => _testConnection(source),
-          );
-        },
-      );
+  /// 获取排序后的类型列表
+  List<MusicScraperType> _getSortedTypes(List<MusicScraperSourceEntity> sources) {
+    // 已配置的类型按优先级排序
+    final configuredTypes = sources.map((s) => s.type).toList();
 
-  Widget _buildReorderableList(List<MusicScraperSourceEntity> sources) => ReorderableListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: sources.length,
-        onReorder: (oldIndex, newIndex) {
-          ref.read(musicScraperSourcesProvider.notifier).reorder(oldIndex, newIndex);
-        },
-        itemBuilder: (context, index) {
-          final source = sources[index];
-          return _MusicScraperSourceReorderCard(
-            key: ValueKey(source.id),
-            source: source,
-            priorityNumber: index + 1,
-          );
-        },
-      );
+    // 未配置的类型
+    final unconfiguredTypes = MusicScraperType.values.where((t) => !configuredTypes.contains(t)).toList();
 
-  void _showAddScraperSheet(BuildContext context) {
-    showModalBottomSheet<MusicScraperType>(
-      context: context,
-      builder: (context) => const _MusicScraperTypeSelectionSheet(),
-    ).then((type) {
-      if (type != null && mounted) {
-        Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => MusicScraperFormPage(type: type),
-          ),
-        );
+    // 合并：已配置的在前，未配置的在后
+    return [...configuredTypes, ...unconfiguredTypes];
+  }
+
+  /// 处理重排序
+  void _onReorder(int oldIndex, int newIndex, List<MusicScraperType> sortedTypes, MusicScraperSourcesState state) {
+    var targetIndex = newIndex;
+    if (oldIndex < targetIndex) {
+      targetIndex -= 1;
+    }
+
+    // 计算在已配置源中的位置
+    final configuredCount = state.sources.length;
+
+    // 如果是在已配置的源之间移动
+    if (oldIndex < configuredCount && targetIndex < configuredCount) {
+      ref.read(musicScraperSourcesProvider.notifier).reorder(oldIndex, targetIndex);
+    }
+    // 如果是将未配置的源移动到已配置区域，需要先创建源
+    else if (oldIndex >= configuredCount && targetIndex < configuredCount) {
+      final type = sortedTypes[oldIndex];
+      // 先添加源
+      _addSource(type, priority: targetIndex);
+    }
+    // 其他情况（将已配置的移到未配置区域等）暂不处理
+  }
+
+  /// 切换展开状态
+  void _toggleExpand(MusicScraperType type) {
+    setState(() {
+      if (_expandedTypes.contains(type)) {
+        _expandedTypes.remove(type);
+      } else {
+        _expandedTypes.add(type);
       }
     });
   }
 
-  void _editSource(MusicScraperSourceEntity source) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => MusicScraperFormPage(
-          type: source.type,
-          existingSource: source,
-        ),
-      ),
-    );
-  }
-
-  Future<void> _confirmDelete(MusicScraperSourceEntity source) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('删除刮削源'),
-        content: Text('确定要删除「${source.displayName}」吗？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
-    );
-
-    if ((confirmed ?? false) && mounted) {
-      await ref.read(musicScraperSourcesProvider.notifier).removeSource(source.id);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已删除「${source.displayName}」')),
-        );
-      }
+  /// 切换启用状态
+  Future<void> _toggleSource(MusicScraperType type, MusicScraperSourceEntity? source, bool enabled) async {
+    if (source != null) {
+      await ref.read(musicScraperSourcesProvider.notifier).toggleSource(source.id, isEnabled: enabled);
+    } else if (enabled) {
+      // 如果源不存在但要启用，先创建
+      await _addSource(type);
     }
   }
 
+  /// 添加刮削源
+  Future<void> _addSource(MusicScraperType type, {int? priority}) async {
+    final config = _configs[type]!;
+    final source = MusicScraperSourceEntity(
+      name: '',
+      type: type,
+      isEnabled: true,
+      priority: priority ?? 999,
+      apiKey: config.apiKeyController.text.isEmpty ? null : config.apiKeyController.text,
+      cookie: config.cookieController.text.isEmpty ? null : config.cookieController.text,
+    );
+    await ref.read(musicScraperSourcesProvider.notifier).addSource(source);
+  }
+
+  /// 保存配置
+  Future<void> _saveConfig(MusicScraperType type, MusicScraperSourceEntity? source, _MusicScraperConfig config) async {
+    if (source != null) {
+      // 更新现有源
+      final updatedSource = source.copyWith(
+        apiKey: config.apiKeyController.text.isEmpty ? null : config.apiKeyController.text,
+        cookie: config.cookieController.text.isEmpty ? null : config.cookieController.text,
+      );
+      await ref.read(musicScraperSourcesProvider.notifier).updateSource(updatedSource);
+    } else {
+      // 创建新源
+      await _addSource(type);
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('已保存 ${type.displayName} 配置'),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  /// 测试连接
   Future<void> _testConnection(MusicScraperSourceEntity source) async {
     // 显示加载对话框
     // ignore: unawaited_futures
@@ -238,6 +292,7 @@ class _MusicScraperSourcesPageState extends ConsumerState<MusicScraperSourcesPag
         SnackBar(
           content: Text(success ? '连接成功' : '连接失败'),
           backgroundColor: success ? Colors.green : Colors.red,
+          behavior: SnackBarBehavior.floating,
         ),
       );
     } on Exception catch (e) {
@@ -248,199 +303,94 @@ class _MusicScraperSourcesPageState extends ConsumerState<MusicScraperSourcesPag
         SnackBar(
           content: Text('连接失败: $e'),
           backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
         ),
       );
     }
   }
-}
 
-/// 刮削源卡片
-class _MusicScraperSourceCard extends StatelessWidget {
-  const _MusicScraperSourceCard({
-    required this.source,
-    required this.priorityNumber,
-    required this.onToggle,
-    required this.onEdit,
-    required this.onDelete,
-    required this.onTest,
-  });
-
-  final MusicScraperSourceEntity source;
-  final int priorityNumber;
-  final void Function(bool) onToggle;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
-  final VoidCallback onTest;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final isImplemented = MusicScraperFactory.isImplemented(source.type);
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: InkWell(
-        onTap: onEdit,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
+  /// 显示帮助对话框
+  void _showHelpDialog(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('刮削源说明'),
+        content: const SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 优先级序号
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: source.isEnabled && isImplemented
-                      ? colorScheme.primaryContainer
-                      : colorScheme.surfaceContainerHighest,
-                  shape: BoxShape.circle,
-                ),
-                child: Center(
-                  child: Text(
-                    '$priorityNumber',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      color: source.isEnabled && isImplemented
-                          ? colorScheme.onPrimaryContainer
-                          : colorScheme.onSurfaceVariant,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 16),
-
-              // 图标
-              Icon(
-                source.type.icon,
-                size: 40,
-                color: source.isEnabled && isImplemented
-                    ? source.type.themeColor
-                    : colorScheme.outline,
-              ),
-              const SizedBox(width: 16),
-
-              // 名称和类型
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            source.displayName,
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              color: source.isEnabled && isImplemented
-                                  ? colorScheme.onSurface
-                                  : colorScheme.onSurfaceVariant,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (!isImplemented) ...[
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: colorScheme.errorContainer,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              '待实现',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: colorScheme.onErrorContainer,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      _getCapabilitiesText(source.type),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colorScheme.outline,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              // 启用开关
-              Switch(
-                value: source.isEnabled,
-                onChanged: isImplemented ? onToggle : null,
-              ),
-
-              // 更多操作
-              PopupMenuButton<String>(
-                onSelected: (value) {
-                  switch (value) {
-                    case 'test':
-                      onTest();
-                    case 'edit':
-                      onEdit();
-                    case 'delete':
-                      onDelete();
-                  }
-                },
-                itemBuilder: (context) => [
-                  if (isImplemented)
-                    const PopupMenuItem(
-                      value: 'test',
-                      child: ListTile(
-                        leading: Icon(Icons.wifi_tethering),
-                        title: Text('测试连接'),
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                    ),
-                  const PopupMenuItem(
-                    value: 'edit',
-                    child: ListTile(
-                      leading: Icon(Icons.edit),
-                      title: Text('编辑'),
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'delete',
-                    child: ListTile(
-                      leading: Icon(Icons.delete, color: Colors.red),
-                      title: Text('删除', style: TextStyle(color: Colors.red)),
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ),
-                ],
-              ),
+              Text('推荐配置：', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 8),
+              Text('1. MusicBrainz - 元数据（内置，无需配置）'),
+              Text('2. AcoustID - 声纹识别（需要 API Key）'),
+              Text('3. 网易云音乐 - 歌词和封面（可选 Cookie）'),
+              SizedBox(height: 16),
+              Text('功能说明：', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 8),
+              Text('• 元数据：歌曲名、艺术家、专辑等'),
+              Text('• 封面：专辑封面图片'),
+              Text('• 歌词：歌词文本（LRC 格式）'),
+              Text('• 声纹：通过音频指纹识别歌曲'),
+              SizedBox(height: 16),
+              Text('API Key 获取：', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 8),
+              Text('• AcoustID: acoustid.org/api-key'),
+              Text('• Last.fm: last.fm/api/account/create'),
+              Text('• Genius: genius.com/api-clients'),
             ],
           ),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('知道了'),
+          ),
+        ],
       ),
     );
   }
+}
 
-  String _getCapabilitiesText(MusicScraperType type) {
-    final caps = <String>[];
-    if (type.supportsMetadata) caps.add('元数据');
-    if (type.supportsCover) caps.add('封面');
-    if (type.supportsLyrics) caps.add('歌词');
-    if (type.supportsFingerprint) caps.add('声纹');
-    return caps.isEmpty ? type.displayName : caps.join(' · ');
+/// 配置状态类
+class _MusicScraperConfig {
+  final apiKeyController = TextEditingController();
+  final cookieController = TextEditingController();
+
+  void dispose() {
+    apiKeyController.dispose();
+    cookieController.dispose();
   }
 }
 
-/// 排序模式下的刮削源卡片
-class _MusicScraperSourceReorderCard extends StatelessWidget {
-  const _MusicScraperSourceReorderCard({
+/// 刮削源类型卡片
+class _MusicScraperTypeCard extends StatelessWidget {
+  const _MusicScraperTypeCard({
     super.key,
+    required this.type,
     required this.source,
     required this.priorityNumber,
+    required this.isExpanded,
+    required this.config,
+    required this.onToggle,
+    required this.onExpandToggle,
+    required this.onSave,
+    required this.onTest,
   });
 
-  final MusicScraperSourceEntity source;
+  final MusicScraperType type;
+  final MusicScraperSourceEntity? source;
   final int priorityNumber;
+  final bool isExpanded;
+  final _MusicScraperConfig config;
+  final void Function(bool) onToggle;
+  final VoidCallback onExpandToggle;
+  final VoidCallback onSave;
+  final VoidCallback? onTest;
+
+  bool get _isEnabled => source?.isEnabled ?? false;
+  bool get _needsConfig => type.requiresApiKey || type.supportsCookie;
+  bool get _isImplemented => MusicScraperFactory.isImplemented(type);
 
   @override
   Widget build(BuildContext context) {
@@ -448,160 +398,198 @@ class _MusicScraperSourceReorderCard extends StatelessWidget {
     final colorScheme = theme.colorScheme;
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            // 拖动手柄
-            const Icon(Icons.drag_handle),
-            const SizedBox(width: 12),
-
-            // 优先级序号
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: colorScheme.primaryContainer,
-                shape: BoxShape.circle,
-              ),
-              child: Center(
-                child: Text(
-                  '$priorityNumber',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    color: colorScheme.onPrimaryContainer,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 16),
-
-            // 图标
-            Icon(
-              source.type.icon,
-              size: 32,
-              color: source.type.themeColor,
-            ),
-            const SizedBox(width: 16),
-
-            // 名称
-            Expanded(
-              child: Text(
-                source.displayName,
-                style: theme.textTheme.titleMedium,
-              ),
-            ),
-
-            // 状态指示
-            if (!source.isEnabled)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  '已禁用',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// 刮削源类型选择弹窗
-class _MusicScraperTypeSelectionSheet extends StatelessWidget {
-  const _MusicScraperTypeSelectionSheet();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '选择刮削源类型',
-              style: theme.textTheme.titleLarge,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '推荐添加: MusicBrainz (元数据) + 网易云音乐 (歌词封面)',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.outline,
-              ),
-            ),
-            const SizedBox(height: 16),
-            ...MusicScraperType.values.map((type) => _MusicScraperTypeTile(type: type)),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// 刮削源类型选项
-class _MusicScraperTypeTile extends StatelessWidget {
-  const _MusicScraperTypeTile({required this.type});
-
-  final MusicScraperType type;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final isImplemented = MusicScraperFactory.isImplemented(type);
-
-    return ListTile(
-      leading: Icon(
-        type.icon,
-        color: isImplemented ? type.themeColor : colorScheme.outline,
-      ),
-      title: Row(
+      margin: const EdgeInsets.only(bottom: 8),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
         children: [
-          Text(
-            type.displayName,
-            style: TextStyle(
-              color: isImplemented ? null : colorScheme.onSurfaceVariant,
+          // 主行
+          InkWell(
+            onTap: _needsConfig ? onExpandToggle : null,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  // 优先级序号
+                  Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: _isEnabled && _isImplemented
+                          ? colorScheme.primaryContainer
+                          : colorScheme.surfaceContainerHighest,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: Text(
+                        '$priorityNumber',
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          color: _isEnabled && _isImplemented
+                              ? colorScheme.onPrimaryContainer
+                              : colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+
+                  // 图标
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: (_isEnabled && _isImplemented ? type.themeColor : colorScheme.outline)
+                          .withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      type.icon,
+                      size: 24,
+                      color: _isEnabled && _isImplemented ? type.themeColor : colorScheme.outline,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+
+                  // 名称和描述
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              type.displayName,
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                color: _isEnabled && _isImplemented
+                                    ? colorScheme.onSurface
+                                    : colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                            if (!_isImplemented) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: colorScheme.surfaceContainerHighest,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  '即将支持',
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: colorScheme.onSurfaceVariant,
+                                    fontSize: 10,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        _buildCapabilityChips(context),
+                      ],
+                    ),
+                  ),
+
+                  // 展开/收起图标（如果需要配置）
+                  if (_needsConfig)
+                    Icon(
+                      isExpanded ? Icons.expand_less : Icons.expand_more,
+                      color: colorScheme.outline,
+                    ),
+
+                  // 启用开关
+                  Switch(
+                    value: _isEnabled,
+                    onChanged: _isImplemented ? onToggle : null,
+                  ),
+                ],
+              ),
             ),
           ),
-          if (!isImplemented) ...[
-            const SizedBox(width: 8),
+
+          // 展开的配置区域
+          if (isExpanded && _needsConfig)
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                '即将支持',
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
+                color: colorScheme.surfaceContainerLowest,
+                border: Border(
+                  top: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
                 ),
               ),
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // API Key 输入框
+                  if (type.requiresApiKey) ...[
+                    TextField(
+                      controller: config.apiKeyController,
+                      decoration: InputDecoration(
+                        labelText: 'API Key',
+                        hintText: '请输入 API Key',
+                        helperText: _getApiKeyHelper(),
+                        border: const OutlineInputBorder(),
+                        isDense: true,
+                        suffixIcon: IconButton(
+                          icon: const Icon(Icons.clear, size: 18),
+                          onPressed: config.apiKeyController.clear,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+
+                  // Cookie 输入框
+                  if (type.supportsCookie) ...[
+                    TextField(
+                      controller: config.cookieController,
+                      decoration: InputDecoration(
+                        labelText: 'Cookie（可选）',
+                        hintText: '登录后可获取更多内容',
+                        helperText: '从浏览器开发者工具复制 Cookie',
+                        border: const OutlineInputBorder(),
+                        isDense: true,
+                        suffixIcon: IconButton(
+                          icon: const Icon(Icons.clear, size: 18),
+                          onPressed: config.cookieController.clear,
+                        ),
+                      ),
+                      maxLines: 2,
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+
+                  // 操作按钮
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      if (onTest != null)
+                        OutlinedButton.icon(
+                          onPressed: onTest,
+                          icon: const Icon(Icons.wifi_tethering, size: 18),
+                          label: const Text('测试'),
+                        ),
+                      const SizedBox(width: 8),
+                      FilledButton.icon(
+                        onPressed: onSave,
+                        icon: const Icon(Icons.save, size: 18),
+                        label: const Text('保存'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ],
         ],
       ),
-      subtitle: Text(type.description),
-      trailing: _buildCapabilityChips(context, type),
-      onTap: () => Navigator.pop(context, type),
     );
   }
 
-  Widget _buildCapabilityChips(BuildContext context, MusicScraperType type) {
+  /// 构建能力标签
+  Widget _buildCapabilityChips(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final chips = <Widget>[];
-    final colorScheme = Theme.of(context).colorScheme;
 
     if (type.supportsMetadata) {
       chips.add(_buildChip(context, '元数据', colorScheme.primaryContainer));
@@ -618,6 +606,7 @@ class _MusicScraperTypeTile extends StatelessWidget {
 
     return Wrap(
       spacing: 4,
+      runSpacing: 4,
       children: chips,
     );
   }
@@ -625,12 +614,22 @@ class _MusicScraperTypeTile extends StatelessWidget {
   Widget _buildChip(BuildContext context, String label, Color color) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
         decoration: BoxDecoration(
-          color: color,
+          color: color.withValues(alpha: 0.7),
           borderRadius: BorderRadius.circular(4),
         ),
         child: Text(
           label,
-          style: Theme.of(context).textTheme.labelSmall,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                fontSize: 10,
+              ),
         ),
       );
+
+  /// 获取 API Key 帮助文本
+  String? _getApiKeyHelper() => switch (type) {
+        MusicScraperType.acoustId => '访问 acoustid.org 获取',
+        MusicScraperType.lastFm => '访问 last.fm/api 获取',
+        MusicScraperType.genius => '访问 genius.com/api-clients 获取',
+        _ => null,
+      };
 }

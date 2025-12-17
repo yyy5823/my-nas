@@ -20,6 +20,7 @@ class StreamImage extends StatefulWidget {
     this.path,
     this.fileSystem,
     this.fit = BoxFit.cover,
+    this.alignment = Alignment.center,
     this.placeholder,
     this.errorWidget,
     this.width,
@@ -44,6 +45,9 @@ class StreamImage extends StatefulWidget {
 
   /// 图片填充模式
   final BoxFit fit;
+
+  /// 图片对齐方式
+  final Alignment alignment;
 
   /// 加载中占位符
   final Widget? placeholder;
@@ -350,6 +354,7 @@ class _StreamImageState extends State<StreamImage> {
       return CachedNetworkImage(
         imageUrl: widget.url!,
         fit: widget.fit,
+        alignment: widget.alignment,
         width: widget.width,
         height: widget.height,
         placeholder: (_, _) => widget.placeholder ?? _buildPlaceholder(),
@@ -365,6 +370,7 @@ class _StreamImageState extends State<StreamImage> {
         return Image.file(
           File(filePath),
           fit: widget.fit,
+          alignment: widget.alignment,
           width: widget.width,
           height: widget.height,
           errorBuilder: (_, _, _) => widget.errorWidget ?? _buildError(),
@@ -407,6 +413,7 @@ class _StreamImageState extends State<StreamImage> {
     return Image.memory(
       _imageBytes!,
       fit: widget.fit,
+      alignment: widget.alignment,
       width: widget.width,
       height: widget.height,
       errorBuilder: (_, _, _) => widget.errorWidget ?? _buildError(),

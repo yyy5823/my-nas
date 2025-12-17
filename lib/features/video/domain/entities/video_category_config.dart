@@ -30,9 +30,29 @@ enum VideoHomeCategory {
   /// 其他（未识别的视频）
   others,
 
-  /// 按类型分类（动态生成）
-  /// 这是一个特殊类型，实际会根据 genreFilter 字段展开为多个分类
-  byGenre,
+  /// 按电影类型分类（动态生成）
+  byMovieGenre,
+
+  /// 按电影地区分类（动态生成）
+  byMovieRegion,
+
+  /// 按电视剧类型分类（动态生成）
+  byTvGenre,
+
+  /// 按电视剧地区分类（动态生成）
+  byTvRegion,
+
+  /// 浏览电影类型（卡片式分类入口）
+  browseMovieGenres,
+
+  /// 浏览电影地区（卡片式分类入口）
+  browseMovieRegions,
+
+  /// 浏览电视剧类型（卡片式分类入口）
+  browseTvGenres,
+
+  /// 浏览电视剧地区（卡片式分类入口）
+  browseTvRegions,
 }
 
 /// 分类类型的扩展方法
@@ -58,8 +78,40 @@ extension VideoHomeCategoryExtension on VideoHomeCategory {
         return '未观看';
       case VideoHomeCategory.others:
         return '其他';
-      case VideoHomeCategory.byGenre:
-        return '按类型';
+      case VideoHomeCategory.byMovieGenre:
+        return '电影类型';
+      case VideoHomeCategory.byMovieRegion:
+        return '电影地区';
+      case VideoHomeCategory.byTvGenre:
+        return '电视剧类型';
+      case VideoHomeCategory.byTvRegion:
+        return '电视剧地区';
+      case VideoHomeCategory.browseMovieGenres:
+        return '浏览电影类型';
+      case VideoHomeCategory.browseMovieRegions:
+        return '浏览电影地区';
+      case VideoHomeCategory.browseTvGenres:
+        return '浏览电视剧类型';
+      case VideoHomeCategory.browseTvRegions:
+        return '浏览电视剧地区';
+    }
+  }
+
+  /// 分类组名称（用于设置界面分组显示）
+  String get groupName {
+    switch (this) {
+      case VideoHomeCategory.byMovieGenre:
+      case VideoHomeCategory.byMovieRegion:
+      case VideoHomeCategory.browseMovieGenres:
+      case VideoHomeCategory.browseMovieRegions:
+        return '电影分类';
+      case VideoHomeCategory.byTvGenre:
+      case VideoHomeCategory.byTvRegion:
+      case VideoHomeCategory.browseTvGenres:
+      case VideoHomeCategory.browseTvRegions:
+        return '电视剧分类';
+      default:
+        return '基础分类';
     }
   }
 
@@ -84,13 +136,77 @@ extension VideoHomeCategoryExtension on VideoHomeCategory {
         return 'visibility_off';
       case VideoHomeCategory.others:
         return 'video_file';
-      case VideoHomeCategory.byGenre:
+      case VideoHomeCategory.byMovieGenre:
+      case VideoHomeCategory.browseMovieGenres:
         return 'category';
+      case VideoHomeCategory.byMovieRegion:
+      case VideoHomeCategory.browseMovieRegions:
+        return 'public';
+      case VideoHomeCategory.byTvGenre:
+      case VideoHomeCategory.browseTvGenres:
+        return 'category';
+      case VideoHomeCategory.byTvRegion:
+      case VideoHomeCategory.browseTvRegions:
+        return 'public';
     }
   }
 
-  /// 是否为动态分类（需要额外配置）
-  bool get isDynamic => this == VideoHomeCategory.byGenre;
+  /// 是否为动态分类（需要额外配置筛选条件）
+  bool get isDynamic => this == VideoHomeCategory.byMovieGenre ||
+      this == VideoHomeCategory.byMovieRegion ||
+      this == VideoHomeCategory.byTvGenre ||
+      this == VideoHomeCategory.byTvRegion;
+
+  /// 是否为浏览分类（卡片式分类入口）
+  bool get isBrowseCategory =>
+      this == VideoHomeCategory.browseMovieGenres ||
+      this == VideoHomeCategory.browseMovieRegions ||
+      this == VideoHomeCategory.browseTvGenres ||
+      this == VideoHomeCategory.browseTvRegions;
+
+  /// 是否为类型分类
+  bool get isGenreCategory =>
+      this == VideoHomeCategory.byMovieGenre ||
+      this == VideoHomeCategory.byTvGenre ||
+      this == VideoHomeCategory.browseMovieGenres ||
+      this == VideoHomeCategory.browseTvGenres;
+
+  /// 是否为地区分类
+  bool get isRegionCategory =>
+      this == VideoHomeCategory.byMovieRegion ||
+      this == VideoHomeCategory.byTvRegion ||
+      this == VideoHomeCategory.browseMovieRegions ||
+      this == VideoHomeCategory.browseTvRegions;
+
+  /// 是否为电影相关分类
+  bool get isMovieCategory =>
+      this == VideoHomeCategory.byMovieGenre ||
+      this == VideoHomeCategory.byMovieRegion ||
+      this == VideoHomeCategory.browseMovieGenres ||
+      this == VideoHomeCategory.browseMovieRegions;
+
+  /// 是否为电视剧相关分类
+  bool get isTvCategory =>
+      this == VideoHomeCategory.byTvGenre ||
+      this == VideoHomeCategory.byTvRegion ||
+      this == VideoHomeCategory.browseTvGenres ||
+      this == VideoHomeCategory.browseTvRegions;
+
+  /// 获取对应的动态分类类型（用于浏览分类 -> 动态分类转换）
+  VideoHomeCategory? get correspondingDynamicCategory {
+    switch (this) {
+      case VideoHomeCategory.browseMovieGenres:
+        return VideoHomeCategory.byMovieGenre;
+      case VideoHomeCategory.browseMovieRegions:
+        return VideoHomeCategory.byMovieRegion;
+      case VideoHomeCategory.browseTvGenres:
+        return VideoHomeCategory.byTvGenre;
+      case VideoHomeCategory.browseTvRegions:
+        return VideoHomeCategory.byTvRegion;
+      default:
+        return null;
+    }
+  }
 }
 
 /// 单个分类区块的配置
@@ -99,17 +215,29 @@ class VideoCategorySectionConfig {
     required this.category,
     required this.order,
     this.visible = true,
-    this.genreFilter,
+    this.filter,
   });
 
   /// 从 Map 创建
-  factory VideoCategorySectionConfig.fromMap(Map<String, dynamic> map) =>
-      VideoCategorySectionConfig(
-        category: VideoHomeCategory.values[map['category'] as int],
-        order: map['order'] as int,
-        visible: map['visible'] as bool? ?? true,
-        genreFilter: map['genreFilter'] as String?,
-      );
+  factory VideoCategorySectionConfig.fromMap(Map<String, dynamic> map) {
+    // 兼容旧版数据
+    final categoryIndex = map['category'] as int;
+    var category = VideoHomeCategory.values[categoryIndex];
+
+    // 处理旧版 byGenre -> 新版 byMovieGenre 的迁移
+    // 旧版 byGenre 的 index 是 9，新版已被 byMovieGenre 取代
+    if (categoryIndex >= VideoHomeCategory.values.length) {
+      category = VideoHomeCategory.byMovieGenre;
+    }
+
+    return VideoCategorySectionConfig(
+      category: category,
+      order: map['order'] as int,
+      visible: map['visible'] as bool? ?? true,
+      // 兼容旧版 genreFilter 字段
+      filter: map['filter'] as String? ?? map['genreFilter'] as String?,
+    );
+  }
 
   /// 分类类型
   final VideoHomeCategory category;
@@ -120,22 +248,39 @@ class VideoCategorySectionConfig {
   /// 是否可见
   final bool visible;
 
-  /// 类型筛选（仅用于 byGenre 类型）
-  /// 例如：'动作', '科幻', '喜剧'
-  final String? genreFilter;
+  /// 筛选条件（用于动态分类）
+  /// - 对于类型分类：例如 '动作', '科幻', '喜剧'
+  /// - 对于地区分类：例如 '美国', '中国', '日本'
+  final String? filter;
 
-  /// 获取显示名称（考虑类型筛选）
+  /// 获取显示名称（考虑筛选条件）
   String get displayName {
-    if (category == VideoHomeCategory.byGenre && genreFilter != null) {
-      return genreFilter!;
+    if (category.isDynamic && filter != null) {
+      return filter!;
     }
     return category.displayName;
   }
 
+  /// 获取副标题（分类类型描述）
+  String get subtitle {
+    switch (category) {
+      case VideoHomeCategory.byMovieGenre:
+        return '电影类型';
+      case VideoHomeCategory.byMovieRegion:
+        return '电影地区';
+      case VideoHomeCategory.byTvGenre:
+        return '电视剧类型';
+      case VideoHomeCategory.byTvRegion:
+        return '电视剧地区';
+      default:
+        return '';
+    }
+  }
+
   /// 生成唯一标识（用于 Map key）
   String get uniqueKey {
-    if (category == VideoHomeCategory.byGenre && genreFilter != null) {
-      return 'genre_$genreFilter';
+    if (category.isDynamic && filter != null) {
+      return '${category.name}_$filter';
     }
     return category.name;
   }
@@ -145,7 +290,7 @@ class VideoCategorySectionConfig {
         'category': category.index,
         'order': order,
         'visible': visible,
-        'genreFilter': genreFilter,
+        'filter': filter,
       };
 
   /// 复制并修改
@@ -153,13 +298,13 @@ class VideoCategorySectionConfig {
     VideoHomeCategory? category,
     int? order,
     bool? visible,
-    String? genreFilter,
+    String? filter,
   }) =>
       VideoCategorySectionConfig(
         category: category ?? this.category,
         order: order ?? this.order,
         visible: visible ?? this.visible,
-        genreFilter: genreFilter ?? this.genreFilter,
+        filter: filter ?? this.filter,
       );
 
   @override
@@ -249,10 +394,33 @@ class VideoCategorySettings {
     return sorted;
   }
 
-  /// 获取所有类型分类
-  List<VideoCategorySectionConfig> get genreSections => sections
-      .where((s) => s.category == VideoHomeCategory.byGenre)
+  /// 获取所有动态分类
+  List<VideoCategorySectionConfig> get dynamicSections =>
+      sections.where((s) => s.category.isDynamic).toList();
+
+  /// 获取电影类型分类
+  List<VideoCategorySectionConfig> get movieGenreSections => sections
+      .where((s) => s.category == VideoHomeCategory.byMovieGenre)
       .toList();
+
+  /// 获取电影地区分类
+  List<VideoCategorySectionConfig> get movieRegionSections => sections
+      .where((s) => s.category == VideoHomeCategory.byMovieRegion)
+      .toList();
+
+  /// 获取电视剧类型分类
+  List<VideoCategorySectionConfig> get tvGenreSections => sections
+      .where((s) => s.category == VideoHomeCategory.byTvGenre)
+      .toList();
+
+  /// 获取电视剧地区分类
+  List<VideoCategorySectionConfig> get tvRegionSections => sections
+      .where((s) => s.category == VideoHomeCategory.byTvRegion)
+      .toList();
+
+  /// 获取指定类型的分类筛选值集合
+  Set<String?> getFiltersForCategory(VideoHomeCategory category) =>
+      sections.where((s) => s.category == category).map((s) => s.filter).toSet();
 
   /// 转为 Map
   Map<String, dynamic> toMap() => {
@@ -293,11 +461,13 @@ class VideoCategorySettings {
     return copyWith(sections: newSections);
   }
 
-  /// 添加类型分类
-  VideoCategorySettings addGenre(String genre) {
+  /// 添加动态分类
+  VideoCategorySettings addDynamicCategory(
+    VideoHomeCategory category,
+    String filter,
+  ) {
     // 检查是否已存在
-    if (sections.any((s) =>
-        s.category == VideoHomeCategory.byGenre && s.genreFilter == genre)) {
+    if (sections.any((s) => s.category == category && s.filter == filter)) {
       return this;
     }
 
@@ -307,20 +477,43 @@ class VideoCategorySettings {
     );
 
     final newSection = VideoCategorySectionConfig(
-      category: VideoHomeCategory.byGenre,
+      category: category,
       order: maxOrder + 1,
-      genreFilter: genre,
+      filter: filter,
     );
 
     return copyWith(sections: [...sections, newSection]);
   }
 
-  /// 移除类型分类
-  VideoCategorySettings removeGenre(String genre) {
+  /// 移除动态分类
+  VideoCategorySettings removeDynamicCategory(
+    VideoHomeCategory category,
+    String filter,
+  ) {
     final newSections = sections
-        .where((s) =>
-            !(s.category == VideoHomeCategory.byGenre && s.genreFilter == genre))
+        .where((s) => !(s.category == category && s.filter == filter))
         .toList();
+    return copyWith(sections: newSections);
+  }
+
+  /// 批量添加动态分类
+  VideoCategorySettings addDynamicCategories(
+    VideoHomeCategory category,
+    List<String> filters,
+  ) {
+    var settings = this;
+    for (final filter in filters) {
+      settings = settings.addDynamicCategory(category, filter);
+    }
+    return settings;
+  }
+
+  /// 批量移除某类型的所有动态分类
+  VideoCategorySettings removeAllDynamicCategoriesOfType(
+    VideoHomeCategory category,
+  ) {
+    final newSections =
+        sections.where((s) => s.category != category).toList();
     return copyWith(sections: newSections);
   }
 }
