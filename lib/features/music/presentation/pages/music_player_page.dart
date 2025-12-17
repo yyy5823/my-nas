@@ -10,10 +10,13 @@ import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/presentation/providers/music_favorites_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
+import 'package:my_nas/features/music/presentation/widgets/auto_scrape_dialog.dart';
 import 'package:my_nas/features/music/presentation/widgets/lyric_view.dart';
 import 'package:my_nas/features/music/presentation/widgets/music_progress_bar.dart';
 import 'package:my_nas/features/music/presentation/widgets/music_queue_sheet.dart';
 import 'package:my_nas/features/music/presentation/widgets/music_settings_sheet.dart';
+import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
+import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 
 class MusicPlayerPage extends ConsumerStatefulWidget {
   const MusicPlayerPage({super.key});
@@ -379,6 +382,15 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
             ),
           ),
         ),
+        // 自动识别按钮
+        IconButton(
+          onPressed: () => _showAutoScrapeDialog(context, ref, currentMusic),
+          icon: Icon(
+            Icons.auto_fix_high_rounded,
+            color: isDark ? Colors.white : Colors.black87,
+          ),
+          tooltip: '自动识别',
+        ),
         // 更多选项
         IconButton(
           onPressed: () => showMusicSettingsSheet(context),
@@ -389,6 +401,27 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
           tooltip: '更多选项',
         ),
       ],
+    );
+  }
+
+  Future<void> _showAutoScrapeDialog(
+    BuildContext context,
+    WidgetRef ref,
+    MusicItem currentMusic,
+  ) async {
+    // 获取文件系统（如果有）
+    final connections = ref.read(activeConnectionsProvider);
+    final connection = currentMusic.sourceId != null
+        ? connections[currentMusic.sourceId]
+        : null;
+    final fileSystem = (connection != null && connection.status == SourceStatus.connected)
+        ? connection.adapter.fileSystem
+        : null;
+
+    await AutoScrapeDialog.show(
+      context,
+      currentMusic,
+      fileSystem: fileSystem,
     );
   }
 

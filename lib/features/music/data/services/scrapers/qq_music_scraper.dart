@@ -1,0 +1,384 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:dio/dio.dart';
+import 'package:my_nas/features/music/domain/entities/music_scraper_result.dart';
+import 'package:my_nas/features/music/domain/entities/music_scraper_source.dart';
+import 'package:my_nas/features/music/domain/interfaces/music_scraper.dart';
+
+/// QQ音乐刮削器
+///
+/// 使用 QQ音乐 API 获取元数据、封面和歌词
+class QQMusicScraper implements MusicScraper {
+  QQMusicScraper({
+    this.cookie,
+  }) {
+    _dio = Dio(BaseOptions(
+      connectTimeout: const Duration(seconds: 15),
+      receiveTimeout: const Duration(seconds: 15),
+      headers: {
+        'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://y.qq.com/',
+        'Origin': 'https://y.qq.com',
+        if (cookie != null && cookie!.isNotEmpty) 'Cookie': cookie,
+      },
+    ));
+  }
+
+  static const String _searchUrl = 'https://c.y.qq.com/soso/fcgi-bin/client_search_cp';
+  static const String _songDetailUrl = 'https://c.y.qq.com/v8/fcg-bin/fcg_play_single_song.fcg';
+  static const String _lyricUrl = 'https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg';
+
+  final String? cookie;
+  late final Dio _dio;
+
+  /// 上次请求时间
+  DateTime? _lastRequestTime;
+
+  /// 最小请求间隔
+  static const Duration _minInterval = Duration(milliseconds: 500);
+
+  @override
+  MusicScraperType get type => MusicScraperType.qqMusic;
+
+  @override
+  bool get isConfigured => true; // Cookie 可选
+
+  @override
+  Future<bool> testConnection() async {
+    try {
+      final _ = await search('test', limit: 1);
+      return true;
+    } on Exception {
+      return false;
+    }
+  }
+
+  @override
+  Future<MusicScraperSearchResult> search(
+    String query, {
+    String? artist,
+    String? album,
+    int page = 1,
+    int limit = 20,
+  }) async {
+    try {
+      // 构建搜索关键词
+      var searchQuery = query;
+      if (artist != null && artist.isNotEmpty) {
+        searchQuery += ' $artist';
+      }
+      if (album != null && album.isNotEmpty) {
+        searchQuery += ' $album';
+      }
+
+      final response = await _rateLimitedRequest(() => _dio.get(
+            _searchUrl,
+            queryParameters: {
+              'w': searchQuery,
+              'p': page,
+              'n': limit,
+              'format': 'json',
+              'inCharset': 'utf8',
+              'outCharset': 'utf-8',
+              'platform': 'yqq.json',
+              'needNewCode': 0,
+            },
+          ));
+
+      // QQ音乐返回的是 JSONP，需要处理
+      var dataStr = response.data.toString();
+      if (dataStr.startsWith('callback(')) {
+        dataStr = dataStr.substring(9, dataStr.length - 1);
+      }
+
+      final data = json.decode(dataStr) as Map<String, dynamic>;
+      final songData = data['data']?['song'] as Map<String, dynamic>?;
+
+      if (songData == null) {
+        return MusicScraperSearchResult.empty(type);
+      }
+
+      final songs = (songData['list'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+      final totalNum = songData['totalnum'] as int? ?? 0;
+
+      final items = songs.map((s) => _parseSong(s)).toList();
+
+      return MusicScraperSearchResult(
+        items: items,
+        source: type,
+        page: page,
+        totalPages: (totalNum / limit).ceil(),
+        totalResults: totalNum,
+      );
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    } on FormatException catch (e) {
+      throw MusicScraperException(
+        '解析响应失败: $e',
+        source: type,
+        cause: e,
+      );
+    }
+  }
+
+  @override
+  Future<MusicScraperDetail?> getDetail(String externalId) async {
+    try {
+      final response = await _rateLimitedRequest(() => _dio.get(
+            _songDetailUrl,
+            queryParameters: {
+              'songmid': externalId,
+              'format': 'json',
+              'inCharset': 'utf8',
+              'outCharset': 'utf-8',
+              'platform': 'yqq.json',
+            },
+          ));
+
+      final data = response.data as Map<String, dynamic>;
+      final songs = (data['data'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+
+      if (songs.isEmpty) {
+        return null;
+      }
+
+      return _parseSongDetail(songs.first);
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) {
+        return null;
+      }
+      throw _handleDioError(e);
+    }
+  }
+
+  @override
+  Future<List<CoverScraperResult>> getCoverArt(String externalId) async {
+    try {
+      final detail = await getDetail(externalId);
+      if (detail?.coverUrl == null) {
+        return [];
+      }
+
+      return [
+        CoverScraperResult(
+          source: type,
+          coverUrl: detail!.coverUrl!,
+          thumbnailUrl: detail.coverUrl!.replaceAll('300x300', '150x150'),
+          type: CoverType.front,
+        ),
+      ];
+    } on Exception {
+      return [];
+    }
+  }
+
+  @override
+  Future<LyricScraperResult?> getLyrics(String externalId) async {
+    try {
+      final response = await _rateLimitedRequest(() => _dio.get(
+            _lyricUrl,
+            queryParameters: {
+              'songmid': externalId,
+              'format': 'json',
+              'nobase64': 1,
+              'g_tk': 5381,
+            },
+            options: Options(
+              headers: {
+                'Referer': 'https://y.qq.com/portal/player.html',
+              },
+            ),
+          ));
+
+      final data = response.data as Map<String, dynamic>;
+
+      // 检查返回码
+      final retcode = data['retcode'] as int? ?? data['code'] as int? ?? -1;
+      if (retcode != 0) {
+        return null;
+      }
+
+      // 原文歌词
+      var lyric = data['lyric'] as String?;
+      if (lyric != null && lyric.isNotEmpty) {
+        // 如果是 Base64 编码
+        try {
+          lyric = utf8.decode(base64.decode(lyric));
+        } on Exception {
+          // 不是 Base64，直接使用
+        }
+      }
+
+      // 翻译歌词
+      var trans = data['trans'] as String?;
+      if (trans != null && trans.isNotEmpty) {
+        try {
+          trans = utf8.decode(base64.decode(trans));
+        } on Exception {
+          // 不是 Base64，直接使用
+        }
+      }
+
+      if (lyric == null || lyric.isEmpty) {
+        return null;
+      }
+
+      return LyricScraperResult(
+        source: type,
+        lrcContent: lyric,
+        translation: trans,
+      );
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
+
+  @override
+  void dispose() {
+    _dio.close();
+  }
+
+  /// 速率限制请求
+  Future<Response<T>> _rateLimitedRequest<T>(
+    Future<Response<T>> Function() request,
+  ) async {
+    if (_lastRequestTime != null) {
+      final elapsed = DateTime.now().difference(_lastRequestTime!);
+      if (elapsed < _minInterval) {
+        await Future<void>.delayed(_minInterval - elapsed);
+      }
+    }
+    _lastRequestTime = DateTime.now();
+    return request();
+  }
+
+  /// 解析歌曲搜索结果
+  MusicScraperItem _parseSong(Map<String, dynamic> data) {
+    final mid = data['songmid'] as String? ?? data['mid'] as String? ?? '';
+    final name = data['songname'] as String? ?? data['name'] as String? ?? '';
+
+    // 艺术家
+    final singers = data['singer'] as List? ?? [];
+    final artist = singers
+        .map((s) => s['name'] as String? ?? '')
+        .where((n) => n.isNotEmpty)
+        .join(' / ');
+
+    // 专辑
+    final albumMid = data['albummid'] as String?;
+    final albumName = data['albumname'] as String?;
+
+    // 封面 URL
+    String? coverUrl;
+    if (albumMid != null && albumMid.isNotEmpty) {
+      coverUrl = 'https://y.qq.com/music/photo_new/T002R300x300M000$albumMid.jpg';
+    }
+
+    // 时长（秒转毫秒）
+    final interval = data['interval'] as int?;
+    final durationMs = interval != null ? interval * 1000 : null;
+
+    return MusicScraperItem(
+      externalId: mid,
+      source: type,
+      title: name,
+      artist: artist.isEmpty ? null : artist,
+      album: albumName,
+      durationMs: durationMs,
+      coverUrl: coverUrl,
+    );
+  }
+
+  /// 解析歌曲详情
+  MusicScraperDetail _parseSongDetail(Map<String, dynamic> data) {
+    final mid = data['mid'] as String? ?? '';
+    final name = data['name'] as String? ?? '';
+
+    // 艺术家
+    final singers = data['singer'] as List? ?? [];
+    final artist = singers
+        .map((s) => s['name'] as String? ?? '')
+        .where((n) => n.isNotEmpty)
+        .join(' / ');
+
+    // 专辑信息
+    final album = data['album'] as Map<String, dynamic>?;
+    final albumMid = album?['mid'] as String?;
+    final albumName = album?['name'] as String?;
+
+    // 封面 URL
+    String? coverUrl;
+    if (albumMid != null && albumMid.isNotEmpty) {
+      coverUrl = 'https://y.qq.com/music/photo_new/T002R300x300M000$albumMid.jpg';
+    }
+
+    // 时长（秒转毫秒）
+    final interval = data['interval'] as int?;
+    final durationMs = interval != null ? interval * 1000 : null;
+
+    // 音轨号
+    final trackNumber = data['index_album'] as int?;
+
+    // 碟号
+    final discNumber = data['index_cd'] as int?;
+
+    // 流派
+    final genre = data['genre'] as String?;
+
+    // 发行时间
+    final pubTime = data['time_public'] as String?;
+    int? year;
+    if (pubTime != null && pubTime.length >= 4) {
+      year = int.tryParse(pubTime.substring(0, 4));
+    }
+
+    return MusicScraperDetail(
+      externalId: mid,
+      source: type,
+      title: name,
+      artist: artist.isEmpty ? null : artist,
+      album: albumName,
+      durationMs: durationMs,
+      coverUrl: coverUrl,
+      trackNumber: trackNumber,
+      discNumber: discNumber,
+      year: year,
+      genres: genre != null && genre.isNotEmpty ? [genre] : null,
+      releaseDate: pubTime,
+    );
+  }
+
+  /// 处理 Dio 错误
+  MusicScraperException _handleDioError(DioException e) {
+    if (e.response?.statusCode == 401 || e.response?.statusCode == 403) {
+      return MusicScraperAuthException(
+        'Cookie 无效或已过期',
+        source: type,
+        cause: e,
+      );
+    }
+    if (e.response?.statusCode == 429) {
+      return MusicScraperRateLimitException(
+        '请求过于频繁，请稍后再试',
+        source: type,
+        cause: e,
+      );
+    }
+    if (e.type == DioExceptionType.connectionTimeout ||
+        e.type == DioExceptionType.receiveTimeout ||
+        e.type == DioExceptionType.connectionError) {
+      return MusicScraperNetworkException(
+        '网络连接失败',
+        source: type,
+        cause: e,
+      );
+    }
+    return MusicScraperException(
+      e.message ?? '未知错误',
+      source: type,
+      cause: e,
+    );
+  }
+}

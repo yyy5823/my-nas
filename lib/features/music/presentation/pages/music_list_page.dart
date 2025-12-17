@@ -16,6 +16,7 @@ import 'package:my_nas/features/music/data/services/music_database_service.dart'
 import 'package:my_nas/features/music/data/services/music_library_cache_service.dart';
 import 'package:my_nas/features/music/data/services/music_metadata_service.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
+import 'package:my_nas/features/music/presentation/pages/manual_music_scraper_page.dart';
 import 'package:my_nas/features/music/presentation/pages/music_home_page.dart';
 import 'package:my_nas/features/music/presentation/pages/music_player_page.dart';
 import 'package:my_nas/features/music/presentation/pages/playlist_detail_page.dart';
@@ -3484,6 +3485,25 @@ class _MusicListTile extends ConsumerWidget {
                     ),
                     const PopupMenuDivider(),
                     PopupMenuItem(
+                      value: 'manual_scrape',
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.search_rounded,
+                            color: isDark ? AppColors.darkOnSurface : null,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            '手动刮削',
+                            style: TextStyle(
+                              color: isDark ? AppColors.darkOnSurface : null,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuDivider(),
+                    PopupMenuItem(
                       value: 'remove_from_library',
                       child: Row(
                         children: [
@@ -3743,6 +3763,18 @@ class _MusicListTile extends ConsumerWidget {
               );
             }
           }
+        }
+
+      case 'manual_scrape':
+        if (context.mounted) {
+          await Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => ManualMusicScraperPage(
+                music: musicItem,
+                fileSystem: connection.adapter.fileSystem,
+              ),
+            ),
+          );
         }
     }
   }
@@ -6396,6 +6428,8 @@ class _CompactMusicTile extends ConsumerWidget {
           const PopupMenuItem(value: 'add_to_queue', child: Text('添加到队列')),
           const PopupMenuItem(value: 'add_to_favorites', child: Text('收藏')),
           const PopupMenuItem(value: 'add_to_playlist', child: Text('添加到歌单')),
+          const PopupMenuDivider(),
+          const PopupMenuItem(value: 'manual_scrape', child: Text('手动刮削')),
         ],
       ),
     );
@@ -6595,6 +6629,17 @@ class _CompactMusicTile extends ConsumerWidget {
           // 使用 sourceId_path 格式唯一标识歌曲
           final trackId = '${track.sourceId}_${track.path}';
           _showAddToPlaylistSheet(context, ref, trackId);
+        }
+      case 'manual_scrape':
+        if (context.mounted) {
+          await Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => ManualMusicScraperPage(
+                music: musicItem,
+                fileSystem: adapter.fileSystem,
+              ),
+            ),
+          );
         }
       }
     } on Exception catch (e, stackTrace) {

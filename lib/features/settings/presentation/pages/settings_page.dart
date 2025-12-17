@@ -9,6 +9,8 @@ import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/pages/media_library_page.dart';
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
+import 'package:my_nas/features/music/presentation/pages/music_scraper_sources_page.dart';
+import 'package:my_nas/features/music/presentation/providers/music_scraper_provider.dart';
 import 'package:my_nas/features/video/presentation/pages/scraper_sources_page.dart';
 import 'package:my_nas/features/video/presentation/providers/scraper_provider.dart';
 import 'package:my_nas/shared/providers/language_preference_provider.dart';
@@ -114,6 +116,19 @@ class SettingsPage extends ConsumerWidget {
                     _ScraperSourcesTile(isDark: isDark),
                     _buildDivider(isDark),
                     _LanguagePreferenceTile(isDark: isDark),
+                  ],
+                ),
+
+                const SizedBox(height: AppSpacing.xl),
+
+                // 音乐设置
+                _buildSectionHeader(context, '音乐', Icons.music_note_rounded, isDark),
+                const SizedBox(height: AppSpacing.sm),
+                _buildSettingsCard(
+                  context,
+                  isDark,
+                  children: [
+                    _MusicScraperSourcesTile(isDark: isDark),
                   ],
                 ),
 
@@ -743,6 +758,116 @@ class _ScraperSourcesTile extends ConsumerWidget {
                       hasAnySource
                           ? '$enabledCount / $totalCount 已启用'
                           : '未配置 (无法获取影片信息)',
+                      style: context.textTheme.bodySmall?.copyWith(
+                        color: hasEnabledSource
+                            ? Colors.green
+                            : (isDark
+                                ? AppColors.darkOnSurfaceVariant
+                                : AppColors.lightOnSurfaceVariant),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (hasEnabledSource)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.check_circle_rounded, size: 14, color: Colors.green),
+                      const SizedBox(width: 4),
+                      Text(
+                        '$enabledCount 个',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.green,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: isDark
+                      ? AppColors.darkOnSurfaceVariant
+                      : AppColors.lightOnSurfaceVariant,
+                  size: 22,
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 音乐刮削源设置项
+class _MusicScraperSourcesTile extends ConsumerWidget {
+  const _MusicScraperSourcesTile({required this.isDark});
+
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final enabledCount = ref.watch(enabledMusicScraperCountProvider);
+    final totalCount = ref.watch(totalMusicScraperCountProvider);
+    final hasAnySource = totalCount > 0;
+    final hasEnabledSource = enabledCount > 0;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const MusicScraperSourcesPage(),
+            ),
+          );
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.md,
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppColors.fileAudio.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.music_note_rounded,
+                  color: AppColors.fileAudio,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '刮削源',
+                      style: context.textTheme.bodyLarge?.copyWith(
+                        color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      hasAnySource
+                          ? '$enabledCount / $totalCount 已启用'
+                          : '未配置 (无法获取歌词封面)',
                       style: context.textTheme.bodySmall?.copyWith(
                         color: hasEnabledSource
                             ? Colors.green
