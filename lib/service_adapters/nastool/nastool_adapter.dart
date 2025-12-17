@@ -38,6 +38,18 @@ class NasToolAdapter implements ServiceAdapter {
     try {
       final apiToken = config.apiKey ?? config.extraConfig?['apiToken'] as String?;
 
+      // 调试日志
+      // ignore: avoid_print
+      print('[NasToolAdapter] connect: baseUrl = ${config.baseUrl}');
+      // ignore: avoid_print
+      print('[NasToolAdapter] connect: config.apiKey = ${config.apiKey != null ? "已配置(${config.apiKey!.length}字符)" : "null"}');
+      // ignore: avoid_print
+      print('[NasToolAdapter] connect: extraConfig = ${config.extraConfig}');
+      // ignore: avoid_print
+      print('[NasToolAdapter] connect: apiToken from extraConfig = ${config.extraConfig?['apiToken'] != null ? "已配置" : "null"}');
+      // ignore: avoid_print
+      print('[NasToolAdapter] connect: final apiToken = ${apiToken != null ? "已配置(${apiToken.length}字符)" : "null"}');
+
       if (apiToken == null || apiToken.isEmpty) {
         return const ServiceConnectionFailure('缺少 API Token');
       }

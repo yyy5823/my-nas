@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -29,6 +30,7 @@ import 'package:my_nas/features/video/presentation/providers/video_category_sett
 import 'package:my_nas/features/video/presentation/providers/video_history_provider.dart';
 import 'package:my_nas/features/video/presentation/widgets/hero_banner.dart';
 import 'package:my_nas/features/video/presentation/widgets/video_category_settings_sheet.dart';
+import 'package:my_nas/features/video/presentation/widgets/video_poster.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/adaptive_image.dart';
 import 'package:my_nas/shared/widgets/context_menu_region.dart';
@@ -904,20 +906,31 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
         .where((r) => r.tmdbId != null)
         .map((r) => r.tmdbId!)
         .toList();
+    // 无 TMDB ID 的剧集优先用 showDirectory，否则用 title
+    final showDirectories = tvShowRepresentatives
+        .where((r) => r.tmdbId == null && r.showDirectory != null)
+        .map((r) => r.showDirectory!)
+        .toList();
     final titles = tvShowRepresentatives
-        .where((r) => r.tmdbId == null && r.title != null)
+        .where((r) => r.tmdbId == null && r.showDirectory == null && r.title != null)
         .map((r) => r.title!)
         .toList();
 
     // 批量获取季集统计
     final groupStats = await _db.getTvShowGroupStats(
       tmdbIds: tmdbIds.isNotEmpty ? tmdbIds : null,
+      showDirectories: showDirectories.isNotEmpty ? showDirectories : null,
       titles: titles.isNotEmpty ? titles : null,
     );
 
     final tvShowGroups = <String, TvShowGroup>{};
     for (final rep in tvShowRepresentatives) {
-      final groupKey = rep.tmdbId != null ? 'tmdb_${rep.tmdbId}' : 'title_${rep.title?.toLowerCase()}';
+      // 生成分组键：优先 tmdbId，其次 showDirectory，最后 title
+      final groupKey = rep.tmdbId != null
+          ? 'tmdb_${rep.tmdbId}'
+          : (rep.showDirectory != null
+              ? 'dir_${rep.showDirectory}'
+              : 'title_${rep.title?.toLowerCase()}');
       final stats = groupStats[groupKey];
       tvShowGroups[groupKey] = TvShowGroup(
         groupKey: groupKey,
@@ -1237,10 +1250,45 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
   ScrapeStats? _scrapeStats;
   bool _showScrapeDetails = false;
 
+  // 精选推荐随机 seed（每次打开 app 随机变化）
+  late final int _heroBannerSeed;
+
   @override
   void initState() {
     super.initState();
+    _heroBannerSeed = DateTime.now().millisecondsSinceEpoch;
     _initScrapeListener();
+  }
+
+  /// 随机选择精选推荐项目（优先选择有背景图的）
+  List<VideoMetadata> _selectRandomHeroItems(List<VideoMetadata> candidates, int count) {
+    if (candidates.isEmpty) return [];
+    if (candidates.length <= count) return candidates;
+
+    // 优先选择有背景图的视频
+    final withBackdrop = candidates.where((v) =>
+        v.backdropUrl != null && v.backdropUrl!.isNotEmpty).toList();
+    final withoutBackdrop = candidates.where((v) =>
+        v.backdropUrl == null || v.backdropUrl!.isEmpty).toList();
+
+    // 使用固定 seed 的随机数生成器，确保同一会话内一致
+    final random = Random(_heroBannerSeed);
+
+    final result = <VideoMetadata>[];
+
+    // 先从有背景图的中随机选择
+    if (withBackdrop.isNotEmpty) {
+      final shuffled = List<VideoMetadata>.from(withBackdrop)..shuffle(random);
+      result.addAll(shuffled.take(count));
+    }
+
+    // 如果不够，从没有背景图的中补充
+    if (result.length < count && withoutBackdrop.isNotEmpty) {
+      final shuffled = List<VideoMetadata>.from(withoutBackdrop)..shuffle(random);
+      result.addAll(shuffled.take(count - result.length));
+    }
+
+    return result;
   }
 
   void _initScrapeListener() {
@@ -2012,17 +2060,19 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     switch (section.category) {
       case VideoHomeCategory.heroBanner:
         if (topRated.isEmpty) return [];
+        // 使用随机 seed 选择精选推荐，每次打开 app 会变化
+        final heroItems = _selectRandomHeroItems(topRated, 5);
         return [
           SliverToBoxAdapter(
             child: isDesktop
                 ? HeroBanner(
-                    items: topRated.take(5).toList(),
+                    items: heroItems,
                     height: 450,
                     onItemTap: (item) => _openVideoDetail(context, ref, item),
                     onPlayTap: (item) => _playVideo(context, ref, item),
                   )
                 : CompactHeroBanner(
-                    items: topRated.take(5).toList(),
+                    items: heroItems,
                     onItemTap: (item) => _openVideoDetail(context, ref, item),
                   ),
           ),
@@ -2841,12 +2891,13 @@ class _PosterCardState extends ConsumerState<_PosterCard> {
                       child: Stack(
                         fit: StackFit.expand,
                         children: [
-                          // 海报图片
+                          // 海报图片（使用 VideoPoster 支持 NAS 路径）
                           if (hasPoster)
-                            AdaptiveImage(
-                              imageUrl: displayPoster,
-                              placeholder: (_) => _buildPlaceholder(),
-                              errorWidget: (_, _) => _buildPlaceholder(),
+                            VideoPoster(
+                              posterUrl: displayPoster,
+                              sourceId: widget.metadata.sourceId,
+                              placeholder: _buildPlaceholder(),
+                              errorWidget: _buildPlaceholder(),
                             )
                           else
                             _buildPlaceholder(),
@@ -3537,9 +3588,9 @@ class _ViewMoreCardState extends State<_ViewMoreCard> {
 
 /// 懒加载海报卡片包装器
 ///
-/// 使用 AutomaticKeepAliveClientMixin 保持已加载的卡片状态，
-/// 滚动回来时不需要重新加载图片
-class _LazyPosterCard extends ConsumerStatefulWidget {
+/// 注意：不再使用 AutomaticKeepAliveClientMixin，让不在视野内的组件可以被回收。
+/// StreamImage 有内存缓存，所以重新创建时可以快速从缓存获取图片数据。
+class _LazyPosterCard extends ConsumerWidget {
   const _LazyPosterCard({
     required this.metadata, required this.onTap, required this.isDark, super.key,
     this.width = 130,
@@ -3551,24 +3602,12 @@ class _LazyPosterCard extends ConsumerStatefulWidget {
   final double width;
 
   @override
-  ConsumerState<_LazyPosterCard> createState() => _LazyPosterCardState();
-}
-
-class _LazyPosterCardState extends ConsumerState<_LazyPosterCard>
-    with AutomaticKeepAliveClientMixin {
-  @override
-  bool get wantKeepAlive => true;
-
-  @override
-  Widget build(BuildContext context) {
-    super.build(context); // Required for AutomaticKeepAliveClientMixin
-    return _VerticalPosterCard(
-      metadata: widget.metadata,
-      onTap: widget.onTap,
-      isDark: widget.isDark,
-      width: widget.width,
+  Widget build(BuildContext context, WidgetRef ref) => _VerticalPosterCard(
+      metadata: metadata,
+      onTap: onTap,
+      isDark: isDark,
+      width: width,
     );
-  }
 }
 
 /// 纵向海报卡片（2:3 比例，Netflix 风格）
@@ -3668,14 +3707,15 @@ class _VerticalPosterCardState extends ConsumerState<_VerticalPosterCard> {
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        // 海报图片 - 使用 RepaintBoundary 防止重绘
+                        // 海报图片 - 使用 VideoPoster 支持 NAS 路径
                         RepaintBoundary(
                           child: _hasPoster
-                              ? AdaptiveImage(
+                              ? VideoPoster(
                                   key: ValueKey(_posterUrl),
-                                  imageUrl: _posterUrl!,
-                                  placeholder: (_) => _buildPlaceholder(),
-                                  errorWidget: (_, _) => _buildPlaceholder(),
+                                  posterUrl: _posterUrl,
+                                  sourceId: widget.metadata.sourceId,
+                                  placeholder: _buildPlaceholder(),
+                                  errorWidget: _buildPlaceholder(),
                                 )
                               : _buildPlaceholder(),
                         ),
@@ -3982,14 +4022,15 @@ class _HorizontalVideoCardState extends ConsumerState<_HorizontalVideoCard> {
                       child: Stack(
                         fit: StackFit.expand,
                         children: [
-                          // 缩略图 - 使用 RepaintBoundary 防止重绘
+                          // 缩略图 - 使用 VideoPoster 支持 NAS 路径
                           RepaintBoundary(
                             child: _hasPoster
-                                ? AdaptiveImage(
+                                ? VideoPoster(
                                     key: ValueKey(_posterUrl),
-                                    imageUrl: _posterUrl!,
-                                    placeholder: (_) => _buildPlaceholder(),
-                                    errorWidget: (_, _) => _buildPlaceholder(),
+                                    posterUrl: _posterUrl,
+                                    sourceId: widget.metadata.sourceId,
+                                    placeholder: _buildPlaceholder(),
+                                    errorWidget: _buildPlaceholder(),
                                   )
                                 : _buildPlaceholder(),
                           ),
@@ -4969,14 +5010,15 @@ class _TvShowPosterCardState extends State<_TvShowPosterCard> {
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        // 海报图片
+                        // 海报图片（使用 VideoPoster 支持 NAS 路径）
                         RepaintBoundary(
                           child: _hasPoster
-                              ? AdaptiveImage(
+                              ? VideoPoster(
                                   key: ValueKey(_posterUrl),
-                                  imageUrl: _posterUrl!,
-                                  placeholder: (_) => _buildPlaceholder(),
-                                  errorWidget: (_, _) => _buildPlaceholder(),
+                                  posterUrl: _posterUrl,
+                                  sourceId: widget.group.representative.sourceId,
+                                  placeholder: _buildPlaceholder(),
+                                  errorWidget: _buildPlaceholder(),
                                 )
                               : _buildPlaceholder(),
                         ),
@@ -6990,10 +7032,12 @@ class _MovieCollectionGridCard extends StatelessWidget {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    if (hasPoster) AdaptiveImage(
-                            imageUrl: posterUrl,
-                            placeholder: (_) => _buildPlaceholder(),
-                            errorWidget: (_, _) => _buildPlaceholder(),
+                    // 海报（使用 VideoPoster 支持 NAS 路径）
+                    if (hasPoster) VideoPoster(
+                            posterUrl: posterUrl,
+                            sourceId: collection.movies.first.sourceId,
+                            placeholder: _buildPlaceholder(),
+                            errorWidget: _buildPlaceholder(),
                           ) else _buildPlaceholder(),
                     // 电影数量徽章
                     Positioned(

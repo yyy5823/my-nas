@@ -4,7 +4,6 @@ import 'dart:typed_data';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
-import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:photo_view/photo_view.dart';
 
@@ -80,13 +79,31 @@ class StreamImage extends StatefulWidget {
   /// 背景颜色（仅在 enableZoom 为 true 时有效）
   final Color? backgroundColor;
 
-  // 内存缓存（简单实现）
+  // 内存缓存（LRU 策略）
   static final Map<String, Uint8List> _memoryCache = {};
-  static const int _maxCacheSize = 50; // 最多缓存50张图片
+  // 最多缓存 200 张图片（海报通常 50-100KB，总共约 10-20MB）
+  static const int _maxCacheSize = 200;
+
+  // 并发加载控制
+  static int _activeLoads = 0;
+  static const int _maxConcurrentLoads = 6; // 最多同时加载 6 张图片
+  static final List<Future<void> Function()> _loadQueue = [];
 
   /// 清除所有内存缓存
   static void clearCache() {
     _memoryCache.clear();
+  }
+
+  /// 处理加载队列
+  static void _processQueue() {
+    while (_activeLoads < _maxConcurrentLoads && _loadQueue.isNotEmpty) {
+      final loader = _loadQueue.removeAt(0);
+      _activeLoads++;
+      loader().whenComplete(() {
+        _activeLoads--;
+        _processQueue();
+      });
+    }
   }
 
   @override
@@ -150,12 +167,7 @@ class _StreamImageState extends State<StreamImage> {
     // iOS 平台特殊处理：对于 NAS 的 HTTP/HTTPS URL，优先使用流式加载
     // 这样可以利用 Dio 的自签名证书支持和更好的错误处理
     if (Platform.isIOS) {
-      if (_hasValidHttpUrl) {
-        logger.d('StreamImage: iOS 平台 HTTP(S) URL，使用流式加载以确保兼容性');
-        return true;
-      }
-      // file:// URL 由于沙盒限制需要流式加载
-      if (_hasValidFileUrl) {
+      if (_hasValidHttpUrl || _hasValidFileUrl) {
         return true;
       }
     }
@@ -163,7 +175,6 @@ class _StreamImageState extends State<StreamImage> {
     // macOS 平台对 HTTPS 自签名证书也有问题
     if (Platform.isMacOS) {
       if (_hasValidHttpUrl && widget.url!.startsWith('https://')) {
-        logger.d('StreamImage: macOS HTTPS URL，使用流式加载以支持自签名证书');
         return true;
       }
       if (_hasValidFileUrl) {
@@ -198,10 +209,6 @@ class _StreamImageState extends State<StreamImage> {
   }
 
   Future<void> _loadImage() async {
-    logger.d(
-      'StreamImage: _loadImage called, url=${widget.url}, path=${widget.path}, hasFileSystem=${widget.fileSystem != null}, shouldUseStream=$_shouldUseStream',
-    );
-
     // 检查是否应该使用流式加载（iOS/macOS 自签名证书、file:// URL、forceStream）
     if (_shouldUseStream) {
       await _loadImageViaStream();
@@ -210,7 +217,6 @@ class _StreamImageState extends State<StreamImage> {
 
     // 如果有有效的 HTTP URL，使用 CachedNetworkImage
     if (_hasValidHttpUrl) {
-      logger.d('StreamImage: Using HTTP URL: ${widget.url}');
       setState(() {
         _imageBytes = null;
         _hasError = false;
@@ -221,7 +227,6 @@ class _StreamImageState extends State<StreamImage> {
     // 如果有有效的 file:// URL，在非iOS/macOS平台使用 Image.file
     // 在iOS/macOS平台，由于沙盒限制，优先使用流式加载
     if (_hasValidFileUrl && !_shouldUseStreamForFileUrl) {
-      logger.d('StreamImage: Using file:// URL: ${widget.url}');
       setState(() {
         _imageBytes = null;
         _hasError = false;
@@ -241,7 +246,6 @@ class _StreamImageState extends State<StreamImage> {
   Future<void> _loadImageViaStream() async {
     // 检查内存缓存
     if (_cacheKey.isNotEmpty && StreamImage._memoryCache.containsKey(_cacheKey)) {
-      logger.d('StreamImage: Using cached image for $_cacheKey');
       setState(() {
         _imageBytes = StreamImage._memoryCache[_cacheKey];
         _isLoading = false;
@@ -252,88 +256,86 @@ class _StreamImageState extends State<StreamImage> {
 
     // 需要通过流加载
     if (widget.fileSystem == null) {
-      logger.w(
-        'StreamImage: Cannot stream - fileSystem is null, url=${widget.url}',
-      );
       setState(() {
         _hasError = true;
       });
       return;
     }
 
-    logger.d('StreamImage: Starting stream load, url=${widget.url}, path=${widget.path}');
     setState(() {
       _isLoading = true;
       _hasError = false;
     });
 
-    try {
-      Stream<List<int>>? stream;
+    // 使用队列控制并发加载
+    Future<void> doLoad() async {
+      try {
+        Stream<List<int>>? stream;
 
-      // 优先使用 URL 加载（可以加载缩略图）
-      if (_hasValidHttpUrl) {
-        try {
-          stream = await widget.fileSystem!.getUrlStream(widget.url!);
-          logger.d('StreamImage: Using URL stream for ${widget.url}');
-        } on Exception catch (e, st) {
-          AppError.ignore(e, st, 'URL stream 失败，降级到 file stream');
-          // URL 加载失败，继续尝试文件流
-        }
-      }
-
-      // 如果 URL 加载失败或没有 URL，使用文件流
-      if (stream == null) {
-        if (widget.path == null) {
-          throw Exception('无法加载图片：没有可用的 URL 或路径');
-        }
-        stream = await widget.fileSystem!.getFileStream(widget.path!);
-        logger.d('StreamImage: Using file stream for ${widget.path}');
-      }
-
-      final bytes = <int>[];
-      await for (final chunk in stream) {
-        bytes.addAll(chunk);
-        // 限制图片大小，防止内存溢出
-        if (bytes.length > 50 * 1024 * 1024) {
-          // 50MB 限制
-          throw Exception('图片文件过大');
-        }
-      }
-
-      logger.d(
-        'StreamImage: Stream loaded ${bytes.length} bytes',
-      );
-      final imageData = Uint8List.fromList(bytes);
-
-      // 添加到缓存
-      if (_cacheKey.isNotEmpty) {
-        // 如果缓存满了，清除一半
-        if (StreamImage._memoryCache.length >= StreamImage._maxCacheSize) {
-          final keysToRemove = StreamImage._memoryCache.keys
-              .take(StreamImage._maxCacheSize ~/ 2)
-              .toList();
-          for (final key in keysToRemove) {
-            StreamImage._memoryCache.remove(key);
+        // 优先使用 URL 加载（可以加载缩略图）
+        if (_hasValidHttpUrl) {
+          try {
+            stream = await widget.fileSystem!.getUrlStream(widget.url!);
+          } on Exception catch (e, st) {
+            AppError.ignore(e, st, 'URL stream 失败，降级到 file stream');
+            // URL 加载失败，继续尝试文件流
           }
         }
-        StreamImage._memoryCache[_cacheKey] = imageData;
-      }
 
-      if (mounted) {
-        setState(() {
-          _imageBytes = imageData;
-          _isLoading = false;
-        });
-      }
-    } on Exception catch (e, st) {
-      AppError.handle(e, st, 'loadImageViaStream');
-      if (mounted) {
-        setState(() {
-          _hasError = true;
-          _isLoading = false;
-        });
+        // 如果 URL 加载失败或没有 URL，使用文件流
+        if (stream == null) {
+          if (widget.path == null) {
+            throw Exception('无法加载图片：没有可用的 URL 或路径');
+          }
+          stream = await widget.fileSystem!.getFileStream(widget.path!);
+        }
+
+        final bytes = <int>[];
+        await for (final chunk in stream) {
+          bytes.addAll(chunk);
+          // 限制图片大小，防止内存溢出
+          if (bytes.length > 50 * 1024 * 1024) {
+            // 50MB 限制
+            throw Exception('图片文件过大');
+          }
+        }
+
+        final imageData = Uint8List.fromList(bytes);
+
+        // 添加到缓存
+        if (_cacheKey.isNotEmpty) {
+          // 如果缓存满了，清除一半
+          if (StreamImage._memoryCache.length >= StreamImage._maxCacheSize) {
+            final keysToRemove = StreamImage._memoryCache.keys
+                .take(StreamImage._maxCacheSize ~/ 2)
+                .toList();
+            for (final key in keysToRemove) {
+              StreamImage._memoryCache.remove(key);
+            }
+          }
+          StreamImage._memoryCache[_cacheKey] = imageData;
+        }
+
+        if (mounted) {
+          setState(() {
+            _imageBytes = imageData;
+            _isLoading = false;
+          });
+        }
+      } on Exception catch (e, st) {
+        AppError.ignore(e, st, 'loadImageViaStream');
+        if (mounted) {
+          setState(() {
+            _hasError = true;
+            _isLoading = false;
+          });
+        }
       }
     }
+
+    // 添加到加载队列
+    StreamImage._loadQueue.add(doLoad);
+    StreamImage._processQueue();
   }
 
   @override

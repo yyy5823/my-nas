@@ -157,4 +157,3 @@ class LocalFileSystem implements NasFileSystem {
   @override
   Future<String?> getThumbnailUrl(String path, {ThumbnailSize? size}) async => _api.getFileUri(path);
 }
-

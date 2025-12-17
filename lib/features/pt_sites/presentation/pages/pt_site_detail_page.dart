@@ -325,59 +325,173 @@ class _PTSiteDetailPageState extends ConsumerState<PTSiteDetailPage> {
 
   void _showFilterSheet(BuildContext context) {
     final categories = ref.read(ptCategoriesProvider(widget.source.id));
+    final currentState = ref.read(ptTorrentListProvider(widget.source.id));
 
     showModalBottomSheet<void>(
       context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                '筛选分类',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.all_inclusive),
-              title: const Text('全部'),
-              onTap: () {
-                ref
-                    .read(ptTorrentListProvider(widget.source.id).notifier)
-                    .setCategory(null);
-                ref
-                    .read(ptTorrentListProvider(widget.source.id).notifier)
-                    .loadTorrents(refresh: true);
-                Navigator.pop(context);
-              },
-            ),
-            categories.when(
-              data: (cats) => Column(
-                children: cats
-                    .map((cat) => ListTile(
-                          leading: const Icon(Icons.folder),
-                          title: Text(cat.name),
-                          onTap: () {
-                            ref
-                                .read(ptTorrentListProvider(widget.source.id)
-                                    .notifier)
-                                .setCategory(cat.id);
-                            ref
-                                .read(ptTorrentListProvider(widget.source.id)
-                                    .notifier)
-                                .loadTorrents(refresh: true);
-                            Navigator.pop(context);
-                          },
-                        ))
-                    .toList(),
-              ),
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (_, _) => const SizedBox.shrink(),
-            ),
-            const SizedBox(height: 16),
-          ],
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => GestureDetector(
+        onTap: () => Navigator.of(context).pop(),
+        behavior: HitTestBehavior.opaque,
+        child: GestureDetector(
+          onTap: () {}, // 阻止内部点击事件冒泡
+          child: DraggableScrollableSheet(
+            initialChildSize: 0.5,
+            minChildSize: 0.3,
+            maxChildSize: 0.8,
+            expand: false,
+            builder: (context, scrollController) {
+              final isDark = Theme.of(context).brightness == Brightness.dark;
+              return DecoratedBox(
+                decoration: BoxDecoration(
+                  color: isDark ? AppColors.darkSurface : Colors.white,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                ),
+                child: Column(
+                  children: [
+                    // 拖动指示器
+                    Center(
+                      child: Container(
+                        margin: const EdgeInsets.only(top: 12, bottom: 8),
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.grey[600] : Colors.grey[400],
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    // 标题栏
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(
+                              Icons.tune,
+                              color: AppColors.primary,
+                              size: 18,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            '筛选分类',
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    // 分类列表
+                    Expanded(
+                      child: ListView(
+                        controller: scrollController,
+                        children: [
+                          ListTile(
+                            leading: Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                color: currentState.category == null
+                                    ? AppColors.primary.withValues(alpha: 0.12)
+                                    : (isDark ? Colors.white10 : Colors.grey[100]),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Icon(
+                                Icons.all_inclusive,
+                                color: currentState.category == null
+                                    ? AppColors.primary
+                                    : (isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant),
+                                size: 18,
+                              ),
+                            ),
+                            title: Text(
+                              '全部',
+                              style: TextStyle(
+                                fontWeight: currentState.category == null ? FontWeight.w600 : null,
+                                color: currentState.category == null ? AppColors.primary : null,
+                              ),
+                            ),
+                            trailing: currentState.category == null
+                                ? const Icon(Icons.check, color: AppColors.primary, size: 20)
+                                : null,
+                            onTap: () {
+                              ref
+                                  .read(ptTorrentListProvider(widget.source.id).notifier)
+                                  .setCategory(null);
+                              ref
+                                  .read(ptTorrentListProvider(widget.source.id).notifier)
+                                  .loadTorrents(refresh: true);
+                              Navigator.pop(context);
+                            },
+                          ),
+                          categories.when(
+                            data: (cats) => Column(
+                              children: cats.map((cat) {
+                                final isSelected = currentState.category == cat.id;
+                                return ListTile(
+                                  leading: Container(
+                                    width: 36,
+                                    height: 36,
+                                    decoration: BoxDecoration(
+                                      color: isSelected
+                                          ? AppColors.primary.withValues(alpha: 0.12)
+                                          : (isDark ? Colors.white10 : Colors.grey[100]),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Icon(
+                                      Icons.folder,
+                                      color: isSelected
+                                          ? AppColors.primary
+                                          : (isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant),
+                                      size: 18,
+                                    ),
+                                  ),
+                                  title: Text(
+                                    cat.name,
+                                    style: TextStyle(
+                                      fontWeight: isSelected ? FontWeight.w600 : null,
+                                      color: isSelected ? AppColors.primary : null,
+                                    ),
+                                  ),
+                                  trailing: isSelected
+                                      ? const Icon(Icons.check, color: AppColors.primary, size: 20)
+                                      : null,
+                                  onTap: () {
+                                    ref
+                                        .read(ptTorrentListProvider(widget.source.id).notifier)
+                                        .setCategory(cat.id);
+                                    ref
+                                        .read(ptTorrentListProvider(widget.source.id).notifier)
+                                        .loadTorrents(refresh: true);
+                                    Navigator.pop(context);
+                                  },
+                                );
+                              }).toList(),
+                            ),
+                            loading: () => const Padding(
+                              padding: EdgeInsets.all(32),
+                              child: Center(child: CircularProgressIndicator()),
+                            ),
+                            error: (_, _) => const SizedBox.shrink(),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
         ),
       ),
     );
@@ -388,56 +502,146 @@ class _PTSiteDetailPageState extends ConsumerState<PTSiteDetailPage> {
 
     showModalBottomSheet<void>(
       context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                '排序方式',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-            ),
-            ...[
-              (PTTorrentSortBy.uploadTime, '上传时间', Icons.access_time),
-              (PTTorrentSortBy.size, '大小', Icons.storage),
-              (PTTorrentSortBy.seeders, '做种人数', Icons.upload),
-              (PTTorrentSortBy.leechers, '下载人数', Icons.download),
-              (PTTorrentSortBy.snatched, '完成次数', Icons.check_circle),
-            ].map((item) => ListTile(
-                  leading: Icon(item.$3),
-                  title: Text(item.$2),
-                  trailing: currentState.sortBy == item.$1
-                      ? Icon(
-                          currentState.descending
-                              ? Icons.arrow_downward
-                              : Icons.arrow_upward,
-                          size: 20,
-                        )
-                      : null,
-                  selected: currentState.sortBy == item.$1,
-                  onTap: () {
-                    if (currentState.sortBy == item.$1) {
-                      ref
-                          .read(
-                              ptTorrentListProvider(widget.source.id).notifier)
-                          .toggleSortDirection();
-                    } else {
-                      ref
-                          .read(
-                              ptTorrentListProvider(widget.source.id).notifier)
-                          .setSortBy(item.$1);
-                    }
-                    ref
-                        .read(ptTorrentListProvider(widget.source.id).notifier)
-                        .loadTorrents(refresh: true);
-                    Navigator.pop(context);
-                  },
-                )),
-            const SizedBox(height: 16),
-          ],
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => GestureDetector(
+        onTap: () => Navigator.of(context).pop(),
+        behavior: HitTestBehavior.opaque,
+        child: GestureDetector(
+          onTap: () {}, // 阻止内部点击事件冒泡
+          child: DraggableScrollableSheet(
+            initialChildSize: 0.5,
+            minChildSize: 0.3,
+            maxChildSize: 0.8,
+            expand: false,
+            builder: (context, scrollController) {
+              final isDark = Theme.of(context).brightness == Brightness.dark;
+              return DecoratedBox(
+                decoration: BoxDecoration(
+                  color: isDark ? AppColors.darkSurface : Colors.white,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                ),
+                child: Column(
+                  children: [
+                    // 拖动指示器
+                    Center(
+                      child: Container(
+                        margin: const EdgeInsets.only(top: 12, bottom: 8),
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.grey[600] : Colors.grey[400],
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    // 标题栏
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(
+                              Icons.swap_vert,
+                              color: AppColors.primary,
+                              size: 18,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            '排序方式',
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const Spacer(),
+                          // 升序/降序切换
+                          TextButton.icon(
+                            onPressed: () {
+                              ref
+                                  .read(ptTorrentListProvider(widget.source.id).notifier)
+                                  .toggleSortDirection();
+                              ref
+                                  .read(ptTorrentListProvider(widget.source.id).notifier)
+                                  .loadTorrents(refresh: true);
+                              Navigator.pop(context);
+                            },
+                            icon: Icon(
+                              currentState.descending
+                                  ? Icons.arrow_downward
+                                  : Icons.arrow_upward,
+                              size: 18,
+                            ),
+                            label: Text(currentState.descending ? '降序' : '升序'),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    // 排序选项列表
+                    Expanded(
+                      child: ListView(
+                        controller: scrollController,
+                        children: [
+                          (PTTorrentSortBy.uploadTime, '上传时间', Icons.access_time),
+                          (PTTorrentSortBy.size, '大小', Icons.storage),
+                          (PTTorrentSortBy.seeders, '做种人数', Icons.upload),
+                          (PTTorrentSortBy.leechers, '下载人数', Icons.download),
+                          (PTTorrentSortBy.snatched, '完成次数', Icons.check_circle),
+                        ].map((item) {
+                          final isSelected = currentState.sortBy == item.$1;
+                          return ListTile(
+                            leading: Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? AppColors.primary.withValues(alpha: 0.12)
+                                    : (isDark ? Colors.white10 : Colors.grey[100]),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Icon(
+                                item.$3,
+                                color: isSelected
+                                    ? AppColors.primary
+                                    : (isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant),
+                                size: 18,
+                              ),
+                            ),
+                            title: Text(
+                              item.$2,
+                              style: TextStyle(
+                                fontWeight: isSelected ? FontWeight.w600 : null,
+                                color: isSelected ? AppColors.primary : null,
+                              ),
+                            ),
+                            trailing: isSelected
+                                ? const Icon(Icons.check, color: AppColors.primary, size: 20)
+                                : null,
+                            onTap: () {
+                              ref
+                                  .read(ptTorrentListProvider(widget.source.id).notifier)
+                                  .setSortBy(item.$1);
+                              ref
+                                  .read(ptTorrentListProvider(widget.source.id).notifier)
+                                  .loadTorrents(refresh: true);
+                              Navigator.pop(context);
+                            },
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
         ),
       ),
     );
@@ -448,80 +652,336 @@ class _PTSiteDetailPageState extends ConsumerState<PTSiteDetailPage> {
 
     showModalBottomSheet<void>(
       context: context,
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  CircleAvatar(
-                    radius: 24,
-                    child: Text(
-                      userInfo.username.isNotEmpty
-                          ? userInfo.username[0].toUpperCase()
-                          : '?',
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          userInfo.username,
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => GestureDetector(
+        onTap: () => Navigator.of(context).pop(),
+        behavior: HitTestBehavior.opaque,
+        child: GestureDetector(
+          onTap: () {}, // 阻止内部点击事件冒泡
+          child: DraggableScrollableSheet(
+            initialChildSize: 0.7,
+            minChildSize: 0.4,
+            maxChildSize: 0.9,
+            expand: false,
+            builder: (context, scrollController) {
+              final isDark = Theme.of(context).brightness == Brightness.dark;
+              return DecoratedBox(
+                decoration: BoxDecoration(
+                  color: isDark ? AppColors.darkSurface : Colors.white,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                ),
+                child: Column(
+                  children: [
+                    // 拖动指示器
+                    Center(
+                      child: Container(
+                        margin: const EdgeInsets.only(top: 12, bottom: 8),
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.grey[600] : Colors.grey[400],
+                          borderRadius: BorderRadius.circular(2),
                         ),
-                        if (userInfo.userClass != null)
-                          Text(
-                            userInfo.userClass!,
-                            style: TextStyle(
-                              color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                    // 标题栏
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(
+                              Icons.person,
+                              color: AppColors.primary,
+                              size: 18,
                             ),
                           ),
-                      ],
+                          const SizedBox(width: 12),
+                          Text(
+                            '个人信息',
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              _buildInfoRow('上传量', userInfo.formattedUploaded),
-              _buildInfoRow('下载量', userInfo.formattedDownloaded),
-              _buildInfoRow('分享率', userInfo.formattedRatio),
-              _buildInfoRow('魔力值', userInfo.bonus.toStringAsFixed(0)),
-              _buildInfoRow('做种数', userInfo.seedingCount.toString()),
-              _buildInfoRow('下载数', userInfo.leechingCount.toString()),
-              const SizedBox(height: 16),
-            ],
+                    const Divider(height: 1),
+                    // 内容
+                    Expanded(
+                      child: ListView(
+                        controller: scrollController,
+                        padding: const EdgeInsets.all(16),
+                        children: [
+                          // 用户头像和名称
+                          Row(
+                            children: [
+                              Container(
+                                width: 56,
+                                height: 56,
+                                decoration: BoxDecoration(
+                                  color: AppColors.primary.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    userInfo.username.isNotEmpty
+                                        ? userInfo.username[0].toUpperCase()
+                                        : '?',
+                                    style: const TextStyle(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.primary,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      userInfo.username,
+                                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    if (userInfo.userClass != null)
+                                      Container(
+                                        margin: const EdgeInsets.only(top: 4),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.primary.withValues(alpha: 0.12),
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Text(
+                                          userInfo.userClass!,
+                                          style: const TextStyle(
+                                            color: AppColors.primary,
+                                            fontWeight: FontWeight.w500,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 24),
+
+                          // 分享数据统计
+                          _buildSectionHeader(context, '数据统计', isDark),
+                          const SizedBox(height: 8),
+                          DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: isDark ? Colors.white10 : Colors.grey[50],
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Column(
+                              children: [
+                                _buildUserInfoTile(
+                                  context,
+                                  icon: Icons.upload,
+                                  iconColor: AppColors.success,
+                                  label: '上传量',
+                                  value: userInfo.formattedUploaded,
+                                  isDark: isDark,
+                                ),
+                                Divider(height: 1, indent: 56, color: isDark ? Colors.white10 : Colors.grey[200]),
+                                _buildUserInfoTile(
+                                  context,
+                                  icon: Icons.download,
+                                  iconColor: AppColors.primary,
+                                  label: '下载量',
+                                  value: userInfo.formattedDownloaded,
+                                  isDark: isDark,
+                                ),
+                                Divider(height: 1, indent: 56, color: isDark ? Colors.white10 : Colors.grey[200]),
+                                _buildUserInfoTile(
+                                  context,
+                                  icon: Icons.swap_horiz,
+                                  iconColor: Colors.orange,
+                                  label: '分享率',
+                                  value: userInfo.formattedRatio,
+                                  isDark: isDark,
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+
+                          // 活动数据
+                          _buildSectionHeader(context, '活动数据', isDark),
+                          const SizedBox(height: 8),
+                          DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: isDark ? Colors.white10 : Colors.grey[50],
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Column(
+                              children: [
+                                _buildUserInfoTile(
+                                  context,
+                                  icon: Icons.auto_awesome,
+                                  iconColor: Colors.purple,
+                                  label: '魔力值',
+                                  value: userInfo.formattedBonus,
+                                  isDark: isDark,
+                                ),
+                                Divider(height: 1, indent: 56, color: isDark ? Colors.white10 : Colors.grey[200]),
+                                _buildUserInfoTile(
+                                  context,
+                                  icon: Icons.cloud_upload,
+                                  iconColor: AppColors.success,
+                                  label: '做种数',
+                                  value: userInfo.seedingCount.toString(),
+                                  isDark: isDark,
+                                ),
+                                Divider(height: 1, indent: 56, color: isDark ? Colors.white10 : Colors.grey[200]),
+                                _buildUserInfoTile(
+                                  context,
+                                  icon: Icons.cloud_download,
+                                  iconColor: AppColors.primary,
+                                  label: '下载数',
+                                  value: userInfo.leechingCount.toString(),
+                                  isDark: isDark,
+                                ),
+                                if (userInfo.invites > 0) ...[
+                                  Divider(height: 1, indent: 56, color: isDark ? Colors.white10 : Colors.grey[200]),
+                                  _buildUserInfoTile(
+                                    context,
+                                    icon: Icons.card_giftcard,
+                                    iconColor: Colors.teal,
+                                    label: '邀请数',
+                                    value: userInfo.invites.toString(),
+                                    isDark: isDark,
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+
+                          // 账户信息（如果有日期数据）
+                          if (userInfo.joinTime != null || userInfo.lastAccess != null) ...[
+                            const SizedBox(height: 16),
+                            _buildSectionHeader(context, '账户信息', isDark),
+                            const SizedBox(height: 8),
+                            DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: isDark ? Colors.white10 : Colors.grey[50],
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Column(
+                                children: [
+                                  if (userInfo.joinTime != null)
+                                    _buildUserInfoTile(
+                                      context,
+                                      icon: Icons.calendar_today,
+                                      iconColor: Colors.blue,
+                                      label: '注册时间',
+                                      value: userInfo.formattedJoinTime ?? '-',
+                                      isDark: isDark,
+                                    ),
+                                  if (userInfo.joinTime != null && userInfo.lastAccess != null)
+                                    Divider(height: 1, indent: 56, color: isDark ? Colors.white10 : Colors.grey[200]),
+                                  if (userInfo.lastAccess != null)
+                                    _buildUserInfoTile(
+                                      context,
+                                      icon: Icons.access_time,
+                                      iconColor: Colors.grey,
+                                      label: '最后访问',
+                                      value: userInfo.formattedLastAccess ?? '-',
+                                      isDark: isDark,
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ],
+
+                          // 底部留白
+                          const SizedBox(height: 16),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
         ),
       ),
     );
   }
 
-  Widget _buildInfoRow(String label, String value) => Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-          ),
-          Text(
-            value,
-            style: const TextStyle(fontWeight: FontWeight.w500),
-          ),
-        ],
+  Widget _buildSectionHeader(BuildContext context, String title, bool isDark) => Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+        ),
       ),
     );
+
+
+  Widget _buildUserInfoTile(
+    BuildContext context, {
+    required IconData icon,
+    required Color iconColor,
+    required String label,
+    required String value,
+    required bool isDark,
+  }) =>
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        child: Row(
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, size: 16, color: iconColor),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: isDark
+                      ? AppColors.darkOnSurfaceVariant
+                      : AppColors.lightOnSurfaceVariant,
+                ),
+              ),
+            ),
+            Text(
+              value,
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+              ),
+            ),
+          ],
+        ),
+      );
+
+
 
   void _showTorrentDetail(BuildContext context, PTTorrent torrent) {
     final isDark = Theme.of(context).brightness == Brightness.dark;

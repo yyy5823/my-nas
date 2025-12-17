@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/core/services/nas_file_system_registry.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
+import 'package:my_nas/shared/widgets/stream_image.dart';
 
 /// 英雄横幅组件 - Netflix/Infuse 风格的大图推荐展示
 class HeroBanner extends StatefulWidget {
@@ -164,25 +166,19 @@ class _HeroBannerItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // 优先使用背景图，没有则使用海报
-    final imageUrl = metadata.backdropUrl ?? metadata.posterUrl;
-    // 检查 URL 是否有效（跳过 smb:// 等不支持的协议）
-    final hasImage = imageUrl != null &&
-        imageUrl.isNotEmpty &&
-        (imageUrl.startsWith('http') || imageUrl.startsWith('file'));
+    // 背景图: backdropUrl (TMDB) 或 localBackdropPath (本地)
+    // 海报: displayPosterUrl (会自动处理本地缓存)
+    final imageUrl = metadata.backdropUrl ?? metadata.displayPosterUrl;
+    final hasImage = imageUrl != null && imageUrl.isNotEmpty;
 
     return GestureDetector(
       onTap: onTap,
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // 背景图片
+          // 背景图片 - 使用智能加载支持 NAS 路径
           if (hasImage)
-            CachedNetworkImage(
-              imageUrl: imageUrl,
-              fit: BoxFit.cover,
-              placeholder: (_, _) => _buildPlaceholder(),
-              errorWidget: (_, _, _) => _buildPlaceholder(),
-            )
+            _buildSmartImage(imageUrl, metadata.sourceId)
           else
             _buildPlaceholder(),
 
@@ -421,6 +417,39 @@ class _HeroBannerItem extends StatelessWidget {
     );
   }
 
+  /// 智能图片加载 - 支持 NAS 路径和网络 URL
+  Widget _buildSmartImage(String imageUrl, String sourceId) {
+    // 检查是否是 NAS 路径
+    final isNasPath = imageUrl.startsWith('/') &&
+        !imageUrl.startsWith('//') &&
+        !imageUrl.contains('://');
+
+    if (isNasPath) {
+      // NAS 路径 - 使用 StreamImage
+      final fileSystem = NasFileSystemRegistry.instance.get(sourceId);
+      return StreamImage(
+        path: imageUrl,
+        fileSystem: fileSystem,
+        fit: BoxFit.cover,
+        placeholder: _buildPlaceholder(),
+        errorWidget: _buildPlaceholder(),
+      );
+    }
+
+    // 网络 URL - 使用 CachedNetworkImage
+    if (imageUrl.startsWith('http')) {
+      return CachedNetworkImage(
+        imageUrl: imageUrl,
+        fit: BoxFit.cover,
+        placeholder: (_, _) => _buildPlaceholder(),
+        errorWidget: (_, _, _) => _buildPlaceholder(),
+      );
+    }
+
+    // 其他情况显示占位符
+    return _buildPlaceholder();
+  }
+
   Widget _buildPlaceholder() => Container(
       color: isDark ? Colors.grey[900] : Colors.grey[300],
       child: Center(
@@ -542,11 +571,8 @@ class _CompactBannerCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final imageUrl = metadata.backdropUrl ?? metadata.posterUrl;
-    // 检查 URL 是否有效（跳过 smb:// 等不支持的协议）
-    final hasImage = imageUrl != null &&
-        imageUrl.isNotEmpty &&
-        (imageUrl.startsWith('http') || imageUrl.startsWith('file'));
+    final imageUrl = metadata.backdropUrl ?? metadata.displayPosterUrl;
+    final hasImage = imageUrl != null && imageUrl.isNotEmpty;
 
     return GestureDetector(
       onTap: onTap,
@@ -567,21 +593,11 @@ class _CompactBannerCard extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              // 背景图
+              // 背景图 - 使用智能加载支持 NAS 路径
               if (hasImage)
-                CachedNetworkImage(
-                  imageUrl: imageUrl,
-                  fit: BoxFit.cover,
-                )
+                _buildSmartImage(imageUrl, metadata.sourceId)
               else
-                Container(
-                  color: isDark ? Colors.grey[850] : Colors.grey[200],
-                  child: Icon(
-                    Icons.movie_rounded,
-                    size: 50,
-                    color: isDark ? Colors.grey[600] : Colors.grey[400],
-                  ),
-                ),
+                _buildPlaceholder(),
 
               // 渐变遮罩
               Container(
@@ -681,4 +697,41 @@ class _CompactBannerCard extends StatelessWidget {
       ),
     );
   }
+
+  /// 智能图片加载 - 支持 NAS 路径和网络 URL
+  Widget _buildSmartImage(String imageUrl, String sourceId) {
+    // 检查是否是 NAS 路径
+    final isNasPath = imageUrl.startsWith('/') &&
+        !imageUrl.startsWith('//') &&
+        !imageUrl.contains('://');
+
+    if (isNasPath) {
+      final fileSystem = NasFileSystemRegistry.instance.get(sourceId);
+      return StreamImage(
+        path: imageUrl,
+        fileSystem: fileSystem,
+        fit: BoxFit.cover,
+        placeholder: _buildPlaceholder(),
+        errorWidget: _buildPlaceholder(),
+      );
+    }
+
+    if (imageUrl.startsWith('http')) {
+      return CachedNetworkImage(
+        imageUrl: imageUrl,
+        fit: BoxFit.cover,
+      );
+    }
+
+    return _buildPlaceholder();
+  }
+
+  Widget _buildPlaceholder() => Container(
+      color: isDark ? Colors.grey[850] : Colors.grey[200],
+      child: Icon(
+        Icons.movie_rounded,
+        size: 50,
+        color: isDark ? Colors.grey[600] : Colors.grey[400],
+      ),
+    );
 }

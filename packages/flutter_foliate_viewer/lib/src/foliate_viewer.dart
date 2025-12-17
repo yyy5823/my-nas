@@ -5,11 +5,10 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_inappwebview/flutter_inappwebview.dart';
-
 import 'package:flutter_foliate_viewer/src/foliate_controller.dart';
 import 'package:flutter_foliate_viewer/src/models/foliate_book_info.dart';
 import 'package:flutter_foliate_viewer/src/models/foliate_location.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 /// 书籍文件类型
 enum FoliateBookType {
@@ -166,8 +165,7 @@ class _FoliateViewerState extends State<FoliateViewer> {
   }
 
   /// 构建内联 HTML
-  String _buildInlineHtml(String bundleJs) {
-    return '''
+  String _buildInlineHtml(String bundleJs) => '''
 <!DOCTYPE html>
 <html>
 <head>
@@ -303,7 +301,6 @@ $bundleJs
 </body>
 </html>
 ''';
-  }
 
   /// 添加 JavaScript 处理器
   void _addJavaScriptHandlers() {

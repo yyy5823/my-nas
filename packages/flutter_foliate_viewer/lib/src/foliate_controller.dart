@@ -1,9 +1,8 @@
 import 'dart:convert';
 
-import 'package:flutter_inappwebview/flutter_inappwebview.dart';
-
 import 'package:flutter_foliate_viewer/src/models/foliate_book_info.dart';
 import 'package:flutter_foliate_viewer/src/models/foliate_location.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 /// Foliate 阅读器控制器
 ///
@@ -101,7 +100,7 @@ class FoliateController {
         return null;
       }
       return FoliateLocation.fromMap(map);
-    } catch (_) {
+    } on Exception catch (_) {
       return null;
     }
   }
@@ -138,7 +137,7 @@ class FoliateController {
         return null;
       }
       return FoliateBookInfo.fromMap(map);
-    } catch (_) {
+    } on Exception catch (_) {
       return null;
     }
   }
@@ -167,7 +166,7 @@ class FoliateController {
       return list
           .map((e) => FoliateTocItem.fromMap(Map<String, dynamic>.from(e as Map)))
           .toList();
-    } catch (_) {
+    } on Exception catch (_) {
       return [];
     }
   }

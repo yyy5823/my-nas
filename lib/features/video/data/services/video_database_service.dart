@@ -115,6 +115,8 @@ class VideoDatabaseService {
   static const String _colShowDirectory = 'show_directory'; // TV 剧集所属剧目录
   static const String _colMovieDirectory = 'movie_directory'; // 电影所在目录
   static const String _colResolution = 'resolution'; // 视频分辨率 (4K, 1080p, 720p 等)
+  static const String _colLocalizedTitles = 'localized_titles'; // 多语言标题 JSON
+  static const String _colLocalizedOverviews = 'localized_overviews'; // 多语言简介 JSON
 
   // 字幕表
   static const String _tableSubtitles = 'video_subtitles';
@@ -144,6 +146,7 @@ class VideoDatabaseService {
   static const String _tvgColEpisodeCount = 'episode_count';
   static const String _tvgColRepresentativeRowid = 'representative_rowid';
   static const String _tvgColLastSynced = 'last_synced';
+  static const String _tvgColLocalPosterUrl = 'local_poster_url'; // 本地海报路径（NAS 路径或 file:// 路径）
 
   // 电影系列分组表
   static const String _tableMovieCollectionGroups = 'movie_collection_groups';
@@ -155,6 +158,7 @@ class VideoDatabaseService {
   static const String _mcgColOverview = 'overview';
   static const String _mcgColMovieCount = 'movie_count';
   static const String _mcgColLastSynced = 'last_synced';
+  static const String _mcgColLocalPosterUrl = 'local_poster_url'; // 本地海报路径
 
   // 目录扫描状态表（用于增量扫描和断点续扫）
   static const String _tableScanProgress = 'scan_progress';
@@ -181,7 +185,7 @@ class VideoDatabaseService {
 
       _db = await openDatabase(
         dbPath,
-        version: 11, // 升级版本以添加 resolution 字段
+        version: 13, // 升级版本以添加多语言元数据字段
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onConfigure: _onConfigure,
@@ -254,6 +258,8 @@ class VideoDatabaseService {
         $_colShowDirectory TEXT,
         $_colMovieDirectory TEXT,
         $_colResolution TEXT,
+        $_colLocalizedTitles TEXT,
+        $_colLocalizedOverviews TEXT,
         UNIQUE($_colSourceId, $_colFilePath)
       )
     ''');
@@ -365,7 +371,8 @@ class VideoDatabaseService {
         $_tvgColSeasonCount INTEGER DEFAULT 0,
         $_tvgColEpisodeCount INTEGER DEFAULT 0,
         $_tvgColRepresentativeRowid INTEGER,
-        $_tvgColLastSynced INTEGER
+        $_tvgColLastSynced INTEGER,
+        $_tvgColLocalPosterUrl TEXT
       )
     ''');
 
@@ -391,7 +398,8 @@ class VideoDatabaseService {
         $_mcgColBackdropUrl TEXT,
         $_mcgColOverview TEXT,
         $_mcgColMovieCount INTEGER DEFAULT 0,
-        $_mcgColLastSynced INTEGER
+        $_mcgColLastSynced INTEGER,
+        $_mcgColLocalPosterUrl TEXT
       )
     ''');
 
@@ -487,7 +495,13 @@ class VideoDatabaseService {
   }
 
   /// 检查目录名是否是季目录
-  static bool _isSeasonDirectory(String dirName) {
+  ///
+  /// 季目录模式包括：
+  /// - Season X, Season 01, Season1
+  /// - S01, S1
+  /// - 第X季, 第一季
+  /// - Specials, 特典, SP
+  static bool isSeasonDirectory(String dirName) {
     final name = dirName.toLowerCase().trim();
 
     // 常见季目录模式
@@ -513,6 +527,9 @@ class VideoDatabaseService {
 
     return false;
   }
+
+  // 保留私有别名以保持内部兼容性
+  static bool _isSeasonDirectory(String dirName) => isSeasonDirectory(dirName);
 
   /// 迁移电影的 movie_directory 字段
   ///
@@ -751,6 +768,38 @@ class VideoDatabaseService {
 
       logger.i('VideoDatabaseService: 版本10->11 升级完成（添加 resolution 字段）');
     }
+
+    // 从版本11升级到版本12
+    if (oldVersion < 12) {
+      // 添加 local_poster_url 列到聚合表
+      await db.execute(
+          'ALTER TABLE $_tableTvShowGroups ADD COLUMN $_tvgColLocalPosterUrl TEXT');
+      await db.execute(
+          'ALTER TABLE $_tableMovieCollectionGroups ADD COLUMN $_mcgColLocalPosterUrl TEXT');
+
+      // 从 video_metadata 同步 local_poster_url 到 tv_show_groups
+      await db.execute('''
+        UPDATE $_tableTvShowGroups
+        SET $_tvgColLocalPosterUrl = (
+          SELECT vm.$_colLocalPosterUrl
+          FROM $_tableMetadata vm
+          WHERE vm.rowid = $_tableTvShowGroups.$_tvgColRepresentativeRowid
+        )
+      ''');
+
+      logger.i('VideoDatabaseService: 版本11->12 升级完成（添加聚合表 local_poster_url 字段）');
+    }
+
+    // 从版本12升级到版本13
+    if (oldVersion < 13) {
+      // 添加多语言元数据字段
+      await db.execute(
+          'ALTER TABLE $_tableMetadata ADD COLUMN $_colLocalizedTitles TEXT');
+      await db.execute(
+          'ALTER TABLE $_tableMetadata ADD COLUMN $_colLocalizedOverviews TEXT');
+
+      logger.i('VideoDatabaseService: 版本12->13 升级完成（添加多语言元数据字段）');
+    }
   }
 
   /// 插入或更新元数据
@@ -859,6 +908,31 @@ class VideoDatabaseService {
       where:
           '$_colTmdbId = ? AND $_colSeasonNumber IS NOT NULL AND $_colEpisodeNumber IS NOT NULL',
       whereArgs: [tmdbId],
+      orderBy: '$_colSeasonNumber, $_colEpisodeNumber',
+    );
+
+    final episodeMap = <int, Map<int, VideoMetadata>>{};
+    for (final row in results) {
+      final metadata = _fromRow(row);
+      if (metadata.seasonNumber != null && metadata.episodeNumber != null) {
+        episodeMap
+            .putIfAbsent(metadata.seasonNumber!, () => {})[metadata.episodeNumber!] = metadata;
+      }
+    }
+
+    return episodeMap;
+  }
+
+  /// 根据 showDirectory 获取剧集映射（用于无 TMDB 的剧集）
+  Future<Map<int, Map<int, VideoMetadata>>> getEpisodesByShowDirectory(
+      String showDirectory) async {
+    if (!_initialized) await init();
+
+    final results = await _db!.query(
+      _tableMetadata,
+      where:
+          '$_colShowDirectory = ? AND $_colSeasonNumber IS NOT NULL AND $_colEpisodeNumber IS NOT NULL',
+      whereArgs: [showDirectory],
       orderBy: '$_colSeasonNumber, $_colEpisodeNumber',
     );
 
@@ -1371,6 +1445,7 @@ class VideoDatabaseService {
   /// 键为分组键（tmdb_XXX 或 title_xxx），值为 (seasonCount, episodeCount)
   Future<Map<String, ({int seasonCount, int episodeCount})>> getTvShowGroupStats({
     List<int>? tmdbIds,
+    List<String>? showDirectories,
     List<String>? titles,
   }) async {
     if (!_initialized) await init();
@@ -1381,7 +1456,7 @@ class VideoDatabaseService {
     if (tmdbIds != null && tmdbIds.isNotEmpty) {
       final placeholders = List.filled(tmdbIds.length, '?').join(', ');
       final statsResult = await _db!.rawQuery('''
-        SELECT 
+        SELECT
           $_colTmdbId,
           COUNT(DISTINCT CASE WHEN $_colSeasonNumber > 0 THEN $_colSeasonNumber ELSE NULL END) as season_count,
           COUNT(*) as episode_count
@@ -1400,16 +1475,39 @@ class VideoDatabaseService {
       }
     }
 
-    // 按标题分组的统计
+    // 按 showDirectory 分组的统计（优先于 title）
+    if (showDirectories != null && showDirectories.isNotEmpty) {
+      final placeholders = List.filled(showDirectories.length, '?').join(', ');
+      final statsResult = await _db!.rawQuery('''
+        SELECT
+          $_colShowDirectory,
+          COUNT(DISTINCT CASE WHEN $_colSeasonNumber > 0 THEN $_colSeasonNumber ELSE NULL END) as season_count,
+          COUNT(*) as episode_count
+        FROM $_tableMetadata
+        WHERE $_colShowDirectory IN ($placeholders) AND $_colCategory = 1 AND $_colTmdbId IS NULL
+        GROUP BY $_colShowDirectory
+      ''', showDirectories);
+
+      for (final row in statsResult) {
+        final showDirectory = row[_colShowDirectory] as String?;
+        if (showDirectory != null) {
+          final seasonCount = (row['season_count'] as int?) ?? 1;
+          final episodeCount = (row['episode_count'] as int?) ?? 1;
+          result['dir_$showDirectory'] = (seasonCount: seasonCount, episodeCount: episodeCount);
+        }
+      }
+    }
+
+    // 按标题分组的统计（仅用于无 tmdbId 且无 showDirectory 的剧集）
     if (titles != null && titles.isNotEmpty) {
       final placeholders = List.filled(titles.length, '?').join(', ');
       final statsResult = await _db!.rawQuery('''
-        SELECT 
+        SELECT
           LOWER($_colTitle) as lower_title,
           COUNT(DISTINCT CASE WHEN $_colSeasonNumber > 0 THEN $_colSeasonNumber ELSE NULL END) as season_count,
           COUNT(*) as episode_count
         FROM $_tableMetadata
-        WHERE LOWER($_colTitle) IN ($placeholders) AND $_colCategory = 1 AND $_colTmdbId IS NULL
+        WHERE LOWER($_colTitle) IN ($placeholders) AND $_colCategory = 1 AND $_colTmdbId IS NULL AND $_colShowDirectory IS NULL
         GROUP BY LOWER($_colTitle)
       ''', titles.map((t) => t.toLowerCase()).toList());
 
@@ -1479,19 +1577,20 @@ class VideoDatabaseService {
         .whereType<int>(),
     );
 
-    // 1b: 无 tmdb_id 的剧集 - 按 LOWER(title) 分组
+    // 1b: 无 tmdb_id 的剧集 - 优先按 show_directory 分组，其次按 LOWER(title) 分组
+    // 使用 COALESCE 确保有 show_directory 的优先使用目录分组，没有的回退到标题分组
     // 同样使用 AS rid 显式别名
     final withoutTmdbSql = '''
       SELECT t1.rowid AS rid
       FROM $_tableMetadata t1
       INNER JOIN (
-        SELECT LOWER($_colTitle) as lower_title, MAX($_colRating) as max_rating
+        SELECT COALESCE($_colShowDirectory, LOWER($_colTitle)) as group_key, MAX($_colRating) as max_rating
         FROM $_tableMetadata
-        WHERE $_colCategory = 1 AND $_colTmdbId IS NULL AND $_colTitle IS NOT NULL${pathFilter.andWhere}
-        GROUP BY LOWER($_colTitle)
-      ) t2 ON LOWER(t1.$_colTitle) = t2.lower_title AND (t1.$_colRating = t2.max_rating OR (t1.$_colRating IS NULL AND t2.max_rating IS NULL))
-      WHERE t1.$_colCategory = 1 AND t1.$_colTmdbId IS NULL AND t1.$_colTitle IS NOT NULL${pathFilter.andWhere}
-      GROUP BY LOWER(t1.$_colTitle)
+        WHERE $_colCategory = 1 AND $_colTmdbId IS NULL AND ($_colShowDirectory IS NOT NULL OR $_colTitle IS NOT NULL)${pathFilter.andWhere}
+        GROUP BY COALESCE($_colShowDirectory, LOWER($_colTitle))
+      ) t2 ON COALESCE(t1.$_colShowDirectory, LOWER(t1.$_colTitle)) = t2.group_key AND (t1.$_colRating = t2.max_rating OR (t1.$_colRating IS NULL AND t2.max_rating IS NULL))
+      WHERE t1.$_colCategory = 1 AND t1.$_colTmdbId IS NULL AND (t1.$_colShowDirectory IS NOT NULL OR t1.$_colTitle IS NOT NULL)${pathFilter.andWhere}
+      GROUP BY COALESCE(t1.$_colShowDirectory, LOWER(t1.$_colTitle))
     ''';
 
     final withoutTmdbResult = await _db!.rawQuery(withoutTmdbSql, [...pathFilter.args, ...pathFilter.args]);
@@ -1787,7 +1886,29 @@ class VideoDatabaseService {
         _colShowDirectory: m.showDirectory,
         _colMovieDirectory: m.movieDirectory,
         _colResolution: m.resolution,
+        _colLocalizedTitles: m.localizedTitles != null
+            ? _encodeLocalizedMap(m.localizedTitles!)
+            : null,
+        _colLocalizedOverviews: m.localizedOverviews != null
+            ? _encodeLocalizedMap(m.localizedOverviews!)
+            : null,
       };
+
+  /// 编码多语言 Map 为 JSON 字符串
+  String _encodeLocalizedMap(Map<String, String> map) {
+    // 简单的 JSON 编码（不依赖 dart:convert）
+    final pairs = map.entries.map((e) =>
+        '"${_escapeJson(e.key)}":"${_escapeJson(e.value)}"');
+    return '{${pairs.join(',')}}';
+  }
+
+  /// 转义 JSON 字符串中的特殊字符
+  String _escapeJson(String s) => s
+      .replaceAll(r'\', r'\\')
+      .replaceAll('"', r'\"')
+      .replaceAll('\n', r'\n')
+      .replaceAll('\r', r'\r')
+      .replaceAll('\t', r'\t');
 
   /// 从数据库行转换
   VideoMetadata _fromRow(Map<String, dynamic> row) => VideoMetadata(
@@ -1831,7 +1952,44 @@ class VideoDatabaseService {
         showDirectory: row[_colShowDirectory] as String?,
         movieDirectory: row[_colMovieDirectory] as String?,
         resolution: row[_colResolution] as String?,
+        localizedTitles: _parseLocalizedJson(row[_colLocalizedTitles] as String?),
+        localizedOverviews: _parseLocalizedJson(row[_colLocalizedOverviews] as String?),
       );
+
+  /// 解析 JSON 字符串为多语言 Map
+  Map<String, String>? _parseLocalizedJson(String? json) {
+    if (json == null || json.isEmpty) return null;
+    try {
+      // 简单的 JSON 解析
+      final content = json.trim();
+      if (!content.startsWith('{') || !content.endsWith('}')) return null;
+
+      final inner = content.substring(1, content.length - 1).trim();
+      if (inner.isEmpty) return null;
+
+      final result = <String, String>{};
+
+      // 匹配 "key":"value" 对
+      final regex = RegExp(r'"([^"\\]*(?:\\.[^"\\]*)*)"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"');
+      for (final match in regex.allMatches(inner)) {
+        final key = _unescapeJson(match.group(1)!);
+        final value = _unescapeJson(match.group(2)!);
+        result[key] = value;
+      }
+
+      return result.isNotEmpty ? result : null;
+    } on Exception {
+      return null;
+    }
+  }
+
+  /// 反转义 JSON 字符串
+  String _unescapeJson(String s) => s
+      .replaceAll(r'\n', '\n')
+      .replaceAll(r'\r', '\r')
+      .replaceAll(r'\t', '\t')
+      .replaceAll(r'\"', '"')
+      .replaceAll(r'\\', r'\');
 
   /// 获取刮削统计信息
   ///
@@ -2952,7 +3110,8 @@ class VideoDatabaseService {
           MAX($_colGenres) as genres,
           COUNT(DISTINCT CASE WHEN $_colSeasonNumber > 0 THEN $_colSeasonNumber END) as season_count,
           COUNT(*) as episode_count,
-          MAX(rowid) as representative_rowid
+          MAX(rowid) as representative_rowid,
+          MAX($_colLocalPosterUrl) as local_poster_url
         FROM $_tableMetadata
         WHERE $_colCategory = 1 AND $_colShowDirectory IN ($placeholders)
       ''', directories);
@@ -2981,8 +3140,9 @@ class VideoDatabaseService {
           $_tvgColSeasonCount,
           $_tvgColEpisodeCount,
           $_tvgColRepresentativeRowid,
-          $_tvgColLastSynced
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          $_tvgColLastSynced,
+          $_tvgColLocalPosterUrl
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ''', [
         groupKey,
         tmdbId,
@@ -2999,6 +3159,7 @@ class VideoDatabaseService {
         row['episode_count'] as int? ?? 1,
         row['representative_rowid'] as int?,
         now,
+        row['local_poster_url'] as String?,
       ]);
 
       insertedCount++;
@@ -3019,7 +3180,8 @@ class VideoDatabaseService {
           MAX($_colGenres) as genres,
           COUNT(DISTINCT CASE WHEN $_colSeasonNumber > 0 THEN $_colSeasonNumber END) as season_count,
           COUNT(*) as episode_count,
-          MAX(rowid) as representative_rowid
+          MAX(rowid) as representative_rowid,
+          MAX($_colLocalPosterUrl) as local_poster_url
         FROM $_tableMetadata
         WHERE $_colCategory = 1 AND $_colShowDirectory = ?
       ''', [directory]);
@@ -3049,8 +3211,9 @@ class VideoDatabaseService {
           $_tvgColSeasonCount,
           $_tvgColEpisodeCount,
           $_tvgColRepresentativeRowid,
-          $_tvgColLastSynced
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          $_tvgColLastSynced,
+          $_tvgColLocalPosterUrl
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ''', [
         groupKey,
         null, // no tmdbId
@@ -3067,6 +3230,7 @@ class VideoDatabaseService {
         row['episode_count'] as int? ?? 1,
         row['representative_rowid'] as int?,
         now,
+        row['local_poster_url'] as String?,
       ]);
 
       insertedCount++;
@@ -3309,6 +3473,7 @@ class VideoDatabaseService {
       seasonCount: row[_tvgColSeasonCount] as int? ?? 0,
       episodeCount: row[_tvgColEpisodeCount] as int? ?? 0,
       representativeRowid: row[_tvgColRepresentativeRowid] as int?,
+      localPosterUrl: row[_tvgColLocalPosterUrl] as String?,
     )).toList();
   }
 
@@ -3434,6 +3599,7 @@ class TvShowGroupRow {
     required this.seasonCount,
     required this.episodeCount,
     this.representativeRowid,
+    this.localPosterUrl,
   });
 
   final int id;
@@ -3451,13 +3617,14 @@ class TvShowGroupRow {
   final int seasonCount;
   final int episodeCount;
   final int? representativeRowid;
+  final String? localPosterUrl; // 本地海报路径（NAS 路径或 file://）
 
   /// 获取类型列表
   List<String> get genreList =>
       genres?.split(',').map((e) => e.trim()).toList() ?? [];
 
-  /// 显示用的海报 URL
-  String? get displayPosterUrl => posterUrl;
+  /// 显示用的海报 URL（优先本地缓存）
+  String? get displayPosterUrl => localPosterUrl ?? posterUrl;
 
   /// 显示用的背景 URL
   String? get displayBackdropUrl => backdropUrl;

@@ -213,6 +213,301 @@ class _EpisodeSelectorState extends ConsumerState<EpisodeSelector> {
   }
 }
 
+/// 本地剧集选择器（无 TMDB 数据时使用）
+///
+/// 基于本地元数据的 seasonNumber 和 episodeNumber 显示剧集
+class LocalEpisodeSelector extends StatefulWidget {
+  const LocalEpisodeSelector({
+    required this.episodes,
+    required this.onEpisodePlay,
+    this.initialSeason,
+    this.episodeProgress = const {},
+    super.key,
+  });
+
+  /// 剧集映射 `Map<seasonNumber, Map<episodeNumber, VideoMetadata>>`
+  final Map<int, Map<int, VideoMetadata>> episodes;
+  final void Function(VideoMetadata episode) onEpisodePlay;
+  final int? initialSeason;
+  /// 剧集播放进度 `Map<filePath, progress 0.0-1.0>`
+  final Map<String, double> episodeProgress;
+
+  @override
+  State<LocalEpisodeSelector> createState() => _LocalEpisodeSelectorState();
+}
+
+class _LocalEpisodeSelectorState extends State<LocalEpisodeSelector> {
+  late int _selectedSeason;
+
+  @override
+  void initState() {
+    super.initState();
+    // 默认选中第一个非特别篇的季
+    final seasons = widget.episodes.keys.toList()..sort();
+    _selectedSeason = widget.initialSeason ??
+        seasons.where((s) => s > 0).firstOrNull ??
+        seasons.firstOrNull ??
+        1;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // 按季号排序
+    final seasons = widget.episodes.keys.toList()..sort();
+    if (seasons.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 标题和季选择器
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              Text(
+                '剧集',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                ),
+              ),
+              const Spacer(),
+              // 季选择下拉框
+              _buildSeasonDropdown(seasons, isDark),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        // 剧集列表
+        _buildEpisodeList(isDark),
+      ],
+    );
+  }
+
+  Widget _buildSeasonDropdown(List<int> seasons, bool isDark) => Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurfaceVariant : Colors.grey[100],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isDark ? AppColors.darkOutline : Colors.grey[300]!,
+        ),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<int>(
+          value: _selectedSeason,
+          isDense: true,
+          icon: Icon(
+            Icons.keyboard_arrow_down_rounded,
+            color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+          ),
+          dropdownColor: isDark ? AppColors.darkSurface : Colors.white,
+          items: seasons.map((seasonNum) {
+            final episodeCount = widget.episodes[seasonNum]?.length ?? 0;
+            return DropdownMenuItem(
+              value: seasonNum,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    seasonNum == 0 ? '特别篇' : '第$seasonNum季',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '($episodeCount集)',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark
+                          ? AppColors.darkOnSurfaceVariant
+                          : AppColors.lightOnSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+          onChanged: (value) {
+            if (value != null) {
+              setState(() => _selectedSeason = value);
+            }
+          },
+        ),
+      ),
+    );
+
+  Widget _buildEpisodeList(bool isDark) {
+    final seasonEpisodes = widget.episodes[_selectedSeason] ?? {};
+    if (seasonEpisodes.isEmpty) {
+      return SizedBox(
+        height: 100,
+        child: Center(
+          child: Text(
+            '暂无剧集',
+            style: TextStyle(
+              color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+            ),
+          ),
+        ),
+      );
+    }
+
+    // 按集号排序
+    final episodeNumbers = seasonEpisodes.keys.toList()..sort();
+
+    return SizedBox(
+      height: 120,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: episodeNumbers.length,
+        itemBuilder: (context, index) {
+          final episodeNum = episodeNumbers[index];
+          final episode = seasonEpisodes[episodeNum]!;
+          final progress = widget.episodeProgress[episode.filePath];
+
+          return Padding(
+            padding: EdgeInsets.only(
+              right: index < episodeNumbers.length - 1 ? 12 : 0,
+            ),
+            child: _LocalEpisodeCard(
+              episode: episode,
+              watchProgress: progress,
+              onTap: () => widget.onEpisodePlay(episode),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// 本地剧集卡片（简化版，无 TMDB 剧集图片）
+class _LocalEpisodeCard extends StatelessWidget {
+  const _LocalEpisodeCard({
+    required this.episode,
+    required this.onTap,
+    this.watchProgress,
+  });
+
+  final VideoMetadata episode;
+  final VoidCallback onTap;
+  final double? watchProgress;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isWatched = watchProgress != null && watchProgress! > 0.9;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 140,
+        decoration: BoxDecoration(
+          color: isDark ? AppColors.darkSurfaceVariant : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isDark ? AppColors.darkOutline : Colors.grey[300]!,
+          ),
+          boxShadow: [
+            if (!isDark)
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 集号标题区域
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isWatched
+                    ? AppColors.primary.withValues(alpha: 0.1)
+                    : (isDark ? AppColors.darkSurface : Colors.grey[50]),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(11)),
+              ),
+              child: Row(
+                children: [
+                  // 集号
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      '第${episode.episodeNumber}集',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  // 已观看图标
+                  if (isWatched)
+                    Icon(
+                      Icons.check_circle_rounded,
+                      size: 18,
+                      color: AppColors.primary,
+                    ),
+                ],
+              ),
+            ),
+            // 集标题
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      episode.episodeTitle ?? episode.fileName,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                      ),
+                    ),
+                    // 播放进度
+                    if (watchProgress != null && watchProgress! > 0 && !isWatched) ...[
+                      const SizedBox(height: 6),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(2),
+                        child: LinearProgressIndicator(
+                          value: watchProgress,
+                          minHeight: 3,
+                          backgroundColor: isDark ? Colors.grey[700] : Colors.grey[300],
+                          valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// 紧凑版剧集选择器 (垂直列表)
 class CompactEpisodeSelector extends ConsumerStatefulWidget {
   const CompactEpisodeSelector({

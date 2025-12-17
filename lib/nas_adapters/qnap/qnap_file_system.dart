@@ -179,4 +179,3 @@ class QnapFileSystem implements NasFileSystem {
     return _api.getThumbnailUrl(path, size: sizeStr);
   }
 }
-

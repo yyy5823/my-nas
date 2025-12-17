@@ -82,6 +82,8 @@ class VideoMetadataService {
   /// 删除元数据
   Future<void> delete(String sourceId, String filePath) async {
     if (!_initialized) await init();
+    // 清理海报缓存
+    await _posterCacheService.deleteCachedPoster(sourceId, filePath);
     await _db.delete(sourceId, filePath);
   }
 
@@ -103,6 +105,12 @@ class VideoMetadataService {
   Future<Map<int, Map<int, VideoMetadata>>> getEpisodesByTmdbId(int tmdbId) async {
     if (!_initialized) await init();
     return _db.getEpisodesByTmdbId(tmdbId);
+  }
+
+  /// 根据 showDirectory 获取剧集映射（用于无 TMDB 的剧集）
+  Future<Map<int, Map<int, VideoMetadata>>> getEpisodesByShowDirectory(String showDirectory) async {
+    if (!_initialized) await init();
+    return _db.getEpisodesByShowDirectory(showDirectory);
   }
 
   /// 获取所有 TMDB ID 集合
@@ -307,9 +315,38 @@ class VideoMetadataService {
         metadata.localPosterUrl = localUrl;
         await save(metadata);
         logger.d('VideoMetadataService: 海报已缓存到本地 "${metadata.fileName}"');
+
+        // 异步写入远程目录（不阻塞，不更新 localPosterUrl）
+        // 仅当海报来自 TMDB（网络 URL）时才写入远程
+        if (fileSystem != null && metadata.posterUrl!.startsWith('http')) {
+          BackgroundTaskPool.media.addFireAndForget(
+            () => _uploadPosterToRemote(metadata, fileSystem),
+            taskName: 'uploadPosterRemote:${metadata.fileName}',
+          );
+        }
       }
     } on Exception catch (e) {
       logger.w('VideoMetadataService: 下载海报失败 "${metadata.fileName}"', e);
+    }
+  }
+
+  /// 异步上传海报到远程目录（后台任务，仅作为备份/Kodi兼容）
+  Future<void> _uploadPosterToRemote(
+    VideoMetadata metadata,
+    NasFileSystem fileSystem,
+  ) async {
+    try {
+      final videoDir = _getParentPath(metadata.filePath);
+      await _remotePosterService.downloadAndSavePoster(
+        fileSystem: fileSystem,
+        videoDir: videoDir,
+        posterUrl: metadata.posterUrl!,
+        type: PosterType.poster,
+        videoFileName: metadata.fileName,
+      );
+      logger.d('VideoMetadataService: 海报已上传到远程目录 "$videoDir"');
+    } on Exception catch (e) {
+      logger.w('VideoMetadataService: 上传海报到远程目录失败 "${metadata.fileName}"', e);
     }
   }
 
@@ -419,7 +456,9 @@ class VideoMetadataService {
           metadata.backdropUrl = nfoData.fanartPath;
         }
 
-        logger.d('VideoMetadataService: 从 NFO 获取到元数据 "${nfoData.title}"');
+        logger.d('VideoMetadataService: 从 NFO 获取到元数据 "${nfoData.title}"'
+            '${nfoData.posterPath != null ? ", poster: ${nfoData.posterPath}" : ""}'
+            '${nfoData.fanartPath != null ? ", fanart: ${nfoData.fanartPath}" : ""}');
         return true;
       }
     } on Exception catch (e) {
@@ -482,6 +521,14 @@ class VideoMetadataService {
               episode: info.episode,
               epTitle: episodeTitle,
             );
+
+            // 获取多语言翻译（后台异步，不阻塞）
+            _fetchAndStoreTranslations(
+              metadata: metadata,
+              tmdbId: tvDetail.id,
+              isMovie: false,
+            );
+
             logger.i('VideoMetadataService: 匹配到电视剧 "${tvDetail.name}"');
           }
         }
@@ -497,6 +544,14 @@ class VideoMetadataService {
 
           if (movieDetail != null) {
             metadata.updateFromMovie(movieDetail);
+
+            // 获取多语言翻译（后台异步，不阻塞）
+            _fetchAndStoreTranslations(
+              metadata: metadata,
+              tmdbId: movieDetail.id,
+              isMovie: true,
+            );
+
             logger.i('VideoMetadataService: 匹配到电影 "${movieDetail.title}"');
           }
         }
@@ -535,6 +590,63 @@ class VideoMetadataService {
     return '/';
   }
 
+  /// 异步获取并存储多语言翻译
+  ///
+  /// 后台运行，不阻塞主刮削流程
+  void _fetchAndStoreTranslations({
+    required VideoMetadata metadata,
+    required int tmdbId,
+    required bool isMovie,
+  }) {
+    // 使用 fire-and-forget 模式，后台异步执行
+    BackgroundTaskPool.media.addFireAndForget(
+      () async {
+        try {
+          final translations = isMovie
+              ? await _tmdbService.getMovieTranslations(tmdbId)
+              : await _tmdbService.getTvTranslations(tmdbId);
+
+          if (translations != null && translations.translations.isNotEmpty) {
+            // 获取用户偏好的语言列表
+            final preferredLangs = _tmdbService.getPreferredLanguageCodes();
+
+            // 为每个偏好语言存储翻译（如果有的话）
+            for (final langCode in preferredLangs) {
+              final translation = translations.getTranslation(langCode);
+              if (translation != null) {
+                if (translation.title != null && translation.title!.isNotEmpty) {
+                  metadata.addLocalizedTitle(langCode, translation.title!);
+                }
+                if (translation.overview != null && translation.overview!.isNotEmpty) {
+                  metadata.addLocalizedOverview(langCode, translation.overview!);
+                }
+              }
+            }
+
+            // 也存储原语言数据（通常是英文）
+            final enTranslation = translations.getTranslation('en');
+            if (enTranslation != null) {
+              if (enTranslation.title != null && enTranslation.title!.isNotEmpty) {
+                metadata.addLocalizedTitle('en', enTranslation.title!);
+              }
+              if (enTranslation.overview != null && enTranslation.overview!.isNotEmpty) {
+                metadata.addLocalizedOverview('en', enTranslation.overview!);
+              }
+            }
+
+            // 保存更新后的元数据
+            await save(metadata);
+            logger.d('VideoMetadataService: 已保存多语言翻译 for ${metadata.title}');
+          }
+        } on Exception catch (e) {
+          // 翻译获取失败不影响主流程，仅记录日志
+          logger.w('VideoMetadataService: 获取翻译失败', e);
+        }
+      },
+      taskName: 'fetchTranslations:${metadata.fileName}',
+    );
+  }
+
   /// 将 NFO 和海报写入远程目录
   Future<void> _writeNfoAndPosterToRemote({
     required VideoMetadata metadata,
@@ -567,25 +679,8 @@ class VideoMetadataService {
         videoFileName: videoFileName,
       );
 
-      // 2. 下载并保存海报到远程目录
-      if (metadata.posterUrl != null && metadata.posterUrl!.isNotEmpty) {
-        final remotePosterPath = await _remotePosterService.downloadAndSavePoster(
-          fileSystem: fileSystem,
-          videoDir: videoDir,
-          posterUrl: metadata.posterUrl!,
-          type: PosterType.poster,
-          videoFileName: videoFileName,
-        );
-
-        if (remotePosterPath != null) {
-          // 更新 localPosterUrl 为远程路径
-          metadata.localPosterUrl = remotePosterPath;
-          await save(metadata);
-          logger.i('VideoMetadataService: 海报已保存到远程目录 "$remotePosterPath"');
-        }
-      }
-
-      // 3. 可选：下载背景图（fanart）
+      // 2. 下载背景图（fanart）到远程目录
+      // 注意：海报已在 _downloadPosterAndSave 中异步处理，这里只需处理背景图
       if (metadata.backdropUrl != null && 
           metadata.backdropUrl!.isNotEmpty &&
           metadata.backdropUrl!.startsWith('http')) {
@@ -598,7 +693,7 @@ class VideoMetadataService {
         );
       }
 
-      logger.i('VideoMetadataService: NFO 和海报已写入远程目录 "$videoDir"');
+      logger.i('VideoMetadataService: NFO 已写入远程目录 "$videoDir"');
     } on Exception catch (e, st) {
       // 写入失败不影响主流程，仅记录警告
       logger.w('VideoMetadataService: 写入 NFO/海报到远程目录失败', e, st);

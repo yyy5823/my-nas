@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:my_nas/features/video/data/services/tmdb_service.dart';
 
 /// 媒体类型
@@ -59,6 +61,8 @@ class VideoMetadata {
     this.showDirectory,
     this.movieDirectory,
     this.resolution,
+    this.localizedTitles,
+    this.localizedOverviews,
   });
 
   /// 从 Map 创建
@@ -98,7 +102,26 @@ class VideoMetadata {
       showDirectory: map['showDirectory'] as String?,
       movieDirectory: map['movieDirectory'] as String?,
       resolution: map['resolution'] as String?,
+      localizedTitles: _parseLocalizedMap(map['localizedTitles']),
+      localizedOverviews: _parseLocalizedMap(map['localizedOverviews']),
     );
+
+  /// 解析多语言 Map（从 JSON 字符串或 Map）
+  static Map<String, String>? _parseLocalizedMap(dynamic value) {
+    if (value == null) return null;
+    if (value is String && value.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(value) as Map<String, dynamic>;
+        return decoded.map((k, v) => MapEntry(k, v.toString()));
+      } on Exception {
+        return null;
+      }
+    }
+    if (value is Map) {
+      return value.map((k, v) => MapEntry(k.toString(), v.toString()));
+    }
+    return null;
+  }
 
   final String filePath;
   final String sourceId;
@@ -132,14 +155,24 @@ class VideoMetadata {
   String? movieDirectory; // 电影所在目录（用于目录系列识别）
   String? resolution; // 视频分辨率（4K, 1080p, 720p 等）
 
+  /// 多语言标题（语言代码 -> 标题）
+  /// 例如：{'zh-CN': '霸王别姬', 'en': 'Farewell My Concubine', 'ja': '覇王別姫'}
+  Map<String, String>? localizedTitles;
+
+  /// 多语言简介（语言代码 -> 简介）
+  Map<String, String>? localizedOverviews;
+
   /// 海报显示优先级：
-  /// 1. 本地缓存的海报（离线可用）
+  /// 1. 本地缓存的海报（离线可用，file:// 路径）
   /// 2. TMDB 海报（需网络，但会被 CachedNetworkImage 缓存）
   /// 3. NAS 内置缩略图（需 NAS 连接）
-  /// 4. 生成的视频缩略图（离线可用）
+  /// 4. 生成的视频缩略图（本地文件）
+  ///
+  /// 注意：localPosterUrl 始终指向本地 file:// 缓存路径，不会是 NAS 路径
   String? get displayPosterUrl {
-    // 检查非空且非空字符串
+    // 本地缓存优先（离线可用）
     if (localPosterUrl != null && localPosterUrl!.isNotEmpty) return localPosterUrl;
+    // 网络 URL 作为备选
     if (posterUrl != null && posterUrl!.isNotEmpty) return posterUrl;
     if (thumbnailUrl != null && thumbnailUrl!.isNotEmpty) return thumbnailUrl;
     if (generatedThumbnailUrl != null && generatedThumbnailUrl!.isNotEmpty) return generatedThumbnailUrl;
@@ -177,8 +210,103 @@ class VideoMetadata {
     return '$fileSize B';
   }
 
-  /// 显示标题
+  /// 显示标题（简单版本，兼容旧代码）
   String get displayTitle => title ?? fileName;
+
+  /// 根据语言偏好获取标题
+  ///
+  /// [preferredLanguages] 语言代码优先级列表，例如 ['zh-CN', 'zh-TW', 'en']
+  /// 返回优先级最高的可用标题，如果都没有则返回 title 或 originalTitle 或 fileName
+  String getLocalizedTitle(List<String> preferredLanguages) {
+    // 1. 尝试从多语言数据中按优先级查找
+    if (localizedTitles != null && localizedTitles!.isNotEmpty) {
+      for (final lang in preferredLanguages) {
+        final localized = localizedTitles![lang];
+        if (localized != null && localized.isNotEmpty) {
+          return localized;
+        }
+        // 尝试语言前缀匹配（zh-CN 匹配 zh）
+        final langPrefix = lang.split('-').first;
+        for (final entry in localizedTitles!.entries) {
+          if (entry.key.startsWith(langPrefix) && entry.value.isNotEmpty) {
+            return entry.value;
+          }
+        }
+      }
+    }
+
+    // 2. 检查主标题是否匹配偏好语言
+    // 如果偏好中文且 title 包含中文字符，使用 title
+    if (title != null && title!.isNotEmpty) {
+      for (final lang in preferredLanguages) {
+        if (lang.startsWith('zh') && _containsChinese(title!)) {
+          return title!;
+        }
+        if (lang == 'ja' && _containsJapanese(title!)) {
+          return title!;
+        }
+        if (lang == 'ko' && _containsKorean(title!)) {
+          return title!;
+        }
+        // 英文或其他拉丁语系
+        if ((lang == 'en' || lang.startsWith('en-')) && _isLatin(title!)) {
+          return title!;
+        }
+      }
+    }
+
+    // 3. 检查是否有 original 偏好
+    for (final lang in preferredLanguages) {
+      if (lang == 'original' && originalTitle != null && originalTitle!.isNotEmpty) {
+        return originalTitle!;
+      }
+    }
+
+    // 4. 回退到默认标题
+    return title ?? originalTitle ?? fileName;
+  }
+
+  /// 根据语言偏好获取简介
+  String? getLocalizedOverview(List<String> preferredLanguages) {
+    // 1. 尝试从多语言数据中按优先级查找
+    if (localizedOverviews != null && localizedOverviews!.isNotEmpty) {
+      for (final lang in preferredLanguages) {
+        final localized = localizedOverviews![lang];
+        if (localized != null && localized.isNotEmpty) {
+          return localized;
+        }
+        // 尝试语言前缀匹配
+        final langPrefix = lang.split('-').first;
+        for (final entry in localizedOverviews!.entries) {
+          if (entry.key.startsWith(langPrefix) && entry.value.isNotEmpty) {
+            return entry.value;
+          }
+        }
+      }
+    }
+
+    // 2. 回退到默认简介
+    return overview;
+  }
+
+  /// 检查字符串是否包含中文字符
+  static bool _containsChinese(String text) =>
+      RegExp(r'[\u4e00-\u9fff]').hasMatch(text);
+
+  /// 检查字符串是否包含日文字符（假名）
+  static bool _containsJapanese(String text) =>
+      RegExp(r'[\u3040-\u309f\u30a0-\u30ff]').hasMatch(text);
+
+  /// 检查字符串是否包含韩文字符
+  static bool _containsKorean(String text) =>
+      RegExp(r'[\uac00-\ud7af]').hasMatch(text);
+
+  /// 检查字符串是否主要是拉丁字符
+  static bool _isLatin(String text) {
+    // 使用 Unicode 范围检查：基本拉丁字母、拉丁扩展、常见标点符号
+    final latinPattern = RegExp(r'^[\u0000-\u007F\u0080-\u00FF\u0100-\u017F]+$');
+    return latinPattern.hasMatch(text);
+  }
 
   /// 评分文本
   String get ratingText => rating != null ? rating!.toStringAsFixed(1) : '';
@@ -291,6 +419,8 @@ class VideoMetadata {
       'showDirectory': showDirectory,
       'movieDirectory': movieDirectory,
       'resolution': resolution,
+      'localizedTitles': localizedTitles != null ? jsonEncode(localizedTitles) : null,
+      'localizedOverviews': localizedOverviews != null ? jsonEncode(localizedOverviews) : null,
     };
 
   /// 复制
@@ -326,6 +456,8 @@ class VideoMetadata {
     String? showDirectory,
     String? movieDirectory,
     String? resolution,
+    Map<String, String>? localizedTitles,
+    Map<String, String>? localizedOverviews,
   }) => VideoMetadata(
       filePath: filePath ?? this.filePath,
       sourceId: sourceId ?? this.sourceId,
@@ -358,7 +490,32 @@ class VideoMetadata {
       showDirectory: showDirectory ?? this.showDirectory,
       movieDirectory: movieDirectory ?? this.movieDirectory,
       resolution: resolution ?? this.resolution,
+      localizedTitles: localizedTitles ?? this.localizedTitles,
+      localizedOverviews: localizedOverviews ?? this.localizedOverviews,
     );
+
+  /// 添加或更新多语言标题
+  void addLocalizedTitle(String languageCode, String localizedTitle) {
+    localizedTitles ??= {};
+    localizedTitles![languageCode] = localizedTitle;
+  }
+
+  /// 添加或更新多语言简介
+  void addLocalizedOverview(String languageCode, String localizedOverview) {
+    localizedOverviews ??= {};
+    localizedOverviews![languageCode] = localizedOverview;
+  }
+
+  /// 从 TMDB 数据更新多语言信息
+  /// [languageCode] 用于获取此数据的语言代码
+  void updateLocalizedFromTmdb(String languageCode, String? tmdbTitle, String? tmdbOverview) {
+    if (tmdbTitle != null && tmdbTitle.isNotEmpty) {
+      addLocalizedTitle(languageCode, tmdbTitle);
+    }
+    if (tmdbOverview != null && tmdbOverview.isNotEmpty) {
+      addLocalizedOverview(languageCode, tmdbOverview);
+    }
+  }
 }
 
 /// 视频文件名解析结果
@@ -388,10 +545,139 @@ class VideoFileNameInfo {
 /// 视频文件名解析器
 class VideoFileNameParser {
   static final _yearPattern = RegExp(r'[\[\(]?((?:19|20)\d{2})[\]\)]?');
+
+  /// 中文数字映射
+  static const _chineseNumbers = {
+    '零': 0, '〇': 0,
+    '一': 1, '壹': 1,
+    '二': 2, '贰': 2, '两': 2,
+    '三': 3, '叁': 3,
+    '四': 4, '肆': 4,
+    '五': 5, '伍': 5,
+    '六': 6, '陆': 6,
+    '七': 7, '柒': 7,
+    '八': 8, '捌': 8,
+    '九': 9, '玖': 9,
+    '十': 10, '拾': 10,
+    '百': 100, '佰': 100,
+    '千': 1000, '仟': 1000,
+  };
+
+  /// 解析中文数字或阿拉伯数字
+  ///
+  /// 支持的格式：
+  /// - 阿拉伯数字：1, 01, 123
+  /// - 简单中文：一, 二, 十, 百
+  /// - 复合中文：十二, 二十一, 一百二十三
+  static int? _parseChineseNumber(String str) {
+    // 先尝试解析阿拉伯数字
+    final arabicNum = int.tryParse(str);
+    if (arabicNum != null) return arabicNum;
+
+    // 解析中文数字
+    if (str.isEmpty) return null;
+
+    var result = 0;
+    var temp = 0;
+    var section = 0; // 当前节（千位以下）
+
+    for (var i = 0; i < str.length; i++) {
+      final char = str[i];
+      final num = _chineseNumbers[char];
+
+      if (num == null) continue;
+
+      if (num == 1000) {
+        // 千
+        if (temp == 0) temp = 1;
+        section += temp * 1000;
+        temp = 0;
+      } else if (num == 100) {
+        // 百
+        if (temp == 0) temp = 1;
+        section += temp * 100;
+        temp = 0;
+      } else if (num == 10) {
+        // 十
+        if (temp == 0) temp = 1;
+        section += temp * 10;
+        temp = 0;
+      } else {
+        temp = num;
+      }
+    }
+
+    result = section + temp;
+    return result > 0 ? result : null;
+  }
+
+  /// 剧集模式（按优先级排序，从最精确到最宽松）
+  ///
+  /// 支持的格式：
+  /// 【标准格式】
+  /// - S01E01, s01e01, S01.E01, S01 E01 (标准格式，支持空格和点分隔)
+  /// - 1x01, 01x01 (旧式格式)
+  /// - Season 1 Episode 1, Season.1.Episode.1 (完整拼写)
+  ///
+  /// 【中文格式】
+  /// - 第X季第X集, 第X季.第X集, 第1季 第1集
+  /// - 第X集, 第X话, 第X回 (只有集号)
+  /// - 第一集, 第二十一话 (中文数字)
+  /// - 01集, 01话, 01回 (数字直接跟单位)
+  ///
+  /// 【日本动画格式】
+  /// - #01, ＃01 (井号)
+  /// - 01話, 01话 (数字+話/话)
+  /// - [01], 【01】, (01), （01） (各种括号)
+  /// - OVA01, OAD01, SP01, 特典01 (特典格式)
+  /// - Vol.01, Vol 01 (卷号)
+  ///
+  /// 【英文格式】
+  /// - EP01, ep01, E01, Ep.01 (集号前缀)
+  /// - Part 1, Part.1, Pt.1 (部分)
+  /// - Chapter 01, Ch.01 (章节)
+  ///
+  /// 【港剧特殊格式】
+  /// - 剧名.S21.HD1080p (S后跟数字，再跟分辨率标记，S表示集号而非季号)
+  ///
+  /// 【紧凑格式】
+  /// - 101, 201, 1201 (3-4位数，首位是季号: 1季01集, 12季01集)
+  ///
+  /// 【末尾数字】
+  /// - 剧名.01, 剧名 - 01, 剧名_01 (文件名末尾的数字)
   static final _tvShowPattern = RegExp(
-    r'[Ss](\d{1,2})[Ee](\d{1,2})|(\d{1,2})x(\d{1,2})|第(\d+)季.*?第(\d+)集|第(\d+)集',
+    // === 高优先级：带季号的精确格式 ===
+    r'[Ss](\d{1,2})[\s._-]*[Ee](\d{1,3})'   // G1,G2: S01E01, S01.E01, S01 E01
+    r'|(\d{1,2})x(\d{1,3})'                  // G3,G4: 1x01, 01x01
+    r'|[Ss]eason[\s._-]*(\d{1,2})[\s._-]*[Ee]pisode[\s._-]*(\d{1,3})' // G5,G6: Season 1 Episode 1
+    r'|第(\d+)季[\s._]*第(\d+)[集话回]'       // G7,G8: 第1季第1集/话/回
+
+    // === 中优先级：只有集号的格式 ===
+    r'|第([一二三四五六七八九十百千\d]+)[集话回期]' // G9: 第X集/话/回/期（中文数字）
+    r'|[Ee][Pp]?[\s._]*(\d{1,3})(?![0-9pP])' // G10: EP01, E01, Ep.01
+    r'|(?:^|[\s._-])(\d{1,3})[集话回話]'      // G11: 01集, 01话, 01回, 01話
+    r'|[#＃](\d{1,3})'                       // G12: #01, ＃01 (日本动画常用)
+
+    // === 括号包裹格式 ===
+    r'|[\[【\(（](\d{1,3})[\]】\)）]'         // G13: [01], 【01】, (01), （01）
+
+    // === 特典/卷/章节格式 ===
+    r'|(?:OVA|OAD|SP|特典|番外)[\s._-]*(\d{1,2})' // G14: OVA01, SP01, 特典01
+    r'|[Vv]ol(?:ume)?[\s._-]*(\d{1,2})'      // G15: Vol.01, Volume 01
+    r'|(?:Part|Pt)[\s._-]*(\d{1,2})'         // G16: Part 1, Pt.1
+    r'|(?:Chapter|Ch)[\s._-]*(\d{1,3})'      // G17: Chapter 01, Ch.01
+
+    // === 港剧格式：.S数字.分辨率（S表示集号，不是季号）===
+    r'|[\s._-][Ss](\d{1,3})[\s._-](?:HD|4K|2160|1080|720|480)' // G18: .S21.HD1080p
+
+    // === 紧凑数字格式（仅限3位数，避免匹配年份）===
+    r'|(?:^|[\s._-])(\d{3})(?:[\s._-]|$)'    // G19: 101=S1E01（仅3位数，4位可能是年份）
+
+    // === 最低优先级：末尾数字（最宽松）===
+    r'|[\s._-](\d{1,3})$',                   // G20: 末尾集号 .01, -01, _01
     caseSensitive: false,
   );
+
   static final _resolutionPattern = RegExp(
     '(4K|2160[pP]|1080[pP]|720[pP]|480[pP])',
     caseSensitive: false,
@@ -432,21 +718,92 @@ class VideoFileNameParser {
     int? episode;
     final tvMatch = _tvShowPattern.firstMatch(name);
     if (tvMatch != null) {
+      // === 高优先级：带季号的精确格式 ===
       if (tvMatch.group(1) != null && tvMatch.group(2) != null) {
-        // S01E01 格式
-        season = int.tryParse(tvMatch.group(1) ?? '');
-        episode = int.tryParse(tvMatch.group(2) ?? '');
+        // G1,G2: S01E01, S01.E01, S01 E01
+        season = int.tryParse(tvMatch.group(1)!);
+        episode = int.tryParse(tvMatch.group(2)!);
       } else if (tvMatch.group(3) != null && tvMatch.group(4) != null) {
-        // 1x01 格式
-        season = int.tryParse(tvMatch.group(3) ?? '');
-        episode = int.tryParse(tvMatch.group(4) ?? '');
+        // G3,G4: 1x01, 01x01
+        season = int.tryParse(tvMatch.group(3)!);
+        episode = int.tryParse(tvMatch.group(4)!);
       } else if (tvMatch.group(5) != null && tvMatch.group(6) != null) {
-        // 第X季第X集格式
-        season = int.tryParse(tvMatch.group(5) ?? '');
-        episode = int.tryParse(tvMatch.group(6) ?? '');
-      } else if (tvMatch.group(7) != null) {
-        // 只有第X集
-        episode = int.tryParse(tvMatch.group(7) ?? '');
+        // G5,G6: Season 1 Episode 1
+        season = int.tryParse(tvMatch.group(5)!);
+        episode = int.tryParse(tvMatch.group(6)!);
+      } else if (tvMatch.group(7) != null && tvMatch.group(8) != null) {
+        // G7,G8: 第1季第1集/话/回
+        season = int.tryParse(tvMatch.group(7)!);
+        episode = int.tryParse(tvMatch.group(8)!);
+      }
+      // === 中优先级：只有集号的格式 ===
+      else if (tvMatch.group(9) != null) {
+        // G9: 第X集/话/回/期（中文数字）
+        episode = _parseChineseNumber(tvMatch.group(9)!);
+        season = 1;
+      } else if (tvMatch.group(10) != null) {
+        // G10: EP01, E01, Ep.01
+        episode = int.tryParse(tvMatch.group(10)!);
+        season = 1;
+      } else if (tvMatch.group(11) != null) {
+        // G11: 01集, 01话, 01回, 01話
+        episode = int.tryParse(tvMatch.group(11)!);
+        season = 1;
+      } else if (tvMatch.group(12) != null) {
+        // G12: #01, ＃01
+        episode = int.tryParse(tvMatch.group(12)!);
+        season = 1;
+      }
+      // === 括号包裹格式 ===
+      else if (tvMatch.group(13) != null) {
+        // G13: [01], 【01】, (01), （01）
+        episode = int.tryParse(tvMatch.group(13)!);
+        season = 1;
+      }
+      // === 特典/卷/章节格式 ===
+      else if (tvMatch.group(14) != null) {
+        // G14: OVA01, SP01, 特典01, 番外01 → season = 0 表示特典
+        episode = int.tryParse(tvMatch.group(14)!);
+        season = 0;
+      } else if (tvMatch.group(15) != null) {
+        // G15: Vol.01, Volume 01 → 作为季号处理
+        season = int.tryParse(tvMatch.group(15)!);
+        episode = 1;
+      } else if (tvMatch.group(16) != null) {
+        // G16: Part 1, Pt.1
+        episode = int.tryParse(tvMatch.group(16)!);
+        season = 1;
+      } else if (tvMatch.group(17) != null) {
+        // G17: Chapter 01, Ch.01
+        episode = int.tryParse(tvMatch.group(17)!);
+        season = 1;
+      }
+      // === 港剧格式：.S数字.分辨率（S表示集号，不是季号）===
+      else if (tvMatch.group(18) != null) {
+        // G18: .S21.HD1080p - S后面的数字是集号
+        episode = int.tryParse(tvMatch.group(18)!);
+        season = 1;
+      }
+      // === 紧凑数字格式（仅限3位数）===
+      else if (tvMatch.group(19) != null) {
+        // G19: 101=S1E01（仅3位数）
+        final compact = tvMatch.group(19)!;
+        final compactNum = int.tryParse(compact);
+        if (compactNum != null && compact.length == 3) {
+          // 101 → S1E01
+          season = compactNum ~/ 100;
+          episode = compactNum % 100;
+          // 验证季号合理性（1-9）
+          if (season < 1 || season > 9) {
+            season = null;
+            episode = null;
+          }
+        }
+      }
+      // === 最低优先级：末尾数字 ===
+      else if (tvMatch.group(20) != null) {
+        // G20: 末尾集号 .01, -01, _01
+        episode = int.tryParse(tvMatch.group(20)!);
         season = 1;
       }
     }

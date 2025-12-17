@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/video/data/services/tmdb_service.dart';
+import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
 import 'package:my_nas/features/video/presentation/providers/video_detail_provider.dart';
+import 'package:my_nas/features/video/presentation/widgets/video_poster.dart';
 import 'package:my_nas/shared/widgets/adaptive_image.dart';
 
 /// 推荐内容区域组件
@@ -162,7 +164,7 @@ class SimilarContentSection extends ConsumerWidget {
 }
 
 /// 推荐卡片组件
-class _RecommendationCard extends StatefulWidget {
+class _RecommendationCard extends ConsumerStatefulWidget {
   const _RecommendationCard({
     required this.item,
     required this.onTap,
@@ -172,17 +174,26 @@ class _RecommendationCard extends StatefulWidget {
   final VoidCallback onTap;
 
   @override
-  State<_RecommendationCard> createState() => _RecommendationCardState();
+  ConsumerState<_RecommendationCard> createState() => _RecommendationCardState();
 }
 
-class _RecommendationCardState extends State<_RecommendationCard> {
+class _RecommendationCardState extends ConsumerState<_RecommendationCard> {
   bool _isHovered = false;
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final hasPoster = widget.item.posterPath != null && widget.item.posterPath!.isNotEmpty;
     const cardWidth = 120.0;
+
+    // 查询本地是否有该视频的元数据
+    final localVideoAsync = ref.watch(localVideoByTmdbIdProvider(widget.item.id));
+
+    // 确定要使用的封面 URL：优先本地缓存，其次 TMDB 网络 URL
+    final localPosterUrl = localVideoAsync.whenOrNull(
+      data: (localVideo) => localVideo?.displayPosterUrl,
+    );
+    final posterUrl = localPosterUrl ?? widget.item.posterUrl;
+    final hasPoster = posterUrl.isNotEmpty;
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
@@ -215,12 +226,11 @@ class _RecommendationCardState extends State<_RecommendationCard> {
                       child: Stack(
                         fit: StackFit.expand,
                         children: [
-                          // 图片
-                          if (hasPoster) AdaptiveImage(
-                                  imageUrl: widget.item.posterUrl,
-                                  placeholder: (_) => _buildPlaceholder(isDark),
-                                  errorWidget: (_, _) => _buildPlaceholder(isDark),
-                                ) else _buildPlaceholder(isDark),
+                          // 图片 - 优先使用本地缓存的封面
+                          if (hasPoster)
+                            _buildPosterImage(posterUrl, localVideoAsync, isDark)
+                          else
+                            _buildPlaceholder(isDark),
                           // 渐变遮罩
                           Positioned(
                             left: 0,
@@ -356,6 +366,37 @@ class _RecommendationCardState extends State<_RecommendationCard> {
         ),
       ),
     );
+
+  /// 构建海报图片 - 根据是否有本地视频选择合适的加载方式
+  Widget _buildPosterImage(
+    String posterUrl,
+    AsyncValue<VideoMetadata?> localVideoAsync,
+    bool isDark,
+  ) {
+    // 检查是否是 NAS 路径（本地缓存的海报）
+    final isNasPath = posterUrl.startsWith('/') &&
+        !posterUrl.startsWith('//') &&
+        !posterUrl.contains('://');
+
+    if (isNasPath) {
+      // NAS 路径 - 使用 VideoPoster
+      final localVideo = localVideoAsync.valueOrNull;
+      final sourceId = localVideo?.sourceId ?? '';
+      return VideoPoster(
+        posterUrl: posterUrl,
+        sourceId: sourceId,
+        placeholder: _buildPlaceholder(isDark),
+        errorWidget: _buildPlaceholder(isDark),
+      );
+    }
+
+    // 网络 URL - 使用 AdaptiveImage
+    return AdaptiveImage(
+      imageUrl: posterUrl,
+      placeholder: (_) => _buildPlaceholder(isDark),
+      errorWidget: (_, _) => _buildPlaceholder(isDark),
+    );
+  }
 
   Color _getRatingColor(double rating) {
     if (rating >= 8) return Colors.green;

@@ -7,6 +7,7 @@ import 'package:my_nas/features/video/data/services/tmdb_service.dart';
 import 'package:my_nas/features/video/data/services/video_favorites_service.dart';
 import 'package:my_nas/features/video/domain/entities/video_item.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
+import 'package:my_nas/features/video/domain/utils/video_localization.dart';
 import 'package:my_nas/features/video/presentation/pages/tmdb_preview_page.dart';
 import 'package:my_nas/features/video/presentation/pages/video_player_page.dart';
 import 'package:my_nas/features/video/presentation/providers/video_detail_provider.dart';
@@ -136,6 +137,16 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     // 使用 metadata 的简介作为后备
     overview ??= widget.metadata.overview;
 
+    // 获取本地化标题
+    final titleGetter = ref.watch(videoTitleGetterProvider);
+    final localizedTitle = titleGetter(_selectedMetadata);
+
+    // 获取本地化简介（如果没有从 TMDB 获取到的话）
+    if (overview == null || overview!.isEmpty) {
+      final overviewGetter = ref.watch(videoOverviewGetterProvider);
+      overview = overviewGetter(_selectedMetadata);
+    }
+
     return DetailHeroSection(
       metadata: _selectedMetadata,
       onPlay: _isPlaying ? () {} : _playVideo,
@@ -146,9 +157,14 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       watchProgress: watchProgress,
       backdropUrl: backdropUrl,
       tagline: tagline,
+      displayTitle: localizedTitle,
       overview: overview,
       tmdbRating: tmdbRating,
       voteCount: voteCount,
+      sourceId: widget.sourceId,
+      // 电视剧详情页隐藏季集信息，因为这是剧的总览页，不是单集页
+      // 无论是否有 TMDB，只要是电视剧且有 showDirectory，都隐藏
+      hideEpisodeInfo: _isTvShow && (_hasTmdbId || _selectedMetadata.showDirectory != null),
     );
   }
 
@@ -160,9 +176,12 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 剧集选择器 (仅电视剧且有 TMDB ID)
-          if (_isTvShow && _hasTmdbId) ...[
-            _buildEpisodeSection(),
+          // 剧集选择器 (电视剧)
+          if (_isTvShow) ...[
+            if (_hasTmdbId)
+              _buildEpisodeSection()
+            else
+              _buildLocalEpisodeSection(),
             const SizedBox(height: 24),
           ],
 
@@ -234,6 +253,80 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         );
       },
     );
+  }
+
+  /// 构建本地剧集选择器（无 TMDB 数据时使用）
+  Widget _buildLocalEpisodeSection() {
+    final showDirectory = _selectedMetadata.showDirectory;
+    if (showDirectory == null || showDirectory.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final localEpisodesAsync = ref.watch(localEpisodesByShowDirProvider(showDirectory));
+    final allProgressAsync = ref.watch(allVideoProgressProvider);
+
+    return localEpisodesAsync.when(
+      loading: () => const SizedBox(
+        height: 120,
+        child: Center(child: CircularProgressIndicator()),
+      ),
+      error: (_, _) => const SizedBox.shrink(),
+      data: (episodes) {
+        if (episodes.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        final allProgress = allProgressAsync.valueOrNull ?? {};
+
+        // 将进度转换为 Map<filePath, double>
+        final episodeProgress = <String, double>{};
+        for (final entry in allProgress.entries) {
+          episodeProgress[entry.key] = entry.value.progressPercent;
+        }
+
+        return LocalEpisodeSelector(
+          episodes: episodes,
+          initialSeason: _selectedMetadata.seasonNumber,
+          episodeProgress: episodeProgress,
+          onEpisodePlay: _playLocalEpisode,
+        );
+      },
+    );
+  }
+
+  /// 播放本地剧集（无 TMDB 数据）
+  Future<void> _playLocalEpisode(VideoMetadata episode) async {
+    setState(() => _isPlaying = true);
+
+    try {
+      final videoInfo = await _getVideoInfo(episode.filePath);
+      if (videoInfo == null) return;
+
+      if (!mounted) return;
+
+      final videoItem = VideoItem(
+        name: episode.displayTitle,
+        path: episode.filePath,
+        url: videoInfo.url,
+        sourceId: widget.sourceId,
+        size: videoInfo.size,
+        thumbnailUrl: episode.displayPosterUrl,
+      );
+
+      await Navigator.of(context, rootNavigator: true).push(
+        MaterialPageRoute<void>(
+          builder: (context) => VideoPlayerPage(video: videoItem),
+        ),
+      );
+
+      // 刷新播放历史
+      ref..invalidate(continueWatchingProvider)
+      ..invalidate(allVideoProgressProvider);
+    } finally {
+      if (mounted) {
+        setState(() => _isPlaying = false);
+      }
+    }
   }
 
   Widget _buildCastSection() {
@@ -597,6 +690,11 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       return _buildTvShowFileInfo(isDark);
     }
 
+    // 电视剧（无 TMDB）：显示基于 showDirectory 的剧集统计
+    if (_isTvShow && _selectedMetadata.showDirectory != null) {
+      return _buildLocalTvShowFileInfo(isDark);
+    }
+
     // 电影：显示单个文件信息 + 质量选择器
     return Container(
       padding: const EdgeInsets.all(16),
@@ -712,6 +810,92 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
                   _buildInfoRow('总大小', totalSizeText, isDark),
                   if (showDirectory.isNotEmpty)
                     _buildInfoRow('目录', showDirectory, isDark),
+                  _buildInfoRow('来源', widget.sourceId, isDark),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 本地电视剧文件信息统计（无 TMDB 数据时使用）
+  Widget _buildLocalTvShowFileInfo(bool isDark) {
+    final showDirectory = _selectedMetadata.showDirectory!;
+    final episodesAsync = ref.watch(localEpisodesByShowDirProvider(showDirectory));
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurfaceVariant : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark ? AppColors.darkOutline : Colors.grey[300]!,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '本地剧集',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+            ),
+          ),
+          const SizedBox(height: 12),
+          episodesAsync.when(
+            loading: () => const Center(
+              child: Padding(
+                padding: EdgeInsets.all(8),
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+            error: (_, _) => Text(
+              '加载失败',
+              style: TextStyle(
+                color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+              ),
+            ),
+            data: (episodeMap) {
+              // 统计信息
+              var totalEpisodes = 0;
+              var totalSize = 0;
+              for (final seasonEpisodes in episodeMap.values) {
+                for (final episode in seasonEpisodes.values) {
+                  totalEpisodes++;
+                  totalSize += episode.fileSize ?? 0;
+                }
+              }
+
+              if (totalEpisodes == 0) {
+                return Text(
+                  '无本地剧集',
+                  style: TextStyle(
+                    color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+                  ),
+                );
+              }
+
+              final totalSizeText = _formatFileSize(totalSize);
+              final seasonNumbers = episodeMap.keys.toList()..sort();
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildInfoRow('剧集数量', '$totalEpisodes 集', isDark),
+                  if (seasonNumbers.isNotEmpty)
+                    _buildInfoRow(
+                      '季数',
+                      seasonNumbers.length == 1
+                          ? '第 ${seasonNumbers.first} 季'
+                          : '${seasonNumbers.length} 季 (${seasonNumbers.first}-${seasonNumbers.last})',
+                      isDark,
+                    ),
+                  _buildInfoRow('总大小', totalSizeText, isDark),
+                  _buildInfoRow('目录', showDirectory, isDark),
                   _buildInfoRow('来源', widget.sourceId, isDark),
                 ],
               );

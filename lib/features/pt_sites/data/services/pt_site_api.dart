@@ -244,6 +244,10 @@ class MTeamApi extends PTSiteApi {
       final profile = data['data'] as Map<String, dynamic>;
       final memberCount = profile['memberCount'] as Map<String, dynamic>? ?? {};
 
+      // 调试日志：记录 API 返回的完整数据以便排查问题
+      _logger..d('MTeamApi.getUserInfo: profile = $profile')
+      ..d('MTeamApi.getUserInfo: memberCount = $memberCount');
+
       return PTUserInfo(
         username: profile['username'] as String? ?? '',
         userId: profile['id']?.toString() ?? '',
@@ -252,14 +256,20 @@ class MTeamApi extends PTSiteApi {
         downloaded: _parseBytes(memberCount['downloaded']),
         ratio: double.tryParse(memberCount['shareRate']?.toString() ?? ''),
         bonus: double.tryParse(profile['bonus']?.toString() ?? '0') ?? 0,
-        seedingCount: memberCount['seeding'] as int? ?? 0,
-        leechingCount: memberCount['leeching'] as int? ?? 0,
+        // 使用 _parseInt 正确处理可能是 String 类型的数值
+        seedingCount: _parseInt(memberCount['seeding']),
+        leechingCount: _parseInt(memberCount['leeching']),
+        // 额外字段
+        invites: _parseInt(profile['invites']),
+        joinTime: DateTime.tryParse(profile['createdDate']?.toString() ?? ''),
+        lastAccess: DateTime.tryParse(profile['lastBrowseTime']?.toString() ?? ''),
       );
     } catch (e, st) {
       AppError.handle(e, st, 'MTeamApi.getUserInfo');
       rethrow;
     }
   }
+
 
   /// 从配置或 JWT token 中提取 uid
   int? _extractUidFromConfig() {
@@ -527,6 +537,8 @@ class GenericPTSiteApi extends PTSiteApi {
       'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
     };
 
+    _logger.d('GenericPTSiteApi.headers: authType = $authType');
+
     if (authType == '自定义请求头') {
       // 使用自定义请求头
       final customHeaders = source.extraConfig?['customHeaders'];
@@ -546,8 +558,14 @@ class GenericPTSiteApi extends PTSiteApi {
     } else {
       // Cookie 认证
       final cookie = source.extraConfig?['cookie'] as String? ?? '';
-      if (cookie.isNotEmpty) {
+      _logger.d('GenericPTSiteApi.headers: Cookie 长度 = ${cookie.length} 字符');
+      if (cookie.isEmpty) {
+        _logger.w('GenericPTSiteApi.headers: Cookie 为空！请检查配置');
+      } else {
         result['Cookie'] = cookie;
+        // 打印 Cookie 前50个字符用于调试
+        final preview = cookie.length > 50 ? '${cookie.substring(0, 50)}...' : cookie;
+        _logger.d('GenericPTSiteApi.headers: Cookie 预览 = $preview');
       }
     }
 
@@ -673,6 +691,8 @@ class GenericPTSiteApi extends PTSiteApi {
   List<PTTorrent> _parseNexusPHPTorrents(String html) {
     final torrents = <PTTorrent>[];
 
+    _logger.d('GenericPTSiteApi._parseNexusPHPTorrents: HTML 长度 = ${html.length} 字符');
+
     try {
       // 使用正则表达式提取种子信息
       // NexusPHP 种子列表格式: <tr class="*_tr">...</tr>
@@ -684,6 +704,8 @@ class GenericPTSiteApi extends PTSiteApi {
 
       // 如果没有找到带 torrent class 的行，尝试其他常见模式
       var matches = torrentRowRegex.allMatches(html);
+      _logger.d('GenericPTSiteApi._parseNexusPHPTorrents: 正则1匹配到 ${matches.length} 行');
+
       if (matches.isEmpty) {
         // 尝试匹配带 id="torrent_" 的行
         final altRegex = RegExp(
@@ -692,6 +714,19 @@ class GenericPTSiteApi extends PTSiteApi {
           caseSensitive: false,
         );
         matches = altRegex.allMatches(html);
+        _logger.d('GenericPTSiteApi._parseNexusPHPTorrents: 正则2匹配到 ${matches.length} 行');
+      }
+
+      // 如果还是没有匹配，尝试更通用的模式
+      if (matches.isEmpty) {
+        // 尝试匹配任何包含 details.php 的行
+        final genericRegex = RegExp(
+          '<tr[^>]*>(.*?details.php.*?)</tr>',
+          dotAll: true,
+          caseSensitive: false,
+        );
+        matches = genericRegex.allMatches(html);
+        _logger.d('GenericPTSiteApi._parseNexusPHPTorrents: 正则3(通用)匹配到 ${matches.length} 行');
       }
 
       for (final match in matches) {
@@ -758,6 +793,8 @@ class GenericPTSiteApi extends PTSiteApi {
           ),
         ));
       }
+
+      _logger.i('GenericPTSiteApi._parseNexusPHPTorrents: 成功解析 ${torrents.length} 个种子');
     } on Exception catch (e) {
       _logger.w('GenericPTSiteApi._parseNexusPHPTorrents: 解析失败 - $e');
     }

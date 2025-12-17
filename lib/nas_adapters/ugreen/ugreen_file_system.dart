@@ -159,4 +159,3 @@ class UGreenFileSystem implements NasFileSystem {
   Future<String?> getThumbnailUrl(String path, {ThumbnailSize? size}) async =>
       api.getThumbnailUrl(path, size: size);
 }
-
