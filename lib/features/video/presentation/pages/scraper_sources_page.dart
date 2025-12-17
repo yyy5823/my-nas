@@ -143,6 +143,7 @@ class _ScraperSourcesPageState extends ConsumerState<ScraperSourcesPage> {
           child: ReorderableListView.builder(
             padding: const EdgeInsets.all(16),
             itemCount: sortedTypes.length,
+            buildDefaultDragHandles: false,
             onReorder: (oldIndex, newIndex) => _handleReorder(
               sources,
               sortedTypes,
@@ -166,6 +167,7 @@ class _ScraperSourcesPageState extends ConsumerState<ScraperSourcesPage> {
 
               return _ScraperTypeCard(
                 key: ValueKey(type),
+                index: index,
                 type: type,
                 source: source,
                 priorityNumber: index + 1,
@@ -402,6 +404,7 @@ class _ScraperConfig {
 class _ScraperTypeCard extends StatefulWidget {
   const _ScraperTypeCard({
     super.key,
+    required this.index,
     required this.type,
     required this.source,
     required this.priorityNumber,
@@ -414,6 +417,7 @@ class _ScraperTypeCard extends StatefulWidget {
     required this.isDark,
   });
 
+  final int index;
   final ScraperType type;
   final ScraperSourceEntity? source;
   final int priorityNumber;
@@ -462,6 +466,16 @@ class _ScraperTypeCardState extends State<_ScraperTypeCard> {
                 padding: const EdgeInsets.all(16),
                 child: Row(
                   children: [
+                    // 拖动手柄
+                    ReorderableDragStartListener(
+                      index: widget.index,
+                      child: Icon(
+                        Icons.drag_handle,
+                        color: widget.isDark ? Colors.grey[500] : Colors.grey[400],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+
                     // 图标（带主题色背景）
                     Container(
                       width: 48,

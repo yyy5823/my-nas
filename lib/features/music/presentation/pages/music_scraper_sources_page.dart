@@ -134,6 +134,7 @@ class _MusicScraperSourcesPageState extends ConsumerState<MusicScraperSourcesPag
           child: ReorderableListView.builder(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
             itemCount: sortedTypes.length,
+            buildDefaultDragHandles: false,
             onReorder: (oldIndex, newIndex) => _onReorder(oldIndex, newIndex, sortedTypes, state),
             proxyDecorator: (child, index, animation) => Material(
               elevation: 4,
@@ -148,6 +149,7 @@ class _MusicScraperSourcesPageState extends ConsumerState<MusicScraperSourcesPag
 
               return _MusicScraperTypeCard(
                 key: ValueKey(type),
+                index: index,
                 type: type,
                 source: source,
                 priorityNumber: index + 1,
@@ -367,6 +369,7 @@ class _MusicScraperConfig {
 class _MusicScraperTypeCard extends StatelessWidget {
   const _MusicScraperTypeCard({
     super.key,
+    required this.index,
     required this.type,
     required this.source,
     required this.priorityNumber,
@@ -378,6 +381,7 @@ class _MusicScraperTypeCard extends StatelessWidget {
     required this.onTest,
   });
 
+  final int index;
   final MusicScraperType type;
   final MusicScraperSourceEntity? source;
   final int priorityNumber;
@@ -409,6 +413,16 @@ class _MusicScraperTypeCard extends StatelessWidget {
               padding: const EdgeInsets.all(12),
               child: Row(
                 children: [
+                  // 拖动手柄
+                  ReorderableDragStartListener(
+                    index: index,
+                    child: Icon(
+                      Icons.drag_handle,
+                      color: colorScheme.outline,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+
                   // 优先级序号
                   Container(
                     width: 28,
