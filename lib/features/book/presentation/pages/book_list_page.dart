@@ -18,6 +18,7 @@ import 'package:my_nas/features/book/data/services/book_preload_service.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
 import 'package:my_nas/features/book/presentation/pages/book_reader_page.dart';
 import 'package:my_nas/features/book/presentation/pages/epub_reader_page.dart';
+import 'package:my_nas/features/book/presentation/pages/mobi_reader_page.dart';
 import 'package:my_nas/features/book/presentation/pages/pdf_reader_page.dart';
 import 'package:my_nas/features/book/presentation/providers/book_cover_provider.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
@@ -2075,9 +2076,11 @@ class _BookGridItemState extends ConsumerState<_BookGridItem> {
         readerPage = EpubReaderPage(book: bookItem);
       case BookFormat.pdf:
         readerPage = PdfReaderPage(book: bookItem);
-      case BookFormat.txt:
       case BookFormat.mobi:
       case BookFormat.azw3:
+        // MOBI/AZW3 使用 foliate-js 直接渲染，获得最佳体验
+        readerPage = MobiReaderPage(book: bookItem);
+      case BookFormat.txt:
       case BookFormat.unknown:
         readerPage = BookReaderPage(book: bookItem);
     }

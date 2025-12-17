@@ -152,11 +152,12 @@ class SmbConnectionPool {
 
   /// 释放连接
   void release(SmbConnect client) {
-    final conn = _connections.firstWhere(
-      (c) => c.client == client,
-      orElse: () => throw StateError('连接不在池中'),
-    )
-    ..release();
+    _connections
+        .firstWhere(
+          (c) => c.client == client,
+          orElse: () => throw StateError('连接不在池中'),
+        )
+        .release();
     // logger.d('SMB Pool: 释放连接 (活跃: $activeConnectionCount/$connectionCount)');
   }
 

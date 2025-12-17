@@ -277,13 +277,12 @@ $bundleJs
 
         window.importing = false;
 
-        // 使用 open 函数打开书籍（如果可用）
-        if (typeof window.open === 'function' && window.open.length === 2) {
-          // book.js 的 open 函数
-          await window.open(file, initialCfi || null);
+        // 使用 foliateOpen 函数打开书籍（book.js 暴露的全局函数）
+        if (typeof window.foliateOpen === 'function') {
+          await window.foliateOpen(file, initialCfi || null);
         } else {
-          // 手动创建 Reader（如果 open 不可用）
-          throw new Error('Reader not available');
+          // 回退：检查原始的 open 函数（模块作用域）
+          throw new Error('Reader not available - foliateOpen not found');
         }
 
         document.getElementById('loading').style.display = 'none';
@@ -551,8 +550,11 @@ $bundleJs
 
             window.importing = false;
 
-            // 检查 open 函数是否可用
-            if (typeof open === 'function') {
+            // 使用 foliateOpen 函数打开书籍
+            if (typeof window.foliateOpen === 'function') {
+              await window.foliateOpen(file, initialCfi || null);
+            } else if (typeof open === 'function') {
+              // 回退：尝试模块作用域的 open 函数
               await open(file, initialCfi || null);
             } else {
               throw new Error('Reader not initialized');

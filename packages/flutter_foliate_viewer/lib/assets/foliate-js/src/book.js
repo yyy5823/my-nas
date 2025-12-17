@@ -1305,6 +1305,9 @@ const open = async (file, cfi) => {
   else { getMetadata() }
 }
 
+// 暴露 open 函数到全局，供外部（如 Flutter）调用
+window.foliateOpen = open
+
 
 const callFlutter = (name, data) => {
   // console.log('callFlutter', name, data)

@@ -25,6 +25,7 @@ import 'package:my_nas/features/video/domain/entities/video_category_config.dart
 import 'package:my_nas/features/video/domain/entities/video_item.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
 import 'package:my_nas/features/video/presentation/pages/video_detail_page.dart';
+import 'package:my_nas/features/video/presentation/pages/video_duplicates_page.dart';
 import 'package:my_nas/features/video/presentation/pages/video_player_page.dart';
 import 'package:my_nas/features/video/presentation/providers/video_category_settings_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/video_history_provider.dart';
@@ -1635,6 +1636,19 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
                 Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (context) => const SourcesPage(),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.content_copy_rounded),
+              title: const Text('查找重复'),
+              subtitle: const Text('检测重复的视频文件'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (context) => const VideoDuplicatesPage(),
                   ),
                 );
               },

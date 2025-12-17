@@ -17,6 +17,7 @@ class DetailHeroSection extends StatelessWidget {
     required this.onPlay,
     this.onFavorite,
     this.onToggleWatched,
+    this.onScrape,
     this.isFavorite = false,
     this.isWatched = false,
     this.watchProgress,
@@ -36,6 +37,7 @@ class DetailHeroSection extends StatelessWidget {
   final VoidCallback onPlay;
   final VoidCallback? onFavorite;
   final VoidCallback? onToggleWatched;
+  final VoidCallback? onScrape;
   final bool isFavorite;
   final bool isWatched;
   final double? watchProgress;
@@ -611,6 +613,26 @@ class DetailHeroSection extends StatelessWidget {
               icon: Icon(
                 isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
                 color: isFavorite ? Colors.red : Colors.white,
+              ),
+            ),
+          ),
+        ],
+        // 刮削按钮
+        if (onScrape != null) ...[
+          const SizedBox(width: 10),
+          SizedBox(
+            height: buttonHeight,
+            width: buttonHeight,
+            child: IconButton.filled(
+              onPressed: onScrape,
+              tooltip: '手动刮削',
+              style: IconButton.styleFrom(
+                backgroundColor: Colors.white.withValues(alpha: 0.15),
+                foregroundColor: Colors.white,
+              ),
+              icon: const Icon(
+                Icons.auto_fix_high_rounded,
+                color: Colors.white,
               ),
             ),
           ),

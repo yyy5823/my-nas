@@ -3519,6 +3519,186 @@ class VideoDatabaseService {
       await _db!.rawQuery('SELECT COUNT(*) FROM $_tableMovieCollectionGroups'),
     ) ?? 0;
   }
+
+  // ============================================================
+  // 重复视频检测方法
+  // ============================================================
+
+  /// 获取 TMDB ID 重复的视频组
+  ///
+  /// 返回所有具有相同 TMDB ID 的视频，按 TMDB ID 分组
+  /// 只返回有 2 个或以上视频的组
+  Future<Map<int, List<VideoMetadata>>> getDuplicatesByTmdbId() async {
+    if (!_initialized) await init();
+
+    // 先找出有重复的 TMDB ID
+    final duplicateIds = await _db!.rawQuery('''
+      SELECT $_colTmdbId, COUNT(*) as cnt
+      FROM $_tableMetadata
+      WHERE $_colTmdbId IS NOT NULL
+      GROUP BY $_colTmdbId
+      HAVING cnt > 1
+    ''');
+
+    if (duplicateIds.isEmpty) return {};
+
+    final result = <int, List<VideoMetadata>>{};
+
+    for (final row in duplicateIds) {
+      final tmdbId = row[_colTmdbId] as int;
+      final videos = await _db!.query(
+        _tableMetadata,
+        where: '$_colTmdbId = ?',
+        whereArgs: [tmdbId],
+        orderBy: '$_colFileSize DESC', // 按文件大小降序，最大的在前
+      );
+      result[tmdbId] = videos.map(_fromRow).toList();
+    }
+
+    return result;
+  }
+
+  /// 获取标题+年份重复的视频组（针对无 TMDB ID 的视频）
+  ///
+  /// 返回所有具有相同标题和年份的视频，按 "title|year" 分组
+  /// 只返回有 2 个或以上视频且没有 TMDB ID 的组
+  Future<Map<String, List<VideoMetadata>>> getDuplicatesByTitleYear() async {
+    if (!_initialized) await init();
+
+    // 找出标题+年份重复且没有 TMDB ID 的视频
+    final duplicates = await _db!.rawQuery('''
+      SELECT $_colTitle, $_colYear, COUNT(*) as cnt
+      FROM $_tableMetadata
+      WHERE $_colTmdbId IS NULL
+        AND $_colTitle IS NOT NULL
+        AND $_colTitle != ''
+        AND $_colYear IS NOT NULL
+      GROUP BY $_colTitle, $_colYear
+      HAVING cnt > 1
+    ''');
+
+    if (duplicates.isEmpty) return {};
+
+    final result = <String, List<VideoMetadata>>{};
+
+    for (final row in duplicates) {
+      final title = row[_colTitle] as String;
+      final year = row[_colYear] as int;
+      final key = '$title|$year';
+
+      final videos = await _db!.query(
+        _tableMetadata,
+        where: '$_colTmdbId IS NULL AND $_colTitle = ? AND $_colYear = ?',
+        whereArgs: [title, year],
+        orderBy: '$_colFileSize DESC',
+      );
+      result[key] = videos.map(_fromRow).toList();
+    }
+
+    return result;
+  }
+
+  /// 获取重复视频统计
+  ///
+  /// 返回各类重复的组数和涉及的文件总数
+  Future<VideoDuplicateStats> getDuplicateStats() async {
+    if (!_initialized) await init();
+
+    // TMDB ID 重复统计
+    final tmdbResult = await _db!.rawQuery('''
+      SELECT COUNT(*) as group_count, SUM(cnt) as file_count
+      FROM (
+        SELECT $_colTmdbId, COUNT(*) as cnt
+        FROM $_tableMetadata
+        WHERE $_colTmdbId IS NOT NULL
+        GROUP BY $_colTmdbId
+        HAVING cnt > 1
+      )
+    ''');
+
+    final tmdbGroups = (tmdbResult.first['group_count'] as int?) ?? 0;
+    final tmdbFiles = (tmdbResult.first['file_count'] as int?) ?? 0;
+
+    // 标题+年份重复统计（无 TMDB ID）
+    final titleYearResult = await _db!.rawQuery('''
+      SELECT COUNT(*) as group_count, SUM(cnt) as file_count
+      FROM (
+        SELECT $_colTitle, $_colYear, COUNT(*) as cnt
+        FROM $_tableMetadata
+        WHERE $_colTmdbId IS NULL
+          AND $_colTitle IS NOT NULL
+          AND $_colTitle != ''
+          AND $_colYear IS NOT NULL
+        GROUP BY $_colTitle, $_colYear
+        HAVING cnt > 1
+      )
+    ''');
+
+    final titleYearGroups = (titleYearResult.first['group_count'] as int?) ?? 0;
+    final titleYearFiles = (titleYearResult.first['file_count'] as int?) ?? 0;
+
+    return VideoDuplicateStats(
+      tmdbIdGroups: tmdbGroups,
+      tmdbIdFiles: tmdbFiles,
+      titleYearGroups: titleYearGroups,
+      titleYearFiles: titleYearFiles,
+    );
+  }
+
+  /// 批量删除视频记录
+  ///
+  /// [keys] 要删除的视频唯一键列表，格式为 "sourceId_filePath"
+  Future<int> deleteByKeys(List<String> keys) async {
+    if (!_initialized) await init();
+    if (keys.isEmpty) return 0;
+
+    var deleted = 0;
+    for (final key in keys) {
+      final parts = key.split('_');
+      if (parts.length >= 2) {
+        final sourceId = parts.first;
+        final filePath = parts.skip(1).join('_');
+        deleted += await _db!.delete(
+          _tableMetadata,
+          where: '$_colSourceId = ? AND $_colFilePath = ?',
+          whereArgs: [sourceId, filePath],
+        );
+      }
+    }
+
+    return deleted;
+  }
+}
+
+/// 重复视频统计数据
+class VideoDuplicateStats {
+  const VideoDuplicateStats({
+    required this.tmdbIdGroups,
+    required this.tmdbIdFiles,
+    required this.titleYearGroups,
+    required this.titleYearFiles,
+  });
+
+  /// TMDB ID 重复的组数
+  final int tmdbIdGroups;
+
+  /// TMDB ID 重复涉及的文件数
+  final int tmdbIdFiles;
+
+  /// 标题+年份重复的组数（无 TMDB ID）
+  final int titleYearGroups;
+
+  /// 标题+年份重复涉及的文件数
+  final int titleYearFiles;
+
+  /// 总重复组数
+  int get totalGroups => tmdbIdGroups + titleYearGroups;
+
+  /// 总重复文件数
+  int get totalFiles => tmdbIdFiles + titleYearFiles;
+
+  /// 是否有重复
+  bool get hasDuplicates => totalGroups > 0;
 }
 
 /// 字幕索引实体

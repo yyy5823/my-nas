@@ -238,7 +238,7 @@ class _TmdbPreviewPageState extends ConsumerState<TmdbPreviewPage> {
     if (_detail is TmdbMovieDetail) {
       final movie = _detail! as TmdbMovieDetail;
       if (movie.year != null) items.add('${movie.year}');
-      if (movie.runtime != null) items.add('${movie.runtime}分钟');
+      if (movie.runtime > 0) items.add('${movie.runtime}分钟');
       if (movie.voteAverage > 0) items.add('⭐ ${movie.voteAverage.toStringAsFixed(1)}');
     } else if (_detail is TmdbTvDetail) {
       final tv = _detail! as TmdbTvDetail;

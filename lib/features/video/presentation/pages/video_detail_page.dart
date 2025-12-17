@@ -8,6 +8,7 @@ import 'package:my_nas/features/video/data/services/video_favorites_service.dart
 import 'package:my_nas/features/video/domain/entities/video_item.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
 import 'package:my_nas/features/video/domain/utils/video_localization.dart';
+import 'package:my_nas/features/video/presentation/pages/manual_scraper_page.dart';
 import 'package:my_nas/features/video/presentation/pages/tmdb_preview_page.dart';
 import 'package:my_nas/features/video/presentation/pages/video_player_page.dart';
 import 'package:my_nas/features/video/presentation/providers/video_detail_provider.dart';
@@ -152,6 +153,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       onPlay: _isPlaying ? () {} : _playVideo,
       onFavorite: _toggleFavorite,
       onToggleWatched: _toggleWatched,
+      onScrape: _openManualScraper,
       isFavorite: isFavorite,
       isWatched: isWatched,
       watchProgress: watchProgress,
@@ -1082,6 +1084,46 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
 
   Future<void> _toggleWatched() async {
     await toggleWatchedStatus(ref, widget.metadata.filePath);
+  }
+
+  /// 打开手动刮削页面
+  Future<void> _openManualScraper() async {
+    final connections = ref.read(activeConnectionsProvider);
+    final connection = connections[widget.sourceId];
+    final fileSystem = connection?.status == SourceStatus.connected
+        ? connection!.adapter.fileSystem
+        : null;
+
+    final result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => ManualScraperPage(
+          metadata: _selectedMetadata,
+          fileSystem: fileSystem,
+        ),
+      ),
+    );
+
+    // 刮削成功后刷新详情页
+    if ((result ?? false) && mounted) {
+      // 重新加载元数据
+      final metadataService = ref.read(videoMetadataServiceProvider);
+      await metadataService.init();
+      final updatedMetadata = await metadataService.getCachedAsync(
+        widget.sourceId,
+        _selectedMetadata.filePath,
+      );
+      if (updatedMetadata != null && mounted) {
+        setState(() {
+          _selectedMetadata = updatedMetadata;
+        });
+        // 刷新相关 Provider
+        if (_selectedMetadata.tmdbId != null) {
+          ref
+            ..invalidate(movieDetailProvider(_selectedMetadata.tmdbId!))
+            ..invalidate(tvDetailProvider(_selectedMetadata.tmdbId!));
+        }
+      }
+    }
   }
 
   Future<void> _playVideo() async {

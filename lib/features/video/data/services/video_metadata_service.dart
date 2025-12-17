@@ -833,6 +833,161 @@ class VideoMetadataService {
     }
   }
 
+  /// 手动刮削并保存（用于手动刮削页面）
+  ///
+  /// 将刮削结果应用到视频元数据，保存到数据库，并可选地写入 NFO 和海报到远程目录
+  ///
+  /// [metadata] 要刮削的视频元数据
+  /// [movieDetail] 电影详情（与 tvDetail 二选一）
+  /// [tvDetail] 电视剧详情（与 movieDetail 二选一）
+  /// [seasonNumber] 季号（电视剧专用）
+  /// [episodeNumber] 集号（电视剧专用）
+  /// [episodeTitle] 剧集标题（电视剧专用）
+  /// [fileSystem] 远程文件系统（用于写入 NFO 和海报）
+  /// [options] 刮削选项
+  Future<void> scrapeAndSave({
+    required VideoMetadata metadata,
+    ScraperMovieDetail? movieDetail,
+    ScraperTvDetail? tvDetail,
+    int? seasonNumber,
+    int? episodeNumber,
+    String? episodeTitle,
+    NasFileSystem? fileSystem,
+    ScrapeOptions options = const ScrapeOptions(),
+  }) async {
+    if (movieDetail == null && tvDetail == null) {
+      throw ArgumentError('必须提供 movieDetail 或 tvDetail');
+    }
+
+    try {
+      // 1. 应用刮削数据到元数据
+      if (movieDetail != null) {
+        movieDetail.applyTo(metadata);
+        metadata.scrapeStatus = ScrapeStatus.completed;
+      } else if (tvDetail != null) {
+        tvDetail.applyTo(
+          metadata,
+          seasonNumber: seasonNumber,
+          episodeNumber: episodeNumber,
+          episodeTitle: episodeTitle,
+        );
+        metadata.scrapeStatus = ScrapeStatus.completed;
+      }
+
+      // 2. 保存到数据库
+      if (options.updateMetadata) {
+        await save(metadata);
+      }
+
+      // 3. 写入 NFO 和海报到远程目录
+      if (fileSystem != null && (options.generateNfo || options.downloadPoster || options.downloadFanart)) {
+        final videoDir = _getVideoDirectory(metadata.filePath);
+        final videoFileName = metadata.fileName;
+
+        // 生成并写入 NFO
+        if (options.generateNfo) {
+          String? nfoContent;
+          NfoType nfoType;
+
+          if (movieDetail != null) {
+            nfoContent = _nfoWriterService.generateMovieNfo(
+              title: movieDetail.title,
+              originalTitle: movieDetail.originalTitle,
+              year: movieDetail.year,
+              rating: movieDetail.rating,
+              plot: movieDetail.overview,
+              tmdbId: movieDetail.source == ScraperType.tmdb
+                  ? int.tryParse(movieDetail.externalId)
+                  : null,
+              imdbId: movieDetail.imdbId,
+              genres: movieDetail.genres,
+              runtime: movieDetail.runtime,
+              director: movieDetail.director,
+              tagline: movieDetail.tagline,
+              collectionId: movieDetail.collectionId != null
+                  ? int.tryParse(movieDetail.collectionId!)
+                  : null,
+              collectionName: movieDetail.collectionName,
+            );
+            nfoType = NfoType.movie;
+          } else {
+            nfoContent = _nfoWriterService.generateTvShowNfo(
+              title: tvDetail!.title,
+              originalTitle: tvDetail.originalTitle,
+              year: tvDetail.year,
+              rating: tvDetail.rating,
+              plot: tvDetail.overview,
+              tmdbId: tvDetail.source == ScraperType.tmdb
+                  ? int.tryParse(tvDetail.externalId)
+                  : null,
+              imdbId: tvDetail.imdbId,
+              genres: tvDetail.genres,
+              runtime: tvDetail.episodeRuntime,
+              status: tvDetail.status,
+            );
+            nfoType = NfoType.tvShow;
+          }
+
+          await _nfoWriterService.writeNfoFile(
+            fileSystem: fileSystem,
+            videoDir: videoDir,
+            nfoContent: nfoContent,
+            type: nfoType,
+            videoFileName: videoFileName,
+          );
+        }
+
+        // 下载海报到远程目录
+        if (options.downloadPoster) {
+          final posterUrl = movieDetail?.posterUrl ?? tvDetail?.posterUrl;
+          if (posterUrl != null && posterUrl.isNotEmpty && posterUrl.startsWith('http')) {
+            await _remotePosterService.downloadAndSavePoster(
+              fileSystem: fileSystem,
+              videoDir: videoDir,
+              posterUrl: posterUrl,
+              type: PosterType.poster,
+              videoFileName: videoFileName,
+            );
+          }
+        }
+
+        // 下载背景图到远程目录
+        if (options.downloadFanart) {
+          final fanartUrl = movieDetail?.backdropUrl ?? tvDetail?.backdropUrl;
+          if (fanartUrl != null && fanartUrl.isNotEmpty && fanartUrl.startsWith('http')) {
+            await _remotePosterService.downloadAndSavePoster(
+              fileSystem: fileSystem,
+              videoDir: videoDir,
+              posterUrl: fanartUrl,
+              type: PosterType.fanart,
+              videoFileName: videoFileName,
+            );
+          }
+        }
+
+        logger.i('VideoMetadataService: 手动刮削完成 "${metadata.title}" '
+            '(来源: ${movieDetail?.source.displayName ?? tvDetail?.source.displayName})');
+      }
+    } on Exception catch (e, st) {
+      logger.e('VideoMetadataService: 手动刮削失败', e, st);
+      rethrow;
+    }
+  }
+
+  /// 获取视频所在目录
+  String _getVideoDirectory(String filePath) {
+    final lastSlash = filePath.lastIndexOf('/');
+    if (lastSlash > 0) {
+      return filePath.substring(0, lastSlash);
+    }
+    // Windows 路径
+    final lastBackSlash = filePath.lastIndexOf(r'\');
+    if (lastBackSlash > 0) {
+      return filePath.substring(0, lastBackSlash);
+    }
+    return filePath;
+  }
+
   /// 批量获取元数据
   Future<List<VideoMetadata>> batchFetch(
     List<({String sourceId, String filePath, String fileName})> videos, {
@@ -917,4 +1072,26 @@ class VideoMetadataService {
 
   /// 获取缩略图缓存大小
   Future<int> getThumbnailCacheSize() async => _thumbnailService.getCacheSize();
+}
+
+/// 刮削选项
+class ScrapeOptions {
+  const ScrapeOptions({
+    this.updateMetadata = true,
+    this.downloadPoster = true,
+    this.downloadFanart = true,
+    this.generateNfo = true,
+  });
+
+  /// 更新元数据（保存到数据库）
+  final bool updateMetadata;
+
+  /// 下载海报到视频目录
+  final bool downloadPoster;
+
+  /// 下载背景图到视频目录
+  final bool downloadFanart;
+
+  /// 生成 NFO 文件
+  final bool generateNfo;
 }

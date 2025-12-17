@@ -13,10 +13,7 @@ import 'package:my_nas/features/video/domain/interfaces/media_scraper.dart';
 /// - NeoDB API (api.neodb.social)
 /// - 其他兼容 API
 class DoubanApiScraper implements MediaScraper {
-  DoubanApiScraper({
-    required this.apiUrl,
-    this.apiKey,
-  });
+  DoubanApiScraper({required this.apiUrl, this.apiKey});
 
   /// API 基础地址
   final String apiUrl;
@@ -45,11 +42,12 @@ class DoubanApiScraper implements MediaScraper {
   }
 
   /// 带超时的 HTTP GET 请求
-  Future<http.Response> _httpGet(Uri uri) =>
-      http.get(uri, headers: _headers).timeout(
-            _requestTimeout,
-            onTimeout: () => throw TimeoutException('豆瓣 API 请求超时: $uri'),
-          );
+  Future<http.Response> _httpGet(Uri uri) => http
+      .get(uri, headers: _headers)
+      .timeout(
+        _requestTimeout,
+        onTimeout: () => throw TimeoutException('豆瓣 API 请求超时: $uri'),
+      );
 
   @override
   Future<bool> testConnection() async {
@@ -79,7 +77,9 @@ class DoubanApiScraper implements MediaScraper {
     try {
       // 构建搜索 URL
       // 支持多种 API 格式
-      final baseUrl = apiUrl.endsWith('/') ? apiUrl.substring(0, apiUrl.length - 1) : apiUrl;
+      final baseUrl = apiUrl.endsWith('/')
+          ? apiUrl.substring(0, apiUrl.length - 1)
+          : apiUrl;
 
       final params = <String, String>{
         'q': query,
@@ -130,7 +130,9 @@ class DoubanApiScraper implements MediaScraper {
     }
 
     try {
-      final baseUrl = apiUrl.endsWith('/') ? apiUrl.substring(0, apiUrl.length - 1) : apiUrl;
+      final baseUrl = apiUrl.endsWith('/')
+          ? apiUrl.substring(0, apiUrl.length - 1)
+          : apiUrl;
 
       final params = <String, String>{
         'q': query,
@@ -167,7 +169,9 @@ class DoubanApiScraper implements MediaScraper {
     if (!isConfigured) return null;
 
     try {
-      final baseUrl = apiUrl.endsWith('/') ? apiUrl.substring(0, apiUrl.length - 1) : apiUrl;
+      final baseUrl = apiUrl.endsWith('/')
+          ? apiUrl.substring(0, apiUrl.length - 1)
+          : apiUrl;
       final uri = Uri.parse('$baseUrl/movie/$externalId');
       final response = await _httpGet(uri);
 
@@ -192,7 +196,9 @@ class DoubanApiScraper implements MediaScraper {
     if (!isConfigured) return null;
 
     try {
-      final baseUrl = apiUrl.endsWith('/') ? apiUrl.substring(0, apiUrl.length - 1) : apiUrl;
+      final baseUrl = apiUrl.endsWith('/')
+          ? apiUrl.substring(0, apiUrl.length - 1)
+          : apiUrl;
       final uri = Uri.parse('$baseUrl/tv/$externalId');
       final response = await _httpGet(uri);
 
@@ -215,20 +221,14 @@ class DoubanApiScraper implements MediaScraper {
     int seasonNumber,
     int episodeNumber, {
     String? language,
-  }) async {
-    // 豆瓣通常不提供详细的剧集信息
-    return null;
-  }
+  }) async => null;
 
   @override
   Future<ScraperSeasonDetail?> getSeasonDetail(
     String tvId,
     int seasonNumber, {
     String? language,
-  }) async {
-    // 豆瓣通常不提供详细的季信息
-    return null;
-  }
+  }) async => null; // 豆瓣通常不提供详细的季信息
 
   @override
   void dispose() {
@@ -249,15 +249,22 @@ class DoubanApiScraper implements MediaScraper {
 
     if (data is Map<String, dynamic>) {
       // 格式1: { "data": [...], "page": 1, "total_pages": 10 }
-      results = (data['data'] ?? data['results'] ?? data['subjects'] ?? []) as List;
+      results = (data['data'] ??
+          data['results'] ??
+          data['subjects'] ??
+          <dynamic>[]) as List<dynamic>;
       page = data['page'] as int? ?? 1;
-      totalPages = data['total_pages'] as int? ?? data['totalPages'] as int? ?? 1;
-      totalResults = data['total'] as int? ?? data['total_results'] as int? ?? results.length;
+      totalPages =
+          data['total_pages'] as int? ?? data['totalPages'] as int? ?? 1;
+      totalResults =
+          data['total'] as int? ??
+          data['total_results'] as int? ??
+          results.length;
     } else if (data is List) {
       // 格式2: 直接返回数组
       results = data;
     } else {
-      results = [];
+      results = <dynamic>[];
     }
 
     final items = results.map((item) {
@@ -266,7 +273,8 @@ class DoubanApiScraper implements MediaScraper {
         externalId: _extractId(map),
         source: ScraperType.doubanApi,
         title: (map['title'] ?? map['name'] ?? '') as String,
-        originalTitle: map['original_title'] as String? ?? map['originalTitle'] as String?,
+        originalTitle:
+            map['original_title'] as String? ?? map['originalTitle'] as String?,
         overview: map['summary'] as String? ?? map['intro'] as String?,
         posterUrl: _extractPosterUrl(map),
         year: _extractYear(map),
@@ -285,35 +293,39 @@ class DoubanApiScraper implements MediaScraper {
     );
   }
 
-  ScraperMovieDetail _parseMovieDetail(Map<String, dynamic> data) => ScraperMovieDetail(
-      externalId: _extractId(data),
-      source: ScraperType.doubanApi,
-      title: (data['title'] ?? data['name'] ?? '') as String,
-      originalTitle: data['original_title'] as String? ?? data['originalTitle'] as String?,
-      overview: data['summary'] as String? ?? data['intro'] as String?,
-      posterUrl: _extractPosterUrl(data),
-      year: _extractYear(data),
-      rating: _extractRating(data),
-      runtime: data['duration'] as int? ?? data['runtime'] as int?,
-      genres: _extractGenres(data),
-      director: _extractDirector(data),
-      cast: _extractCast(data),
-    );
+  ScraperMovieDetail _parseMovieDetail(Map<String, dynamic> data) =>
+      ScraperMovieDetail(
+        externalId: _extractId(data),
+        source: ScraperType.doubanApi,
+        title: (data['title'] ?? data['name'] ?? '') as String,
+        originalTitle:
+            data['original_title'] as String? ??
+            data['originalTitle'] as String?,
+        overview: data['summary'] as String? ?? data['intro'] as String?,
+        posterUrl: _extractPosterUrl(data),
+        year: _extractYear(data),
+        rating: _extractRating(data),
+        runtime: data['duration'] as int? ?? data['runtime'] as int?,
+        genres: _extractGenres(data),
+        director: _extractDirector(data),
+        cast: _extractCast(data),
+      );
 
   ScraperTvDetail _parseTvDetail(Map<String, dynamic> data) => ScraperTvDetail(
-      externalId: _extractId(data),
-      source: ScraperType.doubanApi,
-      title: (data['title'] ?? data['name'] ?? '') as String,
-      originalTitle: data['original_title'] as String? ?? data['originalTitle'] as String?,
-      overview: data['summary'] as String? ?? data['intro'] as String?,
-      posterUrl: _extractPosterUrl(data),
-      year: _extractYear(data),
-      rating: _extractRating(data),
-      genres: _extractGenres(data),
-      cast: _extractCast(data),
-      numberOfSeasons: data['seasons_count'] as int?,
-      numberOfEpisodes: data['episodes_count'] as int?,
-    );
+    externalId: _extractId(data),
+    source: ScraperType.doubanApi,
+    title: (data['title'] ?? data['name'] ?? '') as String,
+    originalTitle:
+        data['original_title'] as String? ?? data['originalTitle'] as String?,
+    overview: data['summary'] as String? ?? data['intro'] as String?,
+    posterUrl: _extractPosterUrl(data),
+    year: _extractYear(data),
+    rating: _extractRating(data),
+    genres: _extractGenres(data),
+    cast: _extractCast(data),
+    numberOfSeasons: data['seasons_count'] as int?,
+    numberOfEpisodes: data['episodes_count'] as int?,
+  );
 
   String _extractId(Map<String, dynamic> data) {
     // 尝试多种 ID 字段
@@ -321,13 +333,12 @@ class DoubanApiScraper implements MediaScraper {
     return id.toString();
   }
 
-  String? _extractPosterUrl(Map<String, dynamic> data) {
-    // 尝试多种海报字段
-    return data['poster'] as String? ??
-        data['cover'] as String? ??
-        data['image'] as String? ??
-        (data['images'] as Map<String, dynamic>?)?['large'] as String?;
-  }
+  String? _extractPosterUrl(Map<String, dynamic> data) =>
+      data['poster'] as String? ??
+      data['cover'] as String? ??
+      data['image'] as String? ??
+      (data['images'] as Map<String, dynamic>?)?['large']
+          as String?; // 尝试多种海报字段
 
   int? _extractYear(Map<String, dynamic> data) {
     final year = data['year'];
@@ -356,11 +367,14 @@ class DoubanApiScraper implements MediaScraper {
   List<String>? _extractGenres(Map<String, dynamic> data) {
     final genres = data['genres'] ?? data['genre'];
     if (genres is List) {
-      return genres.map((g) {
-        if (g is String) return g;
-        if (g is Map<String, dynamic>) return g['name'] as String? ?? '';
-        return '';
-      }).where((g) => g.isNotEmpty).toList();
+      return genres
+          .map((g) {
+            if (g is String) return g;
+            if (g is Map<String, dynamic>) return g['name'] as String? ?? '';
+            return '';
+          })
+          .where((g) => g.isNotEmpty)
+          .toList();
     }
     if (genres is String) {
       return genres.split('/').map((g) => g.trim()).toList();
@@ -382,11 +396,15 @@ class DoubanApiScraper implements MediaScraper {
   List<String>? _extractCast(Map<String, dynamic> data) {
     final cast = data['casts'] ?? data['cast'] ?? data['actors'];
     if (cast is List) {
-      return cast.take(10).map((c) {
-        if (c is String) return c;
-        if (c is Map<String, dynamic>) return c['name'] as String? ?? '';
-        return '';
-      }).where((c) => c.isNotEmpty).toList();
+      return cast
+          .take(10)
+          .map((c) {
+            if (c is String) return c;
+            if (c is Map<String, dynamic>) return c['name'] as String? ?? '';
+            return '';
+          })
+          .where((c) => c.isNotEmpty)
+          .toList();
     }
     return null;
   }

@@ -140,10 +140,7 @@ class DoubanWebScraper implements MediaScraper {
     int page = 1,
     String? language,
     int? year,
-  }) async {
-    // 豆瓣搜索不区分电影和电视剧
-    return searchMovies(query, page: page, language: language, year: year);
-  }
+  }) async => searchMovies(query, page: page, language: language, year: year); // 豆瓣搜索不区分电影和电视剧
 
   @override
   Future<ScraperMovieDetail?> getMovieDetail(
@@ -197,20 +194,14 @@ class DoubanWebScraper implements MediaScraper {
     int seasonNumber,
     int episodeNumber, {
     String? language,
-  }) async {
-    // 豆瓣网页不提供详细的剧集信息
-    return null;
-  }
+  }) async => null; // 豆瓣网页不提供详细的剧集信息
 
   @override
   Future<ScraperSeasonDetail?> getSeasonDetail(
     String tvId,
     int seasonNumber, {
     String? language,
-  }) async {
-    // 豆瓣网页不提供详细的季信息
-    return null;
-  }
+  }) async => null; // 豆瓣网页不提供详细的季信息
 
   @override
   void dispose() {

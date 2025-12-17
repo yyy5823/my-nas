@@ -209,10 +209,10 @@ class ScraperManagerService {
   Future<void> _saveSources(List<ScraperSourceEntity> sources) async {
     // 保存时不包含敏感信息
     final data = sources.map((s) {
-      final json = s.toJson();
+      final json = s.toJson()
       // 移除敏感字段（存储在安全存储中）
-      json.remove('apiKey');
-      json.remove('cookie');
+      ..remove('apiKey')
+      ..remove('cookie');
       return json;
     }).toList();
 
