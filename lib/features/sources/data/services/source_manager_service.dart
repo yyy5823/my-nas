@@ -353,16 +353,6 @@ class SourceManagerService {
     // 创建适配器
     final adapter = _createAdapter(source.type);
 
-    // 本地源：加载用户选择的目录路径（移动端）
-    if (source.type == SourceType.local && adapter is LocalAdapter) {
-      final selectedPaths = source.extraConfig?['selectedPaths'];
-      if (selectedPaths is List) {
-        final paths = selectedPaths.cast<String>().toList();
-        adapter.api.setSelectedRootPaths(paths);
-        logger.i('SourceManagerService: 加载本地源选择的路径 $paths');
-      }
-    }
-
     // 更新状态为连接中
     _connections[source.id] = SourceConnection(
       source: source,

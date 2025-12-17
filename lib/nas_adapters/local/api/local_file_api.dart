@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:path/path.dart' as p;
@@ -10,57 +9,12 @@ import 'package:path_provider/path_provider.dart';
 class LocalFileApi {
   LocalFileApi();
 
-  /// 用户选择的根目录路径列表（移动端使用）
-  final List<String> _selectedRootPaths = [];
-
   /// 是否为移动端平台
   static bool get isMobilePlatform => Platform.isAndroid || Platform.isIOS;
 
   /// 是否为桌面端平台
   static bool get isDesktopPlatform =>
       Platform.isWindows || Platform.isMacOS || Platform.isLinux;
-
-  /// 添加用户选择的根目录路径
-  void addSelectedRootPath(String path) {
-    if (!_selectedRootPaths.contains(path)) {
-      _selectedRootPaths.add(path);
-      logger.i('LocalFileApi: 添加选择的根目录 $path');
-    }
-  }
-
-  /// 移除用户选择的根目录路径
-  void removeSelectedRootPath(String path) {
-    _selectedRootPaths.remove(path);
-    logger.i('LocalFileApi: 移除选择的根目录 $path');
-  }
-
-  /// 设置用户选择的根目录路径列表
-  void setSelectedRootPaths(List<String> paths) {
-    _selectedRootPaths
-      ..clear()
-      ..addAll(paths);
-    logger.i('LocalFileApi: 设置选择的根目录列表 $paths');
-  }
-
-  /// 获取用户选择的根目录路径列表
-  List<String> get selectedRootPaths => List.unmodifiable(_selectedRootPaths);
-
-  /// 使用系统选择器选择文件夹
-  ///
-  /// 返回选择的文件夹路径，如果用户取消则返回 null
-  Future<String?> pickDirectory() async {
-    try {
-      final result = await FilePicker.platform.getDirectoryPath();
-      if (result != null) {
-        logger.i('LocalFileApi: 用户选择了文件夹 $result');
-        addSelectedRootPath(result);
-      }
-      return result;
-    } on Exception catch (e, st) {
-      AppError.handle(e, st, 'LocalFileApi.pickDirectory');
-      return null;
-    }
-  }
 
   /// 获取根目录列表
   ///
@@ -96,64 +50,54 @@ class LocalFileApi {
 
   /// 获取移动端根目录（Android/iOS）
   ///
-  /// 移动端由于系统限制，无法直接遍历文件系统，
-  /// 需要用户通过系统选择器选择要访问的目录。
+  /// 移动端返回应用沙盒目录。
+  /// 注意：照片、音乐等媒体内容应通过各自的系统 API 访问，
+  /// 而不是通过文件系统浏览。
   Future<List<LocalRootDirectory>> _getMobileRoots() async {
-    final roots = <LocalRootDirectory>[];
-
-    // 1. 添加用户选择的目录
-    for (final path in _selectedRootPaths) {
-      final dir = Directory(path);
-      try {
-        if (await dir.exists()) {
-          final name = p.basename(path);
-          roots.add(LocalRootDirectory(
-            name: name.isEmpty ? '存储' : name,
-            path: path,
-            type: RootDirectoryType.userSelected,
-          ));
-        }
-      } on Exception catch (e) {
-        logger.w('LocalFileApi: 选择的目录不可访问 $path', e);
-      }
+    if (Platform.isAndroid) {
+      return _getAndroidRoots();
+    } else if (Platform.isIOS) {
+      return _getIOSRoots();
     }
-
-    // 2. 如果没有用户选择的目录，尝试获取应用沙盒目录
-    if (roots.isEmpty) {
-      if (Platform.isAndroid) {
-        roots.addAll(await _getAndroidSandboxRoots());
-      } else if (Platform.isIOS) {
-        roots.addAll(await _getIOSRoots());
-      }
-    }
-
-    return roots;
+    return [];
   }
 
-  /// 获取 Android 沙盒目录（应用私有目录）
-  Future<List<LocalRootDirectory>> _getAndroidSandboxRoots() async {
+  /// 获取 Android 根目录
+  ///
+  /// 返回应用可访问的目录
+  Future<List<LocalRootDirectory>> _getAndroidRoots() async {
     final roots = <LocalRootDirectory>[];
 
     try {
       // 应用文档目录
       final docDir = await getApplicationDocumentsDirectory();
       roots.add(LocalRootDirectory(
-        name: '应用文档',
+        name: '文档',
         path: docDir.path,
         type: RootDirectoryType.documents,
       ));
 
-      // 外部存储应用目录（如果可访问）
+      // 外部存储应用目录
       final extDir = await getExternalStorageDirectory();
       if (extDir != null) {
         roots.add(LocalRootDirectory(
-          name: '外部存储',
+          name: '应用数据',
           path: extDir.path,
           type: RootDirectoryType.storage,
         ));
       }
+
+      // 下载目录
+      final downloadDir = await getDownloadsDirectory();
+      if (downloadDir != null) {
+        roots.add(LocalRootDirectory(
+          name: '下载',
+          path: downloadDir.path,
+          type: RootDirectoryType.downloads,
+        ));
+      }
     } on Exception catch (e) {
-      logger.e('LocalFileApi: 获取 Android 沙盒目录失败', e);
+      logger.e('LocalFileApi: 获取 Android 目录失败', e);
     }
 
     return roots;
@@ -480,11 +424,10 @@ enum RootDirectoryType {
   home, // 用户主目录
   system, // 系统根目录
   volume, // 外接卷宗
-  storage, // Android 内部存储
+  storage, // 存储目录
   sdcard, // SD 卡
   documents, // 文档目录
   downloads, // 下载目录
-  userSelected, // 用户选择的目录（移动端）
 }
 
 /// 本地根目录

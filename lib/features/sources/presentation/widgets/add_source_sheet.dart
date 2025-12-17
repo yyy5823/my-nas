@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -38,11 +37,8 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
   bool _obscurePassword = true;
   String? _errorMessage;
 
-  /// 用户选择的本地文件夹路径（移动端）
-  final List<String> _selectedLocalPaths = [];
-
   /// 是否为移动端平台
-  bool get _isMobilePlatform => Platform.isAndroid || Platform.isIOS;
+  bool get _isMobile => Platform.isAndroid || Platform.isIOS;
 
   bool get _isEditing => widget.source != null;
 
@@ -63,14 +59,6 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
     _useSsl = source?.useSsl ?? true;
     _autoConnect = source?.autoConnect ?? true;
     _rememberDevice = source?.rememberDevice ?? false;
-
-    // 加载已有的本地文件夹选择（编辑模式）
-    if (source?.type == SourceType.local) {
-      final selectedPaths = source?.extraConfig?['selectedPaths'];
-      if (selectedPaths is List) {
-        _selectedLocalPaths.addAll(selectedPaths.cast<String>());
-      }
-    }
   }
 
   @override
@@ -156,98 +144,30 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
                       ),
                     ),
 
-                    // 本地存储提示和文件夹选择（移动端）
+                    // 本地存储提示
                     if (_sourceType == SourceType.local) ...[
                       const SizedBox(height: 16),
-                      // 移动端：显示文件夹选择功能
-                      if (_isMobilePlatform) ...[
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.orange.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Row(
-                            children: [
-                              Icon(Icons.folder_open, color: Colors.orange),
-                              SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  '移动端需要选择要访问的文件夹，系统将请求访问权限',
-                                  style: TextStyle(color: Colors.orange),
-                                ),
-                              ),
-                            ],
-                          ),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                        const SizedBox(height: 12),
-                        // 已选择的文件夹列表
-                        if (_selectedLocalPaths.isNotEmpty) ...[
-                          ...List.generate(_selectedLocalPaths.length, (index) {
-                            final path = _selectedLocalPaths[index];
-                            final folderName = path.split('/').last.isNotEmpty
-                                ? path.split('/').last
-                                : path.split(r'\').last;
-                            return Card(
-                              margin: const EdgeInsets.only(bottom: 8),
-                              child: ListTile(
-                                leading: const Icon(Icons.folder, color: Colors.amber),
-                                title: Text(
-                                  folderName.isEmpty ? '根目录' : folderName,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                subtitle: Text(
-                                  path,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: Theme.of(context).textTheme.bodySmall,
-                                ),
-                                trailing: IconButton(
-                                  icon: const Icon(Icons.close, size: 20),
-                                  onPressed: () {
-                                    setState(() {
-                                      _selectedLocalPaths.removeAt(index);
-                                    });
-                                  },
-                                ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.info_outline, color: Colors.blue),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _isMobile
+                                    ? '本地存储将访问设备媒体库（照片、音乐等）和应用文档目录'
+                                    : '本地存储无需配置连接信息，将直接访问设备上的文件',
+                                style: const TextStyle(color: Colors.blue),
                               ),
-                            );
-                          }),
-                        ],
-                        // 添加文件夹按钮
-                        OutlinedButton.icon(
-                          onPressed: _pickLocalFolder,
-                          icon: const Icon(Icons.add_circle_outline),
-                          label: Text(
-                            _selectedLocalPaths.isEmpty ? '选择文件夹' : '添加更多文件夹',
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            minimumSize: const Size(double.infinity, 48),
-                          ),
+                            ),
+                          ],
                         ),
-                      ] else ...[
-                        // 桌面端：显示原有提示
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.blue.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Row(
-                            children: [
-                              Icon(Icons.info_outline, color: Colors.blue),
-                              SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  '本地存储无需配置连接信息，将直接访问设备上的文件',
-                                  style: TextStyle(color: Colors.blue),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+                      ),
                     ],
 
                     // 远程源需要的字段
@@ -462,8 +382,6 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
                 _portController.text = type.defaultPort.toString();
                 _useSsl = type.defaultPort == 5001 || type.defaultPort == 443;
                 _errorMessage = null;
-                // 清空本地文件夹选择
-                _selectedLocalPaths.clear();
               });
             }
           },
@@ -478,24 +396,6 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
 
   IconData _getSourceTypeIcon(SourceType type) => type.icon;
 
-  /// 选择本地文件夹（移动端）
-  Future<void> _pickLocalFolder() async {
-    try {
-      final result = await FilePicker.platform.getDirectoryPath();
-      if (result != null && !_selectedLocalPaths.contains(result)) {
-        setState(() {
-          _selectedLocalPaths.add(result);
-        });
-      }
-    } on Exception catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('选择文件夹失败: $e')),
-        );
-      }
-    }
-  }
-
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -507,23 +407,6 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
     try {
       // 本地存储使用特殊的默认值
       final isLocal = _sourceType == SourceType.local;
-
-      // 移动端本地源必须选择至少一个文件夹
-      if (isLocal && _isMobilePlatform && _selectedLocalPaths.isEmpty) {
-        setState(() {
-          _errorMessage = '请至少选择一个文件夹';
-          _isLoading = false;
-        });
-        return;
-      }
-
-      // 构建 extraConfig
-      Map<String, dynamic>? extraConfig;
-      if (isLocal && _selectedLocalPaths.isNotEmpty) {
-        extraConfig = {
-          'selectedPaths': _selectedLocalPaths,
-        };
-      }
 
       final source = SourceEntity(
         id: widget.source?.id,
@@ -537,7 +420,6 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
         useSsl: !isLocal && _useSsl,
         autoConnect: _autoConnect,
         rememberDevice: _rememberDevice,
-        extraConfig: extraConfig,
       );
 
       final password = isLocal ? '' : _passwordController.text;
