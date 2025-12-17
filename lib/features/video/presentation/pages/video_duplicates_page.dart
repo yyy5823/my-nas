@@ -639,7 +639,7 @@ class _VideoDuplicatesPageState extends ConsumerState<VideoDuplicatesPage> {
             physics: const NeverScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
             itemCount: videos.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 8),
+            separatorBuilder: (_, _) => const SizedBox(height: 8),
             itemBuilder: (context, index) {
               final video = videos[index];
               final isSelected = _selectedVideos.contains(video.uniqueKey);

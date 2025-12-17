@@ -3545,7 +3545,7 @@ class VideoDatabaseService {
     final result = <int, List<VideoMetadata>>{};
 
     for (final row in duplicateIds) {
-      final tmdbId = row[_colTmdbId] as int;
+      final tmdbId = row[_colTmdbId]! as int;
       final videos = await _db!.query(
         _tableMetadata,
         where: '$_colTmdbId = ?',
@@ -3582,8 +3582,8 @@ class VideoDatabaseService {
     final result = <String, List<VideoMetadata>>{};
 
     for (final row in duplicates) {
-      final title = row[_colTitle] as String;
-      final year = row[_colYear] as int;
+      final title = row[_colTitle]! as String;
+      final year = row[_colYear]! as int;
       final key = '$title|$year';
 
       final videos = await _db!.query(

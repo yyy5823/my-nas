@@ -289,7 +289,7 @@ class DoubanWebScraper implements MediaScraper {
 
       // 年份
       final yearElement = document.querySelector('h1 span.year');
-      final yearText = yearElement?.text.replaceAll(RegExp(r'[()]'), '') ?? '';
+      final yearText = yearElement?.text.replaceAll(RegExp('[()]'), '') ?? '';
       final year = int.tryParse(yearText);
 
       // 海报

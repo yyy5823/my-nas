@@ -225,8 +225,7 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
   }
 
   /// 从 BookReaderSettings 创建 FoliateStyle
-  FoliateStyle _createStyle(BookReaderSettings settings) {
-    return FoliateStyle.fromReaderSettings(
+  FoliateStyle _createStyle(BookReaderSettings settings) => FoliateStyle.fromReaderSettings(
       fontSize: settings.fontSize,
       lineHeight: settings.lineHeight,
       paragraphSpacing: settings.paragraphSpacing,
@@ -239,7 +238,6 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
         settings.pageTurnMode.index,
       ),
     );
-  }
 
   /// 应用设置变化
   Future<void> _applySettings(BookReaderSettings settings) async {
@@ -253,14 +251,12 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
       context,
       title: '阅读设置',
       icon: Icons.settings,
-      contentBuilder: (context) {
-        return Consumer(
+      contentBuilder: (context) => Consumer(
           builder: (context, ref, _) {
             final settings = ref.watch(bookReaderSettingsProvider);
             return _buildSettingsContent(settings);
           },
-        );
-      },
+        ),
     );
   }
 
@@ -277,16 +273,14 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
-            children: BookReaderTheme.values.map((theme) {
-              return _ThemeButton(
+            children: BookReaderTheme.values.map((theme) => _ThemeButton(
                 theme: theme,
                 isSelected: settings.theme == theme,
                 onTap: () {
                   settingsNotifier.setTheme(theme);
                   _applySettings(settings.copyWith(theme: theme));
                 },
-              );
-            }).toList(),
+              )).toList(),
           ),
           const SizedBox(height: 16),
 
@@ -843,8 +837,7 @@ class _ThemeButton extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
+  Widget build(BuildContext context) => GestureDetector(
       onTap: onTap,
       child: Container(
         width: 48,
@@ -869,7 +862,6 @@ class _ThemeButton extends StatelessWidget {
         ),
       ),
     );
-  }
 }
 
 /// 翻页模式按钮
@@ -885,13 +877,11 @@ class _PageTurnButton extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
-    return ChoiceChip(
+  Widget build(BuildContext context) => ChoiceChip(
       label: Text(label),
       selected: isSelected,
       onSelected: (_) => onTap(),
     );
-  }
 }
 
 /// 底部栏按钮

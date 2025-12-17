@@ -226,8 +226,8 @@ class ScraperMovieDetail {
       case ScraperType.tmdb:
         metadata.tmdbId = int.tryParse(externalId);
         if (collectionId != null) {
-          metadata.collectionId = int.tryParse(collectionId!);
-          metadata.collectionName = collectionName;
+          metadata..collectionId = int.tryParse(collectionId!)
+          ..collectionName = collectionName;
         }
       case ScraperType.doubanApi:
       case ScraperType.doubanWeb:

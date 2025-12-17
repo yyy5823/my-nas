@@ -243,9 +243,9 @@ class DoubanApiScraper implements MediaScraper {
   }) {
     // 支持多种 API 响应格式
     List<dynamic> results;
-    int page = 1;
-    int totalPages = 1;
-    int totalResults = 0;
+    var page = 1;
+    var totalPages = 1;
+    var totalResults = 0;
 
     if (data is Map<String, dynamic>) {
       // 格式1: { "data": [...], "page": 1, "total_pages": 10 }
