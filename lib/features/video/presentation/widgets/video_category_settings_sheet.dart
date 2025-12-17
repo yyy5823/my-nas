@@ -308,8 +308,7 @@ class _VideoCategorySettingsSheetState
     VideoHomeCategory category,
     IconData icon,
     Color color,
-  ) {
-    return ActionChip(
+  ) => ActionChip(
       avatar: Icon(icon, size: 18, color: color),
       label: Text(category.displayName),
       labelStyle: TextStyle(
@@ -320,7 +319,6 @@ class _VideoCategorySettingsSheetState
       side: BorderSide(color: color.withValues(alpha: 0.3)),
       onPressed: () => _loadFiltersAndShowPicker(category),
     );
-  }
 
   Widget _buildFilterPicker(bool isDark) {
     if (_loadingFilters) {

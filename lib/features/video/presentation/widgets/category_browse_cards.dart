@@ -267,8 +267,7 @@ class _CategoryCard extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
-    return Padding(
+  Widget build(BuildContext context) => Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: GestureDetector(
         onTap: onTap,
@@ -301,7 +300,6 @@ class _CategoryCard extends StatelessWidget {
         ),
       ),
     );
-  }
 
   Widget _buildBackground() {
     if (data.posterUrl != null) {
@@ -318,8 +316,7 @@ class _CategoryCard extends StatelessWidget {
     return _buildFallbackBackground();
   }
 
-  Widget _buildFallbackBackground() {
-    return Container(
+  Widget _buildFallbackBackground() => Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -331,10 +328,8 @@ class _CategoryCard extends StatelessWidget {
         ),
       ),
     );
-  }
 
-  Widget _buildGradientOverlay() {
-    return DecoratedBox(
+  Widget _buildGradientOverlay() => DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -348,10 +343,8 @@ class _CategoryCard extends StatelessWidget {
         ),
       ),
     );
-  }
 
-  Widget _buildCategoryName() {
-    return Positioned(
+  Widget _buildCategoryName() => Positioned(
       left: 12,
       right: 12,
       bottom: 12,
@@ -373,5 +366,4 @@ class _CategoryCard extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
       ),
     );
-  }
 }
