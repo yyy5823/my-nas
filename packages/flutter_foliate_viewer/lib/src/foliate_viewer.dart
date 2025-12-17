@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_foliate_viewer/src/foliate_controller.dart';
 import 'package:flutter_foliate_viewer/src/models/foliate_book_info.dart';
 import 'package:flutter_foliate_viewer/src/models/foliate_location.dart';
+import 'package:flutter_foliate_viewer/src/models/foliate_style.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 /// 书籍文件类型
@@ -75,6 +76,7 @@ class FoliateViewer extends StatefulWidget {
     this.onBookLoaded,
     this.onLocationChanged,
     this.onError,
+    this.style,
     this.backgroundColor,
     this.textColor,
     this.fontSize = 100,
@@ -100,16 +102,19 @@ class FoliateViewer extends StatefulWidget {
   /// 错误回调
   final void Function(String error)? onError;
 
-  /// 背景色
+  /// 完整样式设置（优先级高于单独的样式参数）
+  final FoliateStyle? style;
+
+  /// 背景色（如果设置了 style 则忽略）
   final Color? backgroundColor;
 
-  /// 文字颜色
+  /// 文字颜色（如果设置了 style 则忽略）
   final Color? textColor;
 
-  /// 字体大小百分比 (100 = 正常)
+  /// 字体大小百分比 (100 = 正常)（如果设置了 style 则忽略）
   final int fontSize;
 
-  /// 行高
+  /// 行高（如果设置了 style 则忽略）
   final double lineHeight;
 
   @override
@@ -408,38 +413,44 @@ $bundleJs
       final bookType = widget.bookSource.bookType.name;
       final initialCfi = widget.initialCfi ?? '';
 
-      final bgColor = widget.backgroundColor != null
-          ? '#${widget.backgroundColor!.toARGB32().toRadixString(16).substring(2)}'
-          : '#ffffff';
-      final txtColor = widget.textColor != null
-          ? '#${widget.textColor!.toARGB32().toRadixString(16).substring(2)}'
-          : '#000000';
+      // 构建样式 JSON - 优先使用完整的 FoliateStyle
+      final String styleJson;
+      if (widget.style != null) {
+        styleJson = widget.style!.toJsonString();
+      } else {
+        // 兼容旧的简单参数
+        final bgColor = widget.backgroundColor != null
+            ? '#${widget.backgroundColor!.toARGB32().toRadixString(16).substring(2)}'
+            : '#ffffff';
+        final txtColor = widget.textColor != null
+            ? '#${widget.textColor!.toARGB32().toRadixString(16).substring(2)}'
+            : '#000000';
 
-      // 构建样式 JSON
-      final styleJson = jsonEncode({
-        'fontSize': widget.fontSize / 100.0,
-        'fontName': 'system',
-        'fontPath': '',
-        'fontWeight': 400,
-        'letterSpacing': 0,
-        'spacing': widget.lineHeight,
-        'paragraphSpacing': 0,
-        'textIndent': 2,
-        'fontColor': txtColor,
-        'backgroundColor': bgColor,
-        'justify': true,
-        'textAlign': 'auto',
-        'hyphenate': true,
-        'writingMode': 'auto',
-        'backgroundImage': 'none',
-        'pageTurnStyle': 'slide',
-        'topMargin': 20,
-        'bottomMargin': 20,
-        'sideMargin': 5,
-        'maxColumnCount': 2,
-        'customCSS': '',
-        'customCSSEnabled': false,
-      });
+        styleJson = jsonEncode({
+          'fontSize': widget.fontSize / 100.0,
+          'fontName': 'system',
+          'fontPath': '',
+          'fontWeight': 400,
+          'letterSpacing': 0,
+          'spacing': widget.lineHeight,
+          'paragraphSpacing': 0,
+          'textIndent': 2,
+          'fontColor': txtColor,
+          'backgroundColor': bgColor,
+          'justify': true,
+          'textAlign': 'auto',
+          'hyphenate': true,
+          'writingMode': 'auto',
+          'backgroundImage': 'none',
+          'pageTurnStyle': 'slide',
+          'topMargin': 20,
+          'bottomMargin': 20,
+          'sideMargin': 5,
+          'maxColumnCount': 2,
+          'customCSS': '',
+          'customCSSEnabled': false,
+        });
+      }
 
       // 调用初始化函数
       final jsCode = '''

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_foliate_viewer/src/models/foliate_book_info.dart';
 import 'package:flutter_foliate_viewer/src/models/foliate_location.dart';
+import 'package:flutter_foliate_viewer/src/models/foliate_style.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 /// Foliate 阅读器控制器
@@ -51,7 +52,7 @@ class FoliateController {
     );
   }
 
-  /// 设置主题
+  /// 设置主题（简化版本）
   Future<void> setTheme({
     String? backgroundColor,
     String? textColor,
@@ -70,6 +71,86 @@ class FoliateController {
       }
     ''';
     await _webViewController?.evaluateJavascript(source: jsCode);
+  }
+
+  /// 应用完整样式设置
+  Future<void> applyStyle(FoliateStyle style) async {
+    final styleJson = style.toJsonString();
+    final jsCode = '''
+      if (window.changeStyle) {
+        const newStyle = $styleJson;
+        window.changeStyle(newStyle);
+      }
+    ''';
+    await _webViewController?.evaluateJavascript(source: jsCode);
+  }
+
+  /// 设置字体大小
+  Future<void> setFontSize(double size) async {
+    await _webViewController?.evaluateJavascript(
+      source: 'if (window.changeStyle) window.changeStyle({ fontSize: $size });',
+    );
+  }
+
+  /// 设置行高
+  Future<void> setLineHeight(double height) async {
+    await _webViewController?.evaluateJavascript(
+      source: 'if (window.changeStyle) window.changeStyle({ spacing: $height });',
+    );
+  }
+
+  /// 设置背景色
+  Future<void> setBackgroundColor(String hexColor) async {
+    await _webViewController?.evaluateJavascript(
+      source: "if (window.changeStyle) window.changeStyle({ backgroundColor: '$hexColor' });",
+    );
+  }
+
+  /// 设置文字颜色
+  Future<void> setTextColor(String hexColor) async {
+    await _webViewController?.evaluateJavascript(
+      source: "if (window.changeStyle) window.changeStyle({ fontColor: '$hexColor' });",
+    );
+  }
+
+  /// 设置翻页模式
+  Future<void> setPageTurnStyle(FoliatePageTurnStyle style) async {
+    await _webViewController?.evaluateJavascript(
+      source: "if (window.changeStyle) window.changeStyle({ pageTurnStyle: '${style.value}' });",
+    );
+  }
+
+  /// 设置边距
+  Future<void> setMargins({int? top, int? bottom, int? side}) async {
+    final parts = <String>[];
+    if (top != null) parts.add('topMargin: $top');
+    if (bottom != null) parts.add('bottomMargin: $bottom');
+    if (side != null) parts.add('sideMargin: $side');
+    if (parts.isEmpty) return;
+    await _webViewController?.evaluateJavascript(
+      source: 'if (window.changeStyle) window.changeStyle({ ${parts.join(', ')} });',
+    );
+  }
+
+  /// 设置两端对齐
+  Future<void> setJustify(bool justify) async {
+    await _webViewController?.evaluateJavascript(
+      source: 'if (window.changeStyle) window.changeStyle({ justify: $justify });',
+    );
+  }
+
+  /// 设置简繁转换
+  Future<void> setChineseConversion(FoliateChineseMode mode) async {
+    await _webViewController?.evaluateJavascript(
+      source: "if (window.changeReadingRules) window.changeReadingRules({ convertChineseMode: '${mode.value}' });",
+    );
+  }
+
+  /// 设置仿生阅读模式
+  Future<void> setBionicReading(bool enabled) async {
+    await _webViewController?.evaluateJavascript(
+      source: 'if (window.changeReadingRules) window.changeReadingRules({ bionicReadingMode: $enabled });',
+    );
   }
 
   /// 获取当前位置
