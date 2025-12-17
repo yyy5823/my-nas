@@ -6,11 +6,14 @@ import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/video/data/services/nfo_scraper_service.dart';
 import 'package:my_nas/features/video/data/services/nfo_writer_service.dart';
 import 'package:my_nas/features/video/data/services/remote_poster_service.dart';
+import 'package:my_nas/features/video/data/services/scraper_manager_service.dart';
 import 'package:my_nas/features/video/data/services/tmdb_service.dart';
 import 'package:my_nas/features/video/data/services/video_database_service.dart';
 import 'package:my_nas/features/video/data/services/video_history_service.dart';
 import 'package:my_nas/features/video/data/services/video_poster_cache_service.dart';
 import 'package:my_nas/features/video/data/services/video_thumbnail_service.dart';
+import 'package:my_nas/features/video/domain/entities/scraper_result.dart';
+import 'package:my_nas/features/video/domain/entities/scraper_source.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 
@@ -22,7 +25,8 @@ class VideoMetadataService {
   static VideoMetadataService? _instance;
 
   final VideoDatabaseService _db = VideoDatabaseService();
-  final TmdbService _tmdbService = TmdbService();
+  final ScraperManagerService _scraperManager = ScraperManagerService();
+  final TmdbService _tmdbService = TmdbService(); // 仅用于 TMDB 特定功能（NFO、翻译）
   final NfoScraperService _nfoService = NfoScraperService();
   final NfoWriterService _nfoWriterService = NfoWriterService();
   final RemotePosterService _remotePosterService = RemotePosterService();
@@ -37,11 +41,12 @@ class VideoMetadataService {
     if (_initialized) return;
 
     try {
-      // 并行初始化 SQLite、ThumbnailService 和 PosterCacheService
+      // 并行初始化 SQLite、ThumbnailService、PosterCacheService 和 ScraperManager
       await Future.wait([
         _db.init(),
         _thumbnailService.init(),
         _posterCacheService.init(),
+        _scraperManager.init(),
       ]);
 
       _initialized = true;
@@ -258,12 +263,12 @@ class VideoMetadataService {
       hasNfoData = await _fetchFromNfo(metadata, fileSystem);
     }
 
-    // 如果 NFO 没有数据或缺少关键信息，尝试从 TMDB 获取
+    // 如果 NFO 没有数据或缺少关键信息，尝试从刮削源获取
     // 传入 fileSystem 以便将 NFO 和海报写入远程目录
     if (!hasNfoData || !metadata.hasMetadata) {
-      await _fetchFromTmdb(metadata, fileSystem);
-    } else if (hasNfoData && 
-               metadata.category == MediaCategory.movie && 
+      await _fetchFromScrapers(metadata, fileSystem);
+    } else if (hasNfoData &&
+               metadata.category == MediaCategory.movie &&
                metadata.collectionId == null &&
                metadata.tmdbId != null) {
       // NFO 刮削成功但缺少系列信息：尝试从 TMDB 补充
@@ -467,13 +472,15 @@ class VideoMetadataService {
     return false;
   }
 
-  /// 从 TMDB 获取元数据
+  /// 从刮削源获取元数据（按优先级尝试所有已启用的刮削源）
   ///
   /// 如果 [fileSystem] 不为 null，会将 NFO 文件和海报图片写入到视频所在的远程目录，
   /// 使刮削数据可被 Kodi/Jellyfin/Plex 等软件使用。
-  Future<void> _fetchFromTmdb(VideoMetadata metadata, NasFileSystem? fileSystem) async {
-    if (!_tmdbService.hasApiKey) {
-      logger.w('VideoMetadataService: 未配置 TMDB API Key');
+  Future<void> _fetchFromScrapers(VideoMetadata metadata, NasFileSystem? fileSystem) async {
+    // 检查是否有可用的刮削源
+    final enabledScrapers = await _scraperManager.getEnabledScrapers();
+    if (enabledScrapers.isEmpty) {
+      logger.w('VideoMetadataService: 没有已启用的刮削源');
       return;
     }
 
@@ -487,88 +494,91 @@ class VideoMetadataService {
     }
 
     try {
-      TmdbMovieDetail? movieDetail;
-      TmdbTvDetail? tvDetail;
+      ScraperMovieDetail? movieDetail;
+      ScraperTvDetail? tvDetail;
 
       if (info.isTvShow) {
-        final results = await _tmdbService.searchTvShows(
-          info.cleanTitle,
+        // 获取电视剧详情
+        tvDetail = await _scraperManager.getTvDetail(
+          query: info.cleanTitle,
           year: info.year,
         );
 
-        if (results.isNotEmpty) {
-          final tvItem = results.results.first;
-          tvDetail = await _tmdbService.getTvDetail(tvItem.id);
+        if (tvDetail != null) {
+          String? episodeTitle;
 
-          if (tvDetail != null) {
-            String? episodeTitle;
-            if (info.season != null && info.episode != null) {
-              final seasonDetail = await _tmdbService.getSeasonDetail(
-                tvItem.id,
-                info.season!,
-              );
-              if (seasonDetail != null) {
-                final episode = seasonDetail.episodes
-                    .where((e) => e.episodeNumber == info.episode)
-                    .firstOrNull;
-                episodeTitle = episode?.name;
-              }
-            }
-
-            metadata.updateFromTvShow(
-              tvDetail,
-              season: info.season,
-              episode: info.episode,
-              epTitle: episodeTitle,
+          // 如果来源是 TMDB，尝试获取具体的剧集标题
+          if (tvDetail.source == ScraperType.tmdb &&
+              info.season != null &&
+              info.episode != null) {
+            final seasonDetail = await _scraperManager.getSeasonDetail(
+              tvId: tvDetail.externalId,
+              seasonNumber: info.season!,
+              source: ScraperType.tmdb,
             );
+            if (seasonDetail != null) {
+              final episode = seasonDetail.getEpisode(info.episode!);
+              episodeTitle = episode?.name;
+            }
+          }
 
-            // 获取多语言翻译（后台异步，不阻塞）
+          // 使用通用的 applyTo 方法更新元数据
+          tvDetail.applyTo(
+            metadata,
+            seasonNumber: info.season,
+            episodeNumber: info.episode,
+            episodeTitle: episodeTitle,
+          );
+
+          // 仅对 TMDB 源获取多语言翻译
+          if (tvDetail.source == ScraperType.tmdb && metadata.tmdbId != null) {
             _fetchAndStoreTranslations(
               metadata: metadata,
-              tmdbId: tvDetail.id,
+              tmdbId: metadata.tmdbId!,
               isMovie: false,
             );
-
-            logger.i('VideoMetadataService: 匹配到电视剧 "${tvDetail.name}"');
           }
+
+          logger.i('VideoMetadataService: 使用 ${tvDetail.source.displayName} '
+              '匹配到电视剧 "${tvDetail.title}"');
         }
       } else {
-        final results = await _tmdbService.searchMovies(
-          info.cleanTitle,
+        // 获取电影详情
+        movieDetail = await _scraperManager.getMovieDetail(
+          query: info.cleanTitle,
           year: info.year,
         );
 
-        if (results.isNotEmpty) {
-          final movieItem = results.results.first;
-          movieDetail = await _tmdbService.getMovieDetail(movieItem.id);
+        if (movieDetail != null) {
+          // 使用通用的 applyTo 方法更新元数据
+          movieDetail.applyTo(metadata);
 
-          if (movieDetail != null) {
-            metadata.updateFromMovie(movieDetail);
-
-            // 获取多语言翻译（后台异步，不阻塞）
+          // 仅对 TMDB 源获取多语言翻译
+          if (movieDetail.source == ScraperType.tmdb && metadata.tmdbId != null) {
             _fetchAndStoreTranslations(
               metadata: metadata,
-              tmdbId: movieDetail.id,
+              tmdbId: metadata.tmdbId!,
               isMovie: true,
             );
-
-            logger.i('VideoMetadataService: 匹配到电影 "${movieDetail.title}"');
           }
+
+          logger.i('VideoMetadataService: 使用 ${movieDetail.source.displayName} '
+              '匹配到电影 "${movieDetail.title}"');
         }
       }
 
-      // ---------------- 远程写入 NFO 和海报 ----------------
+      // ---------------- 远程写入 NFO 和海报（仅 TMDB 源）----------------
       // 如果有 fileSystem 且成功获取了 TMDB 数据，将刮削结果写入远程目录
+      // 目前 NFO 格式仅支持 TMDB，豆瓣源不写入 NFO
       if (fileSystem != null && metadata.tmdbId != null) {
         final videoDir = _getParentPath(metadata.filePath);
         final videoFileName = metadata.fileName;
 
         // 后台异步写入 NFO 和海报，不阻塞主流程
         BackgroundTaskPool.media.addFireAndForget(
-          () => _writeNfoAndPosterToRemote(
+          () => _writeNfoAndPosterToRemoteForTmdb(
             metadata: metadata,
-            movieDetail: movieDetail,
-            tvDetail: tvDetail,
+            isMovie: movieDetail != null,
             fileSystem: fileSystem,
             videoDir: videoDir,
             videoFileName: videoFileName,
@@ -647,30 +657,44 @@ class VideoMetadataService {
     );
   }
 
-  /// 将 NFO 和海报写入远程目录
-  Future<void> _writeNfoAndPosterToRemote({
+  /// 将 NFO 和海报写入远程目录（仅支持 TMDB 源）
+  ///
+  /// 使用 metadata 中的 tmdbId 重新从 TMDB 获取详情，生成 NFO 文件
+  Future<void> _writeNfoAndPosterToRemoteForTmdb({
     required VideoMetadata metadata,
-    required TmdbMovieDetail? movieDetail,
-    required TmdbTvDetail? tvDetail,
+    required bool isMovie,
     required NasFileSystem fileSystem,
     required String videoDir,
     required String videoFileName,
   }) async {
+    if (metadata.tmdbId == null || !_tmdbService.hasApiKey) {
+      return;
+    }
+
     try {
-      // 1. 生成并写入 NFO 文件
+      // 1. 从 TMDB 获取详细信息用于生成 NFO
       String? nfoContent;
       NfoType nfoType;
 
-      if (movieDetail != null) {
-        nfoContent = _nfoWriterService.generateFromTmdbMovie(movieDetail);
-        nfoType = NfoType.movie;
-      } else if (tvDetail != null) {
-        nfoContent = _nfoWriterService.generateFromTmdbTvShow(tvDetail);
-        nfoType = NfoType.tvShow;
+      if (isMovie) {
+        final movieDetail = await _tmdbService.getMovieDetail(metadata.tmdbId!);
+        if (movieDetail != null) {
+          nfoContent = _nfoWriterService.generateFromTmdbMovie(movieDetail);
+          nfoType = NfoType.movie;
+        } else {
+          return;
+        }
       } else {
-        return;
+        final tvDetail = await _tmdbService.getTvDetail(metadata.tmdbId!);
+        if (tvDetail != null) {
+          nfoContent = _nfoWriterService.generateFromTmdbTvShow(tvDetail);
+          nfoType = NfoType.tvShow;
+        } else {
+          return;
+        }
       }
 
+      // 2. 写入 NFO 文件
       await _nfoWriterService.writeNfoFile(
         fileSystem: fileSystem,
         videoDir: videoDir,
@@ -679,9 +703,9 @@ class VideoMetadataService {
         videoFileName: videoFileName,
       );
 
-      // 2. 下载背景图（fanart）到远程目录
+      // 3. 下载背景图（fanart）到远程目录
       // 注意：海报已在 _downloadPosterAndSave 中异步处理，这里只需处理背景图
-      if (metadata.backdropUrl != null && 
+      if (metadata.backdropUrl != null &&
           metadata.backdropUrl!.isNotEmpty &&
           metadata.backdropUrl!.startsWith('http')) {
         await _remotePosterService.downloadAndSavePoster(
@@ -722,20 +746,13 @@ class VideoMetadataService {
     }
   }
 
-  /// 手动搜索并匹配
-  Future<List<TmdbMediaItem>> searchMedia(String query, {bool isMovie = true}) async {
-    if (!_tmdbService.hasApiKey) {
-      return [];
-    }
-
+  /// 手动搜索（从所有已启用的刮削源搜索）
+  Future<List<ScraperMediaItem>> searchMedia(String query, {bool isMovie = true}) async {
     try {
-      if (isMovie) {
-        final results = await _tmdbService.searchMovies(query);
-        return results.results;
-      } else {
-        final results = await _tmdbService.searchTvShows(query);
-        return results.results;
-      }
+      final result = isMovie
+          ? await _scraperManager.searchMovies(query)
+          : await _scraperManager.searchTvShows(query);
+      return result.items;
     } on Exception catch (e) {
       logger.e('VideoMetadataService: 搜索失败', e);
       return [];
@@ -743,13 +760,25 @@ class VideoMetadataService {
   }
 
   /// 手动匹配电影
-  Future<void> matchMovie(VideoMetadata metadata, int movieId) async {
+  ///
+  /// [externalId] 外部 ID（TMDB ID 或豆瓣 ID）
+  /// [source] 数据来源类型
+  Future<void> matchMovie(
+    VideoMetadata metadata,
+    String externalId,
+    ScraperType source,
+  ) async {
     try {
-      final movieDetail = await _tmdbService.getMovieDetail(movieId);
+      final movieDetail = await _scraperManager.getMovieDetail(
+        externalId: externalId,
+        source: source,
+      );
+
       if (movieDetail != null) {
-        metadata.updateFromMovie(movieDetail);
+        movieDetail.applyTo(metadata);
         await save(metadata);
-        logger.i('VideoMetadataService: 手动匹配电影 "${movieDetail.title}"');
+        logger.i('VideoMetadataService: 手动匹配电影 "${movieDetail.title}" '
+            '(来源: ${source.displayName})');
       }
     } on Exception catch (e) {
       logger.e('VideoMetadataService: 手动匹配电影失败', e);
@@ -757,34 +786,47 @@ class VideoMetadataService {
   }
 
   /// 手动匹配电视剧
+  ///
+  /// [externalId] 外部 ID（TMDB ID 或豆瓣 ID）
+  /// [source] 数据来源类型
   Future<void> matchTvShow(
     VideoMetadata metadata,
-    int tvId, {
+    String externalId,
+    ScraperType source, {
     int? season,
     int? episode,
   }) async {
     try {
-      final tvDetail = await _tmdbService.getTvDetail(tvId);
+      final tvDetail = await _scraperManager.getTvDetail(
+        externalId: externalId,
+        source: source,
+      );
+
       if (tvDetail != null) {
         String? episodeTitle;
-        if (season != null && episode != null) {
-          final seasonDetail = await _tmdbService.getSeasonDetail(tvId, season);
+
+        // 仅 TMDB 支持获取具体剧集标题
+        if (source == ScraperType.tmdb && season != null && episode != null) {
+          final seasonDetail = await _scraperManager.getSeasonDetail(
+            tvId: externalId,
+            seasonNumber: season,
+            source: source,
+          );
           if (seasonDetail != null) {
-            final ep = seasonDetail.episodes
-                .where((e) => e.episodeNumber == episode)
-                .firstOrNull;
+            final ep = seasonDetail.getEpisode(episode);
             episodeTitle = ep?.name;
           }
         }
 
-        metadata.updateFromTvShow(
-          tvDetail,
-          season: season,
-          episode: episode,
-          epTitle: episodeTitle,
+        tvDetail.applyTo(
+          metadata,
+          seasonNumber: season,
+          episodeNumber: episode,
+          episodeTitle: episodeTitle,
         );
         await save(metadata);
-        logger.i('VideoMetadataService: 手动匹配电视剧 "${tvDetail.name}"');
+        logger.i('VideoMetadataService: 手动匹配电视剧 "${tvDetail.title}" '
+            '(来源: ${source.displayName})');
       }
     } on Exception catch (e) {
       logger.e('VideoMetadataService: 手动匹配电视剧失败', e);

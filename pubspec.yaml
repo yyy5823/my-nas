@@ -107,6 +107,7 @@ dependencies:
   wakelock_plus: ^1.4.0
   epub_plus: ^5.1.0
   flutter_html: ^3.0.0
+  html: ^0.15.4  # HTML parsing for web scraping
   flutter_epub_viewer:
     path: packages/flutter_epub_viewer
   flutter_foliate_viewer:

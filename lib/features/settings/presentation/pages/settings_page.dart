@@ -2,7 +2,6 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:hive_ce/hive.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
@@ -10,7 +9,8 @@ import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/pages/media_library_page.dart';
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
-import 'package:my_nas/features/video/data/services/tmdb_service.dart';
+import 'package:my_nas/features/video/presentation/pages/scraper_sources_page.dart';
+import 'package:my_nas/features/video/presentation/providers/scraper_provider.dart';
 import 'package:my_nas/shared/providers/language_preference_provider.dart';
 import 'package:my_nas/shared/providers/theme_provider.dart';
 import 'package:my_nas/shared/services/download_service.dart';
@@ -111,7 +111,7 @@ class SettingsPage extends ConsumerWidget {
                   context,
                   isDark,
                   children: [
-                    _TmdbApiKeyTile(isDark: isDark),
+                    _ScraperSourcesTile(isDark: isDark),
                     _buildDivider(isDark),
                     _LanguagePreferenceTile(isDark: isDark),
                   ],
@@ -683,154 +683,29 @@ class _LicenseTileState extends State<_LicenseTile> {
     );
 }
 
-/// TMDB API Key 设置项
-class _TmdbApiKeyTile extends StatefulWidget {
-  const _TmdbApiKeyTile({required this.isDark});
+/// 刮削源设置项
+class _ScraperSourcesTile extends ConsumerWidget {
+  const _ScraperSourcesTile({required this.isDark});
 
   final bool isDark;
 
   @override
-  State<_TmdbApiKeyTile> createState() => _TmdbApiKeyTileState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final enabledCount = ref.watch(enabledScraperCountProvider);
+    final totalCount = ref.watch(totalScraperCountProvider);
+    final hasAnySource = totalCount > 0;
+    final hasEnabledSource = enabledCount > 0;
 
-class _TmdbApiKeyTileState extends State<_TmdbApiKeyTile> {
-  final _tmdbService = TmdbService();
-  bool _hasApiKey = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadApiKeyStatus();
-  }
-
-  Future<void> _loadApiKeyStatus() async {
-    final box = await Hive.openBox<String>('settings');
-    final apiKey = box.get('tmdb_api_key', defaultValue: '');
-    if (apiKey != null && apiKey.isNotEmpty) {
-      _tmdbService.setApiKey(apiKey);
-    }
-    setState(() => _hasApiKey = _tmdbService.hasApiKey);
-  }
-
-  Future<void> _showApiKeyDialog() async {
-    final controller = TextEditingController();
-    final box = await Hive.openBox<String>('settings');
-    controller.text = box.get('tmdb_api_key', defaultValue: '') ?? '';
-
-    if (!mounted) return;
-
-    final result = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: widget.isDark ? AppColors.darkSurface : Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(
-          'TMDB API Key',
-          style: TextStyle(
-            color: widget.isDark ? AppColors.darkOnSurface : Colors.black87,
-          ),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '配置 TMDB API Key 后，可以自动获取电影和电视剧的海报、评分、简介等信息。',
-              style: TextStyle(
-                fontSize: 14,
-                color: widget.isDark ? AppColors.darkOnSurfaceVariant : Colors.black54,
-              ),
-            ),
-            const SizedBox(height: 8),
-            GestureDetector(
-              onTap: () {
-                // 打开 TMDB 网站
-              },
-              child: Text(
-                '前往 themoviedb.org 申请免费 API Key',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: AppColors.primary,
-                  decoration: TextDecoration.underline,
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: controller,
-              decoration: InputDecoration(
-                labelText: 'API Key',
-                hintText: '请输入 TMDB API Key',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                filled: true,
-                fillColor: widget.isDark
-                    ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
-                    : Colors.grey[100],
-              ),
-              style: TextStyle(
-                color: widget.isDark ? AppColors.darkOnSurface : Colors.black87,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(
-              '取消',
-              style: TextStyle(color: AppColors.primary),
-            ),
-          ),
-          if (_hasApiKey)
-            TextButton(
-              onPressed: () => Navigator.pop(context, ''),
-              child: const Text(
-                '清除',
-                style: TextStyle(color: Colors.red),
-              ),
-            ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, controller.text),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            child: const Text('保存'),
-          ),
-        ],
-      ),
-    );
-
-    if (result != null) {
-      await box.put('tmdb_api_key', result);
-      if (result.isNotEmpty) {
-        _tmdbService.setApiKey(result);
-      } else {
-        _tmdbService.setApiKey('');
-      }
-      setState(() => _hasApiKey = result.isNotEmpty);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result.isEmpty ? 'API Key 已清除' : 'API Key 已保存'),
-            backgroundColor: AppColors.primary,
-          ),
-        );
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) => Material(
+    return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: _showApiKeyDialog,
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const ScraperSourcesPage(),
+            ),
+          );
+        },
         child: Padding(
           padding: const EdgeInsets.symmetric(
             horizontal: AppSpacing.lg,
@@ -846,7 +721,7 @@ class _TmdbApiKeyTileState extends State<_TmdbApiKeyTile> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
-                  Icons.api_rounded,
+                  Icons.video_library_outlined,
                   color: AppColors.fileVideo,
                   size: 20,
                 ),
@@ -857,19 +732,21 @@ class _TmdbApiKeyTileState extends State<_TmdbApiKeyTile> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'TMDB API Key',
+                      '刮削源',
                       style: context.textTheme.bodyLarge?.copyWith(
-                        color: widget.isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                        color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      _hasApiKey ? '已配置' : '未配置 (无法获取影片信息)',
+                      hasAnySource
+                          ? '$enabledCount / $totalCount 已启用'
+                          : '未配置 (无法获取影片信息)',
                       style: context.textTheme.bodySmall?.copyWith(
-                        color: _hasApiKey
+                        color: hasEnabledSource
                             ? Colors.green
-                            : (widget.isDark
+                            : (isDark
                                 ? AppColors.darkOnSurfaceVariant
                                 : AppColors.lightOnSurfaceVariant),
                       ),
@@ -877,21 +754,21 @@ class _TmdbApiKeyTileState extends State<_TmdbApiKeyTile> {
                   ],
                 ),
               ),
-              if (_hasApiKey)
+              if (hasEnabledSource)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: Colors.green.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Row(
+                  child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.check_circle_rounded, size: 14, color: Colors.green),
-                      SizedBox(width: 4),
+                      const Icon(Icons.check_circle_rounded, size: 14, color: Colors.green),
+                      const SizedBox(width: 4),
                       Text(
-                        '已启用',
-                        style: TextStyle(
+                        '$enabledCount 个',
+                        style: const TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w500,
                           color: Colors.green,
@@ -903,7 +780,7 @@ class _TmdbApiKeyTileState extends State<_TmdbApiKeyTile> {
               else
                 Icon(
                   Icons.chevron_right_rounded,
-                  color: widget.isDark
+                  color: isDark
                       ? AppColors.darkOnSurfaceVariant
                       : AppColors.lightOnSurfaceVariant,
                   size: 22,
@@ -913,6 +790,7 @@ class _TmdbApiKeyTileState extends State<_TmdbApiKeyTile> {
         ),
       ),
     );
+  }
 }
 
 /// 语言偏好设置组件

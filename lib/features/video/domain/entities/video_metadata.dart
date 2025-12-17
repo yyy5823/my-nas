@@ -36,6 +36,7 @@ class VideoMetadata {
     this.category = MediaCategory.unknown,
     this.scrapeStatus = ScrapeStatus.pending,
     this.tmdbId,
+    this.doubanId,
     this.title,
     this.originalTitle,
     this.year,
@@ -73,6 +74,7 @@ class VideoMetadata {
       category: MediaCategory.values[map['category'] as int? ?? 2],
       scrapeStatus: ScrapeStatus.values[map['scrapeStatus'] as int? ?? 0],
       tmdbId: map['tmdbId'] as int?,
+      doubanId: map['doubanId'] as String?,
       title: map['title'] as String?,
       originalTitle: map['originalTitle'] as String?,
       year: map['year'] as int?,
@@ -129,6 +131,7 @@ class VideoMetadata {
   MediaCategory category;
   ScrapeStatus scrapeStatus;
   int? tmdbId;
+  String? doubanId; // 豆瓣 ID（字符串，如 "1291546"）
   String? title;
   String? originalTitle;
   int? year;
@@ -179,8 +182,8 @@ class VideoMetadata {
     return null;
   }
 
-  /// 是否有元数据（已成功刮削TMDB数据）
-  bool get hasMetadata => tmdbId != null;
+  /// 是否有元数据（已成功刮削数据）
+  bool get hasMetadata => tmdbId != null || doubanId != null;
 
   /// 是否已完成刮削（成功或失败都算完成）
   bool get isScrapeDone =>
@@ -394,6 +397,7 @@ class VideoMetadata {
       'category': category.index,
       'scrapeStatus': scrapeStatus.index,
       'tmdbId': tmdbId,
+      'doubanId': doubanId,
       'title': title,
       'originalTitle': originalTitle,
       'year': year,
@@ -431,6 +435,7 @@ class VideoMetadata {
     MediaCategory? category,
     ScrapeStatus? scrapeStatus,
     int? tmdbId,
+    String? doubanId,
     String? title,
     String? originalTitle,
     int? year,
@@ -465,6 +470,7 @@ class VideoMetadata {
       category: category ?? this.category,
       scrapeStatus: scrapeStatus ?? this.scrapeStatus,
       tmdbId: tmdbId ?? this.tmdbId,
+      doubanId: doubanId ?? this.doubanId,
       title: title ?? this.title,
       originalTitle: originalTitle ?? this.originalTitle,
       year: year ?? this.year,
