@@ -134,8 +134,8 @@ class ChromaprintBindings {
       _chromaprint_dealloc(fingerprintPtr.value.cast<Void>());
       return (fingerprint, size);
     } finally {
-      calloc.free(fingerprintPtr);
-      calloc.free(sizePtr);
+      calloc..free(fingerprintPtr)
+      ..free(sizePtr);
     }
   }
 

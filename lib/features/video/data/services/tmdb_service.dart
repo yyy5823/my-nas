@@ -961,7 +961,7 @@ class TmdbTvDetail {
       return productionCountries.map((c) => c.name).join(', ');
     }
     // origin_country 是 ISO 代码列表，转换为可读名称
-    return originCountry.map((code) => _countryCodeToName(code)).join(', ');
+    return originCountry.map(_countryCodeToName).join(', ');
   }
 
   /// ISO 国家代码转换为中文名称
