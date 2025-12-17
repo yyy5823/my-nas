@@ -51,6 +51,8 @@ download_sources() {
         echo "下载 Chromaprint v$CHROMAPRINT_VERSION..."
         git clone --depth 1 --branch "v$CHROMAPRINT_VERSION" \
             https://github.com/acoustid/chromaprint.git "$CHROMAPRINT_SRC"
+        # 删除 .git 目录，避免 IDE 识别为独立仓库
+        rm -rf "$CHROMAPRINT_SRC/.git"
     else
         echo "✓ Chromaprint 源码已存在"
     fi
@@ -59,6 +61,8 @@ download_sources() {
     if [ ! -d "$KISSFFT_SRC" ]; then
         echo "下载 KissFFT..."
         git clone --depth 1 https://github.com/mborgerding/kissfft.git "$KISSFFT_SRC"
+        # 删除 .git 目录，避免 IDE 识别为独立仓库
+        rm -rf "$KISSFFT_SRC/.git"
     else
         echo "✓ KissFFT 源码已存在"
     fi
