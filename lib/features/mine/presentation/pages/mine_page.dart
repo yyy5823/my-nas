@@ -2,19 +2,21 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:hive_ce/hive.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/downloader/presentation/pages/downloader_list_page.dart';
 import 'package:my_nas/features/media_management/presentation/pages/media_management_list_page.dart';
 import 'package:my_nas/features/media_tracking/presentation/pages/media_tracking_list_page.dart';
+import 'package:my_nas/features/music/presentation/pages/music_scraper_sources_page.dart';
+import 'package:my_nas/features/music/presentation/providers/music_scraper_provider.dart';
 import 'package:my_nas/features/pt_sites/presentation/pages/pt_sites_list_page.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/pages/media_library_page.dart';
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
-import 'package:my_nas/features/video/data/services/tmdb_service.dart';
+import 'package:my_nas/features/video/presentation/pages/scraper_sources_page.dart';
+import 'package:my_nas/features/video/presentation/providers/scraper_provider.dart';
 import 'package:my_nas/shared/providers/download_provider.dart';
 import 'package:my_nas/shared/providers/language_preference_provider.dart';
 import 'package:my_nas/shared/providers/theme_provider.dart';
@@ -79,7 +81,7 @@ class MinePage extends ConsumerWidget {
                   context,
                   isDark,
                   children: [
-                    _TmdbApiKeyTile(isDark: isDark),
+                    _VideoScraperSourcesTile(isDark: isDark),
                     _buildDivider(isDark),
                     _LanguagePreferenceTile(isDark: isDark),
                     _buildDivider(isDark),
@@ -88,6 +90,19 @@ class MinePage extends ConsumerWidget {
                     _MediaManagementTile(isDark: isDark),
                     _buildDivider(isDark),
                     _DownloaderTile(isDark: isDark),
+                  ],
+                ),
+
+                const SizedBox(height: AppSpacing.lg),
+
+                // 音乐设置
+                _buildSectionHeader(context, '音乐', Icons.music_note_rounded, isDark),
+                const SizedBox(height: AppSpacing.sm),
+                _buildSettingsCard(
+                  context,
+                  isDark,
+                  children: [
+                    _MusicScraperSourcesTile(isDark: isDark),
                   ],
                 ),
 
@@ -720,78 +735,179 @@ class _VersionTileState extends State<_VersionTile> {
     );
 }
 
-
-/// TMDB API Key 设置项
-class _TmdbApiKeyTile extends StatefulWidget {
-  const _TmdbApiKeyTile({required this.isDark});
+/// 视频刮削源入口组件
+class _VideoScraperSourcesTile extends ConsumerWidget {
+  const _VideoScraperSourcesTile({required this.isDark});
 
   final bool isDark;
 
   @override
-  State<_TmdbApiKeyTile> createState() => _TmdbApiKeyTileState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final sourcesAsync = ref.watch(scraperSourcesProvider);
 
-class _TmdbApiKeyTileState extends State<_TmdbApiKeyTile> {
-  final _tmdbService = TmdbService();
-  bool _hasApiKey = false;
+    return sourcesAsync.when(
+      data: (sources) {
+        final enabledCount = sources.where((s) => s.isEnabled).length;
+        final totalCount = sources.length;
 
-  @override
-  void initState() {
-    super.initState();
-    _loadApiKeyStatus();
-  }
-
-  Future<void> _loadApiKeyStatus() async {
-    final box = await Hive.openBox<String>('settings');
-    final apiKey = box.get('tmdb_api_key', defaultValue: '');
-    if (apiKey != null && apiKey.isNotEmpty) {
-      _tmdbService.setApiKey(apiKey);
-    }
-    setState(() => _hasApiKey = _tmdbService.hasApiKey);
-  }
-
-  Future<void> _showApiKeySheet() async {
-    final box = await Hive.openBox<String>('settings');
-    final currentKey = box.get('tmdb_api_key', defaultValue: '') ?? '';
-
-    if (!mounted) return;
-
-    final result = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) => _TmdbApiKeySheet(
-        isDark: widget.isDark,
-        currentKey: currentKey,
-        hasApiKey: _hasApiKey,
-      ),
-    );
-
-    if (result != null) {
-      await box.put('tmdb_api_key', result);
-      if (result.isNotEmpty) {
-        _tmdbService.setApiKey(result);
-      } else {
-        _tmdbService.setApiKey('');
-      }
-      setState(() => _hasApiKey = result.isNotEmpty);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result.isEmpty ? 'API Key 已清除' : 'API Key 已保存'),
-            backgroundColor: AppColors.primary,
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(builder: (_) => const ScraperSourcesPage()),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.lg,
+                vertical: AppSpacing.md,
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: AppColors.fileVideo.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      Icons.video_library_rounded,
+                      color: AppColors.fileVideo,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '刮削源',
+                          style: context.textTheme.bodyLarge?.copyWith(
+                            color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          totalCount == 0
+                              ? '管理 TMDB、豆瓣等视频刮削源'
+                              : '$enabledCount / $totalCount 已启用',
+                          style: context.textTheme.bodySmall?.copyWith(
+                            color: isDark
+                                ? AppColors.darkOnSurfaceVariant
+                                : AppColors.lightOnSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (totalCount > 0)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: enabledCount > 0
+                            ? Colors.green.withValues(alpha: 0.12)
+                            : AppColors.warning.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '$enabledCount/$totalCount',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: enabledCount > 0 ? Colors.green : AppColors.warning,
+                        ),
+                      ),
+                    )
+                  else
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      color: isDark
+                          ? AppColors.darkOnSurfaceVariant
+                          : AppColors.lightOnSurfaceVariant,
+                      size: 22,
+                    ),
+                ],
+              ),
+            ),
           ),
         );
-      }
-    }
+      },
+      loading: () => _buildLoadingTile(context),
+      error: (_, _) => _buildLoadingTile(context),
+    );
   }
 
+  Widget _buildLoadingTile(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.lg,
+          vertical: AppSpacing.md,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: AppColors.fileVideo.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                Icons.video_library_rounded,
+                color: AppColors.fileVideo,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '刮削源',
+                    style: context.textTheme.bodyLarge?.copyWith(
+                      color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '加载中...',
+                    style: context.textTheme.bodySmall?.copyWith(
+                      color: isDark
+                          ? AppColors.darkOnSurfaceVariant
+                          : AppColors.lightOnSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+}
+
+/// 音乐刮削源入口组件
+class _MusicScraperSourcesTile extends ConsumerWidget {
+  const _MusicScraperSourcesTile({required this.isDark});
+
+  final bool isDark;
+
   @override
-  Widget build(BuildContext context) => Material(
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(musicScraperSourcesProvider);
+    final enabledCount = state.sources.where((s) => s.isEnabled).length;
+    final totalCount = state.sources.length;
+
+    return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: _showApiKeySheet,
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute<void>(builder: (_) => const MusicScraperSourcesPage()),
+        ),
         child: Padding(
           padding: const EdgeInsets.symmetric(
             horizontal: AppSpacing.lg,
@@ -803,12 +919,12 @@ class _TmdbApiKeyTileState extends State<_TmdbApiKeyTile> {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: AppColors.fileVideo.withValues(alpha: 0.12),
+                  color: AppColors.fileAudio.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
-                  Icons.api_rounded,
-                  color: AppColors.fileVideo,
+                  Icons.library_music_rounded,
+                  color: AppColors.fileAudio,
                   size: 20,
                 ),
               ),
@@ -818,53 +934,48 @@ class _TmdbApiKeyTileState extends State<_TmdbApiKeyTile> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'TMDB API Key',
+                      '刮削源',
                       style: context.textTheme.bodyLarge?.copyWith(
-                        color: widget.isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                        color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      _hasApiKey ? '已配置' : '未配置 (无法获取影片信息)',
+                      totalCount == 0
+                          ? '管理 MusicBrainz、网易云等音乐刮削源'
+                          : '$enabledCount / $totalCount 已启用',
                       style: context.textTheme.bodySmall?.copyWith(
-                        color: _hasApiKey
-                            ? Colors.green
-                            : (widget.isDark
-                                ? AppColors.darkOnSurfaceVariant
-                                : AppColors.lightOnSurfaceVariant),
+                        color: isDark
+                            ? AppColors.darkOnSurfaceVariant
+                            : AppColors.lightOnSurfaceVariant,
                       ),
                     ),
                   ],
                 ),
               ),
-              if (_hasApiKey)
+              if (totalCount > 0)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Colors.green.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(8),
+                    color: enabledCount > 0
+                        ? Colors.green.withValues(alpha: 0.12)
+                        : AppColors.warning.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.check_circle_rounded, size: 14, color: Colors.green),
-                      SizedBox(width: 4),
-                      Text(
-                        '已启用',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.green,
-                        ),
-                      ),
-                    ],
+                  child: Text(
+                    '$enabledCount/$totalCount',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: enabledCount > 0 ? Colors.green : AppColors.warning,
+                    ),
                   ),
                 )
               else
                 Icon(
                   Icons.chevron_right_rounded,
-                  color: widget.isDark
+                  color: isDark
                       ? AppColors.darkOnSurfaceVariant
                       : AppColors.lightOnSurfaceVariant,
                   size: 22,
@@ -874,229 +985,7 @@ class _TmdbApiKeyTileState extends State<_TmdbApiKeyTile> {
         ),
       ),
     );
-}
-
-/// TMDB API Key 设置底部弹窗
-class _TmdbApiKeySheet extends StatefulWidget {
-  const _TmdbApiKeySheet({
-    required this.isDark,
-    required this.currentKey,
-    required this.hasApiKey,
-  });
-
-  final bool isDark;
-  final String currentKey;
-  final bool hasApiKey;
-
-  @override
-  State<_TmdbApiKeySheet> createState() => _TmdbApiKeySheetState();
-}
-
-class _TmdbApiKeySheetState extends State<_TmdbApiKeySheet> {
-  late final TextEditingController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(text: widget.currentKey);
   }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: widget.isDark
-                  ? AppColors.darkSurface.withValues(alpha: 0.95)
-                  : AppColors.lightSurface.withValues(alpha: 0.98),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-              border: Border(
-                top: BorderSide(
-                  color: widget.isDark
-                      ? AppColors.glassStroke
-                      : AppColors.lightOutline.withValues(alpha: 0.2),
-                ),
-              ),
-            ),
-            child: SafeArea(
-              child: Padding(
-                padding: EdgeInsets.only(
-                  bottom: MediaQuery.of(context).viewInsets.bottom,
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // 拖动指示器
-                    Container(
-                      margin: const EdgeInsets.only(top: 12),
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: widget.isDark
-                            ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.3)
-                            : AppColors.lightOnSurfaceVariant.withValues(alpha: 0.3),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.all(AppSpacing.lg),
-                      child: Text(
-                        'TMDB API Key',
-                        style: context.textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: widget.isDark
-                              ? AppColors.darkOnSurface
-                              : AppColors.lightOnSurface,
-                        ),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-                      child: Text(
-                        '配置 TMDB API Key 后，可以自动获取电影和电视剧的海报、评分、简介等信息。',
-                        style: context.textTheme.bodySmall?.copyWith(
-                          color: widget.isDark
-                              ? AppColors.darkOnSurfaceVariant
-                              : AppColors.lightOnSurfaceVariant,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.lg),
-
-                    // API Key 输入框
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-                      child: TextField(
-                        controller: _controller,
-                        decoration: InputDecoration(
-                          labelText: 'API Key',
-                          hintText: '请输入 TMDB API Key',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(
-                              color: widget.isDark
-                                  ? AppColors.darkOutline.withValues(alpha: 0.3)
-                                  : AppColors.lightOutline.withValues(alpha: 0.5),
-                            ),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(
-                              color: AppColors.primary,
-                              width: 2,
-                            ),
-                          ),
-                          filled: true,
-                          fillColor: widget.isDark
-                              ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
-                              : AppColors.lightSurfaceVariant.withValues(alpha: 0.5),
-                          labelStyle: TextStyle(
-                            color: widget.isDark
-                                ? AppColors.darkOnSurfaceVariant
-                                : AppColors.lightOnSurfaceVariant,
-                          ),
-                          hintStyle: TextStyle(
-                            color: widget.isDark
-                                ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.5)
-                                : AppColors.lightOnSurfaceVariant.withValues(alpha: 0.5),
-                          ),
-                        ),
-                        style: TextStyle(
-                          color: widget.isDark
-                              ? AppColors.darkOnSurface
-                              : AppColors.lightOnSurface,
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: AppSpacing.xl),
-
-                    // 操作按钮
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-                      child: Row(
-                        children: [
-                          // 取消按钮
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: () => Navigator.pop(context),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: widget.isDark
-                                    ? AppColors.darkOnSurface
-                                    : AppColors.lightOnSurface,
-                                side: BorderSide(
-                                  color: widget.isDark
-                                      ? AppColors.darkOutline.withValues(alpha: 0.3)
-                                      : AppColors.lightOutline.withValues(alpha: 0.5),
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                padding: const EdgeInsets.symmetric(vertical: 14),
-                              ),
-                              child: const Text('取消'),
-                            ),
-                          ),
-                          if (widget.hasApiKey) ...[
-                            const SizedBox(width: AppSpacing.sm),
-                            // 清除按钮
-                            Expanded(
-                              child: OutlinedButton(
-                                onPressed: () => Navigator.pop(context, ''),
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: Colors.red,
-                                  side: BorderSide(
-                                    color: Colors.red.withValues(alpha: 0.5),
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  padding: const EdgeInsets.symmetric(vertical: 14),
-                                ),
-                                child: const Text('清除'),
-                              ),
-                            ),
-                          ],
-                          const SizedBox(width: AppSpacing.sm),
-                          // 保存按钮
-                          Expanded(
-                            child: ElevatedButton(
-                              onPressed: () => Navigator.pop(context, _controller.text),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.primary,
-                                foregroundColor: Colors.white,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                padding: const EdgeInsets.symmetric(vertical: 14),
-                              ),
-                              child: const Text('保存'),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: AppSpacing.lg),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
 }
 
 /// 传输卡片组件 - 下载和同步合并在一个卡片中
