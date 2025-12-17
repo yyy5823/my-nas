@@ -732,6 +732,10 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
                 _toggleFileSelection(file.path);
               }
             },
+            onSecondaryTap: () {
+              // 桌面端右键：显示文件操作菜单
+              _showFileOptions(context, file, isDark);
+            },
           ),
         );
       },
@@ -768,6 +772,10 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
                 _enterMultiSelectMode();
                 _toggleFileSelection(file.path);
               }
+            },
+            onSecondaryTap: () {
+              // 桌面端右键：显示文件操作菜单
+              _showFileOptions(context, file, isDark);
             },
           ),
         );

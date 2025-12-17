@@ -444,6 +444,7 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
           }
         },
         onLongPress: () => _showSourceOptions(context),
+        onSecondaryTap: () => _showSourceOptions(context),
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(16),

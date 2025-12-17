@@ -10,6 +10,7 @@ class FileItemWidget extends StatelessWidget {
     required this.onTap,
     super.key,
     this.onLongPress,
+    this.onSecondaryTap,
     this.isGridView = false,
     this.isSelected = false,
     this.isMultiSelectMode = false,
@@ -18,6 +19,7 @@ class FileItemWidget extends StatelessWidget {
   final FileItem file;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
+  final VoidCallback? onSecondaryTap;
   final bool isGridView;
   final bool isSelected;
   final bool isMultiSelectMode;
@@ -57,6 +59,7 @@ class FileItemWidget extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           onLongPress: onLongPress,
+          onSecondaryTap: onSecondaryTap,
           borderRadius: BorderRadius.circular(16),
           child: Padding(
             padding: const EdgeInsets.all(AppSpacing.md),
@@ -166,6 +169,7 @@ class FileItemWidget extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           onLongPress: onLongPress,
+          onSecondaryTap: onSecondaryTap,
           borderRadius: BorderRadius.circular(20),
           child: Stack(
             children: [

@@ -177,6 +177,7 @@ class _PosterCardState extends State<PosterCard> with SingleTickerProviderStateM
         child: GestureDetector(
           onTap: widget.onTap,
           onLongPress: widget.onLongPress,
+          onSecondaryTap: widget.onLongPress,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: Stack(

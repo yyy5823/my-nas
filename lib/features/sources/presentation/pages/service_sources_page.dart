@@ -355,6 +355,7 @@ class _ServiceSourceCardState extends ConsumerState<_ServiceSourceCard> {
       child: InkWell(
         onTap: () => _openDetailPage(context),
         onLongPress: () => _showSourceOptions(context),
+        onSecondaryTap: () => _showSourceOptions(context),
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(16),

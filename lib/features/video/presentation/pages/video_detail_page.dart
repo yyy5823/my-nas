@@ -933,10 +933,14 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
             // 长按：返回到视频库主页（弹出所有详情页）
             Navigator.of(context).popUntil((route) => route.isFirst);
           },
+          onSecondaryTap: () {
+            // 右键：返回到视频库主页（与长按相同）
+            Navigator.of(context).popUntil((route) => route.isFirst);
+          },
           child: IconButton(
             icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
             onPressed: () => Navigator.of(context).pop(),
-            tooltip: '返回（长按返回主页）',
+            tooltip: '返回（长按/右键返回主页）',
           ),
         ),
       ),

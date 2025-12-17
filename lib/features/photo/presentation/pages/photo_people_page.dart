@@ -439,6 +439,7 @@ class _PhotoPeoplePageState extends ConsumerState<PhotoPeoplePage> {
     return GestureDetector(
       onTap: () => _showPersonPhotos(person),
       onLongPress: () => _showPersonOptions(person),
+      onSecondaryTap: () => _showPersonOptions(person),
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: isDark ? AppColors.darkSurfaceElevated : Colors.white,

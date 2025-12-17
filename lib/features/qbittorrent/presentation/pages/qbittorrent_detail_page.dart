@@ -692,6 +692,7 @@ class _TorrentTile extends ConsumerWidget {
       child: InkWell(
         onTap: () => _showTorrentDetails(context, ref),
         onLongPress: () => _showTorrentActions(context, ref),
+        onSecondaryTap: () => _showTorrentActions(context, ref),
         borderRadius: BorderRadius.circular(16),
         child: Padding(
           padding: const EdgeInsets.all(AppSpacing.md),
