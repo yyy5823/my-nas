@@ -44,7 +44,7 @@ class LastFmScraper implements MusicScraper {
   @override
   Future<bool> testConnection() async {
     try {
-      await _rateLimitedRequest(() => _dio.get(
+      await _rateLimitedRequest(() => _dio.get<dynamic>(
             '',
             queryParameters: {
               'method': 'chart.gettopartists',
@@ -74,7 +74,7 @@ class LastFmScraper implements MusicScraper {
         searchQuery = '$artist $searchQuery';
       }
 
-      final response = await _rateLimitedRequest(() => _dio.get(
+      final response = await _rateLimitedRequest(() => _dio.get<dynamic>(
             '',
             queryParameters: {
               'method': 'track.search',
@@ -101,7 +101,7 @@ class LastFmScraper implements MusicScraper {
           ) ??
           0;
 
-      final items = tracks.map((t) => _parseTrack(t)).toList();
+      final items = tracks.map(_parseTrack).toList();
 
       return MusicScraperSearchResult(
         items: items,
@@ -125,7 +125,7 @@ class LastFmScraper implements MusicScraper {
       final artistName = parts[0];
       final trackName = parts[1];
 
-      final response = await _rateLimitedRequest(() => _dio.get(
+      final response = await _rateLimitedRequest(() => _dio.get<dynamic>(
             '',
             queryParameters: {
               'method': 'track.getInfo',
@@ -161,7 +161,7 @@ class LastFmScraper implements MusicScraper {
       final trackName = parts[1];
 
       // 获取曲目信息以获取专辑
-      final response = await _rateLimitedRequest(() => _dio.get(
+      final response = await _rateLimitedRequest(() => _dio.get<dynamic>(
             '',
             queryParameters: {
               'method': 'track.getInfo',
@@ -181,7 +181,7 @@ class LastFmScraper implements MusicScraper {
       final album = track['album'] as Map<String, dynamic>?;
       if (album == null) return [];
 
-      final images = album['image'] as List?;
+      final images = (album['image'] as List?)?.cast<Map<String, dynamic>>();
       if (images == null || images.isEmpty) return [];
 
       // 选择最大的图片
@@ -208,11 +208,9 @@ class LastFmScraper implements MusicScraper {
     }
   }
 
+  /// Last.fm 不提供歌词
   @override
-  Future<LyricScraperResult?> getLyrics(String externalId) async {
-    // Last.fm 不提供歌词
-    return null;
-  }
+  Future<LyricScraperResult?> getLyrics(String externalId) async => null;
 
   @override
   void dispose() {
@@ -240,7 +238,7 @@ class LastFmScraper implements MusicScraper {
 
     // 获取图片
     String? coverUrl;
-    final images = data['image'] as List?;
+    final images = (data['image'] as List?)?.cast<Map<String, dynamic>>();
     if (images != null && images.isNotEmpty) {
       for (final image in images.reversed) {
         final url = image['#text'] as String?;
@@ -284,7 +282,7 @@ class LastFmScraper implements MusicScraper {
     final albumData = data['album'] as Map<String, dynamic>?;
     if (albumData != null) {
       album = albumData['title'] as String?;
-      final images = albumData['image'] as List?;
+      final images = (albumData['image'] as List?)?.cast<Map<String, dynamic>>();
       if (images != null && images.isNotEmpty) {
         for (final image in images.reversed) {
           final url = image['#text'] as String?;

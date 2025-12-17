@@ -110,9 +110,8 @@ class MusicScraperSourceEntity {
     this.priority = 0,
     this.apiKey,
     this.cookie,
-    Map<String, dynamic>? extraConfig,
-  })  : id = id ?? const Uuid().v4(),
-        extraConfig = extraConfig;
+    this.extraConfig,
+  })  : id = id ?? const Uuid().v4();
 
   factory MusicScraperSourceEntity.fromJson(Map<String, dynamic> json) =>
       MusicScraperSourceEntity(

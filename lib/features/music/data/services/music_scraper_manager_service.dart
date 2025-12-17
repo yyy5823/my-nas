@@ -21,13 +21,13 @@ class MusicScraperManagerService {
   static const String _credentialPrefix = 'music_scraper_credential_';
 
   late final FlutterSecureStorage _secureStorage;
-  Box<Map>? _box;
+  Box<Map<String, dynamic>>? _box;
   final Map<String, MusicScraper> _scraperCache = {};
 
   /// 初始化
   Future<void> init() async {
     if (_box != null && _box!.isOpen) return;
-    _box = await Hive.openBox<Map>(_boxName);
+    _box = await Hive.openBox<Map<String, dynamic>>(_boxName);
   }
 
   /// 确保已初始化
@@ -510,6 +510,34 @@ class MusicScraperManagerService {
       lyrics: lyrics,
       errors: errors,
     );
+  }
+
+  /// 通过音频指纹查找音乐信息
+  ///
+  /// [fingerprint] Chromaprint 生成的指纹字符串
+  /// [duration] 音频时长（秒）
+  ///
+  /// 返回 [FingerprintResult] 或 null（如果没有启用的 AcoustID 源）
+  Future<FingerprintResult?> lookupByFingerprint(
+    String fingerprint,
+    int duration,
+  ) async {
+    final scrapers = await getEnabledScrapers();
+
+    // 查找 AcoustID 刮削器
+    for (final (source, scraper) in scrapers) {
+      if (source.type != MusicScraperType.acoustId) continue;
+
+      if (scraper is FingerprintScraper) {
+        try {
+          return await scraper.lookupByFingerprint(fingerprint, duration);
+        } on Exception catch (e, st) {
+          AppError.ignore(e, st, 'AcoustID 查询失败');
+        }
+      }
+    }
+
+    return null;
   }
 
   /// 释放资源

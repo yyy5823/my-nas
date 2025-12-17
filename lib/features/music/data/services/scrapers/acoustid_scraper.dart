@@ -51,7 +51,7 @@ class AcoustIdScraper implements FingerprintScraper {
   Future<bool> testConnection() async {
     try {
       // 测试 API 连接（使用一个无效的指纹）
-      await _rateLimitedRequest(() => _dio.get(
+      await _rateLimitedRequest(() => _dio.get<dynamic>(
             '/lookup',
             queryParameters: {
               'client': apiKey,
@@ -72,6 +72,8 @@ class AcoustIdScraper implements FingerprintScraper {
     }
   }
 
+  /// AcoustID 不支持文本搜索，只支持指纹查询
+  /// 返回空结果
   @override
   Future<MusicScraperSearchResult> search(
     String query, {
@@ -79,31 +81,21 @@ class AcoustIdScraper implements FingerprintScraper {
     String? album,
     int page = 1,
     int limit = 20,
-  }) async {
-    // AcoustID 不支持文本搜索，只支持指纹查询
-    // 返回空结果
-    return MusicScraperSearchResult.empty(type);
-  }
+  }) async => MusicScraperSearchResult.empty(type);
 
+  /// AcoustID 的 externalId 是 MusicBrainz Recording ID
+  /// 需要通过 MusicBrainz API 获取详情
+  /// 这里只返回基本信息
   @override
-  Future<MusicScraperDetail?> getDetail(String externalId) async {
-    // AcoustID 的 externalId 是 MusicBrainz Recording ID
-    // 需要通过 MusicBrainz API 获取详情
-    // 这里只返回基本信息
-    return null;
-  }
+  Future<MusicScraperDetail?> getDetail(String externalId) async => null;
 
+  /// AcoustID 不提供封面
   @override
-  Future<List<CoverScraperResult>> getCoverArt(String externalId) async {
-    // AcoustID 不提供封面
-    return [];
-  }
+  Future<List<CoverScraperResult>> getCoverArt(String externalId) async => [];
 
+  /// AcoustID 不提供歌词
   @override
-  Future<LyricScraperResult?> getLyrics(String externalId) async {
-    // AcoustID 不提供歌词
-    return null;
-  }
+  Future<LyricScraperResult?> getLyrics(String externalId) async => null;
 
   @override
   Future<FingerprintResult?> lookupByFingerprint(
@@ -111,7 +103,7 @@ class AcoustIdScraper implements FingerprintScraper {
     int duration,
   ) async {
     try {
-      final response = await _rateLimitedRequest(() => _dio.get(
+      final response = await _rateLimitedRequest(() => _dio.get<dynamic>(
             '/lookup',
             queryParameters: {
               'client': apiKey,
@@ -136,7 +128,10 @@ class AcoustIdScraper implements FingerprintScraper {
       final results = (data['results'] as List?)?.cast<Map<String, dynamic>>() ?? [];
 
       if (results.isEmpty) {
-        return FingerprintResult.empty(type);
+        return FingerprintResult.empty(
+          fingerprint: fingerprint,
+          duration: duration,
+        );
       }
 
       final matches = <FingerprintMatch>[];
@@ -158,7 +153,6 @@ class AcoustIdScraper implements FingerprintScraper {
       matches.sort((a, b) => b.score.compareTo(a.score));
 
       return FingerprintResult(
-        source: type,
         fingerprint: fingerprint,
         duration: duration,
         matches: matches,
@@ -170,12 +164,13 @@ class AcoustIdScraper implements FingerprintScraper {
 
   @override
   Future<FingerprintResult?> lookupByFile(String filePath) async {
-    if (_fingerprintService == null || !_fingerprintService!.isAvailable) {
+    final service = _fingerprintService;
+    if (service == null || !service.isAvailable) {
       throw const FingerprintUnavailableException();
     }
 
     try {
-      final fpData = await _fingerprintService!.generateFingerprint(filePath);
+      final fpData = await service.generateFingerprint(filePath);
       return lookupByFingerprint(fpData.fingerprint, fpData.duration);
     } on FingerprintException {
       rethrow;
@@ -216,40 +211,47 @@ class AcoustIdScraper implements FingerprintScraper {
 
     // 艺术家
     String? artist;
-    final artists = data['artists'] as List?;
+    final artists = (data['artists'] as List?)?.cast<Map<String, dynamic>>();
     if (artists != null && artists.isNotEmpty) {
-      artist = artists.map((a) => a['name'] as String? ?? '').where((n) => n.isNotEmpty).join(' / ');
+      artist = artists
+          .map((a) => a['name'] as String? ?? '')
+          .where((n) => n.isNotEmpty)
+          .join(' / ');
     }
 
     // 专辑（从 releasegroups 获取）
     String? album;
     int? year;
-    final releaseGroups = data['releasegroups'] as List?;
+    final releaseGroups = (data['releasegroups'] as List?)?.cast<Map<String, dynamic>>();
     if (releaseGroups != null && releaseGroups.isNotEmpty) {
-      final firstRelease = releaseGroups.first as Map<String, dynamic>;
+      final firstRelease = releaseGroups.first;
       album = firstRelease['title'] as String?;
 
       // 艺术家（如果录音没有艺术家）
       if (artist == null || artist.isEmpty) {
-        final releaseArtists = firstRelease['artists'] as List?;
+        final releaseArtists = (firstRelease['artists'] as List?)?.cast<Map<String, dynamic>>();
         if (releaseArtists != null && releaseArtists.isNotEmpty) {
-          artist = releaseArtists.map((a) => a['name'] as String? ?? '').where((n) => n.isNotEmpty).join(' / ');
+          artist = releaseArtists
+              .map((a) => a['name'] as String? ?? '')
+              .where((n) => n.isNotEmpty)
+              .join(' / ');
         }
       }
     }
 
-    // 时长
-    final durationMs = data['duration'] as int?;
+    // 从 releasegroups 获取 releaseId
+    String? releaseId;
+    if (releaseGroups != null && releaseGroups.isNotEmpty) {
+      releaseId = releaseGroups.first['id'] as String?;
+    }
 
     return FingerprintMatch(
-      externalId: id,
-      acoustId: acoustId,
-      mbRecordingId: id,
+      recordingId: id,
       title: title,
       artist: artist,
       album: album,
+      releaseId: releaseId,
       year: year,
-      durationMs: durationMs != null ? durationMs * 1000 : null,
       score: score,
     );
   }

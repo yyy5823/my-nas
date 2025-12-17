@@ -57,6 +57,12 @@ abstract class FingerprintScraper extends MusicScraper {
     String fingerprint,
     int duration,
   );
+
+  /// 通过文件查找
+  ///
+  /// [filePath] 音频文件路径
+  /// 自动生成指纹并查询
+  Future<FingerprintResult?> lookupByFile(String filePath);
 }
 
 /// 刮削器异常

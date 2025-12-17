@@ -55,7 +55,7 @@ class CoverArtArchiveScraper implements MusicScraper {
   Future<bool> testConnection() async {
     try {
       // 测试 Cover Art Archive API
-      await _dio.head('/release/76df3287-6cda-33eb-8e9a-044b5e15ffdd');
+      await _dio.head<dynamic>('/release/76df3287-6cda-33eb-8e9a-044b5e15ffdd');
       return true;
     } on Exception {
       return false;
@@ -86,7 +86,7 @@ class CoverArtArchiveScraper implements MusicScraper {
       final luceneQuery = queryParts.join(' AND ');
       final offset = (page - 1) * limit;
 
-      final response = await _rateLimitedRequest(() => _musicBrainzDio.get(
+      final response = await _rateLimitedRequest(() => _musicBrainzDio.get<dynamic>(
             '/release',
             queryParameters: {
               'query': luceneQuery,
@@ -100,7 +100,7 @@ class CoverArtArchiveScraper implements MusicScraper {
       final releases = (data['releases'] as List?)?.cast<Map<String, dynamic>>() ?? [];
       final count = data['count'] as int? ?? 0;
 
-      final items = releases.map((r) => _parseRelease(r)).toList();
+      final items = releases.map(_parseRelease).toList();
 
       return MusicScraperSearchResult(
         items: items,
@@ -119,7 +119,7 @@ class CoverArtArchiveScraper implements MusicScraper {
     // Cover Art Archive 主要用于封面，不提供详细元数据
     // 返回基本信息
     try {
-      final response = await _rateLimitedRequest(() => _musicBrainzDio.get(
+      final response = await _rateLimitedRequest(() => _musicBrainzDio.get<dynamic>(
             '/release/$externalId',
             queryParameters: {
               'inc': 'artists+recordings',
@@ -140,7 +140,7 @@ class CoverArtArchiveScraper implements MusicScraper {
   @override
   Future<List<CoverScraperResult>> getCoverArt(String externalId) async {
     try {
-      final response = await _dio.get('/release/$externalId');
+      final response = await _dio.get<dynamic>('/release/$externalId');
 
       final data = response.data as Map<String, dynamic>;
       final images = (data['images'] as List?)?.cast<Map<String, dynamic>>() ?? [];
@@ -157,7 +157,7 @@ class CoverArtArchiveScraper implements MusicScraper {
 
         // 确定封面类型
         final types = (image['types'] as List?)?.cast<String>() ?? [];
-        CoverType coverType = CoverType.other;
+        var coverType = CoverType.other;
         if (types.contains('Front')) {
           coverType = CoverType.front;
         } else if (types.contains('Back')) {
@@ -165,7 +165,7 @@ class CoverArtArchiveScraper implements MusicScraper {
         } else if (types.contains('Booklet')) {
           coverType = CoverType.booklet;
         } else if (types.contains('Medium')) {
-          coverType = CoverType.disc;
+          coverType = CoverType.medium;
         }
 
         if (imageUrl != null) {
@@ -187,11 +187,9 @@ class CoverArtArchiveScraper implements MusicScraper {
     }
   }
 
+  /// Cover Art Archive 不提供歌词
   @override
-  Future<LyricScraperResult?> getLyrics(String externalId) async {
-    // Cover Art Archive 不提供歌词
-    return null;
-  }
+  Future<LyricScraperResult?> getLyrics(String externalId) async => null;
 
   @override
   void dispose() {
@@ -220,10 +218,11 @@ class CoverArtArchiveScraper implements MusicScraper {
 
     // 艺术家
     String? artist;
-    final artistCredit = data['artist-credit'] as List?;
+    final artistCredit = (data['artist-credit'] as List?)?.cast<Map<String, dynamic>>();
     if (artistCredit != null && artistCredit.isNotEmpty) {
       artist = artistCredit.map((ac) {
-        final name = ac['name'] as String? ?? ac['artist']?['name'] as String? ?? '';
+        final artistData = ac['artist'] as Map<String, dynamic>?;
+        final name = ac['name'] as String? ?? artistData?['name'] as String? ?? '';
         final joinPhrase = ac['joinphrase'] as String? ?? '';
         return '$name$joinPhrase';
       }).join();
@@ -257,10 +256,11 @@ class CoverArtArchiveScraper implements MusicScraper {
 
     // 艺术家
     String? artist;
-    final artistCredit = data['artist-credit'] as List?;
+    final artistCredit = (data['artist-credit'] as List?)?.cast<Map<String, dynamic>>();
     if (artistCredit != null && artistCredit.isNotEmpty) {
       artist = artistCredit.map((ac) {
-        final name = ac['name'] as String? ?? ac['artist']?['name'] as String? ?? '';
+        final artistData = ac['artist'] as Map<String, dynamic>?;
+        final name = ac['name'] as String? ?? artistData?['name'] as String? ?? '';
         final joinPhrase = ac['joinphrase'] as String? ?? '';
         return '$name$joinPhrase';
       }).join();

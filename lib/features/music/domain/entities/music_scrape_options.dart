@@ -11,6 +11,18 @@ class MusicScrapeOptions {
     this.coverFileName = 'folder',
   });
 
+  factory MusicScrapeOptions.fromJson(Map<String, dynamic> json) =>
+      MusicScrapeOptions(
+        downloadCover: json['downloadCover'] as bool? ?? true,
+        downloadLyrics: json['downloadLyrics'] as bool? ?? true,
+        updateMetadata: json['updateMetadata'] as bool? ?? true,
+        overwriteExisting: json['overwriteExisting'] as bool? ?? false,
+        preferredLanguage: json['preferredLanguage'] as String? ?? 'zh-CN',
+        useFingerprint: json['useFingerprint'] as bool? ?? true,
+        saveCoverToFolder: json['saveCoverToFolder'] as bool? ?? true,
+        coverFileName: json['coverFileName'] as String? ?? 'folder',
+      );
+
   /// 是否下载封面
   final bool downloadCover;
 
@@ -68,18 +80,6 @@ class MusicScrapeOptions {
         'saveCoverToFolder': saveCoverToFolder,
         'coverFileName': coverFileName,
       };
-
-  factory MusicScrapeOptions.fromJson(Map<String, dynamic> json) =>
-      MusicScrapeOptions(
-        downloadCover: json['downloadCover'] as bool? ?? true,
-        downloadLyrics: json['downloadLyrics'] as bool? ?? true,
-        updateMetadata: json['updateMetadata'] as bool? ?? true,
-        overwriteExisting: json['overwriteExisting'] as bool? ?? false,
-        preferredLanguage: json['preferredLanguage'] as String? ?? 'zh-CN',
-        useFingerprint: json['useFingerprint'] as bool? ?? true,
-        saveCoverToFolder: json['saveCoverToFolder'] as bool? ?? true,
-        coverFileName: json['coverFileName'] as String? ?? 'folder',
-      );
 }
 
 /// 刮削任务状态

@@ -1,5 +1,8 @@
 import 'dart:io';
 
+import 'package:my_nas/features/music/data/services/fingerprint/fingerprint_service_desktop.dart';
+import 'package:my_nas/features/music/data/services/fingerprint/fingerprint_service_mobile.dart';
+
 /// 音频指纹服务接口
 ///
 /// 用于生成音频指纹（使用 Chromaprint 算法）
@@ -35,39 +38,17 @@ abstract class FingerprintService {
   void dispose();
 
   /// 获取平台特定的服务实例
+  ///
+  /// 自动根据当前平台返回对应实现：
+  /// - 桌面端 (Windows/macOS/Linux): 使用 fpcalc 命令行工具
+  /// - 移动端 (Android/iOS): 使用原生库通过 MethodChannel 调用
   static FingerprintService? getInstance() {
-    // 根据平台返回对应实现
     if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-      return _getDesktopInstance();
+      return FingerprintServiceDesktop.instance;
     } else if (Platform.isAndroid || Platform.isIOS) {
-      return _getMobileInstance();
+      return FingerprintServiceMobile.instance;
     }
     return null;
-  }
-
-  static FingerprintService? _desktopInstance;
-  static FingerprintService? _mobileInstance;
-
-  static FingerprintService? _getDesktopInstance() {
-    // 延迟初始化，在首次调用时创建实例
-    // 实际实现将在 fingerprint_service_desktop.dart 中
-    return _desktopInstance;
-  }
-
-  static FingerprintService? _getMobileInstance() {
-    // 延迟初始化，在首次调用时创建实例
-    // 实际实现将在 fingerprint_service_mobile.dart 中
-    return _mobileInstance;
-  }
-
-  /// 注册桌面端实现
-  static void registerDesktopInstance(FingerprintService instance) {
-    _desktopInstance = instance;
-  }
-
-  /// 注册移动端实现
-  static void registerMobileInstance(FingerprintService instance) {
-    _mobileInstance = instance;
   }
 }
 
@@ -101,8 +82,7 @@ class FingerprintException implements Exception {
 
 /// 指纹服务不可用异常
 class FingerprintUnavailableException extends FingerprintException {
-  const FingerprintUnavailableException([String message = '指纹服务不可用'])
-      : super(message);
+  const FingerprintUnavailableException([super.message = '指纹服务不可用']);
 }
 
 /// 指纹生成失败异常

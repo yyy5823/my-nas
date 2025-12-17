@@ -21,6 +21,11 @@ import UIKit
       NativeLogBridge.register(with: registrar)
     }
 
+    // 注册 Chromaprint 音频指纹通道
+    if let registrar = self.registrar(forPlugin: "ChromaprintChannel") {
+      ChromaprintChannel.register(with: registrar)
+    }
+
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 

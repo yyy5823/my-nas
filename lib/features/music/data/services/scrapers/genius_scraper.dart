@@ -55,7 +55,7 @@ class GeniusScraper implements MusicScraper {
   @override
   Future<bool> testConnection() async {
     try {
-      await _rateLimitedRequest(() => _dio.get('/account'));
+      await _rateLimitedRequest(() => _dio.get<dynamic>('/account'));
       return true;
     } on DioException catch (e) {
       // 401 表示 token 无效，其他错误可能是网络问题
@@ -80,7 +80,7 @@ class GeniusScraper implements MusicScraper {
         searchQuery = '$artist $searchQuery';
       }
 
-      final response = await _rateLimitedRequest(() => _dio.get(
+      final response = await _rateLimitedRequest(() => _dio.get<dynamic>(
             '/search',
             queryParameters: {
               'q': searchQuery,
@@ -118,7 +118,7 @@ class GeniusScraper implements MusicScraper {
   @override
   Future<MusicScraperDetail?> getDetail(String externalId) async {
     try {
-      final response = await _rateLimitedRequest(() => _dio.get(
+      final response = await _rateLimitedRequest(() => _dio.get<dynamic>(
             '/songs/$externalId',
           ));
 
@@ -161,7 +161,7 @@ class GeniusScraper implements MusicScraper {
   Future<LyricScraperResult?> getLyrics(String externalId) async {
     try {
       // 首先获取歌曲详情以获取歌词页面 URL
-      final response = await _rateLimitedRequest(() => _dio.get(
+      final response = await _rateLimitedRequest(() => _dio.get<dynamic>(
             '/songs/$externalId',
           ));
 
@@ -181,7 +181,6 @@ class GeniusScraper implements MusicScraper {
       return LyricScraperResult(
         source: type,
         plainText: lyrics,
-        sourceUrl: lyricsUrl,
       );
     } on DioException catch (e) {
       throw _handleDioError(e);
@@ -191,17 +190,17 @@ class GeniusScraper implements MusicScraper {
   /// 从 Genius 网页抓取歌词
   Future<String?> _fetchLyricsFromPage(String url) async {
     try {
-      final response = await _webDio.get(url);
+      final response = await _webDio.get<dynamic>(url);
       final html = response.data.toString();
 
       // 尝试多种方式提取歌词
       // 方式1: 从 data-lyrics-container 属性提取
-      var lyricsMatch = RegExp(r'<div[^>]*data-lyrics-container="true"[^>]*>(.*?)</div>')
+      var lyricsMatch = RegExp('<div[^>]*data-lyrics-container="true"[^>]*>(.*?)</div>')
           .allMatches(html);
 
       if (lyricsMatch.isEmpty) {
         // 方式2: 从 Lyrics__Container 类提取
-        lyricsMatch = RegExp(r'<div[^>]*class="[^"]*Lyrics__Container[^"]*"[^>]*>(.*?)</div>')
+        lyricsMatch = RegExp('<div[^>]*class="[^"]*Lyrics__Container[^"]*"[^>]*>(.*?)</div>')
             .allMatches(html);
       }
 
@@ -213,7 +212,7 @@ class GeniusScraper implements MusicScraper {
       // 清理 HTML 标签，保留换行
       var lyrics = lyricsHtml
           .replaceAll(RegExp(r'<br\s*/?>'), '\n')
-          .replaceAll(RegExp(r'<[^>]+>'), '')
+          .replaceAll(RegExp('<[^>]+>'), '')
           .replaceAll('&amp;', '&')
           .replaceAll('&lt;', '<')
           .replaceAll('&gt;', '>')

@@ -73,7 +73,7 @@ class QQMusicScraper implements MusicScraper {
         searchQuery += ' $album';
       }
 
-      final response = await _rateLimitedRequest(() => _dio.get(
+      final response = await _rateLimitedRequest(() => _dio.get<dynamic>(
             _searchUrl,
             queryParameters: {
               'w': searchQuery,
@@ -94,7 +94,8 @@ class QQMusicScraper implements MusicScraper {
       }
 
       final data = json.decode(dataStr) as Map<String, dynamic>;
-      final songData = data['data']?['song'] as Map<String, dynamic>?;
+      final dataContent = data['data'] as Map<String, dynamic>?;
+      final songData = dataContent?['song'] as Map<String, dynamic>?;
 
       if (songData == null) {
         return MusicScraperSearchResult.empty(type);
@@ -103,7 +104,7 @@ class QQMusicScraper implements MusicScraper {
       final songs = (songData['list'] as List?)?.cast<Map<String, dynamic>>() ?? [];
       final totalNum = songData['totalnum'] as int? ?? 0;
 
-      final items = songs.map((s) => _parseSong(s)).toList();
+      final items = songs.map(_parseSong).toList();
 
       return MusicScraperSearchResult(
         items: items,
@@ -126,7 +127,7 @@ class QQMusicScraper implements MusicScraper {
   @override
   Future<MusicScraperDetail?> getDetail(String externalId) async {
     try {
-      final response = await _rateLimitedRequest(() => _dio.get(
+      final response = await _rateLimitedRequest(() => _dio.get<dynamic>(
             _songDetailUrl,
             queryParameters: {
               'songmid': externalId,
@@ -177,7 +178,7 @@ class QQMusicScraper implements MusicScraper {
   @override
   Future<LyricScraperResult?> getLyrics(String externalId) async {
     try {
-      final response = await _rateLimitedRequest(() => _dio.get(
+      final response = await _rateLimitedRequest(() => _dio.get<dynamic>(
             _lyricUrl,
             queryParameters: {
               'songmid': externalId,
@@ -260,7 +261,7 @@ class QQMusicScraper implements MusicScraper {
     final name = data['songname'] as String? ?? data['name'] as String? ?? '';
 
     // 艺术家
-    final singers = data['singer'] as List? ?? [];
+    final singers = (data['singer'] as List?)?.cast<Map<String, dynamic>>() ?? [];
     final artist = singers
         .map((s) => s['name'] as String? ?? '')
         .where((n) => n.isNotEmpty)
@@ -297,7 +298,7 @@ class QQMusicScraper implements MusicScraper {
     final name = data['name'] as String? ?? '';
 
     // 艺术家
-    final singers = data['singer'] as List? ?? [];
+    final singers = (data['singer'] as List?)?.cast<Map<String, dynamic>>() ?? [];
     final artist = singers
         .map((s) => s['name'] as String? ?? '')
         .where((n) => n.isNotEmpty)

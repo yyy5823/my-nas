@@ -204,7 +204,7 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
       }
 
       // 下载歌词
-      if (_downloadLyrics && _selectedLyrics?.hasLyrics == true) {
+      if (_downloadLyrics && (_selectedLyrics?.hasLyrics ?? false)) {
         await _downloadLyricsToFile(fileSystem, musicDir, baseName);
       }
 
@@ -320,8 +320,7 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
     );
   }
 
-  Widget _buildFileInfo(ThemeData theme, bool isDark) {
-    return Container(
+  Widget _buildFileInfo(ThemeData theme, bool isDark) => Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: isDark
@@ -393,10 +392,8 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
         ],
       ),
     );
-  }
 
-  Widget _buildSearchBar(ThemeData theme, bool isDark) {
-    return Padding(
+  Widget _buildSearchBar(ThemeData theme, bool isDark) => Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
@@ -436,7 +433,6 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
         ],
       ),
     );
-  }
 
   Widget _buildSearchResults(ThemeData theme, bool isDark) {
     if (_isSearching) {
@@ -505,8 +501,7 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
     List<MusicScraperItem> items,
     ThemeData theme,
     bool isDark,
-  ) {
-    return Column(
+  ) => Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // 来源标签
@@ -545,10 +540,8 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
         const SizedBox(height: 16),
       ],
     );
-  }
 
-  Widget _buildSearchResultItem(MusicScraperItem item, ThemeData theme, bool isDark) {
-    return Card(
+  Widget _buildSearchResultItem(MusicScraperItem item, ThemeData theme, bool isDark) => Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
         leading: Container(
@@ -603,7 +596,6 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
         onTap: () => _selectItem(item),
       ),
     );
-  }
 
   Widget _buildDetailView(ThemeData theme, bool isDark) {
     if (_isLoadingDetail) {
@@ -727,7 +719,7 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
                   ],
 
                   // 歌词预览
-                  if (_selectedLyrics?.hasLyrics == true) ...[
+                  if (_selectedLyrics?.hasLyrics ?? false) ...[
                     const SizedBox(height: 16),
                     const Divider(),
                     const SizedBox(height: 8),
@@ -791,8 +783,8 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
                   SwitchListTile(
                     title: const Text('下载歌词'),
                     subtitle: const Text('保存为同名 .lrc 文件'),
-                    value: _downloadLyrics && _selectedLyrics?.hasLyrics == true,
-                    onChanged: _selectedLyrics?.hasLyrics == true
+                    value: _downloadLyrics && (_selectedLyrics?.hasLyrics ?? false),
+                    onChanged: _selectedLyrics?.hasLyrics ?? false
                         ? (value) => setState(() => _downloadLyrics = value)
                         : null,
                     contentPadding: EdgeInsets.zero,
@@ -833,8 +825,7 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
     );
   }
 
-  Widget _buildBottomBar(ThemeData theme, bool isDark) {
-    return SafeArea(
+  Widget _buildBottomBar(ThemeData theme, bool isDark) => SafeArea(
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -884,5 +875,4 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
         ),
       ),
     );
-  }
 }

@@ -85,7 +85,7 @@ class NeteaseScraper implements MusicScraper {
         'offset': offset,
       };
 
-      final response = await _rateLimitedRequest(() => _dio.post(
+      final response = await _rateLimitedRequest(() => _dio.post<dynamic>(
             '$_baseUrl/weapi/cloudsearch/get/web',
             data: _encryptParams(params),
           ));
@@ -99,7 +99,7 @@ class NeteaseScraper implements MusicScraper {
       final songs = (result['songs'] as List?)?.cast<Map<String, dynamic>>() ?? [];
       final songCount = result['songCount'] as int? ?? 0;
 
-      final items = songs.map((s) => _parseSong(s)).toList();
+      final items = songs.map(_parseSong).toList();
 
       return MusicScraperSearchResult(
         items: items,
@@ -120,7 +120,7 @@ class NeteaseScraper implements MusicScraper {
         'c': '[{"id":$externalId}]',
       };
 
-      final response = await _rateLimitedRequest(() => _dio.post(
+      final response = await _rateLimitedRequest(() => _dio.post<dynamic>(
             '$_baseUrl/weapi/v3/song/detail',
             data: _encryptParams(params),
           ));
@@ -172,7 +172,7 @@ class NeteaseScraper implements MusicScraper {
         'kv': -1,
       };
 
-      final response = await _rateLimitedRequest(() => _dio.post(
+      final response = await _rateLimitedRequest(() => _dio.post<dynamic>(
             '$_baseUrl/weapi/song/lyric',
             data: _encryptParams(params),
           ));
@@ -226,7 +226,9 @@ class NeteaseScraper implements MusicScraper {
     final name = data['name'] as String? ?? '';
 
     // 艺术家
-    final artists = data['ar'] as List? ?? data['artists'] as List? ?? [];
+    final artists = (data['ar'] as List?)?.cast<Map<String, dynamic>>() ??
+        (data['artists'] as List?)?.cast<Map<String, dynamic>>() ??
+        [];
     final artist = artists
         .map((a) => a['name'] as String? ?? '')
         .where((n) => n.isNotEmpty)
@@ -258,7 +260,9 @@ class NeteaseScraper implements MusicScraper {
     final name = data['name'] as String? ?? '';
 
     // 艺术家
-    final artists = data['ar'] as List? ?? data['artists'] as List? ?? [];
+    final artists = (data['ar'] as List?)?.cast<Map<String, dynamic>>() ??
+        (data['artists'] as List?)?.cast<Map<String, dynamic>>() ??
+        [];
     final artist = artists
         .map((a) => a['name'] as String? ?? '')
         .where((n) => n.isNotEmpty)

@@ -39,8 +39,7 @@ class FoliateStyle {
     required Color textColor,
     String? fontFamily,
     FoliatePageTurnStyle pageTurnStyle = FoliatePageTurnStyle.slide,
-  }) {
-    return FoliateStyle(
+  }) => FoliateStyle(
       // foliate-js 的 fontSize 是倍数，18px 对应 1.0
       fontSize: fontSize / 18.0,
       fontName: fontFamily ?? 'system',
@@ -54,7 +53,6 @@ class FoliateStyle {
       sideMargin: (horizontalPadding / 4).toInt(), // foliate-js 使用百分比
       pageTurnStyle: pageTurnStyle,
     );
-  }
 
   /// 字体大小倍数 (1.0 = 100%)
   final double fontSize;
@@ -133,8 +131,7 @@ class FoliateStyle {
     int? sideMargin,
     int? maxColumnCount,
     String? customCSS,
-  }) {
-    return FoliateStyle(
+  }) => FoliateStyle(
       fontSize: fontSize ?? this.fontSize,
       fontName: fontName ?? this.fontName,
       fontWeight: fontWeight ?? this.fontWeight,
@@ -155,7 +152,6 @@ class FoliateStyle {
       maxColumnCount: maxColumnCount ?? this.maxColumnCount,
       customCSS: customCSS ?? this.customCSS,
     );
-  }
 
   /// 转换为 JSON 字符串供 JavaScript 使用
   String toJsonString() {
@@ -186,9 +182,7 @@ class FoliateStyle {
     return jsonEncode(map);
   }
 
-  String _colorToHex(Color color) {
-    return '#${color.toARGB32().toRadixString(16).substring(2)}';
-  }
+  String _colorToHex(Color color) => '#${color.toARGB32().toRadixString(16).substring(2)}';
 }
 
 /// 文本对齐方式
@@ -250,12 +244,10 @@ class FoliateReadingRules {
   /// 仿生阅读模式
   final bool bionicReadingMode;
 
-  String toJsonString() {
-    return jsonEncode({
+  String toJsonString() => jsonEncode({
       'convertChineseMode': convertChineseMode.value,
       'bionicReadingMode': bionicReadingMode,
     });
-  }
 }
 
 /// 简繁转换模式

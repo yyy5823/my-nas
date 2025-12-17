@@ -210,3 +210,10 @@ analyze_output.txt
 
 # Example project build directories
 **/example/**/build/
+
+# Chromaprint native build artifacts
+# 编译产物和下载的源码不需要提交
+native/chromaprint/build/
+native/chromaprint/output/
+# iOS 编译的 framework (需要本地构建)
+ios/Frameworks/

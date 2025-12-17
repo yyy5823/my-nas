@@ -326,6 +326,17 @@ class FingerprintResult {
     required this.matches,
   });
 
+  /// 创建空结果
+  factory FingerprintResult.empty({
+    String fingerprint = '',
+    int duration = 0,
+  }) =>
+      FingerprintResult(
+        fingerprint: fingerprint,
+        duration: duration,
+        matches: const [],
+      );
+
   /// Chromaprint 指纹
   final String fingerprint;
 

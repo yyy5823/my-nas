@@ -44,4 +44,21 @@ post_install do |installer|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.5'
     end
   end
+
+  # 为 Runner target 添加 Chromaprint 配置
+  installer.generated_projects.each do |project|
+    project.targets.each do |target|
+      if target.name == 'Runner'
+        target.build_configurations.each do |config|
+          # 添加 Chromaprint 框架搜索路径
+          config.build_settings['FRAMEWORK_SEARCH_PATHS'] ||= ['$(inherited)']
+          config.build_settings['FRAMEWORK_SEARCH_PATHS'] << '$(PROJECT_DIR)/Frameworks'
+
+          # 添加 Swift 编译标志启用 Chromaprint
+          config.build_settings['OTHER_SWIFT_FLAGS'] ||= ['$(inherited)']
+          config.build_settings['OTHER_SWIFT_FLAGS'] << '-DCHROMAPRINT_AVAILABLE'
+        end
+      end
+    end
+  end
 end

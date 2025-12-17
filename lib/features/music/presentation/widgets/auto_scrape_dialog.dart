@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
@@ -5,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/errors/errors.dart';
+import 'package:my_nas/features/music/data/services/fingerprint/fingerprint_service.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_result.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_source.dart';
@@ -53,6 +55,7 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
   MusicScraperDetail? _detail;
   CoverScraperResult? _cover;
   LyricScraperResult? _lyrics;
+  FingerprintResult? _fingerprintResult;
 
   // 下载选项
   bool _downloadCover = true;
@@ -61,10 +64,41 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
   // 错误信息
   String? _errorMessage;
 
+  // 识别方式
+  bool _usedFingerprint = false;
+
   @override
   void initState() {
     super.initState();
     _startScraping();
+  }
+
+  /// 获取本地文件路径
+  ///
+  /// 如果 url 是 file:// 协议则返回本地路径，否则返回 null
+  String? get _localFilePath {
+    final url = widget.music.url;
+    if (url.startsWith('file://')) {
+      return Uri.parse(url).toFilePath();
+    }
+    // 桌面端可能直接使用本地路径
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      if (File(url).existsSync()) {
+        return url;
+      }
+    }
+    return null;
+  }
+
+  /// 检查是否可以使用音纹识别
+  bool get _canUseFingerprint {
+    // 需要本地文件路径且指纹服务可用
+    final localPath = _localFilePath;
+    if (localPath == null || localPath.isEmpty) return false;
+    if (!File(localPath).existsSync()) return false;
+
+    final service = FingerprintService.getInstance();
+    return service?.isAvailable ?? false;
   }
 
   Future<void> _startScraping() async {
@@ -72,57 +106,140 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
       final manager = ref.read(musicScraperManagerProvider);
       await manager.init();
 
-      // 使用现有元数据或从文件名解析
-      final title = widget.music.displayTitle;
-      final artist = widget.music.displayArtist;
+      // 优先尝试音纹识别（如果可用）
+      if (_canUseFingerprint) {
+        final fingerprintSuccess = await _tryFingerprintRecognition();
+        if (fingerprintSuccess) return;
+      }
+
+      // 回退到普通元数据搜索
+      await _searchByMetadata();
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '自动刮削失败');
+      if (mounted) {
+        setState(() {
+          _status = _ScrapeStatus.error;
+          _statusMessage = '刮削失败';
+          _errorMessage = e.toString();
+        });
+      }
+    }
+  }
+
+  /// 尝试音纹识别
+  Future<bool> _tryFingerprintRecognition() async {
+    final localPath = _localFilePath;
+    if (localPath == null) return false;
+
+    setState(() {
+      _statusMessage = '正在生成音频指纹...';
+      _progress = 0.1;
+    });
+
+    try {
+      final service = FingerprintService.getInstance();
+      if (service == null) return false;
+
+      // 生成指纹
+      final fpData = await service.generateFingerprint(localPath);
 
       setState(() {
-        _statusMessage = '搜索 "$title"...';
-        _progress = 0.2;
+        _statusMessage = '正在识别音乐...';
+        _progress = 0.4;
       });
 
-      // 执行综合刮削
-      final result = await manager.scrape(
-        title: title,
-        artist: artist.isNotEmpty ? artist : null,
-        album: widget.music.album,
-        getCover: true,
-        getLyrics: true,
+      // 查询 AcoustID
+      final manager = ref.read(musicScraperManagerProvider);
+      final result = await manager.lookupByFingerprint(
+        fpData.fingerprint,
+        fpData.duration,
       );
 
-      // 检查结果
-      if (result.detail == null && result.cover == null && result.lyrics == null) {
-        setState(() {
-          _status = _ScrapeStatus.notFound;
-          _statusMessage = '未找到匹配结果';
-          if (result.errors.isNotEmpty) {
-            _errorMessage = result.errors.join('\n');
-          }
-        });
-        return;
+      if (result == null || result.isEmpty) {
+        // 音纹识别无结果，回退到元数据搜索
+        return false;
       }
 
       setState(() {
-        _status = _ScrapeStatus.found;
-        _statusMessage = '找到匹配结果';
-        _progress = 1.0;
-        _detail = result.detail;
-        _cover = result.cover;
-        _lyrics = result.lyrics;
+        _statusMessage = '获取详细信息...';
+        _progress = 0.7;
+        _fingerprintResult = result;
+        _usedFingerprint = true;
+      });
 
-        // 如果已有封面，默认不下载
-        if (widget.music.coverUrl != null || widget.music.coverData != null) {
-          _downloadCover = false;
+      // 使用最佳匹配获取详细信息
+      final bestMatch = result.bestMatch;
+      if (bestMatch != null) {
+        final scrapeResult = await manager.scrape(
+          title: bestMatch.title ?? widget.music.displayTitle,
+          artist: bestMatch.artist,
+          album: bestMatch.album,
+          getCover: true,
+          getLyrics: true,
+        );
+
+        _handleScrapeResult(scrapeResult);
+        return true;
+      }
+
+      return false;
+    } on FingerprintException catch (e) {
+      // 指纹服务异常，回退到元数据搜索
+      debugPrint('Fingerprint failed: $e');
+      return false;
+    }
+  }
+
+  /// 通过元数据搜索
+  Future<void> _searchByMetadata() async {
+    final title = widget.music.displayTitle;
+    final artist = widget.music.displayArtist;
+
+    setState(() {
+      _statusMessage = '搜索 "$title"...';
+      _progress = 0.2;
+    });
+
+    final manager = ref.read(musicScraperManagerProvider);
+    final result = await manager.scrape(
+      title: title,
+      artist: artist.isNotEmpty ? artist : null,
+      album: widget.music.album,
+      getCover: true,
+      getLyrics: true,
+    );
+
+    _handleScrapeResult(result);
+  }
+
+  /// 处理刮削结果
+  void _handleScrapeResult(MusicScrapeResult result) {
+    if (!mounted) return;
+
+    if (result.detail == null && result.cover == null && result.lyrics == null) {
+      setState(() {
+        _status = _ScrapeStatus.notFound;
+        _statusMessage = '未找到匹配结果';
+        if (result.errors.isNotEmpty) {
+          _errorMessage = result.errors.join('\n');
         }
       });
-    } on Exception catch (e, st) {
-      AppError.ignore(e, st, '自动刮削失败');
-      setState(() {
-        _status = _ScrapeStatus.error;
-        _statusMessage = '刮削失败';
-        _errorMessage = e.toString();
-      });
+      return;
     }
+
+    setState(() {
+      _status = _ScrapeStatus.found;
+      _statusMessage = _usedFingerprint ? '音纹识别成功' : '找到匹配结果';
+      _progress = 1.0;
+      _detail = result.detail;
+      _cover = result.cover;
+      _lyrics = result.lyrics;
+
+      // 如果已有封面，默认不下载
+      if (widget.music.coverUrl != null || widget.music.coverData != null) {
+        _downloadCover = false;
+      }
+    });
   }
 
   Future<void> _downloadFiles() async {
