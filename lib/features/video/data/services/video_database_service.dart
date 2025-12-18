@@ -1468,35 +1468,25 @@ class VideoDatabaseService {
     return Sqflite.firstIntValue(await _db!.rawQuery(sql, args)) ?? 0;
   }
 
-  /// 获取剧集分组数量（按 tmdbId 或 title 去重）
+  /// 获取剧集分组数量
   ///
-  /// [enabledPaths] 启用的路径列表
+  /// 直接查询聚合表 tv_show_groups，确保与列表显示数量一致
+  ///
+  /// [enabledPaths] 启用的路径列表（暂未实现过滤）
   Future<int> getTvShowGroupCount({
     List<({String sourceId, String path})>? enabledPaths,
   }) async {
     if (!_initialized) await init();
 
-    final pathFilter = _buildPathFilter(enabledPaths);
-
-    // 统计不同的 tmdbId 数量（有 tmdbId 的）
-    final withTmdbIdCount = Sqflite.firstIntValue(await _db!.rawQuery(
+    // 直接查询聚合表的数量，确保与列表一致
+    final count = Sqflite.firstIntValue(await _db!.rawQuery(
       '''
-      SELECT COUNT(DISTINCT $_colTmdbId) FROM $_tableMetadata
-      WHERE $_colCategory = 1 AND $_colTmdbId IS NOT NULL${pathFilter.andWhere}
+      SELECT COUNT(*) FROM $_tableTvShowGroups
+      WHERE $_tvgColRepresentativeRowid IS NOT NULL
       ''',
-      pathFilter.args,
     )) ?? 0;
 
-    // 统计没有 tmdbId 的不同 title 数量
-    final withoutTmdbIdCount = Sqflite.firstIntValue(await _db!.rawQuery(
-      '''
-      SELECT COUNT(DISTINCT LOWER($_colTitle)) FROM $_tableMetadata
-      WHERE $_colCategory = 1 AND $_colTmdbId IS NULL${pathFilter.andWhere}
-      ''',
-      pathFilter.args,
-    )) ?? 0;
-
-    return withTmdbIdCount + withoutTmdbIdCount;
+    return count;
   }
 
   /// 批量获取剧集分组的季集统计（用于懒加载）
@@ -2783,6 +2773,8 @@ class VideoDatabaseService {
   }
 
   /// 获取筛选后的剧集分组数量
+  ///
+  /// 直接查询聚合表 tv_show_groups，确保与列表显示数量一致
   Future<int> getTvShowGroupCountFiltered({
     String? genre,
     int? year,
@@ -2793,34 +2785,25 @@ class VideoDatabaseService {
     final filterArgs = <Object>[];
 
     if (genre != null && genre.isNotEmpty) {
-      filterWhere += ' AND $_colGenres LIKE ?';
+      filterWhere += ' AND $_tvgColGenres LIKE ?';
       filterArgs.add('%$genre%');
     }
 
     if (year != null) {
-      filterWhere += ' AND $_colYear = ?';
+      filterWhere += ' AND $_tvgColYear = ?';
       filterArgs.add(year);
     }
 
-    // 统计不同的 tmdbId 数量（有 tmdbId 的）
-    final withTmdbIdCount = Sqflite.firstIntValue(await _db!.rawQuery(
+    // 直接查询聚合表的数量，确保与列表一致
+    final count = Sqflite.firstIntValue(await _db!.rawQuery(
       '''
-      SELECT COUNT(DISTINCT $_colTmdbId) FROM $_tableMetadata
-      WHERE $_colCategory = 1 AND $_colTmdbId IS NOT NULL$filterWhere
+      SELECT COUNT(*) FROM $_tableTvShowGroups
+      WHERE $_tvgColRepresentativeRowid IS NOT NULL$filterWhere
       ''',
       filterArgs,
     )) ?? 0;
 
-    // 统计没有 tmdbId 的不同 title 数量
-    final withoutTmdbIdCount = Sqflite.firstIntValue(await _db!.rawQuery(
-      '''
-      SELECT COUNT(DISTINCT LOWER($_colTitle)) FROM $_tableMetadata
-      WHERE $_colCategory = 1 AND $_colTmdbId IS NULL$filterWhere
-      ''',
-      filterArgs,
-    )) ?? 0;
-
-    return withTmdbIdCount + withoutTmdbIdCount;
+    return count;
   }
 
   /// 修复现有视频的分类（基于文件名模式）

@@ -381,7 +381,7 @@ class _InfuseStyleCard extends StatelessWidget {
         ),
       );
 
-  Widget _buildPlaceholder() => Container(
+  Widget _buildPlaceholder() => DecoratedBox(
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
