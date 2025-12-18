@@ -43,6 +43,9 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
   // 哈希计算状态
   ({int total, int hashed, int pending, int failed})? _hashCalcStats;
 
+  // 相似照片查找进度
+  ({int processed, int total})? _similarProgress;
+
   // 选中的照片（用于删除）
   final Set<String> _selectedPhotos = {}; // 存储 uniqueKey
 
@@ -142,21 +145,29 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
   Future<void> _findSimilarPhotos() async {
     setState(() {
       _isFindingSimilar = true;
+      _similarProgress = null;
     });
 
     try {
       final groups = await _hashService.findSimilarPhotos(
         threshold: _similarityThreshold,
+        onProgress: (processed, total) {
+          setState(() {
+            _similarProgress = (processed: processed, total: total);
+          });
+        },
       );
 
       setState(() {
         _similarGroups = groups;
         _isFindingSimilar = false;
+        _similarProgress = null;
       });
     } on Exception catch (e) {
       setState(() {
         _errorMessage = '查找相似照片失败: $e';
         _isFindingSimilar = false;
+        _similarProgress = null;
       });
     }
   }
@@ -400,29 +411,52 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
     }
   }
 
-  Widget _buildFindingSimilarCard(bool isDark) => Card(
+  Widget _buildFindingSimilarCard(bool isDark) {
+    final progress = _similarProgress;
+    final hasProgress = progress != null && progress.total > 0;
+
+    return Card(
       margin: const EdgeInsets.all(16),
       color: isDark ? AppColors.darkSurfaceElevated : null,
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
+            Row(
+              children: [
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    '正在分析照片相似度...',
+                    style: context.textTheme.titleMedium,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                '正在分析照片相似度...',
-                style: context.textTheme.titleMedium,
+            if (hasProgress) ...[
+              const SizedBox(height: 12),
+              LinearProgressIndicator(
+                value: progress.processed / progress.total,
               ),
-            ),
+              const SizedBox(height: 8),
+              Text(
+                '已分析 ${progress.processed} / ${progress.total} 个分组',
+                style: context.textTheme.bodySmall?.copyWith(
+                  color: isDark ? Colors.grey[400] : Colors.grey[600],
+                ),
+              ),
+            ],
           ],
         ),
       ),
     );
+  }
 
   Widget _buildSimilarGroup(int index, List<PhotoEntity> photos, bool isDark) {
     final connections = ref.watch(activeConnectionsProvider);

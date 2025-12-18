@@ -719,16 +719,14 @@ class PhotoDatabaseService {
   }
 
   /// 获取没有哈希值的照片（用于增量计算）
-  /// 包括 NULL 和空字符串的情况（计算失败时会返回空字符串）
+  /// 只查询 NULL 值的照片，不包括空字符串（计算失败的照片）
+  /// 计算失败时会保存空字符串 ''，避免重复处理
   Future<List<PhotoEntity>> getPhotosWithoutHash({int limit = 100}) async {
     if (!_initialized) await init();
 
     final results = await _db!.query(
       _tablePhotos,
-      where: '''
-        ($_colFileHash IS NULL OR $_colFileHash = '')
-        OR ($_colPerceptualHash IS NULL OR $_colPerceptualHash = '')
-      ''',
+      where: '$_colFileHash IS NULL OR $_colPerceptualHash IS NULL',
       limit: limit,
     );
 

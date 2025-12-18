@@ -258,29 +258,41 @@ class SmbFileSystem implements NasFileSystem {
   Future<Stream<List<int>>> getFileStream(String path, {FileRange? range}) async {
     // 连接策略：
     // - 有 range 参数 = 视频播放（需要长时间占用）-> 使用专用连接
-    // - 无 range 参数 = 普通文件下载（如海报图片）-> 使用主连接/通用池
+    // - 无 range 参数 = 普通文件下载 -> 使用连接池（支持并发）或主连接
     SmbConnect streamClient;
     void Function()? releaseCallback;
 
     final needsDedicatedConnection = range != null;
+
+    // 标记是否需要关闭连接（专用连接需要关闭，连接池连接只需释放）
+    var shouldCloseOnCleanup = false;
 
     if (connectionPool != null && needsDedicatedConnection) {
       // 视频播放：使用专用连接，避免阻塞其他操作
       final dedicated = await connectionPool!.createDedicatedConnection();
       streamClient = dedicated.client;
       releaseCallback = dedicated.releaseCallback;
+      shouldCloseOnCleanup = true;
+    } else if (connectionPool != null) {
+      // 普通文件下载：使用连接池分配连接（支持并发读取多个文件）
+      streamClient = await connectionPool!.acquire(type: SmbConnectionType.background);
+      releaseCallback = () => connectionPool!.release(streamClient);
+      shouldCloseOnCleanup = false; // 连接池连接只释放，不关闭
     } else {
-      // 普通文件下载：使用主连接
+      // 无连接池：使用主连接（不支持并发）
       streamClient = client;
     }
 
-    /// 清理专用连接
+    /// 清理连接资源
     Future<void> cleanup() async {
       if (releaseCallback != null) {
-        try {
-          await streamClient.close();
-          // ignore: avoid_catches_without_on_clauses
-        } catch (_) {}
+        if (shouldCloseOnCleanup) {
+          // 专用连接：先关闭再释放槽位
+          try {
+            await streamClient.close();
+            // ignore: avoid_catches_without_on_clauses
+          } catch (_) {}
+        }
         releaseCallback();
       }
     }

@@ -72,21 +72,22 @@ class PhotoHashService {
         ));
 
         // 并行处理这批照片（限制并发数）
-        final futures = <Future<PhotoEntity?>>[];
+        final futures = <Future<PhotoEntity>>[];
         for (final photo in photos) {
           if (_shouldCancel) break;
           futures.add(_processPhoto(photo, fileSystem));
         }
 
         final results = await Future.wait(futures);
-        final successfulPhotos = results.whereType<PhotoEntity>().toList();
 
-        if (successfulPhotos.isNotEmpty) {
-          await _db.updateHashBatch(successfulPhotos);
-          processed += successfulPhotos.length;
-        }
+        // 更新数据库（包括成功和失败的都更新，失败的会标记为空字符串）
+        await _db.updateHashBatch(results);
 
-        failed += results.where((r) => r == null).length;
+        // 统计成功和失败的数量
+        final successCount = results.where((r) => r.fileHash?.isNotEmpty ?? false).length;
+        final failCount = results.length - successCount;
+        processed += successCount;
+        failed += failCount;
 
         _progressController.add(HashProgress(
           processed: processed,
@@ -125,7 +126,8 @@ class PhotoHashService {
   }
 
   /// 处理单张照片
-  Future<PhotoEntity?> _processPhoto(
+  /// 返回更新后的 PhotoEntity，失败时返回带有空字符串哈希的实体（标记为已处理）
+  Future<PhotoEntity> _processPhoto(
     PhotoEntity photo,
     NasFileSystem fileSystem,
   ) async {
@@ -139,27 +141,29 @@ class PhotoHashService {
       final bytes = Uint8List.fromList(chunks.expand((c) => c).toList());
       if (bytes.isEmpty) {
         logger.w('PhotoHashService: 文件内容为空 - ${photo.filePath}');
-        return null;
+        // 标记为已处理（失败），使用空字符串避免重复查询
+        return photo.copyWith(fileHash: '', perceptualHash: '');
       }
 
       // 计算 MD5 哈希
       final fileHash = _computeMD5(bytes);
 
-      // 计算感知哈希（空字符串表示失败，转为 null 以便后续重试）
-      final perceptualHashResult = await compute(_computePerceptualHash, bytes);
-      final perceptualHash = perceptualHashResult.isEmpty ? null : perceptualHashResult;
+      // 计算感知哈希
+      // 注意：失败时保留空字符串 '' 而不是 null，避免被 getPhotosWithoutHash 重复查询
+      final perceptualHash = await compute(_computePerceptualHash, bytes);
 
-      if (perceptualHash == null) {
+      if (perceptualHash.isEmpty) {
         logger.w('PhotoHashService: pHash 计算失败 - ${photo.filePath}');
       }
 
       return photo.copyWith(
         fileHash: fileHash,
-        perceptualHash: perceptualHash,
+        perceptualHash: perceptualHash.isEmpty ? '' : perceptualHash,
       );
     } on Exception catch (e, st) {
       AppError.ignore(e, st, '单张照片处理失败: ${photo.filePath}');
-      return null;
+      // 标记为已处理（失败），使用空字符串避免重复查询
+      return photo.copyWith(fileHash: '', perceptualHash: '');
     }
   }
 

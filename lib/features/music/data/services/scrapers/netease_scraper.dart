@@ -90,6 +90,10 @@ class NeteaseScraper implements MusicScraper {
             data: _encryptParams(params),
           ));
 
+      // 检查响应数据是否有效
+      if (response.data == null || response.data is! Map<String, dynamic>) {
+        return MusicScraperSearchResult.empty(type);
+      }
       final data = response.data as Map<String, dynamic>;
       final result = data['result'] as Map<String, dynamic>?;
       if (result == null) {
@@ -125,6 +129,10 @@ class NeteaseScraper implements MusicScraper {
             data: _encryptParams(params),
           ));
 
+      // 检查响应数据是否有效
+      if (response.data == null || response.data is! Map<String, dynamic>) {
+        return null;
+      }
       final data = response.data as Map<String, dynamic>;
       final songs = (data['songs'] as List?)?.cast<Map<String, dynamic>>() ?? [];
 
@@ -177,6 +185,10 @@ class NeteaseScraper implements MusicScraper {
             data: _encryptParams(params),
           ));
 
+      // 检查响应数据是否有效
+      if (response.data == null || response.data is! Map<String, dynamic>) {
+        return null;
+      }
       final data = response.data as Map<String, dynamic>;
 
       // 原文歌词
