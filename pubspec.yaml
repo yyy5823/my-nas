@@ -1,7 +1,7 @@
 name: my_nas
 description: "跨平台 NAS 客户端 - 统一管理你的 NAS 资源"
 publish_to: 'none'
-version: 0.2.6+1
+version: 0.2.7+1
 
 environment:
   sdk: ^3.10.1
@@ -97,6 +97,7 @@ dependencies:
   image: ^4.3.0
   flutter_native_splash: ^2.4.4
   sqflite_common_ffi: ^2.4.0
+  sqlite3_flutter_libs: ^0.5.24  # Provides SQLite native libraries for desktop
 
   # Live Activities (Dynamic Island)
   live_activities: ^2.3.0
