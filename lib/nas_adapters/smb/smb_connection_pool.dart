@@ -58,7 +58,8 @@ class _PooledConnection {
         onTimeout: () => throw TimeoutException('连接检查超时'),
       );
       return true;
-    } on Exception catch (e, st) {
+    // ignore: avoid_catches_without_on_clauses
+    } catch (e, st) {
       logger.w('SMB 连接健康检查失败', e,  st);
       return false;
     }
@@ -199,7 +200,8 @@ class SmbConnectionPool {
     _connections.remove(conn);
     try {
       await conn.client.close();
-    } on Exception catch (e, st) {
+    // ignore: avoid_catches_without_on_clauses
+    } catch (e, st) {
       logger.w('SMB Pool: 关闭连接失败', e, st);
     }
   }
@@ -313,7 +315,8 @@ class SmbConnectionPool {
       for (final conn in _connections) {
         try {
           await conn.client.close();
-        } on Exception catch (e, st) {
+        // ignore: avoid_catches_without_on_clauses
+        } catch (e, st) {
           AppError.ignore(e, StackTrace.current, 'SMB Pool: 关闭连接失败, $e $st');
         }
       }

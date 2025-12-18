@@ -1059,20 +1059,29 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
   /// 构建高分推荐列表，剧集使用 TvShowGroup 的完整信息
   ///
   /// 对于剧集，会使用 TvShowGroup 的海报、评分等信息替换单集信息
+  /// 电影和剧集都会进行去重，避免重复显示
+  /// 同一电影的多个版本会合并，选择最高清晰度版本
   List<VideoMetadata> _buildTopRatedWithGroups(
     List<VideoMetadata> videos,
     Map<String, TvShowGroup> tvShowGroups,
     {int limit = 20}
   ) {
-    final result = <VideoMetadata>[];
     final seenTvShows = <String>{};
+    // 电影按 key 存储最佳版本（最高清晰度）
+    final movieBestVersions = <String, VideoMetadata>{};
+    final tvShowResults = <VideoMetadata>[];
 
     for (final video in videos) {
-      if (result.length >= limit) break;
-
-      // 电影直接添加
+      // 电影：选择最高清晰度版本
       if (video.category == MediaCategory.movie) {
-        result.add(video);
+        final movieKey = video.tmdbId != null
+            ? 'tmdb_${video.tmdbId}'
+            : video.uniqueKey;
+
+        final existing = movieBestVersions[movieKey];
+        if (existing == null || _compareResolution(video, existing) > 0) {
+          movieBestVersions[movieKey] = video;
+        }
         continue;
       }
 
@@ -1086,51 +1095,123 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       // 使用 TvShowGroup 的信息构建代表元数据
       final group = tvShowGroups[groupKey];
       if (group != null) {
-        // 使用分组的海报、评分等信息
-        result.add(_buildGroupRepresentative(group));
+        tvShowResults.add(_buildGroupRepresentative(group));
       } else {
-        result.add(video);
+        tvShowResults.add(video);
       }
     }
 
-    return result;
+    // 合并电影和剧集，按原始顺序（评分）排序
+    final allResults = <VideoMetadata>[
+      ...movieBestVersions.values,
+      ...tvShowResults,
+    ]..sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
+
+    return allResults.take(limit).toList();
   }
 
   /// 构建最近添加列表，剧集使用 TvShowGroup 的完整信息
+  /// 电影和剧集都会进行去重，避免重复显示
+  /// 同一电影的多个版本会合并，选择最高清晰度版本
+  /// 剧集保留最新添加那集的时间信息用于排序
   List<VideoMetadata> _buildRecentWithGroups(
     List<VideoMetadata> videos,
     Map<String, TvShowGroup> tvShowGroups,
     {int limit = 20}
   ) {
-    final result = <VideoMetadata>[];
-    final seenTvShows = <String>{};
+    // 电影按 key 存储最佳版本（最高清晰度）
+    final movieBestVersions = <String, VideoMetadata>{};
+    // 剧集按 groupKey 存储：TvShowGroup 信息 + 最新添加那集的时间
+    final tvShowBestVersions = <String, VideoMetadata>{};
 
     for (final video in videos) {
-      if (result.length >= limit) break;
-
-      // 电影直接添加
+      // 电影：选择最高清晰度版本
       if (video.category == MediaCategory.movie) {
-        result.add(video);
+        final movieKey = video.tmdbId != null
+            ? 'tmdb_${video.tmdbId}'
+            : video.uniqueKey;
+
+        final existing = movieBestVersions[movieKey];
+        if (existing == null || _compareResolution(video, existing) > 0) {
+          movieBestVersions[movieKey] = video;
+        }
         continue;
       }
 
-      // 剧集需要去重
+      // 剧集：去重，但保留最新添加那集的时间用于排序
       final groupKey = _getTvShowGroupKey(video);
-      if (seenTvShows.contains(groupKey)) {
-        continue;
-      }
-      seenTvShows.add(groupKey);
+      final existing = tvShowBestVersions[groupKey];
 
-      // 使用 TvShowGroup 的信息
-      final group = tvShowGroups[groupKey];
-      if (group != null) {
-        result.add(_buildGroupRepresentative(group));
+      // 如果还没有记录，或者当前这集更新，则更新记录
+      if (existing == null) {
+        // 使用 TvShowGroup 的信息，但保留当前 video 的 fileModifiedTime
+        final group = tvShowGroups[groupKey];
+        if (group != null) {
+          tvShowBestVersions[groupKey] = _buildGroupRepresentativeWithTime(
+            group,
+            video.fileModifiedTime,
+          );
+        } else {
+          tvShowBestVersions[groupKey] = video;
+        }
       } else {
-        result.add(video);
+        // 比较文件修改时间，保留更新的
+        final existingTime = existing.fileModifiedTime ?? DateTime(1970);
+        final currentTime = video.fileModifiedTime ?? DateTime(1970);
+        if (currentTime.isAfter(existingTime)) {
+          final group = tvShowGroups[groupKey];
+          if (group != null) {
+            tvShowBestVersions[groupKey] = _buildGroupRepresentativeWithTime(
+              group,
+              video.fileModifiedTime,
+            );
+          } else {
+            tvShowBestVersions[groupKey] = video;
+          }
+        }
       }
     }
 
-    return result;
+    // 合并电影和剧集，按文件修改时间排序（最近添加）
+    final allResults = <VideoMetadata>[
+      ...movieBestVersions.values,
+      ...tvShowBestVersions.values,
+    ]..sort((a, b) {
+      final timeA = a.fileModifiedTime ?? DateTime(1970);
+      final timeB = b.fileModifiedTime ?? DateTime(1970);
+      return timeB.compareTo(timeA);
+    });
+
+    return allResults.take(limit).toList();
+  }
+
+  /// 比较两个视频的分辨率
+  ///
+  /// 返回正数表示 a 的分辨率更高，负数表示 b 更高，0 表示相同
+  int _compareResolution(VideoMetadata a, VideoMetadata b) {
+    const resolutionOrder = <String, int>{
+      '4K': 100,
+      '2160P': 100,
+      '2160p': 100,
+      '1080P': 80,
+      '1080p': 80,
+      '720P': 60,
+      '720p': 60,
+      '480P': 40,
+      '480p': 40,
+    };
+
+    final orderA = resolutionOrder[a.resolution] ?? 0;
+    final orderB = resolutionOrder[b.resolution] ?? 0;
+
+    if (orderA != orderB) {
+      return orderA - orderB;
+    }
+
+    // 分辨率相同时，选择文件更大的（通常码率更高）
+    final sizeA = a.fileSize ?? 0;
+    final sizeB = b.fileSize ?? 0;
+    return sizeA.compareTo(sizeB);
   }
 
   /// 从 TvShowGroup 构建代表性的 VideoMetadata
@@ -1166,32 +1247,55 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     );
   }
 
+  /// 从 TvShowGroup 构建代表性的 VideoMetadata，但使用指定的 fileModifiedTime
+  /// 用于最近添加列表，保留最新添加那集的时间用于排序
+  VideoMetadata _buildGroupRepresentativeWithTime(
+    TvShowGroup group,
+    DateTime? fileModifiedTime,
+  ) {
+    final rep = group.representative;
+    return VideoMetadata(
+      sourceId: rep.sourceId,
+      filePath: rep.filePath,
+      fileName: rep.fileName,
+      category: MediaCategory.tvShow,
+      scrapeStatus: rep.scrapeStatus,
+      tmdbId: group.tmdbId ?? rep.tmdbId,
+      title: group.title,
+      originalTitle: rep.originalTitle,
+      year: group.year ?? rep.year,
+      overview: group.overview ?? rep.overview,
+      posterUrl: group.displayPosterUrl,
+      backdropUrl: group.backdropUrl ?? rep.backdropUrl,
+      rating: group.rating ?? rep.rating,
+      runtime: rep.runtime,
+      genres: group.genres ?? rep.genres,
+      director: rep.director,
+      cast: rep.cast,
+      seasonNumber: rep.seasonNumber,
+      episodeNumber: rep.episodeNumber,
+      episodeTitle: rep.episodeTitle,
+      lastUpdated: rep.lastUpdated,
+      thumbnailUrl: rep.thumbnailUrl,
+      generatedThumbnailUrl: rep.generatedThumbnailUrl,
+      fileSize: rep.fileSize,
+      fileModifiedTime: fileModifiedTime ?? rep.fileModifiedTime, // 使用传入的时间
+    );
+  }
+
   /// 获取剧集的分组键
+  /// 与 tvShowGroups 的键生成逻辑保持一致
   String _getTvShowGroupKey(VideoMetadata video) {
     // 优先使用 tmdbId
     if (video.tmdbId != null) {
       return 'tmdb_${video.tmdbId}';
     }
-    // 否则使用标准化标题
-    return _normalizeTitle(video.title ?? video.fileName);
-  }
-
-  /// 标准化标题（移除季集信息）
-  String _normalizeTitle(String title) {
-    var normalized = title.toLowerCase().trim();
-    // 移除季集标记
-    normalized = normalized.replaceAll(
-      RegExp(r'[第\s]*(\d+|[一二三四五六七八九十]+)[季部期]'),
-      '',
-    );
-    normalized = normalized.replaceAll(
-      RegExp(r'season\s*\d+', caseSensitive: false),
-      '',
-    );
-    normalized = normalized.replaceAll(RegExp(r's\d+', caseSensitive: false), '');
-    normalized = normalized.replaceAll(RegExp(r'[\(\[\s]\d{4}[\)\]\s]?'), '');
-    normalized = normalized.replaceAll(RegExp(r'\s+'), ' ').trim();
-    return 'title_$normalized';
+    // 其次使用 showDirectory
+    if (video.showDirectory != null) {
+      return 'dir_${video.showDirectory}';
+    }
+    // 最后使用标题
+    return 'title_${video.title?.toLowerCase() ?? video.fileName.toLowerCase()}';
   }
 
   /// 从媒体库移除视频（只删除数据库记录，不删除源文件）
@@ -2032,29 +2136,77 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     final movieCollections = state.movieCollections;
     final topRated = state.topRatedMovies;
 
+    // 构建分类 slivers
+    final slivers = _buildCategorySlivers(
+      context: context,
+      ref: ref,
+      visibleSections: visibleSections,
+      state: state,
+      isDark: isDark,
+      isDesktop: isDesktop,
+      recentVideos: recentVideos,
+      allRecentVideos: allRecentVideos,
+      movies: movies,
+      tvShowGroups: tvShowGroups,
+      movieCollections: movieCollections,
+      topRated: topRated,
+      categorySettings: categorySettings,
+    );
+
     return CustomScrollView(
       slivers: [
-        // 根据分类设置动态渲染各分类
-        for (final section in visibleSections)
-          ..._buildCategorySliver(
-            context: context,
-            ref: ref,
-            section: section,
-            state: state,
-            isDark: isDark,
-            isDesktop: isDesktop,
-            recentVideos: recentVideos,
-            allRecentVideos: allRecentVideos,
-            movies: movies,
-            tvShowGroups: tvShowGroups,
-            movieCollections: movieCollections,
-            topRated: topRated,
-          ),
-
+        ...slivers,
         // 底部留白
         const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
       ],
     );
+  }
+
+  /// 构建所有分类 Slivers
+  /// - browse 分类：显示为卡片行，只包含用户选择的筛选条件
+  /// - 动态分类：不显示为独立行（其筛选条件用于 browse 分类的卡片）
+  List<Widget> _buildCategorySlivers({
+    required BuildContext context,
+    required WidgetRef ref,
+    required List<VideoCategorySectionConfig> visibleSections,
+    required VideoListLoaded state,
+    required bool isDark,
+    required bool isDesktop,
+    required List<VideoMetadata> recentVideos,
+    required List<VideoMetadata> allRecentVideos,
+    required List<VideoMetadata> movies,
+    required List<TvShowGroup> tvShowGroups,
+    required List<MovieCollection> movieCollections,
+    required List<VideoMetadata> topRated,
+    required VideoCategorySettings categorySettings,
+  }) {
+    final slivers = <Widget>[];
+
+    for (final section in visibleSections) {
+      // 跳过动态分类（它们的筛选条件用于 browse 分类的卡片，不单独显示）
+      if (section.category.isDynamic) {
+        continue;
+      }
+
+      // 构建该分类的 sliver
+      slivers.addAll(_buildCategorySliver(
+        context: context,
+        ref: ref,
+        section: section,
+        state: state,
+        isDark: isDark,
+        isDesktop: isDesktop,
+        recentVideos: recentVideos,
+        allRecentVideos: allRecentVideos,
+        movies: movies,
+        tvShowGroups: tvShowGroups,
+        movieCollections: movieCollections,
+        topRated: topRated,
+        categorySettings: categorySettings,
+      ));
+    }
+
+    return slivers;
   }
 
   /// 根据分类配置构建对应的 Sliver
@@ -2071,6 +2223,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     required List<TvShowGroup> tvShowGroups,
     required List<MovieCollection> movieCollections,
     required List<VideoMetadata> topRated,
+    required VideoCategorySettings categorySettings,
   }) {
     switch (section.category) {
       case VideoHomeCategory.heroBanner:
@@ -2274,12 +2427,18 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
         ];
 
       case VideoHomeCategory.browseMovieGenres:
-        // 浏览电影类型（卡片式）
+        // 电影-类型（卡片式），只显示用户选择的类型
+        final movieGenreFilters = categorySettings
+            .getFiltersForCategory(VideoHomeCategory.byMovieGenre)
+            .whereType<String>()
+            .toList();
+        if (movieGenreFilters.isEmpty) return [];
         return [
           SliverToBoxAdapter(
             child: CategoryBrowseCardsRow(
               category: section.category,
               isDark: isDark,
+              selectedFilters: movieGenreFilters,
               onCategoryTap: (filter) => _showFilteredVideosPage(
                 context,
                 ref,
@@ -2291,12 +2450,18 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
         ];
 
       case VideoHomeCategory.browseMovieRegions:
-        // 浏览电影地区（卡片式）
+        // 电影-地区（卡片式），只显示用户选择的地区
+        final movieRegionFilters = categorySettings
+            .getFiltersForCategory(VideoHomeCategory.byMovieRegion)
+            .whereType<String>()
+            .toList();
+        if (movieRegionFilters.isEmpty) return [];
         return [
           SliverToBoxAdapter(
             child: CategoryBrowseCardsRow(
               category: section.category,
               isDark: isDark,
+              selectedFilters: movieRegionFilters,
               onCategoryTap: (filter) => _showFilteredVideosPage(
                 context,
                 ref,
@@ -2308,12 +2473,18 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
         ];
 
       case VideoHomeCategory.browseTvGenres:
-        // 浏览电视剧类型（卡片式）
+        // 剧集-类型（卡片式），只显示用户选择的类型
+        final tvGenreFilters = categorySettings
+            .getFiltersForCategory(VideoHomeCategory.byTvGenre)
+            .whereType<String>()
+            .toList();
+        if (tvGenreFilters.isEmpty) return [];
         return [
           SliverToBoxAdapter(
             child: CategoryBrowseCardsRow(
               category: section.category,
               isDark: isDark,
+              selectedFilters: tvGenreFilters,
               onCategoryTap: (filter) => _showFilteredVideosPage(
                 context,
                 ref,
@@ -2325,12 +2496,18 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
         ];
 
       case VideoHomeCategory.browseTvRegions:
-        // 浏览电视剧地区（卡片式）
+        // 剧集-地区（卡片式），只显示用户选择的地区
+        final tvRegionFilters = categorySettings
+            .getFiltersForCategory(VideoHomeCategory.byTvRegion)
+            .whereType<String>()
+            .toList();
+        if (tvRegionFilters.isEmpty) return [];
         return [
           SliverToBoxAdapter(
             child: CategoryBrowseCardsRow(
               category: section.category,
               isDark: isDark,
+              selectedFilters: tvRegionFilters,
               onCategoryTap: (filter) => _showFilteredVideosPage(
                 context,
                 ref,

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/services/media_scan_progress_service.dart';
+import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/book/data/services/book_database_service.dart';
 import 'package:my_nas/features/book/presentation/pages/book_list_page.dart';
 import 'package:my_nas/features/comic/data/services/comic_library_cache_service.dart';
@@ -302,9 +303,21 @@ class _MediaTypeTab extends ConsumerWidget {
           connections: connections,
         ).then((_) async {
           await ref.read(videoListProvider.notifier).reloadFromCache();
-          // 扫描完成后自动触发后台刮削
-          if (connections.values.any((c) => c.status == SourceStatus.connected)) {
-            unawaited(VideoScannerService().scrapeMetadata(connections: connections));
+          // 扫描完成后自动触发后台刮削（使用最新连接状态）
+          final currentConnections = ref.read(activeConnectionsProvider);
+          final hasConnected = currentConnections.values
+              .any((c) => c.status == SourceStatus.connected);
+          logger.d(
+            'VideoScan: 扫描完成，准备刮削 - '
+            '连接数: ${currentConnections.length}, '
+            '有可用连接: $hasConnected',
+          );
+          if (hasConnected) {
+            unawaited(
+              VideoScannerService().scrapeMetadata(connections: currentConnections),
+            );
+          } else {
+            logger.w('VideoScan: 没有可用连接，跳过刮削');
           }
         }));
       case MediaType.music:

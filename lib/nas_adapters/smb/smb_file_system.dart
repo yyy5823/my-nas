@@ -50,7 +50,8 @@ class SmbFileSystem implements NasFileSystem {
     // 尝试使用主连接
     try {
       return await _listDirectoryWithClient(client, path);
-    } on Exception catch (e) {
+    // 使用通用 catch 捕获所有类型的异常（包括 SMB 库抛出的 String 异常）
+    } catch (e) {
       // 如果是连接错误且有连接池，尝试用新连接重试
       if (_isConnectionError(e) && connectionPool != null) {
         logger.w('SmbFileSystem: 主连接断开，使用连接池重试');
@@ -72,7 +73,7 @@ class SmbFileSystem implements NasFileSystem {
       final folder = await smbClient.file(path);
       final files = await smbClient.listFiles(folder);
       return files.map(_toFileItem).toList();
-    } on Exception catch (e, st) {
+    } catch (e, st) {
       AppError.handle(e, st, 'SmbFileSystem.listDirectory');
       rethrow;
     }
@@ -101,7 +102,8 @@ class SmbFileSystem implements NasFileSystem {
       for (final path in paths) {
         try {
           results[path] = await listDirectory(path);
-        } on Exception catch (e) {
+        // ignore: avoid_catches_without_on_clauses
+        } catch (e) {
           logger.w('SmbFileSystem: 列出目录失败: $path - $e');
         }
       }
@@ -126,7 +128,8 @@ class SmbFileSystem implements NasFileSystem {
             type: SmbConnectionType.general,
           );
           return MapEntry(path, files);
-        } on Exception catch (e) {
+        // ignore: avoid_catches_without_on_clauses
+        } catch (e) {
           logger.w('SmbFileSystem: 并行列出目录失败: $path - $e');
           return MapEntry(path, <FileItem>[]);
         }
@@ -238,7 +241,7 @@ class SmbFileSystem implements NasFileSystem {
     try {
       final file = await client.file(path);
       return _toFileItem(file);
-    } on Exception catch (e) {
+    } catch (e) {
       // 如果是连接错误且有连接池，尝试用新连接重试
       if (_isConnectionError(e) && connectionPool != null) {
         logger.w('SmbFileSystem: getFileInfo 主连接断开，使用连接池重试');
@@ -324,7 +327,8 @@ class SmbFileSystem implements NasFileSystem {
                 if (chunk.isEmpty) break;
               }
               await controller.close();
-            } on Exception catch (e) {
+            // ignore: avoid_catches_without_on_clauses
+            } catch (e) {
               controller.addError(e);
               await controller.close();
             } finally {
@@ -334,7 +338,7 @@ class SmbFileSystem implements NasFileSystem {
           }());
 
           return controller.stream;
-        } on Exception {
+        } catch (_) {
           await raf.close();
           rethrow;
         }
@@ -446,11 +450,13 @@ class SmbFileSystem implements NasFileSystem {
   @override
   Future<void> writeFile(String remotePath, List<int> data) async {
     // 先尝试删除已存在的文件（如果存在）
+    // 使用通用 catch 捕获所有类型的异常（包括 String 异常）
     try {
       final existingFile = await client.file(remotePath);
       await client.delete(existingFile);
-    } on Exception catch (_) {
-      // 文件不存在，忽略错误
+    // ignore: avoid_catches_without_on_clauses
+    } catch (_) {
+      // 文件不存在或删除失败，忽略错误继续写入
     }
 
     // 创建远程文件
@@ -464,7 +470,8 @@ class SmbFileSystem implements NasFileSystem {
       writer.add(data);
       await writer.flush();
       await writer.close();
-    } on Exception {
+    // ignore: avoid_catches_without_on_clauses
+    } catch (e) {
       await writer.close();
       rethrow;
     }

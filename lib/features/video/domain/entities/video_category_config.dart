@@ -87,13 +87,13 @@ extension VideoHomeCategoryExtension on VideoHomeCategory {
       case VideoHomeCategory.byTvRegion:
         return '电视剧地区';
       case VideoHomeCategory.browseMovieGenres:
-        return '浏览电影类型';
+        return '电影-类型';
       case VideoHomeCategory.browseMovieRegions:
-        return '浏览电影地区';
+        return '电影-地区';
       case VideoHomeCategory.browseTvGenres:
-        return '浏览电视剧类型';
+        return '剧集-类型';
       case VideoHomeCategory.browseTvRegions:
-        return '浏览电视剧地区';
+        return '剧集-地区';
     }
   }
 
@@ -373,6 +373,27 @@ class VideoCategorySettings {
             category: VideoHomeCategory.others,
             order: 8,
             visible: false, // 默认不显示
+          ),
+          // 四个分类浏览入口（默认不显示，需要用户选择筛选条件后开启）
+          VideoCategorySectionConfig(
+            category: VideoHomeCategory.browseMovieGenres,
+            order: 9,
+            visible: false,
+          ),
+          VideoCategorySectionConfig(
+            category: VideoHomeCategory.browseMovieRegions,
+            order: 10,
+            visible: false,
+          ),
+          VideoCategorySectionConfig(
+            category: VideoHomeCategory.browseTvGenres,
+            order: 11,
+            visible: false,
+          ),
+          VideoCategorySectionConfig(
+            category: VideoHomeCategory.browseTvRegions,
+            order: 12,
+            visible: false,
           ),
         ],
       );

@@ -4,6 +4,7 @@ import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/features/video/data/services/tmdb_service.dart';
+import 'package:my_nas/features/video/data/services/video_database_service.dart';
 import 'package:my_nas/features/video/data/services/video_favorites_service.dart';
 import 'package:my_nas/features/video/domain/entities/video_item.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
@@ -260,7 +261,12 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
 
   /// 构建本地剧集选择器（无 TMDB 数据时使用）
   Widget _buildLocalEpisodeSection() {
-    final showDirectory = _selectedMetadata.showDirectory;
+    // 尝试获取 showDirectory，如果没有设置，从文件路径提取
+    var showDirectory = _selectedMetadata.showDirectory;
+    if (showDirectory == null || showDirectory.isEmpty) {
+      showDirectory = VideoDatabaseService.extractShowDirectory(_selectedMetadata.filePath);
+    }
+
     if (showDirectory == null || showDirectory.isEmpty) {
       return const SizedBox.shrink();
     }
@@ -694,7 +700,8 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     }
 
     // 电视剧（无 TMDB）：显示基于 showDirectory 的剧集统计
-    if (_isTvShow && _selectedMetadata.showDirectory != null) {
+    // _buildLocalTvShowFileInfo 内部会尝试从文件路径提取 showDirectory
+    if (_isTvShow) {
       return _buildLocalTvShowFileInfo(isDark);
     }
 
@@ -825,7 +832,16 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
 
   /// 本地电视剧文件信息统计（无 TMDB 数据时使用）
   Widget _buildLocalTvShowFileInfo(bool isDark) {
-    final showDirectory = _selectedMetadata.showDirectory!;
+    // 尝试获取 showDirectory，如果没有设置，从文件路径提取
+    var showDirectory = _selectedMetadata.showDirectory;
+    if (showDirectory == null || showDirectory.isEmpty) {
+      showDirectory = VideoDatabaseService.extractShowDirectory(_selectedMetadata.filePath);
+    }
+
+    if (showDirectory == null || showDirectory.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
     final episodesAsync = ref.watch(localEpisodesByShowDirProvider(showDirectory));
 
     return Container(
@@ -898,7 +914,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
                       isDark,
                     ),
                   _buildInfoRow('总大小', totalSizeText, isDark),
-                  _buildInfoRow('目录', showDirectory, isDark),
+                  _buildInfoRow('目录', showDirectory!, isDark),
                   _buildInfoRow('来源', widget.sourceId, isDark),
                 ],
               );

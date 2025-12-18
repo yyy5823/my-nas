@@ -7,6 +7,7 @@ import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/domain/entities/source_form_config.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/features/sources/presentation/widgets/two_fa_sheet.dart';
+import 'package:my_nas/service_adapters/nastool/api/nastool_api.dart';
 
 /// 表单模式
 enum SourceFormMode {
@@ -643,6 +644,12 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
         return;
       }
 
+      // 服务类源使用专门的测试方法
+      if (source.isServiceSource) {
+        await _testServiceSourceConnection(source);
+        return;
+      }
+
       final password = _formValues['password'] as String? ?? '';
 
       final sourceManager = ref.read(sourceManagerProvider);
@@ -704,6 +711,61 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
           _isTesting = false;
         });
       }
+    }
+  }
+
+  /// 服务类源专用的连接测试
+  Future<void> _testServiceSourceConnection(SourceEntity source) async {
+    try {
+      final connected = await _validateServiceSourceConnection(source);
+
+      if (!mounted) return;
+
+      if (connected) {
+        _showSuccessSnackBar('连接测试成功');
+      } else {
+        _showErrorSnackBar('连接失败，请检查认证信息');
+      }
+    } on Exception catch (e) {
+      if (!mounted) return;
+      _showErrorSnackBar('测试失败: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isTesting = false;
+        });
+      }
+    }
+  }
+
+  /// 验证服务类源连接
+  Future<bool> _validateServiceSourceConnection(SourceEntity source) async {
+    switch (source.type) {
+      case SourceType.nastool:
+        final apiToken = _formValues['apiToken'] as String? ?? '';
+        final api = NasToolApi(
+          baseUrl: source.baseUrl,
+          apiToken: apiToken,
+        );
+        try {
+          return await api.validateConnection();
+        } finally {
+          api.dispose();
+        }
+      // TODO: 添加其他服务类源的验证逻辑
+      case SourceType.qbittorrent:
+      case SourceType.transmission:
+      case SourceType.aria2:
+      case SourceType.trakt:
+      case SourceType.moviepilot:
+      case SourceType.jellyfin:
+      case SourceType.emby:
+      case SourceType.plex:
+        // 暂时返回 false，待各服务 API 实现后添加验证逻辑
+        // ignore: only_throw_errors
+        throw '${source.type.displayName} 连接验证尚未实现';
+      default:
+        return false;
     }
   }
 
@@ -815,6 +877,12 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
   Future<void> _submitNewSource(SourceEntity source, String password) async {
     final sourceManager = ref.read(sourceManagerProvider);
 
+    // 服务类源使用专门的处理逻辑
+    if (source.isServiceSource) {
+      await _submitServiceSource(source);
+      return;
+    }
+
     // 先尝试连接验证（不保存凭证）
     final connection = await sourceManager.connect(
       source,
@@ -850,6 +918,35 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
         // 其他状态
         await sourceManager.disconnect(source.id);
         _showErrorSnackBar('连接状态异常');
+    }
+  }
+
+  /// 提交服务类源
+  Future<void> _submitServiceSource(SourceEntity source) async {
+    final sourcesNotifier = ref.read(sourcesProvider.notifier);
+
+    try {
+      // 验证连接
+      final connected = await _validateServiceSourceConnection(source);
+
+      if (!mounted) return;
+
+      if (connected) {
+        // 连接成功，保存源
+        await sourcesNotifier.addSource(source);
+        if (mounted) {
+          _showSuccessAndPop(source, '已添加 ${source.displayName}');
+        }
+      } else {
+        _showErrorSnackBar('连接失败，请检查认证信息');
+      }
+    } on String catch (message) {
+      // 不支持的源类型
+      if (!mounted) return;
+      _showErrorSnackBar(message);
+    } on Exception catch (e) {
+      if (!mounted) return;
+      _showErrorSnackBar('连接失败: $e');
     }
   }
 
@@ -890,6 +987,8 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
       case TwoFAResultType.verified:
         // 验证成功，保存源和凭证
         await _saveSourceAndCredential(source, password, result.rememberDevice);
+        // 刷新连接状态（verify2FA 已经更新了底层状态为 connected）
+        ref.read(activeConnectionsProvider.notifier).refresh();
         if (mounted) {
           _showSuccessAndPop(source, '已连接到 ${source.displayName}');
         }

@@ -935,24 +935,67 @@ class VideoDatabaseService {
   }
 
   /// 根据 showDirectory 获取剧集映射（用于无 TMDB 的剧集）
+  ///
+  /// 返回 `Map<seasonNumber, Map<episodeNumber, VideoMetadata>>`
+  /// - 对于有 seasonNumber/episodeNumber 的剧集，使用原有值
+  /// - 对于没有 seasonNumber/episodeNumber 的剧集，默认分配到第 1 季，按文件名排序生成集号
   Future<Map<int, Map<int, VideoMetadata>>> getEpisodesByShowDirectory(
       String showDirectory) async {
     if (!_initialized) await init();
 
+    // 获取该目录下所有视频（包括有和没有季集号的）
     final results = await _db!.query(
       _tableMetadata,
-      where:
-          '$_colShowDirectory = ? AND $_colSeasonNumber IS NOT NULL AND $_colEpisodeNumber IS NOT NULL',
+      where: '$_colShowDirectory = ?',
       whereArgs: [showDirectory],
-      orderBy: '$_colSeasonNumber, $_colEpisodeNumber',
+      orderBy: '$_colSeasonNumber, $_colEpisodeNumber, $_colFileName',
     );
 
     final episodeMap = <int, Map<int, VideoMetadata>>{};
+
+    // 先处理有季集号的剧集
+    final withSeasonEpisode = <VideoMetadata>[];
+    final withoutSeasonEpisode = <VideoMetadata>[];
+
     for (final row in results) {
       final metadata = _fromRow(row);
       if (metadata.seasonNumber != null && metadata.episodeNumber != null) {
+        withSeasonEpisode.add(metadata);
+      } else {
+        withoutSeasonEpisode.add(metadata);
+      }
+    }
+
+    // 添加有季集号的剧集
+    for (final metadata in withSeasonEpisode) {
+      episodeMap
+          .putIfAbsent(metadata.seasonNumber!, () => {})[metadata.episodeNumber!] = metadata;
+    }
+
+    // 如果有无季集号的剧集，将它们添加到第 1 季（或找一个不冲突的季号）
+    if (withoutSeasonEpisode.isNotEmpty) {
+      // 按文件名排序
+      withoutSeasonEpisode.sort((a, b) => a.fileName.compareTo(b.fileName));
+
+      // 找一个不会冲突的起始集号
+      final season1Episodes = episodeMap[1] ?? {};
+      var nextEpisodeNumber = season1Episodes.isEmpty
+          ? 1
+          : (season1Episodes.keys.reduce((a, b) => a > b ? a : b) + 1);
+
+      // 如果第 1 季已经有剧集，为没有季集号的剧集创建一个特殊季（-1 表示"未分类"）
+      // 但为了 UI 兼容性，还是使用正数季号
+      final targetSeason = season1Episodes.isEmpty ? 1 : 1;
+
+      for (final metadata in withoutSeasonEpisode) {
+        // 创建一个带有默认季集号的副本
+        final updatedMetadata = metadata.copyWith(
+          seasonNumber: targetSeason,
+          episodeNumber: nextEpisodeNumber,
+        );
         episodeMap
-            .putIfAbsent(metadata.seasonNumber!, () => {})[metadata.episodeNumber!] = metadata;
+            .putIfAbsent(targetSeason, () => {})[nextEpisodeNumber] = updatedMetadata;
+        nextEpisodeNumber++;
       }
     }
 
@@ -1061,7 +1104,10 @@ class VideoDatabaseService {
     return results.map(_fromRow).toList();
   }
 
-  /// 获取最近更新的元数据（分页）
+  /// 获取最近添加的视频（分页）
+  ///
+  /// 按文件修改时间排序，越新的文件排在越前面
+  /// 只返回电影和剧集，不包含未识别的视频
   ///
   /// [enabledPaths] 启用的路径列表，如果提供则只返回这些路径下的视频
   Future<List<VideoMetadata>> getRecentlyUpdated({
@@ -1073,18 +1119,21 @@ class VideoDatabaseService {
 
     final pathFilter = _buildPathFilter(enabledPaths);
 
+    // 只获取电影(0)和剧集(1)，按文件修改时间降序排序
+    const categoryFilter = '$_colCategory IN (0, 1)';
+    final orderBy = '$_colFileModifiedTime DESC NULLS LAST';
+
     if (pathFilter.where.isEmpty) {
-      final results = await _db!.query(
-        _tableMetadata,
-        orderBy: '$_colLastUpdated DESC',
-        limit: limit,
-        offset: offset,
+      final results = await _db!.rawQuery(
+        'SELECT * FROM $_tableMetadata WHERE $categoryFilter ORDER BY $orderBy LIMIT ? OFFSET ?',
+        [limit, offset],
       );
       return results.map(_fromRow).toList();
     }
 
+    // 路径过滤已包含 WHERE，需要用 AND 连接
     final results = await _db!.rawQuery(
-      'SELECT * FROM $_tableMetadata${pathFilter.where} ORDER BY $_colLastUpdated DESC LIMIT ? OFFSET ?',
+      'SELECT * FROM $_tableMetadata${pathFilter.where} AND $categoryFilter ORDER BY $orderBy LIMIT ? OFFSET ?',
       [...pathFilter.args, limit, offset],
     );
 

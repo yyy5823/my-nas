@@ -210,7 +210,9 @@ class _ManualScraperPageState extends ConsumerState<ManualScraperPage> {
         );
         Navigator.pop(context, true); // 返回 true 表示已刮削
       }
-    } on Exception catch (e, st) {
+    // 使用通用 catch 捕获所有类型的异常（包括 SMB 库抛出的 String 异常）
+    // ignore: avoid_catches_without_on_clauses
+    } catch (e, st) {
       AppError.handle(e, st, 'ManualScraperPage._confirmAndScrape');
       setState(() => _isScraping = false);
       if (mounted) {

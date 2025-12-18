@@ -130,13 +130,16 @@ class SmbAdapter implements NasAdapter {
           model: 'SMB/CIFS Server',
         ),
       );
-    } on Exception catch (e, stackTrace) {
+    // 使用通用 catch 捕获所有类型的异常（包括 SMB 库抛出的 String 异常）
+    // ignore: avoid_catches_without_on_clauses
+    } catch (e, stackTrace) {
       logger.e('SmbAdapter: 连接失败', e, stackTrace);
       _connected = false;
-      return ConnectionFailure(error: _parseError(e));
+      return ConnectionFailure(error: _parseErrorAny(e));
     }
   }
 
+  // ignore: unused_element
   String _parseError(Exception e) => _parseErrorAny(e);
 
   String _parseErrorAny(dynamic e) {
@@ -229,7 +232,8 @@ class SmbAdapter implements NasAdapter {
       await _connectionPool?.dispose();
       // 再关闭主连接
       await _client?.close();
-    } on Exception catch (e) {
+    // ignore: avoid_catches_without_on_clauses
+    } catch (e) {
       logger.w('SmbAdapter: 断开连接时出错', e);
     }
 
