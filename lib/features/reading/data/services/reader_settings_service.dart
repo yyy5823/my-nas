@@ -4,6 +4,15 @@ import 'package:flutter/material.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:my_nas/core/utils/logger.dart';
 
+/// EPUB 阅读器引擎
+enum EpubReaderEngine {
+  /// 原生引擎 (flutter_epub_viewer) - 功能简单但稳定
+  native,
+
+  /// Foliate 引擎 - 功能丰富，与 MOBI/AZW3 共享设置
+  foliate,
+}
+
 /// 图书翻页模式
 enum BookPageTurnMode {
   scroll, // 滚动模式
@@ -42,6 +51,7 @@ class BookReaderSettings {
     this.volumeKeyTurn = false,
     this.showProgress = true,
     this.fontFamily,
+    this.epubEngine = EpubReaderEngine.foliate,
   });
 
   factory BookReaderSettings.fromJson(Map<String, dynamic> json) =>
@@ -60,6 +70,7 @@ class BookReaderSettings {
         volumeKeyTurn: json['volumeKeyTurn'] as bool? ?? false,
         showProgress: json['showProgress'] as bool? ?? true,
         fontFamily: json['fontFamily'] as String?,
+        epubEngine: EpubReaderEngine.values[(json['epubEngine'] as int?) ?? 1],
       );
 
   final double fontSize;
@@ -74,6 +85,7 @@ class BookReaderSettings {
   final bool volumeKeyTurn;
   final bool showProgress;
   final String? fontFamily;
+  final EpubReaderEngine epubEngine;
 
   BookReaderSettings copyWith({
     double? fontSize,
@@ -88,6 +100,7 @@ class BookReaderSettings {
     bool? volumeKeyTurn,
     bool? showProgress,
     String? fontFamily,
+    EpubReaderEngine? epubEngine,
   }) =>
       BookReaderSettings(
         fontSize: fontSize ?? this.fontSize,
@@ -102,6 +115,7 @@ class BookReaderSettings {
         volumeKeyTurn: volumeKeyTurn ?? this.volumeKeyTurn,
         showProgress: showProgress ?? this.showProgress,
         fontFamily: fontFamily ?? this.fontFamily,
+        epubEngine: epubEngine ?? this.epubEngine,
       );
 
   Map<String, dynamic> toJson() => {
@@ -117,6 +131,7 @@ class BookReaderSettings {
         'volumeKeyTurn': volumeKeyTurn,
         'showProgress': showProgress,
         'fontFamily': fontFamily,
+        'epubEngine': epubEngine.index,
       };
 }
 

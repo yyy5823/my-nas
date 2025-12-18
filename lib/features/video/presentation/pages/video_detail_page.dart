@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/features/video/data/services/tmdb_service.dart';
@@ -172,7 +173,19 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     );
   }
 
-  Widget _buildMainContent(BuildContext context, bool isDark, bool isWide) => Padding(
+  Widget _buildMainContent(BuildContext context, bool isDark, bool isWide) {
+    // 调试日志
+    logger..i('VideoDetailPage: _buildMainContent called')
+    ..i('VideoDetailPage:   title=${_selectedMetadata.displayTitle}')
+    ..i('VideoDetailPage:   category=${_selectedMetadata.category}')
+    ..i('VideoDetailPage:   isTvShow=$_isTvShow, hasTmdbId=$_hasTmdbId')
+    ..i('VideoDetailPage:   tmdbId=${_selectedMetadata.tmdbId}')
+    ..i('VideoDetailPage:   showDirectory=${_selectedMetadata.showDirectory}')
+    ..i('VideoDetailPage:   seasonNumber=${_selectedMetadata.seasonNumber}')
+    ..i('VideoDetailPage:   episodeNumber=${_selectedMetadata.episodeNumber}')
+    ..i('VideoDetailPage:   filePath=${_selectedMetadata.filePath}');
+
+    return Padding(
       padding: EdgeInsets.symmetric(
         horizontal: isWide ? 24 : 0,
         vertical: 16,
@@ -221,34 +234,54 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         ],
       ),
     );
+  }
 
   Widget _buildEpisodeSection() {
-    final tvDetailAsync = ref.watch(tvDetailProvider(widget.metadata.tmdbId!));
-    final localEpisodesAsync = ref.watch(localEpisodeFilesProvider(widget.metadata.tmdbId!));
+    final tmdbId = widget.metadata.tmdbId!;
+    final tvDetailAsync = ref.watch(tvDetailProvider(tmdbId));
+    final localEpisodesAsync = ref.watch(localEpisodeFilesProvider(tmdbId));
     final allProgressAsync = ref.watch(allVideoProgressProvider);
+
+    // 调试日志
+    logger.d('VideoDetailPage: _buildEpisodeSection called, tmdbId=$tmdbId');
+
+    // 先获取本地剧集数据和播放进度（不论 TMDB 是否成功都需要）
+    final localEpisodes = localEpisodesAsync.valueOrNull ?? {};
+    final allProgress = allProgressAsync.valueOrNull ?? {};
+
+    // 将进度转换为 Map<filePath, double>
+    final episodeProgress = <String, double>{};
+    for (final entry in allProgress.entries) {
+      episodeProgress[entry.key] = entry.value.progressPercent;
+    }
 
     return tvDetailAsync.when(
       loading: () => const SizedBox(
         height: 200,
         child: Center(child: CircularProgressIndicator()),
       ),
-      error: (_, _) => const SizedBox.shrink(),
+      error: (e, st) {
+        logger.e('VideoDetailPage: tvDetailProvider error', e, st);
+        // TMDB 加载失败时，降级使用本地数据
+        return _buildFallbackLocalEpisodes(localEpisodes, episodeProgress);
+      },
       data: (tvDetail) {
         if (tvDetail == null || tvDetail.seasons.isEmpty) {
-          return const SizedBox.shrink();
+          logger.w('VideoDetailPage: tvDetail is null or has no seasons, tvDetail=${tvDetail?.name}, seasonsCount=${tvDetail?.seasons.length}');
+          // TMDB 数据为空时，降级使用本地数据
+          return _buildFallbackLocalEpisodes(localEpisodes, episodeProgress);
         }
 
-        final localEpisodes = localEpisodesAsync.valueOrNull ?? {};
-        final allProgress = allProgressAsync.valueOrNull ?? {};
+        logger.d('VideoDetailPage: tvDetail loaded, name=${tvDetail.name}, seasons=${tvDetail.seasons.length}');
 
-        // 将进度转换为 Map<filePath, double>
-        final episodeProgress = <String, double>{};
-        for (final entry in allProgress.entries) {
-          episodeProgress[entry.key] = entry.value.progressPercent;
+        // 调试：打印本地剧集数据
+        logger.d('VideoDetailPage: localEpisodes count=${localEpisodes.length}, seasons=${localEpisodes.keys.toList()}');
+        for (final seasonEntry in localEpisodes.entries) {
+          logger.d('VideoDetailPage:   Season ${seasonEntry.key}: ${seasonEntry.value.length} episodes');
         }
 
         return EpisodeSelector(
-          tvId: widget.metadata.tmdbId!,
+          tvId: tmdbId,
           seasons: tvDetail.seasons,
           initialSeason: widget.metadata.seasonNumber,
           localEpisodes: localEpisodes,
@@ -259,17 +292,49 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     );
   }
 
+  /// 构建降级的本地剧集选择器（当 TMDB 失败时使用）
+  Widget _buildFallbackLocalEpisodes(
+    Map<int, Map<int, VideoMetadata>> localEpisodes,
+    Map<String, double> episodeProgress,
+  ) {
+    logger.d('VideoDetailPage: _buildFallbackLocalEpisodes called, localEpisodes=${localEpisodes.length} seasons');
+
+    if (localEpisodes.isEmpty) {
+      logger.w('VideoDetailPage: no local episodes available for fallback');
+      return const SizedBox.shrink();
+    }
+
+    logger.i('VideoDetailPage: using LocalEpisodeSelector as fallback');
+    return LocalEpisodeSelector(
+      episodes: localEpisodes,
+      initialSeason: widget.metadata.seasonNumber,
+      episodeProgress: episodeProgress,
+      onEpisodePlay: _playLocalEpisode,
+    );
+  }
+
   /// 构建本地剧集选择器（无 TMDB 数据时使用）
   Widget _buildLocalEpisodeSection() {
     // 尝试获取 showDirectory，如果没有设置，从文件路径提取
     var showDirectory = _selectedMetadata.showDirectory;
+    final extractedShowDir = VideoDatabaseService.extractShowDirectory(_selectedMetadata.filePath);
+
+    logger..d('VideoDetailPage: _buildLocalEpisodeSection called')
+    ..d('VideoDetailPage:   metadata.showDirectory=$showDirectory')
+    ..d('VideoDetailPage:   extractedShowDir=$extractedShowDir')
+    ..d('VideoDetailPage:   filePath=${_selectedMetadata.filePath}')
+    ..d('VideoDetailPage:   seasonNumber=${_selectedMetadata.seasonNumber}, episodeNumber=${_selectedMetadata.episodeNumber}');
+
     if (showDirectory == null || showDirectory.isEmpty) {
-      showDirectory = VideoDatabaseService.extractShowDirectory(_selectedMetadata.filePath);
+      showDirectory = extractedShowDir;
     }
 
     if (showDirectory == null || showDirectory.isEmpty) {
+      logger.w('VideoDetailPage: showDirectory is null or empty, cannot load local episodes');
       return const SizedBox.shrink();
     }
+
+    logger.d('VideoDetailPage: using showDirectory=$showDirectory');
 
     final localEpisodesAsync = ref.watch(localEpisodesByShowDirProvider(showDirectory));
     final allProgressAsync = ref.watch(allVideoProgressProvider);
@@ -279,9 +344,18 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         height: 120,
         child: Center(child: CircularProgressIndicator()),
       ),
-      error: (_, _) => const SizedBox.shrink(),
+      error: (e, st) {
+        logger.e('VideoDetailPage: localEpisodesByShowDirProvider error', e, st);
+        return const SizedBox.shrink();
+      },
       data: (episodes) {
+        logger.d('VideoDetailPage: localEpisodes loaded, seasons=${episodes.keys.toList()}');
+        for (final seasonEntry in episodes.entries) {
+          logger.d('VideoDetailPage:   Season ${seasonEntry.key}: ${seasonEntry.value.length} episodes, episodeNums=${seasonEntry.value.keys.toList()}');
+        }
+
         if (episodes.isEmpty) {
+          logger.w('VideoDetailPage: localEpisodes is empty for showDirectory=$showDirectory');
           return const SizedBox.shrink();
         }
 

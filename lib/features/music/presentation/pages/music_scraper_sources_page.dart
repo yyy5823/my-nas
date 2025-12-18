@@ -53,6 +53,13 @@ class _MusicScraperSourcesPageState extends ConsumerState<MusicScraperSourcesPag
       if (config != null) {
         config.apiKeyController.text = source.apiKey ?? '';
         config.cookieController.text = source.cookie ?? '';
+        // Music Tag Web 特殊配置
+        if (source.type == MusicScraperType.musicTagWeb) {
+          config.serverUrlController.text = source.extraConfig?['serverUrl'] as String? ?? '';
+          config.usernameController.text = source.extraConfig?['username'] as String? ?? '';
+          config.passwordController.text = source.extraConfig?['password'] as String? ?? '';
+          config.preferredSource = source.extraConfig?['preferredSource'] as String? ?? 'netease';
+        }
       }
     }
   }
@@ -226,6 +233,18 @@ class _MusicScraperSourcesPageState extends ConsumerState<MusicScraperSourcesPag
   /// 添加刮削源
   Future<void> _addSource(MusicScraperType type, {int? priority}) async {
     final config = _configs[type]!;
+
+    // Music Tag Web 需要额外配置
+    Map<String, dynamic>? extraConfig;
+    if (type == MusicScraperType.musicTagWeb) {
+      extraConfig = {
+        'serverUrl': config.serverUrlController.text,
+        'username': config.usernameController.text.isEmpty ? null : config.usernameController.text,
+        'password': config.passwordController.text.isEmpty ? null : config.passwordController.text,
+        'preferredSource': config.preferredSource,
+      };
+    }
+
     final source = MusicScraperSourceEntity(
       name: '',
       type: type,
@@ -233,6 +252,7 @@ class _MusicScraperSourcesPageState extends ConsumerState<MusicScraperSourcesPag
       priority: priority ?? 999,
       apiKey: config.apiKeyController.text.isEmpty ? null : config.apiKeyController.text,
       cookie: config.cookieController.text.isEmpty ? null : config.cookieController.text,
+      extraConfig: extraConfig,
     );
     await ref.read(musicScraperSourcesProvider.notifier).addSource(source);
   }
@@ -240,10 +260,23 @@ class _MusicScraperSourcesPageState extends ConsumerState<MusicScraperSourcesPag
   /// 保存配置
   Future<void> _saveConfig(MusicScraperType type, MusicScraperSourceEntity? source, _MusicScraperConfig config) async {
     if (source != null) {
+      // Music Tag Web 需要额外配置
+      var extraConfig = source.extraConfig;
+      if (type == MusicScraperType.musicTagWeb) {
+        extraConfig = {
+          ...?source.extraConfig,
+          'serverUrl': config.serverUrlController.text,
+          'username': config.usernameController.text.isEmpty ? null : config.usernameController.text,
+          'password': config.passwordController.text.isEmpty ? null : config.passwordController.text,
+          'preferredSource': config.preferredSource,
+        };
+      }
+
       // 更新现有源
       final updatedSource = source.copyWith(
         apiKey: config.apiKeyController.text.isEmpty ? null : config.apiKeyController.text,
         cookie: config.cookieController.text.isEmpty ? null : config.cookieController.text,
+        extraConfig: extraConfig,
       );
       await ref.read(musicScraperSourcesProvider.notifier).updateSource(updatedSource);
     } else {
@@ -358,10 +391,17 @@ class _MusicScraperSourcesPageState extends ConsumerState<MusicScraperSourcesPag
 class _MusicScraperConfig {
   final apiKeyController = TextEditingController();
   final cookieController = TextEditingController();
+  final serverUrlController = TextEditingController();
+  final usernameController = TextEditingController();
+  final passwordController = TextEditingController();
+  String preferredSource = 'netease';
 
   void dispose() {
     apiKeyController.dispose();
     cookieController.dispose();
+    serverUrlController.dispose();
+    usernameController.dispose();
+    passwordController.dispose();
   }
 }
 
@@ -393,7 +433,7 @@ class _MusicScraperTypeCard extends StatelessWidget {
   final VoidCallback? onTest;
 
   bool get _isEnabled => source?.isEnabled ?? false;
-  bool get _needsConfig => type.requiresApiKey || type.supportsCookie;
+  bool get _needsConfig => type.requiresApiKey || type.supportsCookie || type.requiresServerUrl;
   bool get _isImplemented => MusicScraperFactory.isImplemented(type);
 
   @override
@@ -569,6 +609,74 @@ class _MusicScraperTypeCard extends StatelessWidget {
                         ),
                       ),
                       maxLines: 2,
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+
+                  // Music Tag Web 配置
+                  if (type.requiresServerUrl) ...[
+                    TextField(
+                      controller: config.serverUrlController,
+                      decoration: const InputDecoration(
+                        labelText: '服务器地址',
+                        hintText: '例如: http://192.168.1.100:8002',
+                        helperText: 'Music Tag Web 服务器的地址和端口',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: config.usernameController,
+                            decoration: const InputDecoration(
+                              labelText: '用户名（可选）',
+                              hintText: '默认: admin',
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: TextField(
+                            controller: config.passwordController,
+                            decoration: const InputDecoration(
+                              labelText: '密码（可选）',
+                              hintText: '服务器密码',
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                            ),
+                            obscureText: true,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    StatefulBuilder(
+                      builder: (context, setState) => DropdownButtonFormField<String>(
+                        initialValue: config.preferredSource,
+                        decoration: const InputDecoration(
+                          labelText: '首选音乐源',
+                          helperText: '搜索时优先使用的音乐平台',
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
+                        items: const [
+                          DropdownMenuItem(value: 'netease', child: Text('网易云音乐')),
+                          DropdownMenuItem(value: 'qmusic', child: Text('QQ音乐')),
+                          DropdownMenuItem(value: 'kugou', child: Text('酷狗音乐')),
+                          DropdownMenuItem(value: 'kuwo', child: Text('酷我音乐')),
+                          DropdownMenuItem(value: 'migu', child: Text('咪咕音乐')),
+                        ],
+                        onChanged: (value) {
+                          if (value != null) {
+                            setState(() => config.preferredSource = value);
+                          }
+                        },
+                      ),
                     ),
                     const SizedBox(height: 16),
                   ],

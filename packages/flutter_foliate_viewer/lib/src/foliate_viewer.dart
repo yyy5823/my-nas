@@ -282,6 +282,11 @@ $bundleJs
 
         window.importing = false;
 
+        // 设置模块级变量（book.js 中的 style, readingRules, importing）
+        if (typeof window.setFoliateVars === 'function') {
+          window.setFoliateVars(window.style, window.readingRules, window.importing);
+        }
+
         // 使用 foliateOpen 函数打开书籍（book.js 暴露的全局函数）
         if (typeof window.foliateOpen === 'function') {
           await window.foliateOpen(file, initialCfi || null);
@@ -560,6 +565,11 @@ $bundleJs
             }
 
             window.importing = false;
+
+            // 设置模块级变量（book.js 中的 style, readingRules, importing）
+            if (typeof window.setFoliateVars === 'function') {
+              window.setFoliateVars(window.style, window.readingRules, window.importing);
+            }
 
             // 使用 foliateOpen 函数打开书籍
             if (typeof window.foliateOpen === 'function') {

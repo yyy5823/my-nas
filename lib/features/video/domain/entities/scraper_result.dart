@@ -111,6 +111,7 @@ class ScraperMovieDetail {
     this.voteCount,
     this.runtime,
     this.genres,
+    this.countries,
     this.director,
     this.cast,
     this.tagline,
@@ -158,6 +159,9 @@ class ScraperMovieDetail {
   /// 类型列表
   final List<String>? genres;
 
+  /// 制片国家/地区列表
+  final List<String>? countries;
+
   /// 导演
   final String? director;
 
@@ -188,6 +192,9 @@ class ScraperMovieDetail {
   /// 类型文本（以 / 分隔）
   String get genresText => genres?.join(' / ') ?? '';
 
+  /// 国家/地区文本（以 , 分隔）
+  String get countriesText => countries?.join(', ') ?? '';
+
   /// 演员文本（以 , 分隔）
   String get castText => cast?.join(', ') ?? '';
 
@@ -215,6 +222,7 @@ class ScraperMovieDetail {
       ..rating = rating
       ..runtime = runtime
       ..genres = genresText
+      ..countries = countriesText
       ..director = director
       ..cast = castText
       ..localizedTitles = localizedTitles

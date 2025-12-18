@@ -91,6 +91,7 @@ class MusicScraperFormConfig {
         MusicScraperType.neteaseMusic => _getNeteaseConfig(),
         MusicScraperType.qqMusic => _getQQMusicConfig(),
         MusicScraperType.genius => _getGeniusConfig(),
+        MusicScraperType.musicTagWeb => _getMusicTagWebConfig(),
       };
 
   // === MusicBrainz 配置 ===
@@ -314,18 +315,55 @@ class MusicScraperFormConfig {
         ],
       );
 
+  // === Music Tag Web 配置 ===
+  static MusicScraperFormConfig _getMusicTagWebConfig() =>
+      const MusicScraperFormConfig(
+        type: MusicScraperType.musicTagWeb,
+        sections: [
+          MusicScraperFormSection(
+            title: '基本信息',
+            fields: [
+              MusicScraperFormField(
+                key: 'name',
+                label: '名称',
+                placeholder: 'Music Tag Web',
+                required: false,
+                helpText: '自定义名称，留空使用默认名称',
+              ),
+            ],
+          ),
+          MusicScraperFormSection(
+            title: '服务器配置',
+            description: '自托管的音乐刮削服务，支持元数据、封面和歌词',
+            fields: [
+              MusicScraperFormField(
+                key: 'serverUrl',
+                label: '服务器地址',
+                type: MusicScraperFormFieldType.url,
+                placeholder: 'http://192.168.1.100:8080',
+                helpText: 'Music Tag Web 服务器的完整地址',
+              ),
+            ],
+          ),
+        ],
+      );
+
   /// 从表单数据创建刮削源实体
   static MusicScraperSourceEntity createSourceFromFormData(
     MusicScraperType type,
     Map<String, dynamic> formData,
   ) {
     final name = formData['name'] as String?;
+    final serverUrl = formData['serverUrl'] as String?;
 
     return MusicScraperSourceEntity(
       name: (name?.isNotEmpty ?? false) ? name! : type.displayName,
       type: type,
       apiKey: formData['apiKey'] as String?,
       cookie: formData['cookie'] as String?,
+      extraConfig: serverUrl != null && serverUrl.isNotEmpty
+          ? {'serverUrl': serverUrl}
+          : null,
       isEnabled: true,
       priority: 0, // 将由 manager 设置
     );
@@ -338,5 +376,6 @@ class MusicScraperFormConfig {
         'name': source.name != source.type.displayName ? source.name : '',
         'apiKey': source.apiKey ?? '',
         'cookie': source.cookie ?? '',
+        'serverUrl': source.serverUrl ?? '',
       };
 }

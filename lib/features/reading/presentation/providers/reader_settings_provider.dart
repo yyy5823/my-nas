@@ -89,6 +89,11 @@ class BookReaderSettingsNotifier extends StateNotifier<BookReaderSettings> {
     state = state.copyWith(fontFamily: fontFamily);
     _save();
   }
+
+  void setEpubEngine(EpubReaderEngine engine) {
+    state = state.copyWith(epubEngine: engine);
+    _save();
+  }
 }
 
 /// 漫画阅读设置 Notifier

@@ -914,6 +914,8 @@ class VideoDatabaseService {
       int tmdbId) async {
     if (!_initialized) await init();
 
+    logger.d('VideoDatabaseService: getEpisodesByTmdbId called, tmdbId=$tmdbId');
+
     final results = await _db!.query(
       _tableMetadata,
       where:
@@ -921,6 +923,8 @@ class VideoDatabaseService {
       whereArgs: [tmdbId],
       orderBy: '$_colSeasonNumber, $_colEpisodeNumber',
     );
+
+    logger.d('VideoDatabaseService: query returned ${results.length} rows for tmdbId=$tmdbId');
 
     final episodeMap = <int, Map<int, VideoMetadata>>{};
     for (final row in results) {
@@ -931,6 +935,7 @@ class VideoDatabaseService {
       }
     }
 
+    logger.d('VideoDatabaseService: returning episodeMap with ${episodeMap.length} seasons for tmdbId=$tmdbId');
     return episodeMap;
   }
 
@@ -943,6 +948,8 @@ class VideoDatabaseService {
       String showDirectory) async {
     if (!_initialized) await init();
 
+    logger.d('VideoDatabaseService: getEpisodesByShowDirectory called, showDirectory=$showDirectory');
+
     // 获取该目录下所有视频（包括有和没有季集号的）
     final results = await _db!.query(
       _tableMetadata,
@@ -950,6 +957,8 @@ class VideoDatabaseService {
       whereArgs: [showDirectory],
       orderBy: '$_colSeasonNumber, $_colEpisodeNumber, $_colFileName',
     );
+
+    logger.d('VideoDatabaseService: query returned ${results.length} rows');
 
     final episodeMap = <int, Map<int, VideoMetadata>>{};
 
@@ -965,6 +974,8 @@ class VideoDatabaseService {
         withoutSeasonEpisode.add(metadata);
       }
     }
+
+    logger.d('VideoDatabaseService: withSeasonEpisode=${withSeasonEpisode.length}, withoutSeasonEpisode=${withoutSeasonEpisode.length}');
 
     // 添加有季集号的剧集
     for (final metadata in withSeasonEpisode) {
@@ -999,6 +1010,7 @@ class VideoDatabaseService {
       }
     }
 
+    logger.d('VideoDatabaseService: returning episodeMap with ${episodeMap.length} seasons');
     return episodeMap;
   }
 
@@ -1794,6 +1806,7 @@ class VideoDatabaseService {
     String country, {
     int limit = 30,
     int offset = 0,
+    VideoSortOption sortOption = VideoSortOption.ratingDesc,
     List<({String sourceId, String path})>? enabledPaths,
   }) async {
     if (!_initialized) await init();
@@ -1812,7 +1825,7 @@ class VideoDatabaseService {
       _tableMetadata,
       where: where,
       whereArgs: whereArgs,
-      orderBy: '$_colRating DESC NULLS LAST',
+      orderBy: _buildOrderBy(sortOption),
       limit: limit,
       offset: offset,
     );
@@ -1825,11 +1838,13 @@ class VideoDatabaseService {
     String country, {
     int limit = 30,
     int offset = 0,
+    VideoSortOption sortOption = VideoSortOption.ratingDesc,
     List<({String sourceId, String path})>? enabledPaths,
   }) async {
     if (!_initialized) await init();
 
     final pathFilter = _buildPathFilter(enabledPaths);
+    final orderBy = _buildOrderBy(sortOption);
 
     // 使用子查询获取每个剧集的代表性记录
     final sql = '''
@@ -1845,7 +1860,7 @@ class VideoDatabaseService {
           ORDER BY m2.$_colRating DESC NULLS LAST, m2.$_colSeasonNumber ASC, m2.$_colEpisodeNumber ASC
           LIMIT 1
         )
-      ORDER BY m1.$_colRating DESC NULLS LAST
+      ORDER BY $orderBy
       LIMIT $limit OFFSET $offset
     ''';
 
@@ -1884,6 +1899,7 @@ class VideoDatabaseService {
     String genre, {
     int limit = 30,
     int offset = 0,
+    VideoSortOption sortOption = VideoSortOption.ratingDesc,
     List<({String sourceId, String path})>? enabledPaths,
   }) async {
     if (!_initialized) await init();
@@ -1902,7 +1918,7 @@ class VideoDatabaseService {
       _tableMetadata,
       where: where,
       whereArgs: whereArgs,
-      orderBy: '$_colRating DESC',
+      orderBy: _buildOrderBy(sortOption),
       limit: limit,
       offset: offset,
     );
@@ -1918,11 +1934,13 @@ class VideoDatabaseService {
     String genre, {
     int limit = 30,
     int offset = 0,
+    VideoSortOption sortOption = VideoSortOption.ratingDesc,
     List<({String sourceId, String path})>? enabledPaths,
   }) async {
     if (!_initialized) await init();
 
     final pathFilter = _buildPathFilter(enabledPaths);
+    final orderBy = _buildOrderBy(sortOption);
 
     // 使用子查询获取每个剧集的代表性记录
     // 注意：子查询也需要应用路径过滤，否则可能返回其他源的记录导致 rowid 不匹配
@@ -1939,7 +1957,7 @@ class VideoDatabaseService {
           ORDER BY m2.$_colRating DESC NULLS LAST, m2.$_colSeasonNumber ASC, m2.$_colEpisodeNumber ASC
           LIMIT 1
         )
-      ORDER BY $_colRating DESC NULLS LAST, $_colTitle
+      ORDER BY $orderBy
       LIMIT ? OFFSET ?
     ''';
 

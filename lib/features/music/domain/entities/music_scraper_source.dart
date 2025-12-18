@@ -9,7 +9,8 @@ enum MusicScraperType {
   lastFm('Last.fm', 'lastfm'),
   neteaseMusic('网易云音乐', 'netease'),
   qqMusic('QQ音乐', 'qqmusic'),
-  genius('Genius', 'genius');
+  genius('Genius', 'genius'),
+  musicTagWeb('Music Tag Web', 'musictagweb');
 
   const MusicScraperType(this.displayName, this.id);
 
@@ -28,6 +29,7 @@ enum MusicScraperType {
         MusicScraperType.neteaseMusic => Icons.cloud_rounded,
         MusicScraperType.qqMusic => Icons.music_note_rounded,
         MusicScraperType.genius => Icons.lyrics_rounded,
+        MusicScraperType.musicTagWeb => Icons.dns_rounded,
       };
 
   /// 主题色
@@ -39,6 +41,7 @@ enum MusicScraperType {
         MusicScraperType.neteaseMusic => const Color(0xFFE60026), // 网易云红
         MusicScraperType.qqMusic => const Color(0xFF31C27C), // QQ音乐绿
         MusicScraperType.genius => const Color(0xFFFFFF64), // Genius yellow
+        MusicScraperType.musicTagWeb => const Color(0xFF6366F1), // Indigo
       };
 
   /// 描述
@@ -50,6 +53,7 @@ enum MusicScraperType {
         MusicScraperType.neteaseMusic => '国内音乐平台，支持歌词和封面',
         MusicScraperType.qqMusic => '国内音乐平台，支持歌词和封面',
         MusicScraperType.genius => '歌词数据库，支持英文歌词',
+        MusicScraperType.musicTagWeb => '自托管音乐刮削服务，需配置服务器地址',
       };
 
   /// 是否支持元数据
@@ -59,6 +63,7 @@ enum MusicScraperType {
         MusicScraperType.neteaseMusic,
         MusicScraperType.qqMusic,
         MusicScraperType.genius,
+        MusicScraperType.musicTagWeb,
       ].contains(this);
 
   /// 是否支持封面
@@ -68,6 +73,7 @@ enum MusicScraperType {
         MusicScraperType.neteaseMusic,
         MusicScraperType.qqMusic,
         MusicScraperType.genius,
+        MusicScraperType.musicTagWeb,
       ].contains(this);
 
   /// 是否支持歌词
@@ -75,6 +81,7 @@ enum MusicScraperType {
         MusicScraperType.neteaseMusic,
         MusicScraperType.qqMusic,
         MusicScraperType.genius,
+        MusicScraperType.musicTagWeb,
       ].contains(this);
 
   /// 是否支持声纹识别
@@ -92,6 +99,9 @@ enum MusicScraperType {
         MusicScraperType.neteaseMusic,
         MusicScraperType.qqMusic,
       ].contains(this);
+
+  /// 是否需要服务器地址
+  bool get requiresServerUrl => this == MusicScraperType.musicTagWeb;
 
   /// 从 id 获取类型
   static MusicScraperType fromId(String id) => MusicScraperType.values.firstWhere(
@@ -163,7 +173,17 @@ class MusicScraperSourceEntity {
         MusicScraperType.neteaseMusic => true, // Cookie 可选
         MusicScraperType.qqMusic => true, // Cookie 可选
         MusicScraperType.genius => apiKey != null && apiKey!.isNotEmpty,
+        MusicScraperType.musicTagWeb => _isMusicTagWebConfigured,
       };
+
+  /// Music Tag Web 是否已配置
+  bool get _isMusicTagWebConfigured {
+    final serverUrl = extraConfig?['serverUrl'] as String?;
+    return serverUrl != null && serverUrl.isNotEmpty;
+  }
+
+  /// 获取 Music Tag Web 服务器地址
+  String? get serverUrl => extraConfig?['serverUrl'] as String?;
 
   /// 获取请求间隔（秒）
   int get requestInterval =>

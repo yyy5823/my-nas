@@ -297,6 +297,7 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
   BatteryState _batteryState = BatteryState.unknown;
   String _currentTime = '';
   Timer? _timeTimer;
+  StreamSubscription<BatteryState>? _batterySubscription;
 
   // 进度保存防抖
   Timer? _saveProgressTimer;
@@ -328,8 +329,8 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
       _batteryState = await _battery.batteryState;
       if (mounted) setState(() {});
 
-      // 监听电池状态变化
-      _battery.onBatteryStateChanged.listen((state) {
+      // 监听电池状态变化（保存订阅以便在 dispose 中取消）
+      _batterySubscription = _battery.onBatteryStateChanged.listen((state) {
         if (mounted) {
           setState(() => _batteryState = state);
           _battery.batteryLevel.then((level) {
@@ -353,14 +354,17 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
 
   @override
   void dispose() {
-    // 页面关闭时立即保存待保存的进度
+    // 先取消所有定时器和订阅，防止在 dispose 后调用 setState
+    _timeTimer?.cancel();
+    _batterySubscription?.cancel();
     _saveProgressTimer?.cancel();
+
+    // 页面关闭时立即保存待保存的进度
     if (_pendingLocation != null) {
       _saveProgressImmediately(_pendingLocation!);
     }
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     WakelockPlus.disable();
-    _timeTimer?.cancel();
     super.dispose();
   }
 
@@ -524,6 +528,107 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
         // 字体大小
         const SettingSectionTitle(title: '字体大小'),
         _buildFontSizeSlider(settings, settingsNotifier),
+        const SizedBox(height: 24),
+
+        // EPUB 引擎设置
+        const SettingSectionTitle(title: 'EPUB 引擎'),
+        _buildEngineSelector(settings, settingsNotifier),
+      ],
+    );
+  }
+
+  Widget _buildEngineSelector(
+    BookReaderSettings settings,
+    BookReaderSettingsNotifier settingsNotifier,
+  ) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final engines = [
+      (
+        engine: EpubReaderEngine.foliate,
+        icon: Icons.auto_awesome_rounded,
+        label: 'Foliate',
+        desc: '功能丰富，支持更多设置',
+      ),
+      (
+        engine: EpubReaderEngine.native,
+        icon: Icons.menu_book_rounded,
+        label: '原生',
+        desc: '简洁稳定',
+      ),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ...engines.map((item) {
+          final isSelected = settings.epubEngine == item.engine;
+          return GestureDetector(
+            onTap: () {
+              if (!isSelected) {
+                settingsNotifier.setEpubEngine(item.engine);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('引擎切换将在下次打开时生效'),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              }
+            },
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? AppColors.primary.withValues(alpha: 0.1)
+                    : (isDark ? Colors.grey.shade800 : Colors.grey.shade100),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: isSelected
+                      ? AppColors.primary
+                      : (isDark ? Colors.grey.shade700 : Colors.grey.shade300),
+                  width: isSelected ? 2 : 1,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    item.icon,
+                    color: isSelected
+                        ? AppColors.primary
+                        : (isDark ? Colors.white70 : Colors.black54),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.label,
+                          style: TextStyle(
+                            fontWeight:
+                                isSelected ? FontWeight.w600 : FontWeight.normal,
+                            color: isSelected
+                                ? AppColors.primary
+                                : (isDark ? Colors.white : Colors.black87),
+                          ),
+                        ),
+                        Text(
+                          item.desc,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isDark ? Colors.white54 : Colors.black45,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (isSelected)
+                    const Icon(Icons.check_circle, color: AppColors.primary),
+                ],
+              ),
+            ),
+          );
+        }),
       ],
     );
   }

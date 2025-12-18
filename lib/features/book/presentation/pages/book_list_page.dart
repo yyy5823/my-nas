@@ -21,6 +21,8 @@ import 'package:my_nas/features/book/presentation/pages/epub_reader_page.dart';
 import 'package:my_nas/features/book/presentation/pages/mobi_reader_page.dart';
 import 'package:my_nas/features/book/presentation/pages/pdf_reader_page.dart';
 import 'package:my_nas/features/book/presentation/providers/book_cover_provider.dart';
+import 'package:my_nas/features/reading/data/services/reader_settings_service.dart';
+import 'package:my_nas/features/reading/presentation/providers/reader_settings_provider.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
@@ -2073,7 +2075,11 @@ class _BookGridItemState extends ConsumerState<_BookGridItem> {
     Widget readerPage;
     switch (bookItem.format) {
       case BookFormat.epub:
-        readerPage = EpubReaderPage(book: bookItem);
+        // 根据设置选择 EPUB 阅读器引擎
+        final settings = ref.read(bookReaderSettingsProvider);
+        readerPage = settings.epubEngine == EpubReaderEngine.foliate
+            ? MobiReaderPage(book: bookItem) // Foliate 引擎（与 MOBI/AZW3 相同）
+            : EpubReaderPage(book: bookItem); // 原生引擎
       case BookFormat.pdf:
         readerPage = PdfReaderPage(book: bookItem);
       case BookFormat.mobi:

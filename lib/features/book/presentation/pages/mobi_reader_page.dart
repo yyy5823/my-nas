@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_foliate_viewer/flutter_foliate_viewer.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/book/data/services/book_file_cache_service.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
@@ -260,221 +260,320 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
     );
   }
 
+  /// 将 BookPageTurnMode 映射到 FoliatePageTurnStyle
+  /// Foliate 只支持 slide, scroll, noAnimation 三种模式
+  FoliatePageTurnStyle _mapPageTurnMode(BookPageTurnMode mode) => switch (mode) {
+        BookPageTurnMode.scroll => FoliatePageTurnStyle.scroll,
+        BookPageTurnMode.slide => FoliatePageTurnStyle.slide,
+        BookPageTurnMode.simulation => FoliatePageTurnStyle.slide, // 不支持，降级为滑动
+        BookPageTurnMode.cover => FoliatePageTurnStyle.slide, // 不支持，降级为滑动
+        BookPageTurnMode.none => FoliatePageTurnStyle.noAnimation,
+      };
+
   Widget _buildSettingsContent(BookReaderSettings settings) {
     final settingsNotifier = ref.read(bookReaderSettingsProvider.notifier);
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 主题选择
-          Text('主题', style: context.textTheme.titleSmall),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            children: BookReaderTheme.values.map((theme) => _ThemeButton(
-                theme: theme,
-                isSelected: settings.theme == theme,
-                onTap: () {
-                  settingsNotifier.setTheme(theme);
-                  _applySettings(settings.copyWith(theme: theme));
-                },
-              )).toList(),
-          ),
-          const SizedBox(height: 16),
-
-          // 屏幕常亮
-          SwitchListTile(
-            title: const Text('屏幕常亮'),
-            contentPadding: EdgeInsets.zero,
-            value: settings.keepScreenOn,
-            onChanged: (value) {
-              settingsNotifier.setKeepScreenOn(value: value);
-              if (value) {
-                WakelockPlus.enable();
-              } else {
-                WakelockPlus.disable();
-              }
-            },
-          ),
-
-          // 显示进度
-          SwitchListTile(
-            title: const Text('显示进度'),
-            contentPadding: EdgeInsets.zero,
-            value: settings.showProgress,
-            onChanged: (value) => settingsNotifier.setShowProgress(value: value),
-          ),
-
-          const Divider(),
-
-          // 字体大小
-          _buildFontSizeSlider(settings, settingsNotifier),
-
-          const SizedBox(height: 16),
-
-          // 行高
-          _buildLineHeightSlider(settings, settingsNotifier),
-
-          const SizedBox(height: 16),
-
-          // 段落间距
-          _buildParagraphSpacingSlider(settings, settingsNotifier),
-
-          const Divider(),
-
-          // 翻页模式
-          Text('翻页模式', style: context.textTheme.titleSmall),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            children: [
-              _PageTurnButton(
-                label: '滑动',
-                isSelected: settings.pageTurnMode == BookPageTurnMode.slide,
-                onTap: () {
-                  settingsNotifier.setPageTurnMode(BookPageTurnMode.slide);
-                  _controller.setPageTurnStyle(FoliatePageTurnStyle.slide);
-                },
-              ),
-              _PageTurnButton(
-                label: '滚动',
-                isSelected: settings.pageTurnMode == BookPageTurnMode.scroll,
-                onTap: () {
-                  settingsNotifier.setPageTurnMode(BookPageTurnMode.scroll);
-                  _controller.setPageTurnStyle(FoliatePageTurnStyle.scroll);
-                },
-              ),
-              _PageTurnButton(
-                label: '无动画',
-                isSelected: settings.pageTurnMode == BookPageTurnMode.none,
-                onTap: () {
-                  settingsNotifier.setPageTurnMode(BookPageTurnMode.none);
-                  _controller.setPageTurnStyle(FoliatePageTurnStyle.noAnimation);
-                },
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFontSizeSlider(
-    BookReaderSettings settings,
-    BookReaderSettingsNotifier settingsNotifier,
-  ) {
-    final currentSize = settings.fontSize.clamp(12.0, 30.0);
+    // 翻页方式选项（与 book_reader_page 保持一致）
+    const pageTurnModes = [
+      (icon: Icons.swap_vert_rounded, label: '滚动'),
+      (icon: Icons.swipe_rounded, label: '滑动'),
+      (icon: Icons.auto_stories_rounded, label: '仿真'),
+      (icon: Icons.layers_rounded, label: '覆盖'),
+      (icon: Icons.article_rounded, label: '无动画'),
+    ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text('字体大小', style: context.textTheme.titleSmall),
-            Text('${currentSize.toInt()}'),
-          ],
+        // 翻页方式
+        const SettingSectionTitle(title: '翻页方式'),
+        SettingPageTurnModePicker(
+          modes: pageTurnModes,
+          selectedIndex: settings.pageTurnMode.index,
+          onSelect: (index) {
+            final mode = BookPageTurnMode.values[index];
+            settingsNotifier.setPageTurnMode(mode);
+            _controller.setPageTurnStyle(_mapPageTurnMode(mode));
+          },
         ),
-        Row(
-          children: [
-            IconButton(
-              icon: const Icon(Icons.text_decrease),
-              onPressed: currentSize > 12
-                  ? () {
-                      final newSize = (currentSize - 1).clamp(12.0, 30.0);
-                      settingsNotifier.setFontSize(newSize);
-                      _controller.setFontSize(newSize / 18.0);
-                    }
-                  : null,
-            ),
-            Expanded(
-              child: Slider(
-                value: currentSize,
-                min: 12,
-                max: 30,
-                divisions: 18,
-                onChanged: (value) {
-                  settingsNotifier.setFontSize(value);
-                  _controller.setFontSize(value / 18.0);
-                },
-              ),
-            ),
-            IconButton(
-              icon: const Icon(Icons.text_increase),
-              onPressed: currentSize < 30
-                  ? () {
-                      final newSize = (currentSize + 1).clamp(12.0, 30.0);
-                      settingsNotifier.setFontSize(newSize);
-                      _controller.setFontSize(newSize / 18.0);
-                    }
-                  : null,
-            ),
-          ],
-        ),
-      ],
-    );
-  }
+        const SizedBox(height: 24),
 
-  Widget _buildLineHeightSlider(
-    BookReaderSettings settings,
-    BookReaderSettingsNotifier settingsNotifier,
-  ) {
-    final currentHeight = settings.lineHeight.clamp(1.0, 3.0);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text('行高', style: context.textTheme.titleSmall),
-            Text(currentHeight.toStringAsFixed(1)),
-          ],
+        // 字体选择
+        SettingSectionTitle(
+          title: '字体',
+          trailing: AvailableFonts.getDisplayName(settings.fontFamily),
         ),
-        Slider(
-          value: currentHeight,
-          min: 1.0,
-          max: 3.0,
+        SettingFontPicker(
+          selectedFont: settings.fontFamily,
+          onSelect: (fontFamily) {
+            settingsNotifier.setFontFamily(fontFamily);
+            _applySettings(settings.copyWith(fontFamily: fontFamily));
+          },
+        ),
+        const SizedBox(height: 24),
+
+        // 字体大小
+        SettingSliderRow(
+          label: '字体大小',
+          value: settings.fontSize,
+          min: 12,
+          max: 36,
+          divisions: 12,
+          valueLabel: '${settings.fontSize.toInt()}',
+          onChanged: (value) {
+            settingsNotifier.setFontSize(value);
+            _controller.setFontSize(value / 18.0);
+          },
+        ),
+        const SizedBox(height: 16),
+
+        // 行高
+        SettingSliderRow(
+          label: '行高',
+          value: settings.lineHeight,
+          min: 1,
+          max: 3,
           divisions: 20,
           onChanged: (value) {
             settingsNotifier.setLineHeight(value);
             _controller.setLineHeight(value);
           },
         ),
+        const SizedBox(height: 16),
+
+        // 段落间距
+        SettingSliderRow(
+          label: '段落间距',
+          value: settings.paragraphSpacing,
+          max: 3,
+          divisions: 15,
+          onChanged: (value) {
+            settingsNotifier.setParagraphSpacing(value);
+            _applySettings(settings.copyWith(paragraphSpacing: value));
+          },
+        ),
+        const SizedBox(height: 16),
+
+        // 页边距
+        SettingSliderRow(
+          label: '页边距',
+          value: settings.horizontalPadding,
+          min: 8,
+          max: 64,
+          divisions: 14,
+          valueLabel: '${settings.horizontalPadding.toInt()}',
+          onChanged: (value) {
+            settingsNotifier.setHorizontalPadding(value);
+            _applySettings(settings.copyWith(horizontalPadding: value));
+          },
+        ),
+        const SizedBox(height: 24),
+
+        // 阅读主题
+        const SettingSectionTitle(title: '阅读主题'),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: BookReaderTheme.values
+                .map(
+                  (theme) => Padding(
+                    padding: const EdgeInsets.only(right: 12),
+                    child: _buildThemeOption(
+                      theme: theme,
+                      isSelected: settings.theme == theme,
+                      onTap: () {
+                        settingsNotifier.setTheme(theme);
+                        _applySettings(settings.copyWith(theme: theme));
+                      },
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
+        ),
+        const SizedBox(height: 24),
+
+        // 其他设置
+        const SettingSectionTitle(title: '其他设置'),
+        SettingSwitchRow(
+          title: '屏幕常亮',
+          value: settings.keepScreenOn,
+          onChanged: (value) {
+            settingsNotifier.setKeepScreenOn(value: value);
+            if (value) {
+              WakelockPlus.enable();
+            } else {
+              WakelockPlus.disable();
+            }
+          },
+        ),
+        SettingSwitchRow(
+          title: '显示进度',
+          value: settings.showProgress,
+          onChanged: (value) => settingsNotifier.setShowProgress(value: value),
+        ),
+
+        // EPUB 引擎设置（仅 EPUB 格式显示）
+        if (widget.book.format == BookFormat.epub) ...[
+          const SizedBox(height: 24),
+          const SettingSectionTitle(title: 'EPUB 引擎'),
+          _buildEngineSelector(settings, settingsNotifier),
+        ],
       ],
     );
   }
 
-  Widget _buildParagraphSpacingSlider(
+  Widget _buildThemeOption({
+    required BookReaderTheme theme,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: theme.backgroundColor,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: isSelected
+                    ? AppColors.primary
+                    : (isDark ? Colors.grey.shade600 : Colors.grey.shade300),
+                width: isSelected ? 3 : 1,
+              ),
+              boxShadow: isSelected
+                  ? [
+                      BoxShadow(
+                        color: AppColors.primary.withValues(alpha: 0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ]
+                  : null,
+            ),
+            child: Center(
+              child: Text(
+                'Aa',
+                style: TextStyle(
+                  color: theme.textColor,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            theme.label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+              color: isSelected
+                  ? AppColors.primary
+                  : (isDark ? Colors.white70 : Colors.black54),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEngineSelector(
     BookReaderSettings settings,
     BookReaderSettingsNotifier settingsNotifier,
   ) {
-    final currentSpacing = settings.paragraphSpacing.clamp(0.0, 3.0);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final engines = [
+      (
+        engine: EpubReaderEngine.foliate,
+        icon: Icons.auto_awesome_rounded,
+        label: 'Foliate',
+        desc: '功能丰富，支持更多设置',
+      ),
+      (
+        engine: EpubReaderEngine.native,
+        icon: Icons.menu_book_rounded,
+        label: '原生',
+        desc: '简洁稳定',
+      ),
+    ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text('段落间距', style: context.textTheme.titleSmall),
-            Text(currentSpacing.toStringAsFixed(1)),
-          ],
-        ),
-        Slider(
-          value: currentSpacing,
-          min: 0.0,
-          max: 3.0,
-          divisions: 30,
-          onChanged: (value) {
-            settingsNotifier.setParagraphSpacing(value);
-            // 段落间距需要通过完整样式更新
-            final newSettings = settings.copyWith(paragraphSpacing: value);
-            _applySettings(newSettings);
-          },
-        ),
+        ...engines.map((item) {
+          final isSelected = settings.epubEngine == item.engine;
+          return GestureDetector(
+            onTap: () {
+              if (!isSelected) {
+                settingsNotifier.setEpubEngine(item.engine);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('引擎切换将在下次打开时生效'),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              }
+            },
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? AppColors.primary.withValues(alpha: 0.1)
+                    : (isDark ? Colors.grey.shade800 : Colors.grey.shade100),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: isSelected
+                      ? AppColors.primary
+                      : (isDark ? Colors.grey.shade700 : Colors.grey.shade300),
+                  width: isSelected ? 2 : 1,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    item.icon,
+                    color: isSelected
+                        ? AppColors.primary
+                        : (isDark ? Colors.white70 : Colors.black54),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.label,
+                          style: TextStyle(
+                            fontWeight:
+                                isSelected ? FontWeight.w600 : FontWeight.normal,
+                            color: isSelected
+                                ? AppColors.primary
+                                : (isDark ? Colors.white : Colors.black87),
+                          ),
+                        ),
+                        Text(
+                          item.desc,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isDark ? Colors.white54 : Colors.black45,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (isSelected)
+                    const Icon(Icons.check_circle, color: AppColors.primary),
+                ],
+              ),
+            ),
+          );
+        }),
       ],
     );
   }
@@ -822,66 +921,6 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
       ),
     );
   }
-}
-
-/// 主题选择按钮
-class _ThemeButton extends StatelessWidget {
-  const _ThemeButton({
-    required this.theme,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  final BookReaderTheme theme;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 48,
-        height: 48,
-        margin: const EdgeInsets.only(bottom: 8),
-        decoration: BoxDecoration(
-          color: theme.backgroundColor,
-          border: Border.all(
-            color: isSelected ? Colors.blue : Colors.grey.shade300,
-            width: isSelected ? 2 : 1,
-          ),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Center(
-          child: Text(
-            theme.label.substring(0, 1),
-            style: TextStyle(
-              color: theme.textColor,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-      ),
-    );
-}
-
-/// 翻页模式按钮
-class _PageTurnButton extends StatelessWidget {
-  const _PageTurnButton({
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => ChoiceChip(
-      label: Text(label),
-      selected: isSelected,
-      onSelected: (_) => onTap(),
-    );
 }
 
 /// 底部栏按钮

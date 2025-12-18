@@ -707,10 +707,17 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       final tempTvShows = allVideos.where((v) => v.category == MediaCategory.tvShow).toList();
       final tempOthers = allVideos.where((v) => v.category == MediaCategory.unknown).take(30).toList();
 
-      // 快速构建临时剧集分组
+      // 快速构建临时剧集分组（遍历所有剧集，按分组去重后取前30个分组）
       final tempTvShowGroups = <String, TvShowGroup>{};
-      for (final ep in tempTvShows.take(30)) {
-        final groupKey = ep.tmdbId != null ? 'tmdb_${ep.tmdbId}' : 'title_${ep.title?.toLowerCase() ?? ep.fileName.toLowerCase()}';
+      for (final ep in tempTvShows) {
+        // 达到30个分组后停止
+        if (tempTvShowGroups.length >= 30) break;
+
+        final groupKey = ep.tmdbId != null
+            ? 'tmdb_${ep.tmdbId}'
+            : (ep.showDirectory != null
+                ? 'dir_${ep.showDirectory}'
+                : 'title_${ep.title?.toLowerCase() ?? ep.fileName.toLowerCase()}');
         if (!tempTvShowGroups.containsKey(groupKey)) {
           tempTvShowGroups[groupKey] = TvShowGroup(
             groupKey: groupKey,
@@ -7749,6 +7756,9 @@ class _FilteredVideosPaginatedPageState
   int _offset = 0;
   static const int _pageSize = 50;
 
+  // 排序相关
+  VideoSortOption _sortOption = VideoSortOption.ratingDesc;
+
   @override
   void initState() {
     super.initState();
@@ -7786,24 +7796,28 @@ class _FilteredVideosPaginatedPageState
             widget.filter,
             limit: _pageSize,
             offset: _offset,
+            sortOption: _sortOption,
           );
         case VideoHomeCategory.byMovieRegion:
           newVideos = await db.getMoviesByCountry(
             widget.filter,
             limit: _pageSize,
             offset: _offset,
+            sortOption: _sortOption,
           );
         case VideoHomeCategory.byTvGenre:
           newVideos = await db.getTvShowsByGenre(
             widget.filter,
             limit: _pageSize,
             offset: _offset,
+            sortOption: _sortOption,
           );
         case VideoHomeCategory.byTvRegion:
           newVideos = await db.getTvShowsByCountry(
             widget.filter,
             limit: _pageSize,
             offset: _offset,
+            sortOption: _sortOption,
           );
         default:
           newVideos = [];
@@ -7825,6 +7839,82 @@ class _FilteredVideosPaginatedPageState
     }
   }
 
+  Future<void> _resetAndReload() async {
+    if (!mounted) return;
+    setState(() {
+      _videos.clear();
+      _offset = 0;
+      _hasMore = true;
+    });
+    await _loadMore();
+  }
+
+  void _showSortMenu(BuildContext context, bool isDark) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DecoratedBox(
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1A1A2E) : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: isDark ? Colors.white24 : Colors.black12,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                '排序方式',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+              ),
+            ),
+            const Divider(height: 1),
+            ...VideoSortOption.values.map((option) {
+              final isSelected = option == _sortOption;
+              return ListTile(
+                leading: Icon(
+                  option.icon,
+                  color: isSelected ? Colors.blue : (isDark ? Colors.white70 : Colors.black54),
+                ),
+                title: Text(
+                  option.displayName,
+                  style: TextStyle(
+                    color: isDark ? Colors.white : Colors.black87,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                  ),
+                ),
+                trailing: isSelected
+                    ? const Icon(Icons.check_rounded, color: Colors.blue)
+                    : null,
+                onTap: () {
+                  Navigator.of(context).pop();
+                  if (option != _sortOption) {
+                    setState(() => _sortOption = option);
+                    _resetAndReload();
+                  }
+                },
+              );
+            }),
+            SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -7835,6 +7925,20 @@ class _FilteredVideosPaginatedPageState
         centerTitle: false,
         elevation: 0,
         scrolledUnderElevation: 0,
+        actions: [
+          // 排序按钮
+          IconButton(
+            icon: Icon(
+              _sortOption.icon,
+              color: _sortOption != VideoSortOption.ratingDesc
+                  ? Colors.blue
+                  : null,
+            ),
+            tooltip: '排序: ${_sortOption.displayName}',
+            onPressed: () => _showSortMenu(context, isDark),
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: _videos.isEmpty && _isLoading
           ? const Center(child: CircularProgressIndicator())

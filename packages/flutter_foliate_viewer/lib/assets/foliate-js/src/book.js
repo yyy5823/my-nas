@@ -1308,6 +1308,13 @@ const open = async (file, cfi) => {
 // 暴露 open 函数到全局，供外部（如 Flutter）调用
 window.foliateOpen = open
 
+// 暴露设置模块级变量的函数，供 Flutter 手动初始化模式使用
+window.setFoliateVars = (newStyle, newReadingRules, newImporting) => {
+  if (newStyle) style = newStyle
+  if (newReadingRules) readingRules = newReadingRules
+  if (typeof newImporting === 'boolean') importing = newImporting
+}
+
 
 const callFlutter = (name, data) => {
   // console.log('callFlutter', name, data)
@@ -1625,13 +1632,51 @@ window.pullUp = () => {
 
 // get varible from url
 var urlParams = new URLSearchParams(window.location.search)
-var importing = JSON.parse(urlParams.get('importing'))
-var url = JSON.parse(urlParams.get('url'))
-var initialCfi = JSON.parse(urlParams.get('initialCfi'))
-var style = JSON.parse(urlParams.get('style'))
-var readingRules = JSON.parse(urlParams.get('readingRules'))
 
-fetch(url)
-  .then(res => res.blob())
-  .then(blob => open(new File([blob], new URL(url, window.location.origin).pathname), initialCfi))
-  .catch(e => console.error(e))
+// 安全解析 URL 参数，null 时返回默认值
+const safeJsonParse = (str, defaultValue = null) => {
+  if (str === null || str === 'null' || str === undefined) return defaultValue
+  try {
+    return JSON.parse(str)
+  } catch {
+    return defaultValue
+  }
+}
+
+// 默认样式（手动初始化模式下使用，会被 setFoliateVars 覆盖）
+const defaultStyle = {
+  allowScript: false,
+  pageTurnStyle: 'slide',
+  topMargin: 0,
+  bottomMargin: 0,
+  sideMargin: 5,
+  backgroundColor: '#ffffff',
+  fontSize: 100,
+  fontFamily: '',
+  lineHeight: 1.5,
+  columnCount: 1,
+  textIndent: 0,
+  paragraphSpacing: 0,
+  textAlign: 'left',
+  letterSpacing: 0,
+  wordSpacing: 0,
+  fontWeight: 400,
+  hyphenation: false,
+  brightness: 100,
+  theme: 'light',
+  customCSS: '',
+}
+
+var importing = safeJsonParse(urlParams.get('importing'), false)
+var url = safeJsonParse(urlParams.get('url'), null)
+var initialCfi = safeJsonParse(urlParams.get('initialCfi'), null)
+var style = safeJsonParse(urlParams.get('style'), defaultStyle)
+var readingRules = safeJsonParse(urlParams.get('readingRules'), {})
+
+// 只有当 url 有效时才自动初始化（手动初始化模式下 url 为 null）
+if (url) {
+  fetch(url)
+    .then(res => res.blob())
+    .then(blob => open(new File([blob], new URL(url, window.location.origin).pathname), initialCfi))
+    .catch(e => console.error(e))
+}

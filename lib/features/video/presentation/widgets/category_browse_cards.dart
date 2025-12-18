@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
@@ -176,9 +174,9 @@ class _CategoryBrowseCardsRowState extends State<CategoryBrowseCardsRow> {
             ],
           ),
         ),
-        // 卡片列表
+        // 卡片列表（Infuse 风格：宽屏比例卡片，宽度接近3个影视卡片）
         SizedBox(
-          height: 100,
+          height: 140,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -188,6 +186,7 @@ class _CategoryBrowseCardsRowState extends State<CategoryBrowseCardsRow> {
               return _InfuseStyleCard(
                 data: category,
                 isDark: widget.isDark,
+                colorIndex: index,
                 onTap: () => widget.onCategoryTap(category.name),
               );
             },
@@ -242,20 +241,51 @@ class _CategoryCardData {
 /// Infuse 风格的分类卡片
 ///
 /// 特点：
-/// - 多张海报拼贴作为背景
-/// - 毛玻璃效果的中央标签
-/// - 圆角设计
-/// - 显示分类名称和数量
+/// - 单张海报作为背景
+/// - 彩色渐变叠加层（类似 Infuse）
+/// - 大号白色文字居中显示
+/// - 宽屏比例（约 2:1）
 class _InfuseStyleCard extends StatelessWidget {
   const _InfuseStyleCard({
     required this.data,
     required this.isDark,
+    required this.colorIndex,
     required this.onTap,
   });
 
   final _CategoryCardData data;
   final bool isDark;
+  final int colorIndex;
   final VoidCallback onTap;
+
+  /// Infuse 风格的渐变色配置
+  static const List<List<Color>> _gradientColors = [
+    // 紫红色（爱情）
+    [Color(0xFFE91E63), Color(0xFF9C27B0)],
+    // 深蓝色（电视电影）
+    [Color(0xFF1565C0), Color(0xFF0D47A1)],
+    // 橙红色（动作）
+    [Color(0xFFFF5722), Color(0xFFE64A19)],
+    // 深紫色（犯罪/悬疑）
+    [Color(0xFF512DA8), Color(0xFF311B92)],
+    // 青色（科幻）
+    [Color(0xFF00ACC1), Color(0xFF006064)],
+    // 绿色（冒险/自然）
+    [Color(0xFF43A047), Color(0xFF1B5E20)],
+    // 琥珀色（历史/西部）
+    [Color(0xFFFF8F00), Color(0xFFE65100)],
+    // 靛蓝色（奇幻）
+    [Color(0xFF3949AB), Color(0xFF1A237E)],
+    // 棕红色（恐怖）
+    [Color(0xFFC62828), Color(0xFF8E0000)],
+    // 蓝灰色（纪录片）
+    [Color(0xFF546E7A), Color(0xFF37474F)],
+  ];
+
+  List<Color> get _gradient {
+    final colors = _gradientColors[colorIndex % _gradientColors.length];
+    return colors;
+  }
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -263,13 +293,13 @@ class _InfuseStyleCard extends StatelessWidget {
         child: GestureDetector(
           onTap: onTap,
           child: Container(
-            width: 160,
+            width: 360,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.15),
-                  blurRadius: 8,
+                  color: _gradient[0].withValues(alpha: 0.4),
+                  blurRadius: 12,
                   offset: const Offset(0, 4),
                 ),
               ],
@@ -279,24 +309,45 @@ class _InfuseStyleCard extends StatelessWidget {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  // 海报拼贴背景
-                  _buildPosterGrid(),
-                  // 暗色叠加层
+                  // 背景图片（使用第一张海报）
+                  _buildBackground(),
+                  // 彩色渐变叠加层
                   Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
                         colors: [
-                          Colors.black.withValues(alpha: 0.1),
-                          Colors.black.withValues(alpha: 0.5),
+                          _gradient[0].withValues(alpha: 0.85),
+                          _gradient[1].withValues(alpha: 0.75),
                         ],
                       ),
                     ),
                   ),
-                  // 毛玻璃标签
+                  // 居中文字
                   Center(
-                    child: _buildGlassLabel(),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Text(
+                        data.name,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1,
+                          shadows: [
+                            Shadow(
+                              color: Colors.black26,
+                              blurRadius: 4,
+                              offset: Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -305,128 +356,27 @@ class _InfuseStyleCard extends StatelessWidget {
         ),
       );
 
-  /// 构建海报拼贴网格
-  Widget _buildPosterGrid() {
+  /// 构建背景图片
+  Widget _buildBackground() {
     if (data.posterUrls.isEmpty) {
       return _buildPlaceholder();
     }
 
-    // 根据海报数量决定布局
-    final count = data.posterUrls.length;
-
-    if (count == 1) {
-      return _buildPosterImage(data.posterUrls[0]);
-    }
-
-    if (count == 2) {
-      return Row(
-        children: [
-          Expanded(child: _buildPosterImage(data.posterUrls[0])),
-          Expanded(child: _buildPosterImage(data.posterUrls[1])),
-        ],
-      );
-    }
-
-    if (count == 3) {
-      return Row(
-        children: [
-          Expanded(child: _buildPosterImage(data.posterUrls[0])),
-          Expanded(
-            child: Column(
-              children: [
-                Expanded(child: _buildPosterImage(data.posterUrls[1])),
-                Expanded(child: _buildPosterImage(data.posterUrls[2])),
-              ],
-            ),
-          ),
-        ],
-      );
-    }
-
-    // 4张及以上：2x2 网格
-    return Column(
-      children: [
-        Expanded(
-          child: Row(
-            children: [
-              Expanded(child: _buildPosterImage(data.posterUrls[0])),
-              Expanded(child: _buildPosterImage(data.posterUrls[1])),
-            ],
-          ),
-        ),
-        Expanded(
-          child: Row(
-            children: [
-              Expanded(child: _buildPosterImage(data.posterUrls[2 % count])),
-              Expanded(child: _buildPosterImage(data.posterUrls[3 % count])),
-            ],
-          ),
-        ),
-      ],
+    // 使用第一张海报作为背景
+    return CachedNetworkImage(
+      imageUrl: data.posterUrls[0],
+      fit: BoxFit.cover,
+      placeholder: (context, url) => _buildPlaceholder(),
+      errorWidget: (context, url, error) => _buildPlaceholder(),
     );
   }
-
-  Widget _buildPosterImage(String url) => CachedNetworkImage(
-        imageUrl: url,
-        fit: BoxFit.cover,
-        placeholder: (context, url) => Container(
-          color: isDark ? Colors.grey[800] : Colors.grey[300],
-        ),
-        errorWidget: (context, url, error) => Container(
-          color: isDark ? Colors.grey[800] : Colors.grey[300],
-          child: Icon(
-            Icons.movie_outlined,
-            color: isDark ? Colors.grey[600] : Colors.grey[400],
-          ),
-        ),
-      );
 
   Widget _buildPlaceholder() => DecoratedBox(
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: isDark
-                ? [Colors.grey[800]!, Colors.grey[900]!]
-                : [Colors.grey[300]!, Colors.grey[400]!],
-          ),
-        ),
-        child: Center(
-          child: Icon(
-            Icons.movie_outlined,
-            size: 32,
-            color: isDark ? Colors.grey[600] : Colors.grey[500],
-          ),
-        ),
-      );
-
-  /// 构建毛玻璃效果的标签
-  Widget _buildGlassLabel() => ClipRRect(
-        borderRadius: BorderRadius.circular(10),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            decoration: BoxDecoration(
-              color: (isDark ? Colors.black : Colors.white).withValues(alpha: 0.6),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.1),
-                width: 0.5,
-              ),
-            ),
-            child: Text(
-              data.name,
-              style: TextStyle(
-                color: isDark ? Colors.white : Colors.black87,
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0.3,
-              ),
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
+            colors: _gradient,
           ),
         ),
       );

@@ -595,8 +595,14 @@ class Loader {
         this.manifest = resources.manifest
         this.assets = resources.manifest
 
-        var urlParams = new URLSearchParams(window.location.search)
-        this.allowScript = JSON.parse(urlParams.get('style')).allowScript
+        // 安全获取 allowScript 设置，处理手动初始化模式下 style 参数为 null 的情况
+        try {
+            var urlParams = new URLSearchParams(window.location.search)
+            var styleParam = urlParams.get('style')
+            this.allowScript = styleParam ? JSON.parse(styleParam).allowScript : false
+        } catch {
+            this.allowScript = false
+        }
 
         // needed only when replacing in (X)HTML w/o parsing (see below)
         //.filter(({ mediaType }) => ![MIME.XHTML, MIME.HTML].includes(mediaType))
