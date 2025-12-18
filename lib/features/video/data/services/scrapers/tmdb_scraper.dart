@@ -336,6 +336,12 @@ class TmdbScraper implements MediaScraper {
         ?.map((g) => (g as Map<String, dynamic>)['name'] as String)
         .toList();
 
+    // 解析制片国家/地区
+    final countries = (json['production_countries'] as List?)
+        ?.map((c) => (c as Map<String, dynamic>)['name'] as String)
+        .where((name) => name.isNotEmpty)
+        .toList();
+
     return ScraperMovieDetail(
       externalId: (json['id'] as int).toString(),
       source: ScraperType.tmdb,
@@ -352,6 +358,7 @@ class TmdbScraper implements MediaScraper {
       voteCount: json['vote_count'] as int?,
       runtime: json['runtime'] as int?,
       genres: genres,
+      countries: countries,
       director: director,
       cast: castList,
       tagline: json['tagline'] as String?,
@@ -375,6 +382,23 @@ class TmdbScraper implements MediaScraper {
     final genres = (json['genres'] as List?)
         ?.map((g) => (g as Map<String, dynamic>)['name'] as String)
         .toList();
+
+    // 解析制片国家/地区
+    // TV 详情使用 production_countries，如果为空则使用 origin_country
+    var countries = (json['production_countries'] as List?)
+        ?.map((c) => (c as Map<String, dynamic>)['name'] as String)
+        .where((name) => name.isNotEmpty)
+        .toList();
+    // 如果 production_countries 为空，使用 origin_country（ISO 代码列表）
+    if (countries == null || countries.isEmpty) {
+      final originCountries = json['origin_country'] as List?;
+      if (originCountries != null && originCountries.isNotEmpty) {
+        countries = originCountries
+            .map((c) => _countryCodeToName(c as String))
+            .where((name) => name.isNotEmpty)
+            .toList();
+      }
+    }
 
     // 解析季列表
     final seasons = (json['seasons'] as List?)?.map((s) {
@@ -413,6 +437,7 @@ class TmdbScraper implements MediaScraper {
       voteCount: json['vote_count'] as int?,
       episodeRuntime: runtime,
       genres: genres,
+      countries: countries,
       cast: castList,
       status: json['status'] as String?,
       numberOfSeasons: json['number_of_seasons'] as int?,
@@ -457,5 +482,61 @@ class TmdbScraper implements MediaScraper {
   int? _parseYear(String? dateStr) {
     if (dateStr == null || dateStr.isEmpty) return null;
     return int.tryParse(dateStr.split('-').first);
+  }
+
+  /// ISO 国家代码转换为中文名称
+  String _countryCodeToName(String code) {
+    const countryNames = {
+      'US': '美国',
+      'CN': '中国',
+      'JP': '日本',
+      'KR': '韩国',
+      'GB': '英国',
+      'FR': '法国',
+      'DE': '德国',
+      'IT': '意大利',
+      'ES': '西班牙',
+      'CA': '加拿大',
+      'AU': '澳大利亚',
+      'IN': '印度',
+      'TW': '中国台湾',
+      'HK': '中国香港',
+      'TH': '泰国',
+      'RU': '俄罗斯',
+      'BR': '巴西',
+      'MX': '墨西哥',
+      'NL': '荷兰',
+      'SE': '瑞典',
+      'DK': '丹麦',
+      'NO': '挪威',
+      'FI': '芬兰',
+      'BE': '比利时',
+      'AT': '奥地利',
+      'CH': '瑞士',
+      'NZ': '新西兰',
+      'IE': '爱尔兰',
+      'PL': '波兰',
+      'TR': '土耳其',
+      'ZA': '南非',
+      'SG': '新加坡',
+      'MY': '马来西亚',
+      'ID': '印度尼西亚',
+      'PH': '菲律宾',
+      'VN': '越南',
+      'AR': '阿根廷',
+      'CL': '智利',
+      'CO': '哥伦比亚',
+      'PE': '秘鲁',
+      'EG': '埃及',
+      'IL': '以色列',
+      'AE': '阿联酋',
+      'SA': '沙特阿拉伯',
+      'UA': '乌克兰',
+      'CZ': '捷克',
+      'HU': '匈牙利',
+      'PT': '葡萄牙',
+      'GR': '希腊',
+    };
+    return countryNames[code.toUpperCase()] ?? code;
   }
 }

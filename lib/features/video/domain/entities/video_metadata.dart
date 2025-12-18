@@ -329,7 +329,9 @@ class VideoMetadata {
   }
 
   /// 类型列表
-  List<String> get genreList => genres?.split(',').map((e) => e.trim()).toList() ?? [];
+  /// 注意：genres 使用 ' / ' 分隔（参见 ScraperMovieDetail.genresText）
+  List<String> get genreList =>
+      genres?.split(RegExp(r'\s*/\s*')).map((e) => e.trim()).where((e) => e.isNotEmpty).toList() ?? [];
 
   /// 国家/地区列表
   List<String> get countryList => countries?.split(',').map((e) => e.trim()).toList() ?? [];

@@ -259,6 +259,7 @@ class ScraperTvDetail {
     this.voteCount,
     this.episodeRuntime,
     this.genres,
+    this.countries,
     this.cast,
     this.status,
     this.numberOfSeasons,
@@ -305,6 +306,9 @@ class ScraperTvDetail {
   /// 类型列表
   final List<String>? genres;
 
+  /// 制片国家/地区列表
+  final List<String>? countries;
+
   /// 演员列表
   final List<String>? cast;
 
@@ -332,6 +336,9 @@ class ScraperTvDetail {
   /// 类型文本
   String get genresText => genres?.join(' / ') ?? '';
 
+  /// 国家/地区文本（以 , 分隔）
+  String get countriesText => countries?.join(', ') ?? '';
+
   /// 演员文本
   String get castText => cast?.join(', ') ?? '';
 
@@ -353,6 +360,7 @@ class ScraperTvDetail {
       ..rating = rating
       ..runtime = episodeRuntime
       ..genres = genresText
+      ..countries = countriesText
       ..cast = castText
       ..seasonNumber = seasonNumber
       ..episodeNumber = episodeNumber

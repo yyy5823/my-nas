@@ -1,9 +1,11 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/core/services/nas_file_system_registry.dart';
 import 'package:my_nas/features/video/data/services/video_database_service.dart';
 import 'package:my_nas/features/video/domain/entities/video_category_config.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
+import 'package:my_nas/shared/widgets/stream_image.dart';
 
 /// 分类浏览卡片行（Infuse 风格）
 ///
@@ -108,15 +110,15 @@ class _CategoryBrowseCardsRowState extends State<CategoryBrowseCardsRow> {
               : await db.getTvShowsByCountry(filter, limit: 6);
         }
 
-        // 收集有海报的视频
-        final posterUrls = videos
-            .where((v) => v.posterUrl != null && v.posterUrl!.isNotEmpty)
-            .map((v) => v.posterUrl!)
+        // 收集有海报的视频及其 sourceId（优先使用 displayPosterUrl 以支持本地 NFO 海报）
+        final posterInfos = videos
+            .where((v) => v.displayPosterUrl != null && v.displayPosterUrl!.isNotEmpty)
+            .map((v) => (url: v.displayPosterUrl!, sourceId: v.sourceId))
             .toList();
 
         categories.add(_CategoryCardData(
           name: filter,
-          posterUrls: posterUrls,
+          posterInfos: posterInfos,
         ));
       }
 
@@ -231,11 +233,12 @@ class _CategoryBrowseCardsRowState extends State<CategoryBrowseCardsRow> {
 class _CategoryCardData {
   _CategoryCardData({
     required this.name,
-    required this.posterUrls,
+    required this.posterInfos,
   });
 
   final String name;
-  final List<String> posterUrls;
+  /// 海报信息列表：(url, sourceId)
+  final List<({String url, String sourceId})> posterInfos;
 }
 
 /// Infuse 风格的分类卡片
@@ -356,19 +359,48 @@ class _InfuseStyleCard extends StatelessWidget {
         ),
       );
 
-  /// 构建背景图片
+  /// 构建背景图片（支持 NAS 路径和网络 URL）
   Widget _buildBackground() {
-    if (data.posterUrls.isEmpty) {
+    if (data.posterInfos.isEmpty) {
       return _buildPlaceholder();
     }
 
     // 使用第一张海报作为背景
-    return CachedNetworkImage(
-      imageUrl: data.posterUrls[0],
-      fit: BoxFit.cover,
-      placeholder: (context, url) => _buildPlaceholder(),
-      errorWidget: (context, url, error) => _buildPlaceholder(),
-    );
+    final posterInfo = data.posterInfos[0];
+    return _buildSmartImage(posterInfo.url, posterInfo.sourceId);
+  }
+
+  /// 智能图片加载 - 支持 NAS 路径和网络 URL
+  Widget _buildSmartImage(String imageUrl, String sourceId) {
+    // 检查是否是 NAS 路径（本地路径以 / 开头，但不是 //，也不包含 ://）
+    final isNasPath = imageUrl.startsWith('/') &&
+        !imageUrl.startsWith('//') &&
+        !imageUrl.contains('://');
+
+    if (isNasPath) {
+      // NAS 路径 - 使用 StreamImage
+      final fileSystem = NasFileSystemRegistry.instance.get(sourceId);
+      return StreamImage(
+        path: imageUrl,
+        fileSystem: fileSystem,
+        fit: BoxFit.cover,
+        placeholder: _buildPlaceholder(),
+        errorWidget: _buildPlaceholder(),
+      );
+    }
+
+    // 网络 URL - 使用 CachedNetworkImage
+    if (imageUrl.startsWith('http')) {
+      return CachedNetworkImage(
+        imageUrl: imageUrl,
+        fit: BoxFit.cover,
+        placeholder: (context, url) => _buildPlaceholder(),
+        errorWidget: (context, url, error) => _buildPlaceholder(),
+      );
+    }
+
+    // 其他情况显示占位符
+    return _buildPlaceholder();
   }
 
   Widget _buildPlaceholder() => DecoratedBox(

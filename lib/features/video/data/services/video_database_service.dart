@@ -2614,11 +2614,15 @@ class VideoDatabaseService {
     final results = await _db!.rawQuery(sql, args);
 
     // 解析所有类型并去重
+    // 注意：genres 使用 ' / ' 分隔（参见 ScraperMovieDetail.genresText）
     final genreSet = <String>{};
     for (final row in results) {
       final genres = row[_colGenres] as String?;
       if (genres != null && genres.isNotEmpty) {
-        genreSet.addAll(genres.split(',').map((g) => g.trim()));
+        // 支持 ' / ' 和 '/' 两种分隔符格式
+        genreSet.addAll(
+          genres.split(RegExp(r'\s*/\s*')).map((g) => g.trim()).where((g) => g.isNotEmpty),
+        );
       }
     }
 
