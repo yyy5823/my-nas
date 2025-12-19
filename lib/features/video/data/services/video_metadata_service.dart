@@ -431,7 +431,7 @@ class VideoMetadataService {
         ..overview = nfoData.plot
         ..rating = nfoData.rating
         ..runtime = nfoData.runtime
-        ..genres = nfoData.genres?.join(', ')
+        ..genres = nfoData.genres?.join(' / ')
         ..director = nfoData.director
         ..cast = nfoData.actors?.take(5).join(', ')
         ..seasonNumber = nfoData.seasonNumber

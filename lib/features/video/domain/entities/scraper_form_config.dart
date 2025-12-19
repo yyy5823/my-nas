@@ -7,6 +7,25 @@ enum ScraperFormFieldType {
   number,
   url,
   toggle,
+  dropdown,
+}
+
+/// 下拉选项
+class ScraperFormOption {
+  const ScraperFormOption({
+    required this.value,
+    required this.label,
+    this.description,
+  });
+
+  /// 选项值
+  final String value;
+
+  /// 显示文本
+  final String label;
+
+  /// 描述文本
+  final String? description;
 }
 
 /// 刮削源表单字段配置
@@ -20,6 +39,7 @@ class ScraperFormField {
     this.type = ScraperFormFieldType.text,
     this.defaultValue,
     this.validator,
+    this.options,
   });
 
   /// 字段键名
@@ -45,6 +65,9 @@ class ScraperFormField {
 
   /// 自定义验证器
   final String? Function(String?)? validator;
+
+  /// 下拉选项（仅 dropdown 类型使用）
+  final List<ScraperFormOption>? options;
 }
 
 /// 刮削源表单分组配置
@@ -115,6 +138,50 @@ class ScraperFormConfig {
                 type: ScraperFormFieldType.password,
                 placeholder: '输入 TMDB API Key',
                 helpText: '在 TMDB 网站的 API 设置页面获取',
+              ),
+              ScraperFormField(
+                key: 'apiUrl',
+                label: 'API 服务器',
+                type: ScraperFormFieldType.dropdown,
+                defaultValue: 'https://api.themoviedb.org/3',
+                helpText: '选择 API 服务器，国内可使用代理服务器',
+                required: false,
+                options: [
+                  ScraperFormOption(
+                    value: 'https://api.themoviedb.org/3',
+                    label: 'TMDB 官方',
+                    description: 'api.themoviedb.org（默认）',
+                  ),
+                  ScraperFormOption(
+                    value: 'https://api.tmdb.org/3',
+                    label: 'TMDB 备用',
+                    description: 'api.tmdb.org',
+                  ),
+                  ScraperFormOption(
+                    value: 'https://tmdb.nastool.cn/3',
+                    label: 'NasTool 代理',
+                    description: 'tmdb.nastool.cn（国内推荐）',
+                  ),
+                  ScraperFormOption(
+                    value: 'https://tmdb.nastool.workers.dev/3',
+                    label: 'Workers 代理',
+                    description: 'tmdb.nastool.workers.dev',
+                  ),
+                ],
+              ),
+            ],
+          ),
+          ScraperFormSection(
+            title: '图片代理',
+            description: '默认使用 TMDB 官方图片服务器，国内访问可能较慢',
+            fields: [
+              ScraperFormField(
+                key: 'imageProxy',
+                label: '图片代理地址',
+                type: ScraperFormFieldType.url,
+                placeholder: '留空使用官方源 image.tmdb.org',
+                required: false,
+                helpText: '自定义图片代理地址，如 https://images.tmdb.org 或其他代理服务',
               ),
             ],
           ),
@@ -215,14 +282,27 @@ class ScraperFormConfig {
   ) {
     final name = formData['name'] as String?;
 
+    // 处理 TMDB 的图片代理配置
+    Map<String, dynamic>? extraConfig;
+    if (type == ScraperType.tmdb) {
+      final imageProxy = formData['imageProxy'] as String?;
+      if (imageProxy != null && imageProxy.isNotEmpty) {
+        extraConfig = {'imageProxy': imageProxy};
+      }
+    } else if (type == ScraperType.doubanWeb) {
+      final requestInterval = int.tryParse(formData['requestInterval']?.toString() ?? '');
+      if (requestInterval != null && requestInterval > 0) {
+        extraConfig = {'requestInterval': requestInterval};
+      }
+    }
+
     return ScraperSourceEntity(
       name: (name?.isNotEmpty ?? false) ? name! : type.displayName,
       type: type,
       apiKey: formData['apiKey'] as String?,
       apiUrl: formData['apiUrl'] as String?,
       cookie: formData['cookie'] as String?,
-      requestInterval: int.tryParse(formData['requestInterval']?.toString() ?? '') ??
-          (type == ScraperType.doubanWeb ? 3 : 0),
+      extraConfig: extraConfig,
       isEnabled: true,
       priority: 0, // 将由 manager 设置
     );
@@ -232,8 +312,9 @@ class ScraperFormConfig {
   static Map<String, dynamic> extractFormDataFromSource(ScraperSourceEntity source) => {
         'name': source.name != source.type.displayName ? source.name : '',
         'apiKey': source.apiKey ?? '',
-        'apiUrl': source.apiUrl ?? '',
+        'apiUrl': source.apiUrl ?? (source.type == ScraperType.tmdb ? 'https://api.themoviedb.org/3' : ''),
         'cookie': source.cookie ?? '',
         'requestInterval': source.requestInterval.toString(),
+        'imageProxy': source.extraConfig?['imageProxy'] as String? ?? '',
       };
 }

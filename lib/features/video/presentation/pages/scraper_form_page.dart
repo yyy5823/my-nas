@@ -191,6 +191,8 @@ class _ScraperFormPageState extends ConsumerState<ScraperFormPage> {
         return _buildUrlField(field);
       case ScraperFormFieldType.text:
         return _buildTextField(field);
+      case ScraperFormFieldType.dropdown:
+        return _buildDropdownField(field);
     }
   }
 
@@ -313,6 +315,54 @@ class _ScraperFormPageState extends ConsumerState<ScraperFormPage> {
           });
         },
         contentPadding: EdgeInsets.zero,
+      ),
+    );
+  }
+
+  Widget _buildDropdownField(ScraperFormField field) {
+    final options = field.options ?? [];
+    final currentValue = _formValues[field.key] as String? ?? field.defaultValue ?? '';
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: DropdownButtonFormField<String>(
+        initialValue: options.any((o) => o.value == currentValue) ? currentValue : options.firstOrNull?.value,
+        decoration: InputDecoration(
+          labelText: field.label,
+          helperText: field.helpText,
+          helperMaxLines: 3,
+          border: const OutlineInputBorder(),
+        ),
+        items: options.map((option) => DropdownMenuItem<String>(
+          value: option.value,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(option.label),
+              if (option.description != null)
+                Text(
+                  option.description!,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+            ],
+          ),
+        )).toList(),
+        onChanged: (value) {
+          if (value != null) {
+            setState(() {
+              _formValues[field.key] = value;
+            });
+          }
+        },
+        validator: (value) {
+          if (field.required && (value == null || value.isEmpty)) {
+            return '${field.label}不能为空';
+          }
+          return field.validator?.call(value);
+        },
       ),
     );
   }

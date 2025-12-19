@@ -14,6 +14,8 @@ class ScraperFactory {
   static MediaScraper create(ScraperSourceEntity source) => switch (source.type) {
         ScraperType.tmdb => TmdbScraper(
             apiKey: source.apiKey ?? '',
+            apiUrl: source.apiUrl,
+            imageProxy: source.extraConfig?['imageProxy'] as String?,
           ),
         ScraperType.doubanApi => DoubanApiScraper(
             apiUrl: source.apiUrl ?? '',
@@ -30,10 +32,13 @@ class ScraperFactory {
     ScraperType type,
     ScraperCredential credential, {
     String? apiUrl,
+    String? imageProxy,
     int requestInterval = 0,
   }) => switch (type) {
         ScraperType.tmdb => TmdbScraper(
             apiKey: credential.apiKey ?? '',
+            apiUrl: apiUrl,
+            imageProxy: imageProxy,
           ),
         ScraperType.doubanApi => DoubanApiScraper(
             apiUrl: apiUrl ?? '',

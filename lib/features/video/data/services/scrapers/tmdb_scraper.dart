@@ -9,13 +9,28 @@ import 'package:my_nas/features/video/domain/interfaces/media_scraper.dart';
 
 /// TMDB 刮削器实现
 class TmdbScraper implements MediaScraper {
-  TmdbScraper({required this.apiKey});
+  TmdbScraper({
+    required this.apiKey,
+    String? apiUrl,
+    String? imageProxy,
+  })  : _baseUrl = apiUrl ?? _defaultApiUrl,
+        _imageBaseUrl = imageProxy ?? _defaultImageUrl;
 
   /// API Key
   final String apiKey;
 
-  static const String _baseUrl = 'https://api.themoviedb.org/3';
-  static const String _imageBaseUrl = 'https://image.tmdb.org/t/p';
+  /// API 基础 URL
+  final String _baseUrl;
+
+  /// 图片基础 URL
+  final String _imageBaseUrl;
+
+  /// 默认 API URL
+  static const String _defaultApiUrl = 'https://api.themoviedb.org/3';
+
+  /// 默认图片 URL
+  static const String _defaultImageUrl = 'https://image.tmdb.org/t/p';
+
   static const Duration _requestTimeout = Duration(seconds: 15);
 
   @override
@@ -24,8 +39,14 @@ class TmdbScraper implements MediaScraper {
   @override
   bool get isConfigured => apiKey.isNotEmpty;
 
-  /// 获取图片完整 URL
+  /// 获取图片完整 URL（使用默认图片服务器）
   static String getImageUrl(String? path, {String size = 'w500'}) {
+    if (path == null || path.isEmpty) return '';
+    return '$_defaultImageUrl/$size$path';
+  }
+
+  /// 获取图片完整 URL（使用实例配置的图片服务器）
+  String getImageUrlWithProxy(String? path, {String size = 'w500'}) {
     if (path == null || path.isEmpty) return '';
     return '$_imageBaseUrl/$size$path';
   }
@@ -281,8 +302,8 @@ class TmdbScraper implements MediaScraper {
                     ? item['original_title']
                     : item['original_name']) as String?,
             overview: item['overview'] as String?,
-            posterUrl: getImageUrl(item['poster_path'] as String?),
-            backdropUrl: getImageUrl(
+            posterUrl: getImageUrlWithProxy(item['poster_path'] as String?),
+            backdropUrl: getImageUrlWithProxy(
               item['backdrop_path'] as String?,
               size: 'w780',
             ),
@@ -348,8 +369,8 @@ class TmdbScraper implements MediaScraper {
       title: json['title'] as String? ?? '',
       originalTitle: json['original_title'] as String?,
       overview: json['overview'] as String?,
-      posterUrl: getImageUrl(json['poster_path'] as String?),
-      backdropUrl: getImageUrl(
+      posterUrl: getImageUrlWithProxy(json['poster_path'] as String?),
+      backdropUrl: getImageUrlWithProxy(
         json['backdrop_path'] as String?,
         size: 'original',
       ),
@@ -407,7 +428,7 @@ class TmdbScraper implements MediaScraper {
             seasonNumber: season['season_number'] as int? ?? 0,
             name: season['name'] as String?,
             overview: season['overview'] as String?,
-            posterUrl: getImageUrl(season['poster_path'] as String?),
+            posterUrl: getImageUrlWithProxy(season['poster_path'] as String?),
             airDate: season['air_date'] as String?,
             episodeCount: season['episode_count'] as int?,
           );
@@ -427,8 +448,8 @@ class TmdbScraper implements MediaScraper {
       title: json['name'] as String? ?? '',
       originalTitle: json['original_name'] as String?,
       overview: json['overview'] as String?,
-      posterUrl: getImageUrl(json['poster_path'] as String?),
-      backdropUrl: getImageUrl(
+      posterUrl: getImageUrlWithProxy(json['poster_path'] as String?),
+      backdropUrl: getImageUrlWithProxy(
         json['backdrop_path'] as String?,
         size: 'original',
       ),
@@ -459,7 +480,7 @@ class TmdbScraper implements MediaScraper {
             episodeNumber: ep['episode_number'] as int? ?? 0,
             name: ep['name'] as String?,
             overview: ep['overview'] as String?,
-            stillUrl: getImageUrl(ep['still_path'] as String?),
+            stillUrl: getImageUrlWithProxy(ep['still_path'] as String?),
             airDate: ep['air_date'] as String?,
             runtime: ep['runtime'] as int?,
             rating: (ep['vote_average'] as num?)?.toDouble(),
@@ -473,7 +494,7 @@ class TmdbScraper implements MediaScraper {
       seasonNumber: json['season_number'] as int? ?? 0,
       name: json['name'] as String?,
       overview: json['overview'] as String?,
-      posterUrl: getImageUrl(json['poster_path'] as String?),
+      posterUrl: getImageUrlWithProxy(json['poster_path'] as String?),
       airDate: json['air_date'] as String?,
       episodes: episodes,
     );

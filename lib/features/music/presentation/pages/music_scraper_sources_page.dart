@@ -25,6 +25,9 @@ class _MusicScraperSourcesPageState extends ConsumerState<MusicScraperSourcesPag
   // 展开状态
   final Set<MusicScraperType> _expandedTypes = {};
 
+  // 正在测试的源 ID
+  String? _testingSourceId;
+
   @override
   void initState() {
     super.initState();
@@ -166,6 +169,7 @@ class _MusicScraperSourcesPageState extends ConsumerState<MusicScraperSourcesPag
                 onExpandToggle: () => _toggleExpand(type),
                 onSave: () => _saveConfig(type, source, config),
                 onTest: source != null ? () => _testConnection(source) : null,
+                isTesting: source != null && _testingSourceId == source.id,
               );
             },
           ),
@@ -297,22 +301,12 @@ class _MusicScraperSourcesPageState extends ConsumerState<MusicScraperSourcesPag
 
   /// 测试连接
   Future<void> _testConnection(MusicScraperSourceEntity source) async {
-    // 显示加载对话框
-    // ignore: unawaited_futures
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const AlertDialog(
-        content: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(width: 16),
-            Text('正在测试连接...'),
-          ],
-        ),
-      ),
-    );
+    // 避免重复测试
+    if (_testingSourceId != null) return;
+
+    setState(() {
+      _testingSourceId = source.id;
+    });
 
     try {
       final manager = ref.read(musicScraperManagerProvider);
@@ -321,7 +315,6 @@ class _MusicScraperSourcesPageState extends ConsumerState<MusicScraperSourcesPag
       final success = scraper != null && await scraper.testConnection();
 
       if (!mounted) return;
-      Navigator.pop(context); // 关闭加载对话框
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -332,7 +325,6 @@ class _MusicScraperSourcesPageState extends ConsumerState<MusicScraperSourcesPag
       );
     } on Exception catch (e) {
       if (!mounted) return;
-      Navigator.pop(context); // 关闭加载对话框
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -341,6 +333,12 @@ class _MusicScraperSourcesPageState extends ConsumerState<MusicScraperSourcesPag
           behavior: SnackBarBehavior.floating,
         ),
       );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _testingSourceId = null;
+        });
+      }
     }
   }
 
@@ -419,6 +417,7 @@ class _MusicScraperTypeCard extends StatelessWidget {
     required this.onExpandToggle,
     required this.onSave,
     required this.onTest,
+    required this.isTesting,
   });
 
   final int index;
@@ -431,6 +430,7 @@ class _MusicScraperTypeCard extends StatelessWidget {
   final VoidCallback onExpandToggle;
   final VoidCallback onSave;
   final VoidCallback? onTest;
+  final bool isTesting;
 
   bool get _isEnabled => source?.isEnabled ?? false;
   bool get _needsConfig => type.requiresApiKey || type.supportsCookie || type.requiresServerUrl;
@@ -687,13 +687,19 @@ class _MusicScraperTypeCard extends StatelessWidget {
                     children: [
                       if (onTest != null)
                         OutlinedButton.icon(
-                          onPressed: onTest,
-                          icon: const Icon(Icons.wifi_tethering, size: 18),
-                          label: const Text('测试'),
+                          onPressed: isTesting ? null : onTest,
+                          icon: isTesting
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.wifi_tethering, size: 18),
+                          label: Text(isTesting ? '测试中...' : '测试'),
                         ),
                       const SizedBox(width: 8),
                       FilledButton.icon(
-                        onPressed: onSave,
+                        onPressed: isTesting ? null : onSave,
                         icon: const Icon(Icons.save, size: 18),
                         label: const Text('保存'),
                       ),

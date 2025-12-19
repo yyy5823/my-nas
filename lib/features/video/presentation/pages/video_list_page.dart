@@ -857,7 +857,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       // 批次1：高优先级数据（首屏展示）
       final batch1Stopwatch = Stopwatch()..start();
       final batch1 = await Future.wait([
-        _db.getTopRated(limit: 30, enabledPaths: effectiveEnabledPaths),
+        _db.getTopRated(limit: 100, enabledPaths: effectiveEnabledPaths),
         _db.getRecentlyUpdated(limit: 20, enabledPaths: effectiveEnabledPaths),
         _db.getByCategory(MediaCategory.movie, limit: 30, enabledPaths: effectiveEnabledPaths),
       ]).timeout(
@@ -960,7 +960,8 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     }
 
     // 对高分推荐进行去重：电影直接使用，剧集使用 TvShowGroup 的信息
-    final topRated = _buildTopRatedWithGroups(topRatedRaw, tvShowGroups);
+    // 增加限制以获取更大的随机选择池
+    final topRated = _buildTopRatedWithGroups(topRatedRaw, tvShowGroups, limit: 50);
 
     // 对最近添加进行去重
     final recent = _buildRecentWithGroups(recentRaw, tvShowGroups);
@@ -2236,8 +2237,8 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     switch (section.category) {
       case VideoHomeCategory.heroBanner:
         if (topRated.isEmpty) return [];
-        // 使用随机 seed 选择精选推荐，每次打开 app 会变化
-        final heroItems = _selectRandomHeroItems(topRated, 5);
+        // 使用随机 seed 从评分 7-10 的内容中随机选择 4 部，每次打开 app 会变化
+        final heroItems = _selectRandomHeroItems(topRated, 4);
         return [
           SliverToBoxAdapter(
             child: isDesktop
@@ -2334,19 +2335,20 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
         ];
 
       case VideoHomeCategory.topRated:
-        if (topRated.length <= 5) return [];
+        // 跳过 heroBanner 使用的 4 项
+        if (topRated.length <= 4) return [];
         return [
           SliverToBoxAdapter(
             child: _CategoryRow(
               title: '高分推荐',
-              items: topRated.skip(5).toList(),
+              items: topRated.skip(4).toList(),
               onItemTap: (m) => _openVideoDetail(context, ref, m),
               onItemContextMenu: (m) => _showVideoContextMenu(context, ref, m),
               isDark: isDark,
               icon: Icons.star_rounded,
               iconColor: Colors.amber,
-              onViewAll: topRated.length > 15
-                  ? () => _showCategoryPage(context, '高分推荐', topRated.skip(5).toList())
+              onViewAll: topRated.length > 14
+                  ? () => _showCategoryPage(context, '高分推荐', topRated.skip(4).toList())
                   : null,
             ),
           ),

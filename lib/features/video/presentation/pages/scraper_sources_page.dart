@@ -20,6 +20,9 @@ class _ScraperSourcesPageState extends ConsumerState<ScraperSourcesPage> {
   // 各类型的配置控制器
   final Map<ScraperType, _ScraperConfig> _configs = {};
 
+  // 正在测试的源 ID
+  String? _testingSourceId;
+
   @override
   void initState() {
     super.initState();
@@ -45,6 +48,12 @@ class _ScraperSourcesPageState extends ConsumerState<ScraperSourcesPage> {
     config.apiKeyController.text = source.apiKey ?? '';
     config.apiUrlController.text = source.apiUrl ?? '';
     config.cookieController.text = source.cookie ?? '';
+
+    // TMDB 特有配置
+    if (source.type == ScraperType.tmdb) {
+      config.tmdbApiUrl = source.apiUrl ?? 'https://api.themoviedb.org/3';
+      config.imageProxyController.text = source.extraConfig?['imageProxy'] as String? ?? '';
+    }
   }
 
   @override
@@ -177,6 +186,7 @@ class _ScraperSourcesPageState extends ConsumerState<ScraperSourcesPage> {
                 onExpandToggle: () => _toggleExpanded(type),
                 onSave: () => _saveConfig(type, source),
                 onTest: source != null ? () => _testConnection(source) : null,
+                isTesting: source != null && _testingSourceId == source.id,
                 isDark: Theme.of(context).brightness == Brightness.dark,
               );
             },
@@ -292,18 +302,32 @@ class _ScraperSourcesPageState extends ConsumerState<ScraperSourcesPage> {
       return;
     }
 
+    // 处理 TMDB 特有配置
+    String? apiUrl;
+    Map<String, dynamic>? extraConfig;
+    if (type == ScraperType.tmdb) {
+      apiUrl = config.tmdbApiUrl;
+      final imageProxy = config.imageProxyController.text.trim();
+      if (imageProxy.isNotEmpty) {
+        extraConfig = {'imageProxy': imageProxy};
+      }
+    } else {
+      apiUrl = config.apiUrlController.text.trim().isEmpty
+          ? null
+          : config.apiUrlController.text.trim();
+    }
+
     if (existingSource != null) {
       // 更新现有配置
       final updated = existingSource.copyWith(
         apiKey: config.apiKeyController.text.trim().isEmpty
             ? null
             : config.apiKeyController.text.trim(),
-        apiUrl: config.apiUrlController.text.trim().isEmpty
-            ? null
-            : config.apiUrlController.text.trim(),
+        apiUrl: apiUrl,
         cookie: config.cookieController.text.trim().isEmpty
             ? null
             : config.cookieController.text.trim(),
+        extraConfig: extraConfig ?? existingSource.extraConfig,
       );
       await ref.read(scraperSourcesProvider.notifier).updateSource(updated);
     } else {
@@ -315,12 +339,11 @@ class _ScraperSourcesPageState extends ConsumerState<ScraperSourcesPage> {
         apiKey: config.apiKeyController.text.trim().isEmpty
             ? null
             : config.apiKeyController.text.trim(),
-        apiUrl: config.apiUrlController.text.trim().isEmpty
-            ? null
-            : config.apiUrlController.text.trim(),
+        apiUrl: apiUrl,
         cookie: config.cookieController.text.trim().isEmpty
             ? null
             : config.cookieController.text.trim(),
+        extraConfig: extraConfig,
       );
       await ref.read(scraperSourcesProvider.notifier).addSource(newSource);
     }
@@ -341,29 +364,18 @@ class _ScraperSourcesPageState extends ConsumerState<ScraperSourcesPage> {
   }
 
   Future<void> _testConnection(ScraperSourceEntity source) async {
-    // 显示加载对话框
-    // ignore: unawaited_futures
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const AlertDialog(
-        content: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(width: 16),
-            Text('正在测试连接...'),
-          ],
-        ),
-      ),
-    );
+    // 避免重复测试
+    if (_testingSourceId != null) return;
+
+    setState(() {
+      _testingSourceId = source.id;
+    });
 
     try {
       final success =
           await ref.read(scraperSourcesProvider.notifier).testConnection(source);
 
       if (!mounted) return;
-      Navigator.pop(context);
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -374,7 +386,6 @@ class _ScraperSourcesPageState extends ConsumerState<ScraperSourcesPage> {
       );
     } on Exception catch (e) {
       if (!mounted) return;
-      Navigator.pop(context);
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -383,6 +394,12 @@ class _ScraperSourcesPageState extends ConsumerState<ScraperSourcesPage> {
           behavior: SnackBarBehavior.floating,
         ),
       );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _testingSourceId = null;
+        });
+      }
     }
   }
 }
@@ -392,11 +409,16 @@ class _ScraperConfig {
   final apiKeyController = TextEditingController();
   final apiUrlController = TextEditingController();
   final cookieController = TextEditingController();
+  final imageProxyController = TextEditingController();
+
+  /// TMDB API URL（默认官方）
+  String tmdbApiUrl = 'https://api.themoviedb.org/3';
 
   void dispose() {
     apiKeyController.dispose();
     apiUrlController.dispose();
     cookieController.dispose();
+    imageProxyController.dispose();
   }
 }
 
@@ -414,6 +436,7 @@ class _ScraperTypeCard extends StatefulWidget {
     required this.onExpandToggle,
     required this.onSave,
     required this.onTest,
+    required this.isTesting,
     required this.isDark,
   });
 
@@ -427,6 +450,7 @@ class _ScraperTypeCard extends StatefulWidget {
   final VoidCallback onExpandToggle;
   final VoidCallback onSave;
   final VoidCallback? onTest;
+  final bool isTesting;
   final bool isDark;
 
   @override
@@ -624,6 +648,20 @@ class _ScraperTypeCardState extends State<_ScraperTypeCard> {
               const SizedBox(height: 16),
             ],
 
+            // TMDB API URL 选择
+            if (widget.type == ScraperType.tmdb) ...[
+              _buildTmdbApiUrlDropdown(),
+              const SizedBox(height: 16),
+              _buildConfigField(
+                label: '图片代理',
+                hint: '留空使用官方源 image.tmdb.org',
+                controller: widget.config.imageProxyController,
+                isRequired: false,
+                isUrl: true,
+              ),
+              const SizedBox(height: 16),
+            ],
+
             // API URL 输入
             if (widget.type.requiresApiUrl) ...[
               _buildConfigField(
@@ -656,13 +694,19 @@ class _ScraperTypeCardState extends State<_ScraperTypeCard> {
               children: [
                 if (widget.onTest != null)
                   TextButton.icon(
-                    onPressed: widget.onTest,
-                    icon: const Icon(Icons.wifi_tethering_rounded, size: 18),
-                    label: const Text('测试'),
+                    onPressed: widget.isTesting ? null : widget.onTest,
+                    icon: widget.isTesting
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.wifi_tethering_rounded, size: 18),
+                    label: Text(widget.isTesting ? '测试中...' : '测试'),
                   ),
                 const SizedBox(width: 8),
                 FilledButton.icon(
-                  onPressed: widget.onSave,
+                  onPressed: widget.isTesting ? null : widget.onSave,
                   icon: const Icon(Icons.check_rounded, size: 18),
                   label: const Text('保存'),
                   style: FilledButton.styleFrom(
@@ -674,6 +718,76 @@ class _ScraperTypeCardState extends State<_ScraperTypeCard> {
           ],
         ),
       );
+
+  /// TMDB API URL 下拉选择
+  Widget _buildTmdbApiUrlDropdown() {
+    const options = [
+      ('https://api.themoviedb.org/3', 'TMDB 官方', 'api.themoviedb.org（默认）'),
+      ('https://api.tmdb.org/3', 'TMDB 备用', 'api.tmdb.org'),
+      ('https://tmdb.nastool.cn/3', 'NasTool 代理', 'tmdb.nastool.cn（国内推荐）'),
+      ('https://tmdb.nastool.workers.dev/3', 'Workers 代理', 'tmdb.nastool.workers.dev'),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'API 服务器',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+            color: widget.isDark ? Colors.grey[300] : Colors.grey[700],
+          ),
+        ),
+        const SizedBox(height: 8),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: widget.isDark ? Colors.grey[900] : Colors.white,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: widget.isDark ? Colors.grey[700]! : Colors.grey[300]!,
+            ),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: widget.config.tmdbApiUrl,
+              isExpanded: true,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              borderRadius: BorderRadius.circular(10),
+              dropdownColor: widget.isDark ? Colors.grey[850] : Colors.white,
+              items: options.map((option) {
+                final (value, label, description) = option;
+                return DropdownMenuItem<String>(
+                  value: value,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(label, style: const TextStyle(fontSize: 14)),
+                      Text(
+                        description,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: widget.isDark ? Colors.grey[500] : Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() {
+                    widget.config.tmdbApiUrl = value;
+                  });
+                }
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 
   Widget _buildConfigField({
     required String label,

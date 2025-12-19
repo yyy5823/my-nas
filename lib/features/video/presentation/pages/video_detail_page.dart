@@ -14,13 +14,14 @@ import 'package:my_nas/features/video/presentation/pages/manual_scraper_page.dar
 import 'package:my_nas/features/video/presentation/pages/season_scraper_page.dart';
 import 'package:my_nas/features/video/presentation/pages/tmdb_preview_page.dart';
 import 'package:my_nas/features/video/presentation/pages/video_player_page.dart';
+import 'package:my_nas/features/video/presentation/providers/scraper_provider.dart' show enabledScraperCountProvider;
 import 'package:my_nas/features/video/presentation/providers/video_detail_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/video_favorites_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/video_history_provider.dart';
 import 'package:my_nas/features/video/presentation/widgets/cast_section.dart';
 import 'package:my_nas/features/video/presentation/widgets/detail_hero_section.dart';
-import 'package:my_nas/features/video/presentation/widgets/episode_selector.dart';
 import 'package:my_nas/features/video/presentation/widgets/recommendations_section.dart';
+import 'package:my_nas/features/video/presentation/widgets/unified_episode_selector.dart';
 
 /// 视频详情页面
 class VideoDetailPage extends ConsumerStatefulWidget {
@@ -50,6 +51,9 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
 
   bool get _isTvShow => _selectedMetadata.category == MediaCategory.tvShow;
   bool get _hasTmdbId => _selectedMetadata.tmdbId != null && _selectedMetadata.tmdbId! > 0;
+  bool get _hasDoubanId => _selectedMetadata.doubanId != null && _selectedMetadata.doubanId!.isNotEmpty;
+  /// 是否有任何刮削数据（TMDB 或豆瓣）
+  bool get _hasMetadata => _hasTmdbId || _hasDoubanId;
 
   @override
   Widget build(BuildContext context) {
@@ -151,12 +155,18 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       overview = overviewGetter(_selectedMetadata);
     }
 
+    // 如果只有豆瓣数据，使用 metadata 中的评分作为豆瓣评分
+    final doubanRating = _hasDoubanId && !_hasTmdbId ? _selectedMetadata.rating : null;
+
+    // 只有在有启用的刮削源时才显示刮削按钮
+    final hasEnabledScrapers = ref.watch(enabledScraperCountProvider) > 0;
+
     return DetailHeroSection(
       metadata: _selectedMetadata,
       onPlay: _isPlaying ? () {} : _playVideo,
       onFavorite: _toggleFavorite,
       onToggleWatched: _toggleWatched,
-      onScrape: _openManualScraper,
+      onScrape: hasEnabledScrapers ? _openManualScraper : null,
       isFavorite: isFavorite,
       isWatched: isWatched,
       watchProgress: watchProgress,
@@ -165,11 +175,12 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       displayTitle: localizedTitle,
       overview: overview,
       tmdbRating: tmdbRating,
+      doubanRating: doubanRating,
       voteCount: voteCount,
       sourceId: widget.sourceId,
       // 电视剧详情页隐藏季集信息，因为这是剧的总览页，不是单集页
-      // 无论是否有 TMDB，只要是电视剧且有 showDirectory，都隐藏
-      hideEpisodeInfo: _isTvShow && (_hasTmdbId || _selectedMetadata.showDirectory != null),
+      // 只要有刮削数据（TMDB 或豆瓣）或 showDirectory，都隐藏单集标签
+      hideEpisodeInfo: _isTvShow && (_hasMetadata || _selectedMetadata.showDirectory != null),
     );
   }
 
@@ -178,8 +189,8 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     logger..i('VideoDetailPage: _buildMainContent called')
     ..i('VideoDetailPage:   title=${_selectedMetadata.displayTitle}')
     ..i('VideoDetailPage:   category=${_selectedMetadata.category}')
-    ..i('VideoDetailPage:   isTvShow=$_isTvShow, hasTmdbId=$_hasTmdbId')
-    ..i('VideoDetailPage:   tmdbId=${_selectedMetadata.tmdbId}')
+    ..i('VideoDetailPage:   isTvShow=$_isTvShow, hasTmdbId=$_hasTmdbId, hasDoubanId=$_hasDoubanId')
+    ..i('VideoDetailPage:   tmdbId=${_selectedMetadata.tmdbId}, doubanId=${_selectedMetadata.doubanId}')
     ..i('VideoDetailPage:   showDirectory=${_selectedMetadata.showDirectory}')
     ..i('VideoDetailPage:   seasonNumber=${_selectedMetadata.seasonNumber}')
     ..i('VideoDetailPage:   episodeNumber=${_selectedMetadata.episodeNumber}')
@@ -193,20 +204,21 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 剧集选择器 (电视剧)
+          // 剧集选择器 (电视剧) - 使用统一选择器
           if (_isTvShow) ...[
-            if (_hasTmdbId)
-              _buildEpisodeSection()
-            else
-              _buildLocalEpisodeSection(),
+            _buildUnifiedEpisodeSection(),
             const SizedBox(height: 24),
           ],
 
           // 注意：简介已移至 Banner 区域，不再单独显示
 
-          // 演员阵容 (需要 TMDB ID)
+          // 演员阵容
+          // - 有 TMDB ID：从 TMDB 获取详细信息（带照片）
+          // - 只有豆瓣 ID：显示 metadata 中的演员列表（无照片）
           if (_hasTmdbId) ...[
             _buildCastSection(),
+          ] else if (_hasDoubanId && _selectedMetadata.cast != null) ...[
+            _buildSimpleCastSection(isDark),
           ],
 
           // 电影系列 (仅电影且有 TMDB ID)
@@ -236,17 +248,9 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     );
   }
 
-  Widget _buildEpisodeSection() {
-    final tmdbId = widget.metadata.tmdbId!;
-    final tvDetailAsync = ref.watch(tvDetailProvider(tmdbId));
-    final localEpisodesAsync = ref.watch(localEpisodeFilesProvider(tmdbId));
+  /// 构建统一剧集选择器
+  Widget _buildUnifiedEpisodeSection() {
     final allProgressAsync = ref.watch(allVideoProgressProvider);
-
-    // 调试日志
-    logger.d('VideoDetailPage: _buildEpisodeSection called, tmdbId=$tmdbId');
-
-    // 先获取本地剧集数据和播放进度（不论 TMDB 是否成功都需要）
-    final localEpisodes = localEpisodesAsync.valueOrNull ?? {};
     final allProgress = allProgressAsync.valueOrNull ?? {};
 
     // 将进度转换为 Map<filePath, double>
@@ -255,145 +259,84 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       episodeProgress[entry.key] = entry.value.progressPercent;
     }
 
-    return tvDetailAsync.when(
-      loading: () => const SizedBox(
-        height: 200,
-        child: Center(child: CircularProgressIndicator()),
-      ),
-      error: (e, st) {
-        logger.e('VideoDetailPage: tvDetailProvider error', e, st);
-        // TMDB 加载失败时，降级使用本地数据
-        return _buildFallbackLocalEpisodes(localEpisodes, episodeProgress);
-      },
-      data: (tvDetail) {
-        if (tvDetail == null || tvDetail.seasons.isEmpty) {
-          logger.w('VideoDetailPage: tvDetail is null or has no seasons, tvDetail=${tvDetail?.name}, seasonsCount=${tvDetail?.seasons.length}');
-          // TMDB 数据为空时，降级使用本地数据
-          return _buildFallbackLocalEpisodes(localEpisodes, episodeProgress);
-        }
+    // 获取本地剧集数据
+    if (_hasTmdbId) {
+      // 有 TMDB ID：同时获取 TMDB 和本地数据
+      final tmdbId = _selectedMetadata.tmdbId!;
+      final tvDetailAsync = ref.watch(tvDetailProvider(tmdbId));
+      final localEpisodesAsync = ref.watch(localEpisodeFilesProvider(tmdbId));
 
-        logger..d('VideoDetailPage: tvDetail loaded, name=${tvDetail.name}, seasons=${tvDetail.seasons.length}')
+      final localEpisodes = localEpisodesAsync.valueOrNull ?? {};
 
-        // 调试：打印本地剧集数据
-        ..d('VideoDetailPage: localEpisodes count=${localEpisodes.length}, seasons=${localEpisodes.keys.toList()}');
-        for (final seasonEntry in localEpisodes.entries) {
-          logger.d('VideoDetailPage:   Season ${seasonEntry.key}: ${seasonEntry.value.length} episodes');
-        }
-
-        return EpisodeSelector(
-          tvId: tmdbId,
-          seasons: tvDetail.seasons,
-          initialSeason: widget.metadata.seasonNumber,
+      return tvDetailAsync.when(
+        loading: () => const SizedBox(
+          height: 200,
+          child: Center(child: CircularProgressIndicator()),
+        ),
+        error: (_, _) => UnifiedEpisodeSelector(
           localEpisodes: localEpisodes,
-          episodeProgress: episodeProgress,
-          onEpisodePlay: _playEpisode,
-        );
-      },
-    );
-  }
-
-  /// 构建降级的本地剧集选择器（当 TMDB 失败时使用）
-  Widget _buildFallbackLocalEpisodes(
-    Map<int, Map<int, VideoMetadata>> localEpisodes,
-    Map<String, double> episodeProgress,
-  ) {
-    logger.d('VideoDetailPage: _buildFallbackLocalEpisodes called, localEpisodes=${localEpisodes.length} seasons');
-
-    if (localEpisodes.isEmpty) {
-      logger.w('VideoDetailPage: no local episodes available for fallback');
-      return const SizedBox.shrink();
-    }
-
-    logger.i('VideoDetailPage: using LocalEpisodeSelector as fallback');
-    return LocalEpisodeSelector(
-      episodes: localEpisodes,
-      initialSeason: widget.metadata.seasonNumber,
-      episodeProgress: episodeProgress,
-      onEpisodePlay: _playLocalEpisode,
-    );
-  }
-
-  /// 构建本地剧集选择器（无 TMDB 数据时使用）
-  Widget _buildLocalEpisodeSection() {
-    // 尝试获取 showDirectory，如果没有设置，从文件路径提取
-    var showDirectory = _selectedMetadata.showDirectory;
-    final extractedShowDir = VideoDatabaseService.extractShowDirectory(_selectedMetadata.filePath);
-
-    logger..d('VideoDetailPage: _buildLocalEpisodeSection called')
-    ..d('VideoDetailPage:   metadata.showDirectory=$showDirectory')
-    ..d('VideoDetailPage:   extractedShowDir=$extractedShowDir')
-    ..d('VideoDetailPage:   filePath=${_selectedMetadata.filePath}')
-    ..d('VideoDetailPage:   seasonNumber=${_selectedMetadata.seasonNumber}, episodeNumber=${_selectedMetadata.episodeNumber}');
-
-    if (showDirectory == null || showDirectory.isEmpty) {
-      showDirectory = extractedShowDir;
-    }
-
-    if (showDirectory == null || showDirectory.isEmpty) {
-      logger.w('VideoDetailPage: showDirectory is null or empty, cannot load local episodes');
-      return const SizedBox.shrink();
-    }
-
-    logger.d('VideoDetailPage: using showDirectory=$showDirectory');
-
-    final localEpisodesAsync = ref.watch(localEpisodesByShowDirProvider(showDirectory));
-    final allProgressAsync = ref.watch(allVideoProgressProvider);
-
-    return localEpisodesAsync.when(
-      loading: () => const SizedBox(
-        height: 120,
-        child: Center(child: CircularProgressIndicator()),
-      ),
-      error: (e, st) {
-        logger.e('VideoDetailPage: localEpisodesByShowDirProvider error', e, st);
-        return const SizedBox.shrink();
-      },
-      data: (episodes) {
-        logger.d('VideoDetailPage: localEpisodes loaded, seasons=${episodes.keys.toList()}');
-        for (final seasonEntry in episodes.entries) {
-          logger.d('VideoDetailPage:   Season ${seasonEntry.key}: ${seasonEntry.value.length} episodes, episodeNums=${seasonEntry.value.keys.toList()}');
-        }
-
-        if (episodes.isEmpty) {
-          logger.w('VideoDetailPage: localEpisodes is empty for showDirectory=$showDirectory');
-          return const SizedBox.shrink();
-        }
-
-        final allProgress = allProgressAsync.valueOrNull ?? {};
-
-        // 将进度转换为 Map<filePath, double>
-        final episodeProgress = <String, double>{};
-        for (final entry in allProgress.entries) {
-          episodeProgress[entry.key] = entry.value.progressPercent;
-        }
-
-        return LocalEpisodeSelector(
-          episodes: episodes,
           initialSeason: _selectedMetadata.seasonNumber,
           episodeProgress: episodeProgress,
-          onEpisodePlay: _playLocalEpisode,
-        );
-      },
-    );
+          onEpisodePlay: _playUnifiedEpisode,
+        ),
+        data: (tvDetail) => UnifiedEpisodeSelector(
+          tmdbId: tmdbId,
+          tmdbSeasons: tvDetail?.seasons,
+          localEpisodes: localEpisodes,
+          initialSeason: _selectedMetadata.seasonNumber,
+          episodeProgress: episodeProgress,
+          onEpisodePlay: _playUnifiedEpisode,
+        ),
+      );
+    } else {
+      // 无 TMDB ID：使用 showDirectory 获取本地剧集
+      var showDirectory = _selectedMetadata.showDirectory;
+      if (showDirectory == null || showDirectory.isEmpty) {
+        showDirectory = VideoDatabaseService.extractShowDirectory(_selectedMetadata.filePath);
+      }
+
+      if (showDirectory == null || showDirectory.isEmpty) {
+        return const SizedBox.shrink();
+      }
+
+      final localEpisodesAsync = ref.watch(localEpisodesByShowDirProvider(showDirectory));
+
+      return localEpisodesAsync.when(
+        loading: () => const SizedBox(
+          height: 200,
+          child: Center(child: CircularProgressIndicator()),
+        ),
+        error: (_, _) => const SizedBox.shrink(),
+        data: (episodes) => UnifiedEpisodeSelector(
+          localEpisodes: episodes,
+          initialSeason: _selectedMetadata.seasonNumber,
+          episodeProgress: episodeProgress,
+          onEpisodePlay: _playUnifiedEpisode,
+        ),
+      );
+    }
   }
 
-  /// 播放本地剧集（无 TMDB 数据）
-  Future<void> _playLocalEpisode(VideoMetadata episode) async {
+  /// 统一的剧集播放方法
+  Future<void> _playUnifiedEpisode(VideoMetadata localFile, {TmdbEpisode? tmdbEpisode}) async {
     setState(() => _isPlaying = true);
 
     try {
-      final videoInfo = await _getVideoInfo(episode.filePath);
+      final videoInfo = await _getVideoInfo(localFile.filePath);
       if (videoInfo == null) return;
 
       if (!mounted) return;
 
+      // 优先使用 TMDB 剧集名，其次使用本地元数据
+      final episodeName = tmdbEpisode?.name ?? localFile.episodeTitle ?? localFile.displayTitle;
+
       final videoItem = VideoItem(
-        name: episode.displayTitle,
-        path: episode.filePath,
+        name: episodeName,
+        path: localFile.filePath,
         url: videoInfo.url,
         sourceId: widget.sourceId,
         size: videoInfo.size,
-        thumbnailUrl: episode.displayPosterUrl,
+        thumbnailUrl: tmdbEpisode?.stillUrl ?? localFile.displayPosterUrl,
       );
 
       await Navigator.of(context, rootNavigator: true).push(
@@ -445,6 +388,87 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       );
     }
   }
+
+  /// 简单演员列表（用于豆瓣等没有详细演员信息的数据源）
+  Widget _buildSimpleCastSection(bool isDark) {
+    final castList = _selectedMetadata.castList;
+    if (castList.isEmpty) return const SizedBox.shrink();
+
+    final director = _selectedMetadata.director;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '演职人员',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+            ),
+          ),
+          const SizedBox(height: 12),
+          // 导演
+          if (director != null && director.isNotEmpty) ...[
+            _buildSimpleCastItem('导演', director, isDark),
+            const SizedBox(height: 8),
+          ],
+          // 演员
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: castList.take(10).map((name) => Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: isDark ? AppColors.darkSurfaceVariant : Colors.grey[100],
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isDark ? AppColors.darkOutline : Colors.grey[300]!,
+                ),
+              ),
+              child: Text(
+                name,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                ),
+              ),
+            )).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSimpleCastItem(String role, String name, bool isDark) => Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: AppColors.primary.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(
+            role,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: AppColors.primary,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          name,
+          style: TextStyle(
+            fontSize: 14,
+            color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+          ),
+        ),
+      ],
+    );
 
   /// 电影系列/合集区域
   Widget _buildMovieCollectionSection(bool isDark) {
@@ -1263,42 +1287,6 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       // 刷新播放历史
       ref..invalidate(continueWatchingProvider)
       ..invalidate(videoProgressProvider(_selectedMetadata.filePath));
-    } finally {
-      if (mounted) {
-        setState(() => _isPlaying = false);
-      }
-    }
-  }
-
-  Future<void> _playEpisode(TmdbEpisode episode, VideoMetadata? localFile) async {
-    if (localFile == null) return;
-
-    setState(() => _isPlaying = true);
-
-    try {
-      final videoInfo = await _getVideoInfo(localFile.filePath);
-      if (videoInfo == null) return;
-
-      if (!mounted) return;
-
-      final videoItem = VideoItem(
-        name: '${localFile.displayTitle} - ${episode.name}',
-        path: localFile.filePath,
-        url: videoInfo.url,
-        sourceId: widget.sourceId,
-        size: videoInfo.size,
-        thumbnailUrl: episode.stillUrl.isNotEmpty ? episode.stillUrl : localFile.displayPosterUrl,
-      );
-
-      await Navigator.of(context, rootNavigator: true).push(
-        MaterialPageRoute<void>(
-          builder: (context) => VideoPlayerPage(video: videoItem),
-        ),
-      );
-
-      // 刷新播放历史
-      ref..invalidate(continueWatchingProvider)
-      ..invalidate(allVideoProgressProvider);
     } finally {
       if (mounted) {
         setState(() => _isPlaying = false);

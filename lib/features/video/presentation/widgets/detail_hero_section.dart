@@ -26,6 +26,7 @@ class DetailHeroSection extends StatelessWidget {
     this.displayTitle,
     this.overview,
     this.tmdbRating,
+    this.doubanRating,
     this.traktRating,
     this.voteCount,
     this.sourceId,
@@ -46,6 +47,8 @@ class DetailHeroSection extends StatelessWidget {
   final String? displayTitle;
   final String? overview;
   final double? tmdbRating;
+  /// 豆瓣评分（当只有豆瓣数据时使用）
+  final double? doubanRating;
   final double? traktRating;
   final int? voteCount;
   /// 用于加载 NAS 路径图片的 sourceId
@@ -401,14 +404,30 @@ class DetailHeroSection extends StatelessWidget {
   Widget _buildRatingBadges() {
     final badges = <Widget>[];
 
-    // TMDB 评分
-    final rating = tmdbRating ?? metadata.rating;
-    if (rating != null && rating > 0) {
+    // TMDB 评分（优先显示）
+    if (tmdbRating != null && tmdbRating! > 0) {
       badges.add(_buildRatingBadge(
         label: 'TMDB',
-        rating: rating,
+        rating: tmdbRating!,
         color: const Color(0xFF01D277), // TMDB 绿色
         voteCount: voteCount,
+      ));
+    }
+
+    // 豆瓣评分（如果没有 TMDB 评分，显示豆瓣）
+    if (badges.isEmpty && doubanRating != null && doubanRating! > 0) {
+      badges.add(_buildRatingBadge(
+        label: '豆瓣',
+        rating: doubanRating!,
+        color: const Color(0xFF2BC16B), // 豆瓣绿色
+      ));
+    }
+    // 如果没有任何评分但 metadata 中有评分，使用 metadata 的评分作为备选
+    if (badges.isEmpty && metadata.rating != null && metadata.rating! > 0) {
+      badges.add(_buildRatingBadge(
+        label: '评分',
+        rating: metadata.rating!,
+        color: Colors.grey,
       ));
     }
 

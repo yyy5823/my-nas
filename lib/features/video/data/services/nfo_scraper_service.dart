@@ -75,7 +75,7 @@ class NfoMetadata {
       overview: plot,
       rating: rating,
       runtime: runtime,
-      genres: genres?.join(', '),
+      genres: genres?.join(' / '),
       director: director,
       cast: actors?.take(5).join(', '),
       seasonNumber: seasonNumber,
