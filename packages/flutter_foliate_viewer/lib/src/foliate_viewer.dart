@@ -125,14 +125,10 @@ class _FoliateViewerState extends State<FoliateViewer> {
   final GlobalKey _webViewKey = GlobalKey();
   InAppWebViewController? _webViewController;
 
-  /// 内联 HTML 内容（用于桌面端）
+  /// 内联 HTML 内容（所有平台都使用内联 HTML）
   String? _inlineHtmlContent;
   bool _isLoading = true;
   bool _isWebViewReady = false;
-
-  /// 是否需要使用内联 HTML（桌面端）
-  bool get _needsInlineHtml =>
-      Platform.isMacOS || Platform.isWindows || Platform.isLinux;
 
   /// 资源基础路径
   static const String _assetBasePath =
@@ -141,12 +137,11 @@ class _FoliateViewerState extends State<FoliateViewer> {
   @override
   void initState() {
     super.initState();
-    if (_needsInlineHtml) {
-      _loadInlineHtml();
-    }
+    // 所有平台都使用内联 HTML 方式加载，确保跨平台一致性
+    _loadInlineHtml();
   }
 
-  /// 加载桌面端内联 HTML
+  /// 加载内联 HTML（所有平台统一使用）
   Future<void> _loadInlineHtml() async {
     try {
       // 加载 bundle.js
@@ -473,8 +468,8 @@ $bundleJs
 
   @override
   Widget build(BuildContext context) {
-    // 桌面端等待 HTML 加载
-    if (_needsInlineHtml && _inlineHtmlContent == null) {
+    // 等待 HTML 加载完成
+    if (_inlineHtmlContent == null) {
       return const Center(child: CircularProgressIndicator());
     }
 
@@ -482,14 +477,13 @@ $bundleJs
       children: [
         InAppWebView(
           key: _webViewKey,
-          initialFile: _needsInlineHtml ? null : '$_assetBasePath/index.html',
-          initialData: _needsInlineHtml && _inlineHtmlContent != null
-              ? InAppWebViewInitialData(
-                  data: _inlineHtmlContent!,
-                  mimeType: 'text/html',
-                  encoding: 'utf-8',
-                )
-              : null,
+          initialData: InAppWebViewInitialData(
+            data: _inlineHtmlContent!,
+            mimeType: 'text/html',
+            encoding: 'utf-8',
+            // 设置 baseUrl 以便相对路径资源能正确加载
+            baseUrl: WebUri('about:blank'),
+          ),
           initialSettings: InAppWebViewSettings(
             isInspectable: kDebugMode,
             javaScriptEnabled: true,
@@ -498,19 +492,15 @@ $bundleJs
             verticalScrollBarEnabled: false,
             horizontalScrollBarEnabled: false,
             disableVerticalScroll: true,
+            // iOS 特定设置
+            allowsInlineMediaPlayback: true,
+            // Android 特定设置
+            useHybridComposition: true,
           ),
           onWebViewCreated: (controller) {
             _webViewController = controller;
             widget.controller.setWebViewController(controller);
             _addJavaScriptHandlers();
-          },
-          onLoadStop: (controller, url) async {
-            // 移动端：HTML 加载完成后，等待 book.js 初始化完成再加载书籍
-            if (!_needsInlineHtml) {
-              // 移动端需要等待 book.js 准备好
-              // 通过定时检查 reader 对象是否存在
-              await _waitForReaderAndLoadBook();
-            }
           },
           onConsoleMessage: (controller, message) {
             if (kDebugMode) {
@@ -528,68 +518,4 @@ $bundleJs
     );
   }
 
-  /// 移动端等待 reader 准备好并加载书籍
-  Future<void> _waitForReaderAndLoadBook() async {
-    // 移动端使用原生的 book.js 逻辑，通过 URL 参数初始化
-    // 但我们需要通过 JavaScript 注入书籍数据
-
-    // 等待 WebView 完全加载
-    await Future<void>.delayed(const Duration(milliseconds: 500));
-
-    _isWebViewReady = true;
-
-    // 注入初始化函数（如果不存在）
-    await _webViewController?.evaluateJavascript(source: '''
-      if (!window.initFoliateBook) {
-        window.initFoliateBook = async function(base64Data, bookType, initialCfi, styleJson) {
-          try {
-            // 解码 base64 数据
-            const binaryString = atob(base64Data);
-            const bytes = new Uint8Array(binaryString.length);
-            for (let i = 0; i < binaryString.length; i++) {
-              bytes[i] = binaryString.charCodeAt(i);
-            }
-            const blob = new Blob([bytes]);
-            const file = new File([blob], 'book.' + bookType);
-
-            // 设置样式
-            if (styleJson && !window.style) {
-              window.style = JSON.parse(styleJson);
-            }
-
-            if (!window.readingRules) {
-              window.readingRules = {
-                convertChineseMode: 'none',
-                bionicReadingMode: false
-              };
-            }
-
-            window.importing = false;
-
-            // 设置模块级变量（book.js 中的 style, readingRules, importing）
-            if (typeof window.setFoliateVars === 'function') {
-              window.setFoliateVars(window.style, window.readingRules, window.importing);
-            }
-
-            // 使用 foliateOpen 函数打开书籍
-            if (typeof window.foliateOpen === 'function') {
-              await window.foliateOpen(file, initialCfi || null);
-            } else if (typeof open === 'function') {
-              // 回退：尝试模块作用域的 open 函数
-              await open(file, initialCfi || null);
-            } else {
-              throw new Error('Reader not initialized');
-            }
-
-          } catch (error) {
-            console.error('Init book error:', error);
-            window.flutter_inappwebview.callHandler('onError', error.message || '加载失败');
-          }
-        };
-      }
-    ''');
-
-    // 加载书籍
-    await _loadBook();
-  }
 }
