@@ -829,22 +829,31 @@ class _ManualScraperPageState extends ConsumerState<ManualScraperPage> {
   }
 
   Widget _buildBottomBar(bool isDark) => Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         decoration: BoxDecoration(
           color: isDark ? AppColors.darkSurface : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
-              blurRadius: 8,
-              offset: const Offset(0, -2),
+              color: Colors.black.withValues(alpha: 0.08),
+              blurRadius: 16,
+              offset: const Offset(0, -4),
             ),
           ],
         ),
         child: SafeArea(
           child: Row(
             children: [
-              Expanded(
-                child: OutlinedButton(
+              // 返回按钮 - 圆形图标按钮
+              Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: isDark ? Colors.grey[700]! : Colors.grey[300]!,
+                    width: 1.5,
+                  ),
+                ),
+                child: IconButton(
                   onPressed: _isScraping
                       ? null
                       : () {
@@ -853,24 +862,53 @@ class _ManualScraperPageState extends ConsumerState<ManualScraperPage> {
                             _selectedTvDetail = null;
                           });
                         },
-                  child: const Text('取消'),
+                  icon: const Icon(Icons.arrow_back_rounded),
+                  tooltip: '返回搜索',
                 ),
               ),
               const SizedBox(width: 16),
+              // 确认按钮 - 大按钮
               Expanded(
-                flex: 2,
-                child: FilledButton(
-                  onPressed: _isScraping ? null : _confirmAndScrape,
-                  child: _isScraping
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
+                child: SizedBox(
+                  height: 52,
+                  child: FilledButton(
+                    onPressed: _isScraping ? null : _confirmAndScrape,
+                    style: FilledButton.styleFrom(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    child: _isScraping
+                        ? const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              SizedBox(width: 12),
+                              Text('正在刮削...'),
+                            ],
+                          )
+                        : const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.check_rounded, size: 22),
+                              SizedBox(width: 8),
+                              Text(
+                                '确认刮削',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
                           ),
-                        )
-                      : const Text('确认刮削'),
+                  ),
                 ),
               ),
             ],

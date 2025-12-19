@@ -288,8 +288,8 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
 
   // 触摸检测：区分点击和滑动
   Offset? _touchDownPosition;
-  // 点击阈值：屏幕宽度的 5%（规范化坐标 0-1）
-  static const double _tapThreshold = 0.05;
+  // 点击阈值：屏幕宽度的 10%（规范化坐标 0-1），增大以便更容易识别点击
+  static const double _tapThreshold = 0.10;
 
   // 状态栏相关
   final Battery _battery = Battery();
@@ -847,6 +847,7 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
               displaySettings: EpubDisplaySettings(
                 allowScriptedContent: true,
                 flow: EpubFlow.paginated, // 强制水平分页，禁止垂直滚动
+                spread: EpubSpread.none, // 强制单页显示，不使用双页模式
                 snap: true, // 页面对齐，防止中间停顿
                 fontSize: ref.watch(bookReaderSettingsProvider).fontSize.toInt(),
                 theme: _getEpubTheme(ref.watch(bookReaderSettingsProvider).theme),

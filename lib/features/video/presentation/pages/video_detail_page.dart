@@ -1202,7 +1202,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
   }
 
   /// 打开刮削页面
-  /// 电视剧使用整季刮削页面，电影使用单个刮削页面
+  /// 电视剧使用整剧刮削页面，电影使用单个刮削页面
   Future<void> _openManualScraper() async {
     final connections = ref.read(activeConnectionsProvider);
     final connection = connections[widget.sourceId];
@@ -1212,12 +1212,19 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
 
     bool? result;
 
-    if (_isTvShow && _selectedMetadata.showDirectory != null) {
-      // 电视剧：使用整季刮削页面
+    // 尝试获取 showDirectory
+    var showDirectory = _selectedMetadata.showDirectory;
+    if ((showDirectory == null || showDirectory.isEmpty) && _isTvShow) {
+      // 如果 showDirectory 为空但是电视剧，尝试从文件路径提取
+      showDirectory = VideoDatabaseService.extractShowDirectory(_selectedMetadata.filePath);
+    }
+
+    if (_isTvShow && showDirectory != null && showDirectory.isNotEmpty) {
+      // 电视剧：使用整剧刮削页面
       result = await Navigator.of(context).push<bool>(
         MaterialPageRoute(
           builder: (_) => SeasonScraperPage(
-            showDirectory: _selectedMetadata.showDirectory!,
+            showDirectory: showDirectory!,
             sourceId: widget.sourceId,
             tmdbId: _selectedMetadata.tmdbId,
             fileSystem: fileSystem,
@@ -1226,7 +1233,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         ),
       );
     } else {
-      // 电影或无 showDirectory 的视频：使用单个刮削页面
+      // 电影或无法确定 showDirectory 的视频：使用单个刮削页面
       result = await Navigator.of(context).push<bool>(
         MaterialPageRoute(
           builder: (_) => ManualScraperPage(
@@ -1247,14 +1254,31 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         _selectedMetadata.filePath,
       );
       if (updatedMetadata != null && mounted) {
+        // 刷新剧集列表 Provider（刮削前的 ID 和刮削后的 ID 都需要刷新）
+        final oldTmdbId = _selectedMetadata.tmdbId;
+        final newTmdbId = updatedMetadata.tmdbId;
+
         setState(() {
           _selectedMetadata = updatedMetadata;
         });
+
         // 刷新相关 Provider
-        if (_selectedMetadata.tmdbId != null) {
+        if (oldTmdbId != null) {
           ref
-            ..invalidate(movieDetailProvider(_selectedMetadata.tmdbId!))
-            ..invalidate(tvDetailProvider(_selectedMetadata.tmdbId!));
+            ..invalidate(movieDetailProvider(oldTmdbId))
+            ..invalidate(tvDetailProvider(oldTmdbId))
+            ..invalidate(localEpisodeFilesProvider(oldTmdbId));
+        }
+        if (newTmdbId != null && newTmdbId != oldTmdbId) {
+          ref
+            ..invalidate(movieDetailProvider(newTmdbId))
+            ..invalidate(tvDetailProvider(newTmdbId))
+            ..invalidate(localEpisodeFilesProvider(newTmdbId));
+        }
+
+        // 刷新 showDirectory 相关的 Provider
+        if (showDirectory != null && showDirectory.isNotEmpty) {
+          ref.invalidate(localEpisodesByShowDirProvider(showDirectory));
         }
       }
     }

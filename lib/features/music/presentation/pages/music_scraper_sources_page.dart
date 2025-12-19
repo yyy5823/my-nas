@@ -226,11 +226,46 @@ class _MusicScraperSourcesPageState extends ConsumerState<MusicScraperSourcesPag
 
   /// 切换启用状态
   Future<void> _toggleSource(MusicScraperType type, MusicScraperSourceEntity? source, bool enabled) async {
+    final needsConfig = type.requiresApiKey || type.requiresServerUrl;
+
     if (source != null) {
-      await ref.read(musicScraperSourcesProvider.notifier).toggleSource(source.id, isEnabled: enabled);
+      // 已有配置记录
+      if (enabled && !source.isConfigured && needsConfig) {
+        // 尝试启用但未配置必要信息，展开卡片提示配置
+        setState(() {
+          _expandedTypes.add(type);
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('请先填写 ${type.displayName} 的配置信息'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      } else {
+        // 已配置或关闭，直接切换启用状态
+        await ref.read(musicScraperSourcesProvider.notifier).toggleSource(source.id, isEnabled: enabled);
+      }
     } else if (enabled) {
-      // 如果源不存在但要启用，先创建
-      await _addSource(type);
+      // 如果源不存在但要启用
+      if (needsConfig) {
+        // 需要配置，展开卡片
+        setState(() {
+          _expandedTypes.add(type);
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('请先填写 ${type.displayName} 的配置信息'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      } else {
+        // 不需要配置，直接创建并启用
+        await _addSource(type);
+      }
     }
   }
 
@@ -544,11 +579,16 @@ class _MusicScraperTypeCard extends StatelessWidget {
                     ),
                   ),
 
-                  // 展开/收起图标（如果需要配置）
+                  // 展开/收起按钮（如果需要配置）
                   if (_needsConfig)
-                    Icon(
-                      isExpanded ? Icons.expand_less : Icons.expand_more,
-                      color: colorScheme.outline,
+                    IconButton(
+                      onPressed: onExpandToggle,
+                      icon: Icon(
+                        isExpanded ? Icons.expand_less : Icons.expand_more,
+                        color: colorScheme.outline,
+                      ),
+                      tooltip: isExpanded ? '收起配置' : '展开配置',
+                      visualDensity: VisualDensity.compact,
                     ),
 
                   // 启用开关

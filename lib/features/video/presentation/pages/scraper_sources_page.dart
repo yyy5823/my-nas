@@ -234,10 +234,26 @@ class _ScraperSourcesPageState extends ConsumerState<ScraperSourcesPage> {
 
   Future<void> _handleToggle(ScraperType type, ScraperSourceEntity? source, bool enabled) async {
     if (source != null) {
-      // 已有配置，直接切换启用状态
-      await ref.read(scraperSourcesProvider.notifier).toggleSource(source.id, enabled: enabled);
+      // 已有配置记录
+      if (enabled && !source.isConfigured && _needsConfiguration(type)) {
+        // 尝试启用但未配置必要信息，展开卡片提示配置
+        setState(() {
+          _expandedTypes.add(type);
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('请先填写 ${type.displayName} 的配置信息'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      } else {
+        // 已配置或关闭，直接切换启用状态
+        await ref.read(scraperSourcesProvider.notifier).toggleSource(source.id, enabled: enabled);
+      }
     } else if (enabled) {
-      // 没有配置，需要检查是否需要必填项
+      // 没有配置记录，需要检查是否需要必填项
       if (_needsConfiguration(type)) {
         // 需要配置，展开卡片
         setState(() {
@@ -572,15 +588,19 @@ class _ScraperTypeCardState extends State<_ScraperTypeCard> {
                       ),
                     ),
 
-                    // 展开/收起指示器（如果需要配置）
+                    // 展开/收起按钮（如果需要配置）
                     if (_needsConfig) ...[
-                      Icon(
-                        widget.isExpanded
-                            ? Icons.expand_less_rounded
-                            : Icons.expand_more_rounded,
-                        color: widget.isDark ? Colors.grey[500] : Colors.grey[400],
+                      IconButton(
+                        onPressed: widget.onExpandToggle,
+                        icon: Icon(
+                          widget.isExpanded
+                              ? Icons.expand_less_rounded
+                              : Icons.expand_more_rounded,
+                          color: widget.isDark ? Colors.grey[500] : Colors.grey[400],
+                        ),
+                        tooltip: widget.isExpanded ? '收起配置' : '展开配置',
+                        visualDensity: VisualDensity.compact,
                       ),
-                      const SizedBox(width: 8),
                     ],
 
                     // 启用开关

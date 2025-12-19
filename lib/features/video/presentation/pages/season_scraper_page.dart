@@ -1040,40 +1040,69 @@ class _SeasonScraperPageState extends ConsumerState<SeasonScraperPage> {
     final seasonCount = _selectedSeasons.length;
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurface : Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 8,
-            offset: const Offset(0, -2),
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 16,
+            offset: const Offset(0, -4),
           ),
         ],
       ),
       child: SafeArea(
         child: Row(
           children: [
-            Expanded(
-              child: OutlinedButton(
+            // 返回按钮 - 圆形图标按钮
+            Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: isDark ? Colors.grey[700]! : Colors.grey[300]!,
+                  width: 1.5,
+                ),
+              ),
+              child: IconButton(
                 onPressed: () {
                   setState(() {
                     _selectedTvDetail = null;
                     _seasonDetails.clear();
                   });
                 },
-                child: const Text('返回搜索'),
+                icon: const Icon(Icons.arrow_back_rounded),
+                tooltip: '返回搜索',
               ),
             ),
             const SizedBox(width: 16),
+            // 确认按钮 - 大按钮
             Expanded(
-              flex: 2,
-              child: FilledButton(
-                onPressed: totalEpisodes == 0 ? null : _startScraping,
-                child: Text(
-                  seasonCount > 1
-                      ? '刮削 $seasonCount 季共 $totalEpisodes 集'
-                      : '刮削 $totalEpisodes 集',
+              child: SizedBox(
+                height: 52,
+                child: FilledButton(
+                  onPressed: totalEpisodes == 0 ? null : _startScraping,
+                  style: FilledButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.auto_fix_high_rounded, size: 22),
+                      const SizedBox(width: 8),
+                      Text(
+                        seasonCount > 1
+                            ? '刮削 $seasonCount 季共 $totalEpisodes 集'
+                            : '刮削 $totalEpisodes 集',
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),

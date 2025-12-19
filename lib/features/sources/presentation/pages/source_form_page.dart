@@ -916,7 +916,13 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
   Future<void> _submitNewSource(SourceEntity source, String password) async {
     final sourceManager = ref.read(sourceManagerProvider);
 
-    // 服务类源使用专门的处理逻辑
+    // PT 站点使用专门的处理逻辑
+    if (source.type == SourceType.ptSite) {
+      await _submitPTSiteSource(source);
+      return;
+    }
+
+    // 服务类源使用专门的处理逻辑（排除 PT 站点，因为已在上面处理）
     if (source.isServiceSource) {
       await _submitServiceSource(source);
       return;
@@ -969,10 +975,52 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
   /// 提交服务类源
   Future<void> _submitServiceSource(SourceEntity source) async {
     final sourcesNotifier = ref.read(sourcesProvider.notifier);
+    final sourceManager = ref.read(sourceManagerProvider);
 
     try {
       // 验证连接
       final connected = await _validateServiceSourceConnection(source);
+
+      if (!mounted) return;
+
+      if (connected) {
+        // 连接成功，保存源
+        await sourcesNotifier.addSource(source);
+
+        // 保存凭证（密码）
+        final password = _formValues['password'] as String? ?? '';
+        if (password.isNotEmpty) {
+          await sourceManager.saveCredential(
+            source.id,
+            SourceCredential(password: password),
+          );
+        }
+
+        if (mounted) {
+          _showSuccessAndPop(source, '已添加 ${source.displayName}');
+        }
+      } else {
+        _showErrorSnackBar('连接失败，请检查认证信息');
+      }
+    } on String catch (message) {
+      // 不支持的源类型
+      if (!mounted) return;
+      _showErrorSnackBar(message);
+    } on Exception catch (e) {
+      if (!mounted) return;
+      _showErrorSnackBar('连接失败: $e');
+    }
+  }
+
+  /// 提交 PT 站点源
+  Future<void> _submitPTSiteSource(SourceEntity source) async {
+    final sourcesNotifier = ref.read(sourcesProvider.notifier);
+
+    try {
+      // 使用 PTSiteApiFactory 创建 API 实例并测试连接
+      final api = PTSiteApiFactory.create(source);
+      final connected = await api.testConnection();
+      api.dispose();
 
       if (!mounted) return;
 
@@ -985,10 +1033,6 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
       } else {
         _showErrorSnackBar('连接失败，请检查认证信息');
       }
-    } on String catch (message) {
-      // 不支持的源类型
-      if (!mounted) return;
-      _showErrorSnackBar(message);
     } on Exception catch (e) {
       if (!mounted) return;
       _showErrorSnackBar('连接失败: $e');

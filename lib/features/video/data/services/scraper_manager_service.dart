@@ -4,6 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/video/data/services/scraper_factory.dart';
+import 'package:my_nas/features/video/data/services/tmdb_service.dart';
 import 'package:my_nas/features/video/domain/entities/scraper_result.dart';
 import 'package:my_nas/features/video/domain/entities/scraper_source.dart';
 import 'package:my_nas/features/video/domain/interfaces/media_scraper.dart';
@@ -53,9 +54,28 @@ class ScraperManagerService {
       _box = await Hive.openBox<dynamic>(_boxName);
       _initialized = true;
       logger.i('ScraperManagerService 初始化完成');
+
+      // 同步已有的 TMDB 刮削源 API Key 到 TmdbService
+      await _syncExistingTmdbApiKey();
     } on Exception catch (e, st) {
       logger.e('ScraperManagerService 初始化失败', e, st);
       rethrow;
+    }
+  }
+
+  /// 初始化时同步已有的 TMDB API Key
+  Future<void> _syncExistingTmdbApiKey() async {
+    try {
+      final sources = await getSources();
+      final tmdbSource = sources.where((s) => s.type == ScraperType.tmdb).firstOrNull;
+      if (tmdbSource != null) {
+        final credential = await getCredential(tmdbSource.id);
+        if (credential?.apiKey != null && credential!.apiKey!.isNotEmpty) {
+          await _syncTmdbApiKey(credential.apiKey!);
+        }
+      }
+    } on Exception catch (e, st) {
+      logger.w('同步已有 TMDB API Key 失败', e, st);
     }
   }
 
@@ -111,6 +131,11 @@ class ScraperManagerService {
       );
     }
 
+    // 同步 TMDB API Key 到 TmdbService（用于推荐内容等功能）
+    if (source.type == ScraperType.tmdb && source.apiKey != null) {
+      await _syncTmdbApiKey(source.apiKey!);
+    }
+
     logger.i('添加刮削源: ${source.displayName}');
   }
 
@@ -136,6 +161,11 @@ class ScraperManagerService {
           cookie: source.cookie,
         ),
       );
+    }
+
+    // 同步 TMDB API Key 到 TmdbService（用于推荐内容等功能）
+    if (source.type == ScraperType.tmdb && source.apiKey != null) {
+      await _syncTmdbApiKey(source.apiKey!);
     }
 
     // 清除缓存的刮削器实例
@@ -220,6 +250,24 @@ class ScraperManagerService {
   }
 
   // === 凭证管理 ===
+
+  /// 同步 TMDB API Key 到 TmdbService 和 Hive 存储
+  ///
+  /// TmdbService 用于获取推荐内容、相似内容等功能，需要独立的 API Key 配置
+  Future<void> _syncTmdbApiKey(String apiKey) async {
+    try {
+      // 同步到 TmdbService 实例
+      TmdbService().setApiKey(apiKey);
+
+      // 同步到 Hive 存储（用于 app 重启后恢复）
+      final box = await Hive.openBox<String>('settings');
+      await box.put('tmdb_api_key', apiKey);
+
+      logger.i('TMDB API Key 已同步到 TmdbService');
+    } on Exception catch (e, st) {
+      logger.e('同步 TMDB API Key 失败', e, st);
+    }
+  }
 
   /// 保存凭证到安全存储
   Future<void> saveCredential(String sourceId, ScraperCredential credential) async {
