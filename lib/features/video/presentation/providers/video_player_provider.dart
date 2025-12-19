@@ -10,6 +10,7 @@ import 'package:my_nas/features/video/data/services/audio_track_service.dart';
 import 'package:my_nas/features/video/data/services/pip_service.dart';
 import 'package:my_nas/features/video/data/services/subtitle_service.dart';
 import 'package:my_nas/features/video/data/services/video_history_service.dart';
+import 'package:my_nas/features/video/data/services/video_thumbnail_service.dart';
 import 'package:my_nas/features/video/domain/entities/video_item.dart';
 import 'package:my_nas/features/video/presentation/providers/playback_settings_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/playlist_provider.dart';
@@ -106,6 +107,7 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
   late final Player _player;
   late final VideoController _videoController;
   final VideoHistoryService _historyService = VideoHistoryService();
+  final VideoThumbnailService _thumbnailService = VideoThumbnailService();
   final AudioTrackService _audioTrackService = AudioTrackService();
   final PipService _pipService = PipService();
 
@@ -114,6 +116,9 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
 
   Timer? _progressSaveTimer;
   VideoItem? _currentVideo;
+
+  /// 进度保存计数器（用于控制截图频率）
+  int _progressSaveCount = 0;
 
   // Stream subscriptions 管理
   final List<StreamSubscription<dynamic>> _subscriptions = [];
@@ -129,8 +134,9 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
     _player = Player();
     _videoController = VideoController(_player);
 
-    // 初始化历史服务
+    // 初始化服务
     _historyService.init();
+    _thumbnailService.init();
 
     // 应用保存的设置
     _applySettings();
@@ -356,6 +362,17 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
       position: state.position,
       duration: state.duration,
     );
+
+    // 每3次保存进度时（每30秒），同时保存进度截图
+    _progressSaveCount++;
+    if (_progressSaveCount >= 3) {
+      _progressSaveCount = 0;
+      // 异步保存截图，不阻塞进度保存
+      AppError.fireAndForget(
+        _captureProgressThumbnail(),
+        action: 'periodicProgressThumbnail',
+      );
+    }
   }
 
   /// 播放视频
@@ -477,6 +494,11 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
   /// 暂停
   Future<void> pause() async {
     await _player.pause();
+    // 用户暂停时保存进度截图
+    AppError.fireAndForget(
+      _captureProgressThumbnail(),
+      action: 'pauseProgressThumbnail',
+    );
   }
 
   /// 同步暂停（用于 dispose）
@@ -491,11 +513,34 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
 
   /// 停止
   Future<void> stop() async {
+    // 先截图（在停止播放器之前）
+    await _captureProgressThumbnail();
     await _saveCurrentProgress();
     _stopProgressSaveTimer();
     await _player.stop();
     _currentVideo = null;
     _ref.read(currentVideoProvider.notifier).state = null;
+  }
+
+  /// 捕获当前帧作为进度截图
+  Future<void> _captureProgressThumbnail() async {
+    if (_currentVideo == null) return;
+    // 只在播放进度 > 5% 且 < 95% 时保存进度截图
+    if (state.progress <= 0.05 || state.progress >= 0.95) return;
+
+    try {
+      final screenshot = await _player.screenshot();
+      if (screenshot != null && screenshot.isNotEmpty) {
+        await _thumbnailService.saveProgressThumbnail(
+          videoPath: _currentVideo!.path,
+          imageBytes: screenshot,
+        );
+        logger.d('VideoPlayerNotifier: 进度截图已保存');
+      }
+    } on Exception catch (e, st) {
+      // 截图失败不影响正常流程
+      AppError.ignore(e, st, '进度截图捕获失败（非关键错误）');
+    }
   }
 
   /// 同步停止（用于 dispose，不等待异步操作）

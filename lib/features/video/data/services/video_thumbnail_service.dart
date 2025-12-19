@@ -106,6 +106,7 @@ class VideoThumbnailService {
   static VideoThumbnailService? _instance;
 
   Directory? _cacheDir;
+  Directory? _progressCacheDir;
   final _generatingTasks = <String, Future<String?>>{};
 
   /// 初始化服务
@@ -114,8 +115,12 @@ class VideoThumbnailService {
     try {
       final appDir = await getApplicationSupportDirectory();
       _cacheDir = Directory(p.join(appDir.path, 'video_thumbnails'));
+      _progressCacheDir = Directory(p.join(appDir.path, 'progress_thumbnails'));
       if (!await _cacheDir!.exists()) {
         await _cacheDir!.create(recursive: true);
+      }
+      if (!await _progressCacheDir!.exists()) {
+        await _progressCacheDir!.create(recursive: true);
       }
       logger.i('VideoThumbnailService: 初始化完成，缓存目录: ${_cacheDir!.path}');
     } on Exception catch (e, st) {
@@ -539,10 +544,109 @@ class VideoThumbnailService {
         await _cacheDir!.delete(recursive: true);
         await _cacheDir!.create(recursive: true);
       }
+      if (_progressCacheDir != null && await _progressCacheDir!.exists()) {
+        await _progressCacheDir!.delete(recursive: true);
+        await _progressCacheDir!.create(recursive: true);
+      }
       logger.i('VideoThumbnailService: 缓存已清除');
     } on Exception catch (e, st) {
       AppError.handle(e, st, 'clearAllCacheThumbnails');
     }
+  }
+
+  // ==================== 进度截图相关方法 ====================
+
+  /// 保存进度截图（从播放器截取的当前帧）
+  ///
+  /// [videoPath] 视频路径（用于生成缓存键）
+  /// [imageBytes] 截图的字节数据（JPEG 格式）
+  /// 返回保存后的文件路径
+  Future<String?> saveProgressThumbnail({
+    required String videoPath,
+    required Uint8List imageBytes,
+  }) async {
+    if (_progressCacheDir == null) {
+      await init();
+      if (_progressCacheDir == null) return null;
+    }
+
+    try {
+      final cacheKey = _generateCacheKey(videoPath);
+      final thumbnailPath = p.join(_progressCacheDir!.path, '$cacheKey.jpg');
+
+      await File(thumbnailPath).writeAsBytes(imageBytes);
+      logger.d('VideoThumbnailService: 进度截图已保存 $thumbnailPath');
+      return thumbnailPath;
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'saveProgressThumbnail', {'videoPath': videoPath});
+      return null;
+    }
+  }
+
+  /// 获取进度截图路径
+  String? getProgressThumbnailPath(String videoPath) {
+    if (_progressCacheDir == null) return null;
+    final cacheKey = _generateCacheKey(videoPath);
+    final thumbnailPath = p.join(_progressCacheDir!.path, '$cacheKey.jpg');
+    final file = File(thumbnailPath);
+    if (file.existsSync()) {
+      return thumbnailPath;
+    }
+    return null;
+  }
+
+  /// 获取进度截图 URL (file:// 格式)
+  String? getProgressThumbnailUrl(String videoPath) {
+    final path = getProgressThumbnailPath(videoPath);
+    if (path != null) {
+      return Uri.file(path).toString();
+    }
+    return null;
+  }
+
+  /// 删除进度截图
+  Future<void> deleteProgressThumbnail(String videoPath) async {
+    final path = getProgressThumbnailPath(videoPath);
+    if (path != null) {
+      try {
+        await File(path).delete();
+        logger.d('VideoThumbnailService: 进度截图已删除 $path');
+      } on Exception catch (e, st) {
+        AppError.ignore(e, st, '删除进度截图失败（非关键错误）');
+      }
+    }
+  }
+
+  /// 清除所有进度截图缓存
+  Future<void> clearAllProgressCache() async {
+    if (_progressCacheDir == null) return;
+    try {
+      if (await _progressCacheDir!.exists()) {
+        await _progressCacheDir!.delete(recursive: true);
+        await _progressCacheDir!.create(recursive: true);
+      }
+      logger.i('VideoThumbnailService: 进度截图缓存已清除');
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'clearAllProgressCache');
+    }
+  }
+
+  /// 获取进度截图缓存大小（字节）
+  Future<int> getProgressCacheSize() async {
+    if (_progressCacheDir == null || !await _progressCacheDir!.exists()) {
+      return 0;
+    }
+    var totalSize = 0;
+    try {
+      await for (final entity in _progressCacheDir!.list()) {
+        if (entity is File) {
+          totalSize += await entity.length();
+        }
+      }
+    } on Exception catch (e) {
+      logger.w('VideoThumbnailService: 计算进度截图缓存大小失败', e);
+    }
+    return totalSize;
   }
 
   /// 获取缓存大小（字节）

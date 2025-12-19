@@ -20,6 +20,7 @@ import 'package:my_nas/features/video/data/services/video_history_service.dart';
 import 'package:my_nas/features/video/data/services/video_library_cache_service.dart';
 import 'package:my_nas/features/video/data/services/video_metadata_service.dart';
 import 'package:my_nas/features/video/data/services/video_scanner_service.dart';
+import 'package:my_nas/features/video/data/services/video_thumbnail_service.dart';
 import 'package:my_nas/features/video/domain/entities/tv_show_group.dart';
 import 'package:my_nas/features/video/domain/entities/video_category_config.dart';
 import 'package:my_nas/features/video/domain/entities/video_item.dart';
@@ -2890,17 +2891,24 @@ class _ContinueWatchingSection extends ConsumerWidget {
 
 /// 继续观看卡片
 class _ContinueWatchingCard extends ConsumerWidget {
-  const _ContinueWatchingCard({
+  _ContinueWatchingCard({
     required this.item,
     required this.isDark,
   });
 
   final VideoHistoryItem item;
   final bool isDark;
+  final VideoThumbnailService _thumbnailService = VideoThumbnailService();
 
-  /// 获取可用的海报 URL - 优先使用历史记录中的 thumbnailUrl
+  /// 获取可用的海报 URL - 优先使用进度截图，其次是历史记录中的 thumbnailUrl
   String? _getDisplayPosterUrl() {
-    // 检查历史记录中的 thumbnailUrl 是否可用
+    // 优先使用进度截图（停止帧）
+    final progressThumbnail = _thumbnailService.getProgressThumbnailUrl(item.videoPath);
+    if (progressThumbnail != null) {
+      return progressThumbnail;
+    }
+
+    // 其次使用历史记录中的 thumbnailUrl
     if (item.thumbnailUrl != null && item.thumbnailUrl!.isNotEmpty) {
       if (AdaptiveImage.isSupportedUrl(item.thumbnailUrl!)) {
         return item.thumbnailUrl;
