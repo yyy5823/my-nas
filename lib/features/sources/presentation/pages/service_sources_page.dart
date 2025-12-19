@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/features/aria2/presentation/pages/aria2_detail_page.dart';
 import 'package:my_nas/features/nastool/presentation/pages/nastool_detail_page.dart';
 import 'package:my_nas/features/pt_sites/presentation/pages/pt_site_detail_page.dart';
 import 'package:my_nas/features/qbittorrent/presentation/pages/qbittorrent_detail_page.dart';
@@ -8,6 +9,7 @@ import 'package:my_nas/features/sources/domain/entities/source_category.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/pages/source_form_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
+import 'package:my_nas/features/transmission/presentation/pages/transmission_detail_page.dart';
 
 /// 通用服务源列表页面
 ///
@@ -545,7 +547,33 @@ class _ServiceSourceCardState extends ConsumerState<_ServiceSourceCard> {
           );
         }
       case SourceType.transmission:
+        // Transmission 详情页
+        if (context.mounted) {
+          await Navigator.push<void>(
+            context,
+            MaterialPageRoute<void>(
+              builder: (_) => TransmissionDetailPage(
+                source: widget.source,
+                password: password,
+              ),
+            ),
+          );
+        }
       case SourceType.aria2:
+        // Aria2 详情页
+        // Aria2 使用 rpcSecret 而不是密码，从源的 extraConfig 中获取
+        final rpcSecret = widget.source.extraConfig?['rpcSecret'] as String?;
+        if (context.mounted) {
+          await Navigator.push<void>(
+            context,
+            MaterialPageRoute<void>(
+              builder: (_) => Aria2DetailPage(
+                source: widget.source,
+                rpcSecret: rpcSecret,
+              ),
+            ),
+          );
+        }
       case SourceType.trakt:
       case SourceType.moviepilot:
         // 其他服务类源暂未实现，显示提示

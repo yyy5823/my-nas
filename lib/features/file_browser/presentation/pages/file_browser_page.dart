@@ -17,7 +17,6 @@ import 'package:my_nas/shared/providers/download_provider.dart';
 import 'package:my_nas/shared/widgets/animated_list_item.dart';
 import 'package:my_nas/shared/widgets/download_manager_sheet.dart';
 import 'package:my_nas/shared/widgets/empty_widget.dart';
-import 'package:my_nas/shared/widgets/error_widget.dart';
 import 'package:my_nas/shared/widgets/skeleton_loader.dart';
 
 class FileBrowserPage extends ConsumerStatefulWidget {
@@ -49,7 +48,8 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
       if (widget.sourceId != null) {
         ref.read(selectedSourceIdProvider.notifier).state = widget.sourceId;
       }
-      ref.read(fileListProvider.notifier).loadDirectory('/');
+      // 使用源配置的初始路径（如 SMB 的 shareName/path）
+      ref.read(fileListProvider.notifier).loadInitialDirectory();
     });
   }
 
@@ -602,12 +602,9 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
           key: const ValueKey('not_connected'),
           child: _buildNotConnectedPrompt(isDark),
         ),
-      FileListError(:final message) => KeyedSubtree(
+      FileListError(:final message, :final hasCustomPath, :final failedPath) => KeyedSubtree(
           key: const ValueKey('error'),
-          child: AppErrorWidget(
-            message: message,
-            onRetry: () => ref.read(fileListProvider.notifier).refresh(),
-          ),
+          child: _buildErrorContent(message, hasCustomPath, failedPath, isDark),
         ),
       FileListLoaded(:final files) when files.isEmpty => const KeyedSubtree(
           key: ValueKey('empty'),
@@ -707,6 +704,84 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
         ),
       ),
     );
+
+  /// 构建错误内容，支持自定义路径失败时返回根目录
+  Widget _buildErrorContent(String message, bool hasCustomPath, String? failedPath, bool isDark) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: Colors.red.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.error_outline_rounded,
+                size: 40,
+                color: Colors.red,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              hasCustomPath ? '无法访问指定目录' : '加载失败',
+              style: context.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: isDark ? AppColors.darkOnSurface : null,
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (hasCustomPath && failedPath != null) ...[
+              Text(
+                '目录 "$failedPath" 可能不存在或无权访问',
+                style: context.textTheme.bodyMedium?.copyWith(
+                  color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+            ],
+            Text(
+              message,
+              style: context.textTheme.bodySmall?.copyWith(
+                color: isDark
+                    ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.7)
+                    : AppColors.lightOnSurfaceVariant.withValues(alpha: 0.7),
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 32),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // 重试按钮
+                OutlinedButton.icon(
+                  onPressed: () => ref.read(fileListProvider.notifier).refresh(),
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('重试'),
+                ),
+                // 如果有自定义路径，显示返回根目录按钮
+                if (hasCustomPath) ...[
+                  const SizedBox(width: 16),
+                  FilledButton.icon(
+                    onPressed: () => ref.read(fileListProvider.notifier).loadRootDirectory(),
+                    icon: const Icon(Icons.folder_rounded),
+                    label: const Text('浏览所有共享'),
+                  ),
+                ],
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _buildList(List<FileItem> files, bool isDark) {
     final isMultiSelectMode = ref.watch(multiSelectModeProvider);

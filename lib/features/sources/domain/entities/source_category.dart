@@ -8,6 +8,7 @@ enum SourceCategory {
   nasDevices('NAS 设备', 'nas_devices', Icons.storage),
   genericProtocols('通用协议', 'generic_protocols', Icons.link),
   localStorage('本地存储', 'local_storage', Icons.folder),
+  mobileDevice('手机媒体', 'mobile_device', Icons.phone_iphone),
   mediaServers('媒体服务器', 'media_servers', Icons.live_tv),
 
   // === 服务类源 ===
@@ -35,6 +36,7 @@ enum SourceCategory {
         nasDevices => '连接到 NAS 设备，访问存储的媒体文件',
         genericProtocols => '通过通用协议连接到远程存储',
         localStorage => '访问设备本地存储的文件',
+        mobileDevice => '访问手机相册、音乐库等系统媒体',
         mediaServers => '连接到媒体服务器，播放视频内容',
         downloadTools => '管理下载任务和种子',
         mediaTracking => '追踪观看记录和媒体状态',
@@ -50,6 +52,7 @@ extension SourceCategoryExtension on SourceCategory {
         SourceCategory.nasDevices,
         SourceCategory.genericProtocols,
         SourceCategory.localStorage,
+        SourceCategory.mobileDevice,
         SourceCategory.mediaServers,
       ];
 

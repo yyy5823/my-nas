@@ -135,6 +135,14 @@ class SourceFormConfig {
       case SourceType.local:
         return _getLocalConfig();
 
+      // === 移动端媒体 ===
+      case SourceType.mobileGallery:
+        return _getMobileGalleryConfig();
+      case SourceType.mobileMusic:
+        return _getMobileMusicConfig();
+      case SourceType.mobileFiles:
+        return _getMobileFilesConfig();
+
       // === 下载工具 ===
       case SourceType.qbittorrent:
         return _getQbittorrentConfig();
@@ -351,7 +359,15 @@ class SourceFormConfig {
               key: 'shareName',
               label: '共享名称',
               placeholder: 'share',
-              helpText: '要访问的共享文件夹名称',
+              required: false,
+              helpText: '可选，留空则浏览时显示所有可访问共享',
+            ),
+            const SourceFormField(
+              key: 'path',
+              label: '子目录路径',
+              placeholder: 'folder/subfolder',
+              required: false,
+              helpText: '可选，共享下的子目录路径',
             ),
           ],
         ),
@@ -386,6 +402,13 @@ class SourceFormConfig {
               defaultValue: '无加密',
               helpText: 'FTPS 使用端口 990，FTPES 使用端口 21',
             ),
+            const SourceFormField(
+              key: 'path',
+              label: '初始目录',
+              placeholder: '/home/user 或 /public',
+              required: false,
+              helpText: '可选，连接后默认进入的目录',
+            ),
           ],
         ),
         _credentialSection(),
@@ -410,6 +433,13 @@ class SourceFormConfig {
               label: '端口',
               type: SourceFormFieldType.number,
               defaultValue: SourceType.sftp.defaultPort.toString(),
+            ),
+            const SourceFormField(
+              key: 'path',
+              label: '初始目录',
+              placeholder: '/home/user 或 /var/data',
+              required: false,
+              helpText: '可选，连接后默认进入的目录',
             ),
           ],
         ),
@@ -528,6 +558,87 @@ class SourceFormConfig {
               helpText: '将自动请求存储权限',
             ),
           ],
+        ),
+      ],
+    );
+
+  // === 移动端媒体配置 ===
+
+  /// 手机相册配置
+  /// 无需配置连接信息，只需一个名称
+  static SourceFormConfig _getMobileGalleryConfig() => const SourceFormConfig(
+      type: SourceType.mobileGallery,
+      testConnectionSupported: false,
+      sections: [
+        SourceFormSection(
+          title: '基本信息',
+          fields: [
+            SourceFormField(
+              key: 'name',
+              label: '名称',
+              placeholder: '手机相册',
+              required: false,
+              helpText: '显示在源列表中的名称',
+            ),
+          ],
+        ),
+        SourceFormSection(
+          title: '说明',
+          description: '将访问您的系统相册中的照片和视频。\n'
+              '首次连接时会请求相册访问权限。',
+          fields: [],
+        ),
+      ],
+    );
+
+  /// 手机音乐配置
+  static SourceFormConfig _getMobileMusicConfig() => const SourceFormConfig(
+      type: SourceType.mobileMusic,
+      testConnectionSupported: false,
+      sections: [
+        SourceFormSection(
+          title: '基本信息',
+          fields: [
+            SourceFormField(
+              key: 'name',
+              label: '名称',
+              placeholder: '手机音乐',
+              required: false,
+              helpText: '显示在源列表中的名称',
+            ),
+          ],
+        ),
+        SourceFormSection(
+          title: '说明',
+          description: '将访问您的系统音乐库和下载的音乐文件。\n'
+              '首次连接时会请求音乐库访问权限。',
+          fields: [],
+        ),
+      ],
+    );
+
+  /// 手机文件配置
+  static SourceFormConfig _getMobileFilesConfig() => const SourceFormConfig(
+      type: SourceType.mobileFiles,
+      testConnectionSupported: false,
+      sections: [
+        SourceFormSection(
+          title: '基本信息',
+          fields: [
+            SourceFormField(
+              key: 'name',
+              label: '名称',
+              placeholder: '手机文件',
+              required: false,
+              helpText: '显示在源列表中的名称',
+            ),
+          ],
+        ),
+        SourceFormSection(
+          title: '说明',
+          description: 'iOS: 访问"文件"App中的文档目录\n'
+              'Android: 访问文档和下载目录',
+          fields: [],
         ),
       ],
     );

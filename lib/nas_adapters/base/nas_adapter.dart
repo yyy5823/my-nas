@@ -11,6 +11,10 @@ enum NasAdapterType {
   smb,
   sftp,
   local,
+  // 移动端媒体
+  mobileGallery,
+  mobileMusic,
+  mobileFiles,
 }
 
 /// NAS 适配器信息

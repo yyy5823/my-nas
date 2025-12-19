@@ -36,6 +36,15 @@ final connectedSourcesProvider = Provider<List<(SourceEntity, SourceConnection)>
   return result;
 });
 
+/// 获取当前选中的源实体
+final selectedSourceEntityProvider = Provider<SourceEntity?>((ref) {
+  final selectedId = ref.watch(selectedSourceIdProvider);
+  if (selectedId == null) return null;
+
+  final sources = ref.watch(sourcesProvider).valueOrNull ?? [];
+  return sources.where((s) => s.id == selectedId).firstOrNull;
+});
+
 /// 文件列表状态
 final fileListProvider =
     StateNotifierProvider<FileListNotifier, FileListState>(FileListNotifier.new);
@@ -78,8 +87,18 @@ class FileListLoaded extends FileListState {
 }
 
 class FileListError extends FileListState {
-  const FileListError({required this.message});
+  const FileListError({
+    required this.message,
+    this.failedPath,
+    this.hasCustomPath = false,
+  });
   final String message;
+
+  /// 加载失败的路径
+  final String? failedPath;
+
+  /// 是否尝试加载的是自定义配置路径（非根目录）
+  final bool hasCustomPath;
 }
 
 /// 未连接到 NAS 的状态
@@ -100,6 +119,15 @@ class FileListNotifier extends StateNotifier<FileListState> {
       return connection;
     }
     return null;
+  }
+
+  /// 加载源配置的初始路径
+  ///
+  /// 根据源的 extraConfig 中的配置（如 shareName、path）确定初始路径
+  Future<void> loadInitialDirectory() async {
+    final source = _ref.read(selectedSourceEntityProvider);
+    final initialPath = source?.initialBrowsePath ?? '/';
+    await loadDirectory(initialPath);
   }
 
   Future<void> loadDirectory(String path) async {
@@ -151,8 +179,22 @@ class FileListNotifier extends StateNotifier<FileListState> {
       final errorMessage = e is TimeoutException
           ? '加载目录超时，请检查网络连接或目录访问权限'
           : '加载目录失败: $e $stack';
-      state = FileListError(message: errorMessage);
+
+      // 检查当前源是否配置了自定义路径
+      final source = _ref.read(selectedSourceEntityProvider);
+      final hasCustomPath = source?.hasCustomBrowsePath ?? false;
+
+      state = FileListError(
+        message: errorMessage,
+        failedPath: path,
+        hasCustomPath: hasCustomPath && path != '/',
+      );
     }
+  }
+
+  /// 返回根目录（忽略源配置的初始路径）
+  Future<void> loadRootDirectory() async {
+    await loadDirectory('/');
   }
 
   Future<void> refresh() async {

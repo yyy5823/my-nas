@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/features/sources/domain/entities/source_category.dart';
@@ -71,6 +74,15 @@ class SourceTypeSelectionPage extends ConsumerWidget {
                 context,
                 SourceCategory.localStorage,
                 SourceType.byCategory(SourceCategory.localStorage),
+              ),
+            // 移动端媒体（仅在 iOS/Android 平台显示）
+            if (_shouldShowCategory(SourceCategory.mobileDevice) &&
+                !kIsWeb &&
+                (Platform.isIOS || Platform.isAndroid))
+              _buildCategorySection(
+                context,
+                SourceCategory.mobileDevice,
+                SourceType.byCategory(SourceCategory.mobileDevice),
               ),
             if (_shouldShowCategory(SourceCategory.mediaServers))
               _buildCategorySection(

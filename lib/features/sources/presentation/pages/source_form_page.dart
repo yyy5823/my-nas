@@ -7,7 +7,10 @@ import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/domain/entities/source_form_config.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/features/sources/presentation/widgets/two_fa_sheet.dart';
+import 'package:my_nas/service_adapters/aria2/api/aria2_api.dart';
 import 'package:my_nas/service_adapters/nastool/api/nastool_api.dart';
+import 'package:my_nas/service_adapters/qbittorrent/api/qbittorrent_api.dart';
+import 'package:my_nas/service_adapters/transmission/api/transmission_api.dart';
 
 /// 表单模式
 enum SourceFormMode {
@@ -752,10 +755,46 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
         } finally {
           api.dispose();
         }
-      // TODO: 添加其他服务类源的验证逻辑
       case SourceType.qbittorrent:
+        final password = _formValues['password'] as String? ?? '';
+        final apiKey = _formValues['apiKey'] as String?;
+        final api = QBittorrentApi(
+          baseUrl: source.baseUrl,
+          username: source.username.isNotEmpty ? source.username : null,
+          password: password.isNotEmpty ? password : null,
+          apiKey: (apiKey?.isNotEmpty ?? false) ? apiKey : null,
+        );
+        try {
+          return await api.login();
+        } finally {
+          api.dispose();
+        }
       case SourceType.transmission:
+        final trPassword = _formValues['password'] as String? ?? '';
+        final rpcPath = _formValues['rpcPath'] as String? ?? '/transmission/rpc';
+        final trApi = TransmissionApi(
+          baseUrl: source.baseUrl,
+          rpcPath: rpcPath,
+          username: source.username.isNotEmpty ? source.username : null,
+          password: trPassword.isNotEmpty ? trPassword : null,
+        );
+        try {
+          return await trApi.connect();
+        } finally {
+          trApi.dispose();
+        }
       case SourceType.aria2:
+        final rpcSecret = _formValues['rpcSecret'] as String?;
+        final aria2Api = Aria2Api(
+          baseUrl: source.baseUrl,
+          rpcSecret: (rpcSecret?.isNotEmpty ?? false) ? rpcSecret : null,
+        );
+        try {
+          return await aria2Api.connect();
+        } finally {
+          aria2Api.dispose();
+        }
+      // TODO: 添加其他服务类源的验证逻辑
       case SourceType.trakt:
       case SourceType.moviepilot:
       case SourceType.jellyfin:
@@ -883,6 +922,12 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
       return;
     }
 
+    // 移动端源：不需要密码验证，直接保存并连接
+    if (source.type.isMobileSource) {
+      await _submitMobileSource(source);
+      return;
+    }
+
     // 先尝试连接验证（不保存凭证）
     final connection = await sourceManager.connect(
       source,
@@ -947,6 +992,42 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
     } on Exception catch (e) {
       if (!mounted) return;
       _showErrorSnackBar('连接失败: $e');
+    }
+  }
+
+  /// 提交移动端源
+  ///
+  /// 移动端源不需要密码验证，直接保存并尝试连接
+  Future<void> _submitMobileSource(SourceEntity source) async {
+    final sourcesNotifier = ref.read(sourcesProvider.notifier);
+    final sourceManager = ref.read(sourceManagerProvider);
+
+    try {
+      // 尝试连接（会自动请求权限）
+      final connection = await sourceManager.connect(
+        source,
+        password: '',
+        saveCredential: false,
+      );
+
+      if (!mounted) return;
+
+      if (connection.status == SourceStatus.connected) {
+        // 连接成功，保存源
+        await sourcesNotifier.addSource(source);
+        // 刷新连接状态
+        ref.read(activeConnectionsProvider.notifier).refresh();
+        if (mounted) {
+          _showSuccessAndPop(source, '已添加 ${source.displayName}');
+        }
+      } else {
+        // 连接失败（可能是权限被拒绝）
+        await sourceManager.disconnect(source.id);
+        _showErrorSnackBar(connection.errorMessage ?? '连接失败，请检查权限设置');
+      }
+    } on Exception catch (e) {
+      if (!mounted) return;
+      _showErrorSnackBar('添加失败: $e');
     }
   }
 

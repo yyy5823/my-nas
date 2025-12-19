@@ -259,12 +259,159 @@ class _MediaTypeTab extends ConsumerWidget {
       return;
     }
 
+    // 分离移动端源和普通源
+    final mobileSources = connectedSources.where((s) => s.type.isMobileSource).toList();
+    final normalSources = connectedSources.where((s) => !s.type.isMobileSource).toList();
+
+    // 如果有移动端源，显示源选择对话框
+    if (mobileSources.isNotEmpty) {
+      _showSourceSelectionDialog(
+        context,
+        ref,
+        mobileSources,
+        normalSources,
+        connections,
+        existingPaths,
+      );
+    } else {
+      // 只有普通源，直接显示目录选择器
+      _showFolderPicker(context, ref, normalSources, connections);
+    }
+  }
+
+  /// 显示源选择对话框（移动端源 + 普通源）
+  void _showSourceSelectionDialog(
+    BuildContext context,
+    WidgetRef ref,
+    List<SourceEntity> mobileSources,
+    List<SourceEntity> normalSources,
+    Map<String, SourceConnection> connections,
+    List<MediaLibraryPath> existingPaths,
+  ) {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                '选择数据源',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+            const Divider(height: 1),
+
+            // 移动端源（直接添加，不需要选择目录）
+            if (mobileSources.isNotEmpty) ...[
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    '手机媒体',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.grey,
+                    ),
+                  ),
+                ),
+              ),
+              ...mobileSources.map((source) {
+                // 检查是否已添加
+                final alreadyAdded = existingPaths.any((p) => p.sourceId == source.id);
+                return ListTile(
+                  leading: Icon(source.type.icon, color: source.type.themeColor),
+                  title: Text(source.displayName),
+                  subtitle: Text(source.type.description),
+                  trailing: alreadyAdded
+                      ? const Chip(label: Text('已添加'))
+                      : const Icon(Icons.add),
+                  enabled: !alreadyAdded,
+                  onTap: alreadyAdded
+                      ? null
+                      : () => _addMobileSource(context, ref, source, connections),
+                );
+              }),
+            ],
+
+            // 普通源（需要选择目录）
+            if (normalSources.isNotEmpty) ...[
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    '远程存储',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.grey,
+                    ),
+                  ),
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.folder_open),
+                title: const Text('选择目录...'),
+                subtitle: const Text('从 NAS 或网络存储选择'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showFolderPicker(context, ref, normalSources, connections);
+                },
+              ),
+            ],
+
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 添加移动端源到媒体库
+  Future<void> _addMobileSource(
+    BuildContext context,
+    WidgetRef ref,
+    SourceEntity source,
+    Map<String, SourceConnection> connections,
+  ) async {
+    // 移动端源使用根路径 "/"
+    final newPath = MediaLibraryPath(
+      sourceId: source.id,
+      path: '/',
+      name: source.displayName,
+    );
+
+    await ref.read(mediaLibraryConfigProvider.notifier).addPath(mediaType, newPath);
+
+    if (context.mounted) {
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已添加 ${source.displayName}，正在扫描...')),
+      );
+
+      // 添加后自动扫描该路径
+      _autoScanPath(ref, mediaType, newPath, connections);
+    }
+  }
+
+  /// 显示目录选择器
+  void _showFolderPicker(
+    BuildContext context,
+    WidgetRef ref,
+    List<SourceEntity> sources,
+    Map<String, SourceConnection> connections,
+  ) {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       builder: (context) => FolderPickerSheet(
-        sources: connectedSources,
+        sources: sources,
         connections: connections,
         onSelect: (sourceId, path, name) async {
           final newPath = MediaLibraryPath(

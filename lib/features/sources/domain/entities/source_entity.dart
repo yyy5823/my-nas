@@ -27,6 +27,11 @@ enum SourceType {
   // 本地存储
   local('本地存储', 'local'),
 
+  // 移动端媒体（仅在 iOS/Android 可用）
+  mobileGallery('手机相册', 'mobile_gallery'),
+  mobileMusic('手机音乐', 'mobile_music'),
+  mobileFiles('手机文件', 'mobile_files'),
+
   // === 服务类源 ===
   // 下载工具
   qbittorrent('qBittorrent', 'qbittorrent'),
@@ -63,6 +68,11 @@ enum SourceType {
         SourceType.upnp => 0, // 自动发现，无固定端口
         // 本地存储
         SourceType.local => 0,
+        // 移动端媒体（无端口）
+        SourceType.mobileGallery ||
+        SourceType.mobileMusic ||
+        SourceType.mobileFiles =>
+          0,
         // 下载工具
         SourceType.qbittorrent => 8080,
         SourceType.transmission => 9091,
@@ -95,6 +105,10 @@ enum SourceType {
         SourceType.upnp => true,
         // 本地存储
         SourceType.local => true,
+        // 移动端媒体
+        SourceType.mobileGallery => true,
+        SourceType.mobileMusic => true,
+        SourceType.mobileFiles => true,
         // 下载工具
         SourceType.qbittorrent => true,
         SourceType.transmission => true,
@@ -129,6 +143,11 @@ enum SourceType {
           SourceCategory.genericProtocols,
         // 本地存储
         SourceType.local => SourceCategory.localStorage,
+        // 移动端媒体
+        SourceType.mobileGallery ||
+        SourceType.mobileMusic ||
+        SourceType.mobileFiles =>
+          SourceCategory.mobileDevice,
         // 媒体服务器
         SourceType.jellyfin ||
         SourceType.emby ||
@@ -161,7 +180,19 @@ enum SourceType {
         SourceType.sftp ||
         SourceType.nfs ||
         SourceType.upnp ||
-        SourceType.local =>
+        SourceType.local ||
+        SourceType.mobileGallery ||
+        SourceType.mobileMusic ||
+        SourceType.mobileFiles =>
+          true,
+        _ => false,
+      };
+
+  /// 是否为移动端媒体源类型
+  bool get isMobileSource => switch (this) {
+        SourceType.mobileGallery ||
+        SourceType.mobileMusic ||
+        SourceType.mobileFiles =>
           true,
         _ => false,
       };
@@ -185,6 +216,10 @@ enum SourceType {
         SourceType.upnp => Icons.cast,
         // 本地存储
         SourceType.local => Icons.folder,
+        // 移动端媒体
+        SourceType.mobileGallery => Icons.photo_library,
+        SourceType.mobileMusic => Icons.library_music,
+        SourceType.mobileFiles => Icons.folder_special,
         // 下载工具
         SourceType.qbittorrent => Icons.download,
         SourceType.transmission => Icons.download,
@@ -217,6 +252,10 @@ enum SourceType {
         SourceType.upnp => const Color(0xFFE91E63), // 粉红 - 媒体发现
         // 本地存储 - 灰色
         SourceType.local => const Color(0xFF757575),
+        // 移动端媒体 - 渐变色系
+        SourceType.mobileGallery => const Color(0xFFE91E63), // 粉红 - 相册
+        SourceType.mobileMusic => const Color(0xFFFF5722), // 橙红 - 音乐
+        SourceType.mobileFiles => const Color(0xFF03A9F4), // 浅蓝 - 文件
         // 下载工具 - 绿色系
         SourceType.qbittorrent => const Color(0xFF2196F3), // qB蓝
         SourceType.transmission => const Color(0xFFFF5722), // Tr橙红
@@ -249,6 +288,10 @@ enum SourceType {
         SourceType.upnp => '自动发现局域网媒体设备',
         // 本地存储
         SourceType.local => '设备本地存储',
+        // 移动端媒体
+        SourceType.mobileGallery => '访问手机系统相册中的照片和视频',
+        SourceType.mobileMusic => '访问手机音乐库和下载的音乐',
+        SourceType.mobileFiles => '访问手机文件App中的文档和书籍',
         // 下载工具
         SourceType.qbittorrent => '开源 BT 下载客户端',
         SourceType.transmission => '轻量级 BT 下载客户端',
@@ -282,8 +325,25 @@ enum SourceType {
         SourceType.aria2 ||
         // UPnP 自动发现无需认证
         SourceType.upnp ||
+        // 移动端媒体无需认证
+        SourceType.mobileGallery ||
+        SourceType.mobileMusic ||
+        SourceType.mobileFiles ||
+        // 本地存储无需认证
+        SourceType.local ||
         // PT 站点使用 API 或 Cookie 认证，不需要用户名
         SourceType.ptSite =>
+          false,
+        _ => true,
+      };
+
+  /// 是否需要连接配置（主机、端口等）
+  /// 移动端媒体和本地存储不需要配置连接信息
+  bool get requiresConnectionConfig => switch (this) {
+        SourceType.local ||
+        SourceType.mobileGallery ||
+        SourceType.mobileMusic ||
+        SourceType.mobileFiles =>
           false,
         _ => true,
       };
@@ -439,6 +499,55 @@ class SourceEntity {
 
   /// 是否使用 OAuth 认证
   bool get usesOAuth => accessToken != null && accessToken!.isNotEmpty;
+
+  /// 获取文件浏览器的初始路径
+  ///
+  /// 根据源类型和配置返回初始浏览路径：
+  /// - SMB: 如果配置了 shareName 返回 /{shareName}/{path}，否则返回 /
+  /// - FTP/SFTP: 如果配置了 path 返回该路径，否则返回 /
+  /// - WebDAV: 如果配置了 basePath 返回该路径，否则返回 /
+  /// - 其他类型: 返回 /
+  String get initialBrowsePath {
+    switch (type) {
+      case SourceType.smb:
+        final shareName = extraConfig?['shareName'] as String?;
+        final subPath = extraConfig?['path'] as String?;
+
+        if (shareName != null && shareName.isNotEmpty) {
+          var path = '/$shareName';
+          if (subPath != null && subPath.isNotEmpty) {
+            // 确保 subPath 不以 / 开头
+            final cleanSubPath = subPath.startsWith('/') ? subPath.substring(1) : subPath;
+            path = '$path/$cleanSubPath';
+          }
+          return path;
+        }
+        return '/';
+
+      case SourceType.ftp:
+      case SourceType.sftp:
+        final path = extraConfig?['path'] as String?;
+        if (path != null && path.isNotEmpty) {
+          // 确保路径以 / 开头
+          return path.startsWith('/') ? path : '/$path';
+        }
+        return '/';
+
+      case SourceType.webdav:
+        final basePath = extraConfig?['basePath'] as String?;
+        if (basePath != null && basePath.isNotEmpty) {
+          // 确保路径以 / 开头
+          return basePath.startsWith('/') ? basePath : '/$basePath';
+        }
+        return '/';
+
+      default:
+        return '/';
+    }
+  }
+
+  /// 是否配置了特定的浏览路径（非根目录）
+  bool get hasCustomBrowsePath => initialBrowsePath != '/';
 
   SourceEntity copyWith({
     String? id,
