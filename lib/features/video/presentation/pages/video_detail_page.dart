@@ -272,10 +272,10 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
           return _buildFallbackLocalEpisodes(localEpisodes, episodeProgress);
         }
 
-        logger.d('VideoDetailPage: tvDetail loaded, name=${tvDetail.name}, seasons=${tvDetail.seasons.length}');
+        logger..d('VideoDetailPage: tvDetail loaded, name=${tvDetail.name}, seasons=${tvDetail.seasons.length}')
 
         // 调试：打印本地剧集数据
-        logger.d('VideoDetailPage: localEpisodes count=${localEpisodes.length}, seasons=${localEpisodes.keys.toList()}');
+        ..d('VideoDetailPage: localEpisodes count=${localEpisodes.length}, seasons=${localEpisodes.keys.toList()}');
         for (final seasonEntry in localEpisodes.entries) {
           logger.d('VideoDetailPage:   Season ${seasonEntry.key}: ${seasonEntry.value.length} episodes');
         }

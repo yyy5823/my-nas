@@ -28,9 +28,9 @@ class MobileFilesFileSystem implements NasFileSystem {
     final downloadDir = await getDownloadsDirectory();
     _downloadsPath = downloadDir?.path;
 
-    logger.i('MobileFilesFileSystem: 初始化完成');
-    logger.d('  Documents: $_documentsPath');
-    logger.d('  Downloads: $_downloadsPath');
+    logger..i('MobileFilesFileSystem: 初始化完成')
+    ..d('  Documents: $_documentsPath')
+    ..d('  Downloads: $_downloadsPath');
   }
 
   @override
@@ -72,12 +72,14 @@ class MobileFilesFileSystem implements NasFileSystem {
     ];
 
     if (_downloadsPath != null) {
-      items.add(const FileItem(
-        name: 'downloads',
-        path: '/downloads',
-        isDirectory: true,
-        size: 0,
-      ));
+      items.add(
+        const FileItem(
+          name: 'downloads',
+          path: '/downloads',
+          isDirectory: true,
+          size: 0,
+        ),
+      );
     }
 
     return items;
@@ -96,16 +98,18 @@ class MobileFilesFileSystem implements NasFileSystem {
         final name = p.basename(entity.path);
         final isHidden = name.startsWith('.');
 
-        items.add(FileItem(
-          name: name,
-          path: '$virtualPath/$name',
-          isDirectory: entity is Directory,
-          size: stat.size,
-          modifiedTime: stat.modified,
-          createdTime: stat.accessed,
-          extension: entity is File ? p.extension(entity.path) : null,
-          isHidden: isHidden,
-        ));
+        items.add(
+          FileItem(
+            name: name,
+            path: '$virtualPath/$name',
+            isDirectory: entity is Directory,
+            size: stat.size,
+            modifiedTime: stat.modified,
+            createdTime: stat.accessed,
+            extension: entity is File ? p.extension(entity.path) : null,
+            isHidden: isHidden,
+          ),
+        );
       } on Exception catch (e) {
         logger.w('MobileFilesFileSystem: 无法获取文件信息 ${entity.path}', e);
       }
@@ -180,7 +184,10 @@ class MobileFilesFileSystem implements NasFileSystem {
   }
 
   @override
-  Future<Stream<List<int>>> getFileStream(String path, {FileRange? range}) async {
+  Future<Stream<List<int>>> getFileStream(
+    String path, {
+    FileRange? range,
+  }) async {
     final realPath = _toRealPath(path);
     if (realPath == null) {
       throw Exception('Invalid path: $path');
@@ -211,10 +218,9 @@ class MobileFilesFileSystem implements NasFileSystem {
   }
 
   @override
-  Future<String?> getThumbnailUrl(String path, {ThumbnailSize? size}) async {
-    // 本地文件不支持缩略图 URL
-    return null;
-  }
+  Future<String?> getThumbnailUrl(String path, {ThumbnailSize? size}) async =>
+      // 本地文件不支持缩略图 URL
+      null;
 
   @override
   Future<Stream<List<int>>> getUrlStream(String url) {
@@ -358,15 +364,17 @@ class MobileFilesFileSystem implements NasFileSystem {
           final stat = await entity.stat();
           final virtualPath = _toVirtualPath(entity.path);
           if (virtualPath != null) {
-            results.add(FileItem(
-              name: p.basename(entity.path),
-              path: virtualPath,
-              isDirectory: entity is Directory,
-              size: stat.size,
-              modifiedTime: stat.modified,
-              extension: entity is File ? p.extension(entity.path) : null,
-              isHidden: name.startsWith('.'),
-            ));
+            results.add(
+              FileItem(
+                name: p.basename(entity.path),
+                path: virtualPath,
+                isDirectory: entity is Directory,
+                size: stat.size,
+                modifiedTime: stat.modified,
+                extension: entity is File ? p.extension(entity.path) : null,
+                isHidden: name.startsWith('.'),
+              ),
+            );
           }
         }
       }

@@ -297,11 +297,10 @@ class MobileMusicFileSystem implements NasFileSystem {
     return File(song.data).uri.toString();
   }
 
+  // on_audio_query 不支持缩略图 URL
   @override
-  Future<String?> getThumbnailUrl(String path, {ThumbnailSize? size}) async {
-    // on_audio_query 不支持缩略图 URL，返回 null
-    return null;
-  }
+  Future<String?> getThumbnailUrl(String path, {ThumbnailSize? size}) async =>
+      null;
 
   @override
   Future<Stream<List<int>>> getUrlStream(String url) {

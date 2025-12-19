@@ -706,8 +706,7 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
     );
 
   /// 构建错误内容，支持自定义路径失败时返回根目录
-  Widget _buildErrorContent(String message, bool hasCustomPath, String? failedPath, bool isDark) {
-    return Center(
+  Widget _buildErrorContent(String message, bool hasCustomPath, String? failedPath, bool isDark) => Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
@@ -781,7 +780,6 @@ class _FileBrowserPageState extends ConsumerState<FileBrowserPage> {
         ),
       ),
     );
-  }
 
   Widget _buildList(List<FileItem> files, bool isDark) {
     final isMultiSelectMode = ref.watch(multiSelectModeProvider);
