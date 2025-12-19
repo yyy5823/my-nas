@@ -217,3 +217,4 @@ native/chromaprint/build/
 native/chromaprint/output/
 # iOS 编译的 framework (需要本地构建)
 ios/Frameworks/
+build_chromaprint/**
