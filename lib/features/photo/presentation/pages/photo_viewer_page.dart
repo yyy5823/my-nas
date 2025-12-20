@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/core/widgets/keyboard_shortcuts.dart';
 import 'package:my_nas/core/utils/platform_capabilities.dart';
 import 'package:my_nas/features/photo/data/services/photo_favorites_service.dart';
 import 'package:my_nas/features/photo/data/services/photo_save_service.dart';
@@ -340,14 +341,63 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
       ],
     );
 
+  /// 构建键盘快捷键映射
+  Map<ShortcutKey, VoidCallback> _buildKeyboardShortcuts(PhotoItem photo) => {
+        // 导航
+        CommonShortcuts.previous: _goToPrevious,
+        CommonShortcuts.next: _goToNext,
+        CommonShortcuts.first: () => _pageController.jumpToPage(0),
+        CommonShortcuts.last: () => _pageController.jumpToPage(widget.photos.length - 1),
+
+        // 播放/暂停 用于切换覆盖层
+        CommonShortcuts.playPause: _toggleOverlay,
+
+        // 收藏 (L)
+        CommonShortcuts.favorite: _toggleFavorite,
+
+        // 信息 (I)
+        CommonShortcuts.info: () => _showPhotoInfo(context, photo),
+
+        // 退出 (Esc)
+        CommonShortcuts.escape: () => Navigator.of(context).pop(),
+
+        // 返回 (Backspace)
+        CommonShortcuts.back: () => Navigator.of(context).pop(),
+      };
+
+  /// 显示快捷键帮助
+  void _showKeyboardHelp() {
+    KeyboardShortcutsHelpDialog.show(
+      context,
+      title: '照片查看快捷键',
+      shortcuts: [
+        (key: '←', description: '上一张'),
+        (key: '→', description: '下一张'),
+        (key: 'Home', description: '第一张'),
+        (key: 'End', description: '最后一张'),
+        (key: 'Space', description: '显示/隐藏控制栏'),
+        (key: 'L', description: '收藏/取消收藏'),
+        (key: 'I', description: '显示照片信息'),
+        (key: 'Esc', description: '返回'),
+        (key: '?', description: '显示此帮助'),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final photo = widget.photos[_currentIndex];
     final isDesktop = MediaQuery.of(context).size.width > 600;
 
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: GestureDetector(
+    return KeyboardShortcuts(
+      shortcuts: {
+        ..._buildKeyboardShortcuts(photo),
+        // 帮助快捷键
+        CommonShortcuts.help: _showKeyboardHelp,
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: GestureDetector(
         onTap: _toggleOverlay,
         behavior: HitTestBehavior.opaque,
         child: Stack(
@@ -466,6 +516,7 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
             ],
           ],
         ),
+      ),
       ),
     );
   }

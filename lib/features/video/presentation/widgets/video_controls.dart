@@ -4,11 +4,8 @@ import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/video/domain/entities/video_item.dart';
 import 'package:my_nas/features/video/presentation/providers/video_player_provider.dart';
-import 'package:my_nas/features/video/presentation/widgets/aspect_ratio_selector.dart';
-import 'package:my_nas/features/video/presentation/widgets/audio_track_selector.dart';
-import 'package:my_nas/features/video/presentation/widgets/playback_settings_sheet.dart';
 import 'package:my_nas/features/video/presentation/widgets/playlist_sheet.dart';
-import 'package:my_nas/features/video/presentation/widgets/subtitle_selector.dart';
+import 'package:my_nas/features/video/presentation/widgets/quick_settings_sheet.dart';
 
 class VideoControls extends ConsumerWidget {
   const VideoControls({
@@ -22,6 +19,7 @@ class VideoControls extends ConsumerWidget {
     required this.onSpeedChange,
     required this.onToggleFullscreen,
     required this.onBack,
+    this.seekInterval = 10,
     this.hasSubtitles = false,
     this.hasPlaylist = false,
     this.hasPrevious = false,
@@ -31,6 +29,10 @@ class VideoControls extends ConsumerWidget {
     this.onShowBookmarks,
     this.onTogglePip,
     this.isPipSupported = false,
+    this.tmdbId,
+    this.isMovie = true,
+    this.seasonNumber,
+    this.episodeNumber,
     super.key,
   });
 
@@ -44,6 +46,7 @@ class VideoControls extends ConsumerWidget {
   final ValueChanged<double> onSpeedChange;
   final VoidCallback onToggleFullscreen;
   final VoidCallback onBack;
+  final int seekInterval;
   final bool hasSubtitles;
   final bool hasPlaylist;
   final bool hasPrevious;
@@ -53,6 +56,29 @@ class VideoControls extends ConsumerWidget {
   final VoidCallback? onShowBookmarks;
   final VoidCallback? onTogglePip;
   final bool isPipSupported;
+  final int? tmdbId;
+  final bool isMovie;
+  final int? seasonNumber;
+  final int? episodeNumber;
+
+  /// 根据秒数获取快退图标
+  IconData _getReplayIcon() => switch (seekInterval) {
+        5 => Icons.replay_5,
+        10 => Icons.replay_10,
+        30 => Icons.replay_30,
+        _ => Icons.replay, // 对于其他秒数使用通用图标
+      };
+
+  /// 根据秒数获取快进图标
+  IconData _getForwardIcon() => switch (seekInterval) {
+        5 => Icons.forward_5,
+        10 => Icons.forward_10,
+        30 => Icons.forward_30,
+        _ => Icons.forward, // 对于其他秒数使用通用图标
+      };
+
+  /// 是否需要显示秒数标签（当没有对应的内置图标时）
+  bool get _needsSeekLabel => seekInterval != 5 && seekInterval != 10 && seekInterval != 30;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => DecoratedBox(
@@ -87,10 +113,7 @@ class VideoControls extends ConsumerWidget {
         ),
       );
 
-  Widget _buildTopBar(BuildContext context, WidgetRef ref) {
-    final subtitleEnabled = state.subtitleEnabled;
-
-    return Padding(
+  Widget _buildTopBar(BuildContext context, WidgetRef ref) => Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         child: Row(
           children: [
@@ -108,113 +131,16 @@ class VideoControls extends ConsumerWidget {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            // 字幕按钮：点击打开选择器
-            GestureDetector(
-              onTap: () => showSubtitleSelector(
-                context,
-                videoPath: video.path,
-                title: video.name,
+            // 书签按钮
+            if (onShowBookmarks != null)
+              IconButton(
+                onPressed: onShowBookmarks,
+                icon: const Icon(Icons.bookmark_outline_rounded, color: Colors.white),
+                tooltip: '书签',
               ),
-              child: Tooltip(
-                message: '字幕设置',
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: hasSubtitles && subtitleEnabled
-                      ? BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(8),
-                        )
-                      : null,
-                  child: Icon(
-                    hasSubtitles && subtitleEnabled
-                        ? Icons.closed_caption
-                        : Icons.closed_caption_off,
-                    color: Colors.white,
-                    size: 26,
-                  ),
-                ),
-              ),
-            ),
-            // 更多选项
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.more_vert, color: Colors.white),
-              onSelected: (value) {
-                switch (value) {
-                  case 'subtitle':
-                    showSubtitleSelector(
-                      context,
-                      videoPath: video.path,
-                      title: video.name,
-                    );
-                  case 'aspect':
-                    showAspectRatioSelector(context);
-                  case 'audio':
-                    showAudioTrackSelector(context);
-                  case 'bookmark':
-                    onShowBookmarks?.call();
-                  case 'settings':
-                    showPlaybackSettingsSheet(context);
-                }
-              },
-              itemBuilder: (context) => [
-                PopupMenuItem(
-                  value: 'subtitle',
-                  child: Row(
-                    children: [
-                      Icon(
-                        hasSubtitles ? Icons.closed_caption : Icons.closed_caption_off,
-                      ),
-                      const SizedBox(width: 12),
-                      const Text('字幕'),
-                    ],
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'aspect',
-                  child: Row(
-                    children: [
-                      Icon(Icons.aspect_ratio),
-                      SizedBox(width: 12),
-                      Text('画面比例'),
-                    ],
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'audio',
-                  child: Row(
-                    children: [
-                      Icon(Icons.audiotrack),
-                      SizedBox(width: 12),
-                      Text('音轨'),
-                    ],
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'bookmark',
-                  child: Row(
-                    children: [
-                      Icon(Icons.bookmark_rounded),
-                      SizedBox(width: 12),
-                      Text('书签'),
-                    ],
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'settings',
-                  child: Row(
-                    children: [
-                      Icon(Icons.settings_rounded),
-                      SizedBox(width: 12),
-                      Text('播放设置'),
-                    ],
-                  ),
-                ),
-              ],
-            ),
           ],
         ),
       );
-  }
 
   Widget _buildCenterControls(BuildContext context) => Row(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -230,13 +156,11 @@ class VideoControls extends ConsumerWidget {
               ),
             ),
           // 快退
-          IconButton(
+          _SeekButton(
             onPressed: onSeekBackward,
-            iconSize: 48,
-            icon: const Icon(
-              Icons.replay_10,
-              color: Colors.white,
-            ),
+            icon: _getReplayIcon(),
+            seekInterval: seekInterval,
+            needsLabel: _needsSeekLabel,
           ),
           const SizedBox(width: 24),
           // 播放/暂停
@@ -250,13 +174,11 @@ class VideoControls extends ConsumerWidget {
           ),
           const SizedBox(width: 24),
           // 快进
-          IconButton(
+          _SeekButton(
             onPressed: onSeekForward,
-            iconSize: 48,
-            icon: const Icon(
-              Icons.forward_10,
-              color: Colors.white,
-            ),
+            icon: _getForwardIcon(),
+            seekInterval: seekInterval,
+            needsLabel: _needsSeekLabel,
           ),
           // 下一个（播放列表）
           if (hasPlaylist)
@@ -352,7 +274,23 @@ class VideoControls extends ConsumerWidget {
                     ),
                     tooltip: state.isPictureInPicture ? '退出画中画' : '画中画',
                   ),
-                const SizedBox(width: 8),
+                // 设置按钮（在画中画和全屏之间）
+                IconButton(
+                  onPressed: () => showQuickSettingsSheet(
+                    context,
+                    videoPath: video.path,
+                    videoName: video.name,
+                    tmdbId: tmdbId,
+                    isMovie: isMovie,
+                    seasonNumber: seasonNumber,
+                    episodeNumber: episodeNumber,
+                  ),
+                  icon: const Icon(
+                    Icons.settings_rounded,
+                    color: Colors.white,
+                  ),
+                  tooltip: '设置',
+                ),
                 // 全屏
                 IconButton(
                   onPressed: onToggleFullscreen,
@@ -362,6 +300,7 @@ class VideoControls extends ConsumerWidget {
                         : Icons.fullscreen,
                     color: Colors.white,
                   ),
+                  tooltip: state.isFullscreen ? '退出全屏' : '全屏',
                 ),
               ],
             ),
@@ -455,4 +394,61 @@ class _SpeedButton extends StatelessWidget {
             )
             .toList(),
       );
+}
+
+/// 快进/快退按钮，支持自定义秒数显示
+class _SeekButton extends StatelessWidget {
+  const _SeekButton({
+    required this.onPressed,
+    required this.icon,
+    required this.seekInterval,
+    required this.needsLabel,
+  });
+
+  final VoidCallback onPressed;
+  final IconData icon;
+  final int seekInterval;
+  final bool needsLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    if (needsLabel) {
+      // 对于没有内置图标的秒数，显示带秒数标签的按钮
+      return Stack(
+        alignment: Alignment.center,
+        children: [
+          IconButton(
+            onPressed: onPressed,
+            iconSize: 48,
+            icon: Icon(icon, color: Colors.white),
+          ),
+          Positioned(
+            bottom: 4,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                '${seekInterval}s',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    // 对于有内置图标的秒数（5, 10, 30），直接显示图标
+    return IconButton(
+      onPressed: onPressed,
+      iconSize: 48,
+      icon: Icon(icon, color: Colors.white),
+    );
+  }
 }

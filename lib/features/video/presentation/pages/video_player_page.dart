@@ -7,12 +7,14 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/core/widgets/keyboard_shortcuts.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/features/video/data/services/subtitle_service.dart';
 import 'package:my_nas/features/video/data/services/video_metadata_service.dart';
 import 'package:my_nas/features/video/domain/entities/video_item.dart';
+import 'package:my_nas/features/video/presentation/providers/playback_settings_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/playlist_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/subtitle_style_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/video_player_provider.dart';
@@ -388,9 +390,11 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
         if (didPop) return;
         await _handleBack();
       },
-      child: Scaffold(
-        backgroundColor: Colors.black,
-        body: VideoGestureController(
+      child: KeyboardShortcuts(
+        shortcuts: _buildKeyboardShortcuts(playerNotifier, playerState),
+        child: Scaffold(
+          backgroundColor: Colors.black,
+          body: VideoGestureController(
         playerState: playerState,
         onTap: _toggleControls,
         onDoubleTap: _handleDoubleTap,
@@ -445,6 +449,7 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
                 child: Center(
                   child: DoubleTapSeekOverlay(
                     isForward: false,
+                    seekInterval: ref.read(playbackSettingsProvider).seekInterval,
                     onComplete: () {
                       if (mounted) {
                         setState(() => _showDoubleTapLeft = false);
@@ -463,6 +468,7 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
                 child: Center(
                   child: DoubleTapSeekOverlay(
                     isForward: true,
+                    seekInterval: ref.read(playbackSettingsProvider).seekInterval,
                     onComplete: () {
                       if (mounted) {
                         setState(() => _showDoubleTapRight = false);
@@ -480,10 +486,12 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
                   final currentSubtitle = ref.watch(currentSubtitleProvider);
                   final playlist = ref.watch(playlistProvider);
                   final hasPlaylist = playlist.items.length > 1;
+                  final playbackSettings = ref.watch(playbackSettingsProvider);
 
                   return VideoControls(
                     video: widget.video,
                     state: playerState,
+                    seekInterval: playbackSettings.seekInterval,
                     hasSubtitles: subtitles.isNotEmpty || currentSubtitle != null,
                     hasPlaylist: hasPlaylist,
                     hasPrevious: playlist.hasPrevious,
@@ -543,22 +551,31 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
                 },
               ),
 
-            // 锁定按钮
+            // 锁定按钮（左侧中间位置）
             if (_showControls)
               Positioned(
-                right: 8,
-                top: context.padding.top + 56,
-                child: IconButton(
-                  onPressed: () {
-                    setState(() => _isLocked = !_isLocked);
-                    _startHideControlsTimer();
-                  },
-                  icon: Icon(
-                    _isLocked ? Icons.lock_rounded : Icons.lock_open_rounded,
-                    color: Colors.white,
-                    size: 24,
+                left: 16,
+                top: 0,
+                bottom: 0,
+                child: Center(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.4),
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: IconButton(
+                      onPressed: () {
+                        setState(() => _isLocked = !_isLocked);
+                        _startHideControlsTimer();
+                      },
+                      icon: Icon(
+                        _isLocked ? Icons.lock_rounded : Icons.lock_open_rounded,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                      tooltip: _isLocked ? '解锁屏幕' : '锁定屏幕',
+                    ),
                   ),
-                  tooltip: _isLocked ? '解锁屏幕' : '锁定屏幕',
                 ),
               ),
 
@@ -635,6 +652,162 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
         ),
       ),
     ),
+      ),
+    );
+  }
+
+  /// 构建键盘快捷键映射
+  Map<ShortcutKey, VoidCallback> _buildKeyboardShortcuts(
+    VideoPlayerNotifier playerNotifier,
+    VideoPlayerState playerState,
+  ) {
+    if (_isLocked) {
+      // 锁定状态下只允许解锁
+      return {
+        CommonShortcuts.escape: () => setState(() => _isLocked = false),
+      };
+    }
+
+    return {
+      // 播放/暂停
+      CommonShortcuts.playPause: () {
+        playerNotifier.playOrPause();
+        _startHideControlsTimer();
+      },
+      CommonShortcuts.playPauseK: () {
+        playerNotifier.playOrPause();
+        _startHideControlsTimer();
+      },
+
+      // 快进/快退 (左右箭头 - 5秒)
+      CommonShortcuts.previous: () {
+        playerNotifier.seekBackward();
+        _startHideControlsTimer();
+      },
+      CommonShortcuts.next: () {
+        playerNotifier.seekForward();
+        _startHideControlsTimer();
+      },
+
+      // 快进/快退 (J/L - YouTube风格 10秒)
+      CommonShortcuts.seekBackward: () {
+        playerNotifier.seekBackward();
+        _startHideControlsTimer();
+      },
+      CommonShortcuts.seekForward: () {
+        playerNotifier.seekForward();
+        _startHideControlsTimer();
+      },
+
+      // 音量调整
+      CommonShortcuts.volumeUp: () {
+        final newVolume = (playerState.volume + 0.1).clamp(0.0, 2.0);
+        playerNotifier.setVolume(newVolume);
+        _startHideControlsTimer();
+      },
+      CommonShortcuts.volumeDown: () {
+        final newVolume = (playerState.volume - 0.1).clamp(0.0, 2.0);
+        playerNotifier.setVolume(newVolume);
+        _startHideControlsTimer();
+      },
+      CommonShortcuts.mute: () {
+        if (playerState.volume > 0) {
+          playerNotifier.setVolume(0);
+        } else {
+          playerNotifier.setVolume(1.0);
+        }
+        _startHideControlsTimer();
+      },
+
+      // 全屏切换
+      CommonShortcuts.fullscreen: playerNotifier.toggleFullscreen,
+      CommonShortcuts.fullscreenF11: playerNotifier.toggleFullscreen,
+
+      // 显示/隐藏控制栏
+      CommonShortcuts.toggleControls: _toggleControls,
+
+      // 退出
+      CommonShortcuts.escape: () {
+        if (playerState.isFullscreen) {
+          playerNotifier.toggleFullscreen();
+        } else {
+          _handleBack();
+        }
+      },
+
+      // 播放速度
+      CommonShortcuts.speedUp: () {
+        final speeds = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+        final currentIndex = speeds.indexOf(playerState.speed);
+        if (currentIndex < speeds.length - 1) {
+          playerNotifier.setSpeed(speeds[currentIndex + 1]);
+        }
+        _startHideControlsTimer();
+      },
+      CommonShortcuts.speedDown: () {
+        final speeds = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+        final currentIndex = speeds.indexOf(playerState.speed);
+        if (currentIndex > 0) {
+          playerNotifier.setSpeed(speeds[currentIndex - 1]);
+        }
+        _startHideControlsTimer();
+      },
+      CommonShortcuts.speedNormal: () {
+        playerNotifier.setSpeed(1.0);
+        _startHideControlsTimer();
+      },
+
+      // 数字键跳转 (0-9 跳转到 0%-90%)
+      CommonShortcuts.jumpTo0: () => _seekToPercent(playerNotifier, playerState, 0),
+      CommonShortcuts.jumpTo10: () => _seekToPercent(playerNotifier, playerState, 10),
+      CommonShortcuts.jumpTo20: () => _seekToPercent(playerNotifier, playerState, 20),
+      CommonShortcuts.jumpTo30: () => _seekToPercent(playerNotifier, playerState, 30),
+      CommonShortcuts.jumpTo40: () => _seekToPercent(playerNotifier, playerState, 40),
+      CommonShortcuts.jumpTo50: () => _seekToPercent(playerNotifier, playerState, 50),
+      CommonShortcuts.jumpTo60: () => _seekToPercent(playerNotifier, playerState, 60),
+      CommonShortcuts.jumpTo70: () => _seekToPercent(playerNotifier, playerState, 70),
+      CommonShortcuts.jumpTo80: () => _seekToPercent(playerNotifier, playerState, 80),
+      CommonShortcuts.jumpTo90: () => _seekToPercent(playerNotifier, playerState, 90),
+
+      // 帮助
+      CommonShortcuts.help: _showKeyboardHelp,
+    };
+  }
+
+  /// 跳转到指定百分比位置
+  void _seekToPercent(
+    VideoPlayerNotifier playerNotifier,
+    VideoPlayerState playerState,
+    int percent,
+  ) {
+    final position = Duration(
+      milliseconds: (playerState.duration.inMilliseconds * percent / 100).toInt(),
+    );
+    playerNotifier.seek(position);
+    _startHideControlsTimer();
+  }
+
+  /// 显示键盘快捷键帮助
+  void _showKeyboardHelp() {
+    KeyboardShortcutsHelpDialog.show(
+      context,
+      title: '视频播放快捷键',
+      shortcuts: [
+        (key: 'Space / K', description: '播放/暂停'),
+        (key: '← / J', description: '快退'),
+        (key: '→ / L', description: '快进'),
+        (key: '↑', description: '增加音量'),
+        (key: '↓', description: '减少音量'),
+        (key: 'M', description: '静音/取消静音'),
+        (key: 'F / F11', description: '切换全屏'),
+        (key: 'C', description: '显示/隐藏控制栏'),
+        (key: '[', description: '减慢播放速度'),
+        (key: ']', description: '加快播放速度'),
+        (key: '\\', description: '恢复正常速度'),
+        (key: '0-9', description: '跳转到 0%-90%'),
+        (key: 'Esc', description: '退出全屏/返回'),
+        (key: '?', description: '显示此帮助'),
+      ],
     );
   }
 }

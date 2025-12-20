@@ -261,6 +261,10 @@ class _PageFlipEffectState extends State<PageFlipEffect>
     super.dispose();
   }
 
+  // 点击检测相关变量
+  Offset? _tapDownPosition;
+  DateTime? _tapDownTime;
+
   @override
   Widget build(BuildContext context) {
     if (!widget.enabled) {
@@ -270,111 +274,206 @@ class _PageFlipEffectState extends State<PageFlipEffect>
       );
     }
 
-    return GestureDetector(
-      onHorizontalDragStart: _onDragStart,
-      onHorizontalDragUpdate: _onDragUpdate,
-      onHorizontalDragEnd: _onDragEnd,
-      onHorizontalDragCancel: _onDragCancel,
-      onTapUp: widget.onTap,
-      child: Stack(
-        children: [
-          // 原始内容（用于捕获）
-          RepaintBoundary(
-            key: _captureKey,
-            child: widget.child,
-          ),
+    // 使用 Listener 检测点击，避免与拖动手势竞争
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (event) {
+        _tapDownPosition = event.localPosition;
+        _tapDownTime = DateTime.now();
+      },
+      onPointerUp: (event) {
+        // 如果正在拖动翻页，不处理点击
+        if (_direction != null || _isAnimating) {
+          _tapDownPosition = null;
+          _tapDownTime = null;
+          return;
+        }
 
-          // 翻页动画层
-          if (_direction != null && _capturedImage != null)
-            Positioned.fill(
-              child: widget.mode == PageFlipMode.simulation
-                  ? _buildSimulationEffect()
-                  : _buildCoverEffect(),
+        if (_tapDownPosition != null && _tapDownTime != null) {
+          final distance = (event.localPosition - _tapDownPosition!).distance;
+          final duration = DateTime.now().difference(_tapDownTime!);
+
+          // 快速点击且移动距离小，视为点击
+          if (distance < 20 && duration.inMilliseconds < 300) {
+            widget.onTap?.call(TapUpDetails(
+              kind: event.kind,
+              localPosition: event.localPosition,
+              globalPosition: event.position,
+            ));
+          }
+        }
+        _tapDownPosition = null;
+        _tapDownTime = null;
+      },
+      onPointerCancel: (event) {
+        _tapDownPosition = null;
+        _tapDownTime = null;
+      },
+      child: GestureDetector(
+        onHorizontalDragStart: _onDragStart,
+        onHorizontalDragUpdate: _onDragUpdate,
+        onHorizontalDragEnd: _onDragEnd,
+        onHorizontalDragCancel: _onDragCancel,
+        child: Stack(
+          children: [
+            // 原始内容（用于捕获）
+            RepaintBoundary(
+              key: _captureKey,
+              child: widget.child,
             ),
-        ],
+
+            // 翻页动画层
+            if (_direction != null && _capturedImage != null)
+              Positioned.fill(
+                child: widget.mode == PageFlipMode.simulation
+                    ? _buildSimulationEffect()
+                    : _buildCoverEffect(),
+              ),
+          ],
+        ),
       ),
     );
   }
 
-  /// 仿真翻页效果（3D 翻转）
+  /// 仿真翻页效果（书页折叠）
+  /// 页面跟随手指移动，模拟真实翻书效果
   Widget _buildSimulationEffect() {
+    final screenWidth = MediaQuery.of(context).size.width;
     final progress = _direction == FlipDirection.forward
         ? _flipProgress
         : 1.0 - _flipProgress;
 
-    // 翻转角度 (0 到 180 度)
-    final angle = progress * math.pi;
+    // 页面边缘位置 - 跟随手指
+    final pageEdgeX = _direction == FlipDirection.forward
+        ? screenWidth * (1.0 - progress)
+        : screenWidth * progress;
 
-    // 透视变换
-    final transform = Matrix4.identity()
-      ..setEntry(3, 2, 0.001) // 透视效果
-      ..rotateY(angle);
+    // 翻页角度 - 从 0 到 90 度
+    final angle = progress * math.pi * 0.5;
 
     // 阴影强度
-    final shadowOpacity = (0.3 * math.sin(angle)).clamp(0.0, 0.3);
+    final shadowOpacity = (0.5 * progress).clamp(0.0, 0.5);
 
     return Stack(
       children: [
-        // 背景（下一页的占位）
-        Container(color: Colors.grey.shade100),
+        // 背景 - 白色下一页
+        Container(color: Colors.white),
 
-        // 翻转的页面
-        Transform(
-          alignment: _direction == FlipDirection.forward
-              ? Alignment.centerLeft
-              : Alignment.centerRight,
-          transform: transform,
-          child: Stack(
-            children: [
-              // 页面图像
-              Positioned.fill(
-                child: RawImage(
-                  image: _capturedImage,
-                  fit: BoxFit.cover,
-                ),
-              ),
-
-              // 阴影效果
-              Positioned.fill(
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: _direction == FlipDirection.forward
-                          ? Alignment.centerRight
-                          : Alignment.centerLeft,
-                      end: _direction == FlipDirection.forward
-                          ? Alignment.centerLeft
-                          : Alignment.centerRight,
-                      colors: [
-                        Colors.black.withValues(alpha: shadowOpacity),
-                        Colors.transparent,
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        // 页面边缘阴影
-        if (progress > 0.1)
+        // 翻起的页面 - 使用 ClipRect 裁剪
+        if (progress > 0)
           Positioned(
-            left: _direction == FlipDirection.forward
-                ? MediaQuery.of(context).size.width * (1 - progress) - 20
-                : null,
-            right: _direction == FlipDirection.backward
-                ? MediaQuery.of(context).size.width * (1 - progress) - 20
-                : null,
+            left: _direction == FlipDirection.forward ? 0 : pageEdgeX,
+            right: _direction == FlipDirection.forward
+                ? screenWidth - pageEdgeX
+                : 0,
             top: 0,
             bottom: 0,
-            width: 20,
-            child: Container(
+            child: Transform(
+              alignment: _direction == FlipDirection.forward
+                  ? Alignment.centerRight
+                  : Alignment.centerLeft,
+              transform: Matrix4.identity()
+                ..setEntry(3, 2, 0.001)
+                ..rotateY(_direction == FlipDirection.forward ? angle : -angle),
+              child: Stack(
+                children: [
+                  // 页面内容
+                  Positioned.fill(
+                    child: ClipRect(
+                      child: Align(
+                        alignment: _direction == FlipDirection.forward
+                            ? Alignment.centerLeft
+                            : Alignment.centerRight,
+                        widthFactor: 1.0 - progress,
+                        child: SizedBox(
+                          width: screenWidth,
+                          child: RawImage(
+                            image: _capturedImage,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  // 页面暗角
+                  Positioned.fill(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: _direction == FlipDirection.forward
+                              ? Alignment.centerRight
+                              : Alignment.centerLeft,
+                          end: _direction == FlipDirection.forward
+                              ? Alignment.centerLeft
+                              : Alignment.centerRight,
+                          colors: [
+                            Colors.black.withValues(alpha: shadowOpacity * 0.4),
+                            Colors.transparent,
+                          ],
+                          stops: const [0.0, 0.5],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+        // 页面折叠处的阴影
+        if (progress > 0.02)
+          Positioned(
+            left: _direction == FlipDirection.forward ? pageEdgeX - 20 : null,
+            right: _direction == FlipDirection.backward ? pageEdgeX - 20 : null,
+            top: 0,
+            bottom: 0,
+            width: 25,
+            child: DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    Colors.black.withValues(alpha: 0.15 * progress),
                     Colors.transparent,
+                    Colors.black.withValues(alpha: 0.15 * progress),
+                    Colors.black.withValues(alpha: 0.08 * progress),
+                    Colors.transparent,
+                  ],
+                  stops: const [0.0, 0.3, 0.7, 1.0],
+                ),
+              ),
+            ),
+          ),
+
+        // 翻起页面的背面（模拟纸张背面）
+        if (progress > 0.1)
+          Positioned(
+            left: _direction == FlipDirection.forward ? pageEdgeX : null,
+            right: _direction == FlipDirection.backward ? pageEdgeX : null,
+            top: 0,
+            bottom: 0,
+            width: math.min(progress * screenWidth * 0.15, 30),
+            child: Transform(
+              alignment: _direction == FlipDirection.forward
+                  ? Alignment.centerLeft
+                  : Alignment.centerRight,
+              transform: Matrix4.identity()
+                ..setEntry(3, 2, 0.001)
+                ..rotateY(
+                  _direction == FlipDirection.forward
+                      ? math.pi - angle
+                      : -(math.pi - angle),
+                ),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8F8F5),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.1 * progress),
+                      blurRadius: 3,
+                      offset: Offset(
+                        _direction == FlipDirection.forward ? -2 : 2,
+                        0,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -397,8 +496,8 @@ class _PageFlipEffectState extends State<PageFlipEffect>
 
     return Stack(
       children: [
-        // 背景（下一页的占位）
-        Container(color: Colors.grey.shade100),
+        // 背景 - 纯白色模拟下一页
+        Container(color: Colors.white),
 
         // 滑动的页面
         Transform.translate(

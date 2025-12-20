@@ -7,6 +7,7 @@ import 'package:flutter_foliate_viewer/flutter_foliate_viewer.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/core/widgets/keyboard_shortcuts.dart';
 import 'package:my_nas/features/book/data/services/book_file_cache_service.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
 import 'package:my_nas/features/reading/data/services/reader_settings_service.dart';
@@ -250,9 +251,7 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
       backgroundColor: settings.theme.backgroundColor,
       textColor: settings.theme.textColor,
       fontFamily: settings.fontFamily,
-      pageTurnStyle: FoliatePageTurnStyle.fromPageTurnMode(
-        settings.pageTurnMode.index,
-      ),
+      pageTurnStyle: _mapPageTurnMode(settings.pageTurnMode),
       // 不需要额外边距，FoliateViewer 已在固定栏之间
     );
 
@@ -280,12 +279,14 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
   /// 将 BookPageTurnMode 映射到 FoliatePageTurnStyle
   /// - scroll: 水平翻页（分页模式，左右滑动切换页面）
   /// - slide: 连续滚动（无页面边界，上下拖动查看更多内容）
-  /// - simulation/cover: Flutter 层实现，Foliate 使用分页模式
+  /// - simulation/cover: Flutter 层实现，禁用 WebView 内置翻页
+  /// - none: 无动画，点击翻页
   FoliatePageTurnStyle _mapPageTurnMode(BookPageTurnMode mode) => switch (mode) {
         BookPageTurnMode.scroll => FoliatePageTurnStyle.slide, // 水平翻页
         BookPageTurnMode.slide => FoliatePageTurnStyle.scroll, // 连续滚动
-        BookPageTurnMode.simulation => FoliatePageTurnStyle.slide, // Flutter 处理
-        BookPageTurnMode.cover => FoliatePageTurnStyle.slide, // Flutter 处理
+        // 仿真和覆盖由 Flutter 处理，禁用 WebView 自带的翻页动画
+        BookPageTurnMode.simulation => FoliatePageTurnStyle.noAnimation,
+        BookPageTurnMode.cover => FoliatePageTurnStyle.noAnimation,
         BookPageTurnMode.none => FoliatePageTurnStyle.noAnimation,
       };
 
@@ -518,6 +519,62 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
     );
   }
 
+  /// 构建键盘快捷键映射
+  Map<ShortcutKey, VoidCallback> _buildKeyboardShortcuts(BookReaderSettings settings) {
+    final isDark = settings.theme == BookReaderTheme.dark ||
+        settings.theme == BookReaderTheme.black;
+
+    return {
+      // 导航
+      CommonShortcuts.previous: _controller.prevPage,
+      CommonShortcuts.next: _controller.nextPage,
+      CommonShortcuts.previousPage: _controller.prevPage,
+      CommonShortcuts.nextPage: _controller.nextPage,
+      CommonShortcuts.first: () => _controller.goToFraction(0),
+      CommonShortcuts.last: () => _controller.goToFraction(1),
+
+      // 控制栏切换
+      CommonShortcuts.playPause: _toggleControls,
+      CommonShortcuts.toggleControls: _toggleControls,
+
+      // 夜间模式
+      CommonShortcuts.mute: () {
+        final notifier = ref.read(bookReaderSettingsProvider.notifier);
+        final newTheme = isDark ? BookReaderTheme.light : BookReaderTheme.dark;
+        notifier.setTheme(newTheme);
+        _applySettings(settings.copyWith(theme: newTheme));
+      },
+
+      // 设置
+      CommonShortcuts.settings: _showSettingsSheet,
+
+      // 退出
+      CommonShortcuts.escape: () => Navigator.pop(context),
+      CommonShortcuts.back: () => Navigator.pop(context),
+    };
+  }
+
+  /// 显示快捷键帮助
+  void _showKeyboardHelp() {
+    KeyboardShortcutsHelpDialog.show(
+      context,
+      title: 'MOBI 阅读快捷键',
+      shortcuts: [
+        (key: '←', description: '上一页'),
+        (key: '→', description: '下一页'),
+        (key: 'Page Up', description: '上一页'),
+        (key: 'Page Down', description: '下一页'),
+        (key: 'Home', description: '跳到开头'),
+        (key: 'End', description: '跳到结尾'),
+        (key: 'Space', description: '显示/隐藏控制栏'),
+        (key: 'M', description: '切换夜间模式'),
+        (key: ',', description: '打开设置'),
+        (key: 'Esc', description: '返回'),
+        (key: '?', description: '显示此帮助'),
+      ],
+    );
+  }
+
   Widget _buildEngineSelector(
     BookReaderSettings settings,
     BookReaderSettingsNotifier settingsNotifier,
@@ -619,13 +676,19 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
     final state = ref.watch(mobiReaderProvider(widget.book));
     final settings = ref.watch(bookReaderSettingsProvider);
 
-    return Scaffold(
-      backgroundColor: settings.theme.backgroundColor,
-      body: switch (state) {
-        MobiReaderLoading(:final message) => LoadingWidget(message: message),
-        MobiReaderError(:final message) => _buildError(message),
-        MobiReaderLoaded(:final filePath) => _buildReader(filePath, settings),
+    return KeyboardShortcuts(
+      shortcuts: {
+        ..._buildKeyboardShortcuts(settings),
+        CommonShortcuts.help: _showKeyboardHelp,
       },
+      child: Scaffold(
+        backgroundColor: settings.theme.backgroundColor,
+        body: switch (state) {
+          MobiReaderLoading(:final message) => LoadingWidget(message: message),
+          MobiReaderError(:final message) => _buildError(message),
+          MobiReaderLoaded(:final filePath) => _buildReader(filePath, settings),
+        },
+      ),
     );
   }
 
@@ -757,16 +820,21 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
     final tapX = details.localPosition.dx;
     final ratio = tapX / screenWidth;
 
-    // 中间区域切换控制栏
-    if (ratio >= 0.25 && ratio <= 0.75) {
+    if (ratio < 0.25) {
+      // 左侧 25%: 上一页
+      _controller.prevPage();
+    } else if (ratio > 0.75) {
+      // 右侧 25%: 下一页
+      _controller.nextPage();
+    } else {
+      // 中间 50%: 切换控制栏
       _toggleControls();
     }
-    // 左右区域由 PageFlipEffect 处理翻页
   }
 
   /// 固定顶栏 - 显示书名
   Widget _buildFixedHeader(BookReaderSettings settings, bool isDark) => SizedBox(
-      height: 40,
+      height: 28,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Row(
@@ -776,8 +844,8 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
                 _bookInfo?.title ?? widget.book.name,
                 style: TextStyle(
                   color: (isDark ? Colors.white : Colors.black87)
-                      .withValues(alpha: 0.6),
-                  fontSize: 14,
+                      .withValues(alpha: 0.5),
+                  fontSize: 12,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -792,7 +860,7 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
   Widget _buildFixedFooter(BookReaderSettings settings, bool isDark) {
     final progress = _currentLocation?.fraction ?? 0.0;
     return SizedBox(
-      height: 24,
+      height: 20,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Row(
@@ -803,7 +871,7 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
               style: TextStyle(
                 color: (isDark ? Colors.white : Colors.black87)
                     .withValues(alpha: 0.5),
-                fontSize: 12,
+                fontSize: 11,
               ),
             ),
             Text(
@@ -811,7 +879,7 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
               style: TextStyle(
                 color: (isDark ? Colors.white : Colors.black87)
                     .withValues(alpha: 0.5),
-                fontSize: 12,
+                fontSize: 11,
               ),
             ),
           ],
@@ -866,7 +934,8 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
         _tapDownPosition = null;
         _tapDownTime = null;
       },
-      child: Container(color: Colors.transparent),
+      // 使用 IgnorePointer 确保不阻止手势传递给下层 WebView
+      child: const IgnorePointer(child: SizedBox.expand()),
     );
 
   // 点击检测相关变量

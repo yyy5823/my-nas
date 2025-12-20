@@ -2304,6 +2304,19 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     required List<VideoMetadata> topRated,
     required VideoCategorySettings categorySettings,
   }) {
+    // 获取启用的路径列表（用于分类查询过滤）
+    List<({String sourceId, String path})>? enabledPaths;
+    final configState = ref.read(mediaLibraryConfigProvider);
+    if (!configState.isLoading && !configState.hasError) {
+      final config = configState.valueOrNull;
+      if (config != null) {
+        final paths = config.getEnabledPathsForType(MediaType.video);
+        if (paths.isNotEmpty) {
+          enabledPaths = paths.map((p) => (sourceId: p.sourceId, path: p.path)).toList();
+        }
+      }
+    }
+
     // 渐进式加载：根据 loadingPhase 决定显示内容还是骨架屏
     final phase = state.loadingPhase;
     final isStatsPhase = phase == VideoLoadingPhase.stats;
@@ -2569,6 +2582,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
             isDark: isDark,
             onItemTap: (m) => _openVideoDetail(context, ref, m),
             onItemContextMenu: (m) => _showVideoContextMenu(context, ref, m),
+            enabledPaths: enabledPaths,
           ),
         ];
 
@@ -2582,6 +2596,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
             isDark: isDark,
             onItemTap: (m) => _openVideoDetail(context, ref, m),
             onItemContextMenu: (m) => _showVideoContextMenu(context, ref, m),
+            enabledPaths: enabledPaths,
           ),
         ];
 
@@ -2595,6 +2610,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
             isDark: isDark,
             onItemTap: (m) => _openVideoDetail(context, ref, m),
             onItemContextMenu: (m) => _showVideoContextMenu(context, ref, m),
+            enabledPaths: enabledPaths,
           ),
         ];
 
@@ -2608,6 +2624,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
             isDark: isDark,
             onItemTap: (m) => _openVideoDetail(context, ref, m),
             onItemContextMenu: (m) => _showVideoContextMenu(context, ref, m),
+            enabledPaths: enabledPaths,
           ),
         ];
 
@@ -2624,11 +2641,13 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               category: section.category,
               isDark: isDark,
               selectedFilters: movieGenreFilters,
+              enabledPaths: enabledPaths,
               onCategoryTap: (filter) => _showFilteredVideosPage(
                 context,
                 ref,
                 VideoHomeCategory.byMovieGenre,
                 filter,
+                enabledPaths,
               ),
             ),
           ),
@@ -2647,11 +2666,13 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               category: section.category,
               isDark: isDark,
               selectedFilters: movieRegionFilters,
+              enabledPaths: enabledPaths,
               onCategoryTap: (filter) => _showFilteredVideosPage(
                 context,
                 ref,
                 VideoHomeCategory.byMovieRegion,
                 filter,
+                enabledPaths,
               ),
             ),
           ),
@@ -2670,11 +2691,13 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               category: section.category,
               isDark: isDark,
               selectedFilters: tvGenreFilters,
+              enabledPaths: enabledPaths,
               onCategoryTap: (filter) => _showFilteredVideosPage(
                 context,
                 ref,
                 VideoHomeCategory.byTvGenre,
                 filter,
+                enabledPaths,
               ),
             ),
           ),
@@ -2693,11 +2716,13 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               category: section.category,
               isDark: isDark,
               selectedFilters: tvRegionFilters,
+              enabledPaths: enabledPaths,
               onCategoryTap: (filter) => _showFilteredVideosPage(
                 context,
                 ref,
                 VideoHomeCategory.byTvRegion,
                 filter,
+                enabledPaths,
               ),
             ),
           ),
@@ -2762,11 +2787,13 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     WidgetRef ref,
     VideoHomeCategory category,
     String filter,
+    List<({String sourceId, String path})>? enabledPaths,
   ) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (context) => _FilteredVideosPaginatedPage(
           category: category,
+          enabledPaths: enabledPaths,
           filter: filter,
           onVideoTap: (video) => _openVideoDetail(context, ref, video),
         ),
@@ -7299,7 +7326,8 @@ class _OthersPaginatedPageState extends ConsumerState<_OthersPaginatedPage> {
                   padding: EdgeInsets.all(spacing),
                   gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: crossAxisCount,
-                    childAspectRatio: 0.65,
+                    // 海报比例 2:3 + 标题区域，需要足够高度避免溢出
+                    childAspectRatio: 0.55,
                     crossAxisSpacing: spacing,
                     mainAxisSpacing: spacing,
                   ),
@@ -8200,6 +8228,7 @@ class _DynamicCategorySection extends StatefulWidget {
     required this.isDark,
     required this.onItemTap,
     required this.onItemContextMenu,
+    this.enabledPaths,
   });
 
   final VideoHomeCategory category;
@@ -8207,6 +8236,7 @@ class _DynamicCategorySection extends StatefulWidget {
   final bool isDark;
   final void Function(VideoMetadata) onItemTap;
   final void Function(VideoMetadata) onItemContextMenu;
+  final List<({String sourceId, String path})>? enabledPaths;
 
   @override
   State<_DynamicCategorySection> createState() => _DynamicCategorySectionState();
@@ -8231,13 +8261,29 @@ class _DynamicCategorySectionState extends State<_DynamicCategorySection> {
 
       switch (widget.category) {
         case VideoHomeCategory.byMovieGenre:
-          videos = await db.getMoviesByGenre(widget.filter, limit: 20);
+          videos = await db.getMoviesByGenre(
+            widget.filter,
+            limit: 20,
+            enabledPaths: widget.enabledPaths,
+          );
         case VideoHomeCategory.byMovieRegion:
-          videos = await db.getMoviesByCountry(widget.filter, limit: 20);
+          videos = await db.getMoviesByCountry(
+            widget.filter,
+            limit: 20,
+            enabledPaths: widget.enabledPaths,
+          );
         case VideoHomeCategory.byTvGenre:
-          videos = await db.getTvShowsByGenre(widget.filter, limit: 20);
+          videos = await db.getTvShowsByGenre(
+            widget.filter,
+            limit: 20,
+            enabledPaths: widget.enabledPaths,
+          );
         case VideoHomeCategory.byTvRegion:
-          videos = await db.getTvShowsByCountry(widget.filter, limit: 20);
+          videos = await db.getTvShowsByCountry(
+            widget.filter,
+            limit: 20,
+            enabledPaths: widget.enabledPaths,
+          );
         default:
           videos = [];
       }
@@ -8319,11 +8365,13 @@ class _FilteredVideosPaginatedPage extends StatefulWidget {
     required this.category,
     required this.filter,
     required this.onVideoTap,
+    this.enabledPaths,
   });
 
   final VideoHomeCategory category;
   final String filter;
   final void Function(VideoMetadata) onVideoTap;
+  final List<({String sourceId, String path})>? enabledPaths;
 
   @override
   State<_FilteredVideosPaginatedPage> createState() =>
@@ -8380,6 +8428,7 @@ class _FilteredVideosPaginatedPageState
             limit: _pageSize,
             offset: _offset,
             sortOption: _sortOption,
+            enabledPaths: widget.enabledPaths,
           );
         case VideoHomeCategory.byMovieRegion:
           newVideos = await db.getMoviesByCountry(
@@ -8387,6 +8436,7 @@ class _FilteredVideosPaginatedPageState
             limit: _pageSize,
             offset: _offset,
             sortOption: _sortOption,
+            enabledPaths: widget.enabledPaths,
           );
         case VideoHomeCategory.byTvGenre:
           newVideos = await db.getTvShowsByGenre(
@@ -8394,6 +8444,7 @@ class _FilteredVideosPaginatedPageState
             limit: _pageSize,
             offset: _offset,
             sortOption: _sortOption,
+            enabledPaths: widget.enabledPaths,
           );
         case VideoHomeCategory.byTvRegion:
           newVideos = await db.getTvShowsByCountry(
@@ -8401,6 +8452,7 @@ class _FilteredVideosPaginatedPageState
             limit: _pageSize,
             offset: _offset,
             sortOption: _sortOption,
+            enabledPaths: widget.enabledPaths,
           );
         default:
           newVideos = [];
@@ -8551,7 +8603,9 @@ class _FilteredVideosPaginatedPageState
                   padding: const EdgeInsets.all(12),
                   gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                     maxCrossAxisExtent: 150,
-                    childAspectRatio: 0.6,
+                    // 海报比例 2:3 (高度=宽度*1.5) + 标题区域约 40px
+                    // 150*1.5=225 + 40 = 265, 150/265 ≈ 0.566
+                    childAspectRatio: 0.55,
                     crossAxisSpacing: 10,
                     mainAxisSpacing: 12,
                   ),

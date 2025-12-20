@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:my_nas/app/router/routes.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/core/widgets/keyboard_shortcuts.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/presentation/providers/music_favorites_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
@@ -145,11 +146,15 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
       );
     }
 
-    return Scaffold(
-      extendBodyBehindAppBar: true,
-      backgroundColor: isDark ? AppColors.darkBackground : Colors.grey[100],
-      appBar: _buildAppBar(context, ref, currentMusic, isDark),
-      body: DecoratedBox(
+    final notifier = ref.read(musicPlayerControllerProvider.notifier);
+
+    return KeyboardShortcuts(
+      shortcuts: _buildKeyboardShortcuts(notifier, playerState),
+      child: Scaffold(
+        extendBodyBehindAppBar: true,
+        backgroundColor: isDark ? AppColors.darkBackground : Colors.grey[100],
+        appBar: _buildAppBar(context, ref, currentMusic, isDark),
+        body: DecoratedBox(
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
@@ -176,6 +181,93 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
           ),
         ),
       ),
+      ),
+    );
+  }
+
+  /// 构建键盘快捷键映射
+  Map<ShortcutKey, VoidCallback> _buildKeyboardShortcuts(
+    MusicPlayerNotifier notifier,
+    MusicPlayerState state,
+  ) => {
+      // 播放/暂停
+      CommonShortcuts.playPause: notifier.playOrPause,
+      CommonShortcuts.playPauseK: notifier.playOrPause,
+
+      // 上一曲/下一曲
+      CommonShortcuts.previous: notifier.playPrevious,
+      CommonShortcuts.next: notifier.playNext,
+
+      // 快退/快进 (10秒)
+      CommonShortcuts.seekBackward: () {
+        final newPosition = state.position - const Duration(seconds: 10);
+        notifier.seek(newPosition.isNegative ? Duration.zero : newPosition);
+      },
+      CommonShortcuts.seekForward: () {
+        final newPosition = state.position + const Duration(seconds: 10);
+        if (newPosition < state.duration) {
+          notifier.seek(newPosition);
+        }
+      },
+
+      // 音量调整
+      CommonShortcuts.volumeUp: () {
+        final newVolume = (state.volume + 0.1).clamp(0.0, 1.0);
+        notifier.setVolume(newVolume);
+      },
+      CommonShortcuts.volumeDown: () {
+        final newVolume = (state.volume - 0.1).clamp(0.0, 1.0);
+        notifier.setVolume(newVolume);
+      },
+      CommonShortcuts.mute: () {
+        if (state.volume > 0) {
+          notifier.setVolume(0);
+        } else {
+          notifier.setVolume(1.0);
+        }
+      },
+
+      // 播放模式
+      CommonShortcuts.repeatMode: notifier.togglePlayMode,
+      CommonShortcuts.shuffle: () {
+        // 切换到随机模式
+        if (state.playMode != PlayMode.shuffle) {
+          notifier.togglePlayMode();
+          if (state.playMode != PlayMode.shuffle) {
+            notifier.togglePlayMode();
+          }
+        }
+      },
+
+      // 歌词切换
+      CommonShortcuts.toggleControls: _toggleLyricView,
+
+      // 退出
+      CommonShortcuts.escape: () => _handleBack(context),
+
+      // 帮助
+      CommonShortcuts.help: _showKeyboardHelp,
+    };
+
+  /// 显示键盘快捷键帮助
+  void _showKeyboardHelp() {
+    KeyboardShortcutsHelpDialog.show(
+      context,
+      title: '音乐播放快捷键',
+      shortcuts: [
+        (key: 'Space / K', description: '播放/暂停'),
+        (key: '←', description: '上一曲'),
+        (key: '→', description: '下一曲'),
+        (key: 'J', description: '快退 10 秒'),
+        (key: 'L', description: '快进 10 秒'),
+        (key: '↑', description: '增加音量'),
+        (key: '↓', description: '减少音量'),
+        (key: 'M', description: '静音/取消静音'),
+        (key: 'R', description: '切换播放模式'),
+        (key: 'C', description: '显示/隐藏歌词'),
+        (key: 'Esc', description: '返回'),
+        (key: '?', description: '显示此帮助'),
+      ],
     );
   }
 

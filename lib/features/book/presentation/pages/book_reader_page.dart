@@ -12,6 +12,7 @@ import 'package:intl/intl.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/network/http_client.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/core/widgets/keyboard_shortcuts.dart';
 import 'package:my_nas/features/book/data/services/book_content_processor.dart';
 import 'package:my_nas/features/book/data/services/book_file_cache_service.dart';
 import 'package:my_nas/features/book/data/services/mobi_parser_service.dart';
@@ -713,23 +714,105 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     );
   }
 
+  /// 构建键盘快捷键映射
+  Map<ShortcutKey, VoidCallback> _buildKeyboardShortcuts(
+    BookReaderSettings settings,
+    TxtReaderState readerState,
+  ) {
+    final usePageMode = settings.pageTurnMode != BookPageTurnMode.slide;
+    // 判断是否使用 WebView 渲染（需要有 HTML 内容且使用 WebView 渲染器）
+    final hasHtml = readerState is TxtReaderLoaded && readerState.hasHtml;
+    final useWebView = _useWebViewRenderer && hasHtml && usePageMode;
+
+    return {
+      // 导航
+      CommonShortcuts.previous: () => _handlePreviousPage(
+            usePageMode: usePageMode,
+            useWebView: useWebView,
+          ),
+      CommonShortcuts.next: () => _handleNextPage(
+            usePageMode: usePageMode,
+            useWebView: useWebView,
+          ),
+      CommonShortcuts.previousPage: () => _handlePreviousPage(
+            usePageMode: usePageMode,
+            useWebView: useWebView,
+          ),
+      CommonShortcuts.nextPage: () => _handleNextPage(
+            usePageMode: usePageMode,
+            useWebView: useWebView,
+          ),
+      CommonShortcuts.first: () {
+        if (_scrollController.hasClients) {
+          _scrollController.jumpTo(0);
+        }
+      },
+      CommonShortcuts.last: () {
+        if (_scrollController.hasClients) {
+          _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+        }
+      },
+
+      // 控制栏切换
+      CommonShortcuts.playPause: _toggleControls,
+      CommonShortcuts.toggleControls: _toggleControls,
+
+      // 夜间模式
+      CommonShortcuts.mute: _toggleNightMode,
+
+      // 设置
+      CommonShortcuts.settings: _showSettingsSheet,
+
+      // 退出
+      CommonShortcuts.escape: () => Navigator.pop(context),
+      CommonShortcuts.back: () => Navigator.pop(context),
+    };
+  }
+
+  /// 显示快捷键帮助
+  void _showKeyboardHelp() {
+    KeyboardShortcutsHelpDialog.show(
+      context,
+      title: '阅读快捷键',
+      shortcuts: [
+        (key: '←', description: '上一页'),
+        (key: '→', description: '下一页'),
+        (key: 'Page Up', description: '上一页'),
+        (key: 'Page Down', description: '下一页'),
+        (key: 'Home', description: '跳到开头'),
+        (key: 'End', description: '跳到结尾'),
+        (key: 'Space', description: '显示/隐藏控制栏'),
+        (key: 'M', description: '切换夜间模式'),
+        (key: ',', description: '打开设置'),
+        (key: 'Esc', description: '返回'),
+        (key: '?', description: '显示此帮助'),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(txtReaderProvider(widget.book));
     final settings = ref.watch(bookReaderSettingsProvider);
 
-    return Scaffold(
-      backgroundColor: settings.theme.backgroundColor,
-      body: switch (state) {
-        TxtReaderLoading(:final message) => LoadingWidget(message: message),
-        TxtReaderError(:final message) => AppErrorWidget(
-          message: message,
-          onRetry: () =>
-              ref.read(txtReaderProvider(widget.book).notifier).loadBook(),
-        ),
-        TxtReaderRedirectToEpub(:final epubPath) => _buildEpubRedirect(epubPath),
-        TxtReaderLoaded() => _buildReader(context, state, settings),
+    return KeyboardShortcuts(
+      shortcuts: {
+        ..._buildKeyboardShortcuts(settings, state),
+        CommonShortcuts.help: _showKeyboardHelp,
       },
+      child: Scaffold(
+        backgroundColor: settings.theme.backgroundColor,
+        body: switch (state) {
+          TxtReaderLoading(:final message) => LoadingWidget(message: message),
+          TxtReaderError(:final message) => AppErrorWidget(
+              message: message,
+              onRetry: () =>
+                  ref.read(txtReaderProvider(widget.book).notifier).loadBook(),
+            ),
+          TxtReaderRedirectToEpub(:final epubPath) => _buildEpubRedirect(epubPath),
+          TxtReaderLoaded() => _buildReader(context, state, settings),
+        },
+      ),
     );
   }
 

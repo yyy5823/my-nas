@@ -457,11 +457,32 @@ class DoubleTapSeekOverlay extends StatefulWidget {
   const DoubleTapSeekOverlay({
     required this.isForward,
     required this.onComplete,
+    this.seekInterval = 10,
     super.key,
   });
 
   final bool isForward;
   final VoidCallback onComplete;
+  final int seekInterval;
+
+  /// 根据秒数获取快退图标
+  IconData get replayIcon => switch (seekInterval) {
+        5 => Icons.replay_5,
+        10 => Icons.replay_10,
+        30 => Icons.replay_30,
+        _ => Icons.replay,
+      };
+
+  /// 根据秒数获取快进图标
+  IconData get forwardIcon => switch (seekInterval) {
+        5 => Icons.forward_5,
+        10 => Icons.forward_10,
+        30 => Icons.forward_30,
+        _ => Icons.forward,
+      };
+
+  /// 是否需要显示秒数标签
+  bool get needsLabel => seekInterval != 5 && seekInterval != 10 && seekInterval != 30;
 
   @override
   State<DoubleTapSeekOverlay> createState() => _DoubleTapSeekOverlayState();
@@ -511,11 +532,30 @@ class _DoubleTapSeekOverlayState extends State<DoubleTapSeekOverlay>
                 color: Colors.black.withValues(alpha: 0.5),
                 shape: BoxShape.circle,
               ),
-              child: Icon(
-                widget.isForward ? Icons.forward_10 : Icons.replay_10,
-                color: Colors.white,
-                size: 40,
-              ),
+              child: widget.needsLabel
+                  ? Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          widget.isForward ? widget.forwardIcon : widget.replayIcon,
+                          color: Colors.white,
+                          size: 32,
+                        ),
+                        Text(
+                          '${widget.seekInterval}s',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    )
+                  : Icon(
+                      widget.isForward ? widget.forwardIcon : widget.replayIcon,
+                      color: Colors.white,
+                      size: 40,
+                    ),
             ),
           ),
         ),

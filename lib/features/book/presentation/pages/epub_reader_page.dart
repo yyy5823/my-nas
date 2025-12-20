@@ -10,6 +10,7 @@ import 'package:intl/intl.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/network/http_client.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/core/widgets/keyboard_shortcuts.dart';
 import 'package:my_nas/features/book/data/services/book_file_cache_service.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
 import 'package:my_nas/features/reading/data/services/reader_settings_service.dart';
@@ -776,17 +777,89 @@ class _EpubReaderPageState extends ConsumerState<EpubReaderPage> {
     ref.read(bookReaderSettingsProvider.notifier).setTheme(newTheme);
   }
 
+  /// 安全的上一页操作
+  void _safePrev() {
+    if (!_isEpubReady) return;
+    try {
+      _epubController.prev();
+    } on Exception catch (e) {
+      logger.w('EPUB 上一页操作失败', e);
+    }
+  }
+
+  /// 安全的下一页操作
+  void _safeNext() {
+    if (!_isEpubReady) return;
+    try {
+      _epubController.next();
+    } on Exception catch (e) {
+      logger.w('EPUB 下一页操作失败', e);
+    }
+  }
+
+  /// 构建键盘快捷键映射
+  Map<ShortcutKey, VoidCallback> _buildKeyboardShortcuts() => {
+        // 导航
+        CommonShortcuts.previous: _safePrev,
+        CommonShortcuts.next: _safeNext,
+        CommonShortcuts.previousPage: _safePrev,
+        CommonShortcuts.nextPage: _safeNext,
+        CommonShortcuts.first: _safeFirst,
+        CommonShortcuts.last: _safeLast,
+
+        // 控制栏切换
+        CommonShortcuts.playPause: _toggleControls,
+        CommonShortcuts.toggleControls: _toggleControls,
+
+        // 夜间模式
+        CommonShortcuts.mute: _toggleNightMode, // M 键切换夜间模式
+
+        // 设置
+        CommonShortcuts.settings: _showSettingsSheet,
+
+        // 退出
+        CommonShortcuts.escape: () => Navigator.pop(context),
+        CommonShortcuts.back: () => Navigator.pop(context),
+      };
+
+  /// 显示快捷键帮助
+  void _showKeyboardHelp() {
+    KeyboardShortcutsHelpDialog.show(
+      context,
+      title: 'EPUB 阅读快捷键',
+      shortcuts: [
+        (key: '←', description: '上一页'),
+        (key: '→', description: '下一页'),
+        (key: 'Page Up', description: '上一页'),
+        (key: 'Page Down', description: '下一页'),
+        (key: 'Home', description: '跳到开头'),
+        (key: 'End', description: '跳到结尾'),
+        (key: 'Space', description: '显示/隐藏控制栏'),
+        (key: 'M', description: '切换夜间模式'),
+        (key: ',', description: '打开设置'),
+        (key: 'Esc', description: '返回'),
+        (key: '?', description: '显示此帮助'),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(epubReaderProvider(_readerParams));
 
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: switch (state) {
-        EpubReaderLoading(:final message) => LoadingWidget(message: message),
-        EpubReaderError(:final message) => _buildError(message),
-        EpubReaderLoaded() => _buildReader(context, state),
+    return KeyboardShortcuts(
+      shortcuts: {
+        ..._buildKeyboardShortcuts(),
+        CommonShortcuts.help: _showKeyboardHelp,
       },
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        body: switch (state) {
+          EpubReaderLoading(:final message) => LoadingWidget(message: message),
+          EpubReaderError(:final message) => _buildError(message),
+          EpubReaderLoaded() => _buildReader(context, state),
+        },
+      ),
     );
   }
 

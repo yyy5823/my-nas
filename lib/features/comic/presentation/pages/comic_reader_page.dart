@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/core/widgets/keyboard_shortcuts.dart';
 import 'package:my_nas/features/comic/data/services/archive_extract_service.dart';
 import 'package:my_nas/features/comic/presentation/pages/comic_list_page.dart';
 import 'package:my_nas/features/reading/data/services/reader_settings_service.dart';
@@ -472,6 +473,105 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
     );
   }
 
+  /// 构建键盘快捷键映射
+  Map<ShortcutKey, VoidCallback> _buildKeyboardShortcuts(
+    ComicReaderState state,
+    ComicReaderNotifier notifier,
+    ComicReaderSettings settings,
+  ) {
+    final isRtl = settings.readingDirection == ComicReadingDirection.rtl;
+
+    // 上一页操作
+    void goToPrevious() {
+      if (_pageController != null && _pageController!.hasClients) {
+        _pageController!.previousPage(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      } else if (_scrollController != null && _scrollController!.hasClients) {
+        final offset = (_scrollController!.offset -
+                MediaQuery.of(context).size.height * 0.8)
+            .clamp(0.0, _scrollController!.position.maxScrollExtent);
+        _scrollController!.animateTo(
+          offset,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    }
+
+    // 下一页操作
+    void goToNext() {
+      if (_pageController != null && _pageController!.hasClients) {
+        _pageController!.nextPage(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      } else if (_scrollController != null && _scrollController!.hasClients) {
+        final offset = (_scrollController!.offset +
+                MediaQuery.of(context).size.height * 0.8)
+            .clamp(0.0, _scrollController!.position.maxScrollExtent);
+        _scrollController!.animateTo(
+          offset,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    }
+
+    return {
+      // 导航（考虑阅读方向）
+      CommonShortcuts.previous: isRtl ? goToNext : goToPrevious,
+      CommonShortcuts.next: isRtl ? goToPrevious : goToNext,
+      CommonShortcuts.previousPage: isRtl ? goToNext : goToPrevious,
+      CommonShortcuts.nextPage: isRtl ? goToPrevious : goToNext,
+      CommonShortcuts.first: () {
+        notifier.goToPage(0);
+        _pageController?.jumpToPage(0);
+      },
+      CommonShortcuts.last: () {
+        final lastPage = state.pages.length - 1;
+        notifier.goToPage(lastPage);
+        _pageController?.jumpToPage(
+          settings.readingMode == ComicReadingMode.doublePage
+              ? lastPage ~/ 2
+              : lastPage,
+        );
+      },
+
+      // 控制栏切换
+      CommonShortcuts.playPause: notifier.toggleControls,
+      CommonShortcuts.toggleControls: notifier.toggleControls,
+
+      // 设置
+      CommonShortcuts.settings: _showSettingsSheet,
+
+      // 退出
+      CommonShortcuts.escape: () => Navigator.pop(context),
+      CommonShortcuts.back: () => Navigator.pop(context),
+    };
+  }
+
+  /// 显示快捷键帮助
+  void _showKeyboardHelp() {
+    KeyboardShortcutsHelpDialog.show(
+      context,
+      title: '漫画阅读快捷键',
+      shortcuts: [
+        (key: '←', description: '上一页'),
+        (key: '→', description: '下一页'),
+        (key: 'Page Up', description: '上一页'),
+        (key: 'Page Down', description: '下一页'),
+        (key: 'Home', description: '第一页'),
+        (key: 'End', description: '最后一页'),
+        (key: 'Space', description: '显示/隐藏控制栏'),
+        (key: ',', description: '打开设置'),
+        (key: 'Esc', description: '返回'),
+        (key: '?', description: '显示此帮助'),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(_provider);
@@ -479,43 +579,49 @@ class _ComicReaderPageState extends ConsumerState<ComicReaderPage> {
     final settings = ref.watch(comicReaderSettingsProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Scaffold(
-      backgroundColor: settings.backgroundColor.color,
-      body: Stack(
-        children: [
-          // 主内容（带固定顶栏）
-          Column(
-            children: [
-              // 固定顶栏 - 避免摄像头遮挡内容
-              _buildFixedHeader(state, settings),
-              Expanded(
-                child: _buildMainContent(state, notifier, settings),
+    return KeyboardShortcuts(
+      shortcuts: {
+        ..._buildKeyboardShortcuts(state, notifier, settings),
+        CommonShortcuts.help: _showKeyboardHelp,
+      },
+      child: Scaffold(
+        backgroundColor: settings.backgroundColor.color,
+        body: Stack(
+          children: [
+            // 主内容（带固定顶栏）
+            Column(
+              children: [
+                // 固定顶栏 - 避免摄像头遮挡内容
+                _buildFixedHeader(state, settings),
+                Expanded(
+                  child: _buildMainContent(state, notifier, settings),
+                ),
+              ],
+            ),
+
+            // 点击翻页区域
+            if (settings.tapToTurn && !state.isLoading && state.pages.isNotEmpty)
+              _buildTapZones(state, notifier, settings),
+
+            // 控制栏
+            if (state.showControls) ...[
+              // 顶部栏
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: _buildTopBar(context, state, settings, isDark),
+              ),
+              // 底部栏
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: _buildBottomBar(context, state, notifier, settings, isDark),
               ),
             ],
-          ),
-
-          // 点击翻页区域
-          if (settings.tapToTurn && !state.isLoading && state.pages.isNotEmpty)
-            _buildTapZones(state, notifier, settings),
-
-          // 控制栏
-          if (state.showControls) ...[
-            // 顶部栏
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: _buildTopBar(context, state, settings, isDark),
-            ),
-            // 底部栏
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: _buildBottomBar(context, state, notifier, settings, isDark),
-            ),
           ],
-        ],
+        ),
       ),
     );
   }

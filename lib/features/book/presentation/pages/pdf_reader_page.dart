@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/core/widgets/keyboard_shortcuts.dart';
 import 'package:my_nas/features/book/data/services/book_file_cache_service.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
 import 'package:my_nas/features/reading/data/services/reading_progress_service.dart';
@@ -414,9 +415,107 @@ class _PdfReaderPageState extends ConsumerState<PdfReaderPage> {
     super.dispose();
   }
 
+  /// 构建键盘快捷键映射
+  Map<ShortcutKey, VoidCallback> _buildKeyboardShortcuts(PdfReaderLoaded state) => {
+        // 导航
+        CommonShortcuts.previous: () {
+          if (state.currentPage > 1) {
+            final newPage = state.currentPage - 1;
+            _controller.goToPage(pageNumber: newPage);
+            ref.read(pdfReaderProvider(widget.book).notifier).setPage(newPage);
+          }
+        },
+        CommonShortcuts.next: () {
+          if (state.currentPage < state.totalPages) {
+            final newPage = state.currentPage + 1;
+            _controller.goToPage(pageNumber: newPage);
+            ref.read(pdfReaderProvider(widget.book).notifier).setPage(newPage);
+          }
+        },
+        CommonShortcuts.previousPage: () {
+          if (state.currentPage > 1) {
+            final newPage = state.currentPage - 1;
+            _controller.goToPage(pageNumber: newPage);
+            ref.read(pdfReaderProvider(widget.book).notifier).setPage(newPage);
+          }
+        },
+        CommonShortcuts.nextPage: () {
+          if (state.currentPage < state.totalPages) {
+            final newPage = state.currentPage + 1;
+            _controller.goToPage(pageNumber: newPage);
+            ref.read(pdfReaderProvider(widget.book).notifier).setPage(newPage);
+          }
+        },
+        CommonShortcuts.first: () {
+          _controller.goToPage(pageNumber: 1);
+          ref.read(pdfReaderProvider(widget.book).notifier).setPage(1);
+        },
+        CommonShortcuts.last: () {
+          _controller.goToPage(pageNumber: state.totalPages);
+          ref.read(pdfReaderProvider(widget.book).notifier).setPage(state.totalPages);
+        },
+
+        // 控制栏切换
+        CommonShortcuts.playPause: () => setState(() {
+              _showControls = !_showControls;
+              _showThumbnails = false;
+            }),
+
+        // 夜间模式
+        CommonShortcuts.mute: () {
+          ref.read(pdfReaderProvider(widget.book).notifier).toggleDarkMode();
+        },
+
+        // 缩放
+        CommonShortcuts.zoomIn: _controller.zoomUp,
+        CommonShortcuts.zoomOut: _controller.zoomDown,
+        CommonShortcuts.zoomInCtrl: _controller.zoomUp,
+        CommonShortcuts.zoomOutCtrl: _controller.zoomDown,
+
+        // 退出
+        CommonShortcuts.escape: () => Navigator.pop(context),
+        CommonShortcuts.back: () => Navigator.pop(context),
+      };
+
+  /// 显示快捷键帮助
+  void _showKeyboardHelp() {
+    KeyboardShortcutsHelpDialog.show(
+      context,
+      title: 'PDF 阅读快捷键',
+      shortcuts: [
+        (key: '←', description: '上一页'),
+        (key: '→', description: '下一页'),
+        (key: 'Page Up', description: '上一页'),
+        (key: 'Page Down', description: '下一页'),
+        (key: 'Home', description: '跳到首页'),
+        (key: 'End', description: '跳到末页'),
+        (key: 'Space', description: '显示/隐藏控制栏'),
+        (key: 'M', description: '切换夜间模式'),
+        (key: '+/=', description: '放大'),
+        (key: '-', description: '缩小'),
+        (key: 'Esc', description: '返回'),
+        (key: '?', description: '显示此帮助'),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(pdfReaderProvider(widget.book));
+
+    // 只有在加载完成时才提供键盘快捷键
+    if (state is PdfReaderLoaded) {
+      return KeyboardShortcuts(
+        shortcuts: {
+          ..._buildKeyboardShortcuts(state),
+          CommonShortcuts.help: _showKeyboardHelp,
+        },
+        child: Scaffold(
+          backgroundColor: Colors.grey.shade900,
+          body: _buildReader(context, state),
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: Colors.grey.shade900,

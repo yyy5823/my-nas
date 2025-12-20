@@ -18,6 +18,7 @@ class CategoryBrowseCardsRow extends StatefulWidget {
     required this.isDark,
     required this.onCategoryTap,
     required this.selectedFilters,
+    this.enabledPaths,
   });
 
   /// 分类类型（电影-类型、电影-地区、剧集-类型、剧集-地区）
@@ -31,6 +32,9 @@ class CategoryBrowseCardsRow extends StatefulWidget {
 
   /// 用户选择的筛选条件（只显示这些卡片）
   final List<String> selectedFilters;
+
+  /// 启用的媒体库路径（用于过滤已禁用目录）
+  final List<({String sourceId, String path})>? enabledPaths;
 
   @override
   State<CategoryBrowseCardsRow> createState() => _CategoryBrowseCardsRowState();
@@ -99,15 +103,31 @@ class _CategoryBrowseCardsRowState extends State<CategoryBrowseCardsRow> {
       for (final filter in widget.selectedFilters) {
         List<VideoMetadata> videos;
 
-        // 获取该分类下的多个视频
+        // 获取该分类下的多个视频（过滤已禁用目录）
         if (widget.category.isGenreCategory) {
           videos = mediaCategory == MediaCategory.movie
-              ? await db.getMoviesByGenre(filter, limit: 6)
-              : await db.getTvShowsByGenre(filter, limit: 6);
+              ? await db.getMoviesByGenre(
+                  filter,
+                  limit: 6,
+                  enabledPaths: widget.enabledPaths,
+                )
+              : await db.getTvShowsByGenre(
+                  filter,
+                  limit: 6,
+                  enabledPaths: widget.enabledPaths,
+                );
         } else {
           videos = mediaCategory == MediaCategory.movie
-              ? await db.getMoviesByCountry(filter, limit: 6)
-              : await db.getTvShowsByCountry(filter, limit: 6);
+              ? await db.getMoviesByCountry(
+                  filter,
+                  limit: 6,
+                  enabledPaths: widget.enabledPaths,
+                )
+              : await db.getTvShowsByCountry(
+                  filter,
+                  limit: 6,
+                  enabledPaths: widget.enabledPaths,
+                );
         }
 
         // 收集有海报的视频及其 sourceId（优先使用 displayPosterUrl 以支持本地 NFO 海报）
