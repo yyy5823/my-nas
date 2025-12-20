@@ -962,9 +962,9 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       );
     }
 
-    // 对高分推荐进行去重：电影直接使用，剧集使用 TvShowGroup 的信息
-    // 增加限制以获取更大的随机选择池
-    final topRated = _buildTopRatedWithGroups(topRatedRaw, tvShowGroups, limit: 50);
+    // 每日推荐：使用基于日期的随机种子，每天推荐不同内容
+    // 电影直接使用，剧集使用 TvShowGroup 的信息进行去重
+    final dailyRecommendation = _buildDailyRecommendation(topRatedRaw, tvShowGroups, limit: 50);
 
     // 对最近添加进行去重
     final recent = _buildRecentWithGroups(recentRaw, tvShowGroups);
@@ -1006,7 +1006,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       tvShowCount: stats['tvShows'] as int? ?? 0,
       tvShowGroupCount: tvShowGroupCount,
       otherCount: stats['others'] as int? ?? 0,
-      topRatedMovies: topRated,
+      topRatedMovies: dailyRecommendation,
       recentVideos: recent,
       movies: moviesList,
       tvShowGroups: tvShowGroups,
@@ -1023,7 +1023,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       剧集 $tvShowGroupCount 部（首页加载 ${tvShowRepresentatives.length} 部），
       其他 ${stats['others']} 个（首页加载 ${othersList.length}），
       电影系列 ${movieCollections.length} 个，
-      高分推荐 ${topRated.length} 个，
+      每日推荐 ${dailyRecommendation.length} 个，
       最近添加 ${recent.length} 个'
       '''
     );
@@ -1068,12 +1068,14 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     }
   }
 
-  /// 构建高分推荐列表，剧集使用 TvShowGroup 的完整信息
+  /// 构建每日推荐列表
   ///
-  /// 对于剧集，会使用 TvShowGroup 的海报、评分等信息替换单集信息
-  /// 电影和剧集都会进行去重，避免重复显示
-  /// 同一电影的多个版本会合并，选择最高清晰度版本
-  List<VideoMetadata> _buildTopRatedWithGroups(
+  /// 特点：
+  /// - 基于当天日期的随机种子，每天推荐不同内容
+  /// - 剧集使用 TvShowGroup 的完整信息（避免展示多集）
+  /// - 电影和剧集都会进行去重
+  /// - 同一电影的多个版本会合并，选择最高清晰度版本
+  List<VideoMetadata> _buildDailyRecommendation(
     List<VideoMetadata> videos,
     Map<String, TvShowGroup> tvShowGroups,
     {int limit = 20}
@@ -1113,11 +1115,18 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       }
     }
 
-    // 合并电影和剧集，按原始顺序（评分）排序
+    // 合并电影和剧集
     final allResults = <VideoMetadata>[
       ...movieBestVersions.values,
       ...tvShowResults,
-    ]..sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
+    ];
+
+    // 使用基于日期的随机种子进行打乱
+    // 这样每天推荐的内容不同，但同一天内保持一致
+    final today = DateTime.now();
+    final dateSeed = today.year * 10000 + today.month * 100 + today.day;
+    final random = Random(dateSeed);
+    allResults.shuffle(random);
 
     return allResults.take(limit).toList();
   }

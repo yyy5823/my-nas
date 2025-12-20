@@ -1,22 +1,55 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart' show SubtitleTrack;
+import 'package:my_nas/features/video/data/services/opensubtitles_service.dart';
 import 'package:my_nas/features/video/presentation/providers/video_player_provider.dart';
+import 'package:my_nas/features/video/presentation/widgets/subtitle_download_dialog.dart';
 import 'package:my_nas/features/video/presentation/widgets/subtitle_style_sheet.dart';
 
 /// 字幕选择器弹窗
 class SubtitleSelectorSheet extends ConsumerWidget {
-  const SubtitleSelectorSheet({super.key});
+  const SubtitleSelectorSheet({
+    this.videoPath,
+    this.tmdbId,
+    this.title,
+    this.seasonNumber,
+    this.episodeNumber,
+    this.isMovie = true,
+    super.key,
+  });
+
+  /// 视频文件路径（用于确定字幕保存位置）
+  final String? videoPath;
+
+  /// TMDB ID（用于搜索字幕）
+  final int? tmdbId;
+
+  /// 视频标题（用于搜索字幕）
+  final String? title;
+
+  /// 季号
+  final int? seasonNumber;
+
+  /// 集号
+  final int? episodeNumber;
+
+  /// 是否为电影
+  final bool isMovie;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final externalSubtitles = ref.watch(availableSubtitlesProvider);
     final currentSubtitle = ref.watch(currentSubtitleProvider);
+    final currentEmbeddedId = ref.watch(currentEmbeddedSubtitleIdProvider);
     final playerNotifier = ref.read(videoPlayerControllerProvider.notifier);
     final embeddedSubtitles = playerNotifier.embeddedSubtitles;
+    final hasSubtitleConfig = ref.watch(hasOpenSubtitlesConfigProvider);
 
     // 过滤出有效的内嵌字幕（排除 no 和 auto）
     final validEmbedded = embeddedSubtitles.where((s) => s.id != 'no' && s.id != 'auto').toList();
+
+    // 判断是否没有选中任何字幕
+    final isSubtitleOff = currentSubtitle == null && currentEmbeddedId == null;
 
     return Container(
       constraints: BoxConstraints(
@@ -52,6 +85,16 @@ class SubtitleSelectorSheet extends ConsumerWidget {
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const Spacer(),
+                // 在线字幕下载按钮
+                if (hasSubtitleConfig && videoPath != null)
+                  IconButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _showSubtitleDownloadDialog(context, ref);
+                    },
+                    icon: const Icon(Icons.download_rounded),
+                    tooltip: '下载在线字幕',
+                  ),
                 // 字幕样式按钮
                 IconButton(
                   onPressed: () {
@@ -80,10 +123,17 @@ class SubtitleSelectorSheet extends ConsumerWidget {
                 _SubtitleTile(
                   title: '关闭字幕',
                   subtitle: '不显示任何字幕',
-                  isSelected: currentSubtitle == null,
+                  isSelected: isSubtitleOff,
                   icon: Icons.subtitles_off,
                   onTap: () {
                     playerNotifier.setSubtitle(null);
+                    // 清除内嵌字幕选择
+                    ref.read(currentEmbeddedSubtitleIdProvider.notifier).state = null;
+                    // 设置为 no 字幕轨道
+                    final noTrack = embeddedSubtitles.where((s) => s.id == 'no').firstOrNull;
+                    if (noTrack != null) {
+                      playerNotifier.setEmbeddedSubtitleTrack(noTrack);
+                    }
                     Navigator.pop(context);
                   },
                 ),
@@ -102,6 +152,8 @@ class SubtitleSelectorSheet extends ConsumerWidget {
                       icon: Icons.closed_caption,
                       onTap: () {
                         playerNotifier.setSubtitle(sub);
+                        // 清除内嵌字幕选择
+                        ref.read(currentEmbeddedSubtitleIdProvider.notifier).state = null;
                         Navigator.pop(context);
                       },
                     ),
@@ -117,9 +169,13 @@ class SubtitleSelectorSheet extends ConsumerWidget {
                   ...validEmbedded.map(
                     (track) => _EmbeddedSubtitleTile(
                       track: track,
+                      isSelected: currentEmbeddedId == track.id,
                       onTap: () {
                         playerNotifier.setEmbeddedSubtitleTrack(track);
+                        // 清除外部字幕选择
                         ref.read(currentSubtitleProvider.notifier).state = null;
+                        // 设置当前内嵌字幕 ID
+                        ref.read(currentEmbeddedSubtitleIdProvider.notifier).state = track.id;
                         Navigator.pop(context);
                       },
                     ),
@@ -128,25 +184,25 @@ class SubtitleSelectorSheet extends ConsumerWidget {
 
                 // 无字幕提示
                 if (externalSubtitles.isEmpty && validEmbedded.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.all(32),
+                  Padding(
+                    padding: const EdgeInsets.all(32),
                     child: Column(
                       children: [
-                        Icon(
+                        const Icon(
                           Icons.subtitles_off_outlined,
                           size: 48,
                           color: Colors.grey,
                         ),
-                        SizedBox(height: 16),
-                        Text(
+                        const SizedBox(height: 16),
+                        const Text(
                           '未找到字幕文件',
                           style: TextStyle(
                             color: Colors.grey,
                             fontSize: 16,
                           ),
                         ),
-                        SizedBox(height: 8),
-                        Text(
+                        const SizedBox(height: 8),
+                        const Text(
                           '请将 .srt, .ass, .vtt 字幕文件\n放在视频同目录下',
                           textAlign: TextAlign.center,
                           style: TextStyle(
@@ -154,6 +210,17 @@ class SubtitleSelectorSheet extends ConsumerWidget {
                             fontSize: 12,
                           ),
                         ),
+                        if (hasSubtitleConfig && videoPath != null) ...[
+                          const SizedBox(height: 16),
+                          TextButton.icon(
+                            onPressed: () {
+                              Navigator.pop(context);
+                              _showSubtitleDownloadDialog(context, ref);
+                            },
+                            icon: const Icon(Icons.download),
+                            label: const Text('下载在线字幕'),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -164,6 +231,29 @@ class SubtitleSelectorSheet extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+
+  void _showSubtitleDownloadDialog(BuildContext context, WidgetRef ref) {
+    if (videoPath == null) return;
+
+    // 获取视频目录
+    final lastSlash = videoPath!.lastIndexOf('/');
+    final savePath = lastSlash > 0 ? videoPath!.substring(0, lastSlash) : videoPath!;
+
+    SubtitleDownloadDialog.show(
+      context: context,
+      tmdbId: tmdbId,
+      title: title,
+      seasonNumber: seasonNumber,
+      episodeNumber: episodeNumber,
+      isMovie: isMovie,
+      savePath: savePath,
+      onDownloaded: (path) {
+        // 字幕下载成功后可以刷新字幕列表
+        // 由于需要重新扫描，这里暂时不做处理
+        // 用户可以重新打开字幕选择器查看
+      },
     );
   }
 }
@@ -262,10 +352,12 @@ class _SubtitleTile extends StatelessWidget {
 class _EmbeddedSubtitleTile extends StatelessWidget {
   const _EmbeddedSubtitleTile({
     required this.track,
+    required this.isSelected,
     required this.onTap,
   });
 
   final SubtitleTrack track;
+  final bool isSelected;
   final VoidCallback onTap;
 
   String get _title {
@@ -293,22 +385,54 @@ class _EmbeddedSubtitleTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ListTile(
-        leading: const Icon(Icons.closed_caption_outlined),
-        title: Text(_title),
+        leading: Icon(
+          Icons.closed_caption_outlined,
+          color: isSelected
+              ? Theme.of(context).colorScheme.primary
+              : Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+        title: Text(
+          _title,
+          style: TextStyle(
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            color: isSelected ? Theme.of(context).colorScheme.primary : null,
+          ),
+        ),
         subtitle: Text(
           track.language ?? 'ID: ${track.id}',
           style: const TextStyle(fontSize: 12),
         ),
+        trailing: isSelected
+            ? Icon(
+                Icons.check_circle,
+                color: Theme.of(context).colorScheme.primary,
+              )
+            : null,
         onTap: onTap,
       );
 }
 
 /// 显示字幕选择器
-void showSubtitleSelector(BuildContext context) {
+void showSubtitleSelector(
+  BuildContext context, {
+  String? videoPath,
+  int? tmdbId,
+  String? title,
+  int? seasonNumber,
+  int? episodeNumber,
+  bool isMovie = true,
+}) {
   showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (context) => const SubtitleSelectorSheet(),
+    builder: (context) => SubtitleSelectorSheet(
+      videoPath: videoPath,
+      tmdbId: tmdbId,
+      title: title,
+      seasonNumber: seasonNumber,
+      episodeNumber: episodeNumber,
+      isMovie: isMovie,
+    ),
   );
 }

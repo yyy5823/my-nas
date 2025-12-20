@@ -239,10 +239,6 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
     });
   }
 
-  // 固定栏高度常量
-  static const double _fixedHeaderHeight = 40.0;
-  static const double _fixedFooterHeight = 24.0;
-
   /// 从 BookReaderSettings 创建 FoliateStyle
   FoliateStyle _createStyle(BookReaderSettings settings) => FoliateStyle.fromReaderSettings(
       fontSize: settings.fontSize,
@@ -256,9 +252,7 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
       pageTurnStyle: FoliatePageTurnStyle.fromPageTurnMode(
         settings.pageTurnMode.index,
       ),
-      // 添加额外边距以避开固定顶栏和底栏
-      extraTopMargin: _fixedHeaderHeight.toInt(),
-      extraBottomMargin: settings.showProgress ? _fixedFooterHeight.toInt() : 0,
+      // 不需要额外边距，FoliateViewer 已在固定栏之间
     );
 
   /// 应用设置变化
@@ -678,8 +672,17 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
                       setState(() {
                         _bookInfo = info;
                       });
-                      // 加载目录
-                      final toc = await _controller.getToc();
+                      // 延迟加载目录，确保书籍完全加载
+                      await Future<void>.delayed(const Duration(milliseconds: 500));
+                      if (!mounted) return;
+                      // 尝试获取目录，如果失败则重试
+                      var toc = await _controller.getToc();
+                      if (toc.isEmpty) {
+                        // 再次延迟重试
+                        await Future<void>.delayed(const Duration(milliseconds: 500));
+                        if (!mounted) return;
+                        toc = await _controller.getToc();
+                      }
                       if (mounted) {
                         setState(() {
                           _tocItems = toc;

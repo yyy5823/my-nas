@@ -46,7 +46,9 @@ enum SourceType {
   emby('Emby', 'emby'),
   plex('Plex', 'plex'),
   // PT 站点（通用类型，用户自行配置）
-  ptSite('PT 站点', 'pt_site');
+  ptSite('PT 站点', 'pt_site'),
+  // 字幕站点
+  opensubtitles('OpenSubtitles', 'opensubtitles');
 
   const SourceType(this.displayName, this.id);
   final String displayName;
@@ -87,6 +89,8 @@ enum SourceType {
         SourceType.plex => 32400,
         // PT 站点（默认使用 HTTPS 443）
         SourceType.ptSite => 443,
+        // 字幕站点
+        SourceType.opensubtitles => 443,
       };
 
   /// 该源类型是否已实现
@@ -123,6 +127,8 @@ enum SourceType {
         SourceType.plex => false,
         // PT 站点
         SourceType.ptSite => true,
+        // 字幕站点
+        SourceType.opensubtitles => true,
       };
 
   /// 获取源类型所属的分组
@@ -166,6 +172,8 @@ enum SourceType {
           SourceCategory.mediaManagement,
         // PT 站点
         SourceType.ptSite => SourceCategory.ptSites,
+        // 字幕站点
+        SourceType.opensubtitles => SourceCategory.subtitleSites,
       };
 
   /// 是否支持文件系统访问
@@ -234,6 +242,8 @@ enum SourceType {
         SourceType.plex => Icons.live_tv,
         // PT 站点
         SourceType.ptSite => Icons.rss_feed,
+        // 字幕站点
+        SourceType.opensubtitles => Icons.subtitles,
       };
 
   /// 获取源类型的主题颜色（用于快速区分不同协议）
@@ -270,6 +280,8 @@ enum SourceType {
         SourceType.plex => const Color(0xFFE5A00D), // Plex橙黄
         // PT 站点 - 琥珀色
         SourceType.ptSite => const Color(0xFFFFA000),
+        // 字幕站点 - 绿色
+        SourceType.opensubtitles => const Color(0xFF4CAF50),
       };
 
   /// 获取源类型的描述
@@ -306,6 +318,8 @@ enum SourceType {
         SourceType.plex => '媒体服务器',
         // PT 站点
         SourceType.ptSite => '自定义 PT 站点',
+        // 字幕站点
+        SourceType.opensubtitles => '全球最大的字幕数据库',
       };
 
   /// 是否默认使用 SSL
@@ -314,7 +328,9 @@ enum SourceType {
         SourceType.webdav ||
         SourceType.trakt ||
         // PT 站点都使用 HTTPS
-        SourceType.ptSite =>
+        SourceType.ptSite ||
+        // 字幕站点使用 HTTPS
+        SourceType.opensubtitles =>
           true,
         _ => false,
       };
@@ -332,7 +348,9 @@ enum SourceType {
         // 本地存储无需认证
         SourceType.local ||
         // PT 站点使用 API 或 Cookie 认证，不需要用户名
-        SourceType.ptSite =>
+        SourceType.ptSite ||
+        // 字幕站点使用 API Key 认证
+        SourceType.opensubtitles =>
           false,
         _ => true,
       };
@@ -343,7 +361,9 @@ enum SourceType {
         SourceType.local ||
         SourceType.mobileGallery ||
         SourceType.mobileMusic ||
-        SourceType.mobileFiles =>
+        SourceType.mobileFiles ||
+        // 字幕站点使用固定的 API 地址
+        SourceType.opensubtitles =>
           false,
         _ => true,
       };

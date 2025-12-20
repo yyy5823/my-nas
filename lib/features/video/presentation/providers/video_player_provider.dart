@@ -28,6 +28,10 @@ final availableSubtitlesProvider = StateProvider.autoDispose<List<SubtitleItem>>
 /// 当前选中的字幕（autoDispose）
 final currentSubtitleProvider = StateProvider.autoDispose<SubtitleItem?>((ref) => null);
 
+/// 当前选中的内嵌字幕轨道 ID（autoDispose）
+/// 用于跟踪内嵌字幕的选中状态
+final currentEmbeddedSubtitleIdProvider = StateProvider.autoDispose<String?>((ref) => null);
+
 /// 播放器状态
 class VideoPlayerState {
   const VideoPlayerState({

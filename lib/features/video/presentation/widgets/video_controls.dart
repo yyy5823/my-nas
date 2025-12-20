@@ -110,7 +110,11 @@ class VideoControls extends ConsumerWidget {
             ),
             // 字幕按钮：点击打开选择器
             GestureDetector(
-              onTap: () => showSubtitleSelector(context),
+              onTap: () => showSubtitleSelector(
+                context,
+                videoPath: video.path,
+                title: video.name,
+              ),
               child: Tooltip(
                 message: '字幕设置',
                 child: Padding(
@@ -130,7 +134,11 @@ class VideoControls extends ConsumerWidget {
               onSelected: (value) {
                 switch (value) {
                   case 'subtitle':
-                    showSubtitleSelector(context);
+                    showSubtitleSelector(
+                      context,
+                      videoPath: video.path,
+                      title: video.name,
+                    );
                   case 'aspect':
                     showAspectRatioSelector(context);
                   case 'audio':

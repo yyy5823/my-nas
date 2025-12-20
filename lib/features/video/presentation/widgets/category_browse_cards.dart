@@ -9,8 +9,8 @@ import 'package:my_nas/shared/widgets/stream_image.dart';
 
 /// 分类浏览卡片行（Infuse 风格）
 ///
-/// 显示一组分类卡片，每个卡片使用该分类下多张视频海报拼贴作为背景，
-/// 中央有毛玻璃效果的标签显示分类名称。
+/// 显示一组分类卡片，每个卡片使用该分类下视频海报作为背景，
+/// 叠加彩色渐变层，中央显示分类名称。
 class CategoryBrowseCardsRow extends StatefulWidget {
   const CategoryBrowseCardsRow({
     super.key,
@@ -176,16 +176,16 @@ class _CategoryBrowseCardsRowState extends State<CategoryBrowseCardsRow> {
             ],
           ),
         ),
-        // 卡片列表（竖向海报风格，和普通电影/剧集卡片大小一致）
+        // 卡片列表（横向渐变色卡片，和原电影系列卡片大小一致：280x180）
         SizedBox(
-          height: 235, // 130 * 1.5 + 标题区域约 40
+          height: 180,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 12),
             itemCount: _categories!.length,
             itemBuilder: (context, index) {
               final category = _categories![index];
-              return _CategoryPosterCard(
+              return _InfuseStyleCard(
                 data: category,
                 isDark: widget.isDark,
                 colorIndex: index,
@@ -237,18 +237,19 @@ class _CategoryCardData {
   });
 
   final String name;
+
   /// 海报信息列表：(url, sourceId)
   final List<({String url, String sourceId})> posterInfos;
 }
 
-/// 分类海报卡片（竖向，和普通电影/剧集卡片大小一致）
+/// Infuse 风格的分类卡片（横向渐变色风格）
 ///
 /// 特点：
-/// - 2:3 海报比例，和普通电影/剧集卡片一致
-/// - 单张海报作为背景
-/// - 底部渐变叠加分类名称
-class _CategoryPosterCard extends StatefulWidget {
-  const _CategoryPosterCard({
+/// - 横向卡片（280x180，和原电影系列卡片大小一致）
+/// - 海报作为背景，叠加彩色渐变层
+/// - 大号白色文字居中显示分类名称
+class _InfuseStyleCard extends StatefulWidget {
+  const _InfuseStyleCard({
     required this.data,
     required this.isDark,
     required this.colorIndex,
@@ -261,23 +262,33 @@ class _CategoryPosterCard extends StatefulWidget {
   final VoidCallback onTap;
 
   @override
-  State<_CategoryPosterCard> createState() => _CategoryPosterCardState();
+  State<_InfuseStyleCard> createState() => _InfuseStyleCardState();
 }
 
-class _CategoryPosterCardState extends State<_CategoryPosterCard> {
+class _InfuseStyleCardState extends State<_InfuseStyleCard> {
   bool _isHovered = false;
 
-  /// 渐变色配置（用于无海报时的占位符）
+  /// Infuse 风格的渐变色配置
   static const List<List<Color>> _gradientColors = [
+    // 紫红色（爱情）
     [Color(0xFFE91E63), Color(0xFF9C27B0)],
+    // 深蓝色（电视电影）
     [Color(0xFF1565C0), Color(0xFF0D47A1)],
+    // 橙红色（动作）
     [Color(0xFFFF5722), Color(0xFFE64A19)],
+    // 深紫色（犯罪/悬疑）
     [Color(0xFF512DA8), Color(0xFF311B92)],
+    // 青色（科幻）
     [Color(0xFF00ACC1), Color(0xFF006064)],
+    // 绿色（冒险/自然）
     [Color(0xFF43A047), Color(0xFF1B5E20)],
+    // 琥珀色（历史/西部）
     [Color(0xFFFF8F00), Color(0xFFE65100)],
+    // 靛蓝色（奇幻）
     [Color(0xFF3949AB), Color(0xFF1A237E)],
+    // 棕红色（恐怖）
     [Color(0xFFC62828), Color(0xFF8E0000)],
+    // 蓝灰色（纪录片）
     [Color(0xFF546E7A), Color(0xFF37474F)],
   ];
 
@@ -286,11 +297,13 @@ class _CategoryPosterCardState extends State<_CategoryPosterCard> {
 
   @override
   Widget build(BuildContext context) {
-    const cardWidth = 130.0;
-    const posterHeight = cardWidth * 1.5; // 2:3 比例
+    // 卡片尺寸：和原电影系列卡片一致（280x180）
+    const cardWidth = 280.0;
+    const cardHeight = 180.0;
 
     return Container(
       width: cardWidth,
+      height: cardHeight,
       margin: const EdgeInsets.only(right: 12),
       child: MouseRegion(
         onEnter: (_) => setState(() => _isHovered = true),
@@ -298,106 +311,81 @@ class _CategoryPosterCardState extends State<_CategoryPosterCard> {
         child: GestureDetector(
           onTap: widget.onTap,
           child: AnimatedScale(
-            scale: _isHovered ? 1.05 : 1.0,
+            scale: _isHovered ? 1.03 : 1.0,
             duration: const Duration(milliseconds: 150),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 海报区域
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  width: cardWidth,
-                  height: posterHeight,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    boxShadow: [
-                      BoxShadow(
-                        color: _gradient[0].withValues(alpha: _isHovered ? 0.5 : 0.3),
-                        blurRadius: _isHovered ? 16 : 8,
-                        offset: Offset(0, _isHovered ? 8 : 4),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: _gradient[0].withValues(alpha: _isHovered ? 0.5 : 0.4),
+                    blurRadius: _isHovered ? 16 : 12,
+                    offset: Offset(0, _isHovered ? 6 : 4),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // 背景图片（使用第一张海报）
+                    _buildBackground(),
+                    // 彩色渐变叠加层
+                    Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                          colors: [
+                            _gradient[0].withValues(alpha: 0.85),
+                            _gradient[1].withValues(alpha: 0.75),
+                          ],
+                        ),
                       ),
-                    ],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        // 背景海报
-                        _buildBackground(),
-                        // 底部渐变遮罩
-                        Positioned(
-                          left: 0,
-                          right: 0,
-                          bottom: 0,
-                          child: Container(
-                            height: posterHeight * 0.5,
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                                colors: [
-                                  Colors.transparent,
-                                  Colors.black.withValues(alpha: 0.9),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                        // 分类名称（底部居中）
-                        Positioned(
-                          left: 8,
-                          right: 8,
-                          bottom: 12,
-                          child: Text(
-                            widget.data.name,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              shadows: [
-                                Shadow(
-                                  color: Colors.black54,
-                                  blurRadius: 4,
-                                  offset: Offset(0, 1),
-                                ),
-                              ],
-                            ),
-                            textAlign: TextAlign.center,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        // 悬停边框
-                        if (_isHovered)
-                          Positioned.fill(
-                            child: Container(
-                              decoration: BoxDecoration(
-                                border: Border.all(
-                                  color: AppColors.primary,
-                                  width: 2,
-                                ),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                          ),
-                      ],
                     ),
-                  ),
+                    // 居中文字
+                    Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Text(
+                          widget.data.name,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1,
+                            shadows: [
+                              Shadow(
+                                color: Colors.black26,
+                                blurRadius: 4,
+                                offset: Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                    // 悬停边框
+                    if (_isHovered)
+                      Positioned.fill(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.5),
+                              width: 2,
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-                // 标题区域（分类名称已在海报上显示，这里显示数量提示）
-                const SizedBox(height: 8),
-                Text(
-                  widget.data.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: widget.isDark ? Colors.white : Colors.black87,
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -405,21 +393,26 @@ class _CategoryPosterCardState extends State<_CategoryPosterCard> {
     );
   }
 
+  /// 构建背景图片（支持 NAS 路径和网络 URL）
   Widget _buildBackground() {
     if (widget.data.posterInfos.isEmpty) {
       return _buildPlaceholder();
     }
 
+    // 使用第一张海报作为背景
     final posterInfo = widget.data.posterInfos[0];
     return _buildSmartImage(posterInfo.url, posterInfo.sourceId);
   }
 
+  /// 智能图片加载 - 支持 NAS 路径和网络 URL
   Widget _buildSmartImage(String imageUrl, String sourceId) {
+    // 检查是否是 NAS 路径（本地路径以 / 开头，但不是 //，也不包含 ://）
     final isNasPath = imageUrl.startsWith('/') &&
         !imageUrl.startsWith('//') &&
         !imageUrl.contains('://');
 
     if (isNasPath) {
+      // NAS 路径 - 使用 StreamImage
       final fileSystem = NasFileSystemRegistry.instance.get(sourceId);
       return StreamImage(
         path: imageUrl,
@@ -430,6 +423,7 @@ class _CategoryPosterCardState extends State<_CategoryPosterCard> {
       );
     }
 
+    // 网络 URL - 使用 CachedNetworkImage
     if (imageUrl.startsWith('http')) {
       return CachedNetworkImage(
         imageUrl: imageUrl,
@@ -439,6 +433,7 @@ class _CategoryPosterCardState extends State<_CategoryPosterCard> {
       );
     }
 
+    // 其他情况显示占位符
     return _buildPlaceholder();
   }
 
@@ -448,13 +443,6 @@ class _CategoryPosterCardState extends State<_CategoryPosterCard> {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: _gradient,
-          ),
-        ),
-        child: Center(
-          child: Icon(
-            Icons.category_rounded,
-            size: 40,
-            color: Colors.white.withValues(alpha: 0.5),
           ),
         ),
       );

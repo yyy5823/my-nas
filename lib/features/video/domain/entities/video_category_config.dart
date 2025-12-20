@@ -21,7 +21,7 @@ enum VideoHomeCategory {
   /// 电影系列/合集
   movieCollections,
 
-  /// 高分推荐
+  /// 每日推荐（基于日期的随机推荐）
   topRated,
 
   /// 未观看
@@ -73,7 +73,7 @@ extension VideoHomeCategoryExtension on VideoHomeCategory {
       case VideoHomeCategory.movieCollections:
         return '电影系列';
       case VideoHomeCategory.topRated:
-        return '高分推荐';
+        return '每日推荐';
       case VideoHomeCategory.unwatched:
         return '未观看';
       case VideoHomeCategory.others:
@@ -131,7 +131,7 @@ extension VideoHomeCategoryExtension on VideoHomeCategory {
       case VideoHomeCategory.movieCollections:
         return 'collections_bookmark';
       case VideoHomeCategory.topRated:
-        return 'star';
+        return 'auto_awesome';
       case VideoHomeCategory.unwatched:
         return 'visibility_off';
       case VideoHomeCategory.others:

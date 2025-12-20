@@ -19,9 +19,11 @@ import 'package:my_nas/features/video/presentation/providers/scraper_provider.da
 import 'package:my_nas/features/video/presentation/providers/video_detail_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/video_favorites_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/video_history_provider.dart';
+import 'package:my_nas/features/video/data/services/opensubtitles_service.dart';
 import 'package:my_nas/features/video/presentation/widgets/cast_section.dart';
 import 'package:my_nas/features/video/presentation/widgets/detail_hero_section.dart';
 import 'package:my_nas/features/video/presentation/widgets/recommendations_section.dart';
+import 'package:my_nas/features/video/presentation/widgets/subtitle_download_dialog.dart';
 import 'package:my_nas/features/video/presentation/widgets/unified_episode_selector.dart';
 
 /// 视频详情页面
@@ -830,6 +832,8 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     }
 
     // 电影：显示单个文件信息 + 质量选择器
+    final hasSubtitleConfig = ref.watch(hasOpenSubtitlesConfigProvider);
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -853,6 +857,18 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
                 ),
               ),
               const Spacer(),
+              // 字幕下载按钮
+              if (hasSubtitleConfig)
+                IconButton(
+                  onPressed: () => _showSubtitleDownloadDialog(
+                    seasonNumber: null,
+                    episodeNumber: null,
+                    savePath: _getVideoDirectory(_selectedMetadata.filePath),
+                  ),
+                  icon: const Icon(Icons.subtitles, size: 20),
+                  tooltip: '下载字幕',
+                  visualDensity: VisualDensity.compact,
+                ),
               // 质量选择器（仅电影）
               _buildQualitySelector(isDark),
             ],
@@ -1431,6 +1447,41 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         ),
       );
     }
+  }
+
+  /// 获取视频文件所在目录
+  String _getVideoDirectory(String filePath) {
+    final lastSlash = filePath.lastIndexOf('/');
+    if (lastSlash > 0) {
+      return filePath.substring(0, lastSlash);
+    }
+    return filePath;
+  }
+
+  /// 显示字幕下载对话框
+  Future<void> _showSubtitleDownloadDialog({
+    int? seasonNumber,
+    int? episodeNumber,
+    required String savePath,
+  }) async {
+    // 获取本地化标题
+    final titleGetter = ref.read(videoTitleGetterProvider);
+    final displayTitle = titleGetter(_selectedMetadata);
+
+    await SubtitleDownloadDialog.show(
+      context: context,
+      tmdbId: _selectedMetadata.tmdbId,
+      title: displayTitle,
+      seasonNumber: seasonNumber ?? _selectedMetadata.seasonNumber,
+      episodeNumber: episodeNumber ?? _selectedMetadata.episodeNumber,
+      isMovie: !_isTvShow,
+      savePath: savePath,
+      onDownloaded: (path) {
+        logger.i('字幕已下载到: $path');
+        // 刷新字幕缓存
+        // 如果用户返回播放页面，将会重新扫描字幕
+      },
+    );
   }
 }
 

@@ -170,6 +170,10 @@ class SourceFormConfig {
       // === PT 站点 ===
       case SourceType.ptSite:
         return _getPTSiteConfig();
+
+      // === 字幕站点 ===
+      case SourceType.opensubtitles:
+        return _getOpenSubtitlesConfig();
     }
   }
 
@@ -1248,6 +1252,102 @@ class SourceFormConfig {
   /// 自定义请求头认证类型条件判断
   static bool _isCustomHeadersAuthType(Map<String, dynamic> values) =>
       values['authType'] == '自定义请求头';
+
+  // === 字幕站点配置 ===
+
+  /// OpenSubtitles 配置
+  /// 使用 API Key 认证，支持登录获取更高配额
+  static SourceFormConfig _getOpenSubtitlesConfig() => const SourceFormConfig(
+      type: SourceType.opensubtitles,
+      testConnectionSupported: true,
+      sections: [
+        // 基本信息
+        SourceFormSection(
+          title: '基本信息',
+          fields: [
+            SourceFormField(
+              key: 'name',
+              label: '名称',
+              placeholder: 'OpenSubtitles',
+              defaultValue: 'OpenSubtitles',
+              required: false,
+              helpText: '显示在源列表中的名称',
+            ),
+          ],
+        ),
+        // API 配置
+        SourceFormSection(
+          title: 'API 配置',
+          description: '请在 opensubtitles.com 注册账号并创建 API Key',
+          fields: [
+            SourceFormField(
+              key: 'apiKey',
+              label: 'API Key',
+              type: SourceFormFieldType.password,
+              placeholder: '从 opensubtitles.com 获取',
+              helpText: '登录 opensubtitles.com → 个人资料 → API Consumers → 创建 API Key',
+            ),
+          ],
+        ),
+        // 账号配置（可选，用于获取更高配额）
+        SourceFormSection(
+          title: '账号配置',
+          description: '可选：登录后可获取更高的下载配额',
+          collapsible: true,
+          defaultExpanded: false,
+          fields: [
+            SourceFormField(
+              key: 'username',
+              label: '用户名',
+              required: false,
+              helpText: 'OpenSubtitles 账号用户名',
+            ),
+            SourceFormField(
+              key: 'password',
+              label: '密码',
+              type: SourceFormFieldType.password,
+              required: false,
+            ),
+          ],
+        ),
+        // 下载设置
+        SourceFormSection(
+          title: '下载设置',
+          collapsible: true,
+          defaultExpanded: false,
+          fields: [
+            SourceFormField(
+              key: 'preferredLanguages',
+              label: '首选语言',
+              placeholder: 'zh-cn,zh-tw,en',
+              required: false,
+              helpText: '按优先级排序的语言代码，用逗号分隔\n常用：zh-cn(简体中文), zh-tw(繁体中文), en(英文)',
+            ),
+            SourceFormField(
+              key: 'excludeAiTranslated',
+              label: '排除AI翻译字幕',
+              type: SourceFormFieldType.toggle,
+              defaultValue: 'false',
+              helpText: '开启后将不显示AI生成的翻译字幕',
+            ),
+            SourceFormField(
+              key: 'excludeMachineTranslated',
+              label: '排除机器翻译字幕',
+              type: SourceFormFieldType.toggle,
+              defaultValue: 'false',
+              helpText: '开启后将不显示机器翻译的字幕',
+            ),
+            SourceFormField(
+              key: 'preferHearingImpaired',
+              label: '优先显示SDH字幕',
+              type: SourceFormFieldType.toggle,
+              defaultValue: 'false',
+              helpText: '为听障人士优化的字幕，包含音效描述',
+            ),
+          ],
+        ),
+      ],
+    );
 
   // === 通用分组模板 ===
 

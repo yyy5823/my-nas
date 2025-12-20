@@ -41,7 +41,7 @@ class BookReaderSettings {
   const BookReaderSettings({
     this.fontSize = 18.0,
     this.lineHeight = 1.8,
-    this.paragraphSpacing = 1.0,
+    this.paragraphSpacing = 0.0, // 默认无段落间距
     this.horizontalPadding = 24.0,
     this.verticalPadding = 16.0,
     this.theme = BookReaderTheme.light,
@@ -58,7 +58,7 @@ class BookReaderSettings {
       BookReaderSettings(
         fontSize: (json['fontSize'] as num?)?.toDouble() ?? 18.0,
         lineHeight: (json['lineHeight'] as num?)?.toDouble() ?? 1.8,
-        paragraphSpacing: (json['paragraphSpacing'] as num?)?.toDouble() ?? 1.0,
+        paragraphSpacing: (json['paragraphSpacing'] as num?)?.toDouble() ?? 0.0,
         horizontalPadding:
             (json['horizontalPadding'] as num?)?.toDouble() ?? 24.0,
         verticalPadding: (json['verticalPadding'] as num?)?.toDouble() ?? 16.0,
