@@ -84,7 +84,9 @@ dependencies:
   file_picker: ^10.3.7
   webdav_client: ^1.2.2
   package_info_plus: ^9.0.0
-  smb_connect: ^0.0.9
+  # SMB 协议支持（使用本地 fork 修复移动端 OOM 问题）
+  smb_connect:
+    path: packages/smb_connect
   url_launcher: ^6.3.1
   open_filex: ^4.5.0
 

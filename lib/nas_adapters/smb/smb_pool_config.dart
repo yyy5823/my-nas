@@ -34,12 +34,24 @@ class SmbPoolConfig {
   ///
   /// 用于长操作（视频流、文件下载等）
   /// 桌面端：核心数 * 1.5（最小6，最大16）
-  /// 移动端：核心数（最小4，最大8）
+  /// 移动端：限制最大 4 个以减少内存压力
   static int get maxDedicatedConnections {
     if (isDesktop) {
       return (cpuCores * 1.5).round().clamp(6, 16);
     }
-    return cpuCores.clamp(4, 8);
+    // 移动端减少专用连接数以降低 OOM 风险
+    return (cpuCores ~/ 2).clamp(2, 4);
+  }
+
+  /// 流式传输的块大小（字节）
+  ///
+  /// 桌面端：64KB - 大块可提高吞吐量
+  /// 移动端：16KB - 小块可减少内存峰值
+  static int get streamChunkSize {
+    if (isDesktop) {
+      return 64 * 1024; // 64KB
+    }
+    return 16 * 1024; // 16KB
   }
 
   /// 后台任务并发数

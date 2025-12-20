@@ -188,6 +188,9 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
         fileSystem: adapter.fileSystem,
       );
 
+      // 检查 widget 是否仍然挂载
+      if (!mounted) return;
+
       // 使用缓存的 notifier，避免使用 ref
       _subtitlesNotifier?.state = subtitles;
 

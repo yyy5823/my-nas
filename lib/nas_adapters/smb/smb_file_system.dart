@@ -5,6 +5,7 @@ import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/nas_adapters/smb/smb_connection_pool.dart';
+import 'package:my_nas/nas_adapters/smb/smb_pool_config.dart';
 import 'package:path/path.dart' as p;
 import 'package:smb_connect/smb_connect.dart';
 
@@ -312,30 +313,64 @@ class SmbFileSystem implements NasFileSystem {
           await raf.setPosition(range.start);
           final length = range.end != null ? range.end! - range.start : fileSize - range.start;
 
-          // 分块读取
+          // 分块读取 - 使用平台特定的块大小以平衡性能和内存
           final controller = StreamController<List<int>>();
-          const chunkSize = 64 * 1024; // 64KB chunks
+          final chunkSize = SmbPoolConfig.streamChunkSize;
           var remaining = length;
 
-          unawaited(() async {
-            try {
-              while (remaining > 0) {
-                final toRead = remaining > chunkSize ? chunkSize : remaining;
-                final chunk = await raf.read(toRead);
-                controller.add(chunk);
-                remaining -= chunk.length;
-                if (chunk.isEmpty) break;
+          // 使用暂停/恢复机制控制内存使用
+          var isPaused = false;
+
+          controller.onPause = () => isPaused = true;
+          controller.onResume = () => isPaused = false;
+          controller.onCancel = () async {
+            // 客户端取消，清理资源
+            await raf.close();
+            await cleanup();
+          };
+
+          AppError.fireAndForget(
+            () async {
+              var chunksRead = 0;
+              try {
+                while (remaining > 0 && !controller.isClosed) {
+                  // 如果流被暂停，等待恢复（带超时以防止死锁）
+                  var waitCount = 0;
+                  while (isPaused && !controller.isClosed && waitCount < 1000) {
+                    await Future<void>.delayed(const Duration(milliseconds: 10));
+                    waitCount++;
+                  }
+
+                  if (controller.isClosed) break;
+
+                  final toRead = remaining > chunkSize ? chunkSize : remaining;
+                  final chunk = await raf.read(toRead);
+
+                  if (chunk.isEmpty) break;
+
+                  controller.add(chunk);
+                  remaining -= chunk.length;
+                  chunksRead++;
+
+                  // 每读取 2 块后让出执行权，减少内存压力
+                  if (chunksRead.isEven) {
+                    await Future<void>.delayed(Duration.zero);
+                  }
+                }
+                await controller.close();
+              // ignore: avoid_catches_without_on_clauses
+              } catch (e) {
+                if (!controller.isClosed) {
+                  controller.addError(e);
+                }
+                await controller.close();
+              } finally {
+                await raf.close();
+                await cleanup();
               }
-              await controller.close();
-            // ignore: avoid_catches_without_on_clauses
-            } catch (e) {
-              controller.addError(e);
-              await controller.close();
-            } finally {
-              await raf.close();
-              await cleanup();
-            }
-          }());
+            }(),
+            action: 'SmbFileSystem.getFileStream',
+          );
 
           return controller.stream;
         } catch (_) {
