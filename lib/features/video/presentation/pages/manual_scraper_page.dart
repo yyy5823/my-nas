@@ -845,7 +845,7 @@ class _ManualScraperPageState extends ConsumerState<ManualScraperPage> {
           child: Row(
             children: [
               // 返回按钮 - 圆形图标按钮
-              Container(
+              DecoratedBox(
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
