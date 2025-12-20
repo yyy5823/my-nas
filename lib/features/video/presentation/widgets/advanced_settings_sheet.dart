@@ -192,19 +192,22 @@ class AdvancedSettingsSheet extends ConsumerWidget {
                     iconColor: Colors.purple,
                     title: '快进/快退秒数',
                     subtitle: '双击或点击按钮时跳过的秒数',
-                    child: SegmentedButton<int>(
-                      segments: availableSeekIntervals
-                          .map(
-                            (s) => ButtonSegment(
-                              value: s,
-                              label: Text('$s秒'),
-                            ),
-                          )
-                          .toList(),
-                      selected: {settings.seekInterval},
-                      onSelectionChanged: (selected) {
-                        notifier.setSeekInterval(selected.first);
-                      },
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: availableSeekIntervals.map((s) {
+                        final isSelected = s == settings.seekInterval;
+                        return ChoiceChip(
+                          label: Text('$s秒'),
+                          selected: isSelected,
+                          onSelected: (_) => notifier.setSeekInterval(s),
+                          showCheckmark: false,
+                          labelStyle: TextStyle(
+                            fontSize: 13,
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        );
+                      }).toList(),
                     ),
                   ),
 
@@ -272,6 +275,11 @@ class AdvancedSettingsSheet extends ConsumerWidget {
                           label: Text('${s}x'),
                           selected: isSelected,
                           onSelected: (_) => notifier.setSpeed(s),
+                          showCheckmark: false,
+                          labelStyle: TextStyle(
+                            fontSize: 13,
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          ),
                         );
                       }).toList(),
                     ),

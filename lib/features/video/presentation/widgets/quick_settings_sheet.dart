@@ -415,6 +415,7 @@ class _SpeedSelector extends StatelessWidget {
                   label: Text('${speed}x'),
                   selected: isSelected,
                   onSelected: (_) => onSpeedChange(speed),
+                  showCheckmark: false,
                   labelStyle: TextStyle(
                     fontSize: 12,
                     fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
@@ -509,6 +510,7 @@ class _VolumeBoostSelector extends StatelessWidget {
                   label: Text(level.label),
                   selected: isSelected,
                   onSelected: (_) => onVolumeChange(level.value),
+                  showCheckmark: false,
                   labelStyle: TextStyle(
                     fontSize: 12,
                     fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,

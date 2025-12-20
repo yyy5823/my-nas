@@ -4,8 +4,9 @@ import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/video/domain/entities/video_item.dart';
 import 'package:my_nas/features/video/presentation/providers/video_player_provider.dart';
+import 'package:my_nas/features/video/presentation/widgets/aspect_ratio_selector.dart';
+import 'package:my_nas/features/video/presentation/widgets/infuse_settings_panel.dart';
 import 'package:my_nas/features/video/presentation/widgets/playlist_sheet.dart';
-import 'package:my_nas/features/video/presentation/widgets/quick_settings_sheet.dart';
 
 class VideoControls extends ConsumerWidget {
   const VideoControls({
@@ -274,9 +275,11 @@ class VideoControls extends ConsumerWidget {
                     ),
                     tooltip: state.isPictureInPicture ? '退出画中画' : '画中画',
                   ),
+                // 画面比例快捷按钮
+                _AspectRatioButton(),
                 // 设置按钮（在画中画和全屏之间）
                 IconButton(
-                  onPressed: () => showQuickSettingsSheet(
+                  onPressed: () => showInfuseSettingsPanel(
                     context,
                     videoPath: video.path,
                     videoName: video.name,
@@ -286,7 +289,7 @@ class VideoControls extends ConsumerWidget {
                     episodeNumber: episodeNumber,
                   ),
                   icon: const Icon(
-                    Icons.settings_rounded,
+                    Icons.tune_rounded,
                     color: Colors.white,
                   ),
                   tooltip: '设置',
@@ -451,4 +454,76 @@ class _SeekButton extends StatelessWidget {
       icon: Icon(icon, color: Colors.white),
     );
   }
+}
+
+/// 画面比例快捷按钮
+class _AspectRatioButton extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final aspectRatio = ref.watch(aspectRatioModeProvider);
+
+    return PopupMenuButton<AspectRatioMode>(
+      onSelected: (mode) {
+        ref.read(aspectRatioModeProvider.notifier).state = mode;
+      },
+      offset: const Offset(0, -280),
+      color: Colors.black87,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      tooltip: '画面比例',
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.aspect_ratio, color: Colors.white, size: 20),
+            const SizedBox(width: 4),
+            Text(
+              aspectRatio.label,
+              style: const TextStyle(color: Colors.white, fontSize: 12),
+            ),
+          ],
+        ),
+      ),
+      itemBuilder: (context) => AspectRatioMode.values
+          .map(
+            (mode) => PopupMenuItem<AspectRatioMode>(
+              value: mode,
+              child: Row(
+                children: [
+                  Icon(
+                    _getAspectRatioIcon(mode),
+                    size: 18,
+                    color: mode == aspectRatio ? Colors.white : Colors.white70,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      mode.label,
+                      style: TextStyle(
+                        color: mode == aspectRatio ? Colors.white : Colors.white70,
+                        fontWeight:
+                            mode == aspectRatio ? FontWeight.bold : FontWeight.normal,
+                      ),
+                    ),
+                  ),
+                  if (mode == aspectRatio)
+                    const Icon(Icons.check, size: 18, color: Colors.white),
+                ],
+              ),
+            ),
+          )
+          .toList(),
+    );
+  }
+
+  IconData _getAspectRatioIcon(AspectRatioMode mode) => switch (mode) {
+        AspectRatioMode.auto => Icons.auto_fix_high,
+        AspectRatioMode.fill => Icons.fullscreen,
+        AspectRatioMode.contain => Icons.fit_screen,
+        AspectRatioMode.cover => Icons.crop_free,
+        AspectRatioMode.r16x9 => Icons.rectangle_outlined,
+        AspectRatioMode.r4x3 => Icons.crop_3_2,
+        AspectRatioMode.r21x9 => Icons.panorama_wide_angle_outlined,
+        AspectRatioMode.r1x1 => Icons.crop_square,
+      };
 }
