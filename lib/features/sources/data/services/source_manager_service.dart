@@ -792,7 +792,8 @@ class SourceManagerService {
       SourceType.jellyfin ||
       SourceType.emby ||
       SourceType.plex ||
-      SourceType.ptSite =>
+      SourceType.ptSite ||
+      SourceType.opensubtitles =>
         throw UnsupportedError('服务类源 ${type.displayName} 不支持 NasAdapter，请使用对应的 ServiceAdapter'),
     };
 
@@ -824,7 +825,8 @@ class SourceManagerService {
       SourceType.jellyfin ||
       SourceType.emby ||
       SourceType.plex ||
-      SourceType.ptSite =>
+      SourceType.ptSite ||
+      SourceType.opensubtitles =>
         throw UnsupportedError('服务类源 ${type.displayName} 不支持 NasAdapterType'),
     };
 

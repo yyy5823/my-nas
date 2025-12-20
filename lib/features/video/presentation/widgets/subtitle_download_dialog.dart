@@ -55,8 +55,7 @@ class SubtitleDownloadDialog extends ConsumerStatefulWidget {
     bool isMovie = true,
     required String savePath,
     void Function(String path)? onDownloaded,
-  }) async {
-    return showModalBottomSheet<void>(
+  }) async => showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -71,7 +70,6 @@ class SubtitleDownloadDialog extends ConsumerStatefulWidget {
         onDownloaded: onDownloaded,
       ),
     );
-  }
 
   @override
   ConsumerState<SubtitleDownloadDialog> createState() => _SubtitleDownloadDialogState();
@@ -412,8 +410,7 @@ class _SubtitleDownloadDialogState extends ConsumerState<SubtitleDownloadDialog>
     required String title,
     required String message,
     Widget? action,
-  }) {
-    return Center(
+  }) => Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
@@ -445,10 +442,8 @@ class _SubtitleDownloadDialogState extends ConsumerState<SubtitleDownloadDialog>
         ),
       ),
     );
-  }
 
-  Color _getLanguageColor(String languageCode) {
-    return switch (languageCode) {
+  Color _getLanguageColor(String languageCode) => switch (languageCode) {
       'zh-cn' || 'zh-tw' || 'zh' => Colors.red,
       'en' => Colors.blue,
       'ja' => Colors.pink,
@@ -458,16 +453,13 @@ class _SubtitleDownloadDialogState extends ConsumerState<SubtitleDownloadDialog>
       'es' => Colors.orange,
       _ => Colors.grey,
     };
-  }
 
-  Color _getTagColor(String tag) {
-    return switch (tag) {
+  Color _getTagColor(String tag) => switch (tag) {
       'SDH' => Colors.teal,
       'AI' => Colors.deepPurple,
       '机翻' => Colors.orange,
       _ => Colors.grey,
     };
-  }
 
   String _formatDownloadCount(int count) {
     if (count >= 1000000) {
