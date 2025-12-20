@@ -511,7 +511,7 @@ class _UnifiedEpisodeCardState extends State<_UnifiedEpisodeCard> {
                 // 缩略图区域
                 Stack(
                   children: [
-                    Container(
+                    DecoratedBox(
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(8),
                         boxShadow: [

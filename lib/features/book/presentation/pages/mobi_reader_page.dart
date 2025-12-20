@@ -724,8 +724,7 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
   }
 
   /// 固定顶栏 - 显示书名
-  Widget _buildFixedHeader(BookReaderSettings settings, bool isDark) {
-    return SizedBox(
+  Widget _buildFixedHeader(BookReaderSettings settings, bool isDark) => SizedBox(
       height: 40,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -747,7 +746,6 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
         ),
       ),
     );
-  }
 
   /// 固定底栏 - 显示进度信息
   Widget _buildFixedFooter(BookReaderSettings settings, bool isDark) {
@@ -783,8 +781,7 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
 
   /// 三区域点击处理
   /// 使用 Listener 只监听点击，不拦截滑动手势，让 WebView 正常处理滑动翻页
-  Widget _buildTapZones(BookReaderSettings settings) {
-    return Listener(
+  Widget _buildTapZones(BookReaderSettings settings) => Listener(
       behavior: HitTestBehavior.translucent,
       onPointerDown: (event) {
         _tapDownPosition = event.localPosition;
@@ -822,7 +819,6 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
       },
       child: Container(color: Colors.transparent),
     );
-  }
 
   // 点击检测相关变量
   Offset? _tapDownPosition;

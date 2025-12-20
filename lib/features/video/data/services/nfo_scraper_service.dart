@@ -512,8 +512,8 @@ class NfoScraperService {
         // 始终解析季集号，不限制于 episodedetails 根元素
         seasonNumber: seasonNumber,
         episodeNumber: episodeNumber,
-        episodeTitle: (isEpisode || hasEpisodeInfo) 
-            ? _getElementText(root, 'title') 
+        episodeTitle: (isEpisode || hasEpisodeInfo)
+            ? _getElementText(root, 'title')
             : null,
         aired: _getElementText(root, 'aired') ?? _getElementText(root, 'premiered'),
         setName: _parseSetName(root),
@@ -681,7 +681,7 @@ class NfoScraperService {
 
   /// 解析电影系列 TMDB ID
   ///
-  /// 从 NFO 的 <set><tmdbcolid>...</tmdbcolid></set> 标签中获取
+  /// 从 NFO 的 `<set><tmdbcolid>...</tmdbcolid></set>` 标签中获取
   int? _parseSetTmdbId(XmlElement root) {
     try {
       final setElement = root.findElements('set').firstOrNull;
