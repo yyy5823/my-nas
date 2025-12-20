@@ -39,6 +39,16 @@ class SubtitleItem {
 
   @override
   String toString() => 'SubtitleItem($name, $format, $language)';
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SubtitleItem &&
+          runtimeType == other.runtimeType &&
+          path == other.path;
+
+  @override
+  int get hashCode => path.hashCode;
 }
 
 /// 字幕服务 - 用于查找和管理视频字幕

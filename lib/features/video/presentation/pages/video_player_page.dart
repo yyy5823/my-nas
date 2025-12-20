@@ -14,6 +14,7 @@ import 'package:my_nas/features/video/data/services/subtitle_service.dart';
 import 'package:my_nas/features/video/data/services/video_metadata_service.dart';
 import 'package:my_nas/features/video/domain/entities/video_item.dart';
 import 'package:my_nas/features/video/presentation/providers/playlist_provider.dart';
+import 'package:my_nas/features/video/presentation/providers/subtitle_style_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/video_player_provider.dart';
 import 'package:my_nas/features/video/presentation/widgets/aspect_ratio_selector.dart';
 import 'package:my_nas/features/video/presentation/widgets/bookmark_sheet.dart';
@@ -84,6 +85,11 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
             startPosition: widget.video.lastPosition,
           );
       if (!mounted) return;
+      // 应用保存的字幕延时设置
+      final subtitleStyle = ref.read(subtitleStyleProvider);
+      if (subtitleStyle.delay != 0) {
+        _playerNotifier?.setSubtitleDelay(subtitleStyle.delay);
+      }
       // 异步加载字幕，不阻塞播放流程
       // 字幕搜索可能耗时，使用 fire-and-forget 模式
       unawaited(_loadSubtitles());
@@ -288,7 +294,18 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
   }
 
   /// 根据画面比例模式构建视频组件
-  Widget _buildVideoWidget(VideoController controller, AspectRatioMode mode) {
+  Widget _buildVideoWidget(
+    VideoController controller,
+    AspectRatioMode mode,
+    SubtitleStyle subtitleStyle,
+  ) {
+    // 根据字幕位置计算 padding
+    final subtitlePadding = switch (subtitleStyle.position) {
+      SubtitlePosition.top => EdgeInsets.only(top: subtitleStyle.bottomPadding),
+      SubtitlePosition.center => EdgeInsets.zero,
+      SubtitlePosition.bottom => EdgeInsets.only(bottom: subtitleStyle.bottomPadding),
+    };
+
     final video = Video(
       controller: controller,
       controls: (state) => const SizedBox.shrink(),
@@ -298,6 +315,41 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
         AspectRatioMode.cover => BoxFit.cover,
         _ => BoxFit.contain,
       },
+      // 配置字幕显示在视频区域内
+      subtitleViewConfiguration: SubtitleViewConfiguration(
+        style: TextStyle(
+          fontSize: subtitleStyle.fontSize,
+          color: subtitleStyle.fontColor,
+          fontWeight: subtitleStyle.fontWeight,
+          backgroundColor: subtitleStyle.backgroundColor,
+          shadows: subtitleStyle.hasOutline
+              ? [
+                  Shadow(
+                    color: subtitleStyle.outlineColor,
+                    blurRadius: subtitleStyle.outlineWidth,
+                    offset: const Offset(1, 1),
+                  ),
+                  Shadow(
+                    color: subtitleStyle.outlineColor,
+                    blurRadius: subtitleStyle.outlineWidth,
+                    offset: const Offset(-1, -1),
+                  ),
+                  Shadow(
+                    color: subtitleStyle.outlineColor,
+                    blurRadius: subtitleStyle.outlineWidth,
+                    offset: const Offset(1, -1),
+                  ),
+                  Shadow(
+                    color: subtitleStyle.outlineColor,
+                    blurRadius: subtitleStyle.outlineWidth,
+                    offset: const Offset(-1, 1),
+                  ),
+                ]
+              : null,
+        ),
+        padding: subtitlePadding,
+        textAlign: TextAlign.center,
+      ),
     );
 
     // 如果是固定比例模式，用 AspectRatio 包裹
@@ -357,9 +409,22 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
               child: Consumer(
                 builder: (context, ref, _) {
                   final aspectMode = ref.watch(aspectRatioModeProvider);
+                  final subtitleStyle = ref.watch(subtitleStyleProvider);
+
+                  // 监听字幕延时变化并应用到播放器
+                  ref.listen<SubtitleStyle>(
+                    subtitleStyleProvider,
+                    (previous, next) {
+                      if (previous?.delay != next.delay) {
+                        playerNotifier.setSubtitleDelay(next.delay);
+                      }
+                    },
+                  );
+
                   return _buildVideoWidget(
                     playerNotifier.videoController,
                     aspectMode,
+                    subtitleStyle,
                   );
                 },
               ),

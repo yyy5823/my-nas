@@ -311,6 +311,137 @@ class SubtitleStyleSheet extends ConsumerWidget {
                     ),
                   ),
 
+                  // 字幕延时
+                  _buildSection(
+                    context,
+                    title: '字幕延时',
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '调整字幕与画面的同步，正值延后字幕，负值提前字幕',
+                          style: context.textTheme.bodySmall?.copyWith(
+                            color: Colors.grey,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            IconButton(
+                              onPressed: () =>
+                                  notifier.setDelay(style.delay - 0.5),
+                              icon: const Icon(Icons.remove_rounded),
+                            ),
+                            Expanded(
+                              child: Slider(
+                                value: style.delay,
+                                min: -10,
+                                max: 10,
+                                divisions: 40,
+                                label: style.delayText,
+                                onChanged: notifier.setDelay,
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: () =>
+                                  notifier.setDelay(style.delay + 0.5),
+                              icon: const Icon(Icons.add_rounded),
+                            ),
+                            SizedBox(
+                              width: 56,
+                              child: Text(
+                                style.delayText,
+                                textAlign: TextAlign.center,
+                                style: context.textTheme.bodyMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: style.delay != 0
+                                      ? AppColors.primary
+                                      : null,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        // 快捷按钮
+                        Wrap(
+                          spacing: 8,
+                          children: [
+                            ActionChip(
+                              label: const Text('-1s'),
+                              onPressed: () => notifier.setDelay(style.delay - 1),
+                            ),
+                            ActionChip(
+                              label: const Text('-0.5s'),
+                              onPressed: () => notifier.setDelay(style.delay - 0.5),
+                            ),
+                            ActionChip(
+                              label: const Text('重置'),
+                              onPressed: () => notifier.setDelay(0),
+                            ),
+                            ActionChip(
+                              label: const Text('+0.5s'),
+                              onPressed: () => notifier.setDelay(style.delay + 0.5),
+                            ),
+                            ActionChip(
+                              label: const Text('+1s'),
+                              onPressed: () => notifier.setDelay(style.delay + 1),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // 字幕底部距离
+                  _buildSection(
+                    context,
+                    title: '字幕底部距离',
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '调整字幕距离视频底部的距离',
+                          style: context.textTheme.bodySmall?.copyWith(
+                            color: Colors.grey,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            IconButton(
+                              onPressed: () =>
+                                  notifier.setBottomPadding(style.bottomPadding - 8),
+                              icon: const Icon(Icons.remove_rounded),
+                            ),
+                            Expanded(
+                              child: Slider(
+                                value: style.bottomPadding,
+                                min: 0,
+                                max: 200,
+                                divisions: 25,
+                                label: '${style.bottomPadding.round()}px',
+                                onChanged: notifier.setBottomPadding,
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: () =>
+                                  notifier.setBottomPadding(style.bottomPadding + 8),
+                              icon: const Icon(Icons.add_rounded),
+                            ),
+                            SizedBox(
+                              width: 56,
+                              child: Text(
+                                '${style.bottomPadding.round()}px',
+                                textAlign: TextAlign.center,
+                                style: context.textTheme.bodyMedium,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+
                   SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
                 ],
               ),

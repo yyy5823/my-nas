@@ -117,13 +117,20 @@ class VideoControls extends ConsumerWidget {
               ),
               child: Tooltip(
                 message: '字幕设置',
-                child: Padding(
+                child: Container(
                   padding: const EdgeInsets.all(8),
+                  decoration: hasSubtitles && subtitleEnabled
+                      ? BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(8),
+                        )
+                      : null,
                   child: Icon(
                     hasSubtitles && subtitleEnabled
                         ? Icons.closed_caption
                         : Icons.closed_caption_off,
-                    color: hasSubtitles ? Colors.white : Colors.white54,
+                    color: Colors.white,
+                    size: 26,
                   ),
                 ),
               ),

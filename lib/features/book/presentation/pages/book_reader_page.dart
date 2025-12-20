@@ -633,11 +633,11 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     final state = ref.read(txtReaderProvider(widget.book));
     final settings = ref.read(bookReaderSettingsProvider);
 
-    // 判断是否使用分页模式
+    // 判断是否使用分页模式（非连续滚动模式时使用分页）
     final usePageMode =
         state is TxtReaderLoaded &&
         state.hasHtml &&
-        settings.pageTurnMode != BookPageTurnMode.scroll;
+        settings.pageTurnMode != BookPageTurnMode.slide;
 
     // 判断是否使用 WebView 渲染器
     final useWebView = _useWebViewRenderer &&
@@ -795,7 +795,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
 
     // 对于 MOBI/AZW3 等长文档，使用分页模式以提高性能
     final usePageMode =
-        state.hasHtml && settings.pageTurnMode != BookPageTurnMode.scroll;
+        state.hasHtml && settings.pageTurnMode != BookPageTurnMode.slide;
 
     // 判断是否使用 WebView 渲染器
     final useWebView = _useWebViewRenderer && state.hasHtml && usePageMode;
@@ -1138,8 +1138,8 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     final pageWidget = _buildPageItem(index, settings);
 
     switch (pageMode) {
-      case BookPageTurnMode.slide:
-        // 滑动翻页 - 标准的水平滑动
+      case BookPageTurnMode.scroll:
+        // 翻页模式 - 标准的水平滑动
         return pageWidget;
 
       case BookPageTurnMode.simulation:
@@ -1172,9 +1172,9 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
           );
         }
 
-      case BookPageTurnMode.scroll:
+      case BookPageTurnMode.slide:
       case BookPageTurnMode.none:
-        // 这些情况不应该到达这里
+        // 滚动模式和无动画模式不应该到达这里（非分页模式）
         return pageWidget;
     }
   }
@@ -1931,7 +1931,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
           final state = ref.read(txtReaderProvider(widget.book));
           final usePageMode = state is TxtReaderLoaded &&
               state.hasHtml &&
-              settings.pageTurnMode != BookPageTurnMode.scroll;
+              settings.pageTurnMode != BookPageTurnMode.slide;
           final useWebView = _useWebViewRenderer &&
               state is TxtReaderLoaded &&
               state.hasHtml &&
@@ -2102,7 +2102,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     final usePageMode =
         state is TxtReaderLoaded &&
         state.hasHtml &&
-        settings.pageTurnMode != BookPageTurnMode.scroll;
+        settings.pageTurnMode != BookPageTurnMode.slide;
     final useWebView = _useWebViewRenderer &&
         state is TxtReaderLoaded &&
         state.hasHtml &&
@@ -2454,7 +2454,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     final state = ref.read(txtReaderProvider(widget.book));
     final usePageMode = state is TxtReaderLoaded &&
         state.hasHtml &&
-        settings.pageTurnMode != BookPageTurnMode.scroll;
+        settings.pageTurnMode != BookPageTurnMode.slide;
     final useWebView = _useWebViewRenderer &&
         state is TxtReaderLoaded &&
         state.hasHtml &&

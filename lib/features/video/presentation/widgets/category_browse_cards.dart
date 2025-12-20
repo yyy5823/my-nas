@@ -176,9 +176,9 @@ class _CategoryBrowseCardsRowState extends State<CategoryBrowseCardsRow> {
             ],
           ),
         ),
-        // 卡片列表（横向渐变色卡片，和原电影系列卡片大小一致：280x180）
+        // 卡片列表（横向渐变色卡片）
         SizedBox(
-          height: 180,
+          height: 120,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -245,9 +245,9 @@ class _CategoryCardData {
 /// Infuse 风格的分类卡片（横向渐变色风格）
 ///
 /// 特点：
-/// - 横向卡片（280x180，和原电影系列卡片大小一致）
+/// - 横向卡片（240x120）
 /// - 海报作为背景，叠加彩色渐变层
-/// - 大号白色文字居中显示分类名称
+/// - 白色文字居中显示分类名称
 class _InfuseStyleCard extends StatefulWidget {
   const _InfuseStyleCard({
     required this.data,
@@ -297,9 +297,9 @@ class _InfuseStyleCardState extends State<_InfuseStyleCard> {
 
   @override
   Widget build(BuildContext context) {
-    // 卡片尺寸：和原电影系列卡片一致（280x180）
-    const cardWidth = 280.0;
-    const cardHeight = 180.0;
+    // 卡片尺寸：横向渐变色卡片
+    const cardWidth = 240.0;
+    const cardHeight = 120.0;
 
     return Container(
       width: cardWidth,
@@ -348,14 +348,14 @@ class _InfuseStyleCardState extends State<_InfuseStyleCard> {
                     // 居中文字
                     Center(
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
                         child: Text(
                           widget.data.name,
                           style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 22,
+                            fontSize: 18,
                             fontWeight: FontWeight.bold,
-                            letterSpacing: 1,
+                            letterSpacing: 0.5,
                             shadows: [
                               Shadow(
                                 color: Colors.black26,

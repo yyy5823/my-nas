@@ -4,6 +4,7 @@ import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
+import 'package:my_nas/features/video/data/services/opensubtitles_service.dart';
 import 'package:my_nas/features/video/data/services/tmdb_service.dart';
 import 'package:my_nas/features/video/data/services/video_database_service.dart';
 import 'package:my_nas/features/video/data/services/video_favorites_service.dart';
@@ -19,7 +20,6 @@ import 'package:my_nas/features/video/presentation/providers/scraper_provider.da
 import 'package:my_nas/features/video/presentation/providers/video_detail_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/video_favorites_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/video_history_provider.dart';
-import 'package:my_nas/features/video/data/services/opensubtitles_service.dart';
 import 'package:my_nas/features/video/presentation/widgets/cast_section.dart';
 import 'package:my_nas/features/video/presentation/widgets/detail_hero_section.dart';
 import 'package:my_nas/features/video/presentation/widgets/recommendations_section.dart';

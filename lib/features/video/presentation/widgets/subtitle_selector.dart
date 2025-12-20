@@ -148,12 +148,15 @@ class SubtitleSelectorSheet extends ConsumerWidget {
                     (sub) => _SubtitleTile(
                       title: sub.language ?? sub.name,
                       subtitle: sub.name,
-                      isSelected: currentSubtitle?.path == sub.path,
+                      // 使用 == 比较（SubtitleItem 已实现 operator==）
+                      isSelected: currentSubtitle == sub ||
+                          (currentSubtitle != null && currentSubtitle.path == sub.path),
                       icon: Icons.closed_caption,
                       onTap: () {
-                        playerNotifier.setSubtitle(sub);
-                        // 清除内嵌字幕选择
+                        // 先清除内嵌字幕选择
                         ref.read(currentEmbeddedSubtitleIdProvider.notifier).state = null;
+                        // 再设置外部字幕
+                        playerNotifier.setSubtitle(sub);
                         Navigator.pop(context);
                       },
                     ),
@@ -171,9 +174,10 @@ class SubtitleSelectorSheet extends ConsumerWidget {
                       track: track,
                       isSelected: currentEmbeddedId == track.id,
                       onTap: () {
-                        playerNotifier.setEmbeddedSubtitleTrack(track);
-                        // 清除外部字幕选择
+                        // 先清除外部字幕选择
                         ref.read(currentSubtitleProvider.notifier).state = null;
+                        // 设置内嵌字幕
+                        playerNotifier.setEmbeddedSubtitleTrack(track);
                         // 设置当前内嵌字幕 ID
                         ref.read(currentEmbeddedSubtitleIdProvider.notifier).state = track.id;
                         Navigator.pop(context);

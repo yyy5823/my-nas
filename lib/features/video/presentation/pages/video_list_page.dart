@@ -76,6 +76,18 @@ final videoListProvider =
 /// 视频分类标签
 enum VideoTab { all, movies, tvShows, other, recent }
 
+/// 渐进式加载阶段
+enum VideoLoadingPhase {
+  /// 初始阶段：仅有统计数据
+  stats,
+
+  /// 第一批次完成：有每日推荐、最近添加、电影数据
+  batch1,
+
+  /// 全部完成：包含剧集、电影系列、其他视频
+  complete,
+}
+
 sealed class VideoListState {}
 
 class VideoListLoading extends VideoListState {
@@ -106,6 +118,8 @@ class VideoListLoaded extends VideoListState {
     this.searchQuery = '',
     this.isLoadingMetadata = false,
     this.fromCache = false,
+    // 渐进式加载阶段
+    this.loadingPhase = VideoLoadingPhase.complete,
     // 分类数据 - 从 SQLite 分页加载
     this.topRatedMovies = const [],
     this.recentVideos = const [],
@@ -135,6 +149,12 @@ class VideoListLoaded extends VideoListState {
   final String searchQuery;
   final bool isLoadingMetadata;
   final bool fromCache;
+
+  /// 渐进式加载阶段
+  final VideoLoadingPhase loadingPhase;
+
+  /// 是否还在加载中（用于显示骨架屏）
+  bool get isStillLoading => loadingPhase != VideoLoadingPhase.complete;
 
   // 分类数据 - 已从 SQLite 按评分排序
   final List<VideoMetadata> topRatedMovies;
@@ -192,6 +212,7 @@ class VideoListLoaded extends VideoListState {
     String? searchQuery,
     bool? isLoadingMetadata,
     bool? fromCache,
+    VideoLoadingPhase? loadingPhase,
     List<VideoMetadata>? topRatedMovies,
     List<VideoMetadata>? recentVideos,
     List<VideoMetadata>? movies,
@@ -212,6 +233,7 @@ class VideoListLoaded extends VideoListState {
         searchQuery: searchQuery ?? this.searchQuery,
         isLoadingMetadata: isLoadingMetadata ?? this.isLoadingMetadata,
         fromCache: fromCache ?? this.fromCache,
+        loadingPhase: loadingPhase ?? this.loadingPhase,
         topRatedMovies: topRatedMovies ?? this.topRatedMovies,
         recentVideos: recentVideos ?? this.recentVideos,
         movies: movies ?? this.movies,
@@ -764,7 +786,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     }
   }
 
-  /// 从 SQLite 加载分类数据（高性能）
+  /// 从 SQLite 加载分类数据（高性能，渐进式 UI 渲染）
   ///
   /// [silent] 为 true 时不显示加载状态，避免页面闪烁（用于刮削进度更新）
   /// [forceSync] 为 true 时强制同步聚合表（用于刮削完成后更新海报等数据）
@@ -805,8 +827,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       logger.d('VideoListNotifier: enabledPaths = null (不进行路径过滤)');
     }
 
-    // 渐进式加载：分阶段查询，快速显示 UI
-    // 第一阶段：只获取统计信息（轻量级，快速响应）
+    // ============ 第一阶段：统计信息（快速响应） ============
     List<Object?> phase1Results;
     try {
       phase1Results = await Future.wait([
@@ -840,7 +861,6 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
 
     if (needFallback) {
       logger.w('VideoListNotifier: 路径过滤后无数据，回退到显示所有数据');
-      // 重新获取不过滤的统计
       try {
         final fallbackStats = await _db.getStats();
         stats
@@ -853,11 +873,29 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       }
     }
 
-    // 第二阶段：分批加载内容数据（减少锁竞争）
-    // 每批最多 3 个并行查询，避免刮削时锁等待
-    List<Object?> results;
+    final newTotalCount = stats['total'] as int? ?? 0;
+
+    // 🚀 渐进式更新：Phase 1 完成，立即显示统计数据和骨架屏
+    if (!silent) {
+      state = VideoListLoaded(
+        totalCount: newTotalCount,
+        databaseTotalCount: databaseTotalCount,
+        movieCount: stats['movies'] as int? ?? 0,
+        tvShowCount: stats['tvShows'] as int? ?? 0,
+        tvShowGroupCount: tvShowGroupCount,
+        otherCount: stats['others'] as int? ?? 0,
+        loadingPhase: VideoLoadingPhase.stats,
+        fromCache: true,
+      );
+      logger.d('VideoListNotifier: Phase 1 完成，显示统计数据');
+    }
+
+    // ============ 第二阶段：批次1 - 首屏核心内容 ============
+    List<VideoMetadata> topRatedRaw = [];
+    List<VideoMetadata> recentRaw = [];
+    List<VideoMetadata> moviesList = [];
+
     try {
-      // 批次1：高优先级数据（首屏展示）
       final batch1Stopwatch = Stopwatch()..start();
       final batch1 = await Future.wait([
         _db.getTopRated(limit: 100, enabledPaths: effectiveEnabledPaths),
@@ -873,8 +911,49 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       batch1Stopwatch.stop();
       logger.d('VideoListNotifier: 批次1完成，耗时 ${batch1Stopwatch.elapsedMilliseconds}ms');
 
-       // 批次2：次优先级数据
-      // 优化后的查询使用 JOIN + GROUP BY 策略，复杂度 O(n)，可以并行执行
+      topRatedRaw = (batch1[0] as List<VideoMetadata>?) ?? [];
+      recentRaw = (batch1[1] as List<VideoMetadata>?) ?? [];
+      moviesList = (batch1[2] as List<VideoMetadata>?) ?? [];
+    } on Exception catch (e) {
+      logger.e('VideoListNotifier: 批次1查询失败', e);
+    }
+
+    // 构建电影的快速查找 Map
+    final videoByKey = <String, VideoMetadata>{};
+    for (final m in moviesList) {
+      videoByKey[m.uniqueKey] = m;
+    }
+
+    // 临时的每日推荐（仅基于电影，剧集稍后补充）
+    final tempDailyRecommendation = _buildDailyRecommendation(topRatedRaw, {}, limit: 50);
+    // 临时的最近添加（仅基于原始数据，剧集去重稍后补充）
+    final tempRecent = _buildRecentWithGroups(recentRaw, {}, limit: 20);
+
+    // 🚀 渐进式更新：Batch 1 完成，显示每日推荐、最近添加、电影
+    if (!silent) {
+      state = VideoListLoaded(
+        totalCount: newTotalCount,
+        databaseTotalCount: databaseTotalCount,
+        movieCount: stats['movies'] as int? ?? 0,
+        tvShowCount: stats['tvShows'] as int? ?? 0,
+        tvShowGroupCount: tvShowGroupCount,
+        otherCount: stats['others'] as int? ?? 0,
+        loadingPhase: VideoLoadingPhase.batch1,
+        topRatedMovies: tempDailyRecommendation,
+        recentVideos: tempRecent,
+        movies: moviesList,
+        videoByKey: videoByKey,
+        fromCache: true,
+      );
+      logger.d('VideoListNotifier: Batch 1 完成，显示每日推荐/最近添加/电影');
+    }
+
+    // ============ 第三阶段：批次2 - 剧集、系列、其他 ============
+    List<VideoMetadata> tvShowRepresentatives = [];
+    List<MovieCollection> movieCollections = [];
+    List<VideoMetadata> othersList = [];
+
+    try {
       final batch2Stopwatch = Stopwatch()..start();
       final batch2 = await Future.wait([
         _db.getTvShowGroupRepresentatives(limit: 30, enabledPaths: effectiveEnabledPaths),
@@ -892,20 +971,12 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
           'tvShows=${(batch2[0] as List).length}, collections=${(batch2[1] as List).length}, '
           'others=${(batch2[2] as List).length}');
 
-      results = [...batch1, ...batch2];
+      tvShowRepresentatives = (batch2[0] as List<VideoMetadata>?) ?? [];
+      movieCollections = (batch2[1] as List<MovieCollection>?) ?? [];
+      othersList = (batch2[2] as List<VideoMetadata>?) ?? [];
     } on Exception catch (e) {
-      logger.e('VideoListNotifier: 内容查询失败', e);
-      results = [<VideoMetadata>[], <VideoMetadata>[], <VideoMetadata>[], <VideoMetadata>[], <MovieCollection>[], <VideoMetadata>[]];
+      logger.e('VideoListNotifier: 批次2查询失败', e);
     }
-
-    // 安全地转换结果类型（新的 results 结构）
-    // results = [topRated, recent, movies, tvShowReps, collections, others]
-    final topRatedRaw = (results[0] as List<VideoMetadata>?) ?? <VideoMetadata>[];
-    final recentRaw = (results[1] as List<VideoMetadata>?) ?? <VideoMetadata>[];
-    final moviesList = (results[2] as List<VideoMetadata>?) ?? <VideoMetadata>[];
-    final tvShowRepresentatives = (results[3] as List<VideoMetadata>?) ?? <VideoMetadata>[];
-    final movieCollections = (results[4] as List<MovieCollection>?) ?? <MovieCollection>[];
-    final othersList = (results[5] as List<VideoMetadata>?) ?? <VideoMetadata>[];
 
     // 记录查询结果统计
     logger.d('VideoListNotifier: 查询结果 - stats=$stats, '
@@ -913,13 +984,11 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
         'movies=${moviesList.length}, tvShows=${tvShowRepresentatives.length}, '
         'others=${othersList.length}, databaseTotal=$databaseTotalCount');
 
-    // 首页剧集直接使用代表性数据，不需要再分组
-    // 使用批量查询获取每个分组的季集统计（懒加载策略：不加载完整剧集列表）
+    // 构建剧集分组
     final tmdbIds = tvShowRepresentatives
         .where((r) => r.tmdbId != null)
         .map((r) => r.tmdbId!)
         .toList();
-    // 无 TMDB ID 的剧集优先用 showDirectory，否则用 title
     final showDirectories = tvShowRepresentatives
         .where((r) => r.tmdbId == null && r.showDirectory != null)
         .map((r) => r.showDirectory!)
@@ -938,13 +1007,12 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
 
     final tvShowGroups = <String, TvShowGroup>{};
     for (final rep in tvShowRepresentatives) {
-      // 生成分组键：优先 tmdbId，其次 showDirectory，最后 title
       final groupKey = rep.tmdbId != null
           ? 'tmdb_${rep.tmdbId}'
           : (rep.showDirectory != null
               ? 'dir_${rep.showDirectory}'
               : 'title_${rep.title?.toLowerCase()}');
-      final stats = groupStats[groupKey];
+      final groupStat = groupStats[groupKey];
       tvShowGroups[groupKey] = TvShowGroup(
         groupKey: groupKey,
         title: rep.title ?? rep.fileName,
@@ -955,25 +1023,17 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
         overview: rep.overview,
         year: rep.year,
         genres: rep.genres,
-        // 使用预计算的季集统计，点击后再加载完整剧集列表
         seasonEpisodes: {rep.seasonNumber ?? 1: [rep]},
-        precomputedSeasonCount: stats?.seasonCount ?? 1,
-        precomputedEpisodeCount: stats?.episodeCount ?? 1,
+        precomputedSeasonCount: groupStat?.seasonCount ?? 1,
+        precomputedEpisodeCount: groupStat?.episodeCount ?? 1,
       );
     }
 
-    // 每日推荐：使用基于日期的随机种子，每天推荐不同内容
-    // 电影直接使用，剧集使用 TvShowGroup 的信息进行去重
+    // 现在有了完整的剧集分组，重新计算每日推荐和最近添加（包含剧集去重）
     final dailyRecommendation = _buildDailyRecommendation(topRatedRaw, tvShowGroups, limit: 50);
+    final recent = _buildRecentWithGroups(recentRaw, tvShowGroups, limit: 20);
 
-    // 对最近添加进行去重
-    final recent = _buildRecentWithGroups(recentRaw, tvShowGroups);
-
-    // 构建快速查找 Map
-    final videoByKey = <String, VideoMetadata>{};
-    for (final m in moviesList) {
-      videoByKey[m.uniqueKey] = m;
-    }
+    // 更新快速查找 Map
     for (final m in tvShowRepresentatives) {
       videoByKey[m.uniqueKey] = m;
     }
@@ -981,14 +1041,10 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       videoByKey[m.uniqueKey] = m;
     }
 
-    // 同步刮削统计跟踪值，避免后续比较逻辑失效
-    // 这确保了从后台恢复时，比较基准是正确的
+    // 同步刮削统计跟踪值
     _lastTotalCount = databaseTotalCount;
 
-    final newTotalCount = stats['total'] as int? ?? 0;
-
     // 保护：在 silent 模式下，如果新查询结果为空但当前状态有数据，保留当前状态
-    // 这避免了因超时或临时查询问题导致 UI 意外变空
     if (silent) {
       final currentState = state;
       if (currentState is VideoListLoaded &&
@@ -999,6 +1055,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       }
     }
 
+    // 🚀 渐进式更新：全部完成，显示完整内容
     state = VideoListLoaded(
       totalCount: newTotalCount,
       databaseTotalCount: databaseTotalCount,
@@ -1006,6 +1063,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       tvShowCount: stats['tvShows'] as int? ?? 0,
       tvShowGroupCount: tvShowGroupCount,
       otherCount: stats['others'] as int? ?? 0,
+      loadingPhase: VideoLoadingPhase.complete,
       topRatedMovies: dailyRecommendation,
       recentVideos: recent,
       movies: moviesList,
@@ -1017,7 +1075,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     );
 
     logger.i('''
-      VideoListNotifier: 数据加载完成，
+      VideoListNotifier: 数据加载完成（渐进式），
       总计 ${stats['total']} 个视频（数据库总数: $databaseTotalCount），
       电影 ${stats['movies']} 个（首页加载 ${moviesList.length}），
       剧集 $tvShowGroupCount 部（首页加载 ${tvShowRepresentatives.length} 部），
@@ -2149,7 +2207,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     final screenWidth = MediaQuery.of(context).size.width;
     final isDesktop = screenWidth > 800;
 
-    // 预加载数据
+    // 预加载数据（首屏显示更多最近添加）
     final recentVideos = _getRecentVideos(state, limit: 10);
     final allRecentVideos = _getRecentVideos(state);
     final movies = state.movies;
@@ -2246,8 +2304,35 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     required List<VideoMetadata> topRated,
     required VideoCategorySettings categorySettings,
   }) {
+    // 渐进式加载：根据 loadingPhase 决定显示内容还是骨架屏
+    final phase = state.loadingPhase;
+    final isStatsPhase = phase == VideoLoadingPhase.stats;
+    final needsBatch2 = phase != VideoLoadingPhase.complete;
+
     switch (section.category) {
       case VideoHomeCategory.heroBanner:
+        // stats 阶段：显示骨架屏 hero banner
+        if (isStatsPhase) {
+          return [
+            SliverToBoxAdapter(
+              child: Container(
+                height: isDesktop ? 450 : 200,
+                margin: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.grey[850] : Colors.grey[200],
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Center(
+                  child: CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      AppColors.primary.withValues(alpha: 0.6),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ];
+        }
         if (topRated.isEmpty) return [];
         // 使用随机 seed 从评分 7-10 的内容中随机选择 4 部，每次打开 app 会变化
         final heroItems = _selectRandomHeroItems(topRated, 4);
@@ -2271,6 +2356,19 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
         return [_ContinueWatchingSection(isDark: isDark)];
 
       case VideoHomeCategory.recentlyAdded:
+        // stats 阶段：显示骨架屏
+        if (isStatsPhase) {
+          return [
+            SliverToBoxAdapter(
+              child: _SkeletonCategoryRow(
+                title: '最近添加',
+                isDark: isDark,
+                icon: Icons.schedule_rounded,
+                iconColor: Colors.blue,
+              ),
+            ),
+          ];
+        }
         if (recentVideos.isEmpty) return [];
         return [
           SliverToBoxAdapter(
@@ -2282,7 +2380,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               isDark: isDark,
               icon: Icons.schedule_rounded,
               iconColor: Colors.blue,
-              onViewAll: allRecentVideos.length > 10
+              onViewAll: allRecentVideos.length > 20
                   ? () => _showCategoryPage(context, '最近添加', allRecentVideos)
                   : null,
             ),
@@ -2290,6 +2388,19 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
         ];
 
       case VideoHomeCategory.movies:
+        // stats 阶段：显示骨架屏
+        if (isStatsPhase) {
+          return [
+            SliverToBoxAdapter(
+              child: _SkeletonCategoryRow(
+                title: '电影',
+                isDark: isDark,
+                icon: Icons.movie_rounded,
+                iconColor: AppColors.primary,
+              ),
+            ),
+          ];
+        }
         if (movies.isEmpty) return [];
         return [
           SliverToBoxAdapter(
@@ -2310,6 +2421,19 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
         ];
 
       case VideoHomeCategory.tvShows:
+        // 需要 batch2 数据，stats/batch1 阶段显示骨架屏
+        if (needsBatch2) {
+          return [
+            SliverToBoxAdapter(
+              child: _SkeletonCategoryRow(
+                title: '剧集',
+                isDark: isDark,
+                icon: Icons.live_tv_rounded,
+                iconColor: AppColors.accent,
+              ),
+            ),
+          ];
+        }
         if (tvShowGroups.isEmpty) return [];
         return [
           SliverToBoxAdapter(
@@ -2329,6 +2453,19 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
         ];
 
       case VideoHomeCategory.movieCollections:
+        // 需要 batch2 数据，stats/batch1 阶段显示骨架屏
+        if (needsBatch2) {
+          return [
+            SliverToBoxAdapter(
+              child: _SkeletonCategoryRow(
+                title: '电影系列',
+                isDark: isDark,
+                icon: Icons.collections_bookmark_rounded,
+                iconColor: Colors.purple,
+              ),
+            ),
+          ];
+        }
         if (movieCollections.isEmpty) return [];
         return [
           SliverToBoxAdapter(
@@ -2347,6 +2484,19 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
         ];
 
       case VideoHomeCategory.topRated:
+        // stats 阶段：显示骨架屏
+        if (isStatsPhase) {
+          return [
+            SliverToBoxAdapter(
+              child: _SkeletonCategoryRow(
+                title: '高分推荐',
+                isDark: isDark,
+                icon: Icons.star_rounded,
+                iconColor: Colors.amber,
+              ),
+            ),
+          ];
+        }
         // 跳过 heroBanner 使用的 4 项
         if (topRated.length <= 4) return [];
         return [
@@ -2377,6 +2527,19 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
         ];
 
       case VideoHomeCategory.others:
+        // 需要 batch2 数据，stats/batch1 阶段显示骨架屏
+        if (needsBatch2) {
+          return [
+            SliverToBoxAdapter(
+              child: _SkeletonCategoryRow(
+                title: '其他',
+                isDark: isDark,
+                icon: Icons.video_file_rounded,
+                iconColor: Colors.grey,
+              ),
+            ),
+          ];
+        }
         if (state.others.isEmpty) return [];
         return [
           SliverToBoxAdapter(
@@ -3515,6 +3678,193 @@ class _PosterCardState extends ConsumerState<_PosterCard> {
     if (rating >= 6) return Colors.orange;
     return Colors.red;
   }
+}
+
+/// 骨架屏分类行组件（渐进式加载时显示）
+class _SkeletonCategoryRow extends StatelessWidget {
+  const _SkeletonCategoryRow({
+    required this.title,
+    required this.isDark,
+    this.icon,
+    this.iconColor,
+    // ignore: unused_element_parameter
+    this.itemCount = 5,
+  });
+
+  final String title;
+  final bool isDark;
+  final IconData? icon;
+  final Color? iconColor;
+  final int itemCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final effectiveIconColor = iconColor ?? AppColors.primary;
+    const cardWidth = 130.0;
+    const cardHeight = 195.0;
+    final shimmerBaseColor = isDark ? Colors.grey[800]! : Colors.grey[300]!;
+    final shimmerHighlightColor = isDark ? Colors.grey[700]! : Colors.grey[100]!;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 标题栏
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
+          child: Row(
+            children: [
+              if (icon != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: effectiveIconColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(icon, size: 18, color: effectiveIconColor),
+                ),
+                const SizedBox(width: 10),
+              ],
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+              ),
+              const SizedBox(width: 8),
+              // 加载指示器
+              SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    effectiveIconColor.withValues(alpha: 0.6),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        // 骨架卡片列表
+        SizedBox(
+          height: cardHeight + 45,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: itemCount,
+            itemBuilder: (context, index) => Container(
+                width: cardWidth,
+                margin: const EdgeInsets.only(right: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 海报骨架
+                    _ShimmerBox(
+                      width: cardWidth,
+                      height: cardHeight,
+                      borderRadius: 8,
+                      baseColor: shimmerBaseColor,
+                      highlightColor: shimmerHighlightColor,
+                    ),
+                    const SizedBox(height: 8),
+                    // 标题骨架
+                    _ShimmerBox(
+                      width: cardWidth * 0.8,
+                      height: 14,
+                      borderRadius: 4,
+                      baseColor: shimmerBaseColor,
+                      highlightColor: shimmerHighlightColor,
+                    ),
+                    const SizedBox(height: 4),
+                    // 副标题骨架
+                    _ShimmerBox(
+                      width: cardWidth * 0.5,
+                      height: 12,
+                      borderRadius: 4,
+                      baseColor: shimmerBaseColor,
+                      highlightColor: shimmerHighlightColor,
+                    ),
+                  ],
+                ),
+              ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 闪烁动画骨架盒子
+class _ShimmerBox extends StatefulWidget {
+  const _ShimmerBox({
+    required this.width,
+    required this.height,
+    required this.borderRadius,
+    required this.baseColor,
+    required this.highlightColor,
+  });
+
+  final double width;
+  final double height;
+  final double borderRadius;
+  final Color baseColor;
+  final Color highlightColor;
+
+  @override
+  State<_ShimmerBox> createState() => _ShimmerBoxState();
+}
+
+class _ShimmerBoxState extends State<_ShimmerBox>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    )..repeat();
+    _animation = Tween<double>(begin: -1, end: 2).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOutSine),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+      animation: _animation,
+      builder: (context, child) => Container(
+          width: widget.width,
+          height: widget.height,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(widget.borderRadius),
+            gradient: LinearGradient(
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              colors: [
+                widget.baseColor,
+                widget.highlightColor,
+                widget.baseColor,
+              ],
+              stops: [
+                (_animation.value - 0.3).clamp(0.0, 1.0),
+                _animation.value.clamp(0.0, 1.0),
+                (_animation.value + 0.3).clamp(0.0, 1.0),
+              ],
+            ),
+          ),
+        ),
+    );
 }
 
 /// 分类行组件（Netflix 风格，带查看更多）

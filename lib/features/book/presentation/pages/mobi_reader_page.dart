@@ -12,6 +12,7 @@ import 'package:my_nas/features/book/domain/entities/book_item.dart';
 import 'package:my_nas/features/reading/data/services/reader_settings_service.dart';
 import 'package:my_nas/features/reading/data/services/reading_progress_service.dart';
 import 'package:my_nas/features/reading/presentation/providers/reader_settings_provider.dart';
+import 'package:my_nas/features/reading/presentation/widgets/page_flip_effect.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
@@ -277,36 +278,37 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
   }
 
   /// 将 BookPageTurnMode 映射到 FoliatePageTurnStyle
-  /// Foliate 只支持 slide, scroll, noAnimation 三种模式
+  /// - scroll: 水平翻页（分页模式，左右滑动切换页面）
+  /// - slide: 连续滚动（无页面边界，上下拖动查看更多内容）
+  /// - simulation/cover: Flutter 层实现，Foliate 使用分页模式
   FoliatePageTurnStyle _mapPageTurnMode(BookPageTurnMode mode) => switch (mode) {
-        BookPageTurnMode.scroll => FoliatePageTurnStyle.scroll,
-        BookPageTurnMode.slide => FoliatePageTurnStyle.slide,
-        BookPageTurnMode.simulation => FoliatePageTurnStyle.slide, // 不支持，降级为滑动
-        BookPageTurnMode.cover => FoliatePageTurnStyle.slide, // 不支持，降级为滑动
+        BookPageTurnMode.scroll => FoliatePageTurnStyle.slide, // 水平翻页
+        BookPageTurnMode.slide => FoliatePageTurnStyle.scroll, // 连续滚动
+        BookPageTurnMode.simulation => FoliatePageTurnStyle.slide, // Flutter 处理
+        BookPageTurnMode.cover => FoliatePageTurnStyle.slide, // Flutter 处理
         BookPageTurnMode.none => FoliatePageTurnStyle.noAnimation,
       };
 
-  // Foliate 支持的翻页模式映射
-  // Foliate 只支持: scroll(0), slide(1), noAnimation(4)
-  static const _foliatePageTurnModes = [
-    (icon: Icons.swap_vert_rounded, label: '滚动', mode: BookPageTurnMode.scroll),
-    (icon: Icons.swipe_rounded, label: '滑动', mode: BookPageTurnMode.slide),
+  // 所有翻页模式
+  static const _allPageTurnModes = [
+    (icon: Icons.swap_horiz_rounded, label: '翻页', mode: BookPageTurnMode.scroll),
+    (icon: Icons.swap_vert_rounded, label: '滚动', mode: BookPageTurnMode.slide),
+    (icon: Icons.auto_stories_rounded, label: '仿真', mode: BookPageTurnMode.simulation),
+    (icon: Icons.flip_rounded, label: '覆盖', mode: BookPageTurnMode.cover),
     (icon: Icons.article_rounded, label: '无动画', mode: BookPageTurnMode.none),
   ];
 
-  int _getFoliatePageTurnIndex(BookPageTurnMode mode) {
-    // 将 BookPageTurnMode 映射到 Foliate 支持的模式索引
-    switch (mode) {
-      case BookPageTurnMode.scroll:
-        return 0;
-      case BookPageTurnMode.slide:
-      case BookPageTurnMode.simulation: // 降级为滑动
-      case BookPageTurnMode.cover: // 降级为滑动
-        return 1;
-      case BookPageTurnMode.none:
-        return 2;
-    }
-  }
+  int _getPageTurnModeIndex(BookPageTurnMode mode) => switch (mode) {
+        BookPageTurnMode.scroll => 0,
+        BookPageTurnMode.slide => 1,
+        BookPageTurnMode.simulation => 2,
+        BookPageTurnMode.cover => 3,
+        BookPageTurnMode.none => 4,
+      };
+
+  /// 判断是否使用 Flutter 层面的翻页效果
+  bool _useFlutterPageFlip(BookPageTurnMode mode) =>
+      mode == BookPageTurnMode.simulation || mode == BookPageTurnMode.cover;
 
   Widget _buildSettingsContent(BookReaderSettings settings) {
     final settingsNotifier = ref.read(bookReaderSettingsProvider.notifier);
@@ -314,16 +316,17 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 翻页方式（Foliate 仅支持滚动、滑动、无动画三种）
+        // 翻页方式
         const SettingSectionTitle(title: '翻页方式'),
         SettingPageTurnModePicker(
-          modes: _foliatePageTurnModes
+          modes: _allPageTurnModes
               .map((m) => (icon: m.icon, label: m.label))
               .toList(),
-          selectedIndex: _getFoliatePageTurnIndex(settings.pageTurnMode),
+          selectedIndex: _getPageTurnModeIndex(settings.pageTurnMode),
           onSelect: (index) {
-            final mode = _foliatePageTurnModes[index].mode;
+            final mode = _allPageTurnModes[index].mode;
             settingsNotifier.setPageTurnMode(mode);
+            // 仿真和覆盖翻页由 Flutter 处理，Foliate 使用滑动模式
             _controller.setPageTurnStyle(_mapPageTurnMode(mode));
           },
         ),
@@ -650,69 +653,91 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
     final style = _createStyle(settings);
     final isDark = settings.theme == BookReaderTheme.dark ||
         settings.theme == BookReaderTheme.black;
+    final useFlutterFlip = _useFlutterPageFlip(settings.pageTurnMode);
+
+    // 构建阅读器核心内容
+    Widget readerContent = ColoredBox(
+      color: settings.theme.backgroundColor,
+      child: SafeArea(
+        child: Column(
+          children: [
+            // 固定顶栏 - 显示书名，避免摄像头遮挡
+            _buildFixedHeader(settings, isDark),
+            // 阅读器内容
+            Expanded(
+              child: FoliateViewer(
+                controller: _controller,
+                bookSource: FileBookSource(File(filePath)),
+                initialCfi: _initialCfi,
+                style: style,
+                onBookLoaded: (info) async {
+                  setState(() {
+                    _bookInfo = info;
+                  });
+                  // 延迟加载目录，确保书籍完全加载
+                  await Future<void>.delayed(const Duration(milliseconds: 500));
+                  if (!mounted) return;
+                  // 尝试获取目录，如果失败则重试
+                  var toc = await _controller.getToc();
+                  if (toc.isEmpty) {
+                    // 再次延迟重试
+                    await Future<void>.delayed(const Duration(milliseconds: 500));
+                    if (!mounted) return;
+                    toc = await _controller.getToc();
+                  }
+                  if (mounted) {
+                    setState(() {
+                      _tocItems = toc;
+                    });
+                  }
+                },
+                onLocationChanged: (location) {
+                  setState(() {
+                    _currentLocation = location;
+                  });
+                  _saveProgressDebounced(location);
+                },
+                onError: (error) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(error)),
+                  );
+                },
+              ),
+            ),
+            // 固定底栏 - 显示进度信息
+            if (settings.showProgress) _buildFixedFooter(settings, isDark),
+          ],
+        ),
+      ),
+    );
+
+    // 如果使用 Flutter 翻页效果，用 PageFlipEffect 包裹
+    if (useFlutterFlip) {
+      readerContent = PageFlipEffect(
+        mode: settings.pageTurnMode == BookPageTurnMode.simulation
+            ? PageFlipMode.simulation
+            : PageFlipMode.cover,
+        onNextPage: () async {
+          await _controller.nextPage();
+        },
+        onPrevPage: () async {
+          await _controller.prevPage();
+        },
+        onTap: (details) => _handleTapForFlipMode(details, settings),
+        child: readerContent,
+      );
+    }
 
     return Stack(
       children: [
-        // 主内容区域（带 SafeArea 避免刘海遮挡）
-        ColoredBox(
-          color: settings.theme.backgroundColor,
-          child: SafeArea(
-            child: Column(
-              children: [
-                // 固定顶栏 - 显示书名，避免摄像头遮挡
-                _buildFixedHeader(settings, isDark),
-                // 阅读器内容
-                Expanded(
-                  child: FoliateViewer(
-                    controller: _controller,
-                    bookSource: FileBookSource(File(filePath)),
-                    initialCfi: _initialCfi,
-                    style: style,
-                    onBookLoaded: (info) async {
-                      setState(() {
-                        _bookInfo = info;
-                      });
-                      // 延迟加载目录，确保书籍完全加载
-                      await Future<void>.delayed(const Duration(milliseconds: 500));
-                      if (!mounted) return;
-                      // 尝试获取目录，如果失败则重试
-                      var toc = await _controller.getToc();
-                      if (toc.isEmpty) {
-                        // 再次延迟重试
-                        await Future<void>.delayed(const Duration(milliseconds: 500));
-                        if (!mounted) return;
-                        toc = await _controller.getToc();
-                      }
-                      if (mounted) {
-                        setState(() {
-                          _tocItems = toc;
-                        });
-                      }
-                    },
-                    onLocationChanged: (location) {
-                      setState(() {
-                        _currentLocation = location;
-                      });
-                      _saveProgressDebounced(location);
-                    },
-                    onError: (error) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(error)),
-                      );
-                    },
-                  ),
-                ),
-                // 固定底栏 - 显示进度信息
-                if (settings.showProgress) _buildFixedFooter(settings, isDark),
-              ],
-            ),
-          ),
-        ),
+        // 主内容区域
+        readerContent,
 
-        // 透明点击层 - 三区域点击处理（WebView 会消耗触摸事件，需要覆盖层）
-        Positioned.fill(
-          child: _buildTapZones(settings),
-        ),
+        // 透明点击层 - 仅在非 Flutter 翻页模式时使用
+        if (!useFlutterFlip)
+          Positioned.fill(
+            child: _buildTapZones(settings),
+          ),
 
         // 顶部控制栏（可隐藏）
         if (_showControls) _buildTopBar(settings),
@@ -724,6 +749,19 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
         if (_showToc) _buildTocDrawer(settings),
       ],
     );
+  }
+
+  /// 处理 Flutter 翻页模式下的点击事件
+  void _handleTapForFlipMode(TapUpDetails details, BookReaderSettings settings) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final tapX = details.localPosition.dx;
+    final ratio = tapX / screenWidth;
+
+    // 中间区域切换控制栏
+    if (ratio >= 0.25 && ratio <= 0.75) {
+      _toggleControls();
+    }
+    // 左右区域由 PageFlipEffect 处理翻页
   }
 
   /// 固定顶栏 - 显示书名
@@ -782,6 +820,11 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
     );
   }
 
+  /// 判断是否需要点击区域翻页
+  /// 滑动模式和滚动模式使用 WebView 内置手势，不需要点击翻页
+  bool _needsTapToTurn(BookPageTurnMode mode) =>
+      mode == BookPageTurnMode.none; // 只有无动画模式需要点击翻页
+
   /// 三区域点击处理
   /// 使用 Listener 只监听点击，不拦截滑动手势，让 WebView 正常处理滑动翻页
   Widget _buildTapZones(BookReaderSettings settings) => Listener(
@@ -802,13 +845,16 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
           final tapX = _tapDownPosition!.dx;
           final ratio = tapX / screenWidth;
 
-          if (ratio < 0.25) {
-            // 左侧 25%: 上一页
+          // 是否需要点击翻页（滑动/滚动模式由 WebView 处理翻页）
+          final needsTapTurn = _needsTapToTurn(settings.pageTurnMode);
+
+          if (needsTapTurn && ratio < 0.25) {
+            // 左侧 25%: 上一页（仅在无动画模式）
             _controller.prevPage();
-          } else if (ratio > 0.75) {
-            // 右侧 25%: 下一页
+          } else if (needsTapTurn && ratio > 0.75) {
+            // 右侧 25%: 下一页（仅在无动画模式）
             _controller.nextPage();
-          } else {
+          } else if (ratio >= 0.25 && ratio <= 0.75) {
             // 中间 50%: 切换控制栏
             _toggleControls();
           }

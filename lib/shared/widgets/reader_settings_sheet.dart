@@ -399,21 +399,17 @@ class AvailableFonts {
 
   /// 字体选项列表 (fontFamily, displayName)
   /// 使用CSS通用字体族名称确保跨平台兼容性
+  /// 注意：移动设备上很多中文字体不可用，只保留最通用的选项
   static const List<(String?, String)> fonts = [
-    (null, '系统默认'),
-    ('serif', '衬线体'),
-    ('sans-serif', '无衬线'),
-    ('monospace', '等宽字体'),
-    // 中文字体 - 使用通用名称和fallback
-    ('KaiTi, STKaiti, Kaiti SC, serif', '楷体'),
-    ('SimSun, STSong, Songti SC, serif', '宋体'),
-    ('FangSong, STFangsong, Fangsong SC, serif', '仿宋'),
-    ('SimHei, STHeiti, Heiti SC, sans-serif', '黑体'),
-    ('Noto Serif SC, Noto Serif CJK SC, serif', 'Noto衬线'),
-    ('Noto Sans SC, Noto Sans CJK SC, sans-serif', 'Noto无衬'),
-    ('LXGW WenKai, sans-serif', '霞鹜文楷'),
-    ('Source Han Serif SC, Source Han Serif CN, Noto Serif CJK SC, serif', '思源宋体'),
-    ('Source Han Sans SC, Source Han Sans CN, Noto Sans CJK SC, sans-serif', '思源黑体'),
+    (null, '系统默认'),       // 使用系统 UI 字体
+    ('serif', '衬线体'),      // 通用衬线字体
+    ('sans-serif', '无衬线'), // 通用无衬线字体
+    ('monospace', '等宽'),    // 等宽字体
+    ('cursive', '手写体'),    // 手写风格字体
+    // 以下为平台特定字体，可能不可用
+    ('-apple-system, BlinkMacSystemFont, sans-serif', '苹方'),
+    ('Georgia, serif', 'Georgia'),
+    ('Palatino, serif', 'Palatino'),
   ];
 
   /// 获取字体显示名称
@@ -491,6 +487,7 @@ class _SettingFontPickerState extends State<SettingFontPicker> {
           final isSelected = widget.selectedFont == fontFamily;
 
           return GestureDetector(
+            behavior: HitTestBehavior.opaque,
             onTap: () => widget.onSelect(fontFamily),
             child: Container(
               width: 96,

@@ -13,6 +13,8 @@ class SubtitleStyle {
     this.hasOutline = true,
     this.outlineColor = Colors.black,
     this.outlineWidth = 2.0,
+    this.delay = 0.0,
+    this.bottomPadding = 48.0,
   });
 
   /// 从 Map 创建
@@ -25,6 +27,8 @@ class SubtitleStyle {
         hasOutline: map['hasOutline'] as bool? ?? true,
         outlineColor: Color(map['outlineColor'] as int? ?? 0xFF000000),
         outlineWidth: (map['outlineWidth'] as num?)?.toDouble() ?? 2.0,
+        delay: (map['delay'] as num?)?.toDouble() ?? 0.0,
+        bottomPadding: (map['bottomPadding'] as num?)?.toDouble() ?? 48.0,
       );
 
   final double fontSize;
@@ -36,6 +40,19 @@ class SubtitleStyle {
   final Color outlineColor;
   final double outlineWidth;
 
+  /// 字幕延时（秒），正值表示字幕延后显示，负值表示字幕提前显示
+  final double delay;
+
+  /// 字幕距离视频底部的距离
+  final double bottomPadding;
+
+  /// 延时显示文本
+  String get delayText {
+    if (delay == 0) return '0s';
+    final sign = delay > 0 ? '+' : '';
+    return '$sign${delay.toStringAsFixed(1)}s';
+  }
+
   SubtitleStyle copyWith({
     double? fontSize,
     Color? fontColor,
@@ -45,6 +62,8 @@ class SubtitleStyle {
     bool? hasOutline,
     Color? outlineColor,
     double? outlineWidth,
+    double? delay,
+    double? bottomPadding,
   }) =>
       SubtitleStyle(
         fontSize: fontSize ?? this.fontSize,
@@ -55,6 +74,8 @@ class SubtitleStyle {
         hasOutline: hasOutline ?? this.hasOutline,
         outlineColor: outlineColor ?? this.outlineColor,
         outlineWidth: outlineWidth ?? this.outlineWidth,
+        delay: delay ?? this.delay,
+        bottomPadding: bottomPadding ?? this.bottomPadding,
       );
 
   /// 转换为 Map
@@ -67,6 +88,8 @@ class SubtitleStyle {
         'hasOutline': hasOutline,
         'outlineColor': outlineColor.toARGB32(),
         'outlineWidth': outlineWidth,
+        'delay': delay,
+        'bottomPadding': bottomPadding,
       };
 }
 
@@ -152,6 +175,19 @@ class SubtitleStyleNotifier extends StateNotifier<SubtitleStyle> {
   /// 设置描边宽度
   void setOutlineWidth(double width) {
     state = state.copyWith(outlineWidth: width.clamp(0.5, 5.0));
+    _saveToStorage();
+  }
+
+  /// 设置字幕延时（秒）
+  /// [delay] 正值表示字幕延后，负值表示字幕提前
+  void setDelay(double delay) {
+    state = state.copyWith(delay: delay.clamp(-10.0, 10.0));
+    _saveToStorage();
+  }
+
+  /// 设置字幕底部距离
+  void setBottomPadding(double padding) {
+    state = state.copyWith(bottomPadding: padding.clamp(0.0, 200.0));
     _saveToStorage();
   }
 

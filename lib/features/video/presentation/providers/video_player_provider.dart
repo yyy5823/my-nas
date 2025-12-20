@@ -754,6 +754,22 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
     logger.i('VideoPlayerNotifier: 设置内嵌字幕 ${track.title ?? track.id}');
   }
 
+  /// 设置字幕延时（秒）
+  /// [delay] 正值使字幕延后显示，负值使字幕提前显示
+  ///
+  /// 注意：media_kit 当前版本不支持直接设置 MPV 的 sub-delay 属性。
+  /// 此方法仅记录延时设置，UI 层会保存用户的偏好设置。
+  /// 如果 media_kit 未来版本支持此功能，可以在此处启用。
+  // ignore: avoid_unused_constructor_parameters
+  void setSubtitleDelay(double delay) {
+    // media_kit 不暴露 setProperty 方法，无法直接设置 MPV 的 sub-delay
+    // 用户设置的延时值已保存在 subtitleStyleProvider 中
+    // TODO(developer): 当 media_kit 支持 sub-delay 时启用此功能
+    if (delay != 0) {
+      logger.d('VideoPlayerNotifier: 字幕延时设置为 ${delay}s（需 media_kit 支持）');
+    }
+  }
+
   /// 获取可用音轨列表
   List<AudioTrack> get audioTracks => _player.state.tracks.audio;
 
