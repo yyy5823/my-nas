@@ -34,7 +34,8 @@ class NasToolApi {
       _log('validateConnection: 开始验证连接 baseUrl=$baseUrl');
       _log('validateConnection: apiToken=${apiToken.isNotEmpty ? "已配置(${apiToken.length}字符)" : "未配置"}');
 
-      final response = await _makeRequest('GET', '/api/v1/system/info');
+      // NASTool 使用 /api/v1/system/version 端点验证连接 (POST 方法)
+      final response = await _makeRequest('POST', '/api/v1/system/version');
       _log('validateConnection: 响应状态码=${response.statusCode}');
 
       if (response.statusCode == 200) {
@@ -61,7 +62,7 @@ class NasToolApi {
 
   /// 获取系统信息
   Future<NasToolSystemInfo> getSystemInfo() async {
-    final response = await _makeRequest('GET', '/api/v1/system/info');
+    final response = await _makeRequest('POST', '/api/v1/system/version');
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     return NasToolSystemInfo.fromJson(data);
   }
@@ -218,9 +219,10 @@ class NasToolApi {
       url = url.replace(queryParameters: queryParams);
     }
 
+    // NASTool API Key 认证：直接在 Authorization header 中传递 API Key
     final headers = <String, String>{
       'Content-Type': 'application/json',
-      'Authorization': 'Bearer $apiToken',
+      'Authorization': apiToken,
     };
 
     _log('_makeRequest: $method $url');

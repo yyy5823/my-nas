@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
+import 'package:my_nas/features/video/domain/utils/genre_country_mapping.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
@@ -1772,7 +1773,14 @@ class VideoDatabaseService {
   }
 
   /// 获取可用的国家/地区列表（按分类筛选）
-  Future<List<String>> getAvailableCountries({MediaCategory? category}) async {
+  ///
+  /// [category] 可选的媒体分类过滤
+  /// [preferChinese] 是否优先返回中文名称，默认 true
+  /// 返回合并后的国家/地区列表（自动去除多语言重复项）
+  Future<List<String>> getAvailableCountries({
+    MediaCategory? category,
+    bool preferChinese = true,
+  }) async {
     if (!_initialized) await init();
 
     var sql = '''
@@ -1788,17 +1796,20 @@ class VideoDatabaseService {
 
     final results = await _db!.rawQuery(sql, args);
 
-    // 解析所有国家并去重
-    final countrySet = <String>{};
+    // 解析所有国家
+    final rawCountries = <String>[];
     for (final row in results) {
       final countries = row[_colCountries] as String?;
       if (countries != null && countries.isNotEmpty) {
-        countrySet.addAll(countries.split(',').map((c) => c.trim()));
+        rawCountries.addAll(countries.split(',').map((c) => c.trim()));
       }
     }
 
-    final sortedCountries = countrySet.toList()..sort();
-    return sortedCountries;
+    // 使用映射工具合并多语言变体
+    return GenreCountryMapping.mergeCountries(
+      rawCountries,
+      preferChinese: preferChinese,
+    );
   }
 
   /// 根据国家/地区获取电影
@@ -2575,6 +2586,21 @@ class VideoDatabaseService {
     return results.map(_fromRow).toList();
   }
 
+  /// 获取有 TMDB ID 但没有系列信息的电影
+  ///
+  /// 用于批量更新系列信息
+  Future<List<VideoMetadata>> getMoviesWithoutCollection() async {
+    if (!_initialized) await init();
+
+    final results = await _db!.query(
+      _tableMetadata,
+      where: '$_colCategory = ? AND $_colTmdbId IS NOT NULL AND $_colCollectionId IS NULL',
+      whereArgs: [MediaCategory.movie.index],
+    );
+
+    return results.map(_fromRow).toList();
+  }
+
   /// 获取所有可用的年份列表（按分类筛选）
   Future<List<int>> getAvailableYears({MediaCategory? category}) async {
     if (!_initialized) await init();
@@ -2597,7 +2623,14 @@ class VideoDatabaseService {
   }
 
   /// 获取所有可用的类型列表（按分类筛选）
-  Future<List<String>> getAvailableGenres({MediaCategory? category}) async {
+  ///
+  /// [category] 可选的媒体分类过滤
+  /// [preferChinese] 是否优先返回中文名称，默认 true
+  /// 返回合并后的类型列表（自动去除多语言重复项）
+  Future<List<String>> getAvailableGenres({
+    MediaCategory? category,
+    bool preferChinese = true,
+  }) async {
     if (!_initialized) await init();
 
     var sql = '''
@@ -2613,21 +2646,24 @@ class VideoDatabaseService {
 
     final results = await _db!.rawQuery(sql, args);
 
-    // 解析所有类型并去重
+    // 解析所有类型
     // 注意：genres 可能使用 ' / '（Scraper）或 ', '（NFO）分隔
-    final genreSet = <String>{};
+    final rawGenres = <String>[];
     for (final row in results) {
       final genres = row[_colGenres] as String?;
       if (genres != null && genres.isNotEmpty) {
         // 支持 ' / '、'/'、', '、',' 四种分隔符格式
-        genreSet.addAll(
+        rawGenres.addAll(
           genres.split(RegExp(r'\s*[/,]\s*')).map((g) => g.trim()).where((g) => g.isNotEmpty),
         );
       }
     }
 
-    final genreList = genreSet.toList()..sort();
-    return genreList;
+    // 使用映射工具合并多语言变体
+    return GenreCountryMapping.mergeGenres(
+      rawGenres,
+      preferChinese: preferChinese,
+    );
   }
 
   /// 根据分类、类型、年份筛选获取元数据（支持组合筛选和排序）

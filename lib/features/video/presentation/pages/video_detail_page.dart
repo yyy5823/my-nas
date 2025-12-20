@@ -14,7 +14,8 @@ import 'package:my_nas/features/video/presentation/pages/manual_scraper_page.dar
 import 'package:my_nas/features/video/presentation/pages/season_scraper_page.dart';
 import 'package:my_nas/features/video/presentation/pages/tmdb_preview_page.dart';
 import 'package:my_nas/features/video/presentation/pages/video_player_page.dart';
-import 'package:my_nas/features/video/presentation/providers/scraper_provider.dart' show enabledScraperCountProvider;
+import 'package:my_nas/features/video/presentation/providers/scraper_provider.dart'
+    show ScrapingTaskState, backgroundScrapingProvider, enabledScraperCountProvider;
 import 'package:my_nas/features/video/presentation/providers/video_detail_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/video_favorites_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/video_history_provider.dart';
@@ -161,6 +162,15 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     // 只有在有启用的刮削源时才显示刮削按钮
     final hasEnabledScrapers = ref.watch(enabledScraperCountProvider) > 0;
 
+    // 获取当前 showDirectory 的刮削状态
+    var showDirectory = _selectedMetadata.showDirectory;
+    if ((showDirectory == null || showDirectory.isEmpty) && _isTvShow) {
+      showDirectory = VideoDatabaseService.extractShowDirectory(_selectedMetadata.filePath);
+    }
+    final scrapingTask = showDirectory != null && showDirectory.isNotEmpty
+        ? ref.watch(backgroundScrapingProvider)[showDirectory]
+        : null;
+
     return DetailHeroSection(
       metadata: _selectedMetadata,
       onPlay: _isPlaying ? () {} : _playVideo,
@@ -181,7 +191,23 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       // 电视剧详情页隐藏季集信息，因为这是剧的总览页，不是单集页
       // 只要有刮削数据（TMDB 或豆瓣）或 showDirectory，都隐藏单集标签
       hideEpisodeInfo: _isTvShow && (_hasMetadata || _selectedMetadata.showDirectory != null),
+      scrapingTask: scrapingTask,
+      onScrapingDismiss: scrapingTask != null && showDirectory != null
+          ? () => _onScrapingDismiss(showDirectory!, scrapingTask)
+          : null,
     );
+  }
+
+  /// 刮削完成后关闭进度指示器
+  void _onScrapingDismiss(String showDirectory, ScrapingTaskState task) {
+    ref.read(backgroundScrapingProvider.notifier).removeTask(showDirectory);
+    // 刷新剧集列表
+    if (task.tmdbId > 0) {
+      ref
+        ..invalidate(localEpisodeFilesProvider(task.tmdbId))
+        ..invalidate(tvDetailProvider(task.tmdbId));
+    }
+    ref.invalidate(localEpisodesByShowDirProvider(showDirectory));
   }
 
   Widget _buildMainContent(BuildContext context, bool isDark, bool isWide) {

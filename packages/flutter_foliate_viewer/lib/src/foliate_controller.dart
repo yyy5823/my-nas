@@ -120,6 +120,15 @@ class FoliateController {
     );
   }
 
+  /// 设置字体
+  /// [fontFamily] 字体名称，'system' 表示系统默认字体
+  Future<void> setFontFamily(String? fontFamily) async {
+    final fontName = fontFamily ?? 'system';
+    await _webViewController?.evaluateJavascript(
+      source: "if (window.changeStyle) window.changeStyle({ fontName: '$fontName' });",
+    );
+  }
+
   /// 设置边距
   Future<void> setMargins({int? top, int? bottom, int? side}) async {
     final parts = <String>[];

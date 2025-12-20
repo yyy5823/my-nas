@@ -441,11 +441,20 @@ class VideoMetadataService {
 
         // 如果 NFO 包含 <set> 标签，使用其作为电影系列信息
         if (nfoData.setName != null) {
-          // 使用负数 ID 区分 NFO 系列和 TMDB 系列
-          metadata
-            ..collectionId = -1 * nfoData.setName.hashCode.abs()
-            ..collectionName = nfoData.setName;
-          logger.d('VideoMetadataService: 从 NFO 获取到电影系列 "${nfoData.setName}"');
+          // 优先使用 TMDB 系列 ID（如果有），否则使用负数 ID
+          if (nfoData.setTmdbId != null) {
+            metadata
+              ..collectionId = nfoData.setTmdbId
+              ..collectionName = nfoData.setName;
+            logger.d('VideoMetadataService: 从 NFO 获取到 TMDB 电影系列 '
+                '"${nfoData.setName}" (ID: ${nfoData.setTmdbId})');
+          } else {
+            // 使用负数 ID 区分 NFO 系列和 TMDB 系列
+            metadata
+              ..collectionId = -1 * nfoData.setName.hashCode.abs()
+              ..collectionName = nfoData.setName;
+            logger.d('VideoMetadataService: 从 NFO 获取到电影系列 "${nfoData.setName}"');
+          }
         }
 
         // 存储本地海报路径（用于 StreamImage 流式加载）
@@ -1063,6 +1072,62 @@ class VideoMetadataService {
     }
 
     return null;
+  }
+
+  /// 批量更新电影系列信息
+  ///
+  /// 用于先扫描后设置刮削源的情况
+  /// 查找所有有 TMDB ID 但没有系列信息的电影，从 TMDB 获取系列信息并更新
+  ///
+  /// [onProgress] 进度回调 (current, total, movieTitle)
+  /// 返回更新的电影数量
+  Future<int> batchUpdateCollectionInfo({
+    void Function(int current, int total, String? title)? onProgress,
+  }) async {
+    if (!_tmdbService.hasApiKey) {
+      logger.w('VideoMetadataService: 无法更新系列信息，未设置 TMDB API Key');
+      return 0;
+    }
+
+    // 查找所有有 TMDB ID 但没有系列信息的电影
+    final movies = await _db.getMoviesWithoutCollection();
+    if (movies.isEmpty) {
+      logger.i('VideoMetadataService: 没有需要更新系列信息的电影');
+      return 0;
+    }
+
+    logger.i('VideoMetadataService: 开始批量更新系列信息，共 ${movies.length} 部电影');
+
+    var updatedCount = 0;
+    for (var i = 0; i < movies.length; i++) {
+      final movie = movies[i];
+      onProgress?.call(i + 1, movies.length, movie.title);
+
+      if (movie.tmdbId == null) continue;
+
+      try {
+        final movieDetail = await _tmdbService.getMovieDetail(movie.tmdbId!);
+        if (movieDetail != null && movieDetail.belongsToCollection != null) {
+          movie
+            ..collectionId = movieDetail.belongsToCollection!.id
+            ..collectionName = movieDetail.belongsToCollection!.name;
+          await _db.upsert(movie);
+          updatedCount++;
+          logger.d('VideoMetadataService: 更新系列信息 "${movie.title}" -> '
+              '"${movieDetail.belongsToCollection!.name}"');
+        }
+      } on Exception catch (e) {
+        logger.w('VideoMetadataService: 获取 "${movie.title}" 系列信息失败', e);
+      }
+
+      // 添加延迟避免 API 限流
+      if (i < movies.length - 1) {
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+      }
+    }
+
+    logger.i('VideoMetadataService: 批量更新系列信息完成，更新了 $updatedCount 部电影');
+    return updatedCount;
   }
 
   /// 清除缩略图缓存

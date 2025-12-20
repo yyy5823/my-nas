@@ -144,6 +144,30 @@ class FnOSAdapter implements NasAdapter {
   }
 
   @override
+  Future<bool> checkConnectionHealth() async {
+    if (!_connected || _api == null) {
+      logger.d('FnOSAdapter: 连接健康检查 - 未连接');
+      return false;
+    }
+
+    try {
+      // 尝试获取设备信息来验证连接是否有效
+      await _api!.getDeviceInfo().timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {
+          throw Exception('连接健康检查超时');
+        },
+      );
+      logger.d('FnOSAdapter: 连接健康检查 - 正常');
+      return true;
+    } on Exception catch (e) {
+      logger.w('FnOSAdapter: 连接健康检查 - 失败', e);
+      _connected = false;
+      return false;
+    }
+  }
+
+  @override
   NasFileSystem get fileSystem {
     if (!_connected || _fileSystem == null) {
       throw StateError('未连接到飞牛 NAS');

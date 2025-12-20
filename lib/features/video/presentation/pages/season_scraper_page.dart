@@ -8,6 +8,7 @@ import 'package:my_nas/features/video/data/services/video_metadata_service.dart'
 import 'package:my_nas/features/video/domain/entities/scraper_result.dart';
 import 'package:my_nas/features/video/domain/entities/scraper_source.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
+import 'package:my_nas/features/video/presentation/providers/scraper_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/adaptive_image.dart';
 
@@ -63,13 +64,6 @@ class _SeasonScraperPageState extends ConsumerState<SeasonScraperPage> {
   Set<int> _selectedSeasons = {};
   final Map<int, ScraperSeasonDetail> _seasonDetails = {};
   bool _isLoadingSeasonDetails = false;
-
-  // 刮削状态
-  bool _isScraping = false;
-  int _scrapeProgress = 0;
-  int _scrapeTotal = 0;
-  int _currentSeasonNumber = 0;
-  String? _currentScraping;
 
   // 刮削选项
   bool _updateMetadata = true;
@@ -215,7 +209,8 @@ class _SeasonScraperPageState extends ConsumerState<SeasonScraperPage> {
 
   /// 加载所有选中季的详情
   Future<void> _loadAllSeasonDetails() async {
-    if (_selectedTvDetail == null || _selectedSeasons.isEmpty) return;
+    final tvDetail = _selectedTvDetail;
+    if (tvDetail == null || _selectedSeasons.isEmpty) return;
 
     setState(() {
       _isLoadingSeasonDetails = true;
@@ -225,9 +220,9 @@ class _SeasonScraperPageState extends ConsumerState<SeasonScraperPage> {
     try {
       for (final seasonNumber in _selectedSeasons) {
         final detail = await _scraperManager.getSeasonDetail(
-          tvId: _selectedTvDetail!.externalId,
+          tvId: tvDetail.externalId,
           seasonNumber: seasonNumber,
-          source: _selectedTvDetail!.source,
+          source: tvDetail.source,
         );
         if (detail != null) {
           _seasonDetails[seasonNumber] = detail;
@@ -246,14 +241,15 @@ class _SeasonScraperPageState extends ConsumerState<SeasonScraperPage> {
 
   /// 加载单个季的详情
   Future<void> _loadSeasonDetailForSeason(int seasonNumber) async {
-    if (_selectedTvDetail == null) return;
+    final tvDetail = _selectedTvDetail;
+    if (tvDetail == null) return;
     if (_seasonDetails.containsKey(seasonNumber)) return; // 已加载
 
     try {
       final detail = await _scraperManager.getSeasonDetail(
-        tvId: _selectedTvDetail!.externalId,
+        tvId: tvDetail.externalId,
         seasonNumber: seasonNumber,
-        source: _selectedTvDetail!.source,
+        source: tvDetail.source,
       );
       if (detail != null && mounted) {
         setState(() {
@@ -275,7 +271,8 @@ class _SeasonScraperPageState extends ConsumerState<SeasonScraperPage> {
   }
 
   Future<void> _startScraping() async {
-    if (_selectedTvDetail == null || _selectedSeasons.isEmpty) return;
+    final tvDetail = _selectedTvDetail;
+    if (tvDetail == null || _selectedSeasons.isEmpty) return;
 
     final totalEpisodes = _totalSelectedEpisodes;
     if (totalEpisodes == 0) {
@@ -285,16 +282,6 @@ class _SeasonScraperPageState extends ConsumerState<SeasonScraperPage> {
       return;
     }
 
-    setState(() {
-      _isScraping = true;
-      _scrapeProgress = 0;
-      _scrapeTotal = totalEpisodes;
-      _currentSeasonNumber = 0;
-    });
-
-    var successCount = 0;
-    var failCount = 0;
-
     final options = ScrapeOptions(
       updateMetadata: _updateMetadata,
       downloadPoster: _downloadPoster,
@@ -302,75 +289,44 @@ class _SeasonScraperPageState extends ConsumerState<SeasonScraperPage> {
       generateNfo: _generateNfo,
     );
 
-    // 按季号排序刮削
-    final sortedSeasons = _selectedSeasons.toList()..sort();
+    // 使用后台刮削管理器启动刮削
+    final started = await ref.read(backgroundScrapingProvider.notifier).startTvShowScraping(
+      showDirectory: widget.showDirectory,
+      tvDetail: tvDetail,
+      selectedSeasons: _selectedSeasons,
+      localEpisodes: _localEpisodes,
+      seasonDetails: _seasonDetails,
+      fileSystem: widget.fileSystem,
+      options: options,
+    );
 
-    for (final seasonNumber in sortedSeasons) {
-      final localSeasonEpisodes = _localEpisodes[seasonNumber] ?? {};
-      if (localSeasonEpisodes.isEmpty) continue;
-
-      final seasonDetail = _seasonDetails[seasonNumber];
-
-      setState(() {
-        _currentSeasonNumber = seasonNumber;
-      });
-
-      for (final entry in localSeasonEpisodes.entries) {
-        final episodeNumber = entry.key;
-        final metadata = entry.value;
-
-        // 获取对应的刮削剧集
-        final scraperEpisode = seasonDetail?.getEpisode(episodeNumber);
-
-        setState(() {
-          _currentScraping = '${metadata.displayTitle} (S${seasonNumber}E$episodeNumber)';
-        });
-
-        try {
-          await _metadataService.scrapeAndSave(
-            metadata: metadata,
-            tvDetail: _selectedTvDetail,
-            seasonNumber: seasonNumber,
-            episodeNumber: episodeNumber,
-            episodeTitle: scraperEpisode?.name,
-            fileSystem: widget.fileSystem,
-            options: options,
-          );
-          successCount++;
-        } on Exception catch (e, st) {
-          AppError.handle(e, st, 'SeasonScraperPage._startScraping');
-          failCount++;
-        }
-
-        setState(() {
-          _scrapeProgress++;
-        });
-      }
-    }
-
-    setState(() {
-      _isScraping = false;
-      _currentScraping = null;
-      _currentSeasonNumber = 0;
-    });
-
-    if (mounted) {
+    if (started && mounted) {
+      // 显示提示并返回详情页
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('刮削完成：成功 $successCount 集${failCount > 0 ? '，失败 $failCount 集' : ''}'),
+          content: Row(
+            children: [
+              const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              ),
+              const SizedBox(width: 12),
+              Expanded(child: Text('正在后台刮削 $totalEpisodes 集...')),
+            ],
+          ),
+          duration: const Duration(seconds: 2),
         ),
       );
-
-      if (successCount > 0) {
-        Navigator.pop(context, true);
-      }
+      Navigator.pop(context, true);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final hasSelection = _selectedTvDetail != null;
+    final tvDetail = _selectedTvDetail;
+    final hasSelection = tvDetail != null;
 
     return Scaffold(
       backgroundColor: isDark ? AppColors.darkBackground : Colors.grey[50],
@@ -390,61 +346,14 @@ class _SeasonScraperPageState extends ConsumerState<SeasonScraperPage> {
             ),
         ],
       ),
-      body: _isScraping
-          ? _buildScrapingProgress(isDark)
-          : hasSelection
-              ? _buildSeasonView(isDark)
-              : _buildSearchView(isDark),
-      bottomNavigationBar: hasSelection && !_isScraping
+      body: hasSelection
+          ? _buildSeasonView(isDark, tvDetail)
+          : _buildSearchView(isDark),
+      bottomNavigationBar: hasSelection
           ? _buildBottomBar(isDark)
           : null,
     );
   }
-
-  Widget _buildScrapingProgress(bool isDark) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircularProgressIndicator(
-                value: _scrapeTotal > 0 ? _scrapeProgress / _scrapeTotal : null,
-              ),
-              const SizedBox(height: 24),
-              Text(
-                '正在刮削...',
-                style: context.textTheme.titleLarge,
-              ),
-              if (_currentSeasonNumber > 0) ...[
-                const SizedBox(height: 4),
-                Text(
-                  '第 $_currentSeasonNumber 季',
-                  style: context.textTheme.titleSmall?.copyWith(
-                    color: AppColors.primary,
-                  ),
-                ),
-              ],
-              const SizedBox(height: 8),
-              if (_currentScraping != null)
-                Text(
-                  _currentScraping!,
-                  style: context.textTheme.bodyMedium?.copyWith(
-                    color: isDark ? Colors.grey[400] : Colors.grey[600],
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              const SizedBox(height: 16),
-              Text(
-                '$_scrapeProgress / $_scrapeTotal',
-                style: context.textTheme.titleMedium?.copyWith(
-                  color: AppColors.primary,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
 
   Widget _buildSearchView(bool isDark) => Column(
         children: [
@@ -713,8 +622,7 @@ class _SeasonScraperPageState extends ConsumerState<SeasonScraperPage> {
         ),
       );
 
-  Widget _buildSeasonView(bool isDark) {
-    final tvDetail = _selectedTvDetail!;
+  Widget _buildSeasonView(bool isDark, ScraperTvDetail tvDetail) {
     final availableSeasons = _localEpisodes.keys.toList()..sort();
 
     return SingleChildScrollView(
@@ -1056,7 +964,7 @@ class _SeasonScraperPageState extends ConsumerState<SeasonScraperPage> {
         child: Row(
           children: [
             // 返回按钮 - 圆形图标按钮
-            Container(
+            DecoratedBox(
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(

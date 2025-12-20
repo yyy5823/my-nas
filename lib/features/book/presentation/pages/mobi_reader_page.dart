@@ -224,6 +224,10 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
     });
   }
 
+  // 固定栏高度常量
+  static const double _fixedHeaderHeight = 40.0;
+  static const double _fixedFooterHeight = 24.0;
+
   /// 从 BookReaderSettings 创建 FoliateStyle
   FoliateStyle _createStyle(BookReaderSettings settings) => FoliateStyle.fromReaderSettings(
       fontSize: settings.fontSize,
@@ -237,6 +241,9 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
       pageTurnStyle: FoliatePageTurnStyle.fromPageTurnMode(
         settings.pageTurnMode.index,
       ),
+      // 添加额外边距以避开固定顶栏和底栏
+      extraTopMargin: _fixedHeaderHeight.toInt(),
+      extraBottomMargin: settings.showProgress ? _fixedFooterHeight.toInt() : 0,
     );
 
   /// 应用设置变化
@@ -270,35 +277,50 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
         BookPageTurnMode.none => FoliatePageTurnStyle.noAnimation,
       };
 
+  // Foliate 支持的翻页模式映射
+  // Foliate 只支持: scroll(0), slide(1), noAnimation(4)
+  static const _foliatePageTurnModes = [
+    (icon: Icons.swap_vert_rounded, label: '滚动', mode: BookPageTurnMode.scroll),
+    (icon: Icons.swipe_rounded, label: '滑动', mode: BookPageTurnMode.slide),
+    (icon: Icons.article_rounded, label: '无动画', mode: BookPageTurnMode.none),
+  ];
+
+  int _getFoliatePageTurnIndex(BookPageTurnMode mode) {
+    // 将 BookPageTurnMode 映射到 Foliate 支持的模式索引
+    switch (mode) {
+      case BookPageTurnMode.scroll:
+        return 0;
+      case BookPageTurnMode.slide:
+      case BookPageTurnMode.simulation: // 降级为滑动
+      case BookPageTurnMode.cover: // 降级为滑动
+        return 1;
+      case BookPageTurnMode.none:
+        return 2;
+    }
+  }
+
   Widget _buildSettingsContent(BookReaderSettings settings) {
     final settingsNotifier = ref.read(bookReaderSettingsProvider.notifier);
-
-    // 翻页方式选项（与 book_reader_page 保持一致）
-    const pageTurnModes = [
-      (icon: Icons.swap_vert_rounded, label: '滚动'),
-      (icon: Icons.swipe_rounded, label: '滑动'),
-      (icon: Icons.auto_stories_rounded, label: '仿真'),
-      (icon: Icons.layers_rounded, label: '覆盖'),
-      (icon: Icons.article_rounded, label: '无动画'),
-    ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 翻页方式
+        // 翻页方式（Foliate 仅支持滚动、滑动、无动画三种）
         const SettingSectionTitle(title: '翻页方式'),
         SettingPageTurnModePicker(
-          modes: pageTurnModes,
-          selectedIndex: settings.pageTurnMode.index,
+          modes: _foliatePageTurnModes
+              .map((m) => (icon: m.icon, label: m.label))
+              .toList(),
+          selectedIndex: _getFoliatePageTurnIndex(settings.pageTurnMode),
           onSelect: (index) {
-            final mode = BookPageTurnMode.values[index];
+            final mode = _foliatePageTurnModes[index].mode;
             settingsNotifier.setPageTurnMode(mode);
             _controller.setPageTurnStyle(_mapPageTurnMode(mode));
           },
         ),
         const SizedBox(height: 24),
 
-        // 字体选择
+        // 字体选择（注意：Foliate 仅支持系统字体）
         SettingSectionTitle(
           title: '字体',
           trailing: AvailableFonts.getDisplayName(settings.fontFamily),
@@ -307,6 +329,8 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
           selectedFont: settings.fontFamily,
           onSelect: (fontFamily) {
             settingsNotifier.setFontFamily(fontFamily);
+            // 同时调用 setFontFamily 和 applyStyle 确保字体生效
+            _controller.setFontFamily(fontFamily);
             _applySettings(settings.copyWith(fontFamily: fontFamily));
           },
         ),
@@ -615,54 +639,179 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
 
   Widget _buildReader(String filePath, BookReaderSettings settings) {
     final style = _createStyle(settings);
+    final isDark = settings.theme == BookReaderTheme.dark ||
+        settings.theme == BookReaderTheme.black;
 
-    return GestureDetector(
-      onTap: _toggleControls,
-      child: Stack(
-        children: [
-          // 阅读器
-          FoliateViewer(
-            controller: _controller,
-            bookSource: FileBookSource(File(filePath)),
-            initialCfi: _initialCfi,
-            style: style,
-            onBookLoaded: (info) async {
-              setState(() {
-                _bookInfo = info;
-              });
-              // 加载目录
-              final toc = await _controller.getToc();
-              if (mounted) {
-                setState(() {
-                  _tocItems = toc;
-                });
-              }
-            },
-            onLocationChanged: (location) {
-              setState(() {
-                _currentLocation = location;
-              });
-              _saveProgressDebounced(location);
-            },
-            onError: (error) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(error)),
-              );
-            },
+    return Stack(
+      children: [
+        // 主内容区域（带 SafeArea 避免刘海遮挡）
+        ColoredBox(
+          color: settings.theme.backgroundColor,
+          child: SafeArea(
+            child: Column(
+              children: [
+                // 固定顶栏 - 显示书名，避免摄像头遮挡
+                _buildFixedHeader(settings, isDark),
+                // 阅读器内容
+                Expanded(
+                  child: FoliateViewer(
+                    controller: _controller,
+                    bookSource: FileBookSource(File(filePath)),
+                    initialCfi: _initialCfi,
+                    style: style,
+                    onBookLoaded: (info) async {
+                      setState(() {
+                        _bookInfo = info;
+                      });
+                      // 加载目录
+                      final toc = await _controller.getToc();
+                      if (mounted) {
+                        setState(() {
+                          _tocItems = toc;
+                        });
+                      }
+                    },
+                    onLocationChanged: (location) {
+                      setState(() {
+                        _currentLocation = location;
+                      });
+                      _saveProgressDebounced(location);
+                    },
+                    onError: (error) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(error)),
+                      );
+                    },
+                  ),
+                ),
+                // 固定底栏 - 显示进度信息
+                if (settings.showProgress) _buildFixedFooter(settings, isDark),
+              ],
+            ),
           ),
+        ),
 
-          // 顶部控制栏
-          if (_showControls) _buildTopBar(settings),
+        // 透明点击层 - 三区域点击处理（WebView 会消耗触摸事件，需要覆盖层）
+        Positioned.fill(
+          child: _buildTapZones(settings),
+        ),
 
-          // 底部控制栏
-          if (_showControls) _buildBottomBar(settings),
+        // 顶部控制栏（可隐藏）
+        if (_showControls) _buildTopBar(settings),
 
-          // 目录抽屉
-          if (_showToc) _buildTocDrawer(settings),
-        ],
+        // 底部控制栏（可隐藏）
+        if (_showControls) _buildBottomBar(settings),
+
+        // 目录抽屉
+        if (_showToc) _buildTocDrawer(settings),
+      ],
+    );
+  }
+
+  /// 固定顶栏 - 显示书名
+  Widget _buildFixedHeader(BookReaderSettings settings, bool isDark) {
+    return SizedBox(
+      height: 40,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                _bookInfo?.title ?? widget.book.name,
+                style: TextStyle(
+                  color: (isDark ? Colors.white : Colors.black87)
+                      .withValues(alpha: 0.6),
+                  fontSize: 14,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
+
+  /// 固定底栏 - 显示进度信息
+  Widget _buildFixedFooter(BookReaderSettings settings, bool isDark) {
+    final progress = _currentLocation?.fraction ?? 0.0;
+    return SizedBox(
+      height: 24,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              '${(progress * 100).toStringAsFixed(1)}%',
+              style: TextStyle(
+                color: (isDark ? Colors.white : Colors.black87)
+                    .withValues(alpha: 0.5),
+                fontSize: 12,
+              ),
+            ),
+            Text(
+              '${_currentLocation?.sectionIndex ?? 0}/${_currentLocation?.totalSections ?? 0}',
+              style: TextStyle(
+                color: (isDark ? Colors.white : Colors.black87)
+                    .withValues(alpha: 0.5),
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 三区域点击处理
+  /// 使用 Listener 只监听点击，不拦截滑动手势，让 WebView 正常处理滑动翻页
+  Widget _buildTapZones(BookReaderSettings settings) {
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (event) {
+        _tapDownPosition = event.localPosition;
+        _tapDownTime = DateTime.now();
+      },
+      onPointerUp: (event) {
+        if (_tapDownPosition == null || _tapDownTime == null) return;
+
+        final distance = (event.localPosition - _tapDownPosition!).distance;
+        final duration = DateTime.now().difference(_tapDownTime!);
+
+        // 快速点击且移动距离小，才视为点击（不是滑动）
+        if (distance < 15 && duration.inMilliseconds < 300) {
+          final screenWidth = MediaQuery.of(context).size.width;
+          final tapX = _tapDownPosition!.dx;
+          final ratio = tapX / screenWidth;
+
+          if (ratio < 0.25) {
+            // 左侧 25%: 上一页
+            _controller.prevPage();
+          } else if (ratio > 0.75) {
+            // 右侧 25%: 下一页
+            _controller.nextPage();
+          } else {
+            // 中间 50%: 切换控制栏
+            _toggleControls();
+          }
+        }
+        _tapDownPosition = null;
+        _tapDownTime = null;
+      },
+      onPointerCancel: (event) {
+        _tapDownPosition = null;
+        _tapDownTime = null;
+      },
+      child: Container(color: Colors.transparent),
+    );
+  }
+
+  // 点击检测相关变量
+  Offset? _tapDownPosition;
+  DateTime? _tapDownTime;
 
   Widget _buildTopBar(BookReaderSettings settings) {
     final isDark = settings.theme == BookReaderTheme.dark ||
@@ -705,17 +854,8 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              IconButton(
-                icon: Icon(
-                  Icons.menu_book,
-                  color: isDark ? Colors.white : Colors.black87,
-                ),
-                onPressed: () {
-                  setState(() {
-                    _showToc = !_showToc;
-                  });
-                },
-              ),
+              // 占位，保持标题居中
+              const SizedBox(width: 48),
             ],
           ),
         ),
@@ -787,10 +927,14 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                     _BottomBarButton(
-                      icon: Icons.skip_previous,
-                      label: '上一页',
+                      icon: Icons.menu_book,
+                      label: '目录',
                       isDark: isDark,
-                      onPressed: _controller.prevPage,
+                      onPressed: () {
+                        setState(() {
+                          _showToc = !_showToc;
+                        });
+                      },
                     ),
                     _BottomBarButton(
                       icon: isDark ? Icons.light_mode : Icons.dark_mode,
@@ -810,12 +954,6 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
                       label: '设置',
                       isDark: isDark,
                       onPressed: _showSettingsSheet,
-                    ),
-                    _BottomBarButton(
-                      icon: Icons.skip_next,
-                      label: '下一页',
-                      isDark: isDark,
-                      onPressed: _controller.nextPage,
                     ),
                   ],
                 ),

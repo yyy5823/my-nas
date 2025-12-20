@@ -225,63 +225,156 @@ class _UnifiedEpisodeSelectorState extends ConsumerState<UnifiedEpisodeSelector>
   }
 
   /// 使用 TMDB 数据构建剧集列表
+  ///
+  /// 优先显示本地剧集，异步加载 TMDB 数据来增强显示（封面、评分等）
+  /// 这样即使网络不好，用户也能立即看到和播放剧集
   Widget _buildTmdbEpisodeList(bool isDark) {
+    final localSeasonEpisodes = widget.localEpisodes[_selectedSeason] ?? {};
+
+    // 如果没有本地剧集，显示空状态（不等待 TMDB）
+    if (localSeasonEpisodes.isEmpty) {
+      // 但仍尝试从 TMDB 获取剧集信息（可能显示"无资源"的剧集）
+      final seasonDetailAsync = ref.watch(
+        seasonDetailProvider((tvId: widget.tmdbId!, seasonNumber: _selectedSeason)),
+      );
+
+      return seasonDetailAsync.when(
+        loading: () => const SizedBox(
+          height: 130,
+          child: Center(child: CircularProgressIndicator()),
+        ),
+        error: (_, _) => SizedBox(
+          height: 100,
+          child: Center(
+            child: Text(
+              '暂无剧集',
+              style: TextStyle(
+                color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+              ),
+            ),
+          ),
+        ),
+        data: (seasonDetail) {
+          if (seasonDetail == null || seasonDetail.episodes.isEmpty) {
+            return SizedBox(
+              height: 100,
+              child: Center(
+                child: Text(
+                  '暂无剧集',
+                  style: TextStyle(
+                    color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+                  ),
+                ),
+              ),
+            );
+          }
+          // 显示 TMDB 剧集（都是"无资源"状态）
+          return _buildEpisodeListView(
+            seasonDetail.episodes,
+            localSeasonEpisodes,
+            isDark,
+          );
+        },
+      );
+    }
+
+    // 有本地剧集：先立即显示本地数据，同时异步加载 TMDB 数据增强
     final seasonDetailAsync = ref.watch(
       seasonDetailProvider((tvId: widget.tmdbId!, seasonNumber: _selectedSeason)),
     );
 
     return seasonDetailAsync.when(
-      loading: () => const SizedBox(
-        height: 200,
-        child: Center(child: CircularProgressIndicator()),
-      ),
-      error: (_, _) => _buildLocalEpisodeList(isDark), // 失败时回退到本地数据
+      // 加载中：立即显示本地剧集（不阻塞）
+      loading: () => _buildLocalOnlyEpisodeList(localSeasonEpisodes, isDark),
+      // 加载失败：使用本地数据
+      error: (_, _) => _buildLocalOnlyEpisodeList(localSeasonEpisodes, isDark),
+      // 加载成功：合并 TMDB 和本地数据
       data: (seasonDetail) {
         if (seasonDetail == null || seasonDetail.episodes.isEmpty) {
-          return _buildLocalEpisodeList(isDark); // 无数据时回退到本地
+          return _buildLocalOnlyEpisodeList(localSeasonEpisodes, isDark);
         }
-
-        final episodes = seasonDetail.episodes;
-        final localSeasonEpisodes = widget.localEpisodes[_selectedSeason] ?? {};
-
-        return SizedBox(
-          height: 240,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: episodes.length,
-            itemBuilder: (context, index) {
-              final tmdbEpisode = episodes[index];
-              final localFile = localSeasonEpisodes[tmdbEpisode.episodeNumber];
-              final isAvailable = localFile != null;
-              final progress = localFile != null
-                  ? widget.episodeProgress[localFile.filePath]
-                  : null;
-
-              final onTapCallback = localFile != null
-                  ? () => widget.onEpisodePlay(localFile, tmdbEpisode: tmdbEpisode)
-                  : null;
-
-              return Padding(
-                padding: EdgeInsets.only(right: index < episodes.length - 1 ? 16 : 0),
-                child: _UnifiedEpisodeCard(
-                  episodeNumber: tmdbEpisode.episodeNumber,
-                  title: tmdbEpisode.name,
-                  imageUrl: tmdbEpisode.stillUrl,
-                  runtime: tmdbEpisode.runtime,
-                  airDate: tmdbEpisode.airDate,
-                  rating: tmdbEpisode.voteAverage,
-                  isAvailable: isAvailable,
-                  watchProgress: progress,
-                  onTap: onTapCallback,
-                ),
-              );
-            },
-          ),
+        return _buildEpisodeListView(
+          seasonDetail.episodes,
+          localSeasonEpisodes,
+          isDark,
         );
       },
     );
   }
+
+  /// 构建仅使用本地数据的剧集列表
+  Widget _buildLocalOnlyEpisodeList(Map<int, VideoMetadata> localEpisodes, bool isDark) {
+    final episodeNumbers = localEpisodes.keys.toList()..sort();
+
+    return SizedBox(
+      height: 130,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: episodeNumbers.length,
+        itemBuilder: (context, index) {
+          final episodeNum = episodeNumbers[index];
+          final episode = localEpisodes[episodeNum]!;
+          final progress = widget.episodeProgress[episode.filePath];
+          final thumbnailUrl = episode.posterUrl ?? episode.backdropUrl;
+
+          return Padding(
+            padding: EdgeInsets.only(right: index < episodeNumbers.length - 1 ? 12 : 0),
+            child: _UnifiedEpisodeCard(
+              episodeNumber: episodeNum,
+              title: episode.episodeTitle ?? episode.fileName,
+              imageUrl: thumbnailUrl,
+              isAvailable: true,
+              isLoading: true, // 显示加载指示器
+              watchProgress: progress,
+              onTap: () => widget.onEpisodePlay(episode),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// 构建合并了 TMDB 数据的剧集列表视图
+  Widget _buildEpisodeListView(
+    List<TmdbEpisode> tmdbEpisodes,
+    Map<int, VideoMetadata> localEpisodes,
+    bool isDark,
+  ) => SizedBox(
+      height: 130,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: tmdbEpisodes.length,
+        itemBuilder: (context, index) {
+          final tmdbEpisode = tmdbEpisodes[index];
+          final localFile = localEpisodes[tmdbEpisode.episodeNumber];
+          final isAvailable = localFile != null;
+          final progress = localFile != null
+              ? widget.episodeProgress[localFile.filePath]
+              : null;
+
+          final onTapCallback = localFile != null
+              ? () => widget.onEpisodePlay(localFile, tmdbEpisode: tmdbEpisode)
+              : null;
+
+          return Padding(
+            padding: EdgeInsets.only(right: index < tmdbEpisodes.length - 1 ? 12 : 0),
+            child: _UnifiedEpisodeCard(
+              episodeNumber: tmdbEpisode.episodeNumber,
+              title: tmdbEpisode.name,
+              imageUrl: tmdbEpisode.stillUrl,
+              runtime: tmdbEpisode.runtime,
+              airDate: tmdbEpisode.airDate,
+              rating: tmdbEpisode.voteAverage,
+              isAvailable: isAvailable,
+              watchProgress: progress,
+              onTap: onTapCallback,
+            ),
+          );
+        },
+      ),
+    );
 
   /// 使用本地数据构建剧集列表
   Widget _buildLocalEpisodeList(bool isDark) {
@@ -303,7 +396,7 @@ class _UnifiedEpisodeSelectorState extends ConsumerState<UnifiedEpisodeSelector>
     final episodeNumbers = seasonEpisodes.keys.toList()..sort();
 
     return SizedBox(
-      height: 240,
+      height: 130,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -317,7 +410,7 @@ class _UnifiedEpisodeSelectorState extends ConsumerState<UnifiedEpisodeSelector>
           final thumbnailUrl = episode.posterUrl ?? episode.backdropUrl;
 
           return Padding(
-            padding: EdgeInsets.only(right: index < episodeNumbers.length - 1 ? 16 : 0),
+            padding: EdgeInsets.only(right: index < episodeNumbers.length - 1 ? 12 : 0),
             child: _UnifiedEpisodeCard(
               episodeNumber: episodeNum,
               title: episode.episodeTitle ?? episode.fileName,
@@ -367,6 +460,7 @@ class _UnifiedEpisodeCard extends StatefulWidget {
     this.airDate,
     this.rating,
     this.isAvailable = false,
+    this.isLoading = false,
     this.watchProgress,
     this.onTap,
   });
@@ -378,9 +472,12 @@ class _UnifiedEpisodeCard extends StatefulWidget {
   final String? airDate;
   final double? rating;
   final bool isAvailable;
+
+  /// 是否正在加载 TMDB 数据（显示加载指示器）
+  final bool isLoading;
   final double? watchProgress;
   final VoidCallback? onTap;
-  static const double width = 200;
+  static const double width = 160;
 
   @override
   State<_UnifiedEpisodeCard> createState() => _UnifiedEpisodeCardState();
@@ -405,19 +502,8 @@ class _UnifiedEpisodeCardState extends State<_UnifiedEpisodeCard> {
         child: AnimatedOpacity(
           duration: const Duration(milliseconds: 200),
           opacity: widget.isAvailable ? 1.0 : 0.5,
-          child: Container(
+          child: SizedBox(
             width: cardWidth,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              color: isDark ? AppColors.darkSurfaceVariant : Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: _isHovered ? 0.2 : 0.1),
-                  blurRadius: _isHovered ? 12 : 6,
-                  offset: Offset(0, _isHovered ? 4 : 2),
-                ),
-              ],
-            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
@@ -425,18 +511,30 @@ class _UnifiedEpisodeCardState extends State<_UnifiedEpisodeCard> {
                 // 缩略图区域
                 Stack(
                   children: [
-                    ClipRRect(
-                      borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                      child: SizedBox(
-                        width: cardWidth,
-                        height: imageHeight,
-                        child: hasImage
-                            ? AdaptiveImage(
-                                imageUrl: widget.imageUrl!,
-                                placeholder: (_) => _buildPlaceholder(isDark),
-                                errorWidget: (_, _) => _buildPlaceholder(isDark),
-                              )
-                            : _buildPlaceholder(isDark),
+                    Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: _isHovered ? 0.2 : 0.1),
+                            blurRadius: _isHovered ? 8 : 4,
+                            offset: Offset(0, _isHovered ? 3 : 1),
+                          ),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: SizedBox(
+                          width: cardWidth,
+                          height: imageHeight,
+                          child: hasImage
+                              ? AdaptiveImage(
+                                  imageUrl: widget.imageUrl!,
+                                  placeholder: (_) => _buildPlaceholder(isDark),
+                                  errorWidget: (_, _) => _buildPlaceholder(isDark),
+                                )
+                              : _buildPlaceholder(isDark),
+                        ),
                       ),
                     ),
                     // 播放图标
@@ -444,13 +542,13 @@ class _UnifiedEpisodeCardState extends State<_UnifiedEpisodeCard> {
                       Positioned.fill(
                         child: DecoratedBox(
                           decoration: BoxDecoration(
-                            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                            borderRadius: BorderRadius.circular(8),
                             color: Colors.black.withValues(alpha: 0.4),
                           ),
                           child: const Center(
                             child: Icon(
                               Icons.play_circle_fill_rounded,
-                              size: 48,
+                              size: 40,
                               color: Colors.white,
                             ),
                           ),
@@ -459,10 +557,10 @@ class _UnifiedEpisodeCardState extends State<_UnifiedEpisodeCard> {
                     // 时长标签
                     if (widget.runtime != null && widget.runtime! > 0)
                       Positioned(
-                        right: 8,
-                        bottom: 8,
+                        right: 6,
+                        bottom: 6,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                           decoration: BoxDecoration(
                             color: Colors.black.withValues(alpha: 0.7),
                             borderRadius: BorderRadius.circular(4),
@@ -471,7 +569,7 @@ class _UnifiedEpisodeCardState extends State<_UnifiedEpisodeCard> {
                             _formatRuntime(widget.runtime!),
                             style: const TextStyle(
                               color: Colors.white,
-                              fontSize: 11,
+                              fontSize: 10,
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -480,10 +578,10 @@ class _UnifiedEpisodeCardState extends State<_UnifiedEpisodeCard> {
                     // 不可用标签
                     if (!widget.isAvailable)
                       Positioned(
-                        left: 8,
-                        top: 8,
+                        left: 6,
+                        top: 6,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                           decoration: BoxDecoration(
                             color: Colors.black.withValues(alpha: 0.7),
                             borderRadius: BorderRadius.circular(4),
@@ -494,87 +592,57 @@ class _UnifiedEpisodeCardState extends State<_UnifiedEpisodeCard> {
                           ),
                         ),
                       ),
+                    // TMDB 数据加载中指示器
+                    if (widget.isLoading)
+                      Positioned(
+                        right: 6,
+                        top: 6,
+                        child: Container(
+                          width: 16,
+                          height: 16,
+                          padding: const EdgeInsets.all(2),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.5),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const CircularProgressIndicator(
+                            strokeWidth: 1.5,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white70),
+                          ),
+                        ),
+                      ),
+                    // 进度条（放在图片底部）
+                    if (widget.watchProgress != null && widget.watchProgress! > 0)
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: ClipRRect(
+                          borderRadius: const BorderRadius.vertical(bottom: Radius.circular(8)),
+                          child: LinearProgressIndicator(
+                            value: widget.watchProgress!.clamp(0.0, 1.0),
+                            minHeight: 3,
+                            backgroundColor: Colors.black.withValues(alpha: 0.3),
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              widget.watchProgress! >= 0.9 ? AppColors.success : AppColors.primary,
+                            ),
+                          ),
+                        ),
+                      ),
                   ],
                 ),
-                // 进度条
-                if (widget.watchProgress != null && widget.watchProgress! > 0)
-                  ClipRRect(
-                    child: LinearProgressIndicator(
-                      value: widget.watchProgress!.clamp(0.0, 1.0),
-                      minHeight: 3,
-                      backgroundColor: isDark ? AppColors.darkOutline : Colors.grey[300],
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        widget.watchProgress! >= 0.9 ? AppColors.success : AppColors.primary,
-                      ),
-                    ),
-                  ),
-                // 信息区域
+                // 简洁的标题：集数.名称
                 Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // 集数和评分
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: AppColors.primary.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              'E${widget.episodeNumber}',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.primary,
-                              ),
-                            ),
-                          ),
-                          if (widget.rating != null && widget.rating! > 0) ...[
-                            const SizedBox(width: 8),
-                            Icon(Icons.star_rounded, size: 14, color: Colors.amber[600]),
-                            const SizedBox(width: 2),
-                            Text(
-                              widget.rating!.toStringAsFixed(1),
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: isDark
-                                    ? AppColors.darkOnSurfaceVariant
-                                    : AppColors.lightOnSurfaceVariant,
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      // 标题
-                      Text(
-                        widget.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          height: 1.3,
-                          color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
-                        ),
-                      ),
-                      // 播出日期
-                      if (widget.airDate != null && widget.airDate!.isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          widget.airDate!,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: isDark
-                                ? AppColors.darkOnSurfaceVariant
-                                : AppColors.lightOnSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ],
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    '${widget.episodeNumber}. ${widget.title}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                    ),
                   ),
                 ),
               ],
@@ -590,7 +658,7 @@ class _UnifiedEpisodeCardState extends State<_UnifiedEpisodeCard> {
         child: Center(
           child: Icon(
             Icons.movie_rounded,
-            size: 40,
+            size: 32,
             color: isDark ? Colors.grey[600] : Colors.grey[400],
           ),
         ),

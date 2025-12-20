@@ -24,7 +24,7 @@ class FoliateStyle {
     this.topMargin = 20,
     this.bottomMargin = 20,
     this.sideMargin = 5,
-    this.maxColumnCount = 2,
+    this.maxColumnCount = 1, // 默认单列显示，避免双页模式
     this.customCSS,
   });
 
@@ -39,17 +39,21 @@ class FoliateStyle {
     required Color textColor,
     String? fontFamily,
     FoliatePageTurnStyle pageTurnStyle = FoliatePageTurnStyle.slide,
+    int extraTopMargin = 0, // 额外顶部边距（用于避开固定顶栏）
+    int extraBottomMargin = 0, // 额外底部边距（用于避开固定底栏）
   }) => FoliateStyle(
       // foliate-js 的 fontSize 是倍数，18px 对应 1.0
       fontSize: fontSize / 18.0,
       fontName: fontFamily ?? 'system',
       lineHeight: lineHeight,
-      paragraphSpacing: (paragraphSpacing * 16).toInt(),
+      // 段落间距：paragraphSpacing 是 em 单位，转换为像素时使用较小的倍数
+      paragraphSpacing: (paragraphSpacing * 8).toInt(),
       textIndent: 2,
       backgroundColor: backgroundColor,
       textColor: textColor,
-      topMargin: verticalPadding.toInt(),
-      bottomMargin: verticalPadding.toInt(),
+      // 添加额外边距以避开固定栏
+      topMargin: verticalPadding.toInt() + extraTopMargin,
+      bottomMargin: verticalPadding.toInt() + extraBottomMargin,
       sideMargin: (horizontalPadding / 4).toInt(), // foliate-js 使用百分比
       pageTurnStyle: pageTurnStyle,
     );

@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
@@ -5,6 +8,7 @@ import 'package:my_nas/features/video/data/services/video_database_service.dart'
 import 'package:my_nas/features/video/domain/entities/video_category_config.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
 import 'package:my_nas/features/video/presentation/providers/video_category_settings_provider.dart';
+import 'package:my_nas/shared/providers/language_preference_provider.dart';
 
 /// 视频分类设置弹窗
 ///
@@ -27,23 +31,103 @@ class VideoCategorySettingsSheet extends ConsumerStatefulWidget {
 
 class _VideoCategorySettingsSheetState
     extends ConsumerState<VideoCategorySettingsSheet> {
-  /// 当前选择的动态分类类型（用于显示选择器）
-  VideoHomeCategory? _selectedDynamicCategory;
+  /// 各动态分类的可用筛选项缓存
+  final Map<VideoHomeCategory, List<String>> _filterCache = {};
+  final Map<VideoHomeCategory, bool> _loadingStates = {};
 
-  /// 可用的筛选项
-  List<String>? _availableFilters;
-  bool _loadingFilters = false;
+  @override
+  void initState() {
+    super.initState();
+    // 预加载所有动态分类的筛选项
+    _preloadAllFilters();
+  }
+
+  Future<void> _preloadAllFilters() async {
+    final categories = [
+      VideoHomeCategory.byMovieGenre,
+      VideoHomeCategory.byMovieRegion,
+      VideoHomeCategory.byTvGenre,
+      VideoHomeCategory.byTvRegion,
+    ];
+
+    for (final category in categories) {
+      unawaited(_loadFilters(category));
+    }
+  }
+
+  Future<void> _loadFilters(VideoHomeCategory category) async {
+    if (_filterCache.containsKey(category)) return;
+
+    setState(() => _loadingStates[category] = true);
+
+    try {
+      final db = VideoDatabaseService();
+      await db.init();
+
+      // 根据语言偏好决定是否优先显示中文
+      final langPref = ref.read(languagePreferenceProvider);
+      final systemLocale = PlatformDispatcher.instance.locale;
+      final metadataLangs = langPref.getMetadataLanguageCodes(systemLocale);
+      // 如果首选语言是中文，则优先显示中文
+      final preferChinese = metadataLangs.isNotEmpty &&
+          (metadataLangs.first.startsWith('zh') || metadataLangs.first == 'auto');
+
+      List<String> filters;
+      switch (category) {
+        case VideoHomeCategory.byMovieGenre:
+          filters = await db.getAvailableGenres(
+            category: MediaCategory.movie,
+            preferChinese: preferChinese,
+          );
+        case VideoHomeCategory.byMovieRegion:
+          filters = await db.getAvailableCountries(
+            category: MediaCategory.movie,
+            preferChinese: preferChinese,
+          );
+        case VideoHomeCategory.byTvGenre:
+          filters = await db.getAvailableGenres(
+            category: MediaCategory.tvShow,
+            preferChinese: preferChinese,
+          );
+        case VideoHomeCategory.byTvRegion:
+          filters = await db.getAvailableCountries(
+            category: MediaCategory.tvShow,
+            preferChinese: preferChinese,
+          );
+        default:
+          filters = [];
+      }
+
+      if (mounted) {
+        setState(() {
+          _filterCache[category] = filters;
+          _loadingStates[category] = false;
+        });
+      }
+    } on Exception {
+      if (mounted) {
+        setState(() {
+          _filterCache[category] = [];
+          _loadingStates[category] = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final settings = ref.watch(videoCategorySettingsProvider);
-    final sortedSections = settings.sortedSections;
+
+    // 只获取基础分类（非动态分类）
+    final basicSections = settings.sortedSections
+        .where((s) => !s.category.isDynamic)
+        .toList();
 
     return DraggableScrollableSheet(
-      initialChildSize: 0.7,
+      initialChildSize: 0.75,
       minChildSize: 0.5,
-      maxChildSize: 0.9,
+      maxChildSize: 0.95,
       builder: (context, scrollController) => DecoratedBox(
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
@@ -66,10 +150,7 @@ class _VideoCategorySettingsSheetState
               padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
-                  Icon(
-                    Icons.tune_rounded,
-                    color: AppColors.primary,
-                  ),
+                  Icon(Icons.tune_rounded, color: AppColors.primary),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
@@ -95,400 +176,410 @@ class _VideoCategorySettingsSheetState
               ),
             ),
             const Divider(height: 1),
-            // 分类列表
+            // 内容区域
             Expanded(
-              child: ReorderableListView.builder(
-                scrollController: scrollController,
-                buildDefaultDragHandles: false, // 禁用默认的右侧拖动手柄
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                itemCount: sortedSections.length,
-                onReorder: (oldIndex, newIndex) {
-                  ref
-                      .read(videoCategorySettingsProvider.notifier)
-                      .reorder(oldIndex, newIndex);
-                },
-                itemBuilder: (context, index) {
-                  final section = sortedSections[index];
-                  return _CategoryTile(
-                    key: ValueKey(section.uniqueKey),
-                    section: section,
-                    isDark: isDark,
-                    onToggle: () => ref
-                        .read(videoCategorySettingsProvider.notifier)
-                        .toggleVisibility(section.uniqueKey),
-                    onRemove: section.category.isDynamic
-                        ? () => ref
-                            .read(videoCategorySettingsProvider.notifier)
-                            .removeDynamicCategory(
-                              section.category,
-                              section.filter!,
-                            )
-                        : null,
-                  );
-                },
+              child: ListView(
+                controller: scrollController,
+                padding: const EdgeInsets.only(bottom: 24),
+                children: [
+                  // 基础分类区域
+                  _buildSectionHeader(isDark, '基础分类', '拖动调整顺序，开关控制显示'),
+                  _buildBasicCategoriesList(isDark, basicSections),
+                  const SizedBox(height: 16),
+                  // 动态分类区域
+                  _buildSectionHeader(isDark, '动态分类', '选择要在首页展示的具体类型/地区'),
+                  _buildDynamicCategoryExpansion(
+                    isDark,
+                    VideoHomeCategory.byMovieGenre,
+                    '电影类型',
+                    Icons.movie_rounded,
+                    Colors.blue,
+                    settings,
+                  ),
+                  _buildDynamicCategoryExpansion(
+                    isDark,
+                    VideoHomeCategory.byMovieRegion,
+                    '电影地区',
+                    Icons.public_rounded,
+                    Colors.green,
+                    settings,
+                  ),
+                  _buildDynamicCategoryExpansion(
+                    isDark,
+                    VideoHomeCategory.byTvGenre,
+                    '剧集类型',
+                    Icons.live_tv_rounded,
+                    Colors.orange,
+                    settings,
+                  ),
+                  _buildDynamicCategoryExpansion(
+                    isDark,
+                    VideoHomeCategory.byTvRegion,
+                    '剧集地区',
+                    Icons.language_rounded,
+                    Colors.purple,
+                    settings,
+                  ),
+                ],
               ),
             ),
-            // 添加动态分类按钮
-            const Divider(height: 1),
-            _buildAddDynamicCategorySection(isDark),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildAddDynamicCategorySection(bool isDark) {
-    if (_selectedDynamicCategory != null) {
-      return _buildFilterPicker(isDark);
-    }
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-          child: Row(
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  Icons.add_rounded,
-                  color: AppColors.primary,
-                  size: 20,
-                ),
+  Widget _buildSectionHeader(bool isDark, String title, String subtitle) =>
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppColors.primary,
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  '添加动态分类',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: isDark ? Colors.white : Colors.black87,
-                  ),
-                ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              subtitle,
+              style: TextStyle(
+                fontSize: 12,
+                color: isDark ? Colors.grey[500] : Colors.grey[600],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
-        // 单项分类（需要选择具体项目）
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _buildCategoryTypeChip(
-                isDark,
-                VideoHomeCategory.byMovieGenre,
-                Icons.movie_rounded,
-                Colors.blue,
-              ),
-              _buildCategoryTypeChip(
-                isDark,
-                VideoHomeCategory.byMovieRegion,
-                Icons.public_rounded,
-                Colors.green,
-              ),
-              _buildCategoryTypeChip(
-                isDark,
-                VideoHomeCategory.byTvGenre,
-                Icons.live_tv_rounded,
-                Colors.orange,
-              ),
-              _buildCategoryTypeChip(
-                isDark,
-                VideoHomeCategory.byTvRegion,
-                Icons.language_rounded,
-                Colors.purple,
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 8),
-      ],
-    );
-  }
+      );
 
-  Widget _buildCategoryTypeChip(
+  Widget _buildBasicCategoriesList(
+    bool isDark,
+    List<VideoCategorySectionConfig> sections,
+  ) =>
+      ReorderableListView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        buildDefaultDragHandles: false,
+        padding: EdgeInsets.zero,
+        itemCount: sections.length,
+        onReorder: (oldIndex, newIndex) {
+          // 需要将索引转换回完整列表的索引
+          final settings = ref.read(videoCategorySettingsProvider);
+          final allSorted = settings.sortedSections;
+          final oldSection = sections[oldIndex];
+          final newSection = sections[newIndex > oldIndex ? newIndex - 1 : newIndex];
+
+          final realOldIndex = allSorted.indexWhere(
+            (s) => s.uniqueKey == oldSection.uniqueKey,
+          );
+          final realNewIndex = allSorted.indexWhere(
+            (s) => s.uniqueKey == newSection.uniqueKey,
+          );
+
+          if (realOldIndex != -1 && realNewIndex != -1) {
+            ref.read(videoCategorySettingsProvider.notifier).reorder(
+                  realOldIndex,
+                  newIndex > oldIndex ? realNewIndex + 1 : realNewIndex,
+                );
+          }
+        },
+        itemBuilder: (context, index) {
+          final section = sections[index];
+          return _BasicCategoryTile(
+            key: ValueKey(section.uniqueKey),
+            section: section,
+            isDark: isDark,
+            index: index,
+            onToggle: () => ref
+                .read(videoCategorySettingsProvider.notifier)
+                .toggleVisibility(section.uniqueKey),
+          );
+        },
+      );
+
+  Widget _buildDynamicCategoryExpansion(
     bool isDark,
     VideoHomeCategory category,
+    String title,
     IconData icon,
     Color color,
-  ) => ActionChip(
-      avatar: Icon(icon, size: 18, color: color),
-      label: Text(category.displayName),
-      labelStyle: TextStyle(
-        color: isDark ? Colors.white : Colors.black87,
-        fontSize: 13,
-      ),
-      backgroundColor: color.withValues(alpha: 0.1),
-      side: BorderSide(color: color.withValues(alpha: 0.3)),
-      onPressed: () => _loadFiltersAndShowPicker(category),
-    );
+    VideoCategorySettings settings,
+  ) {
+    final filters = _filterCache[category] ?? [];
+    final isLoading = _loadingStates[category] ?? false;
+    final selectedFilters = settings.getFiltersForCategory(category);
+    final selectedCount = selectedFilters.where((f) => f != null).length;
 
-  Widget _buildFilterPicker(bool isDark) {
-    if (_loadingFilters) {
-      return const Padding(
-        padding: EdgeInsets.all(24),
-        child: Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    final filters = _availableFilters ?? [];
-    final settings = ref.watch(videoCategorySettingsProvider);
-    final addedFilters =
-        settings.getFiltersForCategory(_selectedDynamicCategory!);
-
-    if (filters.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              _selectedDynamicCategory!.isRegionCategory
-                  ? Icons.public_outlined
-                  : Icons.category_outlined,
-              size: 48,
-              color: isDark ? Colors.grey[600] : Colors.grey[400],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              _selectedDynamicCategory!.isRegionCategory
-                  ? '暂无可用地区'
-                  : '暂无可用类型',
-              style: TextStyle(
-                color: isDark ? Colors.grey[400] : Colors.grey[600],
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextButton(
-              onPressed: () => setState(() {
-                _selectedDynamicCategory = null;
-                _availableFilters = null;
-              }),
-              child: const Text('返回'),
-            ),
-          ],
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.grey[900] : Colors.grey[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark
+              ? Colors.grey[800]!
+              : Colors.grey[200]!,
         ),
-      );
-    }
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-          child: Row(
-            children: [
-              IconButton(
-                onPressed: () => setState(() {
-                  _selectedDynamicCategory = null;
-                  _availableFilters = null;
-                }),
-                icon: const Icon(Icons.arrow_back),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  '选择${_selectedDynamicCategory!.displayName}',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: isDark ? Colors.white : Colors.black87,
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          leading: Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, color: color, size: 20),
+          ),
+          title: Text(
+            title,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
+          ),
+          subtitle: Text(
+            selectedCount > 0 ? '已选 $selectedCount 项' : '未选择',
+            style: TextStyle(
+              fontSize: 12,
+              color: selectedCount > 0
+                  ? color
+                  : (isDark ? Colors.grey[600] : Colors.grey[500]),
+            ),
+          ),
+          children: [
+            if (isLoading)
+              const Padding(
+                padding: EdgeInsets.all(24),
+                child: Center(
+                  child: SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2),
                   ),
                 ),
+              )
+            else if (filters.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  '暂无可用${category.isGenreCategory ? '类型' : '地区'}',
+                  style: TextStyle(
+                    color: isDark ? Colors.grey[600] : Colors.grey[500],
+                  ),
+                ),
+              )
+            else
+              _buildFilterSelector(
+                isDark,
+                category,
+                filters,
+                selectedFilters,
+                color,
               ),
-            ],
-          ),
+          ],
         ),
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 200),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: filters.map((filter) {
-                final isAdded = addedFilters.contains(filter);
-                return FilterChip(
-                  label: Text(filter),
-                  selected: isAdded,
-                  onSelected: (selected) {
-                    if (selected) {
-                      ref
-                          .read(videoCategorySettingsProvider.notifier)
-                          .addDynamicCategory(
-                            _selectedDynamicCategory!,
-                            filter,
-                          );
-                    } else {
-                      ref
-                          .read(videoCategorySettingsProvider.notifier)
-                          .removeDynamicCategory(
-                            _selectedDynamicCategory!,
-                            filter,
-                          );
-                    }
-                  },
-                  selectedColor: AppColors.primary.withValues(alpha: 0.2),
-                  checkmarkColor: AppColors.primary,
-                );
-              }).toList(),
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-      ],
+      ),
     );
   }
 
-  Future<void> _loadFiltersAndShowPicker(VideoHomeCategory category) async {
-    setState(() {
-      _selectedDynamicCategory = category;
-      _loadingFilters = true;
-      _availableFilters = null;
-    });
+  Widget _buildFilterSelector(
+    bool isDark,
+    VideoHomeCategory category,
+    List<String> filters,
+    Set<String?> selectedFilters,
+    Color color,
+  ) {
+    final allSelected = filters.every((f) => selectedFilters.contains(f));
+    final noneSelected = !filters.any((f) => selectedFilters.contains(f));
 
-    try {
-      final db = VideoDatabaseService();
-      await db.init();
-
-      List<String> filters;
-
-      switch (category) {
-        case VideoHomeCategory.byMovieGenre:
-          filters = await db.getAvailableGenres(category: MediaCategory.movie);
-        case VideoHomeCategory.byMovieRegion:
-          filters = await db.getAvailableCountries(category: MediaCategory.movie);
-        case VideoHomeCategory.byTvGenre:
-          filters = await db.getAvailableGenres(category: MediaCategory.tvShow);
-        case VideoHomeCategory.byTvRegion:
-          filters = await db.getAvailableCountries(category: MediaCategory.tvShow);
-        default:
-          filters = [];
-      }
-
-      if (mounted) {
-        setState(() {
-          _availableFilters = filters;
-          _loadingFilters = false;
-        });
-      }
-    } on Exception {
-      if (mounted) {
-        setState(() {
-          _availableFilters = [];
-          _loadingFilters = false;
-        });
-      }
-    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 全选/取消全选按钮行
+          Row(
+            children: [
+              _buildActionButton(
+                isDark,
+                allSelected ? '取消全选' : '全选',
+                allSelected ? Icons.deselect : Icons.select_all,
+                color,
+                () {
+                  if (allSelected) {
+                    ref
+                        .read(videoCategorySettingsProvider.notifier)
+                        .removeAllDynamicCategoriesOfType(category);
+                  } else {
+                    ref
+                        .read(videoCategorySettingsProvider.notifier)
+                        .addDynamicCategories(category, filters);
+                  }
+                },
+              ),
+              if (!noneSelected && !allSelected) ...[
+                const SizedBox(width: 8),
+                _buildActionButton(
+                  isDark,
+                  '清空',
+                  Icons.clear_all,
+                  Colors.red,
+                  () => ref
+                      .read(videoCategorySettingsProvider.notifier)
+                      .removeAllDynamicCategoriesOfType(category),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 12),
+          // 筛选项网格
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: filters.map((filter) {
+              final isSelected = selectedFilters.contains(filter);
+              return FilterChip(
+                label: Text(
+                  filter,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isSelected
+                        ? (isDark ? Colors.white : color)
+                        : (isDark ? Colors.grey[400] : Colors.grey[700]),
+                  ),
+                ),
+                selected: isSelected,
+                onSelected: (selected) {
+                  if (selected) {
+                    ref
+                        .read(videoCategorySettingsProvider.notifier)
+                        .addDynamicCategory(category, filter);
+                  } else {
+                    ref
+                        .read(videoCategorySettingsProvider.notifier)
+                        .removeDynamicCategory(category, filter);
+                  }
+                },
+                selectedColor: color.withValues(alpha: 0.2),
+                backgroundColor: isDark ? Colors.grey[850] : Colors.white,
+                checkmarkColor: color,
+                side: BorderSide(
+                  color: isSelected
+                      ? color.withValues(alpha: 0.5)
+                      : (isDark ? Colors.grey[700]! : Colors.grey[300]!),
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
   }
+
+  Widget _buildActionButton(
+    bool isDark,
+    String label,
+    IconData icon,
+    Color color,
+    VoidCallback onPressed,
+  ) =>
+      OutlinedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 16),
+        label: Text(label, style: const TextStyle(fontSize: 12)),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: color,
+          side: BorderSide(color: color.withValues(alpha: 0.5)),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          minimumSize: Size.zero,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+      );
 }
 
-/// 分类项 Tile
-class _CategoryTile extends StatelessWidget {
-  const _CategoryTile({
+/// 基础分类项 Tile
+class _BasicCategoryTile extends StatelessWidget {
+  const _BasicCategoryTile({
     required super.key,
     required this.section,
     required this.isDark,
+    required this.index,
     required this.onToggle,
-    this.onRemove,
   });
 
   final VideoCategorySectionConfig section;
   final bool isDark;
+  final int index;
   final VoidCallback onToggle;
-  final VoidCallback? onRemove;
 
   @override
-  Widget build(BuildContext context) {
-    final isDynamic = section.category.isDynamic;
-
-    return ColoredBox(
-      color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
-      child: ListTile(
-        leading: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // 拖动手柄
-            ReorderableDragStartListener(
-              index: section.order,
-              child: Padding(
-                padding: const EdgeInsets.only(right: 8),
+  Widget build(BuildContext context) => ColoredBox(
+        color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+        child: ListTile(
+          leading: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 拖动手柄
+              ReorderableDragStartListener(
+                index: index,
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Icon(
+                    Icons.drag_handle,
+                    color: isDark ? Colors.grey[600] : Colors.grey[400],
+                  ),
+                ),
+              ),
+              // 分类图标
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: _getCategoryColor(section.category).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
                 child: Icon(
-                  Icons.drag_handle,
-                  color: isDark ? Colors.grey[600] : Colors.grey[400],
-                ),
-              ),
-            ),
-            // 分类图标
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: _getCategoryColor(section.category).withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(
-                _getCategoryIcon(section.category),
-                color: _getCategoryColor(section.category),
-                size: 20,
-              ),
-            ),
-          ],
-        ),
-        title: Text(
-          section.displayName,
-          style: TextStyle(
-            color: section.visible
-                ? (isDark ? Colors.white : Colors.black87)
-                : (isDark ? Colors.grey[600] : Colors.grey[400]),
-          ),
-        ),
-        subtitle: isDynamic && section.subtitle.isNotEmpty
-            ? Text(
-                section.subtitle,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: isDark ? Colors.grey[600] : Colors.grey[500],
-                ),
-              )
-            : null,
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (isDynamic && onRemove != null)
-              IconButton(
-                onPressed: onRemove,
-                icon: Icon(
-                  Icons.remove_circle_outline,
-                  color: Colors.red[400],
+                  _getCategoryIcon(section.category),
+                  color: _getCategoryColor(section.category),
                   size: 20,
                 ),
-                tooltip: '移除',
               ),
-            Switch.adaptive(
-              value: section.visible,
-              onChanged: (_) => onToggle(),
-              thumbColor: WidgetStateProperty.resolveWith((states) =>
-                  states.contains(WidgetState.selected) ? AppColors.primary : null),
-              trackColor: WidgetStateProperty.resolveWith((states) =>
-                  states.contains(WidgetState.selected)
-                      ? AppColors.primary.withValues(alpha: 0.5)
-                      : null),
+            ],
+          ),
+          title: Text(
+            section.displayName,
+            style: TextStyle(
+              color: section.visible
+                  ? (isDark ? Colors.white : Colors.black87)
+                  : (isDark ? Colors.grey[600] : Colors.grey[400]),
             ),
-          ],
+          ),
+          trailing: Switch.adaptive(
+            value: section.visible,
+            onChanged: (_) => onToggle(),
+            thumbColor: WidgetStateProperty.resolveWith((states) =>
+                states.contains(WidgetState.selected) ? AppColors.primary : null),
+            trackColor: WidgetStateProperty.resolveWith((states) =>
+                states.contains(WidgetState.selected)
+                    ? AppColors.primary.withValues(alpha: 0.5)
+                    : null),
+          ),
         ),
-      ),
-    );
-  }
+      );
 
   IconData _getCategoryIcon(VideoHomeCategory category) {
     switch (category) {
@@ -510,18 +601,16 @@ class _CategoryTile extends StatelessWidget {
         return Icons.visibility_off_rounded;
       case VideoHomeCategory.others:
         return Icons.video_file_rounded;
-      case VideoHomeCategory.byMovieGenre:
       case VideoHomeCategory.browseMovieGenres:
         return Icons.category_rounded;
-      case VideoHomeCategory.byMovieRegion:
       case VideoHomeCategory.browseMovieRegions:
         return Icons.public_rounded;
-      case VideoHomeCategory.byTvGenre:
       case VideoHomeCategory.browseTvGenres:
         return Icons.category_rounded;
-      case VideoHomeCategory.byTvRegion:
       case VideoHomeCategory.browseTvRegions:
         return Icons.language_rounded;
+      default:
+        return Icons.category_rounded;
     }
   }
 
@@ -545,18 +634,16 @@ class _CategoryTile extends StatelessWidget {
         return Colors.teal;
       case VideoHomeCategory.others:
         return Colors.grey;
-      case VideoHomeCategory.byMovieGenre:
       case VideoHomeCategory.browseMovieGenres:
         return Colors.blue;
-      case VideoHomeCategory.byMovieRegion:
       case VideoHomeCategory.browseMovieRegions:
         return Colors.green;
-      case VideoHomeCategory.byTvGenre:
       case VideoHomeCategory.browseTvGenres:
         return Colors.orange;
-      case VideoHomeCategory.byTvRegion:
       case VideoHomeCategory.browseTvRegions:
         return Colors.purple;
+      default:
+        return Colors.grey;
     }
   }
 }

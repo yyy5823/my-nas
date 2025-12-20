@@ -264,7 +264,7 @@ $bundleJs
             topMargin: 20,
             bottomMargin: 20,
             sideMargin: 5,
-            maxColumnCount: 2,
+            maxColumnCount: 1, // 强制单列显示
             customCSS: '',
             customCSSEnabled: false
           };
@@ -446,7 +446,7 @@ $bundleJs
           'topMargin': 20,
           'bottomMargin': 20,
           'sideMargin': 5,
-          'maxColumnCount': 2,
+          'maxColumnCount': 1, // 强制单列显示
           'customCSS': '',
           'customCSSEnabled': false,
         });

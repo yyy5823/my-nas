@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
+import 'package:my_nas/features/video/presentation/providers/scraper_provider.dart'
+    show ScrapingStatus, ScrapingTaskState;
 import 'package:my_nas/features/video/presentation/widgets/video_poster.dart';
 import 'package:my_nas/shared/widgets/adaptive_image.dart';
 
@@ -31,6 +33,8 @@ class DetailHeroSection extends StatelessWidget {
     this.voteCount,
     this.sourceId,
     this.hideEpisodeInfo = false,
+    this.scrapingTask,
+    this.onScrapingDismiss,
     super.key,
   });
 
@@ -55,6 +59,10 @@ class DetailHeroSection extends StatelessWidget {
   final String? sourceId;
   /// 是否隐藏剧集信息（S/E 标记），用于电视剧总览页
   final bool hideEpisodeInfo;
+  /// 后台刮削任务状态
+  final ScrapingTaskState? scrapingTask;
+  /// 刮削完成后关闭回调
+  final VoidCallback? onScrapingDismiss;
 
   @override
   Widget build(BuildContext context) {
@@ -132,7 +140,85 @@ class DetailHeroSection extends StatelessWidget {
                   : _buildNarrowLayout(isDark, hasPoster, displayPoster, hasOverview, displayOverview),
             ),
           ),
+
+          // 刮削进度指示器（右上角）
+          if (scrapingTask != null)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 8,
+              right: 16,
+              child: _buildScrapingIndicator(scrapingTask!),
+            ),
         ],
+      ),
+    );
+  }
+
+  /// 构建刮削进度指示器（紧凑版，放在右上角）
+  Widget _buildScrapingIndicator(ScrapingTaskState task) {
+    final isCompleted = task.isCompleted;
+    final isScraping = task.isScraping;
+
+    return GestureDetector(
+      onTap: isCompleted ? onScrapingDismiss : null,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.75),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isCompleted
+                ? (task.status == ScrapingStatus.completed
+                    ? Colors.green.withValues(alpha: 0.5)
+                    : Colors.red.withValues(alpha: 0.5))
+                : AppColors.primary.withValues(alpha: 0.5),
+            width: 1.5,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 图标/进度
+            if (isScraping)
+              SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  value: task.progressPercent,
+                  backgroundColor: Colors.white.withValues(alpha: 0.2),
+                  color: AppColors.primary,
+                ),
+              )
+            else if (task.status == ScrapingStatus.completed)
+              const Icon(Icons.check_circle_rounded, color: Colors.green, size: 16)
+            else
+              const Icon(Icons.error_rounded, color: Colors.red, size: 16),
+            const SizedBox(width: 8),
+            // 文字
+            Text(
+              isScraping
+                  ? '${task.progress}/${task.total}'
+                  : (task.status == ScrapingStatus.completed
+                      ? '完成 ${task.successCount}集'
+                      : '失败'),
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
+            // 关闭按钮（完成后显示）
+            if (isCompleted) ...[
+              const SizedBox(width: 6),
+              Icon(
+                Icons.close_rounded,
+                size: 14,
+                color: Colors.white.withValues(alpha: 0.7),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

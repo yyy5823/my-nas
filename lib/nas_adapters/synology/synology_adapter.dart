@@ -156,6 +156,30 @@ class SynologyAdapter implements NasAdapter {
   }
 
   @override
+  Future<bool> checkConnectionHealth() async {
+    if (!_connected) {
+      logger.d('SynologyAdapter: 连接健康检查 - 未连接');
+      return false;
+    }
+
+    try {
+      // 尝试获取 DSM 信息来验证连接是否有效
+      await _api.getDsmInfo().timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {
+          throw Exception('连接健康检查超时');
+        },
+      );
+      logger.d('SynologyAdapter: 连接健康检查 - 正常');
+      return true;
+    } on Exception catch (e) {
+      logger.w('SynologyAdapter: 连接健康检查 - 失败', e);
+      _connected = false;
+      return false;
+    }
+  }
+
+  @override
   NasFileSystem get fileSystem {
     if (!_connected) {
       throw StateError('未连接到 NAS');

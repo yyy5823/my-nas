@@ -117,7 +117,7 @@ enum SourceType {
         SourceType.trakt => true,
         // 媒体管理
         SourceType.nastool => true,
-        SourceType.moviepilot => false,
+        SourceType.moviepilot => true,
         SourceType.jellyfin => false,
         SourceType.emby => false,
         SourceType.plex => false,

@@ -258,6 +258,47 @@ class ActiveConnectionsNotifier
 
   /// 获取指定源的文件系统
   SourceConnection? getConnection(String sourceId) => state[sourceId];
+
+  /// 检查连接健康状态
+  Future<bool> checkConnectionHealth(String sourceId) async {
+    final manager = _ref.read(sourceManagerProvider);
+    return manager.checkConnectionHealth(sourceId);
+  }
+
+  /// 重新连接
+  Future<SourceConnection?> reconnect(String sourceId) async {
+    final manager = _ref.read(sourceManagerProvider);
+    final connection = await manager.reconnect(sourceId);
+
+    if (connection != null) {
+      // 更新状态
+      state = {...state, sourceId: connection};
+      // 如果连接成功，注册到全局 Registry
+      if (connection.status == SourceStatus.connected) {
+        NasFileSystemRegistry.instance.register(
+          sourceId,
+          connection.adapter.fileSystem,
+        );
+      }
+    }
+
+    return connection;
+  }
+
+  /// 确保连接健康，如果不健康则自动重连
+  ///
+  /// 返回连接是否健康（原本健康或重连成功）
+  Future<bool> ensureConnectionHealthy(String sourceId) async {
+    // 先检查连接是否健康
+    final isHealthy = await checkConnectionHealth(sourceId);
+    if (isHealthy) {
+      return true;
+    }
+
+    // 尝试重连
+    final newConnection = await reconnect(sourceId);
+    return newConnection?.status == SourceStatus.connected;
+  }
 }
 
 /// 媒体库配置管理

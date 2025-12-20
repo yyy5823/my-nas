@@ -531,6 +531,113 @@ class SourceManagerService {
     }
   }
 
+  /// 检查连接健康状态
+  ///
+  /// 返回 true 表示连接健康，false 表示连接已断开或异常
+  Future<bool> checkConnectionHealth(String sourceId) async {
+    final connection = _connections[sourceId];
+    if (connection == null || connection.status != SourceStatus.connected) {
+      return false;
+    }
+
+    try {
+      return await connection.adapter.checkConnectionHealth();
+    } on Exception catch (e, st) {
+      logger.w('SourceManagerService: 检查连接健康状态失败', e, st);
+      return false;
+    }
+  }
+
+  /// 重新连接
+  ///
+  /// 断开现有连接并重新建立连接。如果提供了密码则使用提供的密码，
+  /// 否则尝试从安全存储中获取保存的凭证。
+  ///
+  /// 返回新的连接对象
+  Future<SourceConnection?> reconnect(String sourceId, {String? password}) async {
+    logger.i('SourceManagerService: 开始重连 $sourceId');
+
+    // 获取源信息
+    final sources = await getSources();
+    final source = sources.where((s) => s.id == sourceId).firstOrNull;
+    if (source == null) {
+      logger.e('SourceManagerService: 重连失败 - 源不存在 $sourceId');
+      return null;
+    }
+
+    // 获取密码
+    var pwd = password;
+    if (pwd == null) {
+      final credential = await getCredential(sourceId);
+      if (credential == null) {
+        // 本地存储和移动端媒体不需要密码
+        if (source.type == SourceType.local || source.type.isMobileSource) {
+          pwd = '';
+        } else {
+          logger.e('SourceManagerService: 重连失败 - 没有保存的凭证 $sourceId');
+          return null;
+        }
+      } else {
+        pwd = credential.password;
+      }
+    }
+
+    // 断开现有连接（如果有）
+    try {
+      await disconnect(sourceId);
+    } on Exception catch (e, st) {
+      logger.w('SourceManagerService: 断开连接时出错（继续重连）', e, st);
+    }
+
+    // 重新连接
+    try {
+      final connection = await connect(
+        source,
+        password: pwd,
+        saveCredential: false, // 凭证已保存，不需要再次保存
+      ).timeout(
+        const Duration(seconds: 15),
+        onTimeout: () {
+          logger.w('SourceManagerService: 重连超时 $sourceId');
+          return SourceConnection(
+            source: source,
+            adapter: _createAdapter(source.type),
+            status: SourceStatus.error,
+            errorMessage: '重连超时',
+          );
+        },
+      );
+
+      if (connection.status == SourceStatus.connected) {
+        logger.i('SourceManagerService: 重连成功 $sourceId');
+      } else {
+        logger.e('SourceManagerService: 重连失败 $sourceId: ${connection.errorMessage}');
+      }
+
+      return connection;
+    } on Exception catch (e, st) {
+      logger.e('SourceManagerService: 重连异常 $sourceId', e, st);
+      return null;
+    }
+  }
+
+  /// 确保连接健康，如果不健康则自动重连
+  ///
+  /// 返回连接是否健康（原本健康或重连成功）
+  Future<bool> ensureConnectionHealthy(String sourceId) async {
+    // 先检查连接是否健康
+    final isHealthy = await checkConnectionHealth(sourceId);
+    if (isHealthy) {
+      return true;
+    }
+
+    logger.i('SourceManagerService: 连接不健康，尝试重连 $sourceId');
+
+    // 尝试重连
+    final newConnection = await reconnect(sourceId);
+    return newConnection?.status == SourceStatus.connected;
+  }
+
   /// 断开所有连接
   Future<void> disconnectAll() async {
     for (final sourceId in _connections.keys.toList()) {

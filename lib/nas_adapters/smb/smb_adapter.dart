@@ -246,6 +246,32 @@ class SmbAdapter implements NasAdapter {
   }
 
   @override
+  Future<bool> checkConnectionHealth() async {
+    if (!_connected || _client == null) {
+      logger.d('SmbAdapter: 连接健康检查 - 未连接');
+      return false;
+    }
+
+    try {
+      // 尝试列出共享来验证连接是否有效
+      await _client!.listShares().timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {
+          throw Exception('连接健康检查超时');
+        },
+      );
+      logger.d('SmbAdapter: 连接健康检查 - 正常');
+      return true;
+    // ignore: avoid_catches_without_on_clauses
+    } catch (e) {
+      logger.w('SmbAdapter: 连接健康检查 - 失败', e);
+      // 标记连接已断开
+      _connected = false;
+      return false;
+    }
+  }
+
+  @override
   NasFileSystem get fileSystem {
     if (!_connected || _fileSystem == null) {
       throw StateError('未连接到 SMB 服务器');

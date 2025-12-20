@@ -77,6 +77,17 @@ class LocalAdapter implements NasAdapter {
   }
 
   @override
+  Future<bool> checkConnectionHealth() async {
+    // 本地存储始终可用
+    if (!_connected) {
+      logger.d('LocalAdapter: 连接健康检查 - 未连接');
+      return false;
+    }
+    logger.d('LocalAdapter: 连接健康检查 - 正常');
+    return true;
+  }
+
+  @override
   NasFileSystem get fileSystem {
     if (!_connected) {
       throw StateError('未连接');

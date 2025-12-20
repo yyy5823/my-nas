@@ -77,6 +77,17 @@ class MobileFilesAdapter implements NasAdapter {
   }
 
   @override
+  Future<bool> checkConnectionHealth() async {
+    // 移动端文件始终可用
+    if (!_connected) {
+      logger.d('MobileFilesAdapter: 连接健康检查 - 未连接');
+      return false;
+    }
+    logger.d('MobileFilesAdapter: 连接健康检查 - 正常');
+    return true;
+  }
+
+  @override
   NasFileSystem get fileSystem {
     if (!_connected) {
       throw StateError('未连接');

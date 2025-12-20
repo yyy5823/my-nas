@@ -81,6 +81,17 @@ class MobileMusicAdapter implements NasAdapter {
   }
 
   @override
+  Future<bool> checkConnectionHealth() async {
+    // 移动端媒体始终可用（只要有权限）
+    if (!_connected) {
+      logger.d('MobileMusicAdapter: 连接健康检查 - 未连接');
+      return false;
+    }
+    logger.d('MobileMusicAdapter: 连接健康检查 - 正常');
+    return true;
+  }
+
+  @override
   NasFileSystem get fileSystem {
     if (!_connected) {
       throw StateError('未连接');

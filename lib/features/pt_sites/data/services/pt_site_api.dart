@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:html/parser.dart' as html_parser;
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 import 'package:logger/logger.dart';
@@ -688,92 +689,158 @@ class GenericPTSiteApi extends PTSiteApi {
   }
 
   /// 解析 NexusPHP 种子列表 HTML
+  /// 使用 html 包进行 DOM 解析，支持嵌套标签
   List<PTTorrent> _parseNexusPHPTorrents(String html) {
     final torrents = <PTTorrent>[];
 
     _logger.d('GenericPTSiteApi._parseNexusPHPTorrents: HTML 长度 = ${html.length} 字符');
 
     try {
-      // 使用正则表达式提取种子信息
-      // NexusPHP 种子列表格式: <tr class="*_tr">...</tr>
-      final torrentRowRegex = RegExp(
-        '<tr[^>]*class="[^"]*torrent[^"]*"[^>]*>(.*?)</tr>',
-        dotAll: true,
-        caseSensitive: false,
-      );
+      final document = html_parser.parse(html);
 
-      // 如果没有找到带 torrent class 的行，尝试其他常见模式
-      var matches = torrentRowRegex.allMatches(html);
-      _logger.d('GenericPTSiteApi._parseNexusPHPTorrents: 正则1匹配到 ${matches.length} 行');
+      // 查找种子表格 - NexusPHP 通常使用 class 包含 "torrents" 的表格
+      final tables = document.querySelectorAll('table.torrents, table#torrent_table, table[class*="torrent"]');
+      _logger.d('GenericPTSiteApi._parseNexusPHPTorrents: 找到 ${tables.length} 个种子表格');
 
-      if (matches.isEmpty) {
-        // 尝试匹配带 id="torrent_" 的行
-        final altRegex = RegExp(
-          '<tr[^>]*id="torrent_[^"]*"[^>]*>(.*?)</tr>',
-          dotAll: true,
-          caseSensitive: false,
-        );
-        matches = altRegex.allMatches(html);
-        _logger.d('GenericPTSiteApi._parseNexusPHPTorrents: 正则2匹配到 ${matches.length} 行');
+      // 如果没找到特定表格，尝试查找包含 details.php 链接的表格
+      var targetTable = tables.isNotEmpty ? tables.first : null;
+      if (targetTable == null) {
+        final allTables = document.querySelectorAll('table');
+        for (final table in allTables) {
+          if (table.querySelector('a[href*="details.php"]') != null) {
+            targetTable = table;
+            _logger.d('GenericPTSiteApi._parseNexusPHPTorrents: 通过 details.php 链接找到表格');
+            break;
+          }
+        }
       }
 
-      // 如果还是没有匹配，尝试更通用的模式
-      if (matches.isEmpty) {
-        // 尝试匹配任何包含 details.php 的行
-        final genericRegex = RegExp(
-          '<tr[^>]*>(.*?details.php.*?)</tr>',
-          dotAll: true,
-          caseSensitive: false,
-        );
-        matches = genericRegex.allMatches(html);
-        _logger.d('GenericPTSiteApi._parseNexusPHPTorrents: 正则3(通用)匹配到 ${matches.length} 行');
+      if (targetTable == null) {
+        _logger.w('GenericPTSiteApi._parseNexusPHPTorrents: 未找到种子表格');
+        return torrents;
       }
 
-      for (final match in matches) {
-        final rowHtml = match.group(1) ?? '';
+      // 获取所有行
+      final rows = targetTable.querySelectorAll('tr');
+      _logger.d('GenericPTSiteApi._parseNexusPHPTorrents: 表格中有 ${rows.length} 行');
 
-        // 提取种子 ID 和标题
-        final detailMatch = RegExp(
-          r'href="[^"]*details\.php\?id=(\d+)[^"]*"[^>]*>([^<]+)',
-          caseSensitive: false,
-        ).firstMatch(rowHtml);
+      for (final row in rows) {
+        // 跳过表头行
+        if (row.querySelector('th') != null) continue;
 
-        if (detailMatch == null) continue;
+        // 查找详情链接 - 这是识别种子行的关键
+        final detailLink = row.querySelector('a[href*="details.php"]');
+        if (detailLink == null) continue;
 
-        final id = detailMatch.group(1) ?? '';
-        final name = _htmlDecode(detailMatch.group(2)?.trim() ?? '');
+        // 提取种子 ID
+        final href = detailLink.attributes['href'] ?? '';
+        final idMatch = RegExp(r'id=(\d+)').firstMatch(href);
+        if (idMatch == null) continue;
+        final id = idMatch.group(1) ?? '';
 
-        if (id.isEmpty || name.isEmpty) continue;
+        // 提取标题 - 使用 text 属性获取所有嵌套文本
+        final name = _htmlDecode(detailLink.text.trim());
+        if (name.isEmpty) continue;
 
-        // 提取副标题
-        final smallDescrMatch = RegExp(
-          'class="[^"]*torrentname[^"]*"[^>]*>.*?<br[^>]*/?>([^<]+)',
-          dotAll: true,
-          caseSensitive: false,
-        ).firstMatch(rowHtml);
-        final smallDescr = _htmlDecode(smallDescrMatch?.group(1)?.trim() ?? '');
+        // 提取副标题 - 通常在标题链接后面或 br 标签后
+        String? smallDescr;
+        final torrentNameCell = row.querySelector('td.torrentname, td.embedded, td[class*="name"]');
+        if (torrentNameCell != null) {
+          // 查找 br 标签后的文本或 class 包含 subtitle 的元素
+          final subtitleEl = torrentNameCell.querySelector('.subtitle, .torrent_small, span[title]');
+          if (subtitleEl != null) {
+            smallDescr = _htmlDecode(subtitleEl.text.trim());
+          } else {
+            // 尝试获取 br 后的文本节点
+            final brEl = torrentNameCell.querySelector('br');
+            if (brEl != null && brEl.nextElementSibling != null) {
+              smallDescr = _htmlDecode(brEl.nextElementSibling!.text.trim());
+            }
+          }
+        }
 
-        // 提取大小
-        final sizeMatch = RegExp(
-          r'(\d+(?:\.\d+)?)\s*(GB|MB|KB|TB|GiB|MiB|KiB|TiB)',
-          caseSensitive: false,
-        ).firstMatch(rowHtml);
-        final size = _parseSize(sizeMatch?.group(0) ?? '');
+        // 提取大小 - 从单元格中查找
+        var size = 0;
+        final cells = row.querySelectorAll('td');
+        for (final cell in cells) {
+          final cellText = cell.text;
+          final sizeMatch = RegExp(
+            r'(\d+(?:\.\d+)?)\s*(GB|MB|KB|TB|GiB|MiB|KiB|TiB)',
+            caseSensitive: false,
+          ).firstMatch(cellText);
+          if (sizeMatch != null) {
+            final parsedSize = _parseSize(sizeMatch.group(0) ?? '');
+            if (parsedSize > 0) {
+              size = parsedSize;
+              break;
+            }
+          }
+        }
 
-        // 提取做种/下载/完成数
-        final seedersMatch = RegExp(r'class="[^"]*seeders[^"]*"[^>]*>(\d+)', caseSensitive: false).firstMatch(rowHtml);
-        final leechersMatch = RegExp(r'class="[^"]*leechers[^"]*"[^>]*>(\d+)', caseSensitive: false).firstMatch(rowHtml);
-        final snatchedMatch = RegExp(r'class="[^"]*snatched[^"]*"[^>]*>(\d+)', caseSensitive: false).firstMatch(rowHtml);
+        // 提取做种/下载/完成数 - 从带有特定 class 或 title 的元素
+        var seeders = 0;
+        var leechers = 0;
+        var snatched = 0;
 
-        final seeders = int.tryParse(seedersMatch?.group(1) ?? '') ?? 0;
-        final leechers = int.tryParse(leechersMatch?.group(1) ?? '') ?? 0;
-        final snatched = int.tryParse(snatchedMatch?.group(1) ?? '') ?? 0;
+        // 方法1: 通过 class 名称查找
+        final seedersEl = row.querySelector('.seeders, td[class*="seeder"]');
+        final leechersEl = row.querySelector('.leechers, td[class*="leecher"]');
+        final snatchedEl = row.querySelector('.snatched, td[class*="snatch"], td[class*="times"]');
 
-        // 检测免费状态
-        final isFree = RegExp('free|pro_free|pro_free2up', caseSensitive: false).hasMatch(rowHtml);
-        final isDoubleFree = RegExp('pro_free2up|twoupfree', caseSensitive: false).hasMatch(rowHtml);
-        final isDoubleUp = RegExp('pro_2up|twoup', caseSensitive: false).hasMatch(rowHtml);
-        final isHalfDown = RegExp('pro_50pctdown|halfdown', caseSensitive: false).hasMatch(rowHtml);
+        if (seedersEl != null) seeders = int.tryParse(seedersEl.text.replaceAll(RegExp(r'[^\d]'), '')) ?? 0;
+        if (leechersEl != null) leechers = int.tryParse(leechersEl.text.replaceAll(RegExp(r'[^\d]'), '')) ?? 0;
+        if (snatchedEl != null) snatched = int.tryParse(snatchedEl.text.replaceAll(RegExp(r'[^\d]'), '')) ?? 0;
+
+        // 方法2: 通过链接查找 (NexusPHP 常见模式)
+        if (seeders == 0) {
+          final seedersLink = row.querySelector('a[href*="seeders"], a[title*="做种"], a[title*="seeder"]');
+          if (seedersLink != null) {
+            seeders = int.tryParse(seedersLink.text.replaceAll(RegExp(r'[^\d]'), '')) ?? 0;
+          }
+        }
+        if (leechers == 0) {
+          final leechersLink = row.querySelector('a[href*="leechers"], a[title*="下载"], a[title*="leecher"]');
+          if (leechersLink != null) {
+            leechers = int.tryParse(leechersLink.text.replaceAll(RegExp(r'[^\d]'), '')) ?? 0;
+          }
+        }
+        if (snatched == 0) {
+          final snatchedLink = row.querySelector('a[href*="snatches"], a[title*="完成"], a[title*="snatch"]');
+          if (snatchedLink != null) {
+            snatched = int.tryParse(snatchedLink.text.replaceAll(RegExp(r'[^\d]'), '')) ?? 0;
+          }
+        }
+
+        // 方法3: 如果还是没找到，尝试从后三列提取数字
+        if (seeders == 0 && leechers == 0 && snatched == 0 && cells.length >= 4) {
+          // 通常顺序是: ... 大小, 做种, 下载, 完成
+          for (var i = cells.length - 1; i >= cells.length - 4 && i >= 0; i--) {
+            final text = cells[i].text.trim();
+            final num = int.tryParse(text.replaceAll(RegExp(r'[^\d]'), ''));
+            if (num != null && num >= 0) {
+              if (i == cells.length - 1) {
+                snatched = num;
+              } else if (i == cells.length - 2) {
+                leechers = num;
+              } else if (i == cells.length - 3) {
+                seeders = num;
+              }
+            }
+          }
+        }
+
+        // 检测免费状态 - 从 class 或 img 元素判断
+        final rowHtml = row.outerHtml.toLowerCase();
+        final isFree = rowHtml.contains('free') ||
+            row.querySelector('img[class*="free"], img[src*="free"], .pro_free') != null;
+        final isDoubleFree = rowHtml.contains('2xfree') ||
+            rowHtml.contains('twoupfree') ||
+            row.querySelector('img[class*="2xfree"], .pro_free2up') != null;
+        final isDoubleUp = rowHtml.contains('2x') && rowHtml.contains('up') ||
+            row.querySelector('img[class*="2xup"], .pro_2up') != null;
+        final isHalfDown = rowHtml.contains('50%') ||
+            rowHtml.contains('halfdown') ||
+            row.querySelector('img[class*="50"], .pro_50pctdown') != null;
 
         torrents.add(PTTorrent(
           id: id,
@@ -783,10 +850,10 @@ class GenericPTSiteApi extends PTSiteApi {
           leechers: leechers,
           snatched: snatched,
           uploadTime: DateTime.now(), // HTML 中时间格式复杂，暂时用当前时间
-          smallDescr: smallDescr.isNotEmpty ? smallDescr : null,
+          smallDescr: (smallDescr?.isNotEmpty ?? false) ? smallDescr : null,
           detailUrl: '$baseUrl/details.php?id=$id',
           status: PTTorrentStatus(
-            isFree: isFree,
+            isFree: isFree || isDoubleFree,
             isDoubleFree: isDoubleFree,
             isDoubleUp: isDoubleUp,
             isHalfDown: isHalfDown,
@@ -795,8 +862,9 @@ class GenericPTSiteApi extends PTSiteApi {
       }
 
       _logger.i('GenericPTSiteApi._parseNexusPHPTorrents: 成功解析 ${torrents.length} 个种子');
-    } on Exception catch (e) {
+    } on Exception catch (e, st) {
       _logger.w('GenericPTSiteApi._parseNexusPHPTorrents: 解析失败 - $e');
+      AppError.ignore(e, st, 'NexusPHP HTML 解析失败');
     }
 
     return torrents;

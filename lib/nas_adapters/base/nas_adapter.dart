@@ -49,6 +49,14 @@ abstract class NasAdapter {
   Future<ConnectionResult> connect(ConnectionConfig config);
   Future<void> disconnect();
 
+  /// 检查连接健康状态
+  ///
+  /// 实际测试连接是否有效（如列出目录），而不仅仅检查状态标志。
+  /// 用于检测设备休眠后连接是否仍然有效。
+  ///
+  /// 返回 true 表示连接健康，false 表示连接已断开或异常。
+  Future<bool> checkConnectionHealth();
+
   /// 文件系统操作
   NasFileSystem get fileSystem;
 

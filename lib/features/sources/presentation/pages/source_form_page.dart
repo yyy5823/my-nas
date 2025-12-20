@@ -8,6 +8,7 @@ import 'package:my_nas/features/sources/domain/entities/source_form_config.dart'
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/features/sources/presentation/widgets/two_fa_sheet.dart';
 import 'package:my_nas/service_adapters/aria2/api/aria2_api.dart';
+import 'package:my_nas/service_adapters/moviepilot/api/moviepilot_api.dart';
 import 'package:my_nas/service_adapters/nastool/api/nastool_api.dart';
 import 'package:my_nas/service_adapters/qbittorrent/api/qbittorrent_api.dart';
 import 'package:my_nas/service_adapters/transmission/api/transmission_api.dart';
@@ -794,9 +795,19 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
         } finally {
           aria2Api.dispose();
         }
+      case SourceType.moviepilot:
+        final mpApiToken = _formValues['apiToken'] as String? ?? '';
+        final mpApi = MoviePilotApi(
+          baseUrl: source.baseUrl,
+          apiToken: mpApiToken,
+        );
+        try {
+          return await mpApi.validateConnection();
+        } finally {
+          mpApi.dispose();
+        }
       // TODO: 添加其他服务类源的验证逻辑
       case SourceType.trakt:
-      case SourceType.moviepilot:
       case SourceType.jellyfin:
       case SourceType.emby:
       case SourceType.plex:

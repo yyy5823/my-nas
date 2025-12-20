@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,6 +16,7 @@ import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/pages/media_library_page.dart';
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
+import 'package:my_nas/features/video/data/services/tmdb_service.dart';
 import 'package:my_nas/features/video/data/services/video_database_service.dart';
 import 'package:my_nas/features/video/data/services/video_history_service.dart';
 import 'package:my_nas/features/video/data/services/video_library_cache_service.dart';
@@ -29,6 +31,7 @@ import 'package:my_nas/features/video/presentation/pages/video_detail_page.dart'
 import 'package:my_nas/features/video/presentation/pages/video_duplicates_page.dart';
 import 'package:my_nas/features/video/presentation/pages/video_player_page.dart';
 import 'package:my_nas/features/video/presentation/providers/video_category_settings_provider.dart';
+import 'package:my_nas/features/video/presentation/providers/video_detail_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/video_history_provider.dart';
 import 'package:my_nas/features/video/presentation/widgets/category_browse_cards.dart';
 import 'package:my_nas/features/video/presentation/widgets/hero_banner.dart';
@@ -875,7 +878,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       final batch2Stopwatch = Stopwatch()..start();
       final batch2 = await Future.wait([
         _db.getTvShowGroupRepresentatives(limit: 30, enabledPaths: effectiveEnabledPaths),
-        _db.getMovieCollections(minCount: 2),
+        _db.getMovieCollections(minCount: 1),
         _db.getByCategory(MediaCategory.unknown, limit: 30, enabledPaths: effectiveEnabledPaths),
       ]).timeout(
         const Duration(seconds: 5),
@@ -3929,12 +3932,14 @@ class _LazyPosterCard extends ConsumerWidget {
   const _LazyPosterCard({
     required this.metadata, required this.onTap, required this.isDark, super.key,
     this.width = 130,
+    this.showMargin = true,
   });
 
   final VideoMetadata metadata;
   final VoidCallback onTap;
   final bool isDark;
   final double width;
+  final bool showMargin;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => _VerticalPosterCard(
@@ -3942,6 +3947,7 @@ class _LazyPosterCard extends ConsumerWidget {
       onTap: onTap,
       isDark: isDark,
       width: width,
+      showMargin: showMargin,
     );
 }
 
@@ -3953,6 +3959,7 @@ class _VerticalPosterCard extends ConsumerStatefulWidget {
     required this.isDark,
     this.width = 130,
     this.onContextMenu,
+    this.showMargin = true,
   });
 
   final VideoMetadata metadata;
@@ -3960,6 +3967,8 @@ class _VerticalPosterCard extends ConsumerStatefulWidget {
   final bool isDark;
   final double width;
   final void Function(VideoMetadata metadata)? onContextMenu;
+  /// 是否显示右边距（用于水平滚动列表，GridView 不需要）
+  final bool showMargin;
 
   @override
   ConsumerState<_VerticalPosterCard> createState() => _VerticalPosterCardState();
@@ -4004,7 +4013,7 @@ class _VerticalPosterCardState extends ConsumerState<_VerticalPosterCard> {
 
     return Container(
       width: widget.width,
-      margin: const EdgeInsets.only(right: 12),
+      margin: widget.showMargin ? const EdgeInsets.only(right: 12) : null,
       child: MouseRegion(
         onEnter: (_) => setState(() => _isHovered = true),
         onExit: (_) => setState(() => _isHovered = false),
@@ -4746,6 +4755,7 @@ class _CategoryFullPageState extends ConsumerState<_CategoryFullPage> {
                         onTap: () => _openVideoDetail(context, metadata),
                         isDark: isDark,
                         width: (width - 32 - (crossAxisCount - 1) * 12) / crossAxisCount,
+                        showMargin: false,
                       );
                     },
                   ),
@@ -5271,12 +5281,15 @@ class _TvShowPosterCard extends StatefulWidget {
     required this.isDark,
     // ignore: unused_element_parameter
     this.width = 130,
+    this.showMargin = true,
   });
 
   final TvShowGroup group;
   final VoidCallback onTap;
   final bool isDark;
   final double width;
+  /// 是否显示右边距（用于水平滚动列表，GridView 不需要）
+  final bool showMargin;
 
   @override
   State<_TvShowPosterCard> createState() => _TvShowPosterCardState();
@@ -5313,7 +5326,7 @@ class _TvShowPosterCardState extends State<_TvShowPosterCard> {
 
     return Container(
       width: widget.width,
-      margin: const EdgeInsets.only(right: 12),
+      margin: widget.showMargin ? const EdgeInsets.only(right: 12) : null,
       child: MouseRegion(
         onEnter: (_) => setState(() => _isHovered = true),
         onExit: (_) => setState(() => _isHovered = false),
@@ -5569,6 +5582,7 @@ class _TvShowsFullPageState extends ConsumerState<_TvShowsFullPage> {
             group: group,
             onTap: () => _openVideoDetail(context, group.representative),
             isDark: isDark,
+            showMargin: false,
           );
         },
       ),
@@ -5927,6 +5941,7 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
                             metadata: movie,
                             onTap: () => _openVideoDetail(context, movie),
                             isDark: isDark,
+                            showMargin: false,
                           );
                         },
                       ),
@@ -6675,6 +6690,7 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
                             metadata: tvShow,
                             onTap: () => _openVideoDetail(context, tvShow),
                             isDark: isDark,
+                            showMargin: false,
                           );
                         },
                       ),
@@ -6938,6 +6954,7 @@ class _OthersPaginatedPageState extends ConsumerState<_OthersPaginatedPage> {
                       metadata: video,
                       onTap: () => _openVideoDetail(context, video),
                       isDark: isDark,
+                      showMargin: false,
                     );
                   },
                 ),
@@ -7044,9 +7061,9 @@ class _MovieCollectionRow extends StatelessWidget {
             ],
           ),
         ),
-        // 系列列表
+        // 系列列表（竖向海报风格，和普通电影/剧集卡片大小一致）
         SizedBox(
-          height: 180,
+          height: 235, // 130 * 1.5 + 标题区域约 40
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -7066,7 +7083,7 @@ class _MovieCollectionRow extends StatelessWidget {
   }
 }
 
-/// 电影系列卡片
+/// 电影系列卡片（竖向海报风格，和普通电影/剧集卡片大小一致）
 class _MovieCollectionCard extends StatefulWidget {
   const _MovieCollectionCard({
     required this.collection,
@@ -7085,6 +7102,9 @@ class _MovieCollectionCard extends StatefulWidget {
 class _MovieCollectionCardState extends State<_MovieCollectionCard> {
   bool _isHovered = false;
 
+  static const double _cardWidth = 130.0;
+  static const double _posterHeight = _cardWidth * 1.5; // 2:3 比例
+
   @override
   Widget build(BuildContext context) {
     final collection = widget.collection;
@@ -7092,105 +7112,126 @@ class _MovieCollectionCardState extends State<_MovieCollectionCard> {
     final hasPoster = posterUrl != null && posterUrl.isNotEmpty;
 
     return Container(
-      width: 280,
+      width: _cardWidth,
       margin: const EdgeInsets.only(right: 12),
       child: MouseRegion(
         onEnter: (_) => setState(() => _isHovered = true),
         onExit: (_) => setState(() => _isHovered = false),
         child: GestureDetector(
           onTap: widget.onTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            transform: Matrix4.identity()..scaleByDouble(_isHovered ? 1.02 : 1.0, _isHovered ? 1.02 : 1.0, 1, 1),
-            transformAlignment: Alignment.center,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: _isHovered ? 0.3 : 0.15),
-                    blurRadius: _isHovered ? 16 : 8,
-                    offset: Offset(0, _isHovered ? 8 : 4),
-                  ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    // 背景图 - 显示多张海报叠加效果
-                    _buildCollectionPosters(hasPoster, posterUrl),
-                    // 渐变遮罩
-                    Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.transparent,
-                            Colors.black.withValues(alpha: 0.7),
-                            Colors.black.withValues(alpha: 0.9),
-                          ],
-                          stops: const [0.3, 0.7, 1.0],
-                        ),
+          child: AnimatedScale(
+            scale: _isHovered ? 1.05 : 1.0,
+            duration: const Duration(milliseconds: 150),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 海报区域
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  width: _cardWidth,
+                  height: _posterHeight,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: _isHovered ? 0.4 : 0.2),
+                        blurRadius: _isHovered ? 16 : 8,
+                        offset: Offset(0, _isHovered ? 8 : 4),
                       ),
-                    ),
-                    // 内容
-                    Positioned(
-                      left: 12,
-                      right: 12,
-                      bottom: 12,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // 系列名称
-                          Text(
-                            collection.name,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        // 背景海报
+                        if (hasPoster)
+                          AdaptiveImage(
+                            imageUrl: posterUrl,
+                            placeholder: (_) => _buildPlaceholder(),
+                            errorWidget: (_, _) => _buildPlaceholder(),
+                          )
+                        else
+                          _buildPlaceholder(),
+                        // 底部渐变遮罩
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          child: Container(
+                            height: _posterHeight * 0.4,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.transparent,
+                                  Colors.black.withValues(alpha: 0.9),
+                                ],
+                              ),
                             ),
                           ),
-                          const SizedBox(height: 4),
-                          // 电影数量
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.movie_rounded,
-                                size: 14,
-                                color: Colors.grey[400],
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                '${collection.movieCount} 部电影',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey[400],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                    // 悬停边框
-                    if (_isHovered)
-                      Container(
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            color: AppColors.primary,
-                            width: 2,
-                          ),
-                          borderRadius: BorderRadius.circular(12),
                         ),
-                      ),
-                  ],
+                        // 电影数量徽章
+                        Positioned(
+                          top: 6,
+                          right: 6,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withValues(alpha: 0.9),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              '${collection.movieCount}部',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                        // 悬停边框
+                        if (_isHovered)
+                          Positioned.fill(
+                            child: Container(
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: AppColors.primary,
+                                  width: 2,
+                                ),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
+                // 标题
+                const SizedBox(height: 8),
+                Text(
+                  collection.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: widget.isDark ? Colors.white : Colors.black87,
+                  ),
+                ),
+                // 年份信息
+                if (collection.movies.isNotEmpty)
+                  Text(
+                    _getYearRange(),
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: widget.isDark ? Colors.grey[500] : Colors.grey[600],
+                    ),
+                  ),
+              ],
             ),
           ),
         ),
@@ -7198,75 +7239,15 @@ class _MovieCollectionCardState extends State<_MovieCollectionCard> {
     );
   }
 
-  Widget _buildCollectionPosters(bool hasPoster, String? posterUrl) {
-    final movies = widget.collection.movies;
-
-    // 如果只有一个电影或没有海报，显示单张
-    if (movies.length == 1 || !hasPoster) {
-      if (hasPoster) {
-        return AdaptiveImage(
-          imageUrl: posterUrl!,
-          placeholder: (_) => _buildPlaceholder(),
-          errorWidget: (_, _) => _buildPlaceholder(),
-        );
-      }
-      return _buildPlaceholder();
-    }
-
-    // 显示多张海报叠加效果（最多3张）
-    final showPosters = movies.take(3).toList();
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        // 背景 - 最后一张（稍微右移和缩小）
-        if (showPosters.length >= 3 && showPosters[2].posterUrl != null)
-          Positioned(
-            left: 20,
-            right: -10,
-            top: 5,
-            bottom: 5,
-            child: Transform.scale(
-              scale: 0.85,
-              child: Opacity(
-                opacity: 0.4,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: AdaptiveImage(
-                    imageUrl: showPosters[2].posterUrl!,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        // 中间层
-        if (showPosters.length >= 2 && showPosters[1].posterUrl != null)
-          Positioned(
-            left: 10,
-            right: 0,
-            top: 3,
-            bottom: 3,
-            child: Transform.scale(
-              scale: 0.92,
-              child: Opacity(
-                opacity: 0.6,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: AdaptiveImage(
-                    imageUrl: showPosters[1].posterUrl!,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        // 前景 - 第一张
-        if (showPosters.isNotEmpty && showPosters[0].posterUrl != null)
-          AdaptiveImage(
-            imageUrl: showPosters[0].posterUrl!,
-            placeholder: (_) => _buildPlaceholder(),
-            errorWidget: (_, _) => _buildPlaceholder(),
-          ),
-      ],
-    );
+  String _getYearRange() {
+    final years = widget.collection.movies
+        .where((m) => m.year != null)
+        .map((m) => m.year!)
+        .toList();
+    if (years.isEmpty) return '';
+    years.sort();
+    if (years.length == 1) return '${years.first}';
+    return '${years.first} - ${years.last}';
   }
 
   Widget _buildPlaceholder() => Container(
@@ -7429,6 +7410,8 @@ class _MovieCollectionGridCard extends StatelessWidget {
 }
 
 /// 电影系列详情页面
+///
+/// 支持显示本地电影和 TMDB 上的其他电影
 class _MovieCollectionPage extends ConsumerWidget {
   const _MovieCollectionPage({
     required this.collection,
@@ -7441,99 +7424,330 @@ class _MovieCollectionPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final movies = collection.movies;
+    final localMovies = collection.movies;
+    final isTmdbCollection = collection.id > 0; // 正数 ID 是 TMDB 系列
+
+    // 如果是 TMDB 系列，获取完整系列信息
+    final tmdbCollectionAsync = isTmdbCollection
+        ? ref.watch(movieCollectionProvider(collection.id))
+        : const AsyncValue<TmdbCollection?>.data(null);
 
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF0D0D1A) : Colors.grey[50],
       body: CustomScrollView(
         slivers: [
           // 顶部 AppBar 带背景图
-          SliverAppBar(
-            expandedHeight: 200,
-            pinned: true,
-            backgroundColor: isDark ? const Color(0xFF0D0D1A) : Colors.white,
-            flexibleSpace: FlexibleSpaceBar(
-              title: Text(
-                collection.name,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              background: collection.backdropUrl != null
-                  ? Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        AdaptiveImage(
-                          imageUrl: collection.backdropUrl!,
-                        ),
-                        Container(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                Colors.transparent,
-                                (isDark ? const Color(0xFF0D0D1A) : Colors.white).withValues(alpha: 0.8),
-                                if (isDark) const Color(0xFF0D0D1A) else Colors.white,
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    )
-                  : null,
-            ),
-          ),
+          _buildAppBar(isDark, tmdbCollectionAsync),
           // 电影数量标签
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.movie_rounded,
-                    size: 20,
-                    color: isDark ? Colors.grey[400] : Colors.grey[600],
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '${movies.length} 部电影',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: isDark ? Colors.grey[400] : Colors.grey[600],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+          _buildMovieCountLabel(isDark, tmdbCollectionAsync),
           // 电影列表
-          SliverPadding(
-            padding: const EdgeInsets.all(16),
-            sliver: SliverGrid(
-              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: 160,
-                mainAxisSpacing: 16,
-                crossAxisSpacing: 12,
-                childAspectRatio: 0.55,
-              ),
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final movie = movies[index];
-                  return _VerticalPosterCard(
-                    metadata: movie,
-                    onTap: () => onMovieTap(movie),
-                    isDark: isDark,
-                  );
-                },
-                childCount: movies.length,
-              ),
-            ),
-          ),
+          _buildMovieGrid(context, isDark, localMovies, tmdbCollectionAsync),
           // 底部留白
           const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
         ],
+      ),
+    );
+  }
+
+  Widget _buildAppBar(bool isDark, AsyncValue<TmdbCollection?> tmdbAsync) {
+    // 优先使用 TMDB 的背景图
+    final backdropUrl = tmdbAsync.valueOrNull?.backdropUrl ?? collection.backdropUrl;
+
+    return SliverAppBar(
+      expandedHeight: 200,
+      pinned: true,
+      backgroundColor: isDark ? const Color(0xFF0D0D1A) : Colors.white,
+      flexibleSpace: FlexibleSpaceBar(
+        title: Text(
+          collection.name,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        background: backdropUrl != null
+            ? Stack(
+                fit: StackFit.expand,
+                children: [
+                  AdaptiveImage(imageUrl: backdropUrl),
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          (isDark ? const Color(0xFF0D0D1A) : Colors.white).withValues(alpha: 0.8),
+                          if (isDark) const Color(0xFF0D0D1A) else Colors.white,
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              )
+            : null,
+      ),
+    );
+  }
+
+  Widget _buildMovieCountLabel(bool isDark, AsyncValue<TmdbCollection?> tmdbAsync) {
+    final localCount = collection.movies.length;
+    final tmdbCollection = tmdbAsync.valueOrNull;
+    final tmdbCount = tmdbCollection?.parts.length;
+
+    String countText;
+    if (tmdbCount != null && tmdbCount > localCount) {
+      countText = '已收藏 $localCount / $tmdbCount 部';
+    } else {
+      countText = '$localCount 部电影';
+    }
+
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        child: Row(
+          children: [
+            Icon(
+              Icons.movie_rounded,
+              size: 20,
+              color: isDark ? Colors.grey[400] : Colors.grey[600],
+            ),
+            const SizedBox(width: 8),
+            Text(
+              countText,
+              style: TextStyle(
+                fontSize: 14,
+                color: isDark ? Colors.grey[400] : Colors.grey[600],
+              ),
+            ),
+            // 加载中指示器
+            if (tmdbAsync.isLoading) ...[
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 12,
+                height: 12,
+                child: CircularProgressIndicator(
+                  strokeWidth: 1.5,
+                  valueColor: AlwaysStoppedAnimation(
+                    isDark ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMovieGrid(
+    BuildContext context,
+    bool isDark,
+    List<VideoMetadata> localMovies,
+    AsyncValue<TmdbCollection?> tmdbAsync,
+  ) {
+    final tmdbCollection = tmdbAsync.valueOrNull;
+
+    // 如果有 TMDB 数据，合并本地和 TMDB 电影列表
+    if (tmdbCollection != null && tmdbCollection.parts.isNotEmpty) {
+      // 按发布日期排序的 TMDB 电影
+      final sortedParts = tmdbCollection.sortedParts;
+
+      return SliverPadding(
+        padding: const EdgeInsets.all(16),
+        sliver: SliverGrid(
+          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+            maxCrossAxisExtent: 160,
+            mainAxisSpacing: 16,
+            crossAxisSpacing: 12,
+            childAspectRatio: 0.55,
+          ),
+          delegate: SliverChildBuilderDelegate(
+            (context, index) {
+              final part = sortedParts[index];
+              final localMovie = localMovies.firstWhereOrNull((m) => m.tmdbId == part.id);
+              final hasLocal = localMovie != null;
+
+              return _CollectionMovieCard(
+                part: part,
+                localMovie: localMovie,
+                hasLocal: hasLocal,
+                onTap: hasLocal ? () => onMovieTap(localMovie) : null,
+                isDark: isDark,
+              );
+            },
+            childCount: sortedParts.length,
+          ),
+        ),
+      );
+    }
+
+    // 没有 TMDB 数据时，显示本地电影
+    return SliverPadding(
+      padding: const EdgeInsets.all(16),
+      sliver: SliverGrid(
+        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: 160,
+          mainAxisSpacing: 16,
+          crossAxisSpacing: 12,
+          childAspectRatio: 0.55,
+        ),
+        delegate: SliverChildBuilderDelegate(
+          (context, index) {
+            final movie = localMovies[index];
+            return _VerticalPosterCard(
+              metadata: movie,
+              onTap: () => onMovieTap(movie),
+              isDark: isDark,
+              showMargin: false,
+            );
+          },
+          childCount: localMovies.length,
+        ),
+      ),
+    );
+  }
+}
+
+/// 系列电影卡片（支持显示本地/未收藏状态）
+class _CollectionMovieCard extends StatelessWidget {
+  const _CollectionMovieCard({
+    required this.part,
+    required this.localMovie,
+    required this.hasLocal,
+    required this.onTap,
+    required this.isDark,
+  });
+
+  final TmdbCollectionPart part;
+  final VideoMetadata? localMovie;
+  final bool hasLocal;
+  final VoidCallback? onTap;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    // posterUrl 可能是空字符串，需要检查
+    final posterUrl = part.posterUrl.isNotEmpty ? part.posterUrl : localMovie?.posterUrl;
+    final year = part.releaseDate.isNotEmpty
+        ? part.releaseDate.substring(0, 4)
+        : localMovie?.year?.toString();
+
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 200),
+        opacity: hasLocal ? 1.0 : 0.5,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 海报
+            Expanded(
+              child: Stack(
+                children: [
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.2),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: posterUrl != null
+                          ? AdaptiveImage(imageUrl: posterUrl)
+                          : Container(
+                              color: isDark ? Colors.grey[800] : Colors.grey[300],
+                              child: Center(
+                                child: Icon(
+                                  Icons.movie_rounded,
+                                  size: 48,
+                                  color: isDark ? Colors.grey[600] : Colors.grey[500],
+                                ),
+                              ),
+                            ),
+                    ),
+                  ),
+                  // 未收藏标签
+                  if (!hasLocal)
+                    Positioned(
+                      top: 6,
+                      left: 6,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.7),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          '未收藏',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ),
+                    ),
+                  // 评分
+                  if (part.voteAverage > 0)
+                    Positioned(
+                      bottom: 6,
+                      right: 6,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.7),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.star_rounded, color: Colors.amber, size: 12),
+                            const SizedBox(width: 2),
+                            Text(
+                              part.voteAverage.toStringAsFixed(1),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            // 标题
+            const SizedBox(height: 8),
+            Text(
+              part.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: hasLocal
+                    ? (isDark ? Colors.white : Colors.black87)
+                    : (isDark ? Colors.grey[500] : Colors.grey[600]),
+              ),
+            ),
+            // 年份
+            if (year != null)
+              Text(
+                year,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isDark ? Colors.grey[500] : Colors.grey[600],
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -7998,6 +8212,7 @@ class _FilteredVideosPaginatedPageState
                       metadata: video,
                       isDark: isDark,
                       onTap: () => widget.onVideoTap(video),
+                      showMargin: false,
                     );
                   },
                 ),

@@ -222,6 +222,40 @@ class UGreenAdapter implements NasAdapter {
   }
 
   @override
+  Future<bool> checkConnectionHealth() async {
+    if (!_connected) {
+      logger.d('UGreenAdapter: 连接健康检查 - 未连接');
+      return false;
+    }
+
+    try {
+      if (_useWebDav && _webdavClient != null) {
+        // 使用 WebDAV ping 检查
+        await _webdavClient!.ping().timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {
+            throw Exception('连接健康检查超时');
+          },
+        );
+      } else {
+        // 使用 UGOS API 检查
+        await _api.getDeviceInfo().timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {
+            throw Exception('连接健康检查超时');
+          },
+        );
+      }
+      logger.d('UGreenAdapter: 连接健康检查 - 正常');
+      return true;
+    } on Exception catch (e) {
+      logger.w('UGreenAdapter: 连接健康检查 - 失败', e);
+      _connected = false;
+      return false;
+    }
+  }
+
+  @override
   NasFileSystem get fileSystem {
     if (!_connected) {
       throw StateError('未连接到 NAS');

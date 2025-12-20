@@ -136,11 +136,33 @@ class MediaProxyServer {
 
   /// 流式传输文件
   Future<void> _streamFile(HttpRequest request, _ProxyFileInfo fileInfo) async {
-    // 获取文件系统
-    final conn = SourceManagerService().getConnection(fileInfo.sourceId);
+    // 获取文件系统，如果连接不健康则尝试重连
+    var conn = SourceManagerService().getConnection(fileInfo.sourceId);
 
     if (conn == null || conn.status != SourceStatus.connected) {
-      logger.w('MediaProxyServer: 源未连接 ${fileInfo.sourceId}');
+      logger.w('MediaProxyServer: 源未连接，尝试重连 ${fileInfo.sourceId}');
+      // 尝试重连
+      final reconnected = await SourceManagerService().ensureConnectionHealthy(fileInfo.sourceId);
+      if (reconnected) {
+        conn = SourceManagerService().getConnection(fileInfo.sourceId);
+        logger.i('MediaProxyServer: 重连成功 ${fileInfo.sourceId}');
+      }
+    } else {
+      // 检查连接健康状态
+      final isHealthy = await conn.adapter.checkConnectionHealth();
+      if (!isHealthy) {
+        logger.w('MediaProxyServer: 连接不健康，尝试重连 ${fileInfo.sourceId}');
+        final reconnected = await SourceManagerService().ensureConnectionHealthy(fileInfo.sourceId);
+        if (reconnected) {
+          conn = SourceManagerService().getConnection(fileInfo.sourceId);
+          logger.i('MediaProxyServer: 重连成功 ${fileInfo.sourceId}');
+        }
+      }
+    }
+
+    // 再次检查连接状态
+    if (conn == null || conn.status != SourceStatus.connected) {
+      logger.e('MediaProxyServer: 源连接失败 ${fileInfo.sourceId}');
       request.response.statusCode = HttpStatus.serviceUnavailable;
       await request.response.close();
       return;

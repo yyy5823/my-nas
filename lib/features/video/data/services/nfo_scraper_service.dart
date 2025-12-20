@@ -29,6 +29,7 @@ class NfoMetadata {
     this.aired,
     this.setName,
     this.setOverview,
+    this.setTmdbId,
   });
 
   final String? title;
@@ -52,6 +53,7 @@ class NfoMetadata {
   final String? aired;
   final String? setName;      // 电影系列名称（来自 <set><name>...）
   final String? setOverview;  // 电影系列描述（来自 <set><overview>...）
+  final int? setTmdbId;       // 电影系列 TMDB ID（来自 <set><tmdbcolid>...）
 
   bool get hasData => title != null || tmdbId != null;
 
@@ -516,6 +518,7 @@ class NfoScraperService {
         aired: _getElementText(root, 'aired') ?? _getElementText(root, 'premiered'),
         setName: _parseSetName(root),
         setOverview: _parseSetOverview(root),
+        setTmdbId: _parseSetTmdbId(root),
       );
     } on Exception catch (e) {
       logger.e('NfoScraperService: 解析 NFO XML 失败', e);
@@ -671,6 +674,23 @@ class NfoScraperService {
       if (overviewElement != null) {
         final overview = overviewElement.innerText.trim();
         return overview.isNotEmpty ? overview : null;
+      }
+    } on Exception catch (_) {}
+    return null;
+  }
+
+  /// 解析电影系列 TMDB ID
+  ///
+  /// 从 NFO 的 <set><tmdbcolid>...</tmdbcolid></set> 标签中获取
+  int? _parseSetTmdbId(XmlElement root) {
+    try {
+      final setElement = root.findElements('set').firstOrNull;
+      if (setElement == null) return null;
+
+      final tmdbColIdElement = setElement.findElements('tmdbcolid').firstOrNull;
+      if (tmdbColIdElement != null) {
+        final id = tmdbColIdElement.innerText.trim();
+        return int.tryParse(id);
       }
     } on Exception catch (_) {}
     return null;
