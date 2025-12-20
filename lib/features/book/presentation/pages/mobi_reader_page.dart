@@ -139,6 +139,21 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
   String? _initialCfi;
   List<FoliateTocItem> _tocItems = [];
 
+  /// 展平的目录列表（包含层级深度信息）
+  List<(FoliateTocItem, int)> get _flattenedTocItems {
+    final result = <(FoliateTocItem, int)>[];
+    void flatten(List<FoliateTocItem> items, int depth) {
+      for (final item in items) {
+        result.add((item, depth));
+        if (item.subitems.isNotEmpty) {
+          flatten(item.subitems, depth + 1);
+        }
+      }
+    }
+    flatten(_tocItems, 0);
+    return result;
+  }
+
   // 进度保存防抖
   Timer? _saveProgressTimer;
   FoliateLocation? _pendingLocation;
@@ -1027,21 +1042,27 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
                           ),
                         )
                       : ListView.builder(
-                          itemCount: _tocItems.length,
+                          itemCount: _flattenedTocItems.length,
                           itemBuilder: (context, index) {
-                            final item = _tocItems[index];
+                            final (item, depth) = _flattenedTocItems[index];
                             return ListTile(
+                              contentPadding: EdgeInsets.only(
+                                left: 16.0 + depth * 16.0, // 根据层级缩进
+                                right: 16.0,
+                              ),
                               title: Text(
                                 item.label,
                                 style: TextStyle(
                                   color: isDark ? Colors.white : Colors.black87,
+                                  fontSize: depth > 0 ? 14 : 16, // 子目录字体稍小
                                 ),
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                               ),
                               onTap: () {
                                 if (item.href.isNotEmpty) {
-                                  _controller.goToCfi(item.href);
+                                  // 使用 goToHref 而不是 goToCfi
+                                  _controller.goToHref(item.href);
                                 }
                                 setState(() {
                                   _showToc = false;

@@ -38,6 +38,21 @@ class FoliateController {
     );
   }
 
+  /// 跳转到指定链接（用于目录跳转）
+  /// [href] 可以是相对路径如 "chapter1.xhtml" 或带锚点 "chapter1.xhtml#section1"
+  Future<void> goToHref(String href) async {
+    // foliate-js 使用 goTo 方法，传入 href 对象
+    await _webViewController?.evaluateJavascript(
+      source: '''
+        (function() {
+          if (window.reader && window.reader.view) {
+            window.reader.view.goTo("$href");
+          }
+        })()
+      ''',
+    );
+  }
+
   /// 跳转到指定章节
   Future<void> goToSection(int index) async {
     await _webViewController?.evaluateJavascript(
