@@ -1,4 +1,5 @@
 /// 下载相关数据模型
+library;
 
 /// 下载任务
 class NtDownloadTask {
@@ -18,7 +19,7 @@ class NtDownloadTask {
     id: json['id']?.toString() ?? json['hash']?.toString() ?? '',
     name: json['name'] as String? ?? json['title'] as String? ?? '',
     state: json['state'] as String? ?? json['status'] as String? ?? '',
-    progress: (json['progress'] as num?)?.toDouble() ?? 
+    progress: (json['progress'] as num?)?.toDouble() ??
               ((json['percent'] as num?)?.toDouble() ?? 0) / 100,
     size: json['size'] as int? ?? json['total_size'] as int?,
     speed: json['speed'] as int? ?? json['dlspeed'] as int?,
@@ -58,7 +59,7 @@ class NtDownloadHistory {
     enclosure: json['ENCLOSURE'] as String? ?? json['enclosure'] as String?,
     site: json['SITE'] as String? ?? json['site'] as String?,
     description: json['DESCRIPTION'] as String? ?? json['description'] as String?,
-    date: json['DATE'] != null 
+    date: json['DATE'] != null
         ? DateTime.tryParse(json['DATE'] as String)
         : null,
   );

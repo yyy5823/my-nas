@@ -13,7 +13,6 @@ class NasToolAuth {
   
   String? _sessionToken;
   String? _username;
-  DateTime? _loginTime;
 
   /// 是否已认证
   bool get isAuthenticated => _sessionToken != null;
@@ -46,13 +45,12 @@ class NasToolAuth {
         final code = data['code'] as int? ?? -1;
         final success = data['success'] as bool? ?? false;
         final token = data['token'] as String? ?? 
-                      data['data']?['token'] as String?;
+                      (data['data'] as Map<String, dynamic>?)?['token'] as String?;
         
         if (code == 0 || success || token != null) {
           // 登录成功，保存 token
           _sessionToken = token ?? response.headers['authorization'];
           _username = username;
-          _loginTime = DateTime.now();
           
           // 如果没有返回 token，尝试从 cookie 获取
           if (_sessionToken == null) {

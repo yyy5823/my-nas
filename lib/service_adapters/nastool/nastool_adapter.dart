@@ -49,13 +49,13 @@ class NasToolAdapter implements ServiceAdapter {
       if (authType == 'API Token') {
         // API Token 认证
         final apiToken = config.apiKey ?? config.extraConfig?['apiToken'] as String?;
-        
+
         if (apiToken == null || apiToken.isEmpty) {
           return const ServiceConnectionFailure('缺少 API Token');
         }
 
         final valid = await _api!.validateApiToken(apiToken);
-        
+
         if (!valid) {
           _api?.dispose();
           _api = null;
@@ -83,12 +83,12 @@ class NasToolAdapter implements ServiceAdapter {
 
         // 登录认证
         final loginResult = await _api!.login(username, password);
-        
+
         final failureMessage = loginResult.when(
-          success: (_, __) => null,
+          success: (_, _) => null,
           failure: (message) => message,
         );
-        
+
         if (failureMessage != null) {
           _api?.dispose();
           _api = null;

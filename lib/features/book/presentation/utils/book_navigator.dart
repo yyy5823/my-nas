@@ -48,7 +48,7 @@ class BookNavigator {
     // 检测是否为漫画
     if (checkManga && _shouldCheckManga(book)) {
       final isManga = await _mangaDetector.isManga(book, cachedFile: cachedFile);
-      
+
       if (isManga) {
         logger.i('BookNavigator: 检测到漫画，使用漫画阅读器');
         await _openAsManga(context, book, cachedFile);
@@ -76,12 +76,9 @@ class BookNavigator {
   }
 
   /// 判断是否应该检测漫画
-  bool _shouldCheckManga(BookItem book) {
-    // 只检测支持的格式
-    return book.format == BookFormat.epub ||
+  bool _shouldCheckManga(BookItem book) => book.format == BookFormat.epub ||
            book.format == BookFormat.mobi ||
            book.format == BookFormat.azw3;
-  }
 
   /// 使用漫画阅读器打开
   Future<void> _openAsManga(

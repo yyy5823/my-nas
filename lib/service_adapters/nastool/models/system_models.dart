@@ -1,4 +1,5 @@
 /// 系统相关数据模型
+library;
 
 /// 系统版本信息
 class NtSystemVersion {
@@ -9,8 +10,8 @@ class NtSystemVersion {
   });
 
   factory NtSystemVersion.fromJson(Map<String, dynamic> json) => NtSystemVersion(
-    version: json['version'] as String? ?? 
-             json['data']?['version'] as String? ?? '',
+    version: json['version'] as String? ??
+             (json['data'] as Map<String, dynamic>?)?['version'] as String? ?? '',
     latestVersion: json['latest_version'] as String?,
     hasUpdate: json['has_update'] as bool? ?? false,
   );

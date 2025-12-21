@@ -87,7 +87,7 @@ class EpubComicReaderNotifier extends StateNotifier<EpubComicReaderState> {
 
       // 获取图片总数
       final totalPages = await _extractor.getImageCount(_epubFile);
-      
+
       // 提取所有图片
       final pages = await _extractor.extractImages(_epubFile);
 
@@ -339,7 +339,7 @@ class _EpubComicReaderPageState extends ConsumerState<EpubComicReaderPage> {
         top: 0,
         left: 0,
         right: 0,
-        child: Container(
+        child: DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
@@ -404,7 +404,7 @@ class _EpubComicReaderPageState extends ConsumerState<EpubComicReaderPage> {
         bottom: 0,
         left: 0,
         right: 0,
-        child: Container(
+        child: DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.bottomCenter,

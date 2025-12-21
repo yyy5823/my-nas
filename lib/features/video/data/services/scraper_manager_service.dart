@@ -275,16 +275,16 @@ class ScraperManagerService {
     String? imageProxy,
   }) async {
     try {
-      final tmdbService = TmdbService();
+      final tmdbService = TmdbService()
 
       // 同步 API Key
-      tmdbService.setApiKey(apiKey);
+      ..setApiKey(apiKey)
 
       // 同步 API URL（支持自定义代理）
-      tmdbService.setApiUrl(apiUrl);
+      ..setApiUrl(apiUrl)
 
       // 同步图片 URL（支持自定义代理）
-      tmdbService.setImageUrl(imageProxy);
+      ..setImageUrl(imageProxy);
 
       // 同步到 Hive 存储（用于 app 重启后恢复）
       final box = await Hive.openBox<String>('settings');

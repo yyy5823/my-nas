@@ -1,4 +1,5 @@
 /// 站点相关数据模型
+library;
 
 /// 站点信息
 class NtSite {

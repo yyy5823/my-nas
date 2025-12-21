@@ -1,4 +1,5 @@
 /// 媒体库相关数据模型
+library;
 
 /// 媒体库空间
 class NtLibrarySpace {

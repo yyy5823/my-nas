@@ -1,4 +1,5 @@
 /// 用户相关数据模型
+library;
 
 /// 用户信息
 class NtUserInfo {

@@ -1,4 +1,5 @@
 /// 搜索相关数据模型
+library;
 
 /// 搜索结果
 class NtSearchResult {
@@ -44,7 +45,7 @@ class NtSearchResult {
 
   /// 是否免费
   bool get isFree => downloadFactor == 0;
-  
+
   /// 是否2x上传
   bool get is2xUpload => uploadFactor == 2;
 

@@ -109,7 +109,7 @@ class MangaDetector {
       // 3. 或者图片数量远超文本文件
       final totalSize = totalImageSize + totalTextSize;
       final imageRatio = totalSize > 0 ? totalImageSize / totalSize : 0;
-      final isManga = (imageCount >= 10 && imageRatio > 0.7) || 
+      final isManga = (imageCount >= 10 && imageRatio > 0.7) ||
                       (imageCount >= 20 && imageCount > textCount * 3);
 
       logger.d('MangaDetector: EPUB 分析 - 图片:$imageCount 文本:$textCount '
@@ -132,15 +132,11 @@ class MangaDetector {
   }
 
   /// 判断是否为图片文件
-  bool _isImageFile(String filename) {
-    return _imageExtensions.any((ext) => filename.endsWith(ext));
-  }
+  bool _isImageFile(String filename) => _imageExtensions.any((ext) => filename.endsWith(ext));
 
   /// 判断是否为文本文件
-  bool _isTextFile(String filename) {
-    return filename.endsWith('.html') ||
+  bool _isTextFile(String filename) => filename.endsWith('.html') ||
            filename.endsWith('.xhtml') ||
            filename.endsWith('.htm') ||
            filename.endsWith('.xml');
-  }
 }

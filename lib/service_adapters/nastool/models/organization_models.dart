@@ -1,4 +1,5 @@
 /// 整理相关数据模型
+library;
 
 /// 转移历史
 class NtTransferHistory {

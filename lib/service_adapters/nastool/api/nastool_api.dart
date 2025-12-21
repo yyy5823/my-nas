@@ -12,7 +12,7 @@ class NasToolApi {
   NasToolApi({required this.baseUrl});
 
   final String baseUrl;
-  
+
   http.Client? _client;
   late final NasToolAuth _auth = NasToolAuth(baseUrl: baseUrl);
 
@@ -23,7 +23,7 @@ class NasToolApi {
 
   /// 是否已认证
   bool get isAuthenticated => _auth.isAuthenticated;
-  
+
   /// 当前用户名
   String? get username => _auth.username;
 
@@ -325,9 +325,7 @@ class NasToolApi {
   }
 
   /// 获取下载进度
-  Future<Map<String, dynamic>> getDownloadInfo(String ids) async {
-    return _post('/download/info', {'ids': ids});
-  }
+  Future<Map<String, dynamic>> getDownloadInfo(String ids) async => _post('/download/info', {'ids': ids});
 
   /// 开始下载
   Future<void> startDownload(String id) async {
@@ -389,9 +387,7 @@ class NasToolApi {
   }
 
   /// 获取媒体库同步状态
-  Future<Map<String, dynamic>> getLibrarySyncStatus() async {
-    return _post('/library/sync/status');
-  }
+  Future<Map<String, dynamic>> getLibrarySyncStatus() async => _post('/library/sync/status');
 
   // ============================================================
   // 媒体相关
@@ -523,7 +519,7 @@ class NasToolApi {
 
   Future<Map<String, dynamic>> _post(String path, [Map<String, dynamic>? params]) async {
     final url = Uri.parse('$baseUrl/api/v1$path');
-    
+
     final headers = <String, String>{
       'Content-Type': 'application/x-www-form-urlencoded',
       ..._auth.authHeaders,
@@ -549,7 +545,7 @@ class NasToolApi {
       }
 
       if (response.body.isEmpty) return {};
-      
+
       final data = jsonDecode(response.body);
       if (data is Map<String, dynamic>) {
         return data;
@@ -564,7 +560,7 @@ class NasToolApi {
 
   Future<dynamic> _get(String path) async {
     final url = Uri.parse('$baseUrl/api/v1$path');
-    
+
     final headers = <String, String>{
       ..._auth.authHeaders,
     };

@@ -1,4 +1,5 @@
 /// 订阅相关数据模型
+library;
 
 /// 订阅信息
 class NtSubscribe {
@@ -73,7 +74,7 @@ class NtSubscribeHistory {
     year: json['year']?.toString(),
     season: json['season'] as int?,
     posterPath: json['poster'] as String? ?? json['image'] as String?,
-    addTime: json['add_time'] != null 
+    addTime: json['add_time'] != null
         ? DateTime.tryParse(json['add_time'] as String)
         : null,
   );

@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/service_adapters/base/service_adapter.dart';
-import 'package:my_nas/service_adapters/nastool/api/nastool_api.dart';
 import 'package:my_nas/service_adapters/nastool/models/models.dart';
 import 'package:my_nas/service_adapters/nastool/nastool_adapter.dart';
 

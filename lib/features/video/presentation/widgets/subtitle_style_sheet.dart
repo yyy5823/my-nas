@@ -24,7 +24,7 @@ class SubtitleStyleSheet extends ConsumerWidget {
       initialChildSize: 0.7,
       minChildSize: 0.4,
       maxChildSize: 0.9,
-      builder: (context, scrollController) => Container(
+      builder: (context, scrollController) => DecoratedBox(
         decoration: BoxDecoration(
           color: Colors.black.withValues(alpha: 0.92),
           borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),

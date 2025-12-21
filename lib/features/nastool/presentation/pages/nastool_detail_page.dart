@@ -5,7 +5,6 @@ import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/nastool/presentation/providers/nastool_provider.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
-import 'package:my_nas/service_adapters/nastool/api/nastool_api.dart';
 import 'package:my_nas/service_adapters/nastool/models/models.dart';
 import 'package:my_nas/service_adapters/nastool/nastool_adapter.dart';
 
@@ -344,7 +343,7 @@ class _NasToolDetailPageState extends ConsumerState<NasToolDetailPage>
               value: '${widget.source.host}:${widget.source.port}',
               isDark: isDark,
             ),
-            if (systemInfo?.hasUpdate == true) ...[
+            if (systemInfo?.hasUpdate ?? false) ...[
               const SizedBox(height: 12),
               _InfoRow(
                 label: '有可用更新',

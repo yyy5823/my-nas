@@ -1,4 +1,5 @@
 /// 媒体相关数据模型
+library;
 
 /// 媒体详情
 class NtMediaDetail {
