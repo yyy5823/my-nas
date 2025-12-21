@@ -84,50 +84,60 @@ class SubtitleStyleSheet extends ConsumerWidget {
 
             const Divider(height: 1),
 
-            // 预览区域
-            Container(
-              margin: const EdgeInsets.all(AppSpacing.md),
-              padding: const EdgeInsets.all(AppSpacing.lg),
-              decoration: BoxDecoration(
-                color: Colors.black,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Stack(
-                children: [
-                  // 视频占位
-                  Container(
-                    height: 120,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [Colors.grey[800]!, Colors.grey[900]!],
-                      ),
-                    ),
-                    child: Center(
-                      child: Icon(
-                        Icons.movie_rounded,
-                        size: 48,
-                        color: Colors.grey[600],
-                      ),
-                    ),
+            // 预览区域 - 在手机端使用更紧凑的高度
+            Builder(
+              builder: (context) {
+                final isCompact = MediaQuery.of(context).size.width < 600;
+                final previewHeight = isCompact ? 80.0 : 120.0;
+                
+                return Container(
+                  margin: EdgeInsets.symmetric(
+                    horizontal: AppSpacing.md,
+                    vertical: isCompact ? AppSpacing.sm : AppSpacing.md,
                   ),
-                  // 字幕预览
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    top: style.position == SubtitlePosition.top ? 8 : null,
-                    bottom: style.position == SubtitlePosition.bottom
-                        ? 8
-                        : null,
-                    child: style.position == SubtitlePosition.center
-                        ? Positioned.fill(
-                            child: Center(child: _buildSubtitlePreview(style)),
-                          )
-                        : _buildSubtitlePreview(style),
+                  padding: EdgeInsets.all(isCompact ? AppSpacing.sm : AppSpacing.lg),
+                  decoration: BoxDecoration(
+                    color: Colors.black,
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                ],
-              ),
+                  child: Stack(
+                    children: [
+                      // 视频占位
+                      Container(
+                        height: previewHeight,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [Colors.grey[800]!, Colors.grey[900]!],
+                          ),
+                        ),
+                        child: Center(
+                          child: Icon(
+                            Icons.movie_rounded,
+                            size: isCompact ? 32 : 48,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ),
+                      // 字幕预览
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        top: style.position == SubtitlePosition.top ? 8 : null,
+                        bottom: style.position == SubtitlePosition.bottom
+                            ? 8
+                            : null,
+                        child: style.position == SubtitlePosition.center
+                            ? Positioned.fill(
+                                child: Center(child: _buildSubtitlePreview(style, isCompact)),
+                              )
+                            : _buildSubtitlePreview(style, isCompact),
+                      ),
+                    ],
+                  ),
+                );
+              },
             ),
 
             // 设置选项
