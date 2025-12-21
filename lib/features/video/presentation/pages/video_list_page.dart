@@ -771,6 +771,9 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
         }
       }
 
+      // 构建最近添加列表（应用剧集分组去重）
+      final tempRecent = _buildRecentWithGroups(allVideos, tempTvShowGroups, limit: 20);
+
       // 使用真实统计数量，而非临时列表长度
       state = VideoListLoaded(
         totalCount: allVideos.length,
@@ -780,7 +783,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
         tvShowGroupCount: tvShowGroupCount,
         otherCount: stats['others'] as int? ?? tempOthers.length,
         videoByKey: videoByKey,
-        recentVideos: allVideos.take(20).toList(),
+        recentVideos: tempRecent,
         movies: tempMovies,
         tvShowGroups: tempTvShowGroups,
         others: tempOthers,
