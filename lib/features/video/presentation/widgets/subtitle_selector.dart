@@ -6,7 +6,7 @@ import 'package:my_nas/features/video/presentation/providers/video_player_provid
 import 'package:my_nas/features/video/presentation/widgets/subtitle_download_dialog.dart';
 import 'package:my_nas/features/video/presentation/widgets/subtitle_style_sheet.dart';
 
-/// 字幕选择器弹窗
+/// 字幕选择器弹窗（Infuse 暗色风格）
 class SubtitleSelectorSheet extends ConsumerWidget {
   const SubtitleSelectorSheet({
     this.videoPath,
@@ -56,8 +56,8 @@ class SubtitleSelectorSheet extends ConsumerWidget {
         maxHeight: MediaQuery.of(context).size.height * 0.6,
       ),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        color: Colors.black.withValues(alpha: 0.92),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -68,21 +68,30 @@ class SubtitleSelectorSheet extends ConsumerWidget {
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: Colors.grey[400],
+              color: Colors.white24,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
 
-          // 标题
+          // 标题栏
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(20, 16, 8, 8),
             child: Row(
               children: [
-                const Icon(Icons.subtitles),
-                const SizedBox(width: 12),
-                Text(
+                const Icon(
+                  Icons.subtitles_rounded,
+                  color: Colors.white70,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                const Text(
                   '字幕选择',
-                  style: Theme.of(context).textTheme.titleLarge,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    decoration: TextDecoration.none,
+                  ),
                 ),
                 const Spacer(),
                 // 在线字幕下载按钮
@@ -92,7 +101,7 @@ class SubtitleSelectorSheet extends ConsumerWidget {
                       Navigator.pop(context);
                       _showSubtitleDownloadDialog(context, ref);
                     },
-                    icon: const Icon(Icons.download_rounded),
+                    icon: const Icon(Icons.download_rounded, color: Colors.white70),
                     tooltip: '下载在线字幕',
                   ),
                 // 字幕样式按钮
@@ -101,30 +110,31 @@ class SubtitleSelectorSheet extends ConsumerWidget {
                     Navigator.pop(context);
                     showSubtitleStyleSheet(context);
                   },
-                  icon: const Icon(Icons.text_format_rounded),
+                  icon: const Icon(Icons.text_format_rounded, color: Colors.white70),
                   tooltip: '字幕样式',
                 ),
                 IconButton(
                   onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close),
+                  icon: const Icon(Icons.close, color: Colors.white70),
                 ),
               ],
             ),
           ),
 
-          const Divider(height: 1),
+          const Divider(color: Colors.white24, height: 1),
 
           // 字幕列表
           Flexible(
             child: ListView(
               shrinkWrap: true,
+              padding: const EdgeInsets.symmetric(vertical: 8),
               children: [
                 // 关闭字幕选项
                 _SubtitleTile(
                   title: '关闭字幕',
                   subtitle: '不显示任何字幕',
                   isSelected: isSubtitleOff,
-                  icon: Icons.subtitles_off,
+                  icon: Icons.subtitles_off_rounded,
                   onTap: () {
                     playerNotifier.setSubtitle(null);
                     // 清除内嵌字幕选择
@@ -148,14 +158,11 @@ class SubtitleSelectorSheet extends ConsumerWidget {
                     (sub) => _SubtitleTile(
                       title: sub.language ?? sub.name,
                       subtitle: sub.name,
-                      // 使用 == 比较（SubtitleItem 已实现 operator==）
                       isSelected: currentSubtitle == sub ||
                           (currentSubtitle != null && currentSubtitle.path == sub.path),
-                      icon: Icons.closed_caption,
+                      icon: Icons.closed_caption_rounded,
                       onTap: () {
-                        // 先清除内嵌字幕选择
                         ref.read(currentEmbeddedSubtitleIdProvider.notifier).state = null;
-                        // 再设置外部字幕
                         playerNotifier.setSubtitle(sub);
                         Navigator.pop(context);
                       },
@@ -174,11 +181,8 @@ class SubtitleSelectorSheet extends ConsumerWidget {
                       track: track,
                       isSelected: currentEmbeddedId == track.id,
                       onTap: () {
-                        // 先清除外部字幕选择
                         ref.read(currentSubtitleProvider.notifier).state = null;
-                        // 设置内嵌字幕
                         playerNotifier.setEmbeddedSubtitleTrack(track);
-                        // 设置当前内嵌字幕 ID
                         ref.read(currentEmbeddedSubtitleIdProvider.notifier).state = track.id;
                         Navigator.pop(context);
                       },
@@ -195,14 +199,15 @@ class SubtitleSelectorSheet extends ConsumerWidget {
                         const Icon(
                           Icons.subtitles_off_outlined,
                           size: 48,
-                          color: Colors.grey,
+                          color: Colors.white38,
                         ),
                         const SizedBox(height: 16),
                         const Text(
                           '未找到字幕文件',
                           style: TextStyle(
-                            color: Colors.grey,
+                            color: Colors.white70,
                             fontSize: 16,
+                            decoration: TextDecoration.none,
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -210,8 +215,9 @@ class SubtitleSelectorSheet extends ConsumerWidget {
                           '请将 .srt, .ass, .vtt 字幕文件\n放在视频同目录下',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            color: Colors.grey,
+                            color: Colors.white38,
                             fontSize: 12,
+                            decoration: TextDecoration.none,
                           ),
                         ),
                         if (hasSubtitleConfig && videoPath != null) ...[
@@ -221,8 +227,11 @@ class SubtitleSelectorSheet extends ConsumerWidget {
                               Navigator.pop(context);
                               _showSubtitleDownloadDialog(context, ref);
                             },
-                            icon: const Icon(Icons.download),
-                            label: const Text('下载在线字幕'),
+                            icon: const Icon(Icons.download, color: Colors.white70),
+                            label: const Text(
+                              '下载在线字幕',
+                              style: TextStyle(color: Colors.white),
+                            ),
                           ),
                         ],
                       ],
@@ -255,14 +264,12 @@ class SubtitleSelectorSheet extends ConsumerWidget {
       savePath: savePath,
       onDownloaded: (path) {
         // 字幕下载成功后可以刷新字幕列表
-        // 由于需要重新扫描，这里暂时不做处理
-        // 用户可以重新打开字幕选择器查看
       },
     );
   }
 }
 
-/// 分组标题
+/// 分组标题（暗色风格）
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({
     required this.title,
@@ -274,29 +281,31 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
         child: Row(
           children: [
             Text(
               title,
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.primary,
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
+              style: const TextStyle(
+                color: Colors.white54,
+                fontWeight: FontWeight.w500,
+                fontSize: 12,
+                decoration: TextDecoration.none,
               ),
             ),
             const SizedBox(width: 8),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primaryContainer,
-                borderRadius: BorderRadius.circular(10),
+                color: Colors.white12,
+                borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
                 '$count',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onPrimaryContainer,
-                  fontSize: 11,
+                style: const TextStyle(
+                  color: Colors.white54,
+                  fontSize: 10,
+                  decoration: TextDecoration.none,
                 ),
               ),
             ),
@@ -305,7 +314,7 @@ class _SectionHeader extends StatelessWidget {
       );
 }
 
-/// 字幕选项
+/// 字幕选项（暗色风格）
 class _SubtitleTile extends StatelessWidget {
   const _SubtitleTile({
     required this.title,
@@ -322,37 +331,61 @@ class _SubtitleTile extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => ListTile(
-        leading: Icon(
-          icon,
-          color: isSelected
-              ? Theme.of(context).colorScheme.primary
-              : Theme.of(context).colorScheme.onSurfaceVariant,
-        ),
-        title: Text(
-          title,
-          style: TextStyle(
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-            color: isSelected ? Theme.of(context).colorScheme.primary : null,
+  Widget build(BuildContext context) => Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            child: Row(
+              children: [
+                Icon(
+                  icon,
+                  color: isSelected ? Colors.white : Colors.white60,
+                  size: 20,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          color: isSelected ? Colors.white : Colors.white70,
+                          fontSize: 14,
+                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: const TextStyle(
+                          color: Colors.white38,
+                          fontSize: 11,
+                          decoration: TextDecoration.none,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                if (isSelected)
+                  const Icon(
+                    Icons.check_circle_rounded,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+              ],
+            ),
           ),
         ),
-        subtitle: Text(
-          subtitle,
-          style: const TextStyle(fontSize: 12),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        trailing: isSelected
-            ? Icon(
-                Icons.check_circle,
-                color: Theme.of(context).colorScheme.primary,
-              )
-            : null,
-        onTap: onTap,
       );
 }
 
-/// 内嵌字幕选项
+/// 内嵌字幕选项（暗色风格）
 class _EmbeddedSubtitleTile extends StatelessWidget {
   const _EmbeddedSubtitleTile({
     required this.track,
@@ -388,31 +421,55 @@ class _EmbeddedSubtitleTile extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) => ListTile(
-        leading: Icon(
-          Icons.closed_caption_outlined,
-          color: isSelected
-              ? Theme.of(context).colorScheme.primary
-              : Theme.of(context).colorScheme.onSurfaceVariant,
-        ),
-        title: Text(
-          _title,
-          style: TextStyle(
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-            color: isSelected ? Theme.of(context).colorScheme.primary : null,
+  Widget build(BuildContext context) => Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.closed_caption_outlined,
+                  color: isSelected ? Colors.white : Colors.white60,
+                  size: 20,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _title,
+                        style: TextStyle(
+                          color: isSelected ? Colors.white : Colors.white70,
+                          fontSize: 14,
+                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        track.language ?? 'ID: ${track.id}',
+                        style: const TextStyle(
+                          color: Colors.white38,
+                          fontSize: 11,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (isSelected)
+                  const Icon(
+                    Icons.check_circle_rounded,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+              ],
+            ),
           ),
         ),
-        subtitle: Text(
-          track.language ?? 'ID: ${track.id}',
-          style: const TextStyle(fontSize: 12),
-        ),
-        trailing: isSelected
-            ? Icon(
-                Icons.check_circle,
-                color: Theme.of(context).colorScheme.primary,
-              )
-            : null,
-        onTap: onTap,
       );
 }
 

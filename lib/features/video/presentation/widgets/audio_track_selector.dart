@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
-import 'package:my_nas/app/theme/app_colors.dart';
-import 'package:my_nas/app/theme/app_spacing.dart';
-import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/video/presentation/providers/video_player_provider.dart';
 
-/// 显示音轨选择器
+/// 显示音轨选择器（Infuse 暗色风格）
 void showAudioTrackSelector(BuildContext context) {
   showModalBottomSheet<void>(
     context: context,
@@ -20,15 +17,17 @@ class AudioTrackSelector extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final playerNotifier = ref.watch(videoPlayerControllerProvider.notifier);
     final audioTracks = playerNotifier.audioTracks;
     final currentTrack = playerNotifier.currentAudioTrack;
 
-    return DecoratedBox(
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.5,
+      ),
       decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        color: Colors.black.withValues(alpha: 0.92),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -39,129 +38,80 @@ class AudioTrackSelector extends ConsumerWidget {
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: isDark
-                  ? AppColors.darkOutline.withValues(alpha: 0.3)
-                  : AppColors.lightOutline.withValues(alpha: 0.3),
+              color: Colors.white24,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
 
-          // 标题
+          // 标题栏
           Padding(
-            padding: const EdgeInsets.all(AppSpacing.md),
+            padding: const EdgeInsets.fromLTRB(20, 16, 8, 8),
             child: Row(
               children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(
-                    Icons.audiotrack_rounded,
-                    color: AppColors.primary,
-                    size: 22,
+                const Icon(
+                  Icons.audiotrack_rounded,
+                  color: Colors.white70,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                const Text(
+                  '音轨选择',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    decoration: TextDecoration.none,
                   ),
                 ),
-                const SizedBox(width: 12),
-                Text(
-                  '音轨选择',
-                  style: context.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+                const Spacer(),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close, color: Colors.white70),
                 ),
               ],
             ),
           ),
 
-          const Divider(height: 1),
+          const Divider(color: Colors.white24, height: 1),
 
           // 音轨列表
           if (audioTracks.isEmpty)
             Padding(
-              padding: const EdgeInsets.all(AppSpacing.xl),
+              padding: const EdgeInsets.all(32),
               child: Column(
-                children: [
+                children: const [
                   Icon(
                     Icons.music_off_rounded,
                     size: 48,
-                    color: isDark
-                        ? AppColors.darkOnSurfaceVariant
-                        : AppColors.lightOnSurfaceVariant,
+                    color: Colors.white38,
                   ),
-                  const SizedBox(height: 12),
+                  SizedBox(height: 12),
                   Text(
                     '无可用音轨',
-                    style: context.textTheme.bodyMedium?.copyWith(
-                      color: isDark
-                          ? AppColors.darkOnSurfaceVariant
-                          : AppColors.lightOnSurfaceVariant,
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 16,
+                      decoration: TextDecoration.none,
                     ),
                   ),
                 ],
               ),
             )
           else
-            ConstrainedBox(
-              constraints: BoxConstraints(
-                maxHeight: MediaQuery.of(context).size.height * 0.4,
-              ),
+            Flexible(
               child: ListView.builder(
                 shrinkWrap: true,
-                padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+                padding: const EdgeInsets.symmetric(vertical: 8),
                 itemCount: audioTracks.length,
                 itemBuilder: (context, index) {
                   final track = audioTracks[index];
                   final isSelected = _isTrackSelected(track, currentTrack);
                   final trackInfo = _getTrackInfo(track);
 
-                  return ListTile(
-                    leading: Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? AppColors.primary.withValues(alpha: 0.12)
-                            : (isDark
-                                ? AppColors.darkSurfaceVariant
-                                : AppColors.lightSurfaceVariant),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(
-                        Icons.audiotrack_rounded,
-                        color: isSelected
-                            ? AppColors.primary
-                            : (isDark
-                                ? AppColors.darkOnSurfaceVariant
-                                : AppColors.lightOnSurfaceVariant),
-                        size: 20,
-                      ),
-                    ),
-                    title: Text(
-                      trackInfo.title,
-                      style: TextStyle(
-                        fontWeight:
-                            isSelected ? FontWeight.w600 : FontWeight.normal,
-                        color: isSelected ? AppColors.primary : null,
-                      ),
-                    ),
-                    subtitle: trackInfo.subtitle != null
-                        ? Text(
-                            trackInfo.subtitle!,
-                            style: context.textTheme.bodySmall?.copyWith(
-                              color: isDark
-                                  ? AppColors.darkOnSurfaceVariant
-                                  : AppColors.lightOnSurfaceVariant,
-                            ),
-                          )
-                        : null,
-                    trailing: isSelected
-                        ? const Icon(
-                            Icons.check_circle_rounded,
-                            color: AppColors.primary,
-                          )
-                        : null,
+                  return _AudioTrackTile(
+                    title: trackInfo.title,
+                    subtitle: trackInfo.subtitle,
+                    isSelected: isSelected,
                     onTap: () {
                       playerNotifier.setAudioTrack(track);
                       Navigator.pop(context);
@@ -171,7 +121,7 @@ class AudioTrackSelector extends ConsumerWidget {
               ),
             ),
 
-          SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
+          SizedBox(height: MediaQuery.of(context).padding.bottom + 8),
         ],
       ),
     );
@@ -212,7 +162,6 @@ class AudioTrackSelector extends ConsumerWidget {
         subtitle = channelInfo;
       }
     } else if (track.channels != null && track.channels!.isNotEmpty) {
-      // 使用 channels 字符串描述（如 "stereo"）
       if (subtitle != null) {
         subtitle = '$subtitle · ${track.channels}';
       } else {
@@ -272,6 +221,75 @@ class AudioTrackSelector extends ConsumerWidget {
         8 => '7.1声道',
         _ => '$channels声道',
       };
+}
+
+/// 音轨选项（暗色风格）
+class _AudioTrackTile extends StatelessWidget {
+  const _AudioTrackTile({
+    required this.title,
+    this.subtitle,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final String title;
+  final String? subtitle;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.audiotrack_rounded,
+                  color: isSelected ? Colors.white : Colors.white60,
+                  size: 20,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          color: isSelected ? Colors.white : Colors.white70,
+                          fontSize: 14,
+                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                      if (subtitle != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle!,
+                          style: const TextStyle(
+                            color: Colors.white38,
+                            fontSize: 11,
+                            decoration: TextDecoration.none,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (isSelected)
+                  const Icon(
+                    Icons.check_circle_rounded,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+              ],
+            ),
+          ),
+        ),
+      );
 }
 
 class _TrackInfo {
