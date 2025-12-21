@@ -102,7 +102,6 @@ class NasToolAuth {
     } finally {
       _sessionToken = null;
       _username = null;
-      _loginTime = null;
     }
   }
 
@@ -134,7 +133,6 @@ class NasToolAuth {
   void setApiToken(String token) {
     _sessionToken = token;
     _username = 'API Token';
-    _loginTime = DateTime.now();
   }
 
   /// 验证 API Token 是否有效
@@ -160,7 +158,6 @@ class NasToolAuth {
             // Token 有效，设置认证信息
             _sessionToken = auth;
             _username = 'API Token';
-            _loginTime = DateTime.now();
             return true;
           }
         }
@@ -175,7 +172,6 @@ class NasToolAuth {
   void clear() {
     _sessionToken = null;
     _username = null;
-    _loginTime = null;
   }
 }
 

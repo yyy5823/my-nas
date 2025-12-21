@@ -133,7 +133,7 @@ class NasToolApi {
   /// 获取站点统计
   Future<List<NtSiteStatistics>> getSiteStatistics() async {
     final response = await _get('/site/statistics');
-    if (response.isEmpty) return [];
+    if (response == null || (response is List && response.isEmpty)) return [];
     final items = response as List? ?? [];
     return items.map((e) => NtSiteStatistics.fromJson(e as Map<String, dynamic>)).toList();
   }
