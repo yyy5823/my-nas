@@ -6,16 +6,22 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/utils/logger.dart';
-import 'package:my_nas/core/widgets/keyboard_shortcuts.dart';
 import 'package:my_nas/features/book/data/services/epub_image_extractor.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
-import 'package:my_nas/features/comic/presentation/providers/comic_settings_provider.dart';
 import 'package:my_nas/features/reading/data/services/reading_progress_service.dart';
 import 'package:my_nas/shared/widgets/loading_widget.dart';
-import 'package:my_nas/shared/widgets/reader_settings_sheet.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:photo_view/photo_view_gallery.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+
+/// EPUB 漫画阅读方向
+enum EpubComicReadingMode {
+  leftToRight('从左到右'),
+  rightToLeft('从右到左');
+
+  const EpubComicReadingMode(this.label);
+  final String label;
+}
 
 /// EPUB 漫画阅读器状态
 class EpubComicReaderState {
@@ -26,6 +32,7 @@ class EpubComicReaderState {
     this.error,
     this.showControls = false,
     this.totalPages = 0,
+    this.readingMode = EpubComicReadingMode.leftToRight,
   });
 
   final List<EpubImagePage> pages;
@@ -34,6 +41,7 @@ class EpubComicReaderState {
   final String? error;
   final bool showControls;
   final int totalPages;
+  final EpubComicReadingMode readingMode;
 
   EpubComicReaderState copyWith({
     List<EpubImagePage>? pages,
@@ -42,6 +50,7 @@ class EpubComicReaderState {
     String? error,
     bool? showControls,
     int? totalPages,
+    EpubComicReadingMode? readingMode,
   }) =>
       EpubComicReaderState(
         pages: pages ?? this.pages,
@@ -50,6 +59,7 @@ class EpubComicReaderState {
         error: error,
         showControls: showControls ?? this.showControls,
         totalPages: totalPages ?? this.totalPages,
+        readingMode: readingMode ?? this.readingMode,
       );
 }
 
@@ -119,13 +129,13 @@ class EpubComicReaderNotifier extends StateNotifier<EpubComicReaderState> {
     _saveProgress();
   }
 
-  void nextPage(ComicReadingMode readingMode) {
-    final delta = readingMode == ComicReadingMode.rightToLeft ? -1 : 1;
+  void nextPage() {
+    final delta = state.readingMode == EpubComicReadingMode.rightToLeft ? -1 : 1;
     goToPage(state.currentPage + delta);
   }
 
-  void previousPage(ComicReadingMode readingMode) {
-    final delta = readingMode == ComicReadingMode.rightToLeft ? 1 : -1;
+  void previousPage() {
+    final delta = state.readingMode == EpubComicReadingMode.rightToLeft ? 1 : -1;
     goToPage(state.currentPage + delta);
   }
 
@@ -137,6 +147,10 @@ class EpubComicReaderNotifier extends StateNotifier<EpubComicReaderState> {
     if (state.showControls) {
       state = state.copyWith(showControls: false);
     }
+  }
+
+  void setReadingMode(EpubComicReadingMode mode) {
+    state = state.copyWith(readingMode: mode);
   }
 
   Future<void> _saveProgress() async {
@@ -216,59 +230,48 @@ class _EpubComicReaderPageState extends ConsumerState<EpubComicReaderPage> {
     }
   }
 
-  Map<ShortcutActivator, VoidCallback> _buildKeyboardShortcuts(
-    EpubComicReaderState state,
-    EpubComicReaderNotifier notifier,
-    ComicReaderSettings settings,
-  ) {
-    void goToPrevious() => notifier.previousPage(settings.readingMode);
-    void goToNext() => notifier.nextPage(settings.readingMode);
-
-    return {
-      const SingleActivator(LogicalKeyboardKey.arrowLeft): goToPrevious,
-      const SingleActivator(LogicalKeyboardKey.arrowRight): goToNext,
-      const SingleActivator(LogicalKeyboardKey.arrowUp): goToPrevious,
-      const SingleActivator(LogicalKeyboardKey.arrowDown): goToNext,
-      const SingleActivator(LogicalKeyboardKey.pageUp): goToPrevious,
-      const SingleActivator(LogicalKeyboardKey.pageDown): goToNext,
-      const SingleActivator(LogicalKeyboardKey.space): goToNext,
-      const SingleActivator(LogicalKeyboardKey.escape): () => Navigator.pop(context),
-      const SingleActivator(LogicalKeyboardKey.keyQ): () => Navigator.pop(context),
-    };
-  }
-
   @override
   Widget build(BuildContext context) {
     final params = (widget.book, widget.epubFile);
     final state = ref.watch(epubComicReaderProvider(params));
     final notifier = ref.read(epubComicReaderProvider(params).notifier);
-    final settings = ref.watch(comicReaderSettingsProvider);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     // 更新 PageController
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _updatePageController(state.currentPage);
     });
 
-    return KeyboardShortcuts(
-      shortcuts: _buildKeyboardShortcuts(state, notifier, settings),
-      child: Scaffold(
-        backgroundColor: Colors.black,
-        body: state.isLoading
-            ? const LoadingWidget(message: '加载漫画中...')
-            : state.error != null
-                ? _buildErrorView(state.error!)
-                : Stack(
-                    children: [
-                      // 漫画内容
-                      _buildGallery(state, notifier, settings),
-                      // 控制栏
-                      if (state.showControls) ...[
-                        _buildTopBar(context, state, isDark),
-                        _buildBottomBar(context, state, notifier, settings, isDark),
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: CallbackShortcuts(
+        bindings: <ShortcutActivator, VoidCallback>{
+          const SingleActivator(LogicalKeyboardKey.arrowLeft): notifier.previousPage,
+          const SingleActivator(LogicalKeyboardKey.arrowRight): notifier.nextPage,
+          const SingleActivator(LogicalKeyboardKey.arrowUp): notifier.previousPage,
+          const SingleActivator(LogicalKeyboardKey.arrowDown): notifier.nextPage,
+          const SingleActivator(LogicalKeyboardKey.pageUp): notifier.previousPage,
+          const SingleActivator(LogicalKeyboardKey.pageDown): notifier.nextPage,
+          const SingleActivator(LogicalKeyboardKey.space): notifier.nextPage,
+          const SingleActivator(LogicalKeyboardKey.escape): () => Navigator.pop(context),
+        },
+        child: Focus(
+          autofocus: true,
+          child: state.isLoading
+              ? const LoadingWidget(message: '加载漫画中...')
+              : state.error != null
+                  ? _buildErrorView(state.error!)
+                  : Stack(
+                      children: [
+                        // 漫画内容
+                        _buildGallery(state, notifier),
+                        // 控制栏
+                        if (state.showControls) ...[
+                          _buildTopBar(context, state, notifier),
+                          _buildBottomBar(context, state, notifier),
+                        ],
                       ],
-                    ],
-                  ),
+                    ),
+        ),
       ),
     );
   }
@@ -296,9 +299,8 @@ class _EpubComicReaderPageState extends ConsumerState<EpubComicReaderPage> {
   Widget _buildGallery(
     EpubComicReaderState state,
     EpubComicReaderNotifier notifier,
-    ComicReaderSettings settings,
   ) {
-    final isRtl = settings.readingMode == ComicReadingMode.rightToLeft;
+    final isRtl = state.readingMode == EpubComicReadingMode.rightToLeft;
 
     return GestureDetector(
       onTap: notifier.toggleControls,
@@ -328,7 +330,11 @@ class _EpubComicReaderPageState extends ConsumerState<EpubComicReaderPage> {
     );
   }
 
-  Widget _buildTopBar(BuildContext context, EpubComicReaderState state, bool isDark) =>
+  Widget _buildTopBar(
+    BuildContext context,
+    EpubComicReaderState state,
+    EpubComicReaderNotifier notifier,
+  ) =>
       Positioned(
         top: 0,
         left: 0,
@@ -364,9 +370,24 @@ class _EpubComicReaderPageState extends ConsumerState<EpubComicReaderPage> {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
+                // 阅读方向切换
                 IconButton(
-                  icon: const Icon(Icons.settings, color: Colors.white),
-                  onPressed: () => _showSettingsSheet(context),
+                  icon: Icon(
+                    state.readingMode == EpubComicReadingMode.rightToLeft
+                        ? Icons.format_textdirection_r_to_l
+                        : Icons.format_textdirection_l_to_r,
+                    color: Colors.white,
+                  ),
+                  tooltip: state.readingMode == EpubComicReadingMode.rightToLeft
+                      ? '从右到左'
+                      : '从左到右',
+                  onPressed: () {
+                    notifier.setReadingMode(
+                      state.readingMode == EpubComicReadingMode.rightToLeft
+                          ? EpubComicReadingMode.leftToRight
+                          : EpubComicReadingMode.rightToLeft,
+                    );
+                  },
                 ),
               ],
             ),
@@ -378,8 +399,6 @@ class _EpubComicReaderPageState extends ConsumerState<EpubComicReaderPage> {
     BuildContext context,
     EpubComicReaderState state,
     EpubComicReaderNotifier notifier,
-    ComicReaderSettings settings,
-    bool isDark,
   ) =>
       Positioned(
         bottom: 0,
@@ -443,8 +462,8 @@ class _EpubComicReaderPageState extends ConsumerState<EpubComicReaderPage> {
                       IconButton(
                         icon: const Icon(Icons.chevron_left, color: Colors.white, size: 32),
                         onPressed: () {
-                          notifier.previousPage(settings.readingMode);
-                          final targetPage = settings.readingMode == ComicReadingMode.rightToLeft
+                          notifier.previousPage();
+                          final targetPage = state.readingMode == EpubComicReadingMode.rightToLeft
                               ? state.currentPage + 1
                               : state.currentPage - 1;
                           if (targetPage >= 0 && targetPage < state.totalPages) {
@@ -459,8 +478,8 @@ class _EpubComicReaderPageState extends ConsumerState<EpubComicReaderPage> {
                       IconButton(
                         icon: const Icon(Icons.chevron_right, color: Colors.white, size: 32),
                         onPressed: () {
-                          notifier.nextPage(settings.readingMode);
-                          final targetPage = settings.readingMode == ComicReadingMode.rightToLeft
+                          notifier.nextPage();
+                          final targetPage = state.readingMode == EpubComicReadingMode.rightToLeft
                               ? state.currentPage - 1
                               : state.currentPage + 1;
                           if (targetPage >= 0 && targetPage < state.totalPages) {
@@ -488,60 +507,4 @@ class _EpubComicReaderPageState extends ConsumerState<EpubComicReaderPage> {
           ),
         ),
       );
-
-  void _showSettingsSheet(BuildContext context) {
-    showReaderSettingsSheet(
-      context,
-      title: '漫画设置',
-      icon: Icons.auto_stories_rounded,
-      iconColor: AppColors.primary,
-      contentBuilder: (context) => Consumer(
-        builder: (context, ref, _) {
-          final settings = ref.watch(comicReaderSettingsProvider);
-          return _buildSettingsContent(settings);
-        },
-      ),
-    );
-  }
-
-  Widget _buildSettingsContent(ComicReaderSettings settings) {
-    final settingsNotifier = ref.read(comicReaderSettingsProvider.notifier);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SettingSectionTitle(title: '阅读方向'),
-        Wrap(
-          spacing: 8,
-          children: ComicReadingMode.values.map((mode) {
-            final isSelected = settings.readingMode == mode;
-            return ChoiceChip(
-              label: Text(mode.label),
-              selected: isSelected,
-              onSelected: (_) => settingsNotifier.setReadingMode(mode),
-            );
-          }).toList(),
-        ),
-        const SizedBox(height: 24),
-        const SettingSectionTitle(title: '其他设置'),
-        SettingSwitchRow(
-          title: '屏幕常亮',
-          value: settings.keepScreenOn,
-          onChanged: (value) {
-            settingsNotifier.setKeepScreenOn(value: value);
-            if (value) {
-              WakelockPlus.enable();
-            } else {
-              WakelockPlus.disable();
-            }
-          },
-        ),
-        SettingSwitchRow(
-          title: '显示进度',
-          value: settings.showProgress,
-          onChanged: (value) => settingsNotifier.setShowProgress(value: value),
-        ),
-      ],
-    );
-  }
 }

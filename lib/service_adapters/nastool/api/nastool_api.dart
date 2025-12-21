@@ -32,33 +32,60 @@ class NasToolApi {
   bool get isAuthenticated => _isAuthenticated;
 
   /// 验证连接
+  /// 
+  /// NASTool API 认证方式可能是以下几种之一:
+  /// 1. Authorization: Bearer {token}
+  /// 2. Authorization: Token {token}
+  /// 3. Authorization: {token} (直接使用)
+  /// 
+  /// 我们依次尝试这些格式
   Future<bool> validateConnection() async {
     try {
       _log('validateConnection: 开始验证连接 baseUrl=$baseUrl');
 
-      // NASTool 使用 action-based API，验证连接使用 version 命令
-      final response = await _callAction('version');
-      _log('validateConnection: 响应状态码=${response.statusCode}');
+      // 尝试不同的认证格式
+      final authFormats = [
+        apiToken,                    // 直接使用 token（NASTool 常用）
+        'Bearer $apiToken',          // Bearer token 格式
+        'Token $apiToken',           // Token 格式
+      ];
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        // 检查返回结果
-        if (data['code'] == 0 || data['success'] == true || data['version'] != null) {
-          _isAuthenticated = true;
-          _log('validateConnection: 连接验证成功');
-          return true;
+      for (final authHeader in authFormats) {
+        _currentAuthHeader = authHeader;
+        _log('validateConnection: 尝试认证格式: ${authHeader.substring(0, authHeader.length > 20 ? 20 : authHeader.length)}...');
+        
+        try {
+          final response = await _callAction('version');
+          _log('validateConnection: 响应状态码=${response.statusCode}');
+          _log('validateConnection: 响应体=${response.body.substring(0, response.body.length > 200 ? 200 : response.body.length)}');
+
+          if (response.statusCode == 200) {
+            final data = jsonDecode(response.body) as Map<String, dynamic>;
+            // 检查返回结果
+            if (data['code'] == 0 || data['success'] == true || data['version'] != null) {
+              _isAuthenticated = true;
+              _log('validateConnection: 连接验证成功，使用格式: ${authHeader.substring(0, authHeader.length > 10 ? 10 : authHeader.length)}...');
+              return true;
+            }
+            // 如果返回了错误码，记录详细信息
+            _log('validateConnection: 返回数据但验证失败: code=${data['code']}, message=${data['message'] ?? data['msg']}');
+          }
+        } on NasToolApiException catch (e) {
+          _log('validateConnection: 格式 $authHeader 失败 - ${e.message}');
+          // 继续尝试下一个格式
         }
       }
-      _log('validateConnection: 连接验证失败，状态码=${response.statusCode}');
-      return false;
-    } on NasToolApiException catch (e) {
-      _log('validateConnection: API异常 - ${e.message}');
+      
+      _log('validateConnection: 所有认证格式都失败');
       return false;
     } on Exception catch (e) {
       _log('validateConnection: 未知异常 - $e');
       return false;
     }
   }
+
+  // 当前使用的认证 header
+  String? _currentAuthHeader;
 
   void _log(String message) {
     // ignore: avoid_print
@@ -234,7 +261,7 @@ class NasToolApi {
 
     final headers = <String, String>{
       'Content-Type': 'application/json',
-      'Authorization': apiToken,
+      'Authorization': _currentAuthHeader ?? apiToken,
     };
 
     final body = <String, dynamic>{
