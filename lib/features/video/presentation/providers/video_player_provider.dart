@@ -27,12 +27,12 @@ final videoPlayerControllerProvider =
 /// 可用字幕列表（autoDispose）
 final availableSubtitlesProvider = StateProvider.autoDispose<List<SubtitleItem>>((ref) => []);
 
-/// 当前选中的字幕（autoDispose）
-final currentSubtitleProvider = StateProvider.autoDispose<SubtitleItem?>((ref) => null);
+/// 当前选中的字幕（需要持久化，不使用 autoDispose）
+final currentSubtitleProvider = StateProvider<SubtitleItem?>((ref) => null);
 
-/// 当前选中的内嵌字幕轨道 ID（autoDispose）
+/// 当前选中的内嵌字幕轨道 ID（需要持久化，不使用 autoDispose）
 /// 用于跟踪内嵌字幕的选中状态
-final currentEmbeddedSubtitleIdProvider = StateProvider.autoDispose<String?>((ref) => null);
+final currentEmbeddedSubtitleIdProvider = StateProvider<String?>((ref) => null);
 
 /// 播放器状态
 class VideoPlayerState {
