@@ -259,12 +259,6 @@ class VideoControls extends ConsumerWidget {
                     ),
                     tooltip: '播放列表',
                   ),
-                // 倍速
-                _SpeedButton(
-                  speed: state.speed,
-                  onSpeedChange: onSpeedChange,
-                ),
-                const SizedBox(width: 8),
                 // 画中画
                 if (isPipSupported)
                   IconButton(
@@ -277,9 +271,14 @@ class VideoControls extends ConsumerWidget {
                     ),
                     tooltip: state.isPictureInPicture ? '退出画中画' : '画中画',
                   ),
+                // 倍速（紧邻画面比例）
+                _SpeedButton(
+                  speed: state.speed,
+                  onSpeedChange: onSpeedChange,
+                ),
                 // 画面比例快捷按钮
                 _AspectRatioButton(),
-                // 设置按钮（在画中画和全屏之间）
+                // 设置按钮
                 IconButton(
                   onPressed: () => showInfuseSettingsPanel(
                     context,

@@ -214,7 +214,7 @@ class _InfuseSettingsPanelState extends ConsumerState<InfuseSettingsPanel>
 
                                 const _Divider(),
 
-                                // === 音轨 ===
+                                // === 音轨 ===（画面比例已在主界面控制）
                                 if (audioTracks.isNotEmpty)
                                   _SettingItem(
                                     icon: Icons.audiotrack_rounded,
@@ -225,14 +225,6 @@ class _InfuseSettingsPanelState extends ConsumerState<InfuseSettingsPanel>
                                       showAudioTrackSelector(context);
                                     },
                                   ),
-
-                                // === 画面比例 ===
-                                _SettingItem(
-                                  icon: Icons.aspect_ratio_rounded,
-                                  title: '画面比例',
-                                  value: aspectRatio.label,
-                                  onTap: () => _showAspectRatioPicker(context, ref),
-                                ),
 
                                 const _Divider(),
 
