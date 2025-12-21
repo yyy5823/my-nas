@@ -699,10 +699,21 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
 
       // ========== 阶段1：快速加载（Infuse 风格）==========
       // 使用简单查询立即获取所有视频，不做复杂分类
+      // 同时并行查询统计数量，确保显示真实数量而非临时列表长度
       final enabledPaths = _getEnabledPaths();
       final stopwatch = Stopwatch()..start();
 
-      final allVideos = await _db.getAllVideosQuick(enabledPaths: enabledPaths);
+      // 并行执行：获取视频列表 + 查询统计数量
+      final phase1Results = await Future.wait([
+        _db.getAllVideosQuick(enabledPaths: enabledPaths),
+        _db.getStats(enabledPaths: enabledPaths),
+        _db.getTvShowGroupCount(enabledPaths: enabledPaths),
+      ]);
+      
+      final allVideos = phase1Results[0] as List<VideoMetadata>;
+      final stats = phase1Results[1] as Map<String, dynamic>;
+      final tvShowGroupCount = phase1Results[2] as int;
+      
       stopwatch.stop();
       logger.i('VideoListNotifier: 阶段1完成 - 快速加载 ${allVideos.length} 个视频，耗时 ${stopwatch.elapsedMilliseconds}ms');
 
@@ -760,13 +771,14 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
         }
       }
 
+      // 使用真实统计数量，而非临时列表长度
       state = VideoListLoaded(
         totalCount: allVideos.length,
         databaseTotalCount: allVideos.length,
-        movieCount: tempMovies.length,
-        tvShowCount: tempTvShows.length,
-        tvShowGroupCount: tempTvShowGroups.length,
-        otherCount: tempOthers.length,
+        movieCount: stats['movies'] as int? ?? tempMovies.length,
+        tvShowCount: stats['tvShows'] as int? ?? tempTvShows.length,
+        tvShowGroupCount: tvShowGroupCount,
+        otherCount: stats['others'] as int? ?? tempOthers.length,
         videoByKey: videoByKey,
         recentVideos: allVideos.take(20).toList(),
         movies: tempMovies,
