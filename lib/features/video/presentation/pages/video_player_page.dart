@@ -607,7 +607,7 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     // 画中画按钮（仅在支持时显示）
-                    if (playerState.isPipSupported)
+                    if (_isPipSupported)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 8),
                         child: DecoratedBox(
