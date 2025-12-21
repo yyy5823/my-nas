@@ -891,9 +891,9 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     }
 
     // ============ 第二阶段：批次1 - 首屏核心内容 ============
-    List<VideoMetadata> topRatedRaw = [];
-    List<VideoMetadata> recentRaw = [];
-    List<VideoMetadata> moviesList = [];
+    var topRatedRaw = <VideoMetadata>[];
+    var recentRaw = <VideoMetadata>[];
+    var moviesList = <VideoMetadata>[];
 
     try {
       final batch1Stopwatch = Stopwatch()..start();
@@ -949,9 +949,9 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     }
 
     // ============ 第三阶段：批次2 - 剧集、系列、其他 ============
-    List<VideoMetadata> tvShowRepresentatives = [];
-    List<MovieCollection> movieCollections = [];
-    List<VideoMetadata> othersList = [];
+    var tvShowRepresentatives = <VideoMetadata>[];
+    var movieCollections = <MovieCollection>[];
+    var othersList = <VideoMetadata>[];
 
     try {
       final batch2Stopwatch = Stopwatch()..start();

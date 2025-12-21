@@ -6,6 +6,8 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/services/media_proxy_server.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
+import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/features/video/data/services/audio_track_service.dart';
 import 'package:my_nas/features/video/data/services/pip_service.dart';
 import 'package:my_nas/features/video/data/services/subtitle_service.dart';
@@ -401,19 +403,53 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
     ..d('VideoPlayer: URL => ${video.url}')
     ..d('VideoPlayer: size=${video.size}, path=${video.path}');
 
-    // 确定播放 URL（SMB 等协议需要通过代理）
-    var playUrl = video.url;
-    if (video.needsProxy) {
+    // 如果 URL 为空，需要先获取 URL（用于播放列表中的项）
+    var resolvedVideo = video;
+    if (video.needsUrlResolution) {
       if (video.sourceId == null) {
+        logger.e('VideoPlayer: 视频缺少 sourceId，无法获取 URL');
+        state = state.copyWith(errorMessage: '无法播放：缺少数据源信息');
+        return;
+      }
+      
+      try {
+        final connections = _ref.read(activeConnectionsProvider);
+        final connection = connections[video.sourceId];
+        
+        if (connection == null || connection.status != SourceStatus.connected) {
+          logger.e('VideoPlayer: 数据源未连接');
+          state = state.copyWith(errorMessage: '无法播放：数据源未连接');
+          return;
+        }
+        
+        final resolvedUrl = await connection.adapter.fileSystem.getFileUrl(video.path);
+        resolvedVideo = video.copyWith(url: resolvedUrl);
+        
+        // 更新当前视频信息
+        _currentVideo = resolvedVideo;
+        _ref.read(currentVideoProvider.notifier).state = resolvedVideo;
+        
+        logger.i('VideoPlayer: URL 已解析 => $resolvedUrl');
+      } on Exception catch (e, st) {
+        AppError.handle(e, st, 'VideoPlayer.resolveUrl', {'path': video.path});
+        state = state.copyWith(errorMessage: '无法获取视频地址');
+        return;
+      }
+    }
+
+    // 确定播放 URL（SMB 等协议需要通过代理）
+    var playUrl = resolvedVideo.url;
+    if (resolvedVideo.needsProxy) {
+      if (resolvedVideo.sourceId == null) {
         logger.e('VideoPlayer: SMB 视频缺少 sourceId，无法使用代理');
         state = state.copyWith(errorMessage: '无法播放：缺少数据源信息');
         return;
       }
       try {
         playUrl = await MediaProxyServer().registerFile(
-          sourceId: video.sourceId!,
-          filePath: video.path,
-          fileSize: video.size,
+          sourceId: resolvedVideo.sourceId!,
+          filePath: resolvedVideo.path,
+          fileSize: resolvedVideo.size,
         );
         logger.i('VideoPlayer: 使用代理 URL => $playUrl');
       } on Exception catch (e, st) {

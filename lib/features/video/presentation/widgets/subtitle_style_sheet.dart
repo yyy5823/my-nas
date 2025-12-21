@@ -33,119 +33,127 @@ class SubtitleStyleSheet extends ConsumerWidget {
           color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
-        child: Column(
-          children: [
-            // 拖拽指示器
-            Container(
-              margin: const EdgeInsets.only(top: 12),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: isDark
-                    ? AppColors.darkOutline.withValues(alpha: 0.3)
-                    : AppColors.lightOutline.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(2),
+        child: CustomScrollView(
+          controller: scrollController,
+          slivers: [
+            // 拖拽指示器（固定在顶部）
+            SliverToBoxAdapter(
+              child: Center(
+                child: Container(
+                  margin: const EdgeInsets.only(top: 12),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? AppColors.darkOutline.withValues(alpha: 0.3)
+                        : AppColors.lightOutline.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
               ),
             ),
 
             // 标题栏
-            Padding(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              child: Row(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(10),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.text_fields_rounded,
+                        color: AppColors.primary,
+                        size: 22,
+                      ),
                     ),
-                    child: const Icon(
-                      Icons.text_fields_rounded,
-                      color: AppColors.primary,
-                      size: 22,
+                    const SizedBox(width: 12),
+                    Text(
+                      '字幕样式',
+                      style: context.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    '字幕样式',
-                    style: context.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
+                    const Spacer(),
+                    TextButton(
+                      onPressed: notifier.reset,
+                      child: const Text('重置'),
                     ),
-                  ),
-                  const Spacer(),
-                  TextButton(
-                    onPressed: notifier.reset,
-                    child: const Text('重置'),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
 
-            const Divider(height: 1),
+            const SliverToBoxAdapter(child: Divider(height: 1)),
 
-            // 预览区域 - 在手机端使用更紧凑的高度
-            Builder(
-              builder: (context) {
-                final isCompact = MediaQuery.of(context).size.width < 600;
-                final previewHeight = isCompact ? 80.0 : 120.0;
-                
-                return Container(
-                  margin: EdgeInsets.symmetric(
-                    horizontal: AppSpacing.md,
-                    vertical: isCompact ? AppSpacing.sm : AppSpacing.md,
-                  ),
-                  padding: EdgeInsets.all(isCompact ? AppSpacing.sm : AppSpacing.lg),
-                  decoration: BoxDecoration(
-                    color: Colors.black,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Stack(
-                    children: [
-                      // 视频占位
-                      Container(
-                        height: previewHeight,
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [Colors.grey[800]!, Colors.grey[900]!],
+            // 预览区域 - 紧凑设计
+            SliverToBoxAdapter(
+              child: Builder(
+                builder: (context) {
+                  final isCompact = MediaQuery.of(context).size.width < 600;
+                  final previewHeight = isCompact ? 60.0 : 100.0;
+                  
+                  return Container(
+                    margin: EdgeInsets.symmetric(
+                      horizontal: AppSpacing.md,
+                      vertical: AppSpacing.sm,
+                    ),
+                    padding: EdgeInsets.all(isCompact ? AppSpacing.xs : AppSpacing.sm),
+                    decoration: BoxDecoration(
+                      color: Colors.black,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Stack(
+                      children: [
+                        // 视频占位
+                        Container(
+                          height: previewHeight,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [Colors.grey[800]!, Colors.grey[900]!],
+                            ),
+                          ),
+                          child: Center(
+                            child: Icon(
+                              Icons.movie_rounded,
+                              size: isCompact ? 24 : 36,
+                              color: Colors.grey[600],
+                            ),
                           ),
                         ),
-                        child: Center(
-                          child: Icon(
-                            Icons.movie_rounded,
-                            size: isCompact ? 32 : 48,
-                            color: Colors.grey[600],
-                          ),
+                        // 字幕预览
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          top: style.position == SubtitlePosition.top ? 4 : null,
+                          bottom: style.position == SubtitlePosition.bottom
+                              ? 4
+                              : null,
+                          child: style.position == SubtitlePosition.center
+                              ? Positioned.fill(
+                                  child: Center(child: _buildSubtitlePreview(style, isCompact)),
+                                )
+                              : _buildSubtitlePreview(style, isCompact),
                         ),
-                      ),
-                      // 字幕预览
-                      Positioned(
-                        left: 0,
-                        right: 0,
-                        top: style.position == SubtitlePosition.top ? 8 : null,
-                        bottom: style.position == SubtitlePosition.bottom
-                            ? 8
-                            : null,
-                        child: style.position == SubtitlePosition.center
-                            ? Positioned.fill(
-                                child: Center(child: _buildSubtitlePreview(style, isCompact)),
-                              )
-                            : _buildSubtitlePreview(style, isCompact),
-                      ),
-                    ],
-                  ),
-                );
-              },
+                      ],
+                    ),
+                  );
+                },
+              ),
             ),
 
             // 设置选项
-            Expanded(
-              child: ListView(
-                controller: scrollController,
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-                children: [
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+              sliver: SliverList(
+                delegate: SliverChildListDelegate([
                   // 字体大小
                   _buildSection(
                     context,
@@ -453,7 +461,7 @@ class SubtitleStyleSheet extends ConsumerWidget {
                   ),
 
                   SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
-                ],
+                ]),
               ),
             ),
           ],

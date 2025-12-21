@@ -5,7 +5,7 @@ class VideoItem {
   const VideoItem({
     required this.name,
     required this.path,
-    required this.url,
+    this.url = '',
     this.sourceId,
     this.size = 0,
     this.duration,
@@ -35,6 +35,9 @@ class VideoItem {
 
   /// 检查是否需要代理（SMB 等不支持直接 URL 访问的协议）
   bool get needsProxy => url.startsWith('smb://');
+  
+  /// 检查是否需要解析 URL（URL 为空时需要）
+  bool get needsUrlResolution => url.isEmpty;
 
   VideoItem copyWith({
     String? name,

@@ -554,32 +554,58 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
                 },
               ),
 
-            // 锁定按钮（左侧中间位置）
+            // 锁定按钮 - 动态定位在视频内容区域左侧
             if (_showControls)
-              Positioned(
-                left: 16,
-                top: 0,
-                bottom: 0,
-                child: Center(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.4),
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    child: IconButton(
-                      onPressed: () {
-                        setState(() => _isLocked = !_isLocked);
-                        _startHideControlsTimer();
-                      },
-                      icon: Icon(
-                        _isLocked ? Icons.lock_rounded : Icons.lock_open_rounded,
-                        color: Colors.white,
-                        size: 24,
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  // 获取视频原始尺寸
+                  final videoWidth = playerNotifier.player.state.width?.toDouble();
+                  final videoHeight = playerNotifier.player.state.height?.toDouble();
+                  
+                  // 计算视频在容器中的实际显示区域
+                  double leftOffset = 16; // 默认左边距
+                  
+                  if (videoWidth != null && videoHeight != null && videoHeight > 0) {
+                    final videoAspectRatio = videoWidth / videoHeight;
+                    final containerAspectRatio = constraints.maxWidth / constraints.maxHeight;
+                    
+                    if (videoAspectRatio < containerAspectRatio) {
+                      // 视频比容器窄（上下有黑边，如 4:3 视频在 16:9 屏幕）
+                      // 计算视频实际宽度和左侧黑边宽度
+                      final actualVideoWidth = constraints.maxHeight * videoAspectRatio;
+                      final horizontalBlackBar = (constraints.maxWidth - actualVideoWidth) / 2;
+                      // 将按钮定位在视频内容左边缘
+                      leftOffset = horizontalBlackBar + 8;
+                    }
+                    // 如果视频比容器宽（左右有黑边），使用默认边距即可
+                  }
+                  
+                  return Positioned(
+                    left: leftOffset,
+                    top: 0,
+                    bottom: 0,
+                    child: Center(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.5),
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                        child: IconButton(
+                          onPressed: () {
+                            setState(() => _isLocked = !_isLocked);
+                            _startHideControlsTimer();
+                          },
+                          icon: Icon(
+                            _isLocked ? Icons.lock_rounded : Icons.lock_open_rounded,
+                            color: Colors.white,
+                            size: 24,
+                          ),
+                          tooltip: _isLocked ? '解锁屏幕' : '锁定屏幕',
+                        ),
                       ),
-                      tooltip: _isLocked ? '解锁屏幕' : '锁定屏幕',
                     ),
-                  ),
-                ),
+                  );
+                },
               ),
 
             // 锁定状态提示
@@ -806,7 +832,7 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
         (key: 'C', description: '显示/隐藏控制栏'),
         (key: '[', description: '减慢播放速度'),
         (key: ']', description: '加快播放速度'),
-        (key: '\\', description: '恢复正常速度'),
+        (key: r'\', description: '恢复正常速度'),
         (key: '0-9', description: '跳转到 0%-90%'),
         (key: 'Esc', description: '退出全屏/返回'),
         (key: '?', description: '显示此帮助'),

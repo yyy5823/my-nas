@@ -15,6 +15,7 @@ import 'package:my_nas/features/video/presentation/pages/manual_scraper_page.dar
 import 'package:my_nas/features/video/presentation/pages/season_scraper_page.dart';
 import 'package:my_nas/features/video/presentation/pages/tmdb_preview_page.dart';
 import 'package:my_nas/features/video/presentation/pages/video_player_page.dart';
+import 'package:my_nas/features/video/presentation/providers/playlist_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/scraper_provider.dart'
     show ScrapingTaskState, backgroundScrapingProvider, enabledScraperCountProvider;
 import 'package:my_nas/features/video/presentation/providers/video_detail_provider.dart';
@@ -367,6 +368,10 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         thumbnailUrl: tmdbEpisode?.stillUrl ?? localFile.displayPosterUrl,
       );
 
+      // 构建当前季的剧集播放列表
+      final seasonNumber = localFile.seasonNumber ?? 1;
+      await _buildEpisodePlaylist(seasonNumber, localFile.episodeNumber ?? 1);
+
       await Navigator.of(context, rootNavigator: true).push(
         MaterialPageRoute<void>(
           builder: (context) => VideoPlayerPage(video: videoItem),
@@ -380,6 +385,63 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       if (mounted) {
         setState(() => _isPlaying = false);
       }
+    }
+  }
+
+  /// 构建当前季的播放列表
+  Future<void> _buildEpisodePlaylist(int seasonNumber, int currentEpisodeNumber) async {
+    // 获取本地剧集数据
+    var localEpisodes = <int, Map<int, VideoMetadata>>{};
+    
+    if (_hasTmdbId) {
+      final data = ref.read(localEpisodeFilesProvider(_selectedMetadata.tmdbId!));
+      localEpisodes = data.valueOrNull ?? {};
+    } else {
+      var showDirectory = _selectedMetadata.showDirectory;
+      if (showDirectory == null || showDirectory.isEmpty) {
+        showDirectory = VideoDatabaseService.extractShowDirectory(_selectedMetadata.filePath);
+      }
+      if (showDirectory != null && showDirectory.isNotEmpty) {
+        final data = ref.read(localEpisodesByShowDirProvider(showDirectory));
+        localEpisodes = data.valueOrNull ?? {};
+      }
+    }
+
+    // 获取当前季的剧集
+    final seasonEpisodes = localEpisodes[seasonNumber] ?? {};
+    if (seasonEpisodes.isEmpty) {
+      logger.d('VideoDetailPage: 无法构建播放列表，当前季无剧集');
+      return;
+    }
+
+    // 按集号排序并构建 VideoItem 列表
+    final episodeNumbers = seasonEpisodes.keys.toList()..sort();
+    final playlistItems = <VideoItem>[];
+    var startIndex = 0;
+
+    for (var i = 0; i < episodeNumbers.length; i++) {
+      final epNum = episodeNumbers[i];
+      final episode = seasonEpisodes[epNum]!;
+      
+      // 使用空 URL 构建 VideoItem（播放时会自动解析）
+      playlistItems.add(VideoItem(
+        name: episode.episodeTitle ?? episode.displayTitle,
+        path: episode.filePath,
+        // URL 留空，播放时会自动获取
+        sourceId: widget.sourceId,
+        thumbnailUrl: episode.displayPosterUrl,
+      ));
+
+      // 记录当前播放集的索引
+      if (epNum == currentEpisodeNumber) {
+        startIndex = i;
+      }
+    }
+
+    // 设置播放列表
+    if (playlistItems.isNotEmpty) {
+      ref.read(playlistProvider.notifier).setPlaylist(playlistItems, startIndex: startIndex);
+      logger.i('VideoDetailPage: 播放列表已设置，共 ${playlistItems.length} 集，从第 ${startIndex + 1} 集开始');
     }
   }
 
