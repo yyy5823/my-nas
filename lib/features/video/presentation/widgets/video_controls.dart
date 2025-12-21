@@ -63,19 +63,21 @@ class VideoControls extends ConsumerWidget {
   final int? episodeNumber;
 
   /// 根据秒数获取快退图标
+  /// 对于自定义秒数，使用 replay_10 作为基础图标（会用数字覆盖）
   IconData _getReplayIcon() => switch (seekInterval) {
         5 => Icons.replay_5,
         10 => Icons.replay_10,
         30 => Icons.replay_30,
-        _ => Icons.replay, // 对于其他秒数使用通用图标
+        _ => Icons.replay_10, // 使用 replay_10 作为基础图标
       };
 
   /// 根据秒数获取快进图标
+  /// 对于自定义秒数，使用 forward_10 作为基础图标（会用数字覆盖）
   IconData _getForwardIcon() => switch (seekInterval) {
         5 => Icons.forward_5,
         10 => Icons.forward_10,
         30 => Icons.forward_30,
-        _ => Icons.redo, // 对于其他秒数使用通用圆形图标，与 replay 样式一致
+        _ => Icons.forward_10, // 使用 forward_10 作为基础图标
       };
 
   /// 是否需要显示秒数标签（当没有对应的内置图标时）
@@ -416,27 +418,42 @@ class _SeekButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (needsLabel) {
-      // 对于没有内置图标的秒数，显示带秒数标签的按钮（数字在圈内，与 10 秒样式一致）
-      return Stack(
-        alignment: Alignment.center,
-        children: [
-          IconButton(
-            onPressed: onPressed,
-            iconSize: 48,
-            icon: Icon(icon, color: Colors.white),
-          ),
-          // 使用 IgnorePointer 让点击事件穿透到下层 IconButton
-          IgnorePointer(
-            child: Text(
-              '$seekInterval',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
+      // 对于没有内置图标的秒数，使用 replay_10/forward_10 作为基础图标
+      // 用黑色背景完全遮盖原图标中的 "10"，然后叠加自定义数字
+      return SizedBox(
+        width: 48,
+        height: 48,
+        child: IconButton(
+          onPressed: onPressed,
+          iconSize: 48,
+          padding: EdgeInsets.zero,
+          icon: Stack(
+            alignment: Alignment.center,
+            children: [
+              // 基础图标 (replay_10 或 forward_10)
+              Icon(icon, color: Colors.white, size: 48),
+              // 用黑色背景完全遮盖原图标中心的 "10" 数字
+              Container(
+                width: 18,
+                height: 14,
+                decoration: BoxDecoration(
+                  color: Colors.black,
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
-            ),
+              // 在遮盖区域上叠加自定义数字
+              Text(
+                '$seekInterval',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  height: 1,
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       );
     }
 
