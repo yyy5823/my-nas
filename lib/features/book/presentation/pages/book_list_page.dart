@@ -21,6 +21,7 @@ import 'package:my_nas/features/book/presentation/pages/epub_reader_page.dart';
 import 'package:my_nas/features/book/presentation/pages/mobi_reader_page.dart';
 import 'package:my_nas/features/book/presentation/pages/pdf_reader_page.dart';
 import 'package:my_nas/features/book/presentation/providers/book_cover_provider.dart';
+import 'package:my_nas/features/book/presentation/utils/book_navigator.dart';
 import 'package:my_nas/features/reading/data/services/reader_settings_service.dart';
 import 'package:my_nas/features/reading/presentation/providers/reader_settings_provider.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
@@ -2071,31 +2072,11 @@ class _BookGridItemState extends ConsumerState<_BookGridItem> {
     final db = BookDatabaseService();
     await db.updateLastReadTime(widget.book.sourceId, widget.book.path);
 
-    // 根据格式选择阅读器
-    Widget readerPage;
-    switch (bookItem.format) {
-      case BookFormat.epub:
-        // 根据设置选择 EPUB 阅读器引擎
-        final settings = ref.read(bookReaderSettingsProvider);
-        readerPage = settings.epubEngine == EpubReaderEngine.foliate
-            ? MobiReaderPage(book: bookItem) // Foliate 引擎（与 MOBI/AZW3 相同）
-            : EpubReaderPage(book: bookItem); // 原生引擎
-      case BookFormat.pdf:
-        readerPage = PdfReaderPage(book: bookItem);
-      case BookFormat.mobi:
-      case BookFormat.azw3:
-        // MOBI/AZW3 使用 foliate-js 直接渲染，获得最佳体验
-        readerPage = MobiReaderPage(book: bookItem);
-      case BookFormat.txt:
-      case BookFormat.unknown:
-        readerPage = BookReaderPage(book: bookItem);
-    }
-
-    // 使用 rootNavigatorKey 确保阅读器全屏显示，不显示底部导航栏
-    await Navigator.of(rootNavigatorKey.currentContext!).push(
-      MaterialPageRoute<void>(
-        builder: (context) => readerPage,
-      ),
+    // 使用 BookNavigator 打开图书（自动检测漫画并路由到合适的阅读器）
+    // 使用 rootNavigatorKey 确保阅读器全屏显示
+    await BookNavigator.instance.openBook(
+      rootNavigatorKey.currentContext!,
+      bookItem,
     );
 
     // 返回后刷新列表以更新排序

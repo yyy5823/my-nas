@@ -429,6 +429,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         path: episode.filePath,
         // URL 留空，播放时会自动获取
         sourceId: widget.sourceId,
+        size: episode.fileSize ?? 0,
         thumbnailUrl: episode.displayPosterUrl,
       ));
 

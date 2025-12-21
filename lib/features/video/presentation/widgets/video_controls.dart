@@ -141,6 +141,11 @@ class VideoControls extends ConsumerWidget {
                 icon: const Icon(Icons.bookmark_outline_rounded, color: Colors.white),
                 tooltip: '书签',
               ),
+            // 倍速（移到右上角）
+            _SpeedButton(
+              speed: state.speed,
+              onSpeedChange: onSpeedChange,
+            ),
           ],
         ),
       );
@@ -259,7 +264,7 @@ class VideoControls extends ConsumerWidget {
                     ),
                     tooltip: '播放列表',
                   ),
-                // 画中画
+                // 画中画（移到原倍速位置）
                 if (isPipSupported)
                   IconButton(
                     onPressed: onTogglePip,
@@ -271,11 +276,6 @@ class VideoControls extends ConsumerWidget {
                     ),
                     tooltip: state.isPictureInPicture ? '退出画中画' : '画中画',
                   ),
-                // 倍速（紧邻画面比例）
-                _SpeedButton(
-                  speed: state.speed,
-                  onSpeedChange: onSpeedChange,
-                ),
                 // 画面比例快捷按钮
                 _AspectRatioButton(),
                 // 设置按钮

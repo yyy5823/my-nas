@@ -10,6 +10,7 @@ import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/core/widgets/keyboard_shortcuts.dart';
 import 'package:my_nas/features/book/data/services/book_file_cache_service.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
+import 'package:my_nas/features/book/presentation/pages/epub_comic_reader_page.dart';
 import 'package:my_nas/features/reading/data/services/reader_settings_service.dart';
 import 'package:my_nas/features/reading/data/services/reading_progress_service.dart';
 import 'package:my_nas/features/reading/presentation/providers/reader_settings_provider.dart';
@@ -122,9 +123,15 @@ class MobiReaderNotifier extends StateNotifier<MobiReaderState> {
 
 /// MOBI/AZW3 阅读器页面
 class MobiReaderPage extends ConsumerStatefulWidget {
-  const MobiReaderPage({required this.book, super.key});
+  const MobiReaderPage({
+    required this.book,
+    this.forceComicReader = false,
+    super.key,
+  });
 
   final BookItem book;
+  /// 强制使用漫画阅读器（EPUB 转换后跳转到 EpubComicReaderPage）
+  final bool forceComicReader;
 
   @override
   ConsumerState<MobiReaderPage> createState() => _MobiReaderPageState();
@@ -675,6 +682,28 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
   Widget build(BuildContext context) {
     final state = ref.watch(mobiReaderProvider(widget.book));
     final settings = ref.watch(bookReaderSettingsProvider);
+
+    // 如果需要强制使用漫画阅读器，在文件加载完成后重定向
+    if (widget.forceComicReader && state is MobiReaderLoaded) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        // 跳转到漫画阅读器
+        Navigator.pushReplacement<void, void>(
+          context,
+          MaterialPageRoute(
+            builder: (context) => EpubComicReaderPage(
+              book: widget.book,
+              epubFile: File(state.filePath),
+            ),
+          ),
+        );
+      });
+      // 显示加载提示
+      return const Scaffold(
+        backgroundColor: Colors.black,
+        body: LoadingWidget(message: '正在打开漫画阅读器...'),
+      );
+    }
 
     return KeyboardShortcuts(
       shortcuts: {
