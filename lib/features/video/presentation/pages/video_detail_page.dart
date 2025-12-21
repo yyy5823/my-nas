@@ -368,9 +368,9 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
         thumbnailUrl: tmdbEpisode?.stillUrl ?? localFile.displayPosterUrl,
       );
 
-      // 构建当前季的剧集播放列表
+      // 构建当前季的剧集播放列表（不阻塞导航）
       final seasonNumber = localFile.seasonNumber ?? 1;
-      await _buildEpisodePlaylist(seasonNumber, localFile.episodeNumber ?? 1);
+      _buildEpisodePlaylist(seasonNumber, localFile.episodeNumber ?? 1);
 
       await Navigator.of(context, rootNavigator: true).push(
         MaterialPageRoute<void>(
@@ -388,8 +388,8 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     }
   }
 
-  /// 构建当前季的播放列表
-  Future<void> _buildEpisodePlaylist(int seasonNumber, int currentEpisodeNumber) async {
+  /// 构建当前季的播放列表（同步方法，不阻塞播放）
+  void _buildEpisodePlaylist(int seasonNumber, int currentEpisodeNumber) {
     // 获取本地剧集数据
     var localEpisodes = <int, Map<int, VideoMetadata>>{};
     
