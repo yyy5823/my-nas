@@ -3267,6 +3267,8 @@ class _ContinueWatchingCard extends ConsumerWidget {
       ),
     );
 
+    // 检查 widget 是否仍然挂载
+    if (!context.mounted) return;
     ref.invalidate(continueWatchingProvider);
   }
 }
