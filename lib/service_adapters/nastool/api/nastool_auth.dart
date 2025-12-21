@@ -132,6 +132,47 @@ class NasToolAuth {
     }
   }
 
+  /// 设置 API Token（用于 API Token 认证）
+  void setApiToken(String token) {
+    _sessionToken = token;
+    _username = 'API Token';
+    _loginTime = DateTime.now();
+  }
+
+  /// 验证 API Token 是否有效
+  Future<bool> validateApiToken(String token) async {
+    try {
+      final url = Uri.parse('$baseUrl/api/v1/system/version');
+      
+      // 尝试多种 Authorization 格式
+      final authFormats = [token, 'Bearer $token', 'Token $token'];
+      
+      for (final auth in authFormats) {
+        final response = await http.post(
+          url,
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Authorization': auth,
+          },
+        );
+        
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body) as Map<String, dynamic>;
+          if (data['code'] == 0 || data['version'] != null) {
+            // Token 有效，设置认证信息
+            _sessionToken = auth;
+            _username = 'API Token';
+            _loginTime = DateTime.now();
+            return true;
+          }
+        }
+      }
+      return false;
+    } on Exception {
+      return false;
+    }
+  }
+
   /// 清除认证状态
   void clear() {
     _sessionToken = null;

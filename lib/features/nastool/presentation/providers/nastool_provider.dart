@@ -68,6 +68,7 @@ class NasToolConnectionNotifier extends StateNotifier<NasToolConnection?> {
     );
 
     final config = ServiceConnectionConfig.fromSource(source);
+    logger.d('NasToolProvider: 连接配置 - username: ${config.username}, password: ${config.password != null ? '***' : 'null'}, extraConfig: ${config.extraConfig?.keys}');
 
     try {
       final result = await adapter.connect(config);

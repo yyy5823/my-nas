@@ -875,14 +875,38 @@ class SourceFormConfig {
             ),
           ],
         ),
-        const SourceFormSection(
-          title: '认证信息',
+        SourceFormSection(
+          title: '认证方式',
+          description: '选择 API Token 或用户名密码认证',
           fields: [
+            const SourceFormField(
+              key: 'authType',
+              label: '认证类型',
+              type: SourceFormFieldType.select,
+              options: ['用户名密码', 'API Token'],
+              defaultValue: '用户名密码',
+            ),
+            SourceFormField(
+              key: 'username',
+              label: '用户名',
+              placeholder: 'admin',
+              visibilityCondition: (values) =>
+                  values['authType'] != 'API Token',
+            ),
+            SourceFormField(
+              key: 'password',
+              label: '密码',
+              type: SourceFormFieldType.password,
+              visibilityCondition: (values) =>
+                  values['authType'] != 'API Token',
+            ),
             SourceFormField(
               key: 'apiToken',
               label: 'API Token',
               type: SourceFormFieldType.password,
               helpText: '在 NASTool 设置中生成',
+              visibilityCondition: (values) =>
+                  values['authType'] == 'API Token',
             ),
           ],
         ),

@@ -41,41 +41,70 @@ class NasToolAdapter implements ServiceAdapter {
   @override
   Future<ServiceConnectionResult> connect(ServiceConnectionConfig config) async {
     try {
-      // 从配置获取用户名密码
-      final username = config.username ?? config.extraConfig?['username'] as String?;
-      final password = config.password ?? config.extraConfig?['password'] as String?;
-
-      if (username == null || username.isEmpty) {
-        return const ServiceConnectionFailure('缺少用户名');
-      }
-
-      if (password == null || password.isEmpty) {
-        return const ServiceConnectionFailure('缺少密码');
-      }
-
       _api = NasToolApi(baseUrl: config.baseUrl);
 
-      // 登录认证
-      final loginResult = await _api!.login(username, password);
+      // 检查认证类型
+      final authType = config.extraConfig?['authType'] as String? ?? '用户名密码';
 
-      return loginResult.when(
-        success: (token, user) async {
-          // 获取系统版本
-          try {
-            _systemVersion = await _api!.getSystemVersion();
-          } on Exception catch (e, st) {
-            AppError.ignore(e, st, '系统版本获取失败不影响连接');
-          }
+      if (authType == 'API Token') {
+        // API Token 认证
+        final apiToken = config.apiKey ?? config.extraConfig?['apiToken'] as String?;
+        
+        if (apiToken == null || apiToken.isEmpty) {
+          return const ServiceConnectionFailure('缺少 API Token');
+        }
 
-          _connection = config;
-          return ServiceConnectionSuccess(this);
-        },
-        failure: (message) {
+        final valid = await _api!.validateApiToken(apiToken);
+        
+        if (!valid) {
           _api?.dispose();
           _api = null;
-          return ServiceConnectionFailure(message);
-        },
-      );
+          return const ServiceConnectionFailure('API Token 无效');
+        }
+      } else {
+        // 用户名密码认证
+        final username = config.username ?? config.extraConfig?['username'] as String?;
+        final password = config.password ?? config.extraConfig?['password'] as String?;
+
+        // Debug logging
+        AppError.ignore(
+          Exception('Debug: username=$username, password=${password != null ? '***' : 'null'}, config.password=${config.password != null}, extraConfig.password=${config.extraConfig?['password'] != null}'),
+          StackTrace.current,
+          'NASTool 连接调试',
+        );
+
+        if (username == null || username.isEmpty) {
+          return const ServiceConnectionFailure('缺少用户名');
+        }
+
+        if (password == null || password.isEmpty) {
+          return const ServiceConnectionFailure('缺少密码');
+        }
+
+        // 登录认证
+        final loginResult = await _api!.login(username, password);
+        
+        final failureMessage = loginResult.when(
+          success: (_, __) => null,
+          failure: (message) => message,
+        );
+        
+        if (failureMessage != null) {
+          _api?.dispose();
+          _api = null;
+          return ServiceConnectionFailure(failureMessage);
+        }
+      }
+
+      // 获取系统版本
+      try {
+        _systemVersion = await _api!.getSystemVersion();
+      } on Exception catch (e, st) {
+        AppError.ignore(e, st, '系统版本获取失败不影响连接');
+      }
+
+      _connection = config;
+      return ServiceConnectionSuccess(this);
     } on NasToolApiException catch (e) {
       _api?.dispose();
       _api = null;

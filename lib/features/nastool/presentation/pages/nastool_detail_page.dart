@@ -6,6 +6,7 @@ import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/nastool/presentation/providers/nastool_provider.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/service_adapters/nastool/api/nastool_api.dart';
+import 'package:my_nas/service_adapters/nastool/models/models.dart';
 import 'package:my_nas/service_adapters/nastool/nastool_adapter.dart';
 
 /// NASTool 详情页面
@@ -46,8 +47,7 @@ class _NasToolDetailPageState extends ConsumerState<NasToolDetailPage>
 
   void _onTabChanged() {
     if (_tabController.indexIsChanging) return;
-    final tab = NasToolTab.values[_tabController.index];
-    ref.read(nastoolCurrentTabProvider(widget.source.id).notifier).state = tab;
+    // Tab changed - refresh data if needed
   }
 
   Future<void> _connect() async {
@@ -118,9 +118,9 @@ class _NasToolDetailPageState extends ConsumerState<NasToolDetailPage>
                             color: isDark ? AppColors.darkOnSurface : null,
                           ),
                         ),
-                        if (connection?.adapter.systemInfo != null)
+                        if (connection?.adapter.systemVersion != null)
                           Text(
-                            'v${connection!.adapter.systemInfo!.version}',
+                            'v${connection!.adapter.systemVersion!.version}',
                             style: context.textTheme.bodySmall?.copyWith(
                               color: isDark
                                   ? AppColors.darkOnSurfaceVariant
@@ -280,7 +280,7 @@ class _NasToolDetailPageState extends ConsumerState<NasToolDetailPage>
     try {
       await ref
           .read(nastoolActionsProvider(widget.source.id))
-          .refreshMediaLibrary();
+          .refreshLibrary();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -303,7 +303,7 @@ class _NasToolDetailPageState extends ConsumerState<NasToolDetailPage>
 
   void _showSystemInfoDialog(BuildContext context, NasToolConnection connection) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final systemInfo = connection.adapter.systemInfo;
+    final systemInfo = connection.adapter.systemVersion;
 
     showDialog<void>(
       context: context,
@@ -344,27 +344,11 @@ class _NasToolDetailPageState extends ConsumerState<NasToolDetailPage>
               value: '${widget.source.host}:${widget.source.port}',
               isDark: isDark,
             ),
-            if (systemInfo?.serverName != null) ...[
+            if (systemInfo?.hasUpdate == true) ...[
               const SizedBox(height: 12),
               _InfoRow(
-                label: '服务器名称',
-                value: systemInfo!.serverName!,
-                isDark: isDark,
-              ),
-            ],
-            if (systemInfo?.cpuUsage != null) ...[
-              const SizedBox(height: 12),
-              _InfoRow(
-                label: 'CPU 使用率',
-                value: '${(systemInfo!.cpuUsage! * 100).toStringAsFixed(1)}%',
-                isDark: isDark,
-              ),
-            ],
-            if (systemInfo?.memoryUsage != null) ...[
-              const SizedBox(height: 12),
-              _InfoRow(
-                label: '内存使用率',
-                value: '${(systemInfo!.memoryUsage! * 100).toStringAsFixed(1)}%',
+                label: '有可用更新',
+                value: systemInfo!.latestVersion ?? '未知',
                 isDark: isDark,
               ),
             ],
@@ -390,26 +374,32 @@ class _OverviewTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final overviewAsync = ref.watch(nastoolOverviewAutoRefreshProvider(sourceId));
+    final statsAsync = ref.watch(nastoolStatsProvider(sourceId));
 
-    if (overviewAsync == null) {
-      return const Center(child: CircularProgressIndicator());
-    }
+    return statsAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text('加载失败: $e')),
+      data: (stats) {
+        if (stats == null) {
+          return const Center(child: CircularProgressIndicator());
+        }
 
-    return RefreshIndicator(
-      onRefresh: () async {
-        ref.invalidate(nastoolOverviewAutoRefreshProvider(sourceId));
+        return RefreshIndicator(
+          onRefresh: () async {
+            ref.invalidate(nastoolStatsProvider(sourceId));
+          },
+          child: ListView(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            children: [
+              // 媒体统计卡片
+              _buildStatsSection(context, stats),
+              const SizedBox(height: AppSpacing.lg),
+              // 任务统计卡片
+              _buildTasksSection(context, stats),
+            ],
+          ),
+        );
       },
-      child: ListView(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        children: [
-          // 媒体统计卡片
-          _buildStatsSection(context, overviewAsync),
-          const SizedBox(height: AppSpacing.lg),
-          // 任务统计卡片
-          _buildTasksSection(context, overviewAsync),
-        ],
-      ),
     );
   }
 
@@ -648,7 +638,7 @@ class _SubscribeTile extends ConsumerWidget {
     required this.isDark,
   });
 
-  final NasToolSubscribe subscribe;
+  final NtSubscribe subscribe;
   final String sourceId;
   final bool isDark;
 
@@ -782,7 +772,7 @@ class _SubscribeTile extends ConsumerWidget {
               Navigator.pop(context);
               ref
                   .read(nastoolActionsProvider(sourceId))
-                  .deleteSubscribe(subscribe.id);
+                  .deleteSubscribe(subscribe.id, subscribe.type);
             },
             style: FilledButton.styleFrom(backgroundColor: AppColors.error),
             child: const Text('删除'),
@@ -802,7 +792,7 @@ class _DownloadsTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final tasksAsync = ref.watch(nastoolDownloadTasksProvider(sourceId));
+    final tasksAsync = ref.watch(nastoolDownloadsProvider(sourceId));
 
     return tasksAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -814,7 +804,7 @@ class _DownloadsTab extends ConsumerWidget {
 
         return RefreshIndicator(
           onRefresh: () async {
-            ref.invalidate(nastoolDownloadTasksProvider(sourceId));
+            ref.invalidate(nastoolDownloadsProvider(sourceId));
           },
           child: ListView.builder(
             padding: const EdgeInsets.all(AppSpacing.md),
@@ -865,7 +855,7 @@ class _DownloadsTab extends ConsumerWidget {
 class _DownloadTaskTile extends StatelessWidget {
   const _DownloadTaskTile({required this.task, required this.isDark});
 
-  final NasToolDownloadTask task;
+  final NtDownloadTask task;
   final bool isDark;
 
   @override
@@ -1046,7 +1036,7 @@ class _HistoryTab extends ConsumerWidget {
 class _HistoryTile extends StatelessWidget {
   const _HistoryTile({required this.history, required this.isDark});
 
-  final NasToolTransferHistory history;
+  final NtTransferHistory history;
   final bool isDark;
 
   @override
@@ -1125,7 +1115,7 @@ class _HistoryTile extends StatelessWidget {
   }
 
   Color _getTypeColor() {
-    switch (history.type.toLowerCase()) {
+    switch (history.type?.toLowerCase()) {
       case 'movie':
         return AppColors.primary;
       case 'tv':
@@ -1138,7 +1128,7 @@ class _HistoryTile extends StatelessWidget {
   }
 
   String _getTypeLabel() {
-    switch (history.type.toLowerCase()) {
+    switch (history.type?.toLowerCase()) {
       case 'movie':
         return '电影';
       case 'tv':
@@ -1146,7 +1136,7 @@ class _HistoryTile extends StatelessWidget {
       case 'anime':
         return '动漫';
       default:
-        return history.type;
+        return history.type ?? '未知';
     }
   }
 
@@ -1174,7 +1164,7 @@ class _SearchTab extends ConsumerStatefulWidget {
 
 class _SearchTabState extends ConsumerState<_SearchTab> {
   final _searchController = TextEditingController();
-  List<NasToolSearchResult> _results = [];
+  List<NtSearchResult> _results = [];
   bool _isSearching = false;
   String? _error;
 
@@ -1196,7 +1186,7 @@ class _SearchTabState extends ConsumerState<_SearchTab> {
     try {
       final results = await ref
           .read(nastoolActionsProvider(widget.sourceId))
-          .searchResources(keyword: keyword);
+          .searchResources(keyword);
       if (mounted) {
         setState(() {
           _results = results;
@@ -1321,7 +1311,7 @@ class _SearchResultTile extends ConsumerWidget {
     required this.isDark,
   });
 
-  final NasToolSearchResult result;
+  final NtSearchResult result;
   final String sourceId;
   final bool isDark;
 
@@ -1375,7 +1365,7 @@ class _SearchResultTile extends ConsumerWidget {
                 ),
                 const Spacer(),
                 // 下载按钮
-                if (result.url != null)
+                if (result.enclosure != null)
                   IconButton(
                     icon: const Icon(Icons.download, color: AppColors.primary),
                     onPressed: () => _download(context, ref),
@@ -1445,12 +1435,12 @@ class _SearchResultTile extends ConsumerWidget {
   }
 
   Future<void> _download(BuildContext context, WidgetRef ref) async {
-    if (result.url == null) return;
+    if (result.enclosure == null) return;
 
     try {
       await ref
           .read(nastoolActionsProvider(sourceId))
-          .downloadResource(url: result.url!);
+          .downloadResource(enclosure: result.enclosure!, title: result.title);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(

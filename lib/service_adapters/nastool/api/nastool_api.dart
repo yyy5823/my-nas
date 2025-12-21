@@ -41,6 +41,9 @@ class NasToolApi {
   /// 验证会话
   Future<bool> validateSession() => _auth.validateSession();
 
+  /// 验证 API Token
+  Future<bool> validateApiToken(String token) => _auth.validateApiToken(token);
+
   // ============================================================
   // 系统相关
   // ============================================================
