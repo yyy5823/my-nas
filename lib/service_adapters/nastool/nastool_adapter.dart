@@ -197,9 +197,28 @@ class NasToolAdapter implements ServiceAdapter {
   Future<NasToolOverviewStats> getOverviewStats() async {
     _ensureConnected();
 
-    final mediaStats = await _api!.getMediaStats();
-    final subscribes = await _api!.getSubscribes();
-    final downloadTasks = await _api!.getDownloadTasks();
+    // 分别获取各项数据，任意一项失败不影响其他
+    NasToolMediaStats? mediaStats;
+    List<NasToolSubscribe> subscribes = [];
+    List<NasToolDownloadTask> downloadTasks = [];
+
+    try {
+      mediaStats = await _api!.getMediaStats();
+    } on Exception {
+      // 媒体统计接口可能不存在（404）
+    }
+
+    try {
+      subscribes = await _api!.getSubscribes();
+    } on Exception {
+      // 订阅列表接口可能失败
+    }
+
+    try {
+      downloadTasks = await _api!.getDownloadTasks();
+    } on Exception {
+      // 下载任务接口可能失败
+    }
 
     var activeDownloads = 0;
     var completedDownloads = 0;
@@ -213,9 +232,9 @@ class NasToolAdapter implements ServiceAdapter {
     }
 
     return NasToolOverviewStats(
-      movieCount: mediaStats.movieCount,
-      tvCount: mediaStats.tvCount,
-      animeCount: mediaStats.animeCount,
+      movieCount: mediaStats?.movieCount ?? 0,
+      tvCount: mediaStats?.tvCount ?? 0,
+      animeCount: mediaStats?.animeCount ?? 0,
       subscribeCount: subscribes.length,
       activeDownloads: activeDownloads,
       completedDownloads: completedDownloads,

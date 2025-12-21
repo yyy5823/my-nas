@@ -187,7 +187,7 @@ class _NasToolDetailPageState extends ConsumerState<NasToolDetailPage>
         child: TabBar(
           controller: _tabController,
           isScrollable: true,
-          tabAlignment: TabAlignment.start,
+          tabAlignment: TabAlignment.center,
           labelColor: AppColors.primary,
           unselectedLabelColor:
               isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
