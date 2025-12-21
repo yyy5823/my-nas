@@ -462,9 +462,12 @@ class SubtitleStyleSheet extends ConsumerWidget {
     );
   }
 
-  Widget _buildSubtitlePreview(SubtitleStyle style) => Center(
+  Widget _buildSubtitlePreview(SubtitleStyle style, [bool isCompact = false]) => Center(
     child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: EdgeInsets.symmetric(
+        horizontal: isCompact ? 8 : 12,
+        vertical: isCompact ? 4 : 6,
+      ),
       decoration: BoxDecoration(
         color: style.backgroundColor,
         borderRadius: BorderRadius.circular(4),
@@ -472,7 +475,7 @@ class SubtitleStyleSheet extends ConsumerWidget {
       child: Text(
         '这是字幕预览效果',
         style: TextStyle(
-          fontSize: style.fontSize * 0.6, // 预览区域缩小显示
+          fontSize: style.fontSize * (isCompact ? 0.5 : 0.6), // 预览区域缩小显示
           color: style.fontColor,
           fontWeight: style.fontWeight,
           shadows: style.hasOutline
