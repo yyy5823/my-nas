@@ -554,30 +554,27 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
                 },
               ),
 
-            // 锁定按钮（左侧中间位置）
+            // 锁定按钮（右下角位置，避免横屏时被遮挡）
             if (_showControls)
               Positioned(
-                left: 16,
-                top: 0,
-                bottom: 0,
-                child: Center(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.5),
-                      borderRadius: BorderRadius.circular(24),
+                right: 16,
+                bottom: 100,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: IconButton(
+                    onPressed: () {
+                      setState(() => _isLocked = !_isLocked);
+                      _startHideControlsTimer();
+                    },
+                    icon: Icon(
+                      _isLocked ? Icons.lock_rounded : Icons.lock_open_rounded,
+                      color: Colors.white,
+                      size: 24,
                     ),
-                    child: IconButton(
-                      onPressed: () {
-                        setState(() => _isLocked = !_isLocked);
-                        _startHideControlsTimer();
-                      },
-                      icon: Icon(
-                        _isLocked ? Icons.lock_rounded : Icons.lock_open_rounded,
-                        color: Colors.white,
-                        size: 24,
-                      ),
-                      tooltip: _isLocked ? '解锁屏幕' : '锁定屏幕',
-                    ),
+                    tooltip: _isLocked ? '解锁屏幕' : '锁定屏幕',
                   ),
                 ),
               ),
