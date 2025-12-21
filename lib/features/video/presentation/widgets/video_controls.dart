@@ -75,7 +75,7 @@ class VideoControls extends ConsumerWidget {
         5 => Icons.forward_5,
         10 => Icons.forward_10,
         30 => Icons.forward_30,
-        _ => Icons.forward, // 对于其他秒数使用通用图标
+        _ => Icons.redo, // 对于其他秒数使用通用圆形图标，与 replay 样式一致
       };
 
   /// 是否需要显示秒数标签（当没有对应的内置图标时）
@@ -416,7 +416,7 @@ class _SeekButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (needsLabel) {
-      // 对于没有内置图标的秒数，显示带秒数标签的按钮
+      // 对于没有内置图标的秒数，显示带秒数标签的按钮（数字在圈内，与 10 秒样式一致）
       return Stack(
         alignment: Alignment.center,
         children: [
@@ -425,21 +425,14 @@ class _SeekButton extends StatelessWidget {
             iconSize: 48,
             icon: Icon(icon, color: Colors.white),
           ),
-          Positioned(
-            bottom: 4,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-              decoration: BoxDecoration(
-                color: Colors.black54,
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                '${seekInterval}s',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                ),
+          // 使用 IgnorePointer 让点击事件穿透到下层 IconButton
+          IgnorePointer(
+            child: Text(
+              '$seekInterval',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
               ),
             ),
           ),

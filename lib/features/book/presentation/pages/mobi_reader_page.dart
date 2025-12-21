@@ -780,6 +780,7 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
         mode: settings.pageTurnMode == BookPageTurnMode.simulation
             ? PageFlipMode.simulation
             : PageFlipMode.cover,
+        backgroundColor: settings.theme.backgroundColor,
         onNextPage: () async {
           await _controller.nextPage();
         },
@@ -787,7 +788,11 @@ class _MobiReaderPageState extends ConsumerState<MobiReaderPage> {
           await _controller.prevPage();
         },
         onTap: (details) => _handleTapForFlipMode(details, settings),
-        child: readerContent,
+        // 使用 AbsorbPointer 阻止 WebView 内部处理手势，避免双重翻页
+        child: AbsorbPointer(
+          absorbing: true,
+          child: readerContent,
+        ),
       );
     }
 

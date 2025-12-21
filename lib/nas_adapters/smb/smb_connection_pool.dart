@@ -259,7 +259,6 @@ class SmbConnectionPool {
     await _waitForDedicatedSlot();
 
     try {
-      logger.i('SMB Pool: 创建专用连接 ($_dedicatedConnectionCount/$maxDedicatedConnections)');
       final client = await SmbConnect.connectAuth(
         host: host,
         domain: domain,
@@ -267,13 +266,19 @@ class SmbConnectionPool {
         password: password,
       ).timeout(
         const Duration(seconds: 30),
-        onTimeout: () => throw TimeoutException('SMB 连接超时'),
+        onTimeout: () => throw TimeoutException('SMB 专用连接超时 (30s)'),
       );
 
       return (client: client, releaseCallback: _releaseDedicatedSlot);
-    } catch (e) {
-      // 创建失败，释放槽位
+    // ignore: avoid_catches_without_on_clauses
+    } catch (e, st) {
+      // 创建失败，释放槽位并上报错误
       _releaseDedicatedSlot();
+      AppError.handle(e, st, 'SmbPool.createDedicatedConnection', {
+        'host': host,
+        'currentCount': _dedicatedConnectionCount,
+        'maxCount': maxDedicatedConnections,
+      });
       rethrow;
     }
   }
@@ -297,7 +302,7 @@ class SmbConnectionPool {
       await Future<void>.delayed(checkInterval);
     }
 
-    throw TimeoutException('等待专用连接槽位超时');
+    throw TimeoutException('等待专用连接槽位超时 ($_dedicatedConnectionCount/$maxDedicatedConnections)');
   }
 
   /// 释放专用连接槽位

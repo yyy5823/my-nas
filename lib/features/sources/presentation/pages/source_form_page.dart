@@ -72,6 +72,29 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
     _sectionKeys = {};
 
     _initializeFormValues();
+
+    // 编辑模式下异步加载保存的密码
+    if (widget.mode == SourceFormMode.edit && widget.existingSource != null) {
+      _loadSavedCredential();
+    }
+  }
+
+  /// 从安全存储加载保存的密码
+  Future<void> _loadSavedCredential() async {
+    if (!mounted) return;
+
+    final sourceManager = ref.read(sourceManagerProvider);
+    final credential = await sourceManager.getCredential(widget.existingSource!.id);
+
+    if (!mounted) return;
+
+    if (credential != null && credential.password.isNotEmpty) {
+      // 更新密码字段的值和控制器
+      setState(() {
+        _formValues['password'] = credential.password;
+        _controllers['password']?.text = credential.password;
+      });
+    }
   }
 
   void _initializeFormValues() {
@@ -461,7 +484,16 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
     var items = <Map<String, String>>[];
     final existingValue = _formValues[field.key];
     if (existingValue is List) {
-      items = existingValue.cast<Map<String, String>>().toList();
+      // 从 JSON 反序列化时，Map 可能是 Map<String, dynamic>
+      // 需要正确转换类型
+      for (final item in existingValue) {
+        if (item is Map) {
+          items.add({
+            'key': item['key']?.toString() ?? '',
+            'value': item['value']?.toString() ?? '',
+          });
+        }
+      }
     } else if (existingValue is String && existingValue.isNotEmpty) {
       // 尝试解析 JSON 格式（字符串值暂不支持，保持空列表）
       items = [];

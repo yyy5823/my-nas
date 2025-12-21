@@ -125,9 +125,6 @@ dependencies:
   battery_plus: ^6.2.1  # Battery info for reader status bar
   flutter_inappwebview: ^6.1.5  # WebView for precise book pagination
 
-  # Page Curl Animation
-  flutter_shaders: ^0.1.3  # Fragment shader utilities for page curl effect
-
   # Picture in Picture
   floating: ^2.0.1  # Android/iOS PiP support
   window_manager: ^0.4.3  # Desktop window control
@@ -153,9 +150,6 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-
-  shaders:
-    - shaders/page_curl.frag
 
   assets:
     - assets/images/

@@ -17,8 +17,17 @@ class TmdbService {
   static const String _defaultApiKey = ''; // 用户需要自己申请
   String _apiKey = _defaultApiKey;
 
-  static const String _baseUrl = 'https://api.themoviedb.org/3';
-  static const String _imageBaseUrl = 'https://image.tmdb.org/t/p';
+  /// 默认 API URL
+  static const String _defaultApiUrl = 'https://api.themoviedb.org/3';
+
+  /// 默认图片 URL
+  static const String _defaultImageUrl = 'https://image.tmdb.org/t/p';
+
+  /// 当前使用的 API URL（支持自定义代理）
+  String _apiUrl = _defaultApiUrl;
+
+  /// 当前使用的图片 URL（支持自定义代理）
+  String _imageUrl = _defaultImageUrl;
 
   /// HTTP 请求超时时间
   static const Duration _requestTimeout = Duration(seconds: 15);
@@ -39,6 +48,47 @@ class TmdbService {
   void setApiKey(String key) {
     _apiKey = key;
   }
+
+  /// 设置 API URL（支持自定义代理，如 api.tmdb.org）
+  ///
+  /// [url] API 基础 URL，不需要包含 /3 后缀（会自动添加）
+  void setApiUrl(String? url) {
+    if (url == null || url.isEmpty) {
+      _apiUrl = _defaultApiUrl;
+      return;
+    }
+    // 规范化 URL：移除末尾斜杠，确保包含 /3
+    var normalized = url.trimRight();
+    if (normalized.endsWith('/')) {
+      normalized = normalized.substring(0, normalized.length - 1);
+    }
+    // 如果用户输入的是不带 /3 的 URL，自动添加
+    if (!normalized.endsWith('/3')) {
+      normalized = '$normalized/3';
+    }
+    _apiUrl = normalized;
+    logger.i('TmdbService: API URL 已设置为 $_apiUrl');
+  }
+
+  /// 设置图片 URL（支持自定义代理）
+  void setImageUrl(String? url) {
+    if (url == null || url.isEmpty) {
+      _imageUrl = _defaultImageUrl;
+      return;
+    }
+    var normalized = url.trimRight();
+    if (normalized.endsWith('/')) {
+      normalized = normalized.substring(0, normalized.length - 1);
+    }
+    _imageUrl = normalized;
+    logger.i('TmdbService: 图片 URL 已设置为 $_imageUrl');
+  }
+
+  /// 获取当前 API URL
+  String get apiUrl => _apiUrl;
+
+  /// 获取当前图片 URL
+  String get imageUrl => _imageUrl;
 
   /// 检查是否配置了 API Key
   bool get hasApiKey => _apiKey.isNotEmpty;
@@ -77,9 +127,13 @@ class TmdbService {
   }
 
   /// 获取图片完整 URL
+  ///
+  /// 使用当前配置的图片 URL（支持自定义代理）
   static String getImageUrl(String? path, {ImageSize size = ImageSize.w500}) {
     if (path == null || path.isEmpty) return '';
-    return '$_imageBaseUrl/${size.value}$path';
+    // 使用实例的图片 URL 配置
+    final imageUrl = _instance?._imageUrl ?? _defaultImageUrl;
+    return '$imageUrl/${size.value}$path';
   }
 
   /// 搜索电影
@@ -107,7 +161,7 @@ class TmdbService {
         params['year'] = year.toString();
       }
 
-      final uri = Uri.parse('$_baseUrl/search/movie').replace(queryParameters: params);
+      final uri = Uri.parse('$_apiUrl/search/movie').replace(queryParameters: params);
       final response = await _httpGet(uri);
 
       if (response.statusCode == 200) {
@@ -147,7 +201,7 @@ class TmdbService {
         params['first_air_date_year'] = year.toString();
       }
 
-      final uri = Uri.parse('$_baseUrl/search/tv').replace(queryParameters: params);
+      final uri = Uri.parse('$_apiUrl/search/tv').replace(queryParameters: params);
       final response = await _httpGet(uri);
 
       if (response.statusCode == 200) {
@@ -179,7 +233,7 @@ class TmdbService {
         'append_to_response': 'credits,videos,images',
       };
 
-      final uri = Uri.parse('$_baseUrl/movie/$movieId').replace(queryParameters: params);
+      final uri = Uri.parse('$_apiUrl/movie/$movieId').replace(queryParameters: params);
       final response = await _httpGet(uri);
 
       if (response.statusCode == 200) {
@@ -211,7 +265,7 @@ class TmdbService {
         'append_to_response': 'credits,videos,images',
       };
 
-      final uri = Uri.parse('$_baseUrl/tv/$tvId').replace(queryParameters: params);
+      final uri = Uri.parse('$_apiUrl/tv/$tvId').replace(queryParameters: params);
       final response = await _httpGet(uri);
 
       if (response.statusCode == 200) {
@@ -243,7 +297,7 @@ class TmdbService {
         'language': language ?? getPreferredMetadataLanguage(),
       };
 
-      final uri = Uri.parse('$_baseUrl/tv/$tvId/season/$seasonNumber')
+      final uri = Uri.parse('$_apiUrl/tv/$tvId/season/$seasonNumber')
           .replace(queryParameters: params);
       final response = await _httpGet(uri);
 
@@ -277,7 +331,7 @@ class TmdbService {
         'language': language ?? getPreferredMetadataLanguage(),
       };
 
-      final uri = Uri.parse('$_baseUrl/movie/$movieId/recommendations')
+      final uri = Uri.parse('$_apiUrl/movie/$movieId/recommendations')
           .replace(queryParameters: params);
       final response = await _httpGet(uri);
 
@@ -311,7 +365,7 @@ class TmdbService {
         'language': language ?? getPreferredMetadataLanguage(),
       };
 
-      final uri = Uri.parse('$_baseUrl/tv/$tvId/recommendations')
+      final uri = Uri.parse('$_apiUrl/tv/$tvId/recommendations')
           .replace(queryParameters: params);
       final response = await _httpGet(uri);
 
@@ -345,7 +399,7 @@ class TmdbService {
         'language': language ?? getPreferredMetadataLanguage(),
       };
 
-      final uri = Uri.parse('$_baseUrl/movie/$movieId/similar')
+      final uri = Uri.parse('$_apiUrl/movie/$movieId/similar')
           .replace(queryParameters: params);
       final response = await _httpGet(uri);
 
@@ -379,7 +433,7 @@ class TmdbService {
         'language': language ?? getPreferredMetadataLanguage(),
       };
 
-      final uri = Uri.parse('$_baseUrl/tv/$tvId/similar')
+      final uri = Uri.parse('$_apiUrl/tv/$tvId/similar')
           .replace(queryParameters: params);
       final response = await _httpGet(uri);
 
@@ -411,7 +465,7 @@ class TmdbService {
         'language': language ?? getPreferredMetadataLanguage(),
       };
 
-      final uri = Uri.parse('$_baseUrl/collection/$collectionId')
+      final uri = Uri.parse('$_apiUrl/collection/$collectionId')
           .replace(queryParameters: params);
       final response = await _httpGet(uri);
 
@@ -436,7 +490,7 @@ class TmdbService {
 
     try {
       final params = {'api_key': _apiKey};
-      final uri = Uri.parse('$_baseUrl/movie/$movieId/translations')
+      final uri = Uri.parse('$_apiUrl/movie/$movieId/translations')
           .replace(queryParameters: params);
       final response = await _httpGet(uri);
 
@@ -461,7 +515,7 @@ class TmdbService {
 
     try {
       final params = {'api_key': _apiKey};
-      final uri = Uri.parse('$_baseUrl/tv/$tvId/translations')
+      final uri = Uri.parse('$_apiUrl/tv/$tvId/translations')
           .replace(queryParameters: params);
       final response = await _httpGet(uri);
 

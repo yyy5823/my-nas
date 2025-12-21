@@ -126,11 +126,23 @@ class MediaProxyServer {
     try {
       await _streamFile(request, fileInfo);
     } on Exception catch (e, st) {
-      AppError.handle(e, st, 'MediaProxyServer._handleRequest');
-      if (!request.response.headers.persistentConnection) {
+      AppError.handle(e, st, 'MediaProxyServer._handleRequest', {
+        'path': fileInfo.filePath,
+        'sourceId': fileInfo.sourceId,
+      });
+      try {
+        // 只有在还没发送响应头时才能设置状态码
         request.response.statusCode = HttpStatus.internalServerError;
+      // ignore: avoid_catches_without_on_clauses
+      } catch (_) {
+        // 响应头可能已经发送
       }
-      await request.response.close();
+      try {
+        await request.response.close();
+      // ignore: avoid_catches_without_on_clauses
+      } catch (_) {
+        // 响应可能已经关闭
+      }
     }
   }
 
@@ -211,10 +223,20 @@ class MediaProxyServer {
       final stream = await fileSystem.getFileStream(fileInfo.filePath, range: range);
       await request.response.addStream(stream);
       await request.response.close();
-      logger.d('MediaProxyServer: 传输完成 ${fileInfo.filePath}');
     } on Exception catch (e, st) {
-      AppError.ignore(e, st, '客户端断开连接导致传输中断');
-      await request.response.close();
+      // 上报流传输错误（可能是连接断开、读取失败等）
+      AppError.handle(e, st, 'MediaProxyServer.streamTransfer', {
+        'path': fileInfo.filePath,
+        'sourceId': fileInfo.sourceId,
+        'rangeStart': range?.start,
+        'rangeEnd': range?.end,
+      });
+      try {
+        await request.response.close();
+      // ignore: avoid_catches_without_on_clauses
+      } catch (_) {
+        // 响应可能已经关闭
+      }
     }
   }
 

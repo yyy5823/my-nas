@@ -162,12 +162,27 @@ Future<void> _loadTmdbApiKey() async {
     // Hive 已经在 configureDependencies 中通过其他服务初始化了
     // 这里直接打开 box 即可
     final box = await Hive.openBox<String>('settings');
+    final tmdbService = TmdbService();
 
     // 加载 TMDB API Key
     final apiKey = box.get('tmdb_api_key', defaultValue: '');
     if (apiKey != null && apiKey.isNotEmpty) {
-      TmdbService().setApiKey(apiKey);
+      tmdbService.setApiKey(apiKey);
       logger.i('TMDB API key loaded');
+    }
+
+    // 加载 TMDB API URL（自定义代理）
+    final apiUrl = box.get('tmdb_api_url');
+    if (apiUrl != null && apiUrl.isNotEmpty) {
+      tmdbService.setApiUrl(apiUrl);
+      logger.i('TMDB API URL loaded: $apiUrl');
+    }
+
+    // 加载 TMDB 图片 URL（自定义代理）
+    final imageUrl = box.get('tmdb_image_url');
+    if (imageUrl != null && imageUrl.isNotEmpty) {
+      tmdbService.setImageUrl(imageUrl);
+      logger.i('TMDB image URL loaded: $imageUrl');
     }
 
     // 加载语言偏好设置并传递给相关服务
@@ -175,7 +190,7 @@ Future<void> _loadTmdbApiKey() async {
     if (langPrefJson != null && langPrefJson.isNotEmpty) {
       final preference = _parseLanguagePreference(langPrefJson);
       if (preference != null) {
-        TmdbService().setLanguagePreference(preference);
+        tmdbService.setLanguagePreference(preference);
         SubtitleService().setLanguagePreference(preference);
         AudioTrackService().setLanguagePreference(preference);
         logger.i('语言偏好已加载: 元数据=${preference.metadataLanguages.first.code}, '
@@ -185,7 +200,7 @@ Future<void> _loadTmdbApiKey() async {
     }
 
     // 设置系统语言环境
-    TmdbService().setSystemLocale(
+    tmdbService.setSystemLocale(
       WidgetsBinding.instance.platformDispatcher.locale,
     );
   } on Exception catch (e, st) {

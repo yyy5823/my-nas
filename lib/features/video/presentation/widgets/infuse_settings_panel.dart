@@ -152,6 +152,7 @@ class _InfuseSettingsPanelState extends ConsumerState<InfuseSettingsPanel>
                                     color: Colors.white,
                                     fontSize: 16,
                                     fontWeight: FontWeight.w600,
+                                    decoration: TextDecoration.none,
                                   ),
                                 ),
                                 const Spacer(),
@@ -419,7 +420,11 @@ class _SpeedSection extends StatelessWidget {
                 const SizedBox(width: 12),
                 const Text(
                   '播放速度',
-                  style: TextStyle(color: Colors.white, fontSize: 14),
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    decoration: TextDecoration.none,
+                  ),
                 ),
                 const Spacer(),
                 Text(
@@ -476,7 +481,11 @@ class _SeekIntervalSection extends StatelessWidget {
                 const SizedBox(width: 12),
                 const Text(
                   '快进快退',
-                  style: TextStyle(color: Colors.white, fontSize: 14),
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    decoration: TextDecoration.none,
+                  ),
                 ),
                 const Spacer(),
                 Text(

@@ -5,6 +5,7 @@ import 'package:my_nas/features/aria2/presentation/pages/aria2_detail_page.dart'
 import 'package:my_nas/features/nastool/presentation/pages/nastool_detail_page.dart';
 import 'package:my_nas/features/pt_sites/presentation/pages/pt_site_detail_page.dart';
 import 'package:my_nas/features/qbittorrent/presentation/pages/qbittorrent_detail_page.dart';
+import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/source_category.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/pages/source_form_page.dart';
@@ -517,6 +518,11 @@ class _ServiceSourceCardState extends ConsumerState<_ServiceSourceCard> {
         if (password == null || password.isEmpty) {
           return;
         }
+        // 保存用户输入的密码
+        await manager.saveCredential(
+          widget.source.id,
+          SourceCredential(password: password),
+        );
       }
     }
 

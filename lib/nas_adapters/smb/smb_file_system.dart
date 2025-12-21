@@ -322,10 +322,18 @@ class SmbFileSystem implements NasFileSystem {
           var isPaused = false;
 
           controller.onPause = () => isPaused = true;
+          // ignore: cascade_invocations
           controller.onResume = () => isPaused = false;
+          // ignore: cascade_invocations
           controller.onCancel = () async {
             // 客户端取消，清理资源
-            await raf.close();
+            // 使用 try-catch 防止连接已断开时的错误
+            try {
+              await raf.close();
+            // ignore: avoid_catches_without_on_clauses
+            } catch (_) {
+              // 忽略关闭时的错误，连接可能已经断开
+            }
             await cleanup();
           };
 
@@ -359,13 +367,26 @@ class SmbFileSystem implements NasFileSystem {
                 }
                 await controller.close();
               // ignore: avoid_catches_without_on_clauses
-              } catch (e) {
+              } catch (e, st) {
+                // 上报流读取错误
+                AppError.handle(e, st, 'SmbFileSystem.streamRead', {
+                  'path': path,
+                  'rangeStart': range.start,
+                  'rangeEnd': range.end,
+                  'remaining': remaining,
+                  'chunksRead': chunksRead,
+                });
                 if (!controller.isClosed) {
                   controller.addError(e);
                 }
                 await controller.close();
               } finally {
-                await raf.close();
+                try {
+                  await raf.close();
+                // ignore: avoid_catches_without_on_clauses
+                } catch (_) {
+                  // 忽略关闭时的错误，连接可能已经断开
+                }
                 await cleanup();
               }
             }(),
@@ -373,8 +394,14 @@ class SmbFileSystem implements NasFileSystem {
           );
 
           return controller.stream;
+        // ignore: avoid_catches_without_on_clauses
         } catch (_) {
-          await raf.close();
+          try {
+            await raf.close();
+          // ignore: avoid_catches_without_on_clauses
+          } catch (_) {
+            // 忽略关闭时的错误
+          }
           rethrow;
         }
       } else {

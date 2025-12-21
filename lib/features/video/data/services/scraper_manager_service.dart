@@ -55,27 +55,31 @@ class ScraperManagerService {
       _initialized = true;
       logger.i('ScraperManagerService 初始化完成');
 
-      // 同步已有的 TMDB 刮削源 API Key 到 TmdbService
-      await _syncExistingTmdbApiKey();
+      // 同步已有的 TMDB 刮削源配置到 TmdbService
+      await _syncExistingTmdbConfig();
     } on Exception catch (e, st) {
       logger.e('ScraperManagerService 初始化失败', e, st);
       rethrow;
     }
   }
 
-  /// 初始化时同步已有的 TMDB API Key
-  Future<void> _syncExistingTmdbApiKey() async {
+  /// 初始化时同步已有的 TMDB 配置
+  Future<void> _syncExistingTmdbConfig() async {
     try {
       final sources = await getSources();
       final tmdbSource = sources.where((s) => s.type == ScraperType.tmdb).firstOrNull;
       if (tmdbSource != null) {
         final credential = await getCredential(tmdbSource.id);
         if (credential?.apiKey != null && credential!.apiKey!.isNotEmpty) {
-          await _syncTmdbApiKey(credential.apiKey!);
+          await _syncTmdbConfig(
+            apiKey: credential.apiKey!,
+            apiUrl: tmdbSource.apiUrl,
+            imageProxy: tmdbSource.extraConfig?['imageProxy'] as String?,
+          );
         }
       }
     } on Exception catch (e, st) {
-      logger.w('同步已有 TMDB API Key 失败', e, st);
+      logger.w('同步已有 TMDB 配置失败', e, st);
     }
   }
 
@@ -131,9 +135,13 @@ class ScraperManagerService {
       );
     }
 
-    // 同步 TMDB API Key 到 TmdbService（用于推荐内容等功能）
+    // 同步 TMDB 配置到 TmdbService（用于推荐内容等功能）
     if (source.type == ScraperType.tmdb && source.apiKey != null) {
-      await _syncTmdbApiKey(source.apiKey!);
+      await _syncTmdbConfig(
+        apiKey: source.apiKey!,
+        apiUrl: source.apiUrl,
+        imageProxy: source.extraConfig?['imageProxy'] as String?,
+      );
     }
 
     logger.i('添加刮削源: ${source.displayName}');
@@ -163,9 +171,13 @@ class ScraperManagerService {
       );
     }
 
-    // 同步 TMDB API Key 到 TmdbService（用于推荐内容等功能）
+    // 同步 TMDB 配置到 TmdbService（用于推荐内容等功能）
     if (source.type == ScraperType.tmdb && source.apiKey != null) {
-      await _syncTmdbApiKey(source.apiKey!);
+      await _syncTmdbConfig(
+        apiKey: source.apiKey!,
+        apiUrl: source.apiUrl,
+        imageProxy: source.extraConfig?['imageProxy'] as String?,
+      );
     }
 
     // 清除缓存的刮削器实例
@@ -251,21 +263,42 @@ class ScraperManagerService {
 
   // === 凭证管理 ===
 
-  /// 同步 TMDB API Key 到 TmdbService 和 Hive 存储
+  /// 同步 TMDB 配置到 TmdbService 和 Hive 存储
   ///
-  /// TmdbService 用于获取推荐内容、相似内容等功能，需要独立的 API Key 配置
-  Future<void> _syncTmdbApiKey(String apiKey) async {
+  /// TmdbService 用于获取推荐内容、相似内容等功能，需要独立的配置
+  /// [apiKey] API Key
+  /// [apiUrl] 自定义 API URL（如 https://api.tmdb.org）
+  /// [imageProxy] 图片代理 URL
+  Future<void> _syncTmdbConfig({
+    required String apiKey,
+    String? apiUrl,
+    String? imageProxy,
+  }) async {
     try {
-      // 同步到 TmdbService 实例
-      TmdbService().setApiKey(apiKey);
+      final tmdbService = TmdbService();
+
+      // 同步 API Key
+      tmdbService.setApiKey(apiKey);
+
+      // 同步 API URL（支持自定义代理）
+      tmdbService.setApiUrl(apiUrl);
+
+      // 同步图片 URL（支持自定义代理）
+      tmdbService.setImageUrl(imageProxy);
 
       // 同步到 Hive 存储（用于 app 重启后恢复）
       final box = await Hive.openBox<String>('settings');
       await box.put('tmdb_api_key', apiKey);
+      if (apiUrl != null && apiUrl.isNotEmpty) {
+        await box.put('tmdb_api_url', apiUrl);
+      }
+      if (imageProxy != null && imageProxy.isNotEmpty) {
+        await box.put('tmdb_image_url', imageProxy);
+      }
 
-      logger.i('TMDB API Key 已同步到 TmdbService');
+      logger.i('TMDB 配置已同步: apiUrl=$apiUrl, imageProxy=$imageProxy');
     } on Exception catch (e, st) {
-      logger.e('同步 TMDB API Key 失败', e, st);
+      logger.e('同步 TMDB 配置失败', e, st);
     }
   }
 

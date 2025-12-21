@@ -8,7 +8,7 @@ import 'package:my_nas/core/utils/logger.dart';
 
 /// 翻页效果模式
 enum PageFlipMode {
-  /// 仿真翻页（3D 翻转效果）
+  /// 仿真翻页（书页卷曲效果）
   simulation,
 
   /// 覆盖翻页
@@ -24,23 +24,10 @@ enum FlipDirection {
   backward,
 }
 
-/// 翻页起始位置
-enum FlipOrigin {
-  /// 从上方开始（右上角）
-  top,
-
-  /// 从中间开始
-  middle,
-
-  /// 从下方开始（右下角）
-  bottom,
-}
-
 /// 页面翻转效果 Widget
 ///
-/// 使用 Flutter Transform 实现 3D 翻页效果
+/// 使用纯 Flutter 实现书页翻转效果
 /// 支持仿真翻页和覆盖翻页两种模式
-/// 支持从上、中、下三个位置开始翻页
 class PageFlipEffect extends StatefulWidget {
   const PageFlipEffect({
     required this.child,
@@ -48,9 +35,10 @@ class PageFlipEffect extends StatefulWidget {
     required this.onPrevPage,
     this.mode = PageFlipMode.simulation,
     this.enabled = true,
-    this.animationDuration = const Duration(milliseconds: 350),
+    this.animationDuration = const Duration(milliseconds: 400),
     this.dragThreshold = 0.25,
     this.onTap,
+    this.backgroundColor = Colors.white,
     super.key,
   });
 
@@ -75,8 +63,11 @@ class PageFlipEffect extends StatefulWidget {
   /// 拖动阈值（超过此比例触发翻页）
   final double dragThreshold;
 
-  /// 点击事件回调（用于处理点击翻页区域）
+  /// 点击事件回调
   final void Function(TapUpDetails details)? onTap;
+
+  /// 背景颜色
+  final Color backgroundColor;
 
   @override
   State<PageFlipEffect> createState() => _PageFlipEffectState();
@@ -87,14 +78,8 @@ class _PageFlipEffectState extends State<PageFlipEffect>
   /// 动画控制器
   late AnimationController _controller;
 
-  /// 翻页进度 (0.0 - 1.0)
-  double _flipProgress = 0.0;
-
   /// 翻页方向
   FlipDirection? _direction;
-
-  /// 翻页起始位置
-  FlipOrigin _flipOrigin = FlipOrigin.middle;
 
   /// 是否正在动画中
   bool _isAnimating = false;
@@ -102,6 +87,14 @@ class _PageFlipEffectState extends State<PageFlipEffect>
   /// 拖动起始位置
   Offset? _dragStart;
 
+  /// 当前拖动进度 (0.0 - 1.0)
+  double _dragProgress = 0.0;
+
+  /// 拖动起始Y位置比例 (0=顶部, 1=底部)
+  double _dragStartY = 0.5;
+
+  /// 动画开始时的进度
+  double _animationStartProgress = 0.0;
 
   /// 捕获的当前页面图像
   ui.Image? _capturedImage;
@@ -125,48 +118,48 @@ class _PageFlipEffectState extends State<PageFlipEffect>
 
   void _onAnimationUpdate() {
     if (!mounted) return;
-    setState(() {
-      if (_direction == FlipDirection.forward) {
-        _flipProgress = _controller.value;
-      } else {
-        _flipProgress = 1.0 - _controller.value;
-      }
-    });
+
+    final t = Curves.easeOutCubic.transform(_controller.value);
+
+    if (_direction == FlipDirection.forward) {
+      // 向左翻：从起始进度动画到 1.0
+      _dragProgress = _animationStartProgress + (1.0 - _animationStartProgress) * t;
+    } else {
+      // 向右翻/取消：从起始进度动画回 0.0
+      _dragProgress = _animationStartProgress * (1.0 - t);
+    }
+
+    setState(() {});
   }
 
   void _onAnimationStatus(AnimationStatus status) {
     if (status == AnimationStatus.completed) {
       _onFlipComplete();
-    } else if (status == AnimationStatus.dismissed) {
-      _onFlipCancelled();
     }
   }
 
   Future<void> _onFlipComplete() async {
     final direction = _direction;
-    if (direction == null) return;
+    final progress = _dragProgress;
 
     _isAnimating = false;
 
-    // 执行翻页
-    if (direction == FlipDirection.forward) {
-      await widget.onNextPage();
-    } else {
-      await widget.onPrevPage();
+    // 只有当进度接近 1.0 时才触发翻页
+    if (progress > 0.9) {
+      if (direction == FlipDirection.forward) {
+        await widget.onNextPage();
+      } else {
+        await widget.onPrevPage();
+      }
     }
 
     _reset();
   }
 
-  void _onFlipCancelled() {
-    _isAnimating = false;
-    _reset();
-  }
-
   void _reset() {
     _direction = null;
-    _flipProgress = 0.0;
     _dragStart = null;
+    _dragProgress = 0.0;
     _capturedImage?.dispose();
     _capturedImage = null;
     _controller.reset();
@@ -179,13 +172,25 @@ class _PageFlipEffectState extends State<PageFlipEffect>
     _isCapturing = true;
 
     try {
-      final boundary = _captureKey.currentContext?.findRenderObject()
-          as RenderRepaintBoundary?;
-      if (boundary == null) return null;
+      await Future<void>.delayed(const Duration(milliseconds: 16));
 
-      // 使用较高的像素比以获得清晰的图像
+      if (!mounted) return null;
+
+      final renderObject = _captureKey.currentContext?.findRenderObject();
+      if (renderObject == null || renderObject is! RenderRepaintBoundary) {
+        logger.w('PageFlipEffect: RenderRepaintBoundary 未找到');
+        return null;
+      }
+
+      final boundary = renderObject;
+
+      if (boundary.debugNeedsPaint) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        if (!mounted) return null;
+      }
+
       final pixelRatio = MediaQuery.of(context).devicePixelRatio;
-      final image = await boundary.toImage(pixelRatio: math.min(pixelRatio, 2.0));
+      final image = await boundary.toImage(pixelRatio: pixelRatio.clamp(1.0, 2.0));
       return image;
     } on Exception catch (e) {
       logger.w('PageFlipEffect: 捕获页面失败 - $e');
@@ -195,39 +200,24 @@ class _PageFlipEffectState extends State<PageFlipEffect>
     }
   }
 
-  /// 根据Y坐标判断翻页起始位置
-  FlipOrigin _determineFlipOrigin(double y, double height) {
-    final ratio = y / height;
-    if (ratio < 0.33) {
-      return FlipOrigin.top;
-    } else if (ratio > 0.67) {
-      return FlipOrigin.bottom;
-    } else {
-      return FlipOrigin.middle;
-    }
-  }
-
   void _onDragStart(DragStartDetails details) {
     if (!widget.enabled || _isAnimating) return;
-    _dragStart = details.localPosition;
 
-    // 判断翻页起始位置
-    final height = MediaQuery.of(context).size.height;
-    _flipOrigin = _determineFlipOrigin(details.localPosition.dy, height);
+    final size = MediaQuery.of(context).size;
+    _dragStart = details.localPosition;
+    _dragStartY = (details.localPosition.dy / size.height).clamp(0.0, 1.0);
   }
 
   Future<void> _onDragUpdate(DragUpdateDetails details) async {
     if (!widget.enabled || _isAnimating || _dragStart == null) return;
 
-    final screenWidth = MediaQuery.of(context).size.width;
+    final size = MediaQuery.of(context).size;
     final dragDelta = details.localPosition.dx - _dragStart!.dx;
-    final dragRatio = dragDelta.abs() / screenWidth;
+    final dragRatio = dragDelta.abs() / size.width;
 
     // 确定翻页方向
     if (_direction == null && dragRatio > 0.02) {
-      _direction = dragDelta < 0
-          ? FlipDirection.forward
-          : FlipDirection.backward;
+      _direction = dragDelta < 0 ? FlipDirection.forward : FlipDirection.backward;
 
       // 开始拖动时捕获页面
       _capturedImage = await _capturePage();
@@ -239,11 +229,7 @@ class _PageFlipEffectState extends State<PageFlipEffect>
 
     if (_direction != null && mounted) {
       setState(() {
-        if (_direction == FlipDirection.forward) {
-          _flipProgress = dragRatio.clamp(0.0, 1.0);
-        } else {
-          _flipProgress = (1.0 - dragRatio).clamp(0.0, 1.0);
-        }
+        _dragProgress = dragRatio.clamp(0.0, 1.0);
       });
     }
   }
@@ -254,35 +240,34 @@ class _PageFlipEffectState extends State<PageFlipEffect>
       return;
     }
 
-    final shouldComplete = _direction == FlipDirection.forward
-        ? _flipProgress > widget.dragThreshold
-        : _flipProgress < (1.0 - widget.dragThreshold);
+    final shouldComplete = _dragProgress > widget.dragThreshold;
 
     _isAnimating = true;
+    _animationStartProgress = _dragProgress;
 
     if (shouldComplete) {
       // 完成翻页
-      _controller.value = _direction == FlipDirection.forward
-          ? _flipProgress
-          : 1.0 - _flipProgress;
-      _controller.forward();
+      if (_direction == FlipDirection.backward) {
+        // 向右翻（上一页）需要反转方向完成动画
+        _direction = FlipDirection.forward;
+      }
+      _controller.forward(from: 0);
       HapticFeedback.lightImpact();
     } else {
-      // 取消翻页 - 手指往回移动
-      _controller.value = _direction == FlipDirection.forward
-          ? _flipProgress
-          : 1.0 - _flipProgress;
-      _controller.reverse();
+      // 取消翻页
+      if (_direction == FlipDirection.forward) {
+        _direction = FlipDirection.backward;
+      }
+      _controller.forward(from: 0);
     }
   }
 
   void _onDragCancel() {
     if (_direction != null && !_isAnimating) {
       _isAnimating = true;
-      _controller.value = _direction == FlipDirection.forward
-          ? _flipProgress
-          : 1.0 - _flipProgress;
-      _controller.reverse();
+      _animationStartProgress = _dragProgress;
+      _direction = FlipDirection.backward;
+      _controller.forward(from: 0);
     } else {
       _reset();
     }
@@ -295,7 +280,7 @@ class _PageFlipEffectState extends State<PageFlipEffect>
     super.dispose();
   }
 
-  // 点击检测相关变量
+  // 点击检测
   Offset? _tapDownPosition;
   DateTime? _tapDownTime;
 
@@ -308,7 +293,6 @@ class _PageFlipEffectState extends State<PageFlipEffect>
       );
     }
 
-    // 使用 Listener 检测点击，避免与拖动手势竞争
     return Listener(
       behavior: HitTestBehavior.translucent,
       onPointerDown: (event) {
@@ -316,7 +300,6 @@ class _PageFlipEffectState extends State<PageFlipEffect>
         _tapDownTime = DateTime.now();
       },
       onPointerUp: (event) {
-        // 如果正在拖动翻页，不处理点击
         if (_direction != null || _isAnimating) {
           _tapDownPosition = null;
           _tapDownTime = null;
@@ -327,7 +310,6 @@ class _PageFlipEffectState extends State<PageFlipEffect>
           final distance = (event.localPosition - _tapDownPosition!).distance;
           final duration = DateTime.now().difference(_tapDownTime!);
 
-          // 快速点击且移动距离小，视为点击
           if (distance < 20 && duration.inMilliseconds < 300) {
             widget.onTap?.call(TapUpDetails(
               kind: event.kind,
@@ -350,7 +332,7 @@ class _PageFlipEffectState extends State<PageFlipEffect>
         onHorizontalDragCancel: _onDragCancel,
         child: Stack(
           children: [
-            // 原始内容（用于捕获）
+            // 原始内容
             RepaintBoundary(
               key: _captureKey,
               child: widget.child,
@@ -369,62 +351,50 @@ class _PageFlipEffectState extends State<PageFlipEffect>
     );
   }
 
-  /// 仿真翻页效果（书页卷曲）
-  Widget _buildSimulationEffect() {
-    final size = MediaQuery.of(context).size;
-    final screenWidth = size.width;
-    final screenHeight = size.height;
-
-    final progress = _direction == FlipDirection.forward
-        ? _flipProgress
-        : 1.0 - _flipProgress;
-
-    return CustomPaint(
-      painter: _PageCurlPainter(
-        image: _capturedImage!,
-        progress: progress,
-        direction: _direction!,
-        origin: _flipOrigin,
-        screenWidth: screenWidth,
-        screenHeight: screenHeight,
-      ),
-      size: size,
-    );
-  }
+  /// 仿真翻页效果
+  Widget _buildSimulationEffect() => CustomPaint(
+    painter: _SimulationPagePainter(
+      image: _capturedImage!,
+      progress: _dragProgress,
+      dragStartY: _dragStartY,
+      backgroundColor: widget.backgroundColor,
+      isForward: _direction == FlipDirection.forward,
+    ),
+    size: Size.infinite,
+  );
 
   /// 覆盖翻页效果
   Widget _buildCoverEffect() {
-    final progress = _direction == FlipDirection.forward
-        ? _flipProgress
-        : 1.0 - _flipProgress;
+    final size = MediaQuery.of(context).size;
 
-    final screenWidth = MediaQuery.of(context).size.width;
-    final offset = _direction == FlipDirection.forward
-        ? -screenWidth * progress
-        : screenWidth * (1 - progress);
+    // 计算页面偏移
+    final slideOffset = _direction == FlipDirection.forward
+        ? size.width * (1.0 - _dragProgress)
+        : -size.width * _dragProgress;
 
     return Stack(
       children: [
-        // 背景 - 纯白色模拟下一页
-        Container(color: Colors.white),
+        // 背景
+        ColoredBox(
+          color: widget.backgroundColor,
+          child: const SizedBox.expand(),
+        ),
 
         // 滑动的页面
         Transform.translate(
-          offset: Offset(offset, 0),
+          offset: Offset(slideOffset, 0),
           child: Stack(
             children: [
-              // 页面图像
               Positioned.fill(
                 child: RawImage(
                   image: _capturedImage,
                   fit: BoxFit.cover,
                 ),
               ),
-
               // 边缘阴影
               Positioned(
+                left: _direction == FlipDirection.forward ? null : 0,
                 right: _direction == FlipDirection.forward ? 0 : null,
-                left: _direction == FlipDirection.backward ? 0 : null,
                 top: 0,
                 bottom: 0,
                 width: 30,
@@ -438,7 +408,7 @@ class _PageFlipEffectState extends State<PageFlipEffect>
                           ? Alignment.centerLeft
                           : Alignment.centerRight,
                       colors: [
-                        Colors.black.withValues(alpha: 0.2 * progress),
+                        Colors.black.withValues(alpha: 0.15 * _dragProgress),
                         Colors.transparent,
                       ],
                     ),
@@ -448,292 +418,226 @@ class _PageFlipEffectState extends State<PageFlipEffect>
             ],
           ),
         ),
+
+        // 页面边缘的阴影（在背景上）
+        if (_dragProgress > 0)
+          Positioned(
+            left: _direction == FlipDirection.forward
+                ? size.width * (1.0 - _dragProgress) - 20
+                : null,
+            right: _direction == FlipDirection.backward
+                ? size.width * (1.0 - _dragProgress) - 20
+                : null,
+            top: 0,
+            bottom: 0,
+            width: 40,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.transparent,
+                    Colors.black.withValues(alpha: 0.1 * _dragProgress),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }
 }
 
-/// 页面卷曲绘制器 - 实现真正的角落翻页效果
-class _PageCurlPainter extends CustomPainter {
-  _PageCurlPainter({
+/// 仿真翻页绘制器
+class _SimulationPagePainter extends CustomPainter {
+  _SimulationPagePainter({
     required this.image,
     required this.progress,
-    required this.direction,
-    required this.origin,
-    required this.screenWidth,
-    required this.screenHeight,
+    required this.dragStartY,
+    required this.backgroundColor,
+    required this.isForward,
   });
 
   final ui.Image image;
   final double progress;
-  final FlipDirection direction;
-  final FlipOrigin origin;
-  final double screenWidth;
-  final double screenHeight;
+  final double dragStartY;
+  final Color backgroundColor;
+  final bool isForward;
 
   @override
   void paint(Canvas canvas, Size size) {
     if (progress <= 0) return;
 
-    final isForward = direction == FlipDirection.forward;
-    final curlProgress = progress.clamp(0.0, 1.0);
-
-    // 绘制背景（下一页 - 白色）
-    canvas.drawRect(
-      Rect.fromLTWH(0, 0, screenWidth, screenHeight),
-      Paint()..color = Colors.white,
+    final imageRect = Rect.fromLTWH(
+      0,
+      0,
+      image.width.toDouble(),
+      image.height.toDouble(),
     );
+    final destRect = Rect.fromLTWH(0, 0, size.width, size.height);
 
-    // 计算折叠线的角度和位置
-    // 从角落翻页时，折叠线是倾斜的
-    final foldAngle = switch (origin) {
-      FlipOrigin.top => math.pi / 6 * curlProgress, // 从右上角，折叠线向左下倾斜
-      FlipOrigin.bottom => -math.pi / 6 * curlProgress, // 从右下角，折叠线向左上倾斜
-      FlipOrigin.middle => 0.0, // 中间翻页，折叠线垂直
-    };
+    // 计算翻页的关键点
+    // 翻页线从右侧向左移动，同时有一定的角度
+    final foldX = size.width * (1.0 - progress);
 
-    // 折叠线的基准 X 位置
-    final baseFoldX = isForward
-        ? screenWidth * (1.0 - curlProgress)
-        : screenWidth * curlProgress;
+    // 根据拖动起始位置计算角度
+    // 如果从顶部开始拖动，底部移动更多；反之亦然
+    final angleIntensity = 0.15; // 角度强度
+    final topOffset = dragStartY * angleIntensity * size.width * progress;
+    final bottomOffset = (1.0 - dragStartY) * angleIntensity * size.width * progress;
 
-    // 根据角度计算折叠线的上下端点
-    final foldOffset = math.tan(foldAngle) * screenHeight / 2;
-    final foldTopX = baseFoldX + (origin == FlipOrigin.top ? foldOffset : -foldOffset);
-    final foldBottomX = baseFoldX + (origin == FlipOrigin.top ? -foldOffset : foldOffset);
+    final foldTopX = foldX + topOffset;
+    final foldBottomX = foldX - bottomOffset;
 
-    // 对于中间翻页，折叠线是垂直的
-    final actualFoldTopX = origin == FlipOrigin.middle ? baseFoldX : foldTopX;
-    final actualFoldBottomX = origin == FlipOrigin.middle ? baseFoldX : foldBottomX;
+    // 绘制背景
+    canvas.drawRect(destRect, Paint()..color = backgroundColor);
 
-    // 创建未翻起部分的裁剪路径
-    final unflippedPath = Path();
-    if (isForward) {
-      unflippedPath.moveTo(0, 0);
-      unflippedPath.lineTo(actualFoldTopX.clamp(0, screenWidth), 0);
-      unflippedPath.lineTo(actualFoldBottomX.clamp(0, screenWidth), screenHeight);
-      unflippedPath.lineTo(0, screenHeight);
-      unflippedPath.close();
-    } else {
-      unflippedPath.moveTo(screenWidth, 0);
-      unflippedPath.lineTo(actualFoldTopX.clamp(0, screenWidth), 0);
-      unflippedPath.lineTo(actualFoldBottomX.clamp(0, screenWidth), screenHeight);
-      unflippedPath.lineTo(screenWidth, screenHeight);
-      unflippedPath.close();
+    // 1. 绘制未翻起的部分（左侧）
+    final leftPath = Path()
+      ..moveTo(0, 0)
+      ..lineTo(foldTopX, 0)
+      ..lineTo(foldBottomX, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+
+    canvas
+      ..save()
+      ..clipPath(leftPath)
+      ..drawImageRect(image, imageRect, destRect, Paint())
+      ..restore();
+
+    // 2. 绘制翻起页面的背面
+    if (progress > 0.01) {
+      _drawPageBack(canvas, size, foldTopX, foldBottomX, imageRect, destRect);
     }
 
-    // 绘制未翻起的部分
-    canvas.save();
-    canvas.clipPath(unflippedPath);
-    final srcRect = Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble());
-    final dstRect = Rect.fromLTWH(0, 0, screenWidth, screenHeight);
-    canvas.drawImageRect(image, srcRect, dstRect, Paint());
-    canvas.restore();
-
-    // 绘制折叠线阴影
-    if (curlProgress > 0.02) {
-      _drawFoldShadow(canvas, actualFoldTopX, actualFoldBottomX, curlProgress, isForward);
-    }
-
-    // 绘制翻起的页面
-    _drawFlippedPage(canvas, actualFoldTopX, actualFoldBottomX, curlProgress, isForward);
-
-    // 绘制页面背面
-    if (curlProgress > 0.05) {
-      _drawPageBack(canvas, actualFoldTopX, actualFoldBottomX, curlProgress, isForward);
-    }
-
-    // 绘制折叠线高光
-    if (curlProgress > 0.02) {
-      _drawFoldHighlight(canvas, actualFoldTopX, actualFoldBottomX, curlProgress);
-    }
+    // 3. 绘制阴影
+    _drawShadows(canvas, size, foldTopX, foldBottomX);
   }
 
-  /// 绘制折叠阴影
-  void _drawFoldShadow(Canvas canvas, double foldTopX, double foldBottomX,
-      double curlProgress, bool isForward) {
-    final shadowWidth = 20.0 * curlProgress;
+  void _drawPageBack(
+    Canvas canvas,
+    Size size,
+    double foldTopX,
+    double foldBottomX,
+    Rect imageRect,
+    Rect destRect,
+  ) {
+    // 计算翻起部分的路径
+    // 翻起的页面是从折线到右边缘的镜像
 
-    final shadowPath = Path();
-    if (isForward) {
-      shadowPath.moveTo(foldTopX - shadowWidth, 0);
-      shadowPath.lineTo(foldTopX, 0);
-      shadowPath.lineTo(foldBottomX, screenHeight);
-      shadowPath.lineTo(foldBottomX - shadowWidth, screenHeight);
-      shadowPath.close();
-    } else {
-      shadowPath.moveTo(foldTopX, 0);
-      shadowPath.lineTo(foldTopX + shadowWidth, 0);
-      shadowPath.lineTo(foldBottomX + shadowWidth, screenHeight);
-      shadowPath.lineTo(foldBottomX, screenHeight);
-      shadowPath.close();
-    }
+    final backPath = Path()
+      ..moveTo(foldTopX, 0)
+      ..lineTo(size.width, 0)
+      ..lineTo(size.width, size.height)
+      ..lineTo(foldBottomX, size.height)
+      ..close();
 
-    canvas.save();
-    canvas.clipPath(shadowPath);
+    canvas
+      ..save()
+      ..clipPath(backPath);
 
-    final shadowGradient = ui.Gradient.linear(
-      Offset(isForward ? foldTopX - shadowWidth : foldTopX, 0),
-      Offset(isForward ? foldTopX : foldTopX + shadowWidth, 0),
-      [
-        Colors.transparent,
-        Colors.black.withValues(alpha: 0.35 * curlProgress),
-      ],
-    );
-
-    canvas.drawRect(
-      Rect.fromLTWH(0, 0, screenWidth, screenHeight),
-      Paint()..shader = shadowGradient,
-    );
-    canvas.restore();
-  }
-
-  /// 绘制翻起的页面
-  void _drawFlippedPage(Canvas canvas, double foldTopX, double foldBottomX,
-      double curlProgress, bool isForward) {
-    // 翻起页面的路径
-    final flippedPath = Path();
-    if (isForward) {
-      flippedPath.moveTo(foldTopX, 0);
-      flippedPath.lineTo(screenWidth, 0);
-      flippedPath.lineTo(screenWidth, screenHeight);
-      flippedPath.lineTo(foldBottomX, screenHeight);
-      flippedPath.close();
-    } else {
-      flippedPath.moveTo(0, 0);
-      flippedPath.lineTo(foldTopX, 0);
-      flippedPath.lineTo(foldBottomX, screenHeight);
-      flippedPath.lineTo(0, screenHeight);
-      flippedPath.close();
-    }
-
-    canvas.save();
-    canvas.clipPath(flippedPath);
-
-    // 计算折叠线中点
+    // 计算镜像变换
+    // 以折线为轴进行镜像
     final foldCenterX = (foldTopX + foldBottomX) / 2;
-    final foldCenterY = screenHeight / 2;
+    final foldAngle = math.atan2(foldTopX - foldBottomX, size.height);
 
-    // 计算折叠线角度
-    final lineAngle = math.atan2(foldBottomX - foldTopX, screenHeight);
+    // 创建变换矩阵实现镜像效果
+    // ignore: deprecated_member_use
+    final matrix = Matrix4.identity()
+      // ignore: deprecated_member_use
+      ..translate(foldCenterX, size.height / 2)
+      ..rotateZ(-foldAngle)
+      // ignore: deprecated_member_use
+      ..scale(-1.0, 1.0)  // 水平镜像
+      ..rotateZ(foldAngle)
+      // ignore: deprecated_member_use
+      ..translate(-foldCenterX, -size.height / 2);
 
-    // 移动到折叠线中心
-    canvas.translate(foldCenterX, foldCenterY);
+    canvas
+      ..transform(matrix.storage)
+      ..drawImageRect(image, imageRect, destRect, Paint())
+      ..restore();
 
-    // 先旋转到折叠线方向
-    canvas.rotate(-lineAngle);
+    // 绘制页面背面的覆盖层（模拟纸张背面）
+    // 纸张背面颜色（略暗的米色）
+    final backColor = Color.lerp(
+      backgroundColor,
+      const Color(0xFFE8E4DC),
+      0.5,
+    )!.withValues(alpha: 0.85);
 
-    // 应用 3D 翻转
-    final flipAngle = curlProgress * math.pi * 0.55;
-    final perspective = Matrix4.identity()
-      ..setEntry(3, 2, 0.001)
-      ..rotateY(isForward ? flipAngle : -flipAngle);
-    canvas.transform(perspective.storage);
-
-    // 旋转回来
-    canvas.rotate(lineAngle);
-
-    // 移动回原点
-    canvas.translate(-foldCenterX, -foldCenterY);
-
-    // 绘制页面
-    final srcRect = Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble());
-    final dstRect = Rect.fromLTWH(0, 0, screenWidth, screenHeight);
-    canvas.drawImageRect(image, srcRect, dstRect, Paint());
-
-    // 添加阴影效果
-    canvas.drawRect(
-      dstRect,
-      Paint()..color = Colors.black.withValues(alpha: 0.25 * curlProgress),
+    // 添加渐变效果模拟光照
+    final gradient = ui.Gradient.linear(
+      Offset(foldTopX, 0),
+      Offset(size.width, size.height / 2),
+      [
+        Colors.black.withValues(alpha: 0.1),
+        Colors.transparent,
+        Colors.white.withValues(alpha: 0.05),
+      ],
+      [0.0, 0.5, 1.0],
     );
 
-    canvas.restore();
+    canvas
+      ..save()
+      ..clipPath(backPath)
+      ..drawRect(destRect, Paint()..color = backColor)
+      ..drawRect(destRect, Paint()..shader = gradient)
+      ..restore();
   }
 
-  /// 绘制页面背面
-  void _drawPageBack(Canvas canvas, double foldTopX, double foldBottomX,
-      double curlProgress, bool isForward) {
-    // 背面宽度
-    final backWidth = 40.0 * curlProgress;
+  void _drawShadows(
+    Canvas canvas,
+    Size size,
+    double foldTopX,
+    double foldBottomX,
+  ) {
+    // 折痕阴影
+    final shadowWidth = 25.0 * progress.clamp(0.0, 1.0);
 
-    // 计算背面区域
-    final backPath = Path();
-    if (isForward) {
-      backPath.moveTo(foldTopX, 0);
-      backPath.lineTo(foldTopX + backWidth, 0);
-      backPath.lineTo(foldBottomX + backWidth, screenHeight);
-      backPath.lineTo(foldBottomX, screenHeight);
-      backPath.close();
-    } else {
-      backPath.moveTo(foldTopX - backWidth, 0);
-      backPath.lineTo(foldTopX, 0);
-      backPath.lineTo(foldBottomX, screenHeight);
-      backPath.lineTo(foldBottomX - backWidth, screenHeight);
-      backPath.close();
-    }
+    // 左侧阴影（在未翻起部分上）
+    final leftShadowPath = Path()
+      ..moveTo(foldTopX - shadowWidth, 0)
+      ..lineTo(foldTopX, 0)
+      ..lineTo(foldBottomX, size.height)
+      ..lineTo(foldBottomX - shadowWidth, size.height)
+      ..close();
 
-    canvas.save();
-    canvas.clipPath(backPath);
-
-    // 绘制背面颜色
-    canvas.drawRect(
-      Rect.fromLTWH(0, 0, screenWidth, screenHeight),
-      Paint()..color = const Color(0xFFF0EDE8),
-    );
-
-    // 绘制镜像的页面内容（透过来的文字效果）
-    canvas.save();
-    final mirrorCenterX = (foldTopX + foldBottomX) / 2;
-    canvas.translate(mirrorCenterX, 0);
-    canvas.scale(-1, 1);
-    canvas.translate(-mirrorCenterX, 0);
-
-    final srcRect = Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble());
-    final dstRect = Rect.fromLTWH(0, 0, screenWidth, screenHeight);
-    canvas.drawImageRect(
-      image,
-      srcRect,
-      dstRect,
-      Paint()..color = Colors.white.withValues(alpha: 0.15),
-    );
-    canvas.restore();
-
-    // 背面渐变阴影
-    final backGradient = ui.Gradient.linear(
-      Offset(isForward ? foldTopX : foldTopX - backWidth, 0),
-      Offset(isForward ? foldTopX + backWidth : foldTopX, 0),
+    final leftShadowGradient = ui.Gradient.linear(
+      Offset(foldTopX - shadowWidth, size.height / 2),
+      Offset(foldTopX, size.height / 2),
       [
-        Colors.black.withValues(alpha: 0.12 * curlProgress),
+        Colors.transparent,
+        Colors.black.withValues(alpha: 0.15 * progress),
+      ],
+    );
+
+    canvas.drawPath(leftShadowPath, Paint()..shader = leftShadowGradient);
+
+    // 翻起部分的内阴影
+    final innerShadowPath = Path()
+      ..moveTo(foldTopX, 0)
+      ..lineTo(foldTopX + shadowWidth * 0.5, 0)
+      ..lineTo(foldBottomX + shadowWidth * 0.5, size.height)
+      ..lineTo(foldBottomX, size.height)
+      ..close();
+
+    final innerShadowGradient = ui.Gradient.linear(
+      Offset(foldTopX, size.height / 2),
+      Offset(foldTopX + shadowWidth * 0.5, size.height / 2),
+      [
+        Colors.black.withValues(alpha: 0.2 * progress),
         Colors.transparent,
       ],
     );
-    canvas.drawRect(
-      Rect.fromLTWH(0, 0, screenWidth, screenHeight),
-      Paint()..shader = backGradient,
-    );
 
-    canvas.restore();
-  }
-
-  /// 绘制折叠线高光
-  void _drawFoldHighlight(Canvas canvas, double foldTopX, double foldBottomX,
-      double curlProgress) {
-    final highlightPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.6 * curlProgress)
-      ..strokeWidth = 1.5
-      ..style = PaintingStyle.stroke;
-
-    canvas.drawLine(
-      Offset(foldTopX, 0),
-      Offset(foldBottomX, screenHeight),
-      highlightPaint,
-    );
+    canvas.drawPath(innerShadowPath, Paint()..shader = innerShadowGradient);
   }
 
   @override
-  bool shouldRepaint(_PageCurlPainter oldDelegate) =>
+  bool shouldRepaint(_SimulationPagePainter oldDelegate) =>
       progress != oldDelegate.progress ||
-      direction != oldDelegate.direction ||
-      origin != oldDelegate.origin ||
-      image != oldDelegate.image;
+      image != oldDelegate.image ||
+      dragStartY != oldDelegate.dragStartY;
 }

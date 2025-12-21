@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/pt_sites/domain/entities/pt_torrent.dart';
 import 'package:my_nas/features/pt_sites/presentation/providers/pt_site_provider.dart';
+import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/source_category.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
@@ -361,11 +362,11 @@ class _SendToDownloaderSheetState extends ConsumerState<SendToDownloaderSheet> {
 
   Future<void> _sendToQBittorrent(
     SourceEntity downloader,
-    dynamic credential,
+    SourceCredential? credential,
   ) async {
     final protocol = downloader.useSsl ? 'https' : 'http';
     final baseUrl = '$protocol://${downloader.host}:${downloader.port}';
-    final password = (credential as Map<String, dynamic>?)?['password'] as String? ?? '';
+    final password = credential?.password ?? '';
 
     final api = QBittorrentApi(
       baseUrl: baseUrl,
@@ -391,13 +392,13 @@ class _SendToDownloaderSheetState extends ConsumerState<SendToDownloaderSheet> {
 
   Future<void> _sendToTransmission(
     SourceEntity downloader,
-    dynamic credential,
+    SourceCredential? credential,
   ) async {
     final protocol = downloader.useSsl ? 'https' : 'http';
     final baseUrl = '$protocol://${downloader.host}:${downloader.port}';
     final rpcPath = downloader.extraConfig?['rpcPath'] as String? ??
         '/transmission/rpc';
-    final password = (credential as Map<String, dynamic>?)?['password'] as String? ?? '';
+    final password = credential?.password ?? '';
 
     final api = TransmissionApi(
       baseUrl: baseUrl,
