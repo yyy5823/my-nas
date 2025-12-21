@@ -778,13 +778,16 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
   Future<bool> _validateServiceSourceConnection(SourceEntity source) async {
     switch (source.type) {
       case SourceType.nastool:
-        final apiToken = _formValues['apiToken'] as String? ?? '';
-        final api = NasToolApi(
-          baseUrl: source.baseUrl,
-          apiToken: apiToken,
-        );
+        // NASTool 使用用户名密码登录
+        final username = source.username;
+        final password = _formValues['password'] as String? ?? '';
+        final api = NasToolApi(baseUrl: source.baseUrl);
         try {
-          return await api.validateConnection();
+          final result = await api.login(username, password);
+          return result.when(
+            success: (_, __) => true,
+            failure: (_) => false,
+          );
         } finally {
           api.dispose();
         }

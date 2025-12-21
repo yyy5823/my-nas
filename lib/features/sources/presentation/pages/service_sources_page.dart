@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/aria2/presentation/pages/aria2_detail_page.dart';
-import 'package:my_nas/features/nastool/presentation/pages/nastool_detail_page.dart';
+import 'package:my_nas/features/nastool/presentation/pages/nastool_login_page.dart';
 import 'package:my_nas/features/pt_sites/presentation/pages/pt_site_detail_page.dart';
 import 'package:my_nas/features/qbittorrent/presentation/pages/qbittorrent_detail_page.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
@@ -548,7 +548,7 @@ class _ServiceSourceCardState extends ConsumerState<_ServiceSourceCard> {
           await Navigator.push<void>(
             context,
             MaterialPageRoute<void>(
-              builder: (context) => NasToolDetailPage(source: widget.source),
+              builder: (context) => NasToolLoginPage(source: widget.source),
             ),
           );
         }

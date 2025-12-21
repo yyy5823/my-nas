@@ -5,6 +5,7 @@ import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/service_adapters/base/service_adapter.dart';
 import 'package:my_nas/service_adapters/nastool/api/nastool_api.dart';
+import 'package:my_nas/service_adapters/nastool/models/models.dart';
 import 'package:my_nas/service_adapters/nastool/nastool_adapter.dart';
 
 /// NASTool 连接状态
@@ -60,7 +61,6 @@ class NasToolConnectionNotifier extends StateNotifier<NasToolConnection?> {
 
     final adapter = NasToolAdapter();
 
-    // 更新状态为连接中
     state = NasToolConnection(
       source: source,
       adapter: adapter,
@@ -114,51 +114,55 @@ class NasToolConnectionNotifier extends StateNotifier<NasToolConnection?> {
   NasToolAdapter? get adapter => state?.adapter;
 }
 
-/// NASTool 概览统计 Provider
-final nastoolOverviewProvider = FutureProvider.family
+/// NASTool 综合统计 Provider
+final nastoolStatsProvider = FutureProvider.family
     .autoDispose<NasToolOverviewStats?, String>((ref, sourceId) async {
   final connection = ref.watch(nastoolConnectionProvider(sourceId));
-  if (connection == null ||
-      connection.status != NasToolConnectionStatus.connected) {
+  if (connection == null || connection.status != NasToolConnectionStatus.connected) {
     return null;
   }
 
   try {
-    return await connection.adapter.getOverviewStats();
-  } on Exception catch (e) {
-    logger.e('NasToolProvider: 获取概览统计失败', e);
-    return null;
-  }
-});
+    final adapter = connection.adapter;
+    
+    // 并行获取各项数据
+    final results = await Future.wait([
+      adapter.getLibraryStatistics().catchError((_) => const NtLibraryStatistics(movieCount: 0, tvCount: 0)),
+      adapter.getAllSubscribes().catchError((_) => <NtSubscribe>[]),
+      adapter.getDownloadTasks().catchError((_) => <NtDownloadTask>[]),
+    ]);
 
-/// NASTool 媒体统计 Provider
-final nastoolMediaStatsProvider = FutureProvider.family
-    .autoDispose<NasToolMediaStats?, String>((ref, sourceId) async {
-  final connection = ref.watch(nastoolConnectionProvider(sourceId));
-  if (connection == null ||
-      connection.status != NasToolConnectionStatus.connected) {
-    return null;
-  }
+    final stats = results[0] as NtLibraryStatistics;
+    final subscribes = results[1] as List<NtSubscribe>;
+    final downloads = results[2] as List<NtDownloadTask>;
 
-  try {
-    return await connection.adapter.getMediaStats();
+    final activeDownloads = downloads.where((t) => !t.isCompleted).length;
+    final completedDownloads = downloads.where((t) => t.isCompleted).length;
+
+    return NasToolOverviewStats(
+      movieCount: stats.movieCount,
+      tvCount: stats.tvCount,
+      animeCount: stats.animeCount ?? 0,
+      subscribeCount: subscribes.length,
+      activeDownloads: activeDownloads,
+      completedDownloads: completedDownloads,
+    );
   } on Exception catch (e) {
-    logger.e('NasToolProvider: 获取媒体统计失败', e);
+    logger.e('NasToolProvider: 获取统计失败', e);
     return null;
   }
 });
 
 /// NASTool 订阅列表 Provider
 final nastoolSubscribesProvider = FutureProvider.family
-    .autoDispose<List<NasToolSubscribe>, String>((ref, sourceId) async {
+    .autoDispose<List<NtSubscribe>, String>((ref, sourceId) async {
   final connection = ref.watch(nastoolConnectionProvider(sourceId));
-  if (connection == null ||
-      connection.status != NasToolConnectionStatus.connected) {
+  if (connection == null || connection.status != NasToolConnectionStatus.connected) {
     return [];
   }
 
   try {
-    return await connection.adapter.getSubscribes();
+    return await connection.adapter.getAllSubscribes();
   } on Exception catch (e) {
     logger.e('NasToolProvider: 获取订阅列表失败', e);
     return [];
@@ -166,11 +170,10 @@ final nastoolSubscribesProvider = FutureProvider.family
 });
 
 /// NASTool 下载任务 Provider
-final nastoolDownloadTasksProvider = FutureProvider.family
-    .autoDispose<List<NasToolDownloadTask>, String>((ref, sourceId) async {
+final nastoolDownloadsProvider = FutureProvider.family
+    .autoDispose<List<NtDownloadTask>, String>((ref, sourceId) async {
   final connection = ref.watch(nastoolConnectionProvider(sourceId));
-  if (connection == null ||
-      connection.status != NasToolConnectionStatus.connected) {
+  if (connection == null || connection.status != NasToolConnectionStatus.connected) {
     return [];
   }
 
@@ -182,12 +185,27 @@ final nastoolDownloadTasksProvider = FutureProvider.family
   }
 });
 
+/// NASTool 站点列表 Provider
+final nastoolSitesProvider = FutureProvider.family
+    .autoDispose<List<NtSite>, String>((ref, sourceId) async {
+  final connection = ref.watch(nastoolConnectionProvider(sourceId));
+  if (connection == null || connection.status != NasToolConnectionStatus.connected) {
+    return [];
+  }
+
+  try {
+    return await connection.adapter.getSites();
+  } on Exception catch (e) {
+    logger.e('NasToolProvider: 获取站点列表失败', e);
+    return [];
+  }
+});
+
 /// NASTool 转移历史 Provider
 final nastoolTransferHistoryProvider = FutureProvider.family
-    .autoDispose<List<NasToolTransferHistory>, String>((ref, sourceId) async {
+    .autoDispose<List<NtTransferHistory>, String>((ref, sourceId) async {
   final connection = ref.watch(nastoolConnectionProvider(sourceId));
-  if (connection == null ||
-      connection.status != NasToolConnectionStatus.connected) {
+  if (connection == null || connection.status != NasToolConnectionStatus.connected) {
     return [];
   }
 
@@ -199,59 +217,8 @@ final nastoolTransferHistoryProvider = FutureProvider.family
   }
 });
 
-/// 自动刷新的概览统计 Provider
-class NasToolOverviewAutoRefreshNotifier
-    extends StateNotifier<NasToolOverviewStats?> {
-  NasToolOverviewAutoRefreshNotifier(this._ref, this._sourceId) : super(null) {
-    _startAutoRefresh();
-  }
-
-  final Ref _ref;
-  final String _sourceId;
-  Timer? _timer;
-
-  void _startAutoRefresh() {
-    _refresh();
-    // 每 10 秒刷新一次
-    _timer = Timer.periodic(const Duration(seconds: 10), (_) => _refresh());
-  }
-
-  Future<void> _refresh() async {
-    final connection = _ref.read(nastoolConnectionProvider(_sourceId));
-    if (connection == null ||
-        connection.status != NasToolConnectionStatus.connected) {
-      return;
-    }
-
-    try {
-      final stats = await connection.adapter.getOverviewStats();
-      if (mounted) {
-        state = stats;
-      }
-    } on Exception catch (e) {
-      logger.e('NasToolOverviewAutoRefresh: 刷新失败', e);
-    }
-  }
-
-  /// 手动刷新
-  Future<void> refresh() => _refresh();
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-}
-
-final nastoolOverviewAutoRefreshProvider = StateNotifierProvider.family
-    .autoDispose<NasToolOverviewAutoRefreshNotifier, NasToolOverviewStats?,
-        String>(
-  NasToolOverviewAutoRefreshNotifier.new,
-);
-
 /// NASTool 操作 Provider
-final nastoolActionsProvider =
-    Provider.family<NasToolActions, String>(NasToolActions.new);
+final nastoolActionsProvider = Provider.family<NasToolActions, String>(NasToolActions.new);
 
 class NasToolActions {
   NasToolActions(this._ref, this._sourceId);
@@ -262,91 +229,71 @@ class NasToolActions {
   NasToolAdapter? get _adapter =>
       _ref.read(nastoolConnectionProvider(_sourceId))?.adapter;
 
-  void _invalidateSubscribes() {
-    _ref.invalidate(nastoolSubscribesProvider(_sourceId));
-  }
-
-  void _invalidateDownloads() {
-    _ref.invalidate(nastoolDownloadTasksProvider(_sourceId));
-  }
-
   void _invalidateAll() {
     _ref
-      ..invalidate(nastoolOverviewProvider(_sourceId))
-      ..invalidate(nastoolOverviewAutoRefreshProvider(_sourceId))
+      ..invalidate(nastoolStatsProvider(_sourceId))
       ..invalidate(nastoolSubscribesProvider(_sourceId))
-      ..invalidate(nastoolDownloadTasksProvider(_sourceId))
+      ..invalidate(nastoolDownloadsProvider(_sourceId))
+      ..invalidate(nastoolSitesProvider(_sourceId))
       ..invalidate(nastoolTransferHistoryProvider(_sourceId));
   }
 
   /// 添加订阅
   Future<void> addSubscribe({
     required String name,
-    required String mediaType,
-    String? tmdbId,
-    String? imdbId,
+    required String type,
+    String? year,
+    String? mediaId,
     int? season,
-    String? keyword,
   }) async {
     final adapter = _adapter;
     if (adapter == null) return;
 
     await adapter.addSubscribe(
       name: name,
-      mediaType: mediaType,
-      tmdbId: tmdbId,
-      imdbId: imdbId,
+      type: type,
+      year: year,
+      mediaId: mediaId,
       season: season,
-      keyword: keyword,
     );
-    _invalidateSubscribes();
+    _ref.invalidate(nastoolSubscribesProvider(_sourceId));
   }
 
   /// 删除订阅
-  Future<void> deleteSubscribe(int subscribeId) async {
+  Future<void> deleteSubscribe(int id, String type) async {
     final adapter = _adapter;
     if (adapter == null) return;
 
-    await adapter.deleteSubscribe(subscribeId);
-    _invalidateSubscribes();
+    await adapter.deleteSubscribe(id, type);
+    _ref.invalidate(nastoolSubscribesProvider(_sourceId));
   }
 
   /// 搜索资源
-  Future<List<NasToolSearchResult>> searchResources({
-    required String keyword,
-    String? mediaType,
-    int page = 1,
-    int limit = 20,
-  }) async {
+  Future<List<NtSearchResult>> searchResources(String keyword) async {
     final adapter = _adapter;
     if (adapter == null) return [];
 
-    return adapter.searchResources(
-      keyword: keyword,
-      mediaType: mediaType,
-      page: page,
-      limit: limit,
-    );
+    return adapter.searchResources(keyword);
   }
 
   /// 下载资源
   Future<void> downloadResource({
-    required String url,
-    String? savePath,
+    required String enclosure,
+    required String title,
   }) async {
     final adapter = _adapter;
     if (adapter == null) return;
 
-    await adapter.downloadResource(url: url, savePath: savePath);
-    _invalidateDownloads();
+    await adapter.downloadResource(enclosure: enclosure, title: title);
+    _ref.invalidate(nastoolDownloadsProvider(_sourceId));
   }
 
   /// 刷新媒体库
-  Future<void> refreshMediaLibrary() async {
+  Future<void> refreshLibrary() async {
     final adapter = _adapter;
     if (adapter == null) return;
 
-    await adapter.refreshMediaLibrary();
+    await adapter.refreshLibrary();
   }
 
   /// 刷新所有数据
@@ -354,16 +301,3 @@ class NasToolActions {
     _invalidateAll();
   }
 }
-
-/// 当前选中的标签页
-enum NasToolTab {
-  overview,
-  subscribes,
-  downloads,
-  history,
-  search,
-}
-
-/// 当前标签页 Provider
-final nastoolCurrentTabProvider =
-    StateProvider.family<NasToolTab, String>((ref, sourceId) => NasToolTab.overview);

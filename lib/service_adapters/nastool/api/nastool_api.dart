@@ -2,287 +2,539 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'package:my_nas/service_adapters/nastool/api/nastool_auth.dart';
+import 'package:my_nas/service_adapters/nastool/models/models.dart';
 
 /// NASTool API 客户端
 ///
-/// 支持 NASTool v3.x API (Action-based)
-/// 项目地址: https://github.com/NAStool/nas-tools
-///
-/// NasTool 使用 action-based API，所有请求都是 POST 到 /api/v1/
-/// 请求体包含 cmd 字段指定动作名称
+/// 使用会话认证，支持 NASTool v3.x API
 class NasToolApi {
-  NasToolApi({
-    required this.baseUrl,
-    required this.apiToken,
-  });
+  NasToolApi({required this.baseUrl});
 
   final String baseUrl;
-  final String apiToken;
-
+  
   http.Client? _client;
-  bool _isAuthenticated = false;
+  late final NasToolAuth _auth = NasToolAuth(baseUrl: baseUrl);
 
-  /// 获取 HTTP 客户端
   http.Client get client {
     _client ??= http.Client();
     return _client!;
   }
 
   /// 是否已认证
-  bool get isAuthenticated => _isAuthenticated;
+  bool get isAuthenticated => _auth.isAuthenticated;
+  
+  /// 当前用户名
+  String? get username => _auth.username;
 
-  /// 验证连接
-  /// 
-  /// NASTool API 认证方式可能是以下几种之一:
-  /// 1. Authorization: Bearer {token}
-  /// 2. Authorization: Token {token}
-  /// 3. Authorization: {token} (直接使用)
-  /// 
-  /// 我们依次尝试这些格式
-  Future<bool> validateConnection() async {
-    try {
-      _log('validateConnection: 开始验证连接 baseUrl=$baseUrl');
+  // ============================================================
+  // 认证相关
+  // ============================================================
 
-      // 尝试不同的认证格式
-      final authFormats = [
-        apiToken,                    // 直接使用 token（NASTool 常用）
-        'Bearer $apiToken',          // Bearer token 格式
-        'Token $apiToken',           // Token 格式
-      ];
+  /// 登录
+  Future<NasToolLoginResult> login(String username, String password) =>
+      _auth.login(username, password);
 
-      for (final authHeader in authFormats) {
-        _currentAuthHeader = authHeader;
-        _log('validateConnection: 尝试认证格式: ${authHeader.substring(0, authHeader.length > 20 ? 20 : authHeader.length)}...');
-        
-        try {
-          final response = await _callAction('version');
-          _log('validateConnection: 响应状态码=${response.statusCode}');
-          _log('validateConnection: 响应体=${response.body.substring(0, response.body.length > 200 ? 200 : response.body.length)}');
+  /// 登出
+  Future<void> logout() => _auth.logout();
 
-          if (response.statusCode == 200) {
-            final data = jsonDecode(response.body) as Map<String, dynamic>;
-            // 检查返回结果
-            if (data['code'] == 0 || data['success'] == true || data['version'] != null) {
-              _isAuthenticated = true;
-              _log('validateConnection: 连接验证成功，使用格式: ${authHeader.substring(0, authHeader.length > 10 ? 10 : authHeader.length)}...');
-              return true;
-            }
-            // 如果返回了错误码，记录详细信息
-            _log('validateConnection: 返回数据但验证失败: code=${data['code']}, message=${data['message'] ?? data['msg']}');
-          }
-        } on NasToolApiException catch (e) {
-          _log('validateConnection: 格式 $authHeader 失败 - ${e.message}');
-          // 继续尝试下一个格式
-        }
-      }
-      
-      _log('validateConnection: 所有认证格式都失败');
-      return false;
-    } on Exception catch (e) {
-      _log('validateConnection: 未知异常 - $e');
-      return false;
-    }
+  /// 验证会话
+  Future<bool> validateSession() => _auth.validateSession();
+
+  // ============================================================
+  // 系统相关
+  // ============================================================
+
+  /// 获取系统版本
+  Future<NtSystemVersion> getSystemVersion() async {
+    final data = await _post('/system/version');
+    return NtSystemVersion.fromJson(data);
   }
 
-  // 当前使用的认证 header
-  String? _currentAuthHeader;
-
-  void _log(String message) {
-    // ignore: avoid_print
-    print('[NasToolApi] $message');
+  /// 获取进度
+  Future<NtSystemProgress?> getProgress(String type) async {
+    final data = await _post('/system/progress', {'type': type});
+    if (data['value'] == null) return null;
+    return NtSystemProgress.fromJson(data);
   }
 
-  /// 获取系统信息
-  Future<NasToolSystemInfo> getSystemInfo() async {
-    final response = await _callAction('version');
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    return NasToolSystemInfo.fromJson(data);
+  /// 获取目录
+  Future<List<NtPathInfo>> listPath(String dir, {String filter = 'ALL'}) async {
+    final data = await _post('/system/path', {'dir': dir, 'filter': filter});
+    final items = data['PathList'] as List? ?? data['result'] as List? ?? [];
+    return items.map((e) => NtPathInfo.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  /// 获取媒体库统计
-  Future<NasToolMediaStats> getMediaStats() async {
-    final response = await _callAction('get_library_mediacount');
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    return NasToolMediaStats.fromJson(data);
+  /// 重启系统
+  Future<void> restartSystem() async {
+    await _post('/system/restart');
   }
 
-  /// 获取订阅列表（电影 + 电视剧）
-  Future<List<NasToolSubscribe>> getSubscribes() async {
-    final result = <NasToolSubscribe>[];
+  /// 升级系统
+  Future<void> updateSystem() async {
+    await _post('/system/update');
+  }
 
-    // 获取电影订阅
-    try {
-      final movieResponse = await _callAction('get_movie_rss_list');
-      final movieData = jsonDecode(movieResponse.body) as Map<String, dynamic>;
-      final movieItems = movieData['result'] as List<dynamic>? ?? [];
-      for (final item in movieItems) {
-        result.add(NasToolSubscribe.fromJson(item as Map<String, dynamic>, 'movie'));
-      }
-    } on Exception catch (e) {
-      _log('getSubscribes: 获取电影订阅失败 - $e');
-    }
+  // ============================================================
+  // 站点相关
+  // ============================================================
 
-    // 获取电视剧订阅
-    try {
-      final tvResponse = await _callAction('get_tv_rss_list');
-      final tvData = jsonDecode(tvResponse.body) as Map<String, dynamic>;
-      final tvItems = tvData['result'] as List<dynamic>? ?? [];
-      for (final item in tvItems) {
-        result.add(NasToolSubscribe.fromJson(item as Map<String, dynamic>, 'tv'));
-      }
-    } on Exception catch (e) {
-      _log('getSubscribes: 获取电视剧订阅失败 - $e');
-    }
+  /// 获取站点列表
+  Future<List<NtSite>> listSites() async {
+    final data = await _post('/site/list');
+    final items = data['result'] as List? ?? [];
+    return items.map((e) => NtSite.fromJson(e as Map<String, dynamic>)).toList();
+  }
 
-    return result;
+  /// 获取站点详情
+  Future<NtSite?> getSiteInfo(int id) async {
+    final data = await _post('/site/info', {'id': id});
+    if (data['result'] == null) return null;
+    return NtSite.fromJson(data['result'] as Map<String, dynamic>);
+  }
+
+  /// 更新站点
+  Future<void> updateSite({
+    required String siteName,
+    int? siteId,
+    String? sitePri,
+    String? siteRssUrl,
+    String? siteSignUrl,
+    String? siteCookie,
+    String? siteNote,
+    String? siteInclude,
+  }) async {
+    await _post('/site/update', {
+      'site_name': siteName,
+      if (siteId != null) 'site_id': siteId,
+      if (sitePri != null) 'site_pri': sitePri,
+      if (siteRssUrl != null) 'site_rssurl': siteRssUrl,
+      if (siteSignUrl != null) 'site_signurl': siteSignUrl,
+      if (siteCookie != null) 'site_cookie': siteCookie,
+      if (siteNote != null) 'site_note': siteNote,
+      if (siteInclude != null) 'site_include': siteInclude,
+    });
+  }
+
+  /// 删除站点
+  Future<void> deleteSite(int id) async {
+    await _post('/site/delete', {'id': id});
+  }
+
+  /// 测试站点
+  Future<bool> testSite(int id) async {
+    final data = await _post('/site/test', {'id': id});
+    return data['code'] == 0;
+  }
+
+  /// 获取站点统计
+  Future<List<NtSiteStatistics>> getSiteStatistics() async {
+    final response = await _get('/site/statistics');
+    if (response.isEmpty) return [];
+    final items = response as List? ?? [];
+    return items.map((e) => NtSiteStatistics.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// 获取站点索引器
+  Future<List<NtSiteIndexer>> getSiteIndexers() async {
+    final data = await _post('/site/indexers');
+    final items = data['result'] as List? ?? [];
+    return items.map((e) => NtSiteIndexer.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  // ============================================================
+  // 订阅相关
+  // ============================================================
+
+  /// 获取电影订阅
+  Future<List<NtSubscribe>> getMovieSubscribes() async {
+    final data = await _post('/subscribe/movie/list');
+    final items = data['result'] as List? ?? [];
+    return items.map((e) => NtSubscribe.fromJson(e as Map<String, dynamic>, 'MOV')).toList();
+  }
+
+  /// 获取电视剧订阅
+  Future<List<NtSubscribe>> getTvSubscribes() async {
+    final data = await _post('/subscribe/tv/list');
+    final items = data['result'] as List? ?? [];
+    return items.map((e) => NtSubscribe.fromJson(e as Map<String, dynamic>, 'TV')).toList();
+  }
+
+  /// 获取所有订阅
+  Future<List<NtSubscribe>> getAllSubscribes() async {
+    final movies = await getMovieSubscribes();
+    final tvs = await getTvSubscribes();
+    return [...movies, ...tvs];
   }
 
   /// 添加订阅
   Future<void> addSubscribe({
     required String name,
-    required String mediaType,
-    String? tmdbId,
-    String? imdbId,
-    int? season,
+    required String type,
+    String? year,
     String? keyword,
+    int? season,
+    String? mediaId,
+    int? fuzzyMatch,
+    String? rssSites,
+    String? searchSites,
+    int? overEdition,
+    String? filterRestype,
+    String? filterPix,
+    String? filterTeam,
+    int? filterRule,
+    int? downloadSetting,
+    String? savePath,
+    int? totalEp,
+    int? currentEp,
   }) async {
-    await _callAction('add_rss_media', params: {
+    await _post('/subscribe/add', {
       'name': name,
-      'mtype': mediaType,
-      if (tmdbId != null) 'tmdbid': tmdbId,
-      if (imdbId != null) 'imdbid': imdbId,
-      if (season != null) 'season': season,
+      'type': type,
+      if (year != null) 'year': year,
       if (keyword != null) 'keyword': keyword,
+      if (season != null) 'season': season,
+      if (mediaId != null) 'mediaid': mediaId,
+      if (fuzzyMatch != null) 'fuzzy_match': fuzzyMatch,
+      if (rssSites != null) 'rss_sites': rssSites,
+      if (searchSites != null) 'search_sites': searchSites,
+      if (overEdition != null) 'over_edition': overEdition,
+      if (filterRestype != null) 'filter_restype': filterRestype,
+      if (filterPix != null) 'filter_pix': filterPix,
+      if (filterTeam != null) 'filter_team': filterTeam,
+      if (filterRule != null) 'filter_rule': filterRule,
+      if (downloadSetting != null) 'download_setting': downloadSetting,
+      if (savePath != null) 'save_path': savePath,
+      if (totalEp != null) 'total_ep': totalEp,
+      if (currentEp != null) 'current_ep': currentEp,
     });
   }
 
   /// 删除订阅
-  Future<void> deleteSubscribe(int subscribeId, {String type = 'MOV'}) async {
-    await _callAction('remove_rss_media', params: {
-      'rssid': subscribeId,
-      'rtype': type,
+  Future<void> deleteSubscribe({
+    String? name,
+    String? type,
+    String? year,
+    int? season,
+    int? rssId,
+    String? tmdbId,
+  }) async {
+    await _post('/subscribe/delete', {
+      if (name != null) 'name': name,
+      if (type != null) 'type': type,
+      if (year != null) 'year': year,
+      if (season != null) 'season': season,
+      if (rssId != null) 'rssid': rssId,
+      if (tmdbId != null) 'tmdbid': tmdbId,
     });
   }
+
+  /// 获取订阅详情
+  Future<NtSubscribe?> getSubscribeInfo(int rssId, String type) async {
+    final data = await _post('/subscribe/info', {'rssid': rssId, 'type': type});
+    if (data['result'] == null) return null;
+    return NtSubscribe.fromJson(data['result'] as Map<String, dynamic>, type);
+  }
+
+  /// 搜索订阅
+  Future<void> searchSubscribe(int rssId, String type) async {
+    await _post('/subscribe/search', {'rssid': rssId, 'type': type});
+  }
+
+  /// 获取订阅历史
+  Future<List<NtSubscribeHistory>> getSubscribeHistory(String type) async {
+    final data = await _post('/subscribe/history', {'type': type});
+    final items = data['result'] as List? ?? [];
+    return items.map((e) => NtSubscribeHistory.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  // ============================================================
+  // 搜索相关
+  // ============================================================
 
   /// 搜索资源
-  Future<List<NasToolSearchResult>> searchResources({
-    required String keyword,
+  Future<void> searchKeyword({
+    required String searchWord,
+    int? unident,
+    String? filters,
+    String? tmdbId,
     String? mediaType,
-    int page = 1,
-    int limit = 20,
   }) async {
-    final response = await _callAction('search', params: {
-      'search_word': keyword,
+    await _post('/search/keyword', {
+      'search_word': searchWord,
+      if (unident != null) 'unident': unident,
+      if (filters != null) 'filters': filters,
+      if (tmdbId != null) 'tmdbid': tmdbId,
       if (mediaType != null) 'media_type': mediaType,
     });
-
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    if (data['code'] != 0) {
-      return [];
-    }
-
-    // 搜索是异步的，需要轮询获取结果
-    await Future<void>.delayed(const Duration(seconds: 2));
-    
-    final resultResponse = await _callAction('get_search_result');
-    final resultData = jsonDecode(resultResponse.body) as Map<String, dynamic>;
-    final items = resultData['result'] as List<dynamic>? ?? [];
-    
-    return items
-        .map((e) => NasToolSearchResult.fromJson(e as Map<String, dynamic>))
-        .take(limit)
-        .toList();
   }
+
+  /// 获取搜索结果
+  Future<List<NtSearchResult>> getSearchResult() async {
+    final data = await _post('/search/result');
+    final items = data['result'] as List? ?? [];
+    return items.map((e) => NtSearchResult.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  // ============================================================
+  // 下载相关
+  // ============================================================
 
   /// 下载资源
-  Future<void> downloadResource({
-    required String url,
-    String? savePath,
+  Future<void> downloadItem({
+    required String enclosure,
+    required String title,
+    String? site,
+    String? description,
+    String? pageUrl,
+    String? size,
+    String? seeders,
+    double? uploadFactor,
+    double? downloadFactor,
+    String? dlDir,
   }) async {
-    await _callAction('download_link', params: {
-      'enclosure': url,
-      if (savePath != null) 'dl_dir': savePath,
+    await _post('/download/item', {
+      'enclosure': enclosure,
+      'title': title,
+      if (site != null) 'site': site,
+      if (description != null) 'description': description,
+      if (pageUrl != null) 'page_url': pageUrl,
+      if (size != null) 'size': size,
+      if (seeders != null) 'seeders': seeders,
+      if (uploadFactor != null) 'uploadvolumefactor': uploadFactor,
+      if (downloadFactor != null) 'downloadvolumefactor': downloadFactor,
+      if (dlDir != null) 'dl_dir': dlDir,
     });
   }
 
-  /// 获取下载任务列表
-  Future<List<NasToolDownloadTask>> getDownloadTasks() async {
-    final response = await _callAction('get_downloading');
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    final items = data['result'] as List<dynamic>? ?? [];
-    return items
-        .map((e) => NasToolDownloadTask.fromJson(e as Map<String, dynamic>))
-        .toList();
+  /// 获取正在下载的任务
+  Future<List<NtDownloadTask>> getDownloading() async {
+    final data = await _post('/download/now');
+    final items = data['result'] as List? ?? [];
+    return items.map((e) => NtDownloadTask.fromJson(e as Map<String, dynamic>)).toList();
   }
+
+  /// 获取下载历史
+  Future<List<NtDownloadHistory>> getDownloadHistory(int page) async {
+    final data = await _post('/download/history', {'page': page});
+    final items = data['result'] as List? ?? [];
+    return items.map((e) => NtDownloadHistory.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// 获取下载进度
+  Future<Map<String, dynamic>> getDownloadInfo(String ids) async {
+    return _post('/download/info', {'ids': ids});
+  }
+
+  /// 开始下载
+  Future<void> startDownload(String id) async {
+    await _post('/download/start', {'id': id});
+  }
+
+  /// 暂停下载
+  Future<void> stopDownload(String id) async {
+    await _post('/download/stop', {'id': id});
+  }
+
+  /// 删除下载
+  Future<void> removeDownload(String id) async {
+    await _post('/download/remove', {'id': id});
+  }
+
+  /// 下载搜索结果
+  Future<void> downloadSearchResult(String id, {String? dir, String? setting}) async {
+    await _post('/download/search', {
+      'id': id,
+      if (dir != null) 'dir': dir,
+      if (setting != null) 'setting': setting,
+    });
+  }
+
+  /// 获取下载器列表
+  Future<List<NtDownloadClient>> listDownloadClients({String? did}) async {
+    final data = await _post('/download/client/list', {if (did != null) 'did': did});
+    final items = data['result'] as List? ?? [];
+    return items.map((e) => NtDownloadClient.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  // ============================================================
+  // 媒体库相关
+  // ============================================================
+
+  /// 获取媒体库统计
+  Future<NtLibraryStatistics> getLibraryStatistics() async {
+    final data = await _post('/library/mediaserver/statistics');
+    return NtLibraryStatistics.fromJson(data);
+  }
+
+  /// 获取媒体库空间
+  Future<NtLibrarySpace> getLibrarySpace() async {
+    final data = await _post('/library/space');
+    return NtLibrarySpace.fromJson(data);
+  }
+
+  /// 获取播放历史
+  Future<List<NtPlayHistory>> getPlayHistory() async {
+    final data = await _post('/library/mediaserver/playhistory');
+    final items = data['result'] as List? ?? [];
+    return items.map((e) => NtPlayHistory.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// 开始媒体库同步
+  Future<void> startLibrarySync() async {
+    await _post('/library/sync/start');
+  }
+
+  /// 获取媒体库同步状态
+  Future<Map<String, dynamic>> getLibrarySyncStatus() async {
+    return _post('/library/sync/status');
+  }
+
+  // ============================================================
+  // 媒体相关
+  // ============================================================
+
+  /// 搜索媒体
+  Future<List<NtMediaDetail>> searchMedia(String keyword) async {
+    final data = await _post('/media/search', {'keyword': keyword});
+    final items = data['result'] as List? ?? [];
+    return items.map((e) => NtMediaDetail.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// 获取媒体详情
+  Future<NtMediaDetail?> getMediaDetail(String type, {String? tmdbId}) async {
+    final data = await _post('/media/detail', {
+      'type': type,
+      if (tmdbId != null) 'tmdbid': tmdbId,
+    });
+    if (data['data'] == null && data['title'] == null) return null;
+    return NtMediaDetail.fromJson(data['data'] as Map<String, dynamic>? ?? data);
+  }
+
+  /// 获取电视剧季列表
+  Future<List<NtTvSeason>> getTvSeasons(String tmdbId) async {
+    final data = await _post('/media/tv/seasons', {'tmdbid': tmdbId});
+    final items = data['result'] as List? ?? [];
+    return items.map((e) => NtTvSeason.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// 获取相似媒体
+  Future<List<NtMediaDetail>> getSimilarMedia(String type, String tmdbId, {int? page}) async {
+    final data = await _post('/media/similar', {
+      'type': type,
+      'tmdbid': tmdbId,
+      if (page != null) 'page': page,
+    });
+    final items = data['result'] as List? ?? [];
+    return items.map((e) => NtMediaDetail.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// 获取推荐媒体
+  Future<List<NtMediaDetail>> getRecommendations(String type, String tmdbId, {int? page}) async {
+    final data = await _post('/media/recommendations', {
+      'type': type,
+      'tmdbid': tmdbId,
+      if (page != null) 'page': page,
+    });
+    final items = data['result'] as List? ?? [];
+    return items.map((e) => NtMediaDetail.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  // ============================================================
+  // 整理相关
+  // ============================================================
 
   /// 获取转移历史
-  Future<List<NasToolTransferHistory>> getTransferHistory({
-    int page = 1,
-    int limit = 20,
+  Future<List<NtTransferHistory>> getTransferHistory({
+    required int page,
+    required int pageNum,
+    String? keyword,
   }) async {
-    final response = await _callAction('get_transfer_history', params: {
+    final data = await _post('/organization/history/list', {
       'page': page,
-      'limit': limit,
+      'pagenum': pageNum,
+      if (keyword != null) 'keyword': keyword,
     });
-
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    final items = data['result'] as List<dynamic>? ?? [];
-    return items
-        .map((e) => NasToolTransferHistory.fromJson(e as Map<String, dynamic>))
-        .toList();
+    final items = data['result'] as List? ?? [];
+    return items.map((e) => NtTransferHistory.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  /// 手动识别媒体
-  Future<NasToolMediaInfo?> recognizeMedia(String path) async {
-    final response = await _callAction('media_info', params: {
-      'name': path,
+  /// 获取转移统计
+  Future<NtTransferStatistics> getTransferStatistics() async {
+    final data = await _post('/organization/history/statistics');
+    return NtTransferStatistics.fromJson(data);
+  }
+
+  /// 获取未识别列表
+  Future<List<NtUnknownRecord>> listUnknown() async {
+    final data = await _post('/organization/unknown/list');
+    final items = data['result'] as List? ?? [];
+    return items.map((e) => NtUnknownRecord.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// 删除未识别记录
+  Future<void> deleteUnknown(String id) async {
+    await _post('/organization/unknown/delete', {'id': id});
+  }
+
+  // ============================================================
+  // 推荐相关
+  // ============================================================
+
+  /// 获取推荐列表
+  Future<List<NtMediaDetail>> getRecommendList({
+    required String type,
+    required String subtype,
+    required int page,
+  }) async {
+    final data = await _post('/recommend/list', {
+      'type': type,
+      'subtype': subtype,
+      'page': page,
     });
-
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    if (data['code'] == 0 && data['data'] != null) {
-      return NasToolMediaInfo.fromJson(data['data'] as Map<String, dynamic>);
-    }
-    return null;
+    final items = data['result'] as List? ?? [];
+    return items.map((e) => NtMediaDetail.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  /// 刷新媒体库
-  Future<void> refreshMediaLibrary() async {
-    await _callAction('start_mediasync');
+  // ============================================================
+  // 用户相关
+  // ============================================================
+
+  /// 获取用户信息
+  Future<NtUserInfo?> getUserInfo(String username) async {
+    final data = await _post('/user/info', {'username': username});
+    if (data['result'] == null) return null;
+    return NtUserInfo.fromJson(data['result'] as Map<String, dynamic>);
   }
 
-  /// 刷新 RSS 订阅
-  Future<void> refreshRss() async {
-    await _callAction('refresh_rss');
+  /// 获取用户列表
+  Future<List<NtUserInfo>> listUsers() async {
+    final data = await _post('/user/list');
+    final items = data['result'] as List? ?? [];
+    return items.map((e) => NtUserInfo.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  /// 调用 API action
-  Future<http.Response> _callAction(String cmd, {Map<String, dynamic>? params}) async {
-    final url = Uri.parse('$baseUrl/api/v1/');
+  // ============================================================
+  // 私有方法
+  // ============================================================
 
+  Future<Map<String, dynamic>> _post(String path, [Map<String, dynamic>? params]) async {
+    final url = Uri.parse('$baseUrl/api/v1$path');
+    
     final headers = <String, String>{
-      'Content-Type': 'application/json',
-      'Authorization': _currentAuthHeader ?? apiToken,
+      'Content-Type': 'application/x-www-form-urlencoded',
+      ..._auth.authHeaders,
     };
-
-    final body = <String, dynamic>{
-      'cmd': cmd,
-      ...?params,
-    };
-
-    _log('_callAction: POST $url cmd=$cmd');
 
     try {
       final response = await client.post(
         url,
         headers: headers,
-        body: jsonEncode(body),
+        body: params?.map((k, v) => MapEntry(k, v.toString())),
       );
 
-      _log('_callAction: 响应 ${response.statusCode}');
-
       if (response.statusCode == 401) {
-        _isAuthenticated = false;
-        throw const NasToolApiException('认证失败，请检查 API Token');
+        throw const NasToolApiException('认证失败，请重新登录');
       }
 
       if (response.statusCode == 403) {
@@ -290,22 +542,45 @@ class NasToolApi {
       }
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        _log('_callAction: 错误响应 body=${response.body.substring(0, response.body.length > 200 ? 200 : response.body.length)}');
-        throw NasToolApiException(
-          '请求失败: ${response.statusCode} ${response.reasonPhrase}',
-        );
+        throw NasToolApiException('请求失败: ${response.statusCode}');
       }
 
-      return response;
+      if (response.body.isEmpty) return {};
+      
+      final data = jsonDecode(response.body);
+      if (data is Map<String, dynamic>) {
+        return data;
+      }
+      return {'result': data};
     } on SocketException catch (e) {
-      _log('_callAction: SocketException - ${e.message}');
-      throw NasToolApiException('无法连接到 NASTool: ${e.message}');
-    } on http.ClientException catch (e) {
-      _log('_callAction: ClientException - ${e.message}');
-      throw NasToolApiException('网络错误: ${e.message}');
-    } on FormatException catch (e) {
-      _log('_callAction: FormatException - $e');
-      throw NasToolApiException('URL格式错误: $e');
+      throw NasToolApiException('无法连接服务器: ${e.message}');
+    } on FormatException {
+      throw const NasToolApiException('响应格式错误');
+    }
+  }
+
+  Future<dynamic> _get(String path) async {
+    final url = Uri.parse('$baseUrl/api/v1$path');
+    
+    final headers = <String, String>{
+      ..._auth.authHeaders,
+    };
+
+    try {
+      final response = await client.get(url, headers: headers);
+
+      if (response.statusCode == 401) {
+        throw const NasToolApiException('认证失败，请重新登录');
+      }
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw NasToolApiException('请求失败: ${response.statusCode}');
+      }
+
+      if (response.body.isEmpty) return {};
+      return jsonDecode(response.body);
+    } on SocketException catch (e) {
+      throw NasToolApiException('无法连接服务器: ${e.message}');
     }
   }
 
@@ -313,7 +588,7 @@ class NasToolApi {
   void dispose() {
     _client?.close();
     _client = null;
-    _isAuthenticated = false;
+    _auth.clear();
   }
 }
 
@@ -324,234 +599,4 @@ class NasToolApiException implements Exception {
 
   @override
   String toString() => message;
-}
-
-/// 系统信息
-class NasToolSystemInfo {
-  const NasToolSystemInfo({
-    required this.version,
-    this.serverName,
-    this.cpuUsage,
-    this.memoryUsage,
-    this.diskUsage,
-  });
-
-  factory NasToolSystemInfo.fromJson(Map<String, dynamic> json) {
-    // action-based API 返回格式可能不同
-    final version = json['version'] as String? ?? 
-                    json['data']?['version'] as String? ?? '';
-    return NasToolSystemInfo(
-      version: version,
-      serverName: json['server_name'] as String?,
-      cpuUsage: (json['cpu_usage'] as num?)?.toDouble(),
-      memoryUsage: (json['memory_usage'] as num?)?.toDouble(),
-      diskUsage: (json['disk_usage'] as num?)?.toDouble(),
-    );
-  }
-
-  final String version;
-  final String? serverName;
-  final double? cpuUsage;
-  final double? memoryUsage;
-  final double? diskUsage;
-}
-
-/// 媒体库统计
-class NasToolMediaStats {
-  const NasToolMediaStats({
-    required this.movieCount,
-    required this.tvCount,
-    required this.animeCount,
-  });
-
-  factory NasToolMediaStats.fromJson(Map<String, dynamic> json) {
-    // get_library_mediacount 返回格式：{ "MovieCount": x, "SeriesCount": x }
-    return NasToolMediaStats(
-      movieCount: json['MovieCount'] as int? ?? 
-                  json['movie_count'] as int? ?? 0,
-      tvCount: json['SeriesCount'] as int? ?? 
-               json['EpisodeCount'] as int? ??
-               json['tv_count'] as int? ?? 0,
-      animeCount: json['anime_count'] as int? ?? 0,
-    );
-  }
-
-  final int movieCount;
-  final int tvCount;
-  final int animeCount;
-
-  int get totalCount => movieCount + tvCount + animeCount;
-}
-
-/// 订阅
-class NasToolSubscribe {
-  const NasToolSubscribe({
-    required this.id,
-    required this.name,
-    required this.type,
-    this.tmdbId,
-    this.imdbId,
-    this.season,
-    this.state,
-    this.lastUpdate,
-  });
-
-  factory NasToolSubscribe.fromJson(Map<String, dynamic> json, [String? defaultType]) {
-    return NasToolSubscribe(
-      id: json['id'] as int? ?? json['rssid'] as int? ?? 0,
-      name: json['name'] as String? ?? json['title'] as String? ?? '',
-      type: json['type'] as String? ?? defaultType ?? '',
-      tmdbId: json['tmdbid']?.toString(),
-      imdbId: json['imdbid']?.toString(),
-      season: json['season'] as int?,
-      state: json['state'] as String?,
-      lastUpdate: json['last_update'] != null
-          ? DateTime.tryParse(json['last_update'] as String)
-          : null,
-    );
-  }
-
-  final int id;
-  final String name;
-  final String type;
-  final String? tmdbId;
-  final String? imdbId;
-  final int? season;
-  final String? state;
-  final DateTime? lastUpdate;
-}
-
-/// 搜索结果
-class NasToolSearchResult {
-  const NasToolSearchResult({
-    required this.title,
-    required this.size,
-    required this.seeders,
-    required this.leechers,
-    this.url,
-    this.site,
-    this.mediaType,
-    this.resolution,
-  });
-
-  factory NasToolSearchResult.fromJson(Map<String, dynamic> json) => NasToolSearchResult(
-      title: json['title'] as String? ?? json['torrent_name'] as String? ?? '',
-      size: json['size'] as int? ?? 0,
-      seeders: json['seeders'] as int? ?? 0,
-      leechers: json['leechers'] as int? ?? json['peers'] as int? ?? 0,
-      url: json['enclosure'] as String? ?? json['url'] as String?,
-      site: json['site'] as String?,
-      mediaType: json['media_type'] as String?,
-      resolution: json['res'] as String? ?? json['resolution'] as String?,
-    );
-
-  final String title;
-  final int size;
-  final int seeders;
-  final int leechers;
-  final String? url;
-  final String? site;
-  final String? mediaType;
-  final String? resolution;
-}
-
-/// 下载任务
-class NasToolDownloadTask {
-  const NasToolDownloadTask({
-    required this.id,
-    required this.name,
-    required this.state,
-    required this.progress,
-    this.size,
-    this.speed,
-    this.eta,
-  });
-
-  factory NasToolDownloadTask.fromJson(Map<String, dynamic> json) => NasToolDownloadTask(
-      id: json['id']?.toString() ?? json['hash']?.toString() ?? '',
-      name: json['name'] as String? ?? json['title'] as String? ?? '',
-      state: json['state'] as String? ?? json['status'] as String? ?? '',
-      progress: (json['progress'] as num?)?.toDouble() ?? 
-                ((json['percent'] as num?)?.toDouble() ?? 0) / 100,
-      size: json['size'] as int? ?? json['total_size'] as int?,
-      speed: json['speed'] as int? ?? json['dlspeed'] as int?,
-      eta: json['eta'] as int?,
-    );
-
-  final String id;
-  final String name;
-  final String state;
-  final double progress;
-  final int? size;
-  final int? speed;
-  final int? eta;
-}
-
-/// 转移历史
-class NasToolTransferHistory {
-  const NasToolTransferHistory({
-    required this.id,
-    required this.title,
-    required this.type,
-    this.sourcePath,
-    this.destPath,
-    this.transferTime,
-    this.success,
-  });
-
-  factory NasToolTransferHistory.fromJson(Map<String, dynamic> json) => NasToolTransferHistory(
-      id: json['id'] as int? ?? 0,
-      title: json['title'] as String? ?? json['name'] as String? ?? '',
-      type: json['type'] as String? ?? '',
-      sourcePath: json['source_path'] as String? ?? json['source'] as String?,
-      destPath: json['dest_path'] as String? ?? json['dest'] as String?,
-      transferTime: json['DATE'] != null
-          ? DateTime.tryParse(json['DATE'] as String)
-          : (json['transfer_time'] != null
-              ? DateTime.tryParse(json['transfer_time'] as String)
-              : null),
-      success: json['success'] as bool? ?? json['state'] == 'SUCCESS',
-    );
-
-  final int id;
-  final String title;
-  final String type;
-  final String? sourcePath;
-  final String? destPath;
-  final DateTime? transferTime;
-  final bool? success;
-}
-
-/// 媒体信息
-class NasToolMediaInfo {
-  const NasToolMediaInfo({
-    required this.title,
-    required this.year,
-    required this.type,
-    this.tmdbId,
-    this.imdbId,
-    this.overview,
-    this.poster,
-    this.backdrop,
-  });
-
-  factory NasToolMediaInfo.fromJson(Map<String, dynamic> json) => NasToolMediaInfo(
-      title: json['title'] as String? ?? json['name'] as String? ?? '',
-      year: json['year'] as int?,
-      type: json['type'] as String? ?? json['media_type'] as String? ?? '',
-      tmdbId: json['tmdb_id'] as int? ?? json['tmdbid'] as int?,
-      imdbId: json['imdb_id'] as String? ?? json['imdbid'] as String?,
-      overview: json['overview'] as String? ?? json['description'] as String?,
-      poster: json['poster'] as String? ?? json['poster_path'] as String?,
-      backdrop: json['backdrop'] as String? ?? json['backdrop_path'] as String?,
-    );
-
-  final String title;
-  final int? year;
-  final String type;
-  final int? tmdbId;
-  final String? imdbId;
-  final String? overview;
-  final String? poster;
-  final String? backdrop;
 }

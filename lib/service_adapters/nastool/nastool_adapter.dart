@@ -2,22 +2,24 @@ import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/service_adapters/base/service_adapter.dart';
 import 'package:my_nas/service_adapters/nastool/api/nastool_api.dart';
+import 'package:my_nas/service_adapters/nastool/api/nastool_auth.dart';
+import 'package:my_nas/service_adapters/nastool/models/models.dart';
 
 /// NASTool 服务适配器
 ///
-/// 提供 NASTool 媒体管理服务的连接和管理功能
+/// 使用用户名密码进行会话认证
 class NasToolAdapter implements ServiceAdapter {
   NasToolAdapter();
 
   NasToolApi? _api;
   ServiceConnectionConfig? _connection;
-  NasToolSystemInfo? _systemInfo;
+  NtSystemVersion? _systemVersion;
 
   @override
   ServiceAdapterInfo get info => ServiceAdapterInfo(
         name: 'NASTool',
         type: SourceType.nastool,
-        version: _systemInfo?.version,
+        version: _systemVersion?.version,
         description: 'NAS 媒体库管理工具',
       );
 
@@ -30,52 +32,50 @@ class NasToolAdapter implements ServiceAdapter {
   /// 获取 API 客户端
   NasToolApi? get api => _api;
 
-  /// 获取系统信息
-  NasToolSystemInfo? get systemInfo => _systemInfo;
+  /// 获取系统版本
+  NtSystemVersion? get systemVersion => _systemVersion;
+
+  /// 当前用户名
+  String? get username => _api?.username;
 
   @override
   Future<ServiceConnectionResult> connect(ServiceConnectionConfig config) async {
     try {
-      final apiToken = config.apiKey ?? config.extraConfig?['apiToken'] as String?;
+      // 从配置获取用户名密码
+      final username = config.username ?? config.extraConfig?['username'] as String?;
+      final password = config.password ?? config.extraConfig?['password'] as String?;
 
-      // 调试日志
-      // ignore: avoid_print
-      print('[NasToolAdapter] connect: baseUrl = ${config.baseUrl}');
-      // ignore: avoid_print
-      print('[NasToolAdapter] connect: config.apiKey = ${config.apiKey != null ? "已配置(${config.apiKey!.length}字符)" : "null"}');
-      // ignore: avoid_print
-      print('[NasToolAdapter] connect: extraConfig = ${config.extraConfig}');
-      // ignore: avoid_print
-      print('[NasToolAdapter] connect: apiToken from extraConfig = ${config.extraConfig?['apiToken'] != null ? "已配置" : "null"}');
-      // ignore: avoid_print
-      print('[NasToolAdapter] connect: final apiToken = ${apiToken != null ? "已配置(${apiToken.length}字符)" : "null"}');
-
-      if (apiToken == null || apiToken.isEmpty) {
-        return const ServiceConnectionFailure('缺少 API Token');
+      if (username == null || username.isEmpty) {
+        return const ServiceConnectionFailure('缺少用户名');
       }
 
-      _api = NasToolApi(
-        baseUrl: config.baseUrl,
-        apiToken: apiToken,
+      if (password == null || password.isEmpty) {
+        return const ServiceConnectionFailure('缺少密码');
+      }
+
+      _api = NasToolApi(baseUrl: config.baseUrl);
+
+      // 登录认证
+      final loginResult = await _api!.login(username, password);
+
+      return loginResult.when(
+        success: (token, user) async {
+          // 获取系统版本
+          try {
+            _systemVersion = await _api!.getSystemVersion();
+          } on Exception catch (e, st) {
+            AppError.ignore(e, st, '系统版本获取失败不影响连接');
+          }
+
+          _connection = config;
+          return ServiceConnectionSuccess(this);
+        },
+        failure: (message) {
+          _api?.dispose();
+          _api = null;
+          return ServiceConnectionFailure(message);
+        },
       );
-
-      // 验证连接
-      final valid = await _api!.validateConnection();
-      if (!valid) {
-        _api?.dispose();
-        _api = null;
-        return const ServiceConnectionFailure('连接验证失败，请检查地址和 API Token');
-      }
-
-      // 获取系统信息
-      try {
-        _systemInfo = await _api!.getSystemInfo();
-      } on Exception catch (e, st) {
-        AppError.ignore(e, st, '系统信息获取失败不影响连接');
-      }
-
-      _connection = config;
-      return ServiceConnectionSuccess(this);
     } on NasToolApiException catch (e) {
       _api?.dispose();
       _api = null;
@@ -90,10 +90,11 @@ class NasToolAdapter implements ServiceAdapter {
 
   @override
   Future<void> disconnect() async {
+    await _api?.logout();
     _api?.dispose();
     _api = null;
     _connection = null;
-    _systemInfo = null;
+    _systemVersion = null;
   }
 
   @override
@@ -101,144 +102,135 @@ class NasToolAdapter implements ServiceAdapter {
     await disconnect();
   }
 
-  // === 媒体管理方法 ===
+  // === 媒体库方法 ===
 
   /// 获取媒体库统计
-  Future<NasToolMediaStats> getMediaStats() async {
+  Future<NtLibraryStatistics> getLibraryStatistics() async {
     _ensureConnected();
-    return _api!.getMediaStats();
+    return _api!.getLibraryStatistics();
   }
 
-  /// 获取订阅列表
-  Future<List<NasToolSubscribe>> getSubscribes() async {
+  /// 获取媒体库空间
+  Future<NtLibrarySpace> getLibrarySpace() async {
     _ensureConnected();
-    return _api!.getSubscribes();
+    return _api!.getLibrarySpace();
+  }
+
+  // === 订阅方法 ===
+
+  /// 获取所有订阅
+  Future<List<NtSubscribe>> getAllSubscribes() async {
+    _ensureConnected();
+    return _api!.getAllSubscribes();
   }
 
   /// 添加订阅
   Future<void> addSubscribe({
     required String name,
-    required String mediaType,
-    String? tmdbId,
-    String? imdbId,
+    required String type,
+    String? year,
+    String? mediaId,
     int? season,
     String? keyword,
   }) async {
     _ensureConnected();
     await _api!.addSubscribe(
       name: name,
-      mediaType: mediaType,
-      tmdbId: tmdbId,
-      imdbId: imdbId,
+      type: type,
+      year: year,
+      mediaId: mediaId,
       season: season,
       keyword: keyword,
     );
   }
 
   /// 删除订阅
-  Future<void> deleteSubscribe(int subscribeId) async {
+  Future<void> deleteSubscribe(int subscribeId, String type) async {
     _ensureConnected();
-    await _api!.deleteSubscribe(subscribeId);
+    await _api!.deleteSubscribe(rssId: subscribeId, type: type);
   }
 
+  // === 搜索方法 ===
+
   /// 搜索资源
-  Future<List<NasToolSearchResult>> searchResources({
-    required String keyword,
-    String? mediaType,
-    int page = 1,
-    int limit = 20,
-  }) async {
+  Future<List<NtSearchResult>> searchResources(String keyword) async {
     _ensureConnected();
-    return _api!.searchResources(
-      keyword: keyword,
-      mediaType: mediaType,
-      page: page,
-      limit: limit,
-    );
+    await _api!.searchKeyword(searchWord: keyword);
+    // 等待搜索完成
+    await Future<void>.delayed(const Duration(seconds: 2));
+    return _api!.getSearchResult();
   }
+
+  // === 下载方法 ===
 
   /// 下载资源
   Future<void> downloadResource({
-    required String url,
-    String? savePath,
+    required String enclosure,
+    required String title,
+    String? dlDir,
   }) async {
     _ensureConnected();
-    await _api!.downloadResource(url: url, savePath: savePath);
+    await _api!.downloadItem(enclosure: enclosure, title: title, dlDir: dlDir);
   }
 
   /// 获取下载任务列表
-  Future<List<NasToolDownloadTask>> getDownloadTasks() async {
+  Future<List<NtDownloadTask>> getDownloadTasks() async {
     _ensureConnected();
-    return _api!.getDownloadTasks();
+    return _api!.getDownloading();
   }
+
+  // === 转移历史方法 ===
 
   /// 获取转移历史
-  Future<List<NasToolTransferHistory>> getTransferHistory({
+  Future<List<NtTransferHistory>> getTransferHistory({int page = 1, int pageNum = 20}) async {
+    _ensureConnected();
+    return _api!.getTransferHistory(page: page, pageNum: pageNum);
+  }
+
+  // === 站点方法 ===
+
+  /// 获取站点列表
+  Future<List<NtSite>> getSites() async {
+    _ensureConnected();
+    return _api!.listSites();
+  }
+
+  /// 获取站点统计
+  Future<List<NtSiteStatistics>> getSiteStatistics() async {
+    _ensureConnected();
+    return _api!.getSiteStatistics();
+  }
+
+  // === 媒体方法 ===
+
+  /// 搜索媒体
+  Future<List<NtMediaDetail>> searchMedia(String keyword) async {
+    _ensureConnected();
+    return _api!.searchMedia(keyword);
+  }
+
+  /// 获取推荐列表
+  Future<List<NtMediaDetail>> getRecommendList({
+    required String type,
+    required String subtype,
     int page = 1,
-    int limit = 20,
   }) async {
     _ensureConnected();
-    return _api!.getTransferHistory(page: page, limit: limit);
+    return _api!.getRecommendList(type: type, subtype: subtype, page: page);
   }
 
-  /// 识别媒体
-  Future<NasToolMediaInfo?> recognizeMedia(String path) async {
-    _ensureConnected();
-    return _api!.recognizeMedia(path);
-  }
+  // === 系统方法 ===
 
   /// 刷新媒体库
-  Future<void> refreshMediaLibrary() async {
+  Future<void> refreshLibrary() async {
     _ensureConnected();
-    await _api!.refreshMediaLibrary();
+    await _api!.startLibrarySync();
   }
 
-  /// 获取综合统计
-  Future<NasToolOverviewStats> getOverviewStats() async {
+  /// 获取系统版本
+  Future<NtSystemVersion> getSystemVersion() async {
     _ensureConnected();
-
-    // 分别获取各项数据，任意一项失败不影响其他
-    NasToolMediaStats? mediaStats;
-    List<NasToolSubscribe> subscribes = [];
-    List<NasToolDownloadTask> downloadTasks = [];
-
-    try {
-      mediaStats = await _api!.getMediaStats();
-    } on Exception {
-      // 媒体统计接口可能不存在（404）
-    }
-
-    try {
-      subscribes = await _api!.getSubscribes();
-    } on Exception {
-      // 订阅列表接口可能失败
-    }
-
-    try {
-      downloadTasks = await _api!.getDownloadTasks();
-    } on Exception {
-      // 下载任务接口可能失败
-    }
-
-    var activeDownloads = 0;
-    var completedDownloads = 0;
-
-    for (final task in downloadTasks) {
-      if (task.progress >= 1.0) {
-        completedDownloads++;
-      } else {
-        activeDownloads++;
-      }
-    }
-
-    return NasToolOverviewStats(
-      movieCount: mediaStats?.movieCount ?? 0,
-      tvCount: mediaStats?.tvCount ?? 0,
-      animeCount: mediaStats?.animeCount ?? 0,
-      subscribeCount: subscribes.length,
-      activeDownloads: activeDownloads,
-      completedDownloads: completedDownloads,
-    );
+    return _api!.getSystemVersion();
   }
 
   void _ensureConnected() {
@@ -253,7 +245,7 @@ class NasToolOverviewStats {
   const NasToolOverviewStats({
     required this.movieCount,
     required this.tvCount,
-    required this.animeCount,
+    this.animeCount = 0,
     required this.subscribeCount,
     required this.activeDownloads,
     required this.completedDownloads,
