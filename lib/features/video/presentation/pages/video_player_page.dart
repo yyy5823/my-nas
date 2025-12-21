@@ -304,13 +304,7 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
     AspectRatioMode mode,
     SubtitleStyle subtitleStyle,
   ) {
-    // 根据字幕位置计算 padding
-    final subtitlePadding = switch (subtitleStyle.position) {
-      SubtitlePosition.top => EdgeInsets.only(top: subtitleStyle.bottomPadding),
-      SubtitlePosition.center => EdgeInsets.zero,
-      SubtitlePosition.bottom => EdgeInsets.only(bottom: subtitleStyle.bottomPadding),
-    };
-
+    // 视频组件（禁用内置字幕，使用自定义覆盖层）
     final video = Video(
       controller: controller,
       controls: (state) => const SizedBox.shrink(),
@@ -320,52 +314,102 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
         AspectRatioMode.cover => BoxFit.cover,
         _ => BoxFit.contain,
       },
-      // 配置字幕显示在视频区域内
-      subtitleViewConfiguration: SubtitleViewConfiguration(
-        style: TextStyle(
-          fontSize: subtitleStyle.fontSize,
-          color: subtitleStyle.fontColor,
-          fontWeight: subtitleStyle.fontWeight,
-          backgroundColor: subtitleStyle.backgroundColor,
-          shadows: subtitleStyle.hasOutline
-              ? [
-                  Shadow(
-                    color: subtitleStyle.outlineColor,
-                    blurRadius: subtitleStyle.outlineWidth,
-                    offset: const Offset(1, 1),
-                  ),
-                  Shadow(
-                    color: subtitleStyle.outlineColor,
-                    blurRadius: subtitleStyle.outlineWidth,
-                    offset: const Offset(-1, -1),
-                  ),
-                  Shadow(
-                    color: subtitleStyle.outlineColor,
-                    blurRadius: subtitleStyle.outlineWidth,
-                    offset: const Offset(1, -1),
-                  ),
-                  Shadow(
-                    color: subtitleStyle.outlineColor,
-                    blurRadius: subtitleStyle.outlineWidth,
-                    offset: const Offset(-1, 1),
-                  ),
-                ]
-              : null,
-        ),
-        padding: subtitlePadding,
-        textAlign: TextAlign.center,
+      // 禁用内置字幕（因为它只支持底部对齐）
+      subtitleViewConfiguration: const SubtitleViewConfiguration(
+        visible: false,
       ),
+    );
+
+    // 构建自定义字幕覆盖层
+    final subtitleOverlay = StreamBuilder<List<String>>(
+      stream: controller.player.stream.subtitle,
+      builder: (context, snapshot) {
+        final subtitleLines = snapshot.data ?? [];
+        if (subtitleLines.isEmpty || subtitleLines.every((s) => s.trim().isEmpty)) {
+          return const SizedBox.shrink();
+        }
+
+        final subtitleText = subtitleLines
+            .where((s) => s.trim().isNotEmpty)
+            .map((s) => s.trim())
+            .join('\n');
+
+        // 根据位置设置对齐方式和边距
+        final (alignment, padding) = switch (subtitleStyle.position) {
+          SubtitlePosition.top => (
+              Alignment.topCenter,
+              EdgeInsets.only(top: subtitleStyle.bottomPadding, left: 16, right: 16),
+            ),
+          SubtitlePosition.center => (
+              Alignment.center,
+              const EdgeInsets.symmetric(horizontal: 16),
+            ),
+          SubtitlePosition.bottom => (
+              Alignment.bottomCenter,
+              EdgeInsets.only(bottom: subtitleStyle.bottomPadding, left: 16, right: 16),
+            ),
+        };
+
+        return Align(
+          alignment: alignment,
+          child: Padding(
+            padding: padding,
+            child: Text(
+              subtitleText,
+              style: TextStyle(
+                fontSize: subtitleStyle.fontSize,
+                color: subtitleStyle.fontColor,
+                fontWeight: subtitleStyle.fontWeight,
+                backgroundColor: subtitleStyle.backgroundColor,
+                shadows: subtitleStyle.hasOutline
+                    ? [
+                        Shadow(
+                          color: subtitleStyle.outlineColor,
+                          blurRadius: subtitleStyle.outlineWidth,
+                          offset: const Offset(1, 1),
+                        ),
+                        Shadow(
+                          color: subtitleStyle.outlineColor,
+                          blurRadius: subtitleStyle.outlineWidth,
+                          offset: const Offset(-1, -1),
+                        ),
+                        Shadow(
+                          color: subtitleStyle.outlineColor,
+                          blurRadius: subtitleStyle.outlineWidth,
+                          offset: const Offset(1, -1),
+                        ),
+                        Shadow(
+                          color: subtitleStyle.outlineColor,
+                          blurRadius: subtitleStyle.outlineWidth,
+                          offset: const Offset(-1, 1),
+                        ),
+                      ]
+                    : null,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        );
+      },
+    );
+
+    // 组合视频和字幕
+    final videoWithSubtitle = Stack(
+      children: [
+        video,
+        Positioned.fill(child: subtitleOverlay),
+      ],
     );
 
     // 如果是固定比例模式，用 AspectRatio 包裹
     if (mode.ratio != null) {
       return AspectRatio(
         aspectRatio: mode.ratio!,
-        child: video,
+        child: videoWithSubtitle,
       );
     }
 
-    return video;
+    return videoWithSubtitle;
   }
 
   @override
