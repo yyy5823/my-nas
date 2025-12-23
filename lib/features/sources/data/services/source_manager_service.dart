@@ -670,6 +670,13 @@ class SourceManagerService {
   /// 优化：减少超时时间，避免在网络不可用时长时间阻塞
   /// 用户可以在应用启动后手动重新连接
   Future<void> _autoConnectSource(SourceEntity source) async {
+    // 服务类源（下载器、媒体管理等）使用各自的 ServiceAdapter，不走此连接流程
+    // 它们有独立的连接管理机制
+    if (source.isServiceSource) {
+      logger.d('SourceManagerService: 跳过服务类源 ${source.name}，使用专用连接方式');
+      return;
+    }
+
     // 减少超时时间，避免非内网环境下等待过久
     // 如果网络可用，这个时间足够完成连接
     // 如果网络不可用，快速失败让用户可以正常使用本地数据
