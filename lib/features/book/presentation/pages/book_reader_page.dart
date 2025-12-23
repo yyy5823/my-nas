@@ -18,7 +18,7 @@ import 'package:my_nas/features/book/data/services/book_file_cache_service.dart'
 import 'package:my_nas/features/book/data/services/mobi_parser_service.dart';
 import 'package:my_nas/features/book/data/services/progressive_pagination.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
-import 'package:my_nas/features/book/presentation/pages/epub_reader_page.dart';
+import 'package:my_nas/features/book/presentation/pages/ebook_reader_page.dart';
 import 'package:my_nas/features/book/presentation/widgets/webview_book_reader.dart';
 import 'package:my_nas/features/reading/data/services/reader_settings_service.dart';
 import 'package:my_nas/features/reading/data/services/reading_progress_service.dart';
@@ -133,8 +133,8 @@ class TxtReaderNotifier extends StateNotifier<TxtReaderState> {
         case BookFormat.txt:
           content = await _loadTxtBook();
         case BookFormat.epub:
-          // EPUB 使用专门的 EpubReaderPage
-          state = TxtReaderError('请使用 EPUB 阅读器');
+          // EPUB/MOBI/AZW3 使用专门的 EbookReaderPage
+          state = TxtReaderError('请使用电子书阅读器');
           return;
         case BookFormat.pdf:
           // PDF 使用专门的 PdfReaderPage
@@ -816,31 +816,18 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     );
   }
 
-  /// MOBI/AZW3 转换为 EPUB 后的重定向页面
+  /// MOBI/AZW3 重定向到电子书阅读器
+  /// 注：EbookReaderPage 使用 FoliateViewer，可直接读取 MOBI/AZW3，无需转换
   Widget _buildEpubRedirect(String epubPath) {
-    // 自动跳转到 EPUB 阅读器
+    // 自动跳转到电子书阅读器
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      // 替换当前页面为 EPUB 阅读器
+      // 替换当前页面为电子书阅读器
+      // EbookReaderPage 使用原始书籍路径，可直接读取 MOBI/AZW3
       Navigator.pushReplacement(
         context,
         MaterialPageRoute<void>(
-          builder: (context) => EpubReaderPage(
-            // 使用转换后的本地 EPUB 文件
-            // 注意：sourceId 必须设为 null，因为这是本地缓存文件
-            // 如果保留 sourceId，EpubReaderNotifier 会尝试从 NAS 下载本地路径（导致 404）
-            book: BookItem(
-              id: widget.book.id,
-              name: widget.book.name,
-              path: epubPath,
-              url: 'file://$epubPath',
-              sourceId: null, // 关键：本地文件不需要 sourceId
-            ),
-            // 传递原始书籍路径用于进度追踪
-            // 这样 MOBI/AZW3 转换后仍能恢复之前的阅读进度
-            originalBookPath: widget.book.path,
-            originalSourceId: widget.book.sourceId,
-          ),
+          builder: (context) => EbookReaderPage(book: widget.book),
         ),
       );
     });
@@ -852,7 +839,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
           const CircularProgressIndicator(),
           const SizedBox(height: 16),
           Text(
-            '正在打开 EPUB 阅读器...',
+            '正在打开电子书阅读器...',
             style: TextStyle(
               color: Colors.grey.shade600,
             ),

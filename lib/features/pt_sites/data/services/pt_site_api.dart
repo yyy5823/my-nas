@@ -65,6 +65,14 @@ abstract class PTSiteApi {
   /// 搜索种子
   Future<List<PTTorrent>> searchTorrents(String keyword, {int page = 1});
 
+  /// 获取传输统计数据
+  /// [type] 统计类型（做种/下载/已完成等）
+  /// [page] 页码
+  Future<PTTransferStats> getTransferStats({
+    PTTransferLogType type = PTTransferLogType.all,
+    int page = 1,
+  });
+
   /// 关闭连接
   void dispose() {
     _client.close();
@@ -249,17 +257,26 @@ class MTeamApi extends PTSiteApi {
       _logger..d('MTeamApi.getUserInfo: profile = $profile')
       ..d('MTeamApi.getUserInfo: memberCount = $memberCount');
 
+      // 用户等级：M-Team 的 role 是数字 ID，需要映射到文字名称
+      final userClass = _parseUserClass(profile);
+
+      // 获取做种/下载数 - 需要调用 api/tracker/myPeerStatus 接口
+      final peerStatus = await _getPeerStatus(uid);
+      _logger.d('MTeamApi.getUserInfo: peerStatus = $peerStatus');
+
+      final seedingCount = peerStatus['seeder'] ?? peerStatus['seeding'] ?? 0;
+      final leechingCount = peerStatus['leecher'] ?? peerStatus['leeching'] ?? 0;
+
       return PTUserInfo(
         username: profile['username'] as String? ?? '',
         userId: profile['id']?.toString() ?? '',
-        userClass: profile['role'] as String?,
+        userClass: userClass,
         uploaded: _parseBytes(memberCount['uploaded']),
         downloaded: _parseBytes(memberCount['downloaded']),
         ratio: double.tryParse(memberCount['shareRate']?.toString() ?? ''),
-        bonus: double.tryParse(profile['bonus']?.toString() ?? '0') ?? 0,
-        // 使用 _parseInt 正确处理可能是 String 类型的数值
-        seedingCount: _parseInt(memberCount['seeding']),
-        leechingCount: _parseInt(memberCount['leeching']),
+        bonus: double.tryParse(memberCount['bonus']?.toString() ?? '0') ?? 0,
+        seedingCount: seedingCount,
+        leechingCount: leechingCount,
         // 额外字段
         invites: _parseInt(profile['invites']),
         joinTime: DateTime.tryParse(profile['createdDate']?.toString() ?? ''),
@@ -271,6 +288,41 @@ class MTeamApi extends PTSiteApi {
     }
   }
 
+
+  /// 获取用户做种/下载状态
+  /// 调用 api/tracker/myPeerStatus 接口
+  Future<Map<String, int>> _getPeerStatus(int uid) async {
+    try {
+      final response = await _ioClient.post(
+        Uri.parse('$_apiBase/api/tracker/myPeerStatus'),
+        headers: headers,
+        body: json.encode({'uid': uid}),
+      );
+
+      if (response.statusCode != 200) {
+        _logger.w('_getPeerStatus: HTTP ${response.statusCode}');
+        return {};
+      }
+
+      final data = json.decode(response.body) as Map<String, dynamic>;
+      final code = data['code'];
+      if (code != '0' && code != 0 && code != 'SUCCESS') {
+        _logger.w('_getPeerStatus: API 返回错误 - ${data['message']}');
+        return {};
+      }
+
+      final statusData = data['data'] as Map<String, dynamic>? ?? {};
+      _logger.d('_getPeerStatus: statusData = $statusData');
+
+      return {
+        'seeder': _parseInt(statusData['seeder']),
+        'leecher': _parseInt(statusData['leecher']),
+      };
+    } on Exception catch (e) {
+      _logger.w('_getPeerStatus: 获取失败 - $e');
+      return {};
+    }
+  }
 
   /// 从配置或 JWT token 中提取 uid
   int? _extractUidFromConfig() {
@@ -442,6 +494,148 @@ class MTeamApi extends PTSiteApi {
   Future<List<PTTorrent>> searchTorrents(String keyword, {int page = 1}) =>
       getTorrents(keyword: keyword, page: page);
 
+  @override
+  Future<PTTransferStats> getTransferStats({
+    PTTransferLogType type = PTTransferLogType.all,
+    int page = 1,
+  }) async {
+    try {
+      final uid = _extractUidFromConfig();
+      if (uid == null) {
+        _logger.w('MTeamApi.getTransferStats: 无法获取 uid，返回空统计');
+        return const PTTransferStats();
+      }
+
+      // 1. 获取做种/下载数统计（从 myPeerStatus）
+      final peerStatus = await _getPeerStatus(uid);
+      final seedingCount = peerStatus['seeder'] ?? 0;
+      final leechingCount = peerStatus['leecher'] ?? 0;
+
+      // 2. 获取用户基本信息（上传/下载量）
+      final userInfo = await getUserInfo();
+
+      // 3. 获取种子列表（根据类型筛选）
+      final logs = await _getUserTorrentList(uid, type, page);
+
+      return PTTransferStats(
+        totalUploaded: userInfo.uploaded,
+        totalDownloaded: userInfo.downloaded,
+        seedingCount: seedingCount,
+        leechingCount: leechingCount,
+        logs: logs,
+      );
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'MTeamApi.getTransferStats');
+      // 降级到从 profile 获取基本数据
+      return _getTransferStatsFromProfile(type);
+    }
+  }
+
+  /// 获取用户种子列表
+  /// 调用 api/member/getUserTorrentList 接口
+  Future<List<PTTransferLog>> _getUserTorrentList(int uid, PTTransferLogType type, int page) async {
+    try {
+      // 根据类型设置过滤条件
+      final typeStr = switch (type) {
+        PTTransferLogType.seeding => 'SEEDING',
+        PTTransferLogType.leeching => 'LEECHING',
+        PTTransferLogType.completed => 'COMPLETED',
+        PTTransferLogType.hit => 'HITRUN',
+        PTTransferLogType.all => 'SEEDING', // 默认显示做种
+      };
+
+      final body = {
+        'pageNumber': page,
+        'pageSize': 50,
+        'type': typeStr,
+        'userid': uid,
+      };
+
+      _logger.d('_getUserTorrentList: 请求参数 = $body');
+
+      final response = await _ioClient.post(
+        Uri.parse('$_apiBase/api/member/getUserTorrentList'),
+        headers: headers,
+        body: json.encode(body),
+      );
+
+      if (response.statusCode != 200) {
+        _logger.w('_getUserTorrentList: HTTP ${response.statusCode}');
+        return [];
+      }
+
+      final data = json.decode(response.body) as Map<String, dynamic>;
+      final code = data['code'];
+      if (code != '0' && code != 0 && code != 'SUCCESS') {
+        _logger.w('_getUserTorrentList: API 返回错误 - ${data['message']}');
+        return [];
+      }
+
+      final responseData = data['data'] as Map<String, dynamic>?;
+      final listData = responseData?['data'] as List<dynamic>? ?? [];
+      _logger.d('_getUserTorrentList: 响应数据量 = ${listData.length}');
+
+      return listData
+          .whereType<Map<String, dynamic>>()
+          .map(_parseTransferLog)
+          .toList();
+    } on Exception catch (e) {
+      _logger.w('_getUserTorrentList: 获取失败 - $e');
+      return [];
+    }
+  }
+
+  /// 从 profile 接口获取基本统计数据（降级方案）
+  Future<PTTransferStats> _getTransferStatsFromProfile(PTTransferLogType type) async {
+    try {
+      final userInfo = await getUserInfo();
+      return PTTransferStats(
+        totalUploaded: userInfo.uploaded,
+        totalDownloaded: userInfo.downloaded,
+        seedingCount: userInfo.seedingCount,
+        leechingCount: userInfo.leechingCount,
+      );
+    } on Exception {
+      return const PTTransferStats();
+    }
+  }
+
+  /// 解析单条传输日志（来自 api/member/getUserTorrentList）
+  /// 数据结构: { torrent: { id, name, size, ... }, uploaded, downloaded, ... }
+  PTTransferLog _parseTransferLog(Map<String, dynamic> data) {
+    final torrent = data['torrent'] as Map<String, dynamic>? ?? {};
+
+    // 获取上传/下载量
+    final uploaded = _parseBytes(data['uploaded'] ?? torrent['uploaded']);
+    final downloaded = _parseBytes(data['downloaded'] ?? torrent['downloaded']);
+
+    // 计算分享率
+    double ratio;
+    if (data['ratio'] != null) {
+      ratio = double.tryParse(data['ratio'].toString()) ?? double.infinity;
+    } else if (downloaded > 0) {
+      ratio = uploaded / downloaded;
+    } else {
+      ratio = double.infinity;
+    }
+
+    return PTTransferLog(
+      torrentId: torrent['id']?.toString() ?? data['torrentId']?.toString() ?? '',
+      torrentName: torrent['name'] as String? ?? data['torrentName'] as String? ?? '',
+      uploaded: uploaded,
+      downloaded: downloaded,
+      ratio: ratio,
+      seedTime: _parseInt(data['seedTime'] ?? data['seedingTime'] ?? 0),
+      addedTime: DateTime.tryParse(
+        data['createdDate']?.toString() ?? torrent['createdDate']?.toString() ?? '',
+      ),
+      lastActive: DateTime.tryParse(
+        data['lastModifiedDate']?.toString() ?? data['lastActive']?.toString() ?? '',
+      ),
+      status: data['status']?.toString(),
+    );
+  }
+
   PTTorrent _parseTorrent(Map<String, dynamic> data) {
     final status = data['status'] as Map<String, dynamic>? ?? {};
 
@@ -518,6 +712,57 @@ class MTeamApi extends PTSiteApi {
     if (value is String) return int.tryParse(value) ?? 0;
     if (value is double) return value.toInt();
     return 0;
+  }
+
+  // M-Team 用户等级映射表（来自 MoviePilot）
+  static const _mteamRoleMap = {
+    '1': 'User',
+    '2': 'Power User',
+    '3': 'Elite User',
+    '4': 'Crazy User',
+    '5': 'Insane User',
+    '6': 'Veteran User',
+    '7': 'Extreme User',
+    '8': 'Ultimate User',
+    '9': 'Nexus Master',
+    '10': 'VIP',
+    '11': 'Retiree',
+    '12': 'Uploader',
+    '13': 'Moderator',
+    '14': 'Administrator',
+    '15': 'Sysop',
+    '16': 'Staff',
+    '17': 'Offer memberStaff',
+    '18': 'Bet memberStaff',
+  };
+
+  /// 解析用户等级
+  /// M-Team 的 role 是数字 ID，需要映射到文字名称
+  String? _parseUserClass(Map<String, dynamic> profile) {
+    final role = profile['role']?.toString();
+    if (role == null) return null;
+
+    // 优先使用映射表
+    final mappedRole = _mteamRoleMap[role];
+    if (mappedRole != null) {
+      return mappedRole;
+    }
+
+    // 如果 role 本身就是文字（非纯数字），直接返回
+    if (int.tryParse(role) == null && role.isNotEmpty) {
+      return role;
+    }
+
+    // 尝试从 memberStatus 获取
+    final memberStatus = profile['memberStatus'] as Map<String, dynamic>?;
+    if (memberStatus != null) {
+      final statusName = memberStatus['name'] ?? memberStatus['className'] ?? memberStatus['roleName'];
+      if (statusName != null) {
+        return statusName.toString();
+      }
+    }
+
+    return role;
   }
 }
 
@@ -912,6 +1157,14 @@ class GenericPTSiteApi extends PTSiteApi {
   @override
   Future<List<PTTorrent>> searchTorrents(String keyword, {int page = 1}) =>
       getTorrents(keyword: keyword, page: page);
+
+  @override
+  Future<PTTransferStats> getTransferStats({
+    PTTransferLogType type = PTTransferLogType.all,
+    int page = 1,
+  }) async =>
+      // 通用 PT 站点 API 暂不支持获取详细统计，返回空数据
+      const PTTransferStats();
 }
 
 /// PT 站点 API 工厂

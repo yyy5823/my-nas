@@ -6,9 +6,8 @@ import 'package:my_nas/features/book/data/services/book_file_cache_service.dart'
 import 'package:my_nas/features/book/data/services/manga_detector.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
 import 'package:my_nas/features/book/presentation/pages/book_reader_page.dart';
+import 'package:my_nas/features/book/presentation/pages/ebook_reader_page.dart';
 import 'package:my_nas/features/book/presentation/pages/epub_comic_reader_page.dart';
-import 'package:my_nas/features/book/presentation/pages/epub_reader_page.dart';
-import 'package:my_nas/features/book/presentation/pages/mobi_reader_page.dart';
 import 'package:my_nas/features/book/presentation/pages/pdf_reader_page.dart';
 
 /// 图书导航工具
@@ -25,8 +24,7 @@ class BookNavigator {
   ///
   /// 根据格式和内容类型选择合适的阅读器：
   /// - 检测到漫画 -> EpubComicReaderPage
-  /// - EPUB -> EpubReaderPage
-  /// - MOBI/AZW3 -> MobiReaderPage
+  /// - EPUB/MOBI/AZW3 -> EbookReaderPage
   /// - PDF -> PdfReaderPage
   /// - TXT -> BookReaderPage
   Future<void> openBook(
@@ -88,12 +86,12 @@ class BookNavigator {
   ) async {
     if (book.format != BookFormat.epub) {
       // MOBI/AZW3 需要先转换为 EPUB
-      // 使用 MobiReaderPage 处理转换
+      // 使用 EbookReaderPage 处理转换
       if (!context.mounted) return;
       await Navigator.push<void>(
         context,
         MaterialPageRoute(
-          builder: (context) => MobiReaderPage(
+          builder: (context) => EbookReaderPage(
             book: book,
             forceComicReader: true,
           ),
@@ -116,7 +114,7 @@ class BookNavigator {
       );
     } else {
       // 没有缓存，需要先下载
-      // 使用 EpubReaderPage 下载后再跳转
+      // 使用 EbookReaderPage 下载后再跳转
       // 或者显示提示
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -136,10 +134,12 @@ class BookNavigator {
 
     switch (book.format) {
       case BookFormat.epub:
+      case BookFormat.mobi:
+      case BookFormat.azw3:
         await Navigator.push<void>(
           context,
           MaterialPageRoute(
-            builder: (context) => EpubReaderPage(book: book),
+            builder: (context) => EbookReaderPage(book: book),
           ),
         );
       case BookFormat.pdf:
@@ -147,14 +147,6 @@ class BookNavigator {
           context,
           MaterialPageRoute(
             builder: (context) => PdfReaderPage(book: book),
-          ),
-        );
-      case BookFormat.mobi:
-      case BookFormat.azw3:
-        await Navigator.push<void>(
-          context,
-          MaterialPageRoute(
-            builder: (context) => MobiReaderPage(book: book),
           ),
         );
       case BookFormat.txt:

@@ -2517,28 +2517,31 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
           return [
             SliverToBoxAdapter(
               child: _SkeletonCategoryRow(
-                title: '高分推荐',
+                title: '每日推荐',
                 isDark: isDark,
-                icon: Icons.star_rounded,
+                icon: Icons.auto_awesome_rounded,
                 iconColor: Colors.amber,
               ),
             ),
           ];
         }
-        // 跳过 heroBanner 使用的 4 项
-        if (topRated.length <= 4) return [];
+        // 跳过 heroBanner 使用的项目（最多 4 个）
+        // HeroBanner 只在有足够数据时使用前 4 个，否则使用全部
+        final heroBannerCount = topRated.length >= 4 ? 4 : 0;
+        final remainingItems = topRated.skip(heroBannerCount).toList();
+        if (remainingItems.isEmpty) return [];
         return [
           SliverToBoxAdapter(
             child: _CategoryRow(
-              title: '高分推荐',
-              items: topRated.skip(4).toList(),
+              title: '每日推荐',
+              items: remainingItems,
               onItemTap: (m) => _openVideoDetail(context, ref, m),
               onItemContextMenu: (m) => _showVideoContextMenu(context, ref, m),
               isDark: isDark,
-              icon: Icons.star_rounded,
+              icon: Icons.auto_awesome_rounded,
               iconColor: Colors.amber,
-              onViewAll: topRated.length > 14
-                  ? () => _showCategoryPage(context, '高分推荐', topRated.skip(4).toList())
+              onViewAll: remainingItems.length > 10
+                  ? () => _showCategoryPage(context, '每日推荐', remainingItems)
                   : null,
             ),
           ),
@@ -8267,6 +8270,16 @@ class _DynamicCategorySectionState extends State<_DynamicCategorySection> {
   void initState() {
     super.initState();
     _loadVideos();
+  }
+
+  @override
+  void didUpdateWidget(covariant _DynamicCategorySection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 当 category 或 filter 改变时重新加载数据
+    if (oldWidget.category != widget.category ||
+        oldWidget.filter != widget.filter) {
+      _loadVideos();
+    }
   }
 
   Future<void> _loadVideos() async {

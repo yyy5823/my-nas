@@ -1157,7 +1157,7 @@ class VideoDatabaseService {
   ///
   /// [enabledPaths] 启用的路径列表，如果提供则只返回这些路径下的视频
   Future<List<VideoMetadata>> getTopRated({
-    double minRating = 7.0,
+    double minRating = 0.0, // 降低默认阈值，确保有数据返回
     MediaCategory? category,
     int limit = 50,
     int offset = 0,
@@ -1167,7 +1167,8 @@ class VideoDatabaseService {
 
     final pathFilter = _buildPathFilter(enabledPaths);
 
-    var where = '$_colRating >= ?';
+    // 只筛选有评分的视频（rating > 0），不设最低分数门槛
+    var where = '$_colRating > ?';
     final whereArgs = <Object>[minRating];
 
     if (category != null) {
@@ -2556,14 +2557,70 @@ class VideoDatabaseService {
       moviesByCollection.putIfAbsent(collectionId, () => []).add(_fromRow(row));
     }
 
-    // 步骤5：构建结果列表（保持原有顺序）
+    // 步骤5：对每个系列中的电影进行去重
+    // 只合并"完全相同"的电影（同一部电影的不同清晰度版本）
+    // 使用更严格的匹配条件避免将系列中不同电影错误合并
+    final deduplicatedCollections = <int, List<VideoMetadata>>{};
+    for (final entry in moviesByCollection.entries) {
+      final collectionId = entry.key;
+      final movies = entry.value;
+
+      // 按 TMDB ID + 年份 分组（更精确的匹配）
+      // - 有 TMDB ID：使用 tmdbId + year 作为键（同一部电影的不同版本）
+      // - 无 TMDB ID 但有年份：使用 title + year 作为键
+      // - 无年份信息：使用 uniqueKey，不进行去重（避免错误合并）
+      final movieGroups = <String, List<VideoMetadata>>{};
+      for (final movie in movies) {
+        String key;
+        if (movie.tmdbId != null && movie.year != null) {
+          // 有 TMDB ID 和年份：精确匹配
+          key = 'tmdb_${movie.tmdbId}_${movie.year}';
+        } else if (movie.tmdbId != null) {
+          // 只有 TMDB ID：可能是同一部电影的不同版本
+          key = 'tmdb_${movie.tmdbId}';
+        } else if (movie.title != null && movie.year != null) {
+          // 无 TMDB ID 但有标题和年份
+          key = '${movie.title}_${movie.year}';
+        } else {
+          // 信息不足，不进行去重
+          key = movie.uniqueKey;
+        }
+        movieGroups.putIfAbsent(key, () => []).add(movie);
+      }
+
+      // 每组只保留一部电影（优先选择评分最高的，其次选择清晰度最高的）
+      final uniqueMovies = <VideoMetadata>[];
+      for (final group in movieGroups.values) {
+        if (group.length == 1) {
+          uniqueMovies.add(group.first);
+        } else {
+          // 按评分降序，再按清晰度（文件大小）降序
+          group.sort((a, b) {
+            final ratingCmp = (b.rating ?? 0).compareTo(a.rating ?? 0);
+            if (ratingCmp != 0) return ratingCmp;
+            return (b.fileSize ?? 0).compareTo(a.fileSize ?? 0);
+          });
+          uniqueMovies.add(group.first);
+        }
+      }
+
+      // 按年份排序
+      uniqueMovies.sort((a, b) => (a.year ?? 0).compareTo(b.year ?? 0));
+      deduplicatedCollections[collectionId] = uniqueMovies;
+    }
+
+    // 步骤6：构建结果列表（保持原有顺序，只保留有多部不同电影的系列）
     final collections = <MovieCollection>[];
     for (final id in collectionIds) {
-      collections.add(MovieCollection(
-        id: id,
-        name: collectionNames[id] ?? '未知系列',
-        movies: moviesByCollection[id] ?? [],
-      ));
+      final movies = deduplicatedCollections[id] ?? [];
+      // 只有系列中有多部不同电影时才包含
+      if (movies.length >= minCount) {
+        collections.add(MovieCollection(
+          id: id,
+          name: collectionNames[id] ?? '未知系列',
+          movies: movies,
+        ));
+      }
     }
 
     stopwatch.stop();

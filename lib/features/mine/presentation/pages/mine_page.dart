@@ -8,13 +8,17 @@ import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/downloader/presentation/pages/downloader_list_page.dart';
 import 'package:my_nas/features/media_management/presentation/pages/media_management_list_page.dart';
 import 'package:my_nas/features/media_tracking/presentation/pages/media_tracking_list_page.dart';
+import 'package:my_nas/features/music/domain/entities/music_scraper_source.dart';
 import 'package:my_nas/features/music/presentation/pages/music_scraper_sources_page.dart';
 import 'package:my_nas/features/music/presentation/providers/music_scraper_provider.dart';
 import 'package:my_nas/features/pt_sites/presentation/pages/pt_sites_list_page.dart';
+import 'package:my_nas/features/sources/domain/entities/source_category.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/pages/media_library_page.dart';
+import 'package:my_nas/features/sources/presentation/pages/service_sources_page.dart';
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
+import 'package:my_nas/features/video/domain/entities/scraper_source.dart';
 import 'package:my_nas/features/video/presentation/pages/scraper_sources_page.dart';
 import 'package:my_nas/features/video/presentation/providers/scraper_provider.dart';
 import 'package:my_nas/shared/providers/download_provider.dart';
@@ -82,6 +86,8 @@ class MinePage extends ConsumerWidget {
                   isDark,
                   children: [
                     _VideoScraperSourcesTile(isDark: isDark),
+                    _buildDivider(isDark),
+                    _SubtitleSourcesTile(isDark: isDark),
                     _buildDivider(isDark),
                     _LanguagePreferenceTile(isDark: isDark),
                     _buildDivider(isDark),
@@ -748,7 +754,8 @@ class _VideoScraperSourcesTile extends ConsumerWidget {
     return sourcesAsync.when(
       data: (sources) {
         final enabledCount = sources.where((s) => s.isEnabled).length;
-        final totalCount = sources.length;
+        // 使用所有可用刮削源类型数量作为总数
+        final totalCount = ScraperType.values.length;
 
         return Material(
           color: Colors.transparent,
@@ -791,9 +798,7 @@ class _VideoScraperSourcesTile extends ConsumerWidget {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          totalCount == 0
-                              ? '管理 TMDB、豆瓣等视频刮削源'
-                              : '$enabledCount / $totalCount 已启用',
+                          '管理 TMDB、豆瓣等视频刮削源',
                           style: context.textTheme.bodySmall?.copyWith(
                             color: isDark
                                 ? AppColors.darkOnSurfaceVariant
@@ -803,21 +808,19 @@ class _VideoScraperSourcesTile extends ConsumerWidget {
                       ],
                     ),
                   ),
-                  if (totalCount > 0)
+                  if (enabledCount > 0)
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: enabledCount > 0
-                            ? Colors.green.withValues(alpha: 0.12)
-                            : AppColors.warning.withValues(alpha: 0.12),
+                        color: Colors.green.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
                         '$enabledCount/$totalCount',
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: enabledCount > 0 ? Colors.green : AppColors.warning,
+                          color: Colors.green,
                         ),
                       ),
                     )
@@ -889,6 +892,108 @@ class _VideoScraperSourcesTile extends ConsumerWidget {
       );
 }
 
+/// 字幕源入口组件
+class _SubtitleSourcesTile extends ConsumerWidget {
+  const _SubtitleSourcesTile({required this.isDark});
+
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final subtitleSources = ref.watch(subtitleSourcesProvider);
+    final count = subtitleSources.length;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute<void>(
+            builder: (_) => const ServiceSourcesPage(
+              title: '字幕源',
+              category: SourceCategory.subtitleSites,
+              emptyIcon: Icons.subtitles_rounded,
+              emptyTitle: '暂无字幕源',
+              emptySubtitle: '添加 OpenSubtitles 等字幕源来下载字幕',
+            ),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.md,
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.green.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.subtitles_rounded,
+                  color: Colors.green,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '字幕源',
+                      style: context.textTheme.bodyLarge?.copyWith(
+                        color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '管理 OpenSubtitles 等字幕下载源',
+                      style: context.textTheme.bodySmall?.copyWith(
+                        color: isDark
+                            ? AppColors.darkOnSurfaceVariant
+                            : AppColors.lightOnSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (count > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '$count',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.green,
+                    ),
+                  ),
+                )
+              else
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: isDark
+                      ? AppColors.darkOnSurfaceVariant
+                      : AppColors.lightOnSurfaceVariant,
+                  size: 22,
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// 音乐刮削源入口组件
 class _MusicScraperSourcesTile extends ConsumerWidget {
   const _MusicScraperSourcesTile({required this.isDark});
@@ -899,7 +1004,8 @@ class _MusicScraperSourcesTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(musicScraperSourcesProvider);
     final enabledCount = state.sources.where((s) => s.isEnabled).length;
-    final totalCount = state.sources.length;
+    // 使用所有可用刮削源类型数量作为总数
+    final totalCount = MusicScraperType.values.length;
 
     return Material(
       color: Colors.transparent,
@@ -942,9 +1048,7 @@ class _MusicScraperSourcesTile extends ConsumerWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      totalCount == 0
-                          ? '管理 MusicBrainz、网易云等音乐刮削源'
-                          : '$enabledCount / $totalCount 已启用',
+                      '管理 MusicBrainz、网易云等音乐刮削源',
                       style: context.textTheme.bodySmall?.copyWith(
                         color: isDark
                             ? AppColors.darkOnSurfaceVariant
@@ -954,21 +1058,19 @@ class _MusicScraperSourcesTile extends ConsumerWidget {
                   ],
                 ),
               ),
-              if (totalCount > 0)
+              if (enabledCount > 0)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: enabledCount > 0
-                        ? Colors.green.withValues(alpha: 0.12)
-                        : AppColors.warning.withValues(alpha: 0.12),
+                    color: Colors.green.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
                     '$enabledCount/$totalCount',
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: enabledCount > 0 ? Colors.green : AppColors.warning,
+                      color: Colors.green,
                     ),
                   ),
                 )

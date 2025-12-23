@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_result.dart';
@@ -156,13 +157,24 @@ class MusicTagWebScraper implements MusicScraper {
 
       // Music Tag Web 返回的是列表
       List<dynamic> songs;
-      if (response.data is List) {
-        songs = response.data as List;
-      } else if (response.data is Map<String, dynamic>) {
-        final data = response.data as Map<String, dynamic>;
+      var responseData = response.data;
+
+      // 处理返回的是 JSON 字符串的情况
+      if (responseData is String) {
+        try {
+          responseData = jsonDecode(responseData);
+        } on FormatException {
+          // 无法解析，返回空结果
+          return MusicScraperSearchResult.empty(type);
+        }
+      }
+
+      if (responseData is List) {
+        songs = responseData;
+      } else if (responseData is Map<String, dynamic>) {
         // 检查是否有 data 字段
-        if (data['data'] is List) {
-          songs = data['data'] as List;
+        if (responseData['data'] is List) {
+          songs = responseData['data'] as List;
         } else {
           songs = [];
         }
@@ -171,7 +183,7 @@ class MusicTagWebScraper implements MusicScraper {
       }
 
       final items = songs
-          .cast<Map<String, dynamic>>()
+          .whereType<Map<String, dynamic>>()
           .take(limit)
           .map(_parseSong)
           .toList();
@@ -213,12 +225,22 @@ class MusicTagWebScraper implements MusicScraper {
       if (response.data == null) return null;
 
       List<dynamic> songs;
-      if (response.data is List) {
-        songs = response.data as List;
-      } else if (response.data is Map<String, dynamic>) {
-        final data = response.data as Map<String, dynamic>;
-        if (data['data'] is List) {
-          songs = data['data'] as List;
+      var responseData = response.data;
+
+      // 处理返回的是 JSON 字符串的情况
+      if (responseData is String) {
+        try {
+          responseData = jsonDecode(responseData);
+        } on FormatException {
+          return null;
+        }
+      }
+
+      if (responseData is List) {
+        songs = responseData;
+      } else if (responseData is Map<String, dynamic>) {
+        if (responseData['data'] is List) {
+          songs = responseData['data'] as List;
         } else {
           songs = [];
         }
@@ -226,12 +248,14 @@ class MusicTagWebScraper implements MusicScraper {
         return null;
       }
 
-      if (songs.isEmpty) return null;
+      // 过滤出有效的 Map 类型数据
+      final validSongs = songs.whereType<Map<String, dynamic>>().toList();
+      if (validSongs.isEmpty) return null;
 
       // 查找匹配的歌曲
-      final song = songs.cast<Map<String, dynamic>>().firstWhere(
+      final song = validSongs.firstWhere(
             (s) => s['id'].toString() == songId,
-            orElse: () => songs.first as Map<String, dynamic>,
+            orElse: () => validSongs.first,
           );
 
       return _parseSongDetail(song, source);

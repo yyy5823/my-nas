@@ -256,15 +256,19 @@ class PTUserInfo {
     return ratio!.toStringAsFixed(2);
   }
 
-  /// 格式化魔力值（大数字友好显示）
+  /// 格式化魔力值（直接显示实际数值，千位分隔）
   String get formattedBonus {
-    if (bonus >= 1000000) {
-      return '${(bonus / 1000000).toStringAsFixed(1)}M';
+    // 使用千位分隔符格式化，保留整数部分
+    final intPart = bonus.truncate();
+    final str = intPart.toString();
+    final buffer = StringBuffer();
+    for (var i = 0; i < str.length; i++) {
+      if (i > 0 && (str.length - i) % 3 == 0) {
+        buffer.write(',');
+      }
+      buffer.write(str[i]);
     }
-    if (bonus >= 1000) {
-      return '${(bonus / 1000).toStringAsFixed(1)}K';
-    }
-    return bonus.toStringAsFixed(0);
+    return buffer.toString();
   }
 
   /// 格式化注册时间
@@ -368,4 +372,156 @@ class PTCategory {
 
   /// 该分类下的种子数
   final int count;
+}
+
+/// PT 站点传输日志统计类型
+enum PTTransferLogType {
+  all('全部'),
+  seeding('做种'),
+  leeching('下载'),
+  completed('已完成'),
+  hit('H&R');
+
+  const PTTransferLogType(this.label);
+  final String label;
+}
+
+/// PT 站点传输日志项
+class PTTransferLog {
+  const PTTransferLog({
+    required this.torrentId,
+    required this.torrentName,
+    required this.uploaded,
+    required this.downloaded,
+    required this.ratio,
+    required this.seedTime,
+    this.addedTime,
+    this.lastActive,
+    this.status,
+  });
+
+  /// 种子 ID
+  final String torrentId;
+
+  /// 种子名称
+  final String torrentName;
+
+  /// 上传量（字节）
+  final int uploaded;
+
+  /// 下载量（字节）
+  final int downloaded;
+
+  /// 分享率
+  final double ratio;
+
+  /// 做种时长（秒）
+  final int seedTime;
+
+  /// 添加时间
+  final DateTime? addedTime;
+
+  /// 最后活动时间
+  final DateTime? lastActive;
+
+  /// 状态（seeding/leeching/completed）
+  final String? status;
+
+  /// 格式化上传量
+  String get formattedUploaded => _formatBytes(uploaded);
+
+  /// 格式化下载量
+  String get formattedDownloaded => _formatBytes(downloaded);
+
+  /// 格式化分享率
+  String get formattedRatio {
+    if (ratio.isInfinite) return '∞';
+    return ratio.toStringAsFixed(2);
+  }
+
+  /// 格式化做种时长
+  String get formattedSeedTime {
+    if (seedTime <= 0) return '-';
+    final hours = seedTime ~/ 3600;
+    if (hours >= 24) {
+      final days = hours ~/ 24;
+      final remainingHours = hours % 24;
+      return '$days天$remainingHours时';
+    }
+    final minutes = (seedTime % 3600) ~/ 60;
+    return '$hours时$minutes分';
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(2)} KB';
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(2)} MB';
+    }
+    if (bytes < 1024 * 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+    }
+    return '${(bytes / (1024 * 1024 * 1024 * 1024)).toStringAsFixed(2)} TB';
+  }
+}
+
+/// PT 站点传输统计
+class PTTransferStats {
+  const PTTransferStats({
+    this.totalUploaded = 0,
+    this.totalDownloaded = 0,
+    this.seedingCount = 0,
+    this.leechingCount = 0,
+    this.completedCount = 0,
+    this.hitAndRunCount = 0,
+    this.logs = const [],
+  });
+
+  /// 总上传量（字节）
+  final int totalUploaded;
+
+  /// 总下载量（字节）
+  final int totalDownloaded;
+
+  /// 做种数量
+  final int seedingCount;
+
+  /// 下载数量
+  final int leechingCount;
+
+  /// 已完成数量
+  final int completedCount;
+
+  /// H&R 数量
+  final int hitAndRunCount;
+
+  /// 日志列表
+  final List<PTTransferLog> logs;
+
+  /// 格式化总上传量
+  String get formattedTotalUploaded => _formatBytes(totalUploaded);
+
+  /// 格式化总下载量
+  String get formattedTotalDownloaded => _formatBytes(totalDownloaded);
+
+  /// 总分享率
+  double get totalRatio => totalDownloaded > 0 ? totalUploaded / totalDownloaded : double.infinity;
+
+  /// 格式化总分享率
+  String get formattedTotalRatio {
+    if (totalRatio.isInfinite) return '∞';
+    return totalRatio.toStringAsFixed(2);
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(2)} KB';
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(2)} MB';
+    }
+    if (bytes < 1024 * 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+    }
+    return '${(bytes / (1024 * 1024 * 1024 * 1024)).toStringAsFixed(2)} TB';
+  }
 }

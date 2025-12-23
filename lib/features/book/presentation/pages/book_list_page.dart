@@ -16,14 +16,8 @@ import 'package:my_nas/features/book/data/services/book_library_cache_service.da
 import 'package:my_nas/features/book/data/services/book_metadata_service.dart';
 import 'package:my_nas/features/book/data/services/book_preload_service.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
-import 'package:my_nas/features/book/presentation/pages/book_reader_page.dart';
-import 'package:my_nas/features/book/presentation/pages/epub_reader_page.dart';
-import 'package:my_nas/features/book/presentation/pages/mobi_reader_page.dart';
-import 'package:my_nas/features/book/presentation/pages/pdf_reader_page.dart';
 import 'package:my_nas/features/book/presentation/providers/book_cover_provider.dart';
 import 'package:my_nas/features/book/presentation/utils/book_navigator.dart';
-import 'package:my_nas/features/reading/data/services/reader_settings_service.dart';
-import 'package:my_nas/features/reading/presentation/providers/reader_settings_provider.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
@@ -910,7 +904,7 @@ class _BookListPageState extends ConsumerState<BookListPage> {
                   message: message,
                   onRetry: () => ref.read(bookListProvider.notifier).loadBooks(),
                 ),
-              BookListLoaded(:final filteredBooks) when filteredBooks.isEmpty =>
+              BookListLoaded(:final displayBooks) when displayBooks.isEmpty =>
                 _buildEmptyState(context, ref, isDark),
               final BookListLoaded loaded => _buildBookContent(context, ref, loaded, isDark),
             },
@@ -1415,14 +1409,14 @@ class _BookListPageState extends ConsumerState<BookListPage> {
               ),
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
-                  final book = state.filteredBooks[index];
+                  final book = state.displayBooks[index];
                   return _BookGridItem(
-                    key: ValueKey('${book.sourceId}_${book.path}'),
-                    book: book,
+                    key: ValueKey('${book.sourceId}_${book.filePath}'),
+                    bookEntity: book,
                     isDark: isDark,
                   );
                 },
-                childCount: state.filteredBooks.length,
+                childCount: state.displayBooks.length,
               ),
             ),
           ),
@@ -1589,7 +1583,7 @@ class _BookListContentState extends ConsumerState<BookListContent> {
           message: message,
           onRetry: () => ref.read(bookListProvider.notifier).loadBooks(),
         ),
-      BookListLoaded(:final filteredBooks) when filteredBooks.isEmpty =>
+      BookListLoaded(:final displayBooks) when displayBooks.isEmpty =>
         _buildEmptyState(context, isDark),
       final BookListLoaded loaded => _buildBookGrid(context, ref, loaded, isDark),
     };
@@ -1750,12 +1744,12 @@ class _BookListContentState extends ConsumerState<BookListContent> {
           crossAxisSpacing: AppSpacing.md,
           mainAxisSpacing: AppSpacing.md,
         ),
-        itemCount: state.filteredBooks.length,
+        itemCount: state.displayBooks.length,
         itemBuilder: (context, index) {
-          final book = state.filteredBooks[index];
+          final book = state.displayBooks[index];
           return _BookGridItem(
-            key: ValueKey('${book.sourceId}_${book.path}'),
-            book: book,
+            key: ValueKey('${book.sourceId}_${book.filePath}'),
+            bookEntity: book,
             isDark: isDark,
           );
         },
@@ -1765,12 +1759,12 @@ class _BookListContentState extends ConsumerState<BookListContent> {
 
 class _BookGridItem extends ConsumerStatefulWidget {
   const _BookGridItem({
-    required this.book,
+    required this.bookEntity,
     required this.isDark,
     super.key,
   });
 
-  final BookFileWithSource book;
+  final BookEntity bookEntity;
   final bool isDark;
 
   @override
@@ -1791,8 +1785,8 @@ class _BookGridItemState extends ConsumerState<_BookGridItem> {
   void didUpdateWidget(covariant _BookGridItem oldWidget) {
     super.didUpdateWidget(oldWidget);
     // 如果书籍变了，重新加载封面
-    if (oldWidget.book.path != widget.book.path ||
-        oldWidget.book.sourceId != widget.book.sourceId) {
+    if (oldWidget.bookEntity.filePath != widget.bookEntity.filePath ||
+        oldWidget.bookEntity.sourceId != widget.bookEntity.sourceId) {
       _coverPath = null;
       _coverLoaded = false;
       _loadCover();
@@ -1800,7 +1794,8 @@ class _BookGridItemState extends ConsumerState<_BookGridItem> {
   }
 
   Future<void> _loadCover() async {
-    final format = BookItem.formatFromExtension(widget.book.file.name);
+    final book = widget.bookEntity;
+    final format = book.format;
 
     // 支持封面提取的格式：EPUB、PDF、MOBI、AZW3
     if (format != BookFormat.epub &&
@@ -1810,16 +1805,27 @@ class _BookGridItemState extends ConsumerState<_BookGridItem> {
       return;
     }
 
+    // 优先使用已缓存的封面路径（从数据库元数据）
+    if (book.coverPath != null && await File(book.coverPath!).exists()) {
+      if (mounted) {
+        setState(() {
+          _coverPath = book.coverPath;
+          _coverLoaded = true;
+        });
+      }
+      return;
+    }
+
     final coverService = ref.read(bookCoverServiceProvider);
     final connections = ref.read(activeConnectionsProvider);
-    final connection = connections[widget.book.sourceId];
+    final connection = connections[book.sourceId];
 
     if (connection == null) return;
 
-    // 先检查缓存
+    // 检查封面服务缓存
     final cached = coverService.getCachedCoverPath(
-      widget.book.path,
-      widget.book.sourceId,
+      book.filePath,
+      book.sourceId,
     );
 
     if (cached != null && await File(cached).exists()) {
@@ -1834,8 +1840,8 @@ class _BookGridItemState extends ConsumerState<_BookGridItem> {
 
     // 异步提取封面
     final coverPath = await coverService.extractAndCacheCover(
-      bookPath: widget.book.path,
-      sourceId: widget.book.sourceId,
+      bookPath: book.filePath,
+      sourceId: book.sourceId,
       format: format,
       fileSystem: connection.adapter.fileSystem,
     );
@@ -1850,9 +1856,11 @@ class _BookGridItemState extends ConsumerState<_BookGridItem> {
 
   @override
   Widget build(BuildContext context) {
-    final file = widget.book.file;
-    final format = BookItem.formatFromExtension(file.name);
-    final displayName = _getDisplayName(file.name);
+    final book = widget.bookEntity;
+    final format = book.format;
+    // 使用 displayName（优先显示元数据中的书名，其次是文件名）
+    final displayName = book.displayName;
+    final author = book.author;
 
     return GestureDetector(
       onTap: () => _openBook(context, ref),
@@ -1895,7 +1903,7 @@ class _BookGridItemState extends ConsumerState<_BookGridItem> {
                     Expanded(
                       child: Text(
                         displayName,
-                        maxLines: 2,
+                        maxLines: author != null ? 1 : 2,
                         overflow: TextOverflow.ellipsis,
                         style: context.textTheme.bodyMedium?.copyWith(
                           fontWeight: FontWeight.w600,
@@ -1903,13 +1911,27 @@ class _BookGridItemState extends ConsumerState<_BookGridItem> {
                         ),
                       ),
                     ),
+                    // 显示作者（如果有）
+                    if (author != null && author.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        author,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: context.textTheme.labelSmall?.copyWith(
+                          color: widget.isDark
+                              ? AppColors.darkOnSurfaceVariant
+                              : context.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 4),
                     Text(
-                      file.displaySize,
+                      book.displaySize,
                       style: context.textTheme.labelSmall?.copyWith(
                         color: widget.isDark
-                            ? AppColors.darkOnSurfaceVariant
-                            : context.colorScheme.onSurfaceVariant,
+                            ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.7)
+                            : context.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                       ),
                     ),
                   ],
@@ -2012,11 +2034,6 @@ class _BookGridItemState extends ConsumerState<_BookGridItem> {
         ),
       );
 
-  String _getDisplayName(String filename) {
-    final dotIndex = filename.lastIndexOf('.');
-    return dotIndex > 0 ? filename.substring(0, dotIndex) : filename;
-  }
-
   LinearGradient _getFormatGradient(BookFormat format) => switch (format) {
       BookFormat.epub => const LinearGradient(
           colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
@@ -2054,23 +2071,30 @@ class _BookGridItemState extends ConsumerState<_BookGridItem> {
     };
 
   Future<void> _openBook(BuildContext context, WidgetRef ref) async {
+    final book = widget.bookEntity;
     final connections = ref.read(activeConnectionsProvider);
-    final connection = connections[widget.book.sourceId];
+    final connection = connections[book.sourceId];
     if (connection == null) return;
 
-    final file = widget.book.file;
+    final file = FileItem(
+      name: book.fileName,
+      path: book.filePath,
+      size: book.size,
+      isDirectory: false,
+      modifiedTime: book.modifiedTime,
+    );
     final url = await connection.adapter.fileSystem.getFileUrl(file.path);
     final bookItem = BookItem.fromFileItem(
       file,
       url,
-      sourceId: widget.book.sourceId,
+      sourceId: book.sourceId,
     );
 
     if (!context.mounted) return;
 
     // 更新最后阅读时间
     final db = BookDatabaseService();
-    await db.updateLastReadTime(widget.book.sourceId, widget.book.path);
+    await db.updateLastReadTime(book.sourceId, book.filePath);
 
     // 使用 BookNavigator 打开图书（自动检测漫画并路由到合适的阅读器）
     // 使用 rootNavigatorKey 确保阅读器全屏显示
@@ -2086,8 +2110,8 @@ class _BookGridItemState extends ConsumerState<_BookGridItem> {
   }
 
   Future<void> _showContextMenu(BuildContext context, WidgetRef ref) async {
-    final book = widget.book;
-    final displayName = _getDisplayName(book.file.name);
+    final book = widget.bookEntity;
+    final displayName = book.displayName;
 
     final action = await showMediaFileContextMenu(
       context: context,
@@ -2108,7 +2132,7 @@ class _BookGridItemState extends ConsumerState<_BookGridItem> {
         if (confirmed && context.mounted) {
           await ref.read(bookListProvider.notifier).removeFromLibrary(
                 book.sourceId,
-                book.file.path,
+                book.filePath,
                 displayName,
               );
         }
@@ -2121,7 +2145,7 @@ class _BookGridItemState extends ConsumerState<_BookGridItem> {
         if (confirmed && context.mounted) {
           await ref.read(bookListProvider.notifier).deleteFromSource(
                 book.sourceId,
-                book.file.path,
+                book.filePath,
                 displayName,
               );
         }

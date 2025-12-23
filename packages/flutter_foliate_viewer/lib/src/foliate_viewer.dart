@@ -75,12 +75,14 @@ class FoliateViewer extends StatefulWidget {
     this.initialCfi,
     this.onBookLoaded,
     this.onLocationChanged,
+    this.onTocLoaded,
     this.onError,
     this.style,
     this.backgroundColor,
     this.textColor,
     this.fontSize = 100,
     this.lineHeight = 1.5,
+    this.loadingWidget,
     super.key,
   });
 
@@ -99,6 +101,9 @@ class FoliateViewer extends StatefulWidget {
   /// 位置变化回调
   final void Function(FoliateLocation location)? onLocationChanged;
 
+  /// 目录加载完成回调
+  final void Function(List<FoliateTocItem> toc)? onTocLoaded;
+
   /// 错误回调
   final void Function(String error)? onError;
 
@@ -116,6 +121,9 @@ class FoliateViewer extends StatefulWidget {
 
   /// 行高（如果设置了 style 则忽略）
   final double lineHeight;
+
+  /// 自定义加载指示器
+  final Widget? loadingWidget;
 
   @override
   State<FoliateViewer> createState() => _FoliateViewerState();
@@ -192,13 +200,13 @@ class _FoliateViewerState extends State<FoliateViewer> {
       display: flex;
       align-items: center;
       justify-content: center;
-      background: white;
+      background: transparent;
     }
   </style>
 </head>
 <body>
   <div id="footnote-dialog"><main></main></div>
-  <div id="loading">加载中...</div>
+  <div id="loading"></div>
 
   <script>
     // 拦截 URL 参数，阻止 book.js 自动初始化
@@ -375,9 +383,31 @@ $bundleJs
     _webViewController?.addJavaScriptHandler(
       handlerName: 'onSetToc',
       callback: (args) {
-        // TOC 数据可通过 controller 获取
-        if (kDebugMode) {
-          debugPrint('TOC received');
+        if (args.isNotEmpty && widget.onTocLoaded != null) {
+          try {
+            List<dynamic> list;
+            if (args[0] is List) {
+              list = args[0] as List<dynamic>;
+            } else if (args[0] is String) {
+              list = jsonDecode(args[0] as String) as List<dynamic>;
+            } else {
+              list = [];
+            }
+            final toc = list
+                .map(
+                  (e) =>
+                      FoliateTocItem.fromMap(Map<String, dynamic>.from(e as Map)),
+                )
+                .toList();
+            widget.onTocLoaded?.call(toc);
+            if (kDebugMode) {
+              debugPrint('TOC loaded: ${toc.length} items');
+            }
+          } on Exception catch (e) {
+            if (kDebugMode) {
+              debugPrint('Failed to parse TOC: $e');
+            }
+          }
         }
       },
     );
@@ -466,11 +496,35 @@ $bundleJs
     }
   }
 
+  /// 获取加载背景色
+  Color get _loadingBackgroundColor {
+    if (widget.style?.backgroundColor != null) {
+      return widget.style!.backgroundColor!;
+    }
+    return widget.backgroundColor ?? Colors.white;
+  }
+
+  /// 构建默认加载指示器
+  Widget _buildDefaultLoadingWidget() {
+    final bgColor = _loadingBackgroundColor;
+    final isDark = bgColor.computeLuminance() < 0.5;
+    return ColoredBox(
+      color: bgColor,
+      child: Center(
+        child: CircularProgressIndicator(
+          valueColor: AlwaysStoppedAnimation<Color>(
+            isDark ? Colors.white70 : Colors.black54,
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // 等待 HTML 加载完成
     if (_inlineHtmlContent == null) {
-      return const Center(child: CircularProgressIndicator());
+      return widget.loadingWidget ?? _buildDefaultLoadingWidget();
     }
 
     return Stack(
@@ -510,10 +564,7 @@ $bundleJs
         ),
         // 加载指示器
         if (_isLoading)
-          ColoredBox(
-            color: widget.backgroundColor ?? Colors.white,
-            child: const Center(child: CircularProgressIndicator()),
-          ),
+          widget.loadingWidget ?? _buildDefaultLoadingWidget(),
       ],
     );
   }

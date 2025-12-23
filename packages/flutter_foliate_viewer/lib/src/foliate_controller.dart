@@ -60,6 +60,41 @@ class FoliateController {
     );
   }
 
+  /// 跳转到上一章节
+  Future<bool> goToPreviousSection() async {
+    final result = await _webViewController?.evaluateJavascript(
+      source: '''
+        (function() {
+          const view = window.reader?.view;
+          if (!view || !view.lastLocation) return false;
+          const currentIndex = view.lastLocation.index ?? 0;
+          if (currentIndex <= 0) return false;
+          view.goTo({ index: currentIndex - 1 });
+          return true;
+        })()
+      ''',
+    );
+    return result == true || result == 'true';
+  }
+
+  /// 跳转到下一章节
+  Future<bool> goToNextSection() async {
+    final result = await _webViewController?.evaluateJavascript(
+      source: '''
+        (function() {
+          const view = window.reader?.view;
+          if (!view || !view.lastLocation) return false;
+          const totalSections = view.book?.sections?.length || 0;
+          const currentIndex = view.lastLocation.index ?? 0;
+          if (currentIndex >= totalSections - 1) return false;
+          view.goTo({ index: currentIndex + 1 });
+          return true;
+        })()
+      ''',
+    );
+    return result == true || result == 'true';
+  }
+
   /// 跳转到指定进度 (0.0 - 1.0)
   Future<void> goToFraction(double fraction) async {
     await _webViewController?.evaluateJavascript(
@@ -252,7 +287,12 @@ class FoliateController {
     final result = await _webViewController?.evaluateJavascript(
       source: '''
         (function() {
-          const toc = window.reader?.book?.toc;
+          // 优先使用 reader.toc（格式化后的目录）
+          // 如果没有，尝试使用原始的 book.toc
+          let toc = window.reader?.toc;
+          if (!toc || toc.length === 0) {
+            toc = window.reader?.view?.book?.toc;
+          }
           if (!toc) return '[]';
           return JSON.stringify(toc);
         })()

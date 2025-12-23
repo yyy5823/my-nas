@@ -1,7 +1,7 @@
 // MOBI 到 EPUB 转换器
 //
 // 将 MOBI/AZW3 转换为多章节 EPUB，保留目录结构
-// 支持使用 flutter_epub_viewer 进行渲染
+// 用于漫画阅读器等需要 EPUB 格式的场景
 
 import 'dart:convert';
 import 'dart:io';

@@ -240,10 +240,10 @@ class MobiParserService {
     }
   }
 
-  /// 将解析结果打包为 EPUB 格式（移动端使用）
+  /// 将解析结果打包为 EPUB 格式
   ///
   /// 此方法将内置解析器得到的 HTML 内容封装为有效的 EPUB 文件，
-  /// 以便使用 flutter_epub_viewer 进行渲染，获得更好的翻页体验。
+  /// 用于漫画阅读器等需要 EPUB 格式的场景。
   Future<MobiParseResult> _convertToEpub(
     MobiParseResult parseResult,
     String fileName,

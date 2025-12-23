@@ -10,7 +10,10 @@ class FoliateLocation {
 
   factory FoliateLocation.fromMap(Map<String, dynamic> map) => FoliateLocation(
         cfi: map['cfi'] as String? ?? '',
-        fraction: (map['fraction'] as num?)?.toDouble() ?? 0.0,
+        // book.js 传递的 key 是 'percentage'，也兼容 'fraction'
+        fraction: (map['percentage'] as num?)?.toDouble() ??
+            (map['fraction'] as num?)?.toDouble() ??
+            0.0,
         sectionIndex: map['index'] as int? ?? map['sectionIndex'] as int? ?? 0,
         sectionFraction:
             (map['sectionFraction'] as num?)?.toDouble() ?? 0.0,

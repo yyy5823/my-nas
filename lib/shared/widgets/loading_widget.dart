@@ -7,10 +7,18 @@ class LoadingWidget extends StatefulWidget {
     super.key,
     this.message,
     this.size = 48,
+    this.backgroundColor,
+    this.textColor,
   });
 
   final String? message;
   final double size;
+
+  /// 自定义背景色（用于加载指示器内部圆圈）
+  final Color? backgroundColor;
+
+  /// 自定义文字颜色
+  final Color? textColor;
 
   @override
   State<LoadingWidget> createState() => _LoadingWidgetState();
@@ -38,6 +46,16 @@ class _LoadingWidgetState extends State<LoadingWidget>
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // 使用自定义背景色或默认背景色
+    final bgColor = widget.backgroundColor ??
+        (isDark ? AppColors.darkBackground : AppColors.lightBackground);
+
+    // 使用自定义文字颜色或默认颜色
+    final txtColor = widget.textColor ??
+        (isDark
+            ? AppColors.darkOnSurfaceVariant
+            : context.colorScheme.onSurfaceVariant);
 
     return Center(
       child: Column(
@@ -69,9 +87,7 @@ class _LoadingWidgetState extends State<LoadingWidget>
                     height: widget.size - 8,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: isDark
-                          ? AppColors.darkBackground
-                          : AppColors.lightBackground,
+                      color: bgColor,
                     ),
                     child: Center(
                       child: Container(
@@ -97,11 +113,7 @@ class _LoadingWidgetState extends State<LoadingWidget>
             const SizedBox(height: 20),
             Text(
               widget.message!,
-              style: context.textTheme.bodyMedium?.copyWith(
-                color: isDark
-                    ? AppColors.darkOnSurfaceVariant
-                    : context.colorScheme.onSurfaceVariant,
-              ),
+              style: context.textTheme.bodyMedium?.copyWith(color: txtColor),
             ),
           ],
         ],

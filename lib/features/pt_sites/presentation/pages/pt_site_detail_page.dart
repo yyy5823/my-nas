@@ -147,6 +147,8 @@ class _PTSiteDetailPageState extends ConsumerState<PTSiteDetailPage> {
                       .loadTorrents(refresh: true);
                 case 'user_info':
                   _showUserInfoSheet(context, connection.userInfo);
+                case 'stats':
+                  _showStatsSheet(context);
               }
             },
             itemBuilder: (context) => [
@@ -168,6 +170,17 @@ class _PTSiteDetailPageState extends ConsumerState<PTSiteDetailPage> {
                       Icon(Icons.person),
                       SizedBox(width: 12),
                       Text('个人信息'),
+                    ],
+                  ),
+                ),
+              if (connection.status == PTSiteConnectionStatus.connected)
+                const PopupMenuItem(
+                  value: 'stats',
+                  child: Row(
+                    children: [
+                      Icon(Icons.cloud_sync),
+                      SizedBox(width: 12),
+                      Text('传输列表'),
                     ],
                   ),
                 ),
@@ -1258,4 +1271,427 @@ class _PTSiteDetailPageState extends ConsumerState<PTSiteDetailPage> {
       ),
     );
   }
+
+  void _showStatsSheet(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _TransferStatsSheet(sourceId: widget.source.id),
+    );
+  }
+}
+
+/// 传输统计弹框组件
+class _TransferStatsSheet extends ConsumerStatefulWidget {
+  const _TransferStatsSheet({required this.sourceId});
+
+  final String sourceId;
+
+  @override
+  ConsumerState<_TransferStatsSheet> createState() => _TransferStatsSheetState();
+}
+
+class _TransferStatsSheetState extends ConsumerState<_TransferStatsSheet> {
+  PTTransferLogType _selectedType = PTTransferLogType.all;
+  PTTransferStats? _stats;
+  bool _isLoading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStats();
+  }
+
+  Future<void> _loadStats() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final api = ref.read(ptSiteConnectionProvider(widget.sourceId)).api;
+      if (api == null) {
+        setState(() {
+          _error = '未连接';
+          _isLoading = false;
+        });
+        return;
+      }
+
+      final stats = await api.getTransferStats(type: _selectedType);
+      if (!mounted) return;
+
+      setState(() {
+        _stats = stats;
+        _isLoading = false;
+      });
+    } on Exception catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return GestureDetector(
+      onTap: () => Navigator.of(context).pop(),
+      behavior: HitTestBehavior.opaque,
+      child: GestureDetector(
+        onTap: () {},
+        child: DraggableScrollableSheet(
+          initialChildSize: 0.75,
+          minChildSize: 0.4,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (context, scrollController) => DecoratedBox(
+            decoration: BoxDecoration(
+              color: isDark ? AppColors.darkSurface : Colors.white,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            child: Column(
+              children: [
+                // 拖动指示器
+                Center(
+                  child: Container(
+                    margin: const EdgeInsets.only(top: 12, bottom: 8),
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.grey[600] : Colors.grey[400],
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                // 标题栏
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.cloud_sync,
+                          color: AppColors.primary,
+                          size: 18,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        '传输列表',
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // 类型选择
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: PTTransferLogType.values.map((type) {
+                      final isSelected = _selectedType == type;
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: FilterChip(
+                          label: Text(type.label),
+                          selected: isSelected,
+                          onSelected: (_) {
+                            setState(() => _selectedType = type);
+                            _loadStats();
+                          },
+                          selectedColor: AppColors.primary.withValues(alpha: 0.2),
+                          checkmarkColor: AppColors.primary,
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Divider(height: 1),
+                // 内容
+                Expanded(
+                  child: _buildContent(isDark, scrollController),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContent(bool isDark, ScrollController scrollController) {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_error != null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 48,
+              color: isDark ? AppColors.errorLight : AppColors.error,
+            ),
+            const SizedBox(height: 16),
+            Text(_error!),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: _loadStats,
+              icon: const Icon(Icons.refresh),
+              label: const Text('重试'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final stats = _stats;
+    if (stats == null) {
+      return const Center(child: Text('暂无数据'));
+    }
+
+    return ListView(
+      controller: scrollController,
+      padding: const EdgeInsets.all(16),
+      children: [
+        // 数据总览（固定显示）
+        _buildOverviewSection(stats, isDark),
+        const SizedBox(height: 16),
+        // 种子列表（根据类型切换）
+        _buildLogsSection(stats, isDark),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+
+  Widget _buildOverviewSection(PTTransferStats stats, bool isDark) => DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppColors.primary.withValues(alpha: 0.15),
+            AppColors.primary.withValues(alpha: 0.05),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '数据总览',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 12),
+            // 第一行：上传、下载、分享率
+            Row(
+              children: [
+                Expanded(
+                  child: _buildStatItem(
+                    icon: Icons.upload,
+                    iconColor: AppColors.success,
+                    label: '总上传',
+                    value: stats.formattedTotalUploaded,
+                    isDark: isDark,
+                  ),
+                ),
+                Expanded(
+                  child: _buildStatItem(
+                    icon: Icons.download,
+                    iconColor: AppColors.primary,
+                    label: '总下载',
+                    value: stats.formattedTotalDownloaded,
+                    isDark: isDark,
+                  ),
+                ),
+                Expanded(
+                  child: _buildStatItem(
+                    icon: Icons.swap_horiz,
+                    iconColor: Colors.orange,
+                    label: '分享率',
+                    value: stats.formattedTotalRatio,
+                    isDark: isDark,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            // 第二行：做种数、下载数
+            Row(
+              children: [
+                Expanded(
+                  child: _buildStatItem(
+                    icon: Icons.cloud_upload,
+                    iconColor: Colors.teal,
+                    label: '做种中',
+                    value: '${stats.seedingCount}',
+                    isDark: isDark,
+                  ),
+                ),
+                Expanded(
+                  child: _buildStatItem(
+                    icon: Icons.cloud_download,
+                    iconColor: Colors.blue,
+                    label: '下载中',
+                    value: '${stats.leechingCount}',
+                    isDark: isDark,
+                  ),
+                ),
+                const Expanded(child: SizedBox()), // 占位
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+
+  Widget _buildLogsSection(PTTransferStats stats, bool isDark) => Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '${_selectedType.label}列表',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 8),
+        if (stats.logs.isEmpty)
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 32),
+            alignment: Alignment.center,
+            child: Column(
+              children: [
+                Icon(
+                  Icons.inbox_outlined,
+                  size: 48,
+                  color: isDark ? Colors.grey[600] : Colors.grey[400],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  '暂无${_selectedType.label}数据',
+                  style: TextStyle(
+                    color: isDark ? Colors.grey[500] : Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          ...stats.logs.map((log) => _buildLogItem(log, isDark)),
+      ],
+    );
+
+  Widget _buildLogItem(PTTransferLog log, bool isDark) => Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.white10 : Colors.grey[50],
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            log.torrentName,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.w500),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              _buildMiniStat('↑', log.formattedUploaded, AppColors.success),
+              const SizedBox(width: 16),
+              _buildMiniStat('↓', log.formattedDownloaded, AppColors.primary),
+              const SizedBox(width: 16),
+              _buildMiniStat('R', log.formattedRatio, Colors.orange),
+              const SizedBox(width: 16),
+              _buildMiniStat('T', log.formattedSeedTime, Colors.purple),
+            ],
+          ),
+        ],
+      ),
+    );
+
+  Widget _buildMiniStat(String prefix, String value, Color color) => Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          prefix,
+          style: TextStyle(
+            color: color,
+            fontWeight: FontWeight.bold,
+            fontSize: 12,
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          value,
+          style: const TextStyle(fontSize: 12),
+        ),
+      ],
+    );
+
+  Widget _buildStatItem({
+    required IconData icon,
+    required Color iconColor,
+    required String label,
+    required String value,
+    required bool isDark,
+  }) =>
+      Column(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: iconColor.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: iconColor, size: 20),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+            ),
+          ),
+        ],
+      );
 }

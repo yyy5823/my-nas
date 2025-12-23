@@ -4,15 +4,16 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 
 /// NASTool 认证管理器
-/// 
+///
 /// 使用 /user/login 端点进行会话认证
 class NasToolAuth {
   NasToolAuth({required this.baseUrl});
 
   final String baseUrl;
-  
+
   String? _sessionToken;
   String? _username;
+  bool _isCookieAuth = false;
 
   /// 是否已认证
   bool get isAuthenticated => _sessionToken != null;
@@ -21,9 +22,15 @@ class NasToolAuth {
   String? get username => _username;
 
   /// 获取认证头
-  Map<String, String> get authHeaders => {
-    if (_sessionToken != null) 'Authorization': _sessionToken!,
-  };
+  Map<String, String> get authHeaders {
+    if (_sessionToken == null) return {};
+
+    // 根据认证类型返回正确的头
+    if (_isCookieAuth) {
+      return {'Cookie': _sessionToken!};
+    }
+    return {'Authorization': _sessionToken!};
+  }
 
   /// 登录
   /// 
@@ -51,15 +58,17 @@ class NasToolAuth {
           // 登录成功，保存 token
           _sessionToken = token ?? response.headers['authorization'];
           _username = username;
-          
+          _isCookieAuth = false;
+
           // 如果没有返回 token，尝试从 cookie 获取
           if (_sessionToken == null) {
             final cookies = response.headers['set-cookie'];
             if (cookies != null) {
               _sessionToken = cookies;
+              _isCookieAuth = true;
             }
           }
-          
+
           return NasToolLoginResult.success(
             token: _sessionToken,
             username: username,
@@ -172,6 +181,7 @@ class NasToolAuth {
   void clear() {
     _sessionToken = null;
     _username = null;
+    _isCookieAuth = false;
   }
 }
 

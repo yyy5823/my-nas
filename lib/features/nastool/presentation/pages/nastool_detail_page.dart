@@ -107,26 +107,12 @@ class _NasToolDetailPageState extends ConsumerState<NasToolDetailPage>
                     onTap: connection?.status == NasToolConnectionStatus.connected
                         ? () => _showSystemInfoDialog(context, connection!)
                         : null,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.source.displayName,
-                          style: context.textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: isDark ? AppColors.darkOnSurface : null,
-                          ),
-                        ),
-                        if (connection?.adapter.systemVersion != null)
-                          Text(
-                            'v${connection!.adapter.systemVersion!.version}',
-                            style: context.textTheme.bodySmall?.copyWith(
-                              color: isDark
-                                  ? AppColors.darkOnSurfaceVariant
-                                  : AppColors.lightOnSurfaceVariant,
-                            ),
-                          ),
-                      ],
+                    child: Text(
+                      widget.source.displayName,
+                      style: context.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? AppColors.darkOnSurface : null,
+                      ),
                     ),
                   ),
                 ),

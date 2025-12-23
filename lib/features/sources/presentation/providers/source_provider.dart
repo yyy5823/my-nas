@@ -449,3 +449,11 @@ final ptSitesSourcesProvider = Provider<List<SourceEntity>>((ref) {
       .where((s) => s.type.category == SourceCategory.ptSites)
       .toList();
 });
+
+/// 字幕源列表
+final subtitleSourcesProvider = Provider<List<SourceEntity>>((ref) {
+  final sources = ref.watch(sourcesProvider).valueOrNull ?? [];
+  return sources
+      .where((s) => s.type.category == SourceCategory.subtitleSites)
+      .toList();
+});

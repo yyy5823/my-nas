@@ -43,12 +43,20 @@ class FoliateTocItem {
   const FoliateTocItem({
     required this.label,
     required this.href,
+    this.id,
+    this.level = 1,
+    this.startPercentage = 0,
+    this.startPage = 0,
     this.subitems = const [],
   });
 
   factory FoliateTocItem.fromMap(Map<String, dynamic> map) => FoliateTocItem(
         label: map['label'] as String? ?? '',
         href: map['href'] as String? ?? '',
+        id: map['id'] as int?,
+        level: map['level'] as int? ?? 1,
+        startPercentage: (map['startPercentage'] as num?)?.toDouble() ?? 0,
+        startPage: map['startPage'] as int? ?? 0,
         subitems: (map['subitems'] as List<dynamic>?)
                 ?.map((e) => FoliateTocItem.fromMap(e as Map<String, dynamic>))
                 .toList() ??
@@ -57,8 +65,12 @@ class FoliateTocItem {
 
   final String label;
   final String href;
+  final int? id;
+  final int level;
+  final double startPercentage;
+  final int startPage;
   final List<FoliateTocItem> subitems;
 
   @override
-  String toString() => 'FoliateTocItem(label: $label)';
+  String toString() => 'FoliateTocItem(label: $label, level: $level)';
 }

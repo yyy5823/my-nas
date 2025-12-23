@@ -4,12 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:my_nas/core/utils/logger.dart';
 
-/// EPUB 阅读器引擎
+/// EPUB 阅读器引擎（已弃用，保留仅为兼容性）
+/// 现在所有电子书格式统一使用 Foliate 引擎
 enum EpubReaderEngine {
-  /// 原生引擎 (flutter_epub_viewer) - 功能简单但稳定
+  /// 已弃用，保留仅为兼容已存储的设置
+  @Deprecated('Native engine has been removed, all formats now use Foliate')
   native,
 
-  /// Foliate 引擎 - 功能丰富，与 MOBI/AZW3 共享设置
+  /// Foliate 引擎 - 功能丰富，支持 EPUB、MOBI、AZW3 等格式
   foliate,
 }
 

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/errors/exceptions.dart';
@@ -537,12 +539,26 @@ class SynologyApi {
 
     logger.d('SynologyApi: 写入文件到 $remotePath (${data.length} bytes)');
 
-    final response = await _dio.post<Map<String, dynamic>>(
+    final response = await _dio.post<dynamic>(
       '/webapi/entry.cgi',
       data: formData,
     );
 
-    final responseData = response.data;
+    // 处理响应数据，可能是 Map 或 String（JSON字符串）
+    Map<String, dynamic>? responseData;
+    if (response.data is Map<String, dynamic>) {
+      responseData = response.data as Map<String, dynamic>;
+    } else if (response.data is String) {
+      try {
+        final decoded = jsonDecode(response.data as String);
+        if (decoded is Map<String, dynamic>) {
+          responseData = decoded;
+        }
+      } on FormatException {
+        // JSON 解析失败
+      }
+    }
+
     if (responseData == null || responseData['success'] != true) {
       final error = responseData?['error'];
       final errorCode = error is Map<String, dynamic> ? error['code'] as int? : null;

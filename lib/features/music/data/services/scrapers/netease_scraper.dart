@@ -100,7 +100,7 @@ class NeteaseScraper implements MusicScraper {
         return MusicScraperSearchResult.empty(type);
       }
 
-      final songs = (result['songs'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+      final songs = (result['songs'] as List?)?.whereType<Map<String, dynamic>>().toList() ?? [];
       final songCount = result['songCount'] as int? ?? 0;
 
       final items = songs.map(_parseSong).toList();
@@ -134,7 +134,7 @@ class NeteaseScraper implements MusicScraper {
         return null;
       }
       final data = response.data as Map<String, dynamic>;
-      final songs = (data['songs'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+      final songs = (data['songs'] as List?)?.whereType<Map<String, dynamic>>().toList() ?? [];
 
       if (songs.isEmpty) {
         return null;
