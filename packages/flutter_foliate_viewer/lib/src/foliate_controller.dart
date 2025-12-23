@@ -62,15 +62,16 @@ class FoliateController {
 
   /// 跳转到上一章节
   Future<bool> goToPreviousSection() async {
+    // 使用 book.js 定义的全局函数 window.prevSection()
+    // 它调用 reader.view.renderer.prevSection()
     final result = await _webViewController?.evaluateJavascript(
       source: '''
         (function() {
-          const view = window.reader?.view;
-          if (!view || !view.lastLocation) return false;
-          const currentIndex = view.lastLocation.index ?? 0;
-          if (currentIndex <= 0) return false;
-          view.goTo({ index: currentIndex - 1 });
-          return true;
+          if (window.prevSection) {
+            window.prevSection();
+            return true;
+          }
+          return false;
         })()
       ''',
     );
@@ -79,16 +80,16 @@ class FoliateController {
 
   /// 跳转到下一章节
   Future<bool> goToNextSection() async {
+    // 使用 book.js 定义的全局函数 window.nextSection()
+    // 它调用 reader.view.renderer.nextSection()
     final result = await _webViewController?.evaluateJavascript(
       source: '''
         (function() {
-          const view = window.reader?.view;
-          if (!view || !view.lastLocation) return false;
-          const totalSections = view.book?.sections?.length || 0;
-          const currentIndex = view.lastLocation.index ?? 0;
-          if (currentIndex >= totalSections - 1) return false;
-          view.goTo({ index: currentIndex + 1 });
-          return true;
+          if (window.nextSection) {
+            window.nextSection();
+            return true;
+          }
+          return false;
         })()
       ''',
     );

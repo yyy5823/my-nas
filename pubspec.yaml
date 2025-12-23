@@ -128,6 +128,7 @@ dependencies:
   window_manager: ^0.4.3  # Desktop window control
   bonsoir: ^6.0.1  # Native mDNS/Bonjour discovery (iOS/Android/macOS/Windows/Linux)
   ffi: ^2.1.4
+  screen_brightness: ^2.1.7
 
 dev_dependencies:
   flutter_test:

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -23,6 +24,7 @@ import 'package:my_nas/features/video/presentation/widgets/bookmark_sheet.dart';
 import 'package:my_nas/features/video/presentation/widgets/video_controls.dart';
 import 'package:my_nas/features/video/presentation/widgets/video_gesture_controller.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
+import 'package:screen_brightness/screen_brightness.dart';
 
 class VideoPlayerPage extends ConsumerStatefulWidget {
   const VideoPlayerPage({required this.video, super.key});
@@ -60,6 +62,12 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
   // 画中画支持状态
   bool _isPipSupported = false;
 
+  // 是否为移动设备（支持手势控制亮度/音量）
+  bool get _isMobile => Platform.isIOS || Platform.isAndroid;
+
+  // 初始亮度，用于退出时恢复
+  double? _initialBrightness;
+
   @override
   void initState() {
     super.initState();
@@ -72,6 +80,15 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
 
     // 开始播放并缓存源信息
     Future.microtask(() async {
+      if (!mounted) return;
+      // 移动设备：保存初始亮度，用于退出时恢复
+      if (_isMobile) {
+        try {
+          _initialBrightness = await ScreenBrightness.instance.application;
+        } on Exception catch (e) {
+          logger.w('VideoPlayerPage: 获取初始亮度失败', e);
+        }
+      }
       if (!mounted) return;
       // 缓存源信息（用于 dispose 时更新缩略图）
       await _cacheSourceInfo();
@@ -219,10 +236,35 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
     _playerNotifier?.stopSync();
     // 后台更新缩略图（仅对没有刮削封面的视频有效）
     _triggerThumbnailUpdate();
+    // 移动设备：恢复初始亮度
+    _restoreBrightness();
     // 恢复系统 UI
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setPreferredOrientations([]);
     super.dispose();
+  }
+
+  /// 恢复初始亮度
+  void _restoreBrightness() {
+    if (!_isMobile || _initialBrightness == null) return;
+    // 使用 Future.microtask 在后台执行，不阻塞 dispose
+    Future.microtask(() async {
+      try {
+        await ScreenBrightness.instance.setApplicationScreenBrightness(_initialBrightness!);
+      } on Exception catch (e) {
+        logger.w('VideoPlayerPage: 恢复亮度失败', e);
+      }
+    });
+  }
+
+  /// 调整屏幕亮度（仅移动设备）
+  Future<void> _setBrightness(double brightness) async {
+    if (!_isMobile) return;
+    try {
+      await ScreenBrightness.instance.setApplicationScreenBrightness(brightness);
+    } on Exception catch (e) {
+      logger.w('VideoPlayerPage: 设置亮度失败', e);
+    }
   }
 
   /// 后台触发缩略图更新
@@ -451,10 +493,13 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
         playerState: playerState,
         onTap: _toggleControls,
         onDoubleTap: _handleDoubleTap,
-        onVolumeChange: (volume) {
-          playerNotifier.setVolume(volume);
-          _startHideControlsTimer();
-        },
+        onVolumeChange: _isMobile
+            ? (volume) {
+                playerNotifier.setVolume(volume);
+                _startHideControlsTimer();
+              }
+            : (_) {}, // 桌面端禁用手势音量控制
+        onBrightnessChange: _isMobile ? _setBrightness : null,
         onSeek: (position) {
           playerNotifier.seek(position);
           _startHideControlsTimer();
