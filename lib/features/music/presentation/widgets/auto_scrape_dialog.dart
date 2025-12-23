@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/features/music/data/services/fingerprint/fingerprint_service.dart';
+import 'package:my_nas/features/music/data/services/music_tag_writer_service.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_result.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_source.dart';
@@ -60,6 +61,7 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
   // 下载选项
   bool _downloadCover = true;
   bool _downloadLyrics = true;
+  bool _writeToFile = true; // 写入到文件标签
 
   // 错误信息
   String? _errorMessage;
@@ -67,9 +69,17 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
   // 识别方式
   bool _usedFingerprint = false;
 
+  // 标签写入服务
+  final _tagWriter = MusicTagWriterService();
+
+  // 文件格式支持信息
+  SupportedAudioFormat? _audioFormat;
+
   @override
   void initState() {
     super.initState();
+    // 检查文件格式是否支持写入
+    _audioFormat = _tagWriter.getFormat(widget.music.path);
     _startScraping();
   }
 
@@ -254,7 +264,7 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
 
     setState(() {
       _status = _ScrapeStatus.downloading;
-      _statusMessage = '正在下载...';
+      _statusMessage = '正在处理...';
       _progress = 0;
     });
 
@@ -263,9 +273,14 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
     final musicDir = p.dirname(musicPath);
     final baseName = p.basenameWithoutExtension(musicPath);
 
-    var downloadedCount = 0;
-    final totalDownloads = (_downloadCover && _cover != null ? 1 : 0) +
-        (_downloadLyrics && _lyrics != null ? 1 : 0);
+    var completedSteps = 0;
+    final totalSteps = (_downloadCover && _cover != null ? 1 : 0) +
+        (_downloadLyrics && _lyrics != null ? 1 : 0) +
+        (_writeToFile && _audioFormat != null ? 1 : 0);
+
+    // 下载封面数据（用于写入标签和保存文件）
+    Uint8List? coverData;
+    String? coverMimeType;
 
     try {
       // 下载封面
@@ -274,10 +289,14 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
           _statusMessage = '下载封面...';
         });
 
-        await _downloadCover_(fileSystem, musicDir, baseName);
-        downloadedCount++;
+        final result = await _downloadCoverData();
+        coverData = result.$1;
+        coverMimeType = result.$2;
+
+        await _saveCoverFile(fileSystem, musicDir, baseName, coverData);
+        completedSteps++;
         setState(() {
-          _progress = downloadedCount / totalDownloads;
+          _progress = completedSteps / totalSteps;
         });
       }
 
@@ -288,15 +307,28 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
         });
 
         await _downloadLyrics_(fileSystem, musicDir, baseName);
-        downloadedCount++;
+        completedSteps++;
         setState(() {
-          _progress = downloadedCount / totalDownloads;
+          _progress = completedSteps / totalSteps;
+        });
+      }
+
+      // 写入到文件标签
+      if (_writeToFile && _audioFormat != null) {
+        setState(() {
+          _statusMessage = '写入标签 (${_audioFormat!.tagType})...';
+        });
+
+        await _writeTagsToFile(fileSystem, musicPath, coverData, coverMimeType);
+        completedSteps++;
+        setState(() {
+          _progress = completedSteps / totalSteps;
         });
       }
 
       setState(() {
         _status = _ScrapeStatus.completed;
-        _statusMessage = '下载完成';
+        _statusMessage = '处理完成';
         _progress = 1.0;
       });
 
@@ -306,21 +338,18 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
         Navigator.of(context).pop(true);
       }
     } on Exception catch (e, st) {
-      AppError.ignore(e, st, '下载文件失败');
+      AppError.ignore(e, st, '处理文件失败');
       setState(() {
         _status = _ScrapeStatus.error;
-        _statusMessage = '下载失败';
+        _statusMessage = '处理失败';
         _errorMessage = e.toString();
       });
     }
   }
 
-  Future<void> _downloadCover_(
-    NasFileSystem fileSystem,
-    String musicDir,
-    String baseName,
-  ) async {
-    if (_cover == null) return;
+  /// 下载封面数据
+  Future<(Uint8List?, String?)> _downloadCoverData() async {
+    if (_cover == null) return (null, null);
 
     try {
       final dio = Dio();
@@ -329,11 +358,28 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
         options: Options(responseType: ResponseType.bytes),
       );
 
-      if (response.data == null) return;
+      if (response.data == null) return (null, null);
 
       final coverData = Uint8List.fromList(response.data!);
+      final mimeType = _cover!.coverUrl.contains('.png') ? 'image/png' : 'image/jpeg';
 
-      // 确定文件扩展名
+      return (coverData, mimeType);
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '下载封面数据失败');
+      return (null, null);
+    }
+  }
+
+  /// 保存封面文件到目录
+  Future<void> _saveCoverFile(
+    NasFileSystem fileSystem,
+    String musicDir,
+    String baseName,
+    Uint8List? coverData,
+  ) async {
+    if (coverData == null) return;
+
+    try {
       final ext = _cover!.coverUrl.contains('.png') ? 'png' : 'jpg';
 
       // 尝试保存为 folder.jpg，如果已存在则保存为 {filename}-cover.jpg
@@ -352,7 +398,43 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
 
       await fileSystem.writeFile(coverPath, coverData);
     } on Exception catch (e, st) {
-      AppError.ignore(e, st, '下载封面失败');
+      AppError.ignore(e, st, '保存封面文件失败');
+    }
+  }
+
+  /// 写入标签到音频文件
+  Future<void> _writeTagsToFile(
+    NasFileSystem fileSystem,
+    String musicPath,
+    Uint8List? coverData,
+    String? coverMimeType,
+  ) async {
+    try {
+      await _tagWriter.init();
+
+      // 构建要写入的标签数据
+      final tagData = MusicTagData(
+        title: _detail?.title,
+        artist: _detail?.artist,
+        album: _detail?.album,
+        albumArtist: _detail?.albumArtist,
+        year: _detail?.year,
+        trackNumber: _detail?.trackNumber,
+        discNumber: _detail?.discNumber,
+        genre: _detail?.genres?.join(', '),
+        lyrics: _lyrics?.lrcContent ?? _lyrics?.plainText,
+        coverData: coverData,
+        coverMimeType: coverMimeType,
+      );
+
+      final result = await _tagWriter.writeToNasFile(fileSystem, musicPath, tagData);
+
+      if (!result.success) {
+        throw Exception(result.error);
+      }
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '写入标签失败');
+      rethrow;
     }
   }
 
@@ -637,6 +719,49 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
             ),
           ),
 
+        // 写入到文件标签选项
+        if (_audioFormat != null) ...[
+          const SizedBox(height: 8),
+          const Divider(height: 1),
+          const SizedBox(height: 8),
+          _buildResultRow(
+            isDark,
+            Icons.edit_note_rounded,
+            '写入标签',
+            '${_audioFormat!.displayName} (${_audioFormat!.tagType})',
+            trailing: Checkbox(
+              value: _writeToFile,
+              onChanged: (v) => setState(() => _writeToFile = v ?? true),
+              visualDensity: VisualDensity.compact,
+            ),
+          ),
+        ],
+
+        // 不支持写入标签时提示
+        if (_audioFormat == null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.info_outline,
+                  size: 14,
+                  color: isDark ? Colors.grey[500] : Colors.grey[600],
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    '该格式不支持写入标签，仅保存外部文件',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isDark ? Colors.grey[500] : Colors.grey[600],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
         // 无封面/歌词时提示
         if (_cover == null && _lyrics == null && _detail != null)
           Padding(
@@ -711,15 +836,17 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
       case _ScrapeStatus.found:
         final hasDownloadable = (_downloadCover && _cover != null) ||
             (_downloadLyrics && _lyrics != null);
+        final hasWritable = _writeToFile && _audioFormat != null && _detail != null;
+        final hasAction = hasDownloadable || hasWritable;
         return [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
             child: const Text('取消'),
           ),
-          if (hasDownloadable && widget.fileSystem != null)
+          if (hasAction && widget.fileSystem != null)
             FilledButton(
               onPressed: _downloadFiles,
-              child: const Text('下载'),
+              child: Text(hasWritable ? '应用' : '下载'),
             ),
         ];
 

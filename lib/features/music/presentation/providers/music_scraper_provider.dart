@@ -129,11 +129,8 @@ final enabledMusicScraperCountProvider = Provider<int>((ref) {
   return state.sources.where((s) => s.isEnabled).length;
 });
 
-/// 总刮削源数量
-final totalMusicScraperCountProvider = Provider<int>((ref) {
-  final state = ref.watch(musicScraperSourcesProvider);
-  return state.sources.length;
-});
+/// 总刮削源类型数量（所有可用的刮削器类型）
+final totalMusicScraperCountProvider = Provider<int>((ref) => MusicScraperType.values.length);
 
 /// 音乐搜索参数
 class MusicSearchParams {

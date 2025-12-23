@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/features/music/data/services/music_tag_writer_service.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_result.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_source.dart';
@@ -53,10 +54,16 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
   // 刮削选项
   bool _downloadCover = true;
   bool _downloadLyrics = true;
+  bool _writeToFile = true;
+
+  // 标签写入服务
+  final _tagWriter = MusicTagWriterService();
+  SupportedAudioFormat? _audioFormat;
 
   @override
   void initState() {
     super.initState();
+    _audioFormat = _tagWriter.getFormat(widget.music.path);
     _initFromMusic();
   }
 
@@ -198,14 +205,26 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
       final musicDir = p.dirname(widget.music.path);
       final baseName = p.basenameWithoutExtension(widget.music.path);
 
+      // 下载封面数据（用于写入标签和保存文件）
+      Uint8List? coverData;
+      String? coverMimeType;
+
       // 下载封面
       if (_downloadCover && _selectedCover != null) {
-        await _downloadCoverToFile(fileSystem, musicDir, baseName);
+        final result = await _downloadCoverData();
+        coverData = result.$1;
+        coverMimeType = result.$2;
+        await _saveCoverFile(fileSystem, musicDir, baseName, coverData);
       }
 
       // 下载歌词
       if (_downloadLyrics && (_selectedLyrics?.hasLyrics ?? false)) {
         await _downloadLyricsToFile(fileSystem, musicDir, baseName);
+      }
+
+      // 写入到文件标签
+      if (_writeToFile && _audioFormat != null && _selectedDetail != null) {
+        await _writeTagsToFile(fileSystem, coverData, coverMimeType);
       }
 
       if (!mounted) return;
@@ -229,26 +248,39 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
     }
   }
 
-  Future<void> _downloadCoverToFile(
-    NasFileSystem fileSystem,
-    String musicDir,
-    String baseName,
-  ) async {
-    if (_selectedCover == null) return;
+  /// 下载封面数据
+  Future<(Uint8List?, String?)> _downloadCoverData() async {
+    if (_selectedCover == null) return (null, null);
 
     try {
-      // 下载封面图片
       final dio = Dio();
       final response = await dio.get<List<int>>(
         _selectedCover!.coverUrl,
         options: Options(responseType: ResponseType.bytes),
       );
 
-      if (response.data == null) return;
+      if (response.data == null) return (null, null);
 
       final coverData = Uint8List.fromList(response.data!);
+      final mimeType = _selectedCover!.coverUrl.contains('.png') ? 'image/png' : 'image/jpeg';
 
-      // 确定文件扩展名
+      return (coverData, mimeType);
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '下载封面数据失败');
+      return (null, null);
+    }
+  }
+
+  /// 保存封面文件到目录
+  Future<void> _saveCoverFile(
+    NasFileSystem fileSystem,
+    String musicDir,
+    String baseName,
+    Uint8List? coverData,
+  ) async {
+    if (coverData == null || _selectedCover == null) return;
+
+    try {
       final ext = _selectedCover!.coverUrl.contains('.png') ? 'png' : 'jpg';
 
       // 尝试保存为 folder.jpg，如果已存在则保存为 {filename}-cover.jpg
@@ -267,7 +299,46 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
 
       await fileSystem.writeFile(coverPath, coverData);
     } on Exception catch (e, st) {
-      AppError.ignore(e, st, '下载封面失败');
+      AppError.ignore(e, st, '保存封面文件失败');
+    }
+  }
+
+  /// 写入标签到音频文件
+  Future<void> _writeTagsToFile(
+    NasFileSystem fileSystem,
+    Uint8List? coverData,
+    String? coverMimeType,
+  ) async {
+    try {
+      await _tagWriter.init();
+
+      // 构建要写入的标签数据
+      final tagData = MusicTagData(
+        title: _selectedDetail?.title,
+        artist: _selectedDetail?.artist,
+        album: _selectedDetail?.album,
+        albumArtist: _selectedDetail?.albumArtist,
+        year: _selectedDetail?.year,
+        trackNumber: _selectedDetail?.trackNumber,
+        discNumber: _selectedDetail?.discNumber,
+        genre: _selectedDetail?.genres?.join(', '),
+        lyrics: _selectedLyrics?.lrcContent ?? _selectedLyrics?.plainText,
+        coverData: coverData,
+        coverMimeType: coverMimeType,
+      );
+
+      final result = await _tagWriter.writeToNasFile(
+        fileSystem,
+        widget.music.path,
+        tagData,
+      );
+
+      if (!result.success) {
+        throw Exception(result.error);
+      }
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '写入标签失败');
+      rethrow;
     }
   }
 
@@ -789,6 +860,38 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
                         : null,
                     contentPadding: EdgeInsets.zero,
                   ),
+                  const Divider(height: 16),
+                  // 写入到文件标签选项
+                  if (_audioFormat != null)
+                    SwitchListTile(
+                      title: const Text('写入文件标签'),
+                      subtitle: Text('${_audioFormat!.displayName} (${_audioFormat!.tagType})'),
+                      value: _writeToFile,
+                      onChanged: (value) => setState(() => _writeToFile = value),
+                      contentPadding: EdgeInsets.zero,
+                    )
+                  else
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            size: 16,
+                            color: theme.colorScheme.outline,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              '该格式不支持写入标签，仅保存外部文件',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.outline,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                 ],
               ),
             ),

@@ -12,6 +12,7 @@ import 'package:my_nas/features/music/data/services/live_activity_service.dart';
 import 'package:my_nas/features/music/data/services/music_audio_cache_service.dart';
 import 'package:my_nas/features/music/data/services/music_cover_cache_service.dart';
 import 'package:my_nas/features/music/data/services/music_metadata_service.dart';
+import 'package:my_nas/features/music/data/services/ncm_decrypt_service.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/presentation/providers/music_favorites_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_settings_provider.dart';
@@ -190,6 +191,9 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
   // 音频缓存服务（用于持久化缓存，避免重复下载）
   final MusicAudioCacheService _audioCacheService = MusicAudioCacheService();
+
+  // NCM 解密服务
+  final NcmDecryptService _ncmDecryptService = NcmDecryptService();
 
   AudioPlayer get player => _player;
 
@@ -544,7 +548,16 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       // 根据音频来源选择合适的播放方式
       AudioSource audioSource;
 
-      if (music.sourceId != null) {
+      // 检查是否为 NCM 文件，需要先解密
+      if (_isNcmFile(music.path) || _isNcmFile(music.name)) {
+        logger.i('MusicPlayer: 检测到 NCM 文件，开始解密...');
+        final decryptedFile = await _getDecryptedNcmFile(music);
+        if (decryptedFile == null) {
+          throw Exception('NCM 文件解密失败');
+        }
+        logger.i('MusicPlayer: 使用解密后的文件播放: ${decryptedFile.path}');
+        audioSource = AudioSource.uri(Uri.file(decryptedFile.path));
+      } else if (music.sourceId != null) {
         // NAS 源：优先检查本地缓存，避免重复下载
         logger.d('MusicPlayer: 检测到 NAS 源 (sourceId=${music.sourceId})');
 
@@ -672,6 +685,93 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       _mediaProxyServer.unregisterFile(_currentProxyId!);
       _currentProxyId = null;
     }
+  }
+
+  /// 检查是否为 NCM 文件
+  bool _isNcmFile(String path) => p.extension(path).toLowerCase() == '.ncm';
+
+  /// 获取 NCM 解密后的缓存文件
+  /// 如果已有缓存则直接返回，否则解密并缓存
+  Future<File?> _getDecryptedNcmFile(MusicItem music) async {
+    final sourceId = music.sourceId ?? 'local';
+    final originalPath = music.path;
+
+    // 计算缓存文件路径（去掉 .ncm 后缀，添加解密后的格式后缀）
+    final cacheFile = await _audioCacheService.getCacheFile(sourceId, originalPath);
+
+    // NCM 解密后的文件需要替换后缀
+    // 先检查是否已有解密缓存（mp3 或 flac）
+    final mp3Cache = File('${cacheFile.path.replaceAll('.ncm', '')}.mp3');
+    final flacCache = File('${cacheFile.path.replaceAll('.ncm', '')}.flac');
+
+    if (await mp3Cache.exists()) {
+      logger.i('MusicPlayer: 使用已缓存的 NCM 解密文件 (MP3): ${mp3Cache.path}');
+      return mp3Cache;
+    }
+    if (await flacCache.exists()) {
+      logger.i('MusicPlayer: 使用已缓存的 NCM 解密文件 (FLAC): ${flacCache.path}');
+      return flacCache;
+    }
+
+    // 需要解密
+    Uint8List ncmData;
+
+    if (music.sourceId != null) {
+      // NAS 文件：下载
+      logger.d('MusicPlayer: 从 NAS 下载 NCM 文件: ${music.path}');
+      final connections = _ref.read(activeConnectionsProvider);
+      final connection = connections[music.sourceId];
+
+      if (connection == null) {
+        logger.e('MusicPlayer: 源未连接: ${music.sourceId}');
+        return null;
+      }
+
+      final stream = await connection.adapter.fileSystem.getFileStream(music.path);
+      final chunks = <int>[];
+      await for (final chunk in stream) {
+        chunks.addAll(chunk);
+      }
+      ncmData = Uint8List.fromList(chunks);
+    } else {
+      // 本地文件
+      final uri = Uri.tryParse(music.url);
+      if (uri == null || uri.scheme != 'file') {
+        logger.e('MusicPlayer: 无效的本地 NCM 文件路径: ${music.url}');
+        return null;
+      }
+      final file = File(uri.toFilePath());
+      if (!await file.exists()) {
+        logger.e('MusicPlayer: NCM 文件不存在: ${file.path}');
+        return null;
+      }
+      ncmData = await file.readAsBytes();
+    }
+
+    logger.d('MusicPlayer: NCM 文件大小: ${ncmData.length} bytes，开始解密...');
+
+    // 解密
+    final result = _ncmDecryptService.decrypt(ncmData);
+    if (result == null) {
+      logger.e('MusicPlayer: NCM 解密失败');
+      return null;
+    }
+
+    // 根据元数据中的格式确定输出格式
+    final format = result.metadata?.format.toLowerCase() ?? 'mp3';
+    final outputFile = format == 'flac' ? flacCache : mp3Cache;
+
+    // 确保父目录存在
+    final parentDir = outputFile.parent;
+    if (!await parentDir.exists()) {
+      await parentDir.create(recursive: true);
+    }
+
+    // 保存解密后的音频
+    await outputFile.writeAsBytes(result.audioData);
+    logger.i('MusicPlayer: NCM 解密完成，保存到: ${outputFile.path} (${result.audioData.length} bytes)');
+
+    return outputFile;
   }
 
   /// 基于文件大小估算音频时长

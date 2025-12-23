@@ -292,7 +292,7 @@ class SubtitleStyleSheet extends ConsumerWidget {
                               onChanged: (value) {
                                 notifier.setHasOutline(hasOutline: value);
                               },
-                              activeColor: Colors.white,
+                              activeThumbColor: Colors.white,
                               activeTrackColor: Colors.white38,
                             ),
                           ],

@@ -113,68 +113,40 @@ class _MusicScraperSourcesPageState extends ConsumerState<MusicScraperSourcesPag
   }
 
   Widget _buildScraperList(MusicScraperSourcesState state) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
     // 构建排序后的类型列表
     final sortedTypes = _getSortedTypes(state.sources);
 
-    return Column(
-      children: [
-        // 说明文字
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Row(
-            children: [
-              Icon(Icons.info_outline, size: 16, color: colorScheme.outline),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  '拖拽调整优先级，点击展开配置',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: colorScheme.outline,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        // 刮削源列表
-        Expanded(
-          child: ReorderableListView.builder(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            itemCount: sortedTypes.length,
-            buildDefaultDragHandles: false,
-            onReorder: (oldIndex, newIndex) => _onReorder(oldIndex, newIndex, sortedTypes, state),
-            proxyDecorator: (child, index, animation) => Material(
-              elevation: 4,
-              borderRadius: BorderRadius.circular(12),
-              child: child,
-            ),
-            itemBuilder: (context, index) {
-              final type = sortedTypes[index];
-              final source = state.sources.where((s) => s.type == type).firstOrNull;
-              final isExpanded = _expandedTypes.contains(type);
-              final config = _configs[type]!;
+    return ReorderableListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: sortedTypes.length,
+      buildDefaultDragHandles: false,
+      onReorder: (oldIndex, newIndex) => _onReorder(oldIndex, newIndex, sortedTypes, state),
+      proxyDecorator: (child, index, animation) => Material(
+        elevation: 4,
+        borderRadius: BorderRadius.circular(12),
+        child: child,
+      ),
+      itemBuilder: (context, index) {
+        final type = sortedTypes[index];
+        final source = state.sources.where((s) => s.type == type).firstOrNull;
+        final isExpanded = _expandedTypes.contains(type);
+        final config = _configs[type]!;
 
-              return _MusicScraperTypeCard(
-                key: ValueKey(type),
-                index: index,
-                type: type,
-                source: source,
-                priorityNumber: index + 1,
-                isExpanded: isExpanded,
-                config: config,
-                onToggle: (enabled) => _toggleSource(type, source, enabled),
-                onExpandToggle: () => _toggleExpand(type),
-                onSave: () => _saveConfig(type, source, config),
-                onTest: source != null ? () => _testConnection(source) : null,
-                isTesting: source != null && _testingSourceId == source.id,
-              );
-            },
-          ),
-        ),
-      ],
+        return _MusicScraperTypeCard(
+          key: ValueKey(type),
+          index: index,
+          type: type,
+          source: source,
+          priorityNumber: index + 1,
+          isExpanded: isExpanded,
+          config: config,
+          onToggle: (enabled) => _toggleSource(type, source, enabled),
+          onExpandToggle: () => _toggleExpand(type),
+          onSave: () => _saveConfig(type, source, config),
+          onTest: source != null ? () => _testConnection(source) : null,
+          isTesting: source != null && _testingSourceId == source.id,
+        );
+      },
     );
   }
 
@@ -482,125 +454,135 @@ class _MusicScraperTypeCard extends StatelessWidget {
       child: Column(
         children: [
           // 主行
-          InkWell(
-            onTap: _needsConfig ? onExpandToggle : null,
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Row(
-                children: [
-                  // 拖动手柄
-                  ReorderableDragStartListener(
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                // 拖动区域 - 包含手柄、序号、图标和名称
+                Expanded(
+                  child: ReorderableDragStartListener(
                     index: index,
-                    child: Icon(
-                      Icons.drag_handle,
-                      color: colorScheme.outline,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-
-                  // 优先级序号
-                  Container(
-                    width: 28,
-                    height: 28,
-                    decoration: BoxDecoration(
-                      color: _isEnabled && _isImplemented
-                          ? colorScheme.primaryContainer
-                          : colorScheme.surfaceContainerHighest,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Center(
-                      child: Text(
-                        '$priorityNumber',
-                        style: theme.textTheme.labelLarge?.copyWith(
-                          color: _isEnabled && _isImplemented
-                              ? colorScheme.onPrimaryContainer
-                              : colorScheme.onSurfaceVariant,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-
-                  // 图标
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: (_isEnabled && _isImplemented ? type.themeColor : colorScheme.outline)
-                          .withValues(alpha: 0.1),
+                    child: InkWell(
+                      onTap: _needsConfig ? onExpandToggle : null,
                       borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(
-                      type.icon,
-                      size: 24,
-                      color: _isEnabled && _isImplemented ? type.themeColor : colorScheme.outline,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-
-                  // 名称和描述
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Text(
-                              type.displayName,
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                color: _isEnabled && _isImplemented
-                                    ? colorScheme.onSurface
-                                    : colorScheme.onSurfaceVariant,
+                      child: Row(
+                        children: [
+                          // 拖动手柄 - 增大触摸区域
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            margin: const EdgeInsets.only(right: 4),
+                            decoration: BoxDecoration(
+                              color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(
+                              Icons.drag_indicator,
+                              color: colorScheme.outline,
+                              size: 20,
+                            ),
+                          ),
+                          // 优先级序号
+                          Container(
+                            width: 28,
+                            height: 28,
+                            decoration: BoxDecoration(
+                              color: _isEnabled && _isImplemented
+                                  ? colorScheme.primaryContainer
+                                  : colorScheme.surfaceContainerHighest,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Center(
+                              child: Text(
+                                '$priorityNumber',
+                                style: theme.textTheme.labelLarge?.copyWith(
+                                  color: _isEnabled && _isImplemented
+                                      ? colorScheme.onPrimaryContainer
+                                      : colorScheme.onSurfaceVariant,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
-                            if (!_isImplemented) ...[
-                              const SizedBox(width: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                                decoration: BoxDecoration(
-                                  color: colorScheme.surfaceContainerHighest,
-                                  borderRadius: BorderRadius.circular(4),
+                          ),
+                          const SizedBox(width: 12),
+                          // 图标
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: (_isEnabled && _isImplemented ? type.themeColor : colorScheme.outline)
+                                  .withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(
+                              type.icon,
+                              size: 24,
+                              color: _isEnabled && _isImplemented ? type.themeColor : colorScheme.outline,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          // 名称和描述
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Text(
+                                      type.displayName,
+                                      style: theme.textTheme.titleSmall?.copyWith(
+                                        color: _isEnabled && _isImplemented
+                                            ? colorScheme.onSurface
+                                            : colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                    if (!_isImplemented) ...[
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                        decoration: BoxDecoration(
+                                          color: colorScheme.surfaceContainerHighest,
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Text(
+                                          '即将支持',
+                                          style: theme.textTheme.labelSmall?.copyWith(
+                                            color: colorScheme.onSurfaceVariant,
+                                            fontSize: 10,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
                                 ),
-                                child: Text(
-                                  '即将支持',
-                                  style: theme.textTheme.labelSmall?.copyWith(
-                                    color: colorScheme.onSurfaceVariant,
-                                    fontSize: 10,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                        const SizedBox(height: 2),
-                        _buildCapabilityChips(context),
-                      ],
-                    ),
-                  ),
-
-                  // 展开/收起按钮（如果需要配置）
-                  if (_needsConfig)
-                    IconButton(
-                      onPressed: onExpandToggle,
-                      icon: Icon(
-                        isExpanded ? Icons.expand_less : Icons.expand_more,
-                        color: colorScheme.outline,
+                                const SizedBox(height: 2),
+                                _buildCapabilityChips(context),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
-                      tooltip: isExpanded ? '收起配置' : '展开配置',
-                      visualDensity: VisualDensity.compact,
                     ),
-
-                  // 启用开关
-                  Switch(
-                    value: _isEnabled,
-                    onChanged: _isImplemented ? onToggle : null,
                   ),
-                ],
-              ),
+                ),
+                // 展开/收起按钮（如果需要配置）- 在拖动区域外
+                if (_needsConfig)
+                  IconButton(
+                    onPressed: onExpandToggle,
+                    icon: Icon(
+                      isExpanded ? Icons.expand_less : Icons.expand_more,
+                      color: colorScheme.outline,
+                    ),
+                    tooltip: isExpanded ? '收起配置' : '展开配置',
+                    visualDensity: VisualDensity.compact,
+                  ),
+                // 启用开关 - 在拖动区域外
+                Switch(
+                  value: _isEnabled,
+                  onChanged: _isImplemented ? onToggle : null,
+                ),
+              ],
             ),
           ),
-
           // 展开的配置区域
           if (isExpanded && _needsConfig)
             Container(

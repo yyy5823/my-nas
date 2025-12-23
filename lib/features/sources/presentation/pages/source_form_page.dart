@@ -792,7 +792,7 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
             final password = _formValues['password'] as String? ?? '';
             final result = await api.login(username, password);
             return result.when(
-              success: (_, __) => true,
+              success: (_, _) => true,
               failure: (_) => false,
             );
           }
