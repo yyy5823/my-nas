@@ -153,7 +153,7 @@ class PlaybackSettingsNotifier extends StateNotifier<PlaybackSettings> {
 
   /// 设置快进快退秒数
   Future<void> setSeekInterval(int seconds) async {
-    state = state.copyWith(seekInterval: seconds.clamp(5, 60));
+    state = state.copyWith(seekInterval: seconds.clamp(5, 30));
     await _save();
   }
 
@@ -244,5 +244,5 @@ final playbackSettingsProvider =
 /// 可用的播放速度列表
 const availableSpeeds = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
 
-/// 可用的快进快退秒数
-const availableSeekIntervals = [5, 10, 15, 30, 60];
+/// 可用的快进快退秒数（仅包含有原生图标的数值）
+const availableSeekIntervals = [5, 10, 30];
