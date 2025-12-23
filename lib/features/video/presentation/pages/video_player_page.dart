@@ -194,10 +194,16 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
       // 使用缓存的 notifier，避免使用 ref
       _subtitlesNotifier?.state = subtitles;
 
-      // 如果找到字幕，自动加载第一个
+      // 如果找到字幕，且用户尚未手动选择过字幕，自动加载第一个
+      // 避免异步加载完成后覆盖用户已选择的字幕
       if (subtitles.isNotEmpty) {
-        await _playerNotifier?.setSubtitle(subtitles.first);
-        logger.i('VideoPlayerPage: 自动加载字幕 ${subtitles.first.name}');
+        final currentSubtitle = ref.read(currentSubtitleProvider);
+        if (currentSubtitle == null) {
+          await _playerNotifier?.setSubtitle(subtitles.first);
+          logger.i('VideoPlayerPage: 自动加载字幕 ${subtitles.first.name}');
+        } else {
+          logger.d('VideoPlayerPage: 用户已选择字幕，跳过自动加载');
+        }
       }
     } on Exception catch (e) {
       logger.e('VideoPlayerPage: 加载字幕失败', e);

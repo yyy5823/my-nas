@@ -395,6 +395,10 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
     // 重置自动选择标志（新视频需要重新选择音轨）
     _hasAutoSelectedAudioTrack = false;
 
+    // 重置字幕状态（新视频需要重新加载字幕）
+    _ref.read(currentSubtitleProvider.notifier).state = null;
+    _ref.read(availableSubtitlesProvider.notifier).state = [];
+
     _currentVideo = video;
     _ref.read(currentVideoProvider.notifier).state = video;
     state = state.copyWith();
@@ -411,24 +415,24 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
         state = state.copyWith(errorMessage: '无法播放：缺少数据源信息');
         return;
       }
-      
+
       try {
         final connections = _ref.read(activeConnectionsProvider);
         final connection = connections[video.sourceId];
-        
+
         if (connection == null || connection.status != SourceStatus.connected) {
           logger.e('VideoPlayer: 数据源未连接');
           state = state.copyWith(errorMessage: '无法播放：数据源未连接');
           return;
         }
-        
+
         final resolvedUrl = await connection.adapter.fileSystem.getFileUrl(video.path);
         resolvedVideo = video.copyWith(url: resolvedUrl);
-        
+
         // 更新当前视频信息
         _currentVideo = resolvedVideo;
         _ref.read(currentVideoProvider.notifier).state = resolvedVideo;
-        
+
         logger.i('VideoPlayer: URL 已解析 => $resolvedUrl');
       } on Exception catch (e, st) {
         AppError.handle(e, st, 'VideoPlayer.resolveUrl', {'path': video.path});

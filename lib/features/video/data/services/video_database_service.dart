@@ -1729,11 +1729,12 @@ class VideoDatabaseService {
     );
 
     // 收集所有类型并去重
+    // 注意：genres 使用 ' / ' 分隔（来自 TMDB 和 NFO），支持多种分隔符格式
     final genreSet = <String>{};
     for (final row in results) {
       final genresStr = row[_colGenres] as String?;
       if (genresStr != null && genresStr.isNotEmpty) {
-        final genres = genresStr.split(',').map((g) => g.trim());
+        final genres = genresStr.split(RegExp(r'\s*[/,]\s*')).map((g) => g.trim());
         genreSet.addAll(genres.where((g) => g.isNotEmpty));
       }
     }
@@ -3677,6 +3678,16 @@ class VideoDatabaseService {
         row['movie_count'] as int? ?? 2,
         now,
       ]);
+
+      // 关键修复：更新 metadata 表中电影的 collectionId
+      // 这样 getMovieCollections 查询才能找到这些目录型系列
+      await _db!.rawUpdate('''
+        UPDATE $_tableMetadata
+        SET $_colCollectionId = ?, $_colCollectionName = ?
+        WHERE $_colMovieDirectory = ?
+          AND $_colCategory = 0
+          AND $_colCollectionId IS NULL
+      ''', [dirCollectionId, collectionName, directory]);
 
       insertedCount++;
     }

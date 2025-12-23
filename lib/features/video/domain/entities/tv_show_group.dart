@@ -57,7 +57,9 @@ class TvShowGroup {
   final int? precomputedEpisodeCount;
 
   /// 获取类型列表
-  List<String> get genreList => genres?.split(',').map((e) => e.trim()).toList() ?? [];
+  /// 注意：genres 使用 ' / ' 分隔（来自 TMDB 和 NFO），支持多种分隔符格式
+  List<String> get genreList =>
+      genres?.split(RegExp(r'\s*[/,]\s*')).map((e) => e.trim()).where((e) => e.isNotEmpty).toList() ?? [];
 
   /// 按季分组的剧集 `Map<seasonNumber, List<VideoMetadata>>`
   final Map<int, List<VideoMetadata>> seasonEpisodes;
