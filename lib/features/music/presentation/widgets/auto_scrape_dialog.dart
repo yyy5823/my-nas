@@ -7,10 +7,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/features/music/data/services/fingerprint/fingerprint_service.dart';
+import 'package:my_nas/features/music/data/services/music_cover_cache_service.dart';
+import 'package:my_nas/features/music/data/services/music_database_service.dart';
 import 'package:my_nas/features/music/data/services/music_tag_writer_service.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_result.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_source.dart';
+import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_scraper_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:path/path.dart' as p;
@@ -294,6 +297,12 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
         coverMimeType = result.$2;
 
         await _saveCoverFile(fileSystem, musicDir, baseName, coverData);
+
+        // 同步封面到本地缓存和数据库
+        if (coverData != null) {
+          await _syncCoverToLocalCache(coverData);
+        }
+
         completedSteps++;
         setState(() {
           _progress = completedSteps / totalSteps;
@@ -399,6 +408,59 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
       await fileSystem.writeFile(coverPath, coverData);
     } on Exception catch (e, st) {
       AppError.ignore(e, st, '保存封面文件失败');
+    }
+  }
+
+  /// 同步封面到本地磁盘缓存和数据库
+  /// 确保刮削后的封面能够被正确显示，无需重新提取
+  Future<void> _syncCoverToLocalCache(Uint8List coverData) async {
+    final sourceId = widget.music.sourceId;
+    if (sourceId == null) return;
+
+    try {
+      // 1. 保存封面到本地磁盘缓存
+      final coverCache = MusicCoverCacheService();
+      await coverCache.init();
+
+      final uniqueKey = '${sourceId}_${widget.music.path}';
+      final localCoverPath = await coverCache.saveCover(uniqueKey, coverData);
+
+      if (localCoverPath == null) return;
+
+      // 2. 更新数据库中的封面路径
+      final db = MusicDatabaseService();
+      await db.init();
+
+      // 获取现有的曲目数据并更新封面路径
+      final existing = await db.get(sourceId, widget.music.path);
+      if (existing != null) {
+        await db.upsert(existing.copyWith(coverPath: localCoverPath));
+      } else {
+        // 如果数据库中没有这首歌，创建一个基本条目
+        await db.upsert(MusicTrackEntity(
+          sourceId: sourceId,
+          filePath: widget.music.path,
+          fileName: widget.music.name,
+          title: _detail?.title ?? widget.music.title,
+          artist: _detail?.artist ?? widget.music.artist,
+          album: _detail?.album ?? widget.music.album,
+          coverPath: localCoverPath,
+          duration: widget.music.duration?.inMilliseconds,
+          lastUpdated: DateTime.now(),
+        ));
+      }
+
+      // 3. 更新当前播放状态（如果正在播放这首歌）
+      final currentMusic = ref.read(currentMusicProvider);
+      if (currentMusic?.id == widget.music.id) {
+        ref.read(currentMusicProvider.notifier).state = currentMusic!.copyWith(
+          coverData: coverData.toList(),
+          coverUrl: 'file://$localCoverPath',
+        );
+      }
+    } on Exception catch (e, st) {
+      // 非关键功能，静默失败
+      AppError.ignore(e, st, '同步封面到本地缓存失败');
     }
   }
 

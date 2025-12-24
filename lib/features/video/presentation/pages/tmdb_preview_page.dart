@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:my_nas/core/errors/errors.dart';
+import 'package:my_nas/features/nastool/presentation/providers/nastool_provider.dart';
 import 'package:my_nas/features/pt_sites/presentation/pages/pt_site_detail_page.dart';
 import 'package:my_nas/features/pt_sites/presentation/providers/pt_site_provider.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
@@ -195,8 +197,8 @@ class _TmdbPreviewPageState extends ConsumerState<TmdbPreviewPage> {
                                     ),
                                   ),
                                   const SizedBox(height: 12),
-                                  // PT 站搜索按钮
-                                  _buildPtSearchButton(isDark),
+                                  // PT 站搜索按钮和 NASTool 订阅按钮
+                                  _buildActionButtons(isDark),
                                 ],
                               ),
                             ),
@@ -370,27 +372,51 @@ class _TmdbPreviewPageState extends ConsumerState<TmdbPreviewPage> {
     return null;
   }
 
-  /// 构建 PT 站搜索按钮
-  Widget _buildPtSearchButton(bool isDark) {
+  /// 构建操作按钮（PT 搜索和 NASTool 订阅）
+  Widget _buildActionButtons(bool isDark) {
     final ptSites = ref.watch(ptSitesSourcesProvider);
+    final nastoolSources = ref.watch(nastoolSourcesProvider);
 
-    // 如果没有配置 PT 站，不显示按钮
-    if (ptSites.isEmpty) {
+    // 如果都没有配置，不显示按钮
+    if (ptSites.isEmpty && nastoolSources.isEmpty) {
       return const SizedBox.shrink();
     }
 
-    return FilledButton.icon(
-      onPressed: () => _onPtSearchPressed(ptSites),
-      icon: const Icon(Icons.search, size: 18),
-      label: const Text('在 PT 站搜索'),
-      style: FilledButton.styleFrom(
-        backgroundColor: Theme.of(context).colorScheme.primary,
-        foregroundColor: Theme.of(context).colorScheme.onPrimary,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-      ),
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        // PT 站搜索按钮
+        if (ptSites.isNotEmpty)
+          FilledButton.icon(
+            onPressed: () => _onPtSearchPressed(ptSites),
+            icon: const Icon(Icons.search, size: 18),
+            label: const Text('PT 搜索'),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.primary,
+              foregroundColor: Theme.of(context).colorScheme.onPrimary,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
+          ),
+        // NASTool 订阅按钮
+        if (nastoolSources.isNotEmpty)
+          FilledButton.icon(
+            onPressed: () => _onNastoolSubscribePressed(nastoolSources),
+            icon: const Icon(Icons.add_alert, size: 18),
+            label: const Text('添加订阅'),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF673AB7),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -521,6 +547,189 @@ class _TmdbPreviewPageState extends ConsumerState<TmdbPreviewPage> {
                 onTap: () {
                   Navigator.pop(context);
                   _navigateToPtSite(site, keyword);
+                },
+              )),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 处理 NASTool 订阅按钮点击
+  void _onNastoolSubscribePressed(List<SourceEntity> nastoolSources) {
+    if (nastoolSources.length == 1) {
+      // 只有一个 NASTool，直接添加订阅
+      _addNastoolSubscribe(nastoolSources.first);
+    } else {
+      // 多个 NASTool，显示选择弹窗
+      _showNastoolSelectionSheet(nastoolSources);
+    }
+  }
+
+  /// 添加 NASTool 订阅
+  Future<void> _addNastoolSubscribe(SourceEntity source) async {
+    final title = _getTitle();
+    final year = _getYear();
+    final type = widget.isMovie ? 'MOV' : 'TV';
+    final mediaId = 'tmdb:${widget.tmdbId}';
+
+    try {
+      // 确保 NASTool 已连接
+      final connection = ref.read(nastoolConnectionProvider(source.id));
+      if (connection == null || connection.status != NasToolConnectionStatus.connected) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${source.name} 未连接'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
+      // 添加订阅
+      await ref.read(nastoolActionsProvider(source.id)).addSubscribe(
+        name: title,
+        type: type,
+        year: year,
+        mediaId: mediaId,
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('已添加订阅: $title'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e, st) {
+      AppError.handle(e, st, 'addNastoolSubscribe');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('添加订阅失败: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// 获取年份
+  String? _getYear() {
+    if (_detail is TmdbMovieDetail) {
+      final year = (_detail! as TmdbMovieDetail).year;
+      return year?.toString();
+    } else if (_detail is TmdbTvDetail) {
+      final year = (_detail! as TmdbTvDetail).year;
+      return year?.toString();
+    }
+    return null;
+  }
+
+  /// 显示 NASTool 选择弹窗
+  void _showNastoolSelectionSheet(List<SourceEntity> nastoolSources) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final title = _getTitle();
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 拖动指示器
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.grey[600] : Colors.grey[400],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              // 标题
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF673AB7).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.add_alert,
+                        color: Color(0xFF673AB7),
+                        size: 18,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '选择 NASTool',
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            '订阅: $title',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isDark ? Colors.grey[400] : Colors.grey[600],
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              // NASTool 列表
+              ...nastoolSources.map((source) => ListTile(
+                leading: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: source.type.themeColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    source.type.icon,
+                    color: source.type.themeColor,
+                    size: 20,
+                  ),
+                ),
+                title: Text(
+                  source.name.isEmpty ? source.type.displayName : source.name,
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
+                subtitle: Text(
+                  source.host,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.pop(context);
+                  _addNastoolSubscribe(source);
                 },
               )),
               const SizedBox(height: 8),

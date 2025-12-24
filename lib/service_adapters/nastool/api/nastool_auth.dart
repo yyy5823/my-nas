@@ -33,12 +33,25 @@ class NasToolAuth {
   }
 
   /// 登录
-  /// 
-  /// 调用 /user/login 端点获取会话 Token
+  ///
+  /// 调用 /user/login 端点获取 API Key
+  ///
+  /// 返回格式:
+  /// ```json
+  /// {
+  ///   "code": 0,
+  ///   "success": true,
+  ///   "data": {
+  ///     "token": "...",     // JWT token (不使用)
+  ///     "apikey": "...",    // API Key (使用此字段)
+  ///     "userinfo": {...}
+  ///   }
+  /// }
+  /// ```
   Future<NasToolLoginResult> login(String username, String password) async {
     try {
       final url = Uri.parse('$baseUrl/api/v1/user/login');
-      
+
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/x-www-form-urlencoded'},
@@ -47,35 +60,53 @@ class NasToolAuth {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
-        
+
         // 检查返回结果
         final code = data['code'] as int? ?? -1;
         final success = data['success'] as bool? ?? false;
-        final token = data['token'] as String? ?? 
-                      (data['data'] as Map<String, dynamic>?)?['token'] as String?;
-        
-        if (code == 0 || success || token != null) {
-          // 登录成功，保存 token
-          _sessionToken = token ?? response.headers['authorization'];
+
+        // 优先获取 data.apikey（正确的认证方式）
+        final responseData = data['data'] as Map<String, dynamic>?;
+        final apiKey = responseData?['apikey'] as String?;
+
+        if ((code == 0 || success) && apiKey != null) {
+          // 登录成功，保存 API Key（使用 Bearer 格式）
+          _sessionToken = 'Bearer $apiKey';
           _username = username;
           _isCookieAuth = false;
 
-          // 如果没有返回 token，尝试从 cookie 获取
-          if (_sessionToken == null) {
-            final cookies = response.headers['set-cookie'];
-            if (cookies != null) {
-              _sessionToken = cookies;
-              _isCookieAuth = true;
-            }
-          }
-
           return NasToolLoginResult.success(
-            token: _sessionToken,
+            token: apiKey,
             username: username,
           );
+        } else if (code == 0 || success) {
+          // 兼容旧版本：如果没有 apikey，尝试使用 token
+          final token = responseData?['token'] as String? ?? data['token'] as String?;
+          if (token != null) {
+            _sessionToken = 'Bearer $token';
+            _username = username;
+            _isCookieAuth = false;
+            return NasToolLoginResult.success(
+              token: token,
+              username: username,
+            );
+          }
+
+          // 如果都没有，尝试从 cookie 获取
+          final cookies = response.headers['set-cookie'];
+          if (cookies != null) {
+            _sessionToken = cookies;
+            _isCookieAuth = true;
+            return NasToolLoginResult.success(
+              token: null,
+              username: username,
+            );
+          }
+
+          return const NasToolLoginResult.failure('登录成功但未返回认证信息');
         } else {
-          final message = data['message'] as String? ?? 
-                          data['msg'] as String? ?? 
+          final message = data['message'] as String? ??
+                          data['msg'] as String? ??
                           '登录失败';
           return NasToolLoginResult.failure(message);
         }
@@ -138,20 +169,28 @@ class NasToolAuth {
     }
   }
 
-  /// 设置 API Token（用于 API Token 认证）
-  void setApiToken(String token) {
-    _sessionToken = token;
-    _username = 'API Token';
+  /// 设置 API Key（用于 API Key 认证）
+  ///
+  /// [apiKey] 为纯 API Key 值，会自动添加 Bearer 前缀
+  void setApiToken(String apiKey) {
+    // 如果已经包含 Bearer 前缀，直接使用
+    if (apiKey.startsWith('Bearer ')) {
+      _sessionToken = apiKey;
+    } else {
+      _sessionToken = 'Bearer $apiKey';
+    }
+    _username = 'API Key';
+    _isCookieAuth = false;
   }
 
-  /// 验证 API Token 是否有效
-  Future<bool> validateApiToken(String token) async {
+  /// 验证 API Key 是否有效
+  Future<bool> validateApiToken(String apiKey) async {
     try {
       final url = Uri.parse('$baseUrl/api/v1/system/version');
-      
-      // 尝试多种 Authorization 格式
-      final authFormats = [token, 'Bearer $token', 'Token $token'];
-      
+
+      // 优先使用 Bearer 格式（官方推荐）
+      final authFormats = ['Bearer $apiKey', apiKey, 'Token $apiKey'];
+
       for (final auth in authFormats) {
         final response = await http.post(
           url,
@@ -160,13 +199,14 @@ class NasToolAuth {
             'Authorization': auth,
           },
         );
-        
+
         if (response.statusCode == 200) {
           final data = jsonDecode(response.body) as Map<String, dynamic>;
           if (data['code'] == 0 || data['version'] != null) {
-            // Token 有效，设置认证信息
+            // API Key 有效，设置认证信息
             _sessionToken = auth;
-            _username = 'API Token';
+            _username = 'API Key';
+            _isCookieAuth = false;
             return true;
           }
         }

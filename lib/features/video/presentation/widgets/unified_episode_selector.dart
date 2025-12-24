@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/core/errors/errors.dart';
+import 'package:my_nas/features/nastool/presentation/providers/nastool_provider.dart';
+import 'package:my_nas/features/pt_sites/presentation/pages/pt_site_detail_page.dart';
+import 'package:my_nas/features/pt_sites/presentation/providers/pt_site_provider.dart';
+import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
+import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/features/video/data/services/tmdb_service.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
 import 'package:my_nas/features/video/presentation/providers/video_detail_provider.dart';
@@ -19,6 +25,8 @@ class UnifiedEpisodeSelector extends ConsumerStatefulWidget {
     this.tmdbSeasons,
     this.initialSeason,
     this.episodeProgress = const {},
+    this.showName,
+    this.year,
     super.key,
   });
 
@@ -39,6 +47,12 @@ class UnifiedEpisodeSelector extends ConsumerStatefulWidget {
 
   /// 剧集播放进度 `Map<filePath, progress 0.0-1.0>`
   final Map<String, double> episodeProgress;
+
+  /// 剧集名称（用于 PT 搜索和订阅）
+  final String? showName;
+
+  /// 年份（用于订阅）
+  final String? year;
 
   @override
   ConsumerState<UnifiedEpisodeSelector> createState() => _UnifiedEpisodeSelectorState();
@@ -358,6 +372,15 @@ class _UnifiedEpisodeSelectorState extends ConsumerState<UnifiedEpisodeSelector>
               ? () => widget.onEpisodePlay(localFile, tmdbEpisode: tmdbEpisode)
               : null;
 
+          // 缺失剧集点击回调
+          final onMissingTapCallback = localFile == null
+              ? () => _showMissingEpisodeActions(
+                    context,
+                    tmdbEpisode,
+                    _selectedSeason,
+                  )
+              : null;
+
           return Padding(
             padding: EdgeInsets.only(right: index < tmdbEpisodes.length - 1 ? 12 : 0),
             child: _UnifiedEpisodeCard(
@@ -370,11 +393,48 @@ class _UnifiedEpisodeSelectorState extends ConsumerState<UnifiedEpisodeSelector>
               isAvailable: isAvailable,
               watchProgress: progress,
               onTap: onTapCallback,
+              onMissingTap: onMissingTapCallback,
             ),
           );
         },
       ),
     );
+
+  /// 显示缺失剧集的操作选项
+  void _showMissingEpisodeActions(
+    BuildContext context,
+    TmdbEpisode episode,
+    int seasonNumber,
+  ) {
+    final ptSites = ref.read(ptSitesSourcesProvider);
+    final nastoolSources = ref.read(nastoolSourcesProvider);
+
+    // 如果没有配置任何服务，显示提示
+    if (ptSites.isEmpty && nastoolSources.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('请先配置 PT 站点或 NASTool 服务'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _MissingEpisodeActionSheet(
+        showName: widget.showName ?? '',
+        year: widget.year,
+        tmdbId: widget.tmdbId,
+        seasonNumber: seasonNumber,
+        episodeNumber: episode.episodeNumber,
+        episodeName: episode.name,
+        ptSites: ptSites,
+        nastoolSources: nastoolSources,
+      ),
+    );
+  }
 
   /// 使用本地数据构建剧集列表
   Widget _buildLocalEpisodeList(bool isDark) {
@@ -463,6 +523,7 @@ class _UnifiedEpisodeCard extends StatefulWidget {
     this.isLoading = false,
     this.watchProgress,
     this.onTap,
+    this.onMissingTap,
   });
 
   final int episodeNumber;
@@ -477,6 +538,9 @@ class _UnifiedEpisodeCard extends StatefulWidget {
   final bool isLoading;
   final double? watchProgress;
   final VoidCallback? onTap;
+
+  /// 缺失剧集点击回调（用于 PT 搜索/订阅）
+  final VoidCallback? onMissingTap;
   static const double width = 160;
 
   @override
@@ -498,7 +562,7 @@ class _UnifiedEpisodeCardState extends State<_UnifiedEpisodeCard> {
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
       child: GestureDetector(
-        onTap: widget.isAvailable ? widget.onTap : null,
+        onTap: widget.isAvailable ? widget.onTap : widget.onMissingTap,
         child: AnimatedOpacity(
           duration: const Duration(milliseconds: 200),
           opacity: widget.isAvailable ? 1.0 : 0.5,
@@ -669,5 +733,462 @@ class _UnifiedEpisodeCardState extends State<_UnifiedEpisodeCard> {
     final hours = minutes ~/ 60;
     final mins = minutes % 60;
     return mins > 0 ? '$hours小时$mins分钟' : '$hours小时';
+  }
+}
+
+/// 缺失剧集操作选项底部弹窗
+class _MissingEpisodeActionSheet extends ConsumerWidget {
+  const _MissingEpisodeActionSheet({
+    required this.showName,
+    required this.year,
+    required this.tmdbId,
+    required this.seasonNumber,
+    required this.episodeNumber,
+    required this.episodeName,
+    required this.ptSites,
+    required this.nastoolSources,
+  });
+
+  final String showName;
+  final String? year;
+  final int? tmdbId;
+  final int seasonNumber;
+  final int episodeNumber;
+  final String episodeName;
+  final List<SourceEntity> ptSites;
+  final List<SourceEntity> nastoolSources;
+
+  String get _searchKeyword => showName.isNotEmpty
+      ? '$showName S${seasonNumber.toString().padLeft(2, '0')}E${episodeNumber.toString().padLeft(2, '0')}'
+      : episodeName;
+
+  String get _displayTitle => showName.isNotEmpty
+      ? '$showName 第${seasonNumber}季第${episodeNumber}集'
+      : '第${episodeNumber}集';
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 拖动指示器
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: isDark ? Colors.grey[600] : Colors.grey[400],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            // 标题
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.cloud_off_rounded,
+                      color: Colors.orange,
+                      size: 18,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '缺失剧集',
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          _displayTitle,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isDark ? Colors.grey[400] : Colors.grey[600],
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            // 操作选项
+            if (ptSites.isNotEmpty)
+              ListTile(
+                leading: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    Icons.search,
+                    color: Theme.of(context).colorScheme.primary,
+                    size: 20,
+                  ),
+                ),
+                title: const Text(
+                  '在 PT 站搜索',
+                  style: TextStyle(fontWeight: FontWeight.w500),
+                ),
+                subtitle: Text(
+                  '搜索 "$_searchKeyword"',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.pop(context);
+                  _onPtSearch(context, ref);
+                },
+              ),
+            if (nastoolSources.isNotEmpty)
+              ListTile(
+                leading: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF673AB7).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.add_alert,
+                    color: Color(0xFF673AB7),
+                    size: 20,
+                  ),
+                ),
+                title: const Text(
+                  '添加 NASTool 订阅',
+                  style: TextStyle(fontWeight: FontWeight.w500),
+                ),
+                subtitle: Text(
+                  '订阅整季: $showName 第${seasonNumber}季',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.pop(context);
+                  _onNastoolSubscribe(context, ref);
+                },
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _onPtSearch(BuildContext context, WidgetRef ref) {
+    if (ptSites.length == 1) {
+      _navigateToPtSite(context, ref, ptSites.first);
+    } else {
+      _showPtSiteSelection(context, ref);
+    }
+  }
+
+  void _navigateToPtSite(BuildContext context, WidgetRef ref, SourceEntity source) {
+    ref.read(ptTorrentListProvider(source.id).notifier).setKeyword(_searchKeyword);
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => PTSiteDetailPage(source: source),
+      ),
+    );
+  }
+
+  void _showPtSiteSelection(BuildContext context, WidgetRef ref) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.grey[600] : Colors.grey[400],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        Icons.search,
+                        color: Theme.of(context).colorScheme.primary,
+                        size: 18,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '选择 PT 站',
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            '搜索: $_searchKeyword',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isDark ? Colors.grey[400] : Colors.grey[600],
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              ...ptSites.map((site) => ListTile(
+                leading: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: site.type.themeColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    site.type.icon,
+                    color: site.type.themeColor,
+                    size: 20,
+                  ),
+                ),
+                title: Text(
+                  site.name.isEmpty ? site.type.displayName : site.name,
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
+                subtitle: Text(
+                  site.host,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.pop(context);
+                  _navigateToPtSite(context, ref, site);
+                },
+              )),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _onNastoolSubscribe(BuildContext context, WidgetRef ref) {
+    if (nastoolSources.length == 1) {
+      _addNastoolSubscribe(context, ref, nastoolSources.first);
+    } else {
+      _showNastoolSelection(context, ref);
+    }
+  }
+
+  Future<void> _addNastoolSubscribe(BuildContext context, WidgetRef ref, SourceEntity source) async {
+    try {
+      final connection = ref.read(nastoolConnectionProvider(source.id));
+      if (connection == null || connection.status != NasToolConnectionStatus.connected) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${source.name} 未连接'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
+      // NASTool 订阅整季
+      await ref.read(nastoolActionsProvider(source.id)).addSubscribe(
+        name: showName,
+        type: 'TV',
+        year: year,
+        season: seasonNumber,
+        mediaId: tmdbId != null ? 'tmdb:$tmdbId' : null,
+      );
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('已添加订阅: $showName 第${seasonNumber}季'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e, st) {
+      AppError.handle(e, st, 'addNastoolSubscribeForEpisode');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('添加订阅失败: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showNastoolSelection(BuildContext context, WidgetRef ref) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.grey[600] : Colors.grey[400],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF673AB7).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.add_alert,
+                        color: Color(0xFF673AB7),
+                        size: 18,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '选择 NASTool',
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            '订阅: $showName 第${seasonNumber}季',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isDark ? Colors.grey[400] : Colors.grey[600],
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              ...nastoolSources.map((source) => ListTile(
+                leading: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: source.type.themeColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    source.type.icon,
+                    color: source.type.themeColor,
+                    size: 20,
+                  ),
+                ),
+                title: Text(
+                  source.name.isEmpty ? source.type.displayName : source.name,
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
+                subtitle: Text(
+                  source.host,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.pop(context);
+                  _addNastoolSubscribe(context, ref, source);
+                },
+              )),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

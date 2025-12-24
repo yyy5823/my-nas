@@ -457,3 +457,9 @@ final subtitleSourcesProvider = Provider<List<SourceEntity>>((ref) {
       .where((s) => s.type.category == SourceCategory.subtitleSites)
       .toList();
 });
+
+/// NASTool 源列表
+final nastoolSourcesProvider = Provider<List<SourceEntity>>((ref) {
+  final sources = ref.watch(sourcesProvider).valueOrNull ?? [];
+  return sources.where((s) => s.type == SourceType.nastool).toList();
+});
