@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
+import 'package:flutter/foundation.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_result.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_source.dart';
 import 'package:my_nas/features/music/domain/interfaces/music_scraper.dart';
@@ -20,6 +23,27 @@ class KugouScraper implements MusicScraper {
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       },
     ));
+    
+    // 酷狗 CDN 使用腾讯云，可能存在证书域名不匹配问题（*.cdn.myqcloud.com）
+    // 仅针对酷狗的请求跳过 SSL 验证
+    // Web 平台使用浏览器的 HTTP 实现，不需要此配置
+    if (!kIsWeb) {
+      _dio.httpClientAdapter = IOHttpClientAdapter(
+        createHttpClient: () {
+          final client = HttpClient();
+          client.badCertificateCallback = (cert, host, port) {
+            // 仅信任酷狗相关域名
+            return host.endsWith('.kugou.com') || 
+                   host.endsWith('.myqcloud.com') ||
+                   host == 'mobilecdn.kugou.com' ||
+                   host == 'krcs.kugou.com' ||
+                   host == 'lyrics.kugou.com' ||
+                   host == 'imge.kugou.com';
+          };
+          return client;
+        },
+      );
+    }
   }
 
   static const String _searchUrl = 'https://mobilecdn.kugou.com/api/v3/search/song';
@@ -307,24 +331,59 @@ class KugouScraper implements MusicScraper {
 
   /// 处理 Dio 错误
   MusicScraperException _handleDioError(DioException e) {
-    if (e.response?.statusCode == 429) {
+    // 构建详细的错误信息用于调试
+    final statusCode = e.response?.statusCode;
+    final statusMessage = e.response?.statusMessage;
+    final responseData = e.response?.data;
+    final requestUrl = e.requestOptions.uri.toString();
+    
+    // 记录详细日志
+    debugPrint('[KugouScraper] DioException: ${e.type}');
+    debugPrint('[KugouScraper] Request URL: $requestUrl');
+    debugPrint('[KugouScraper] Status: $statusCode $statusMessage');
+    debugPrint('[KugouScraper] Response: $responseData');
+    debugPrint('[KugouScraper] Error: ${e.error}');
+    debugPrint('[KugouScraper] Message: ${e.message}');
+    
+    if (statusCode == 429) {
       return MusicScraperRateLimitException(
         '请求过于频繁，请稍后再试',
         source: type,
         cause: e,
       );
     }
+    
     if (e.type == DioExceptionType.connectionTimeout ||
         e.type == DioExceptionType.receiveTimeout ||
         e.type == DioExceptionType.connectionError) {
+      final errorDetail = e.error?.toString() ?? '';
       return MusicScraperNetworkException(
-        '网络连接失败',
+        '网络连接失败: ${e.type.name}${errorDetail.isNotEmpty ? " ($errorDetail)" : ""}',
         source: type,
         cause: e,
       );
     }
+    
+    // 构建更详细的错误信息
+    String errorMessage;
+    if (statusCode != null) {
+      errorMessage = 'HTTP $statusCode';
+      if (statusMessage != null && statusMessage.isNotEmpty) {
+        errorMessage += ' $statusMessage';
+      }
+      // 尝试从响应中提取错误信息
+      if (responseData is Map<String, dynamic>) {
+        final errMsg = responseData['errcode'] ?? responseData['error'] ?? responseData['message'];
+        if (errMsg != null) {
+          errorMessage += ': $errMsg';
+        }
+      }
+    } else {
+      errorMessage = e.message ?? e.error?.toString() ?? '未知错误 (${e.type.name})';
+    }
+    
     return MusicScraperException(
-      e.message ?? '未知错误',
+      errorMessage,
       source: type,
       cause: e,
     );

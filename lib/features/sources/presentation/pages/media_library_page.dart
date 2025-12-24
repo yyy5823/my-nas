@@ -281,15 +281,9 @@ class _MediaTypeTab extends ConsumerWidget {
     }
 
     // 分离本机源和远程源
-    // 移动端：本机源只支持照片和视频
-    final isMobile = !kIsWeb && (Platform.isIOS || Platform.isAndroid);
-    final localSourceSupported = !isMobile ||
-        mediaType == MediaType.photo ||
-        mediaType == MediaType.video;
-
-    final localSource = localSourceSupported
-        ? connectedSources.firstWhereOrNull((s) => s.type == SourceType.local)
-        : null;
+    final localSource = connectedSources.firstWhereOrNull(
+      (s) => s.type == SourceType.local,
+    );
     final remoteSources = connectedSources.where(
       (s) => s.type != SourceType.local,
     ).toList();

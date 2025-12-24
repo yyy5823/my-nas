@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
+import 'package:flutter/foundation.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_result.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_source.dart';
 import 'package:my_nas/features/music/domain/interfaces/music_scraper.dart';
@@ -24,6 +27,25 @@ class QQMusicScraper implements MusicScraper {
         if (cookie != null && cookie!.isNotEmpty) 'Cookie': cookie,
       },
     ));
+    
+    // QQ音乐可能使用腾讯云 CDN，可能存在证书域名不匹配问题
+    // 仅针对 QQ 音乐的请求跳过 SSL 验证
+    // Web 平台使用浏览器的 HTTP 实现，不需要此配置
+    if (!kIsWeb) {
+      _dio.httpClientAdapter = IOHttpClientAdapter(
+        createHttpClient: () {
+          final client = HttpClient();
+          client.badCertificateCallback = (cert, host, port) {
+            // 仅信任 QQ 音乐相关域名
+            return host.endsWith('.qq.com') || 
+                   host.endsWith('.myqcloud.com') ||
+                   host == 'y.qq.com' ||
+                   host == 'c.y.qq.com';
+          };
+          return client;
+        },
+      );
+    }
   }
 
   static const String _searchUrl = 'https://c.y.qq.com/soso/fcgi-bin/client_search_cp';
@@ -353,33 +375,69 @@ class QQMusicScraper implements MusicScraper {
 
   /// 处理 Dio 错误
   MusicScraperException _handleDioError(DioException e) {
-    if (e.response?.statusCode == 401 || e.response?.statusCode == 403) {
+    // 构建详细的错误信息用于调试
+    final statusCode = e.response?.statusCode;
+    final statusMessage = e.response?.statusMessage;
+    final responseData = e.response?.data;
+    final requestUrl = e.requestOptions.uri.toString();
+    
+    // 记录详细日志
+    debugPrint('[QQMusicScraper] DioException: ${e.type}');
+    debugPrint('[QQMusicScraper] Request URL: $requestUrl');
+    debugPrint('[QQMusicScraper] Status: $statusCode $statusMessage');
+    debugPrint('[QQMusicScraper] Response: $responseData');
+    debugPrint('[QQMusicScraper] Error: ${e.error}');
+    debugPrint('[QQMusicScraper] Message: ${e.message}');
+    
+    if (statusCode == 401 || statusCode == 403) {
       return MusicScraperAuthException(
         'Cookie 无效或已过期',
         source: type,
         cause: e,
       );
     }
-    if (e.response?.statusCode == 429) {
+    if (statusCode == 429) {
       return MusicScraperRateLimitException(
         '请求过于频繁，请稍后再试',
         source: type,
         cause: e,
       );
     }
+    
     if (e.type == DioExceptionType.connectionTimeout ||
         e.type == DioExceptionType.receiveTimeout ||
         e.type == DioExceptionType.connectionError) {
+      final errorDetail = e.error?.toString() ?? '';
       return MusicScraperNetworkException(
-        '网络连接失败',
+        '网络连接失败: ${e.type.name}${errorDetail.isNotEmpty ? " ($errorDetail)" : ""}',
         source: type,
         cause: e,
       );
     }
+    
+    // 构建更详细的错误信息
+    String errorMessage;
+    if (statusCode != null) {
+      errorMessage = 'HTTP $statusCode';
+      if (statusMessage != null && statusMessage.isNotEmpty) {
+        errorMessage += ' $statusMessage';
+      }
+      // 尝试从响应中提取错误信息
+      if (responseData is Map<String, dynamic>) {
+        final errMsg = responseData['errcode'] ?? responseData['error'] ?? responseData['message'];
+        if (errMsg != null) {
+          errorMessage += ': $errMsg';
+        }
+      }
+    } else {
+      errorMessage = e.message ?? e.error?.toString() ?? '未知错误 (${e.type.name})';
+    }
+    
     return MusicScraperException(
-      e.message ?? '未知错误',
+      errorMessage,
       source: type,
       cause: e,
     );
   }
 }
+

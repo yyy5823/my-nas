@@ -7,7 +7,7 @@ import 'package:my_nas/nas_adapters/base/nas_connection.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/nas_adapters/local/api/local_file_api.dart';
 import 'package:my_nas/nas_adapters/local/local_file_system.dart';
-import 'package:my_nas/nas_adapters/mobile/file_systems/mobile_gallery_file_system.dart';
+import 'package:my_nas/nas_adapters/mobile/file_systems/mobile_composite_file_system.dart';
 
 /// 本地存储适配器
 ///
@@ -28,8 +28,8 @@ class LocalAdapter implements NasAdapter {
   late final LocalFileApi _api;
   late NasFileSystem _fileSystem;
 
-  /// 移动端相册文件系统（用于访问系统相册）
-  MobileGalleryFileSystem? _galleryFileSystem;
+  /// 移动端复合文件系统（用于访问相册、音乐库、文件）
+  MobileCompositeFileSystem? _mobileFileSystem;
 
   ConnectionConfig? _config;
   ServerInfo? _serverInfo;
@@ -56,20 +56,20 @@ class LocalAdapter implements NasAdapter {
 
     _config = config;
 
-    // 移动端使用系统相册 API
+    // 移动端使用复合文件系统（相册 + 音乐库 + 文件）
     if (Platform.isIOS || Platform.isAndroid) {
-      logger.i('LocalAdapter: 移动端 - 使用系统相册API');
-      _galleryFileSystem = MobileGalleryFileSystem();
+      logger.i('LocalAdapter: 移动端 - 使用复合文件系统');
+      _mobileFileSystem = MobileCompositeFileSystem();
 
-      // 请求相册权限
-      final hasPermission = await _galleryFileSystem!.requestPermission();
+      // 请求所有必要的权限
+      final hasPermission = await _mobileFileSystem!.requestPermissions();
       if (!hasPermission) {
         return const ConnectionFailure(
-          error: '未获得访问相册的权限，请在系统设置中授权',
+          error: '未获得访问本地内容的权限，请在系统设置中授权',
         );
       }
 
-      _fileSystem = _galleryFileSystem!;
+      _fileSystem = _mobileFileSystem!;
     } else {
       // 桌面端使用本地文件系统
       logger.i('LocalAdapter: 桌面端 - 使用本地文件系统');
@@ -93,8 +93,8 @@ class LocalAdapter implements NasAdapter {
     );
   }
 
-  /// 获取相册文件系统（仅移动端可用）
-  MobileGalleryFileSystem? get galleryFileSystem => _galleryFileSystem;
+  /// 获取复合文件系统（仅移动端可用）
+  MobileCompositeFileSystem? get mobileFileSystem => _mobileFileSystem;
 
   @override
   Future<void> disconnect() async {
@@ -102,7 +102,7 @@ class LocalAdapter implements NasAdapter {
     _connected = false;
     _config = null;
     _serverInfo = null;
-    _galleryFileSystem = null;
+    _mobileFileSystem = null;
     logger.i('LocalAdapter: 已断开连接');
   }
 
