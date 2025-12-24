@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -8,6 +9,29 @@ import 'package:my_nas/features/video/data/services/tmdb_service.dart';
 import 'package:my_nas/features/video/domain/entities/scraper_result.dart';
 import 'package:my_nas/features/video/domain/entities/scraper_source.dart';
 import 'package:my_nas/features/video/domain/interfaces/media_scraper.dart';
+
+/// 刮削源变更事件类型
+enum ScraperSourceEventType {
+  /// 添加了新刮削源
+  added,
+
+  /// 更新了刮削源
+  updated,
+
+  /// 删除了刮削源
+  removed,
+}
+
+/// 刮削源变更事件
+class ScraperSourceEvent {
+  const ScraperSourceEvent({
+    required this.type,
+    required this.source,
+  });
+
+  final ScraperSourceEventType type;
+  final ScraperSourceEntity source;
+}
 
 /// 刮削源管理服务
 ///
@@ -28,6 +52,15 @@ class ScraperManagerService {
 
   /// 刮削器实例缓存
   final Map<String, MediaScraper> _scraperInstances = {};
+
+  /// 刮削源变更事件流控制器
+  final _eventController = StreamController<ScraperSourceEvent>.broadcast();
+
+  /// 刮削源变更事件流
+  ///
+  /// 当刮削源被添加、更新或删除时发出事件，
+  /// 可用于触发元数据增强等后续操作
+  Stream<ScraperSourceEvent> get onSourceChanged => _eventController.stream;
 
   /// 安全存储（用于存储 API Key、Cookie 等敏感信息）
   static const _secureStorage = FlutterSecureStorage(
@@ -145,6 +178,12 @@ class ScraperManagerService {
     }
 
     logger.i('添加刮削源: ${source.displayName}');
+
+    // 发出添加事件，用于触发元数据增强等后续操作
+    _eventController.add(ScraperSourceEvent(
+      type: ScraperSourceEventType.added,
+      source: newSource,
+    ));
   }
 
   /// 更新刮削源
@@ -184,6 +223,12 @@ class ScraperManagerService {
     _scraperInstances.remove(source.id)?.dispose();
 
     logger.i('更新刮削源: ${source.displayName}');
+
+    // 发出更新事件
+    _eventController.add(ScraperSourceEvent(
+      type: ScraperSourceEventType.updated,
+      source: source,
+    ));
   }
 
   /// 删除刮削源
@@ -191,6 +236,7 @@ class ScraperManagerService {
     await _ensureInitialized();
 
     final sources = await getSources();
+    final removedSource = sources.where((s) => s.id == sourceId).firstOrNull;
     sources.removeWhere((s) => s.id == sourceId);
 
     // 重新计算优先级
@@ -207,6 +253,14 @@ class ScraperManagerService {
     _scraperInstances.remove(sourceId)?.dispose();
 
     logger.i('删除刮削源: $sourceId');
+
+    // 发出删除事件
+    if (removedSource != null) {
+      _eventController.add(ScraperSourceEvent(
+        type: ScraperSourceEventType.removed,
+        source: removedSource,
+      ));
+    }
   }
 
   /// 重新排序刮削源
@@ -611,5 +665,6 @@ class ScraperManagerService {
       scraper.dispose();
     }
     _scraperInstances.clear();
+    _eventController.close();
   }
 }

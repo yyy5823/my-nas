@@ -452,13 +452,32 @@ class VideoScannerService {
         final showDirectory = VideoDatabaseService.extractShowDirectory(video.file.path);
         final isInSeasonDir = _isInSeasonDirectory(video.file.path);
 
-        // 推断分类（使用 NFO、文件名、目录结构综合判断）
-        final category = _inferCategory(
-          nfoInfo,
-          fileName: video.file.name,
-          filePath: video.file.path,
-          isInSeasonDir: isInSeasonDir,
-        );
+        // 蓝光原盘强制识别为电影，其他使用推断分类
+        final MediaCategory category;
+        if (video.isBdmv) {
+          category = MediaCategory.movie;
+        } else {
+          category = _inferCategory(
+            nfoInfo,
+            fileName: video.file.name,
+            filePath: video.file.path,
+            isInSeasonDir: isInSeasonDir,
+          );
+        }
+
+        // 蓝光原盘使用目录名作为标题（如果 NFO 没有提供）
+        final effectiveTitle = nfoInfo?.title ?? video.bdmvTitle;
+
+        // 蓝光原盘的电影目录应该是 BDMV 上一级（电影名目录）
+        String? movieDirectory;
+        if (category == MediaCategory.movie) {
+          if (video.isBdmv) {
+            // BDMV: 使用 MovieName 目录（BDMV 的父目录）
+            movieDirectory = _extractBdmvMovieDirectory(video.file.path);
+          } else {
+            movieDirectory = VideoDatabaseService.extractMovieDirectory(video.file.path);
+          }
+        }
 
         final metadata = VideoMetadata(
           sourceId: video.sourceId,
@@ -467,8 +486,8 @@ class VideoScannerService {
           thumbnailUrl: video.file.thumbnailUrl,
           fileSize: video.file.size,
           fileModifiedTime: video.file.modifiedTime,
-          // NFO 基础信息（扫描阶段快速解析）
-          title: nfoInfo?.title,
+          // NFO 基础信息，蓝光原盘优先使用目录名
+          title: effectiveTitle,
           originalTitle: nfoInfo?.originalTitle,
           year: nfoInfo?.year,
           rating: nfoInfo?.rating,
@@ -483,9 +502,7 @@ class VideoScannerService {
           // TV 剧集的剧目录（用于分组）- 剧集和 unknown 都尝试设置
           showDirectory: category != MediaCategory.movie ? showDirectory : null,
           // 电影所在目录（用于目录系列识别）
-          movieDirectory: category == MediaCategory.movie
-              ? VideoDatabaseService.extractMovieDirectory(video.file.path)
-              : null,
+          movieDirectory: movieDirectory,
           // 视频分辨率（用于质量分组）
           resolution: fileInfo.resolution,
         );
@@ -1327,7 +1344,55 @@ class VideoScannerService {
     final videoItems = items.where((f) => !f.isDirectory && f.type == FileType.video).toList();
     final subtitleItems = items.where((f) => !f.isDirectory && _isSubtitleFile(f.name)).toList();
 
-    // 处理视频文件（不在此阶段解析 NFO，延迟到刮削阶段）
+    // 检测是否是蓝光原盘 STREAM 目录
+    final isBdmvStream = _isBdmvStreamDirectory(dirPath);
+
+    if (isBdmvStream) {
+      // 蓝光原盘目录：只选择最大的 m2ts 文件作为主视频
+      final m2tsFiles = videoItems.where((f) =>
+          f.name.toLowerCase().endsWith('.m2ts')).toList();
+
+      final mainFile = _selectMainBdmvFile(m2tsFiles);
+      if (mainFile != null) {
+        final bdmvTitle = _extractBdmvMovieTitle(dirPath);
+
+        videos.add(_ScannedVideo(
+          sourceId: sourceId,
+          file: mainFile,
+          hasNfoInDirectory: hasNfo,
+          nfoBasicInfo: null,
+          isBdmv: true,
+          bdmvTitle: bdmvTitle,
+        ));
+
+        logger.i(
+          'VideoScannerService: BDMV 检测 - 选择主文件 ${mainFile.name} (${mainFile.displaySize})，跳过 ${m2tsFiles.length - 1} 个其他文件，电影名: $bdmvTitle',
+        );
+
+        // 关联字幕（使用电影名或主文件名匹配）
+        final videoBaseName = _getBaseName(mainFile.name).toLowerCase();
+        final titleBaseName = bdmvTitle?.toLowerCase() ?? '';
+        for (final subtitleItem in subtitleItems) {
+          final subtitleBaseName = _getBaseName(subtitleItem.name).toLowerCase();
+          if (subtitleBaseName == videoBaseName ||
+              subtitleBaseName.startsWith(videoBaseName) ||
+              (titleBaseName.isNotEmpty && subtitleBaseName.contains(titleBaseName))) {
+            subtitles.add(_ScannedSubtitle(
+              sourceId: sourceId,
+              videoPath: mainFile.path,
+              subtitleFile: subtitleItem,
+              language: _parseSubtitleLanguage(subtitleItem.name, videoBaseName),
+            ));
+          }
+        }
+
+        return 1; // 只返回 1 个视频（主文件）
+      }
+
+      // 没有找到 m2ts 文件，可能是其他格式，继续正常处理
+    }
+
+    // 普通目录：处理所有视频文件
     for (final videoItem in videoItems) {
       videos.add(_ScannedVideo(
         sourceId: sourceId,
@@ -1358,6 +1423,87 @@ class VideoScannerService {
 
   void _emitProgress(VideoScanProgress progress) {
     _progressController.add(progress);
+  }
+
+  /// 检测是否是蓝光原盘 STREAM 目录
+  ///
+  /// 标准蓝光目录结构：MovieName/BDMV/STREAM/*.m2ts
+  /// STREAM 目录是 BDMV 的子目录，包含实际的视频流文件
+  bool _isBdmvStreamDirectory(String dirPath) {
+    if (dirPath.isEmpty) return false;
+
+    final normalizedPath = dirPath.replaceAll(r'\', '/');
+    final parts = normalizedPath.split('/').where((p) => p.isNotEmpty).toList();
+
+    if (parts.length < 2) return false;
+
+    // 检查当前目录是否是 STREAM，父目录是否是 BDMV
+    final currentDir = parts.last.toUpperCase();
+    final parentDir = parts[parts.length - 2].toUpperCase();
+
+    return currentDir == 'STREAM' && parentDir == 'BDMV';
+  }
+
+  /// 从蓝光目录结构中提取电影名称
+  ///
+  /// 路径格式：.../MovieName/BDMV/STREAM/
+  /// 返回 MovieName 作为电影标题
+  String? _extractBdmvMovieTitle(String dirPath) {
+    if (dirPath.isEmpty) return null;
+
+    final normalizedPath = dirPath.replaceAll(r'\', '/');
+    final parts = normalizedPath.split('/').where((p) => p.isNotEmpty).toList();
+
+    // 需要至少 3 级目录：MovieName/BDMV/STREAM
+    if (parts.length < 3) return null;
+
+    // 获取 BDMV 上一级目录作为电影名
+    // parts: [..., MovieName, BDMV, STREAM]
+    return parts[parts.length - 3];
+  }
+
+  /// 从 m2ts 文件列表中选择主视频文件
+  ///
+  /// 选择标准：文件大小最大的 m2ts 文件通常是主电影
+  /// 其他较小的文件通常是花絮、菜单动画等
+  FileItem? _selectMainBdmvFile(List<FileItem> m2tsFiles) {
+    if (m2tsFiles.isEmpty) return null;
+    if (m2tsFiles.length == 1) return m2tsFiles.first;
+
+    // 按文件大小降序排序，选择最大的
+    final sorted = List<FileItem>.from(m2tsFiles)
+      ..sort((a, b) => b.size.compareTo(a.size));
+
+    return sorted.first;
+  }
+
+  /// 从蓝光文件路径提取电影目录路径
+  ///
+  /// 路径格式：.../MovieName/BDMV/STREAM/00001.m2ts
+  /// 返回 .../MovieName 作为电影目录
+  String? _extractBdmvMovieDirectory(String filePath) {
+    if (filePath.isEmpty) return null;
+
+    final normalizedPath = filePath.replaceAll(r'\', '/');
+    final parts = normalizedPath.split('/').where((p) => p.isNotEmpty).toList();
+
+    // 需要至少 4 级：MovieName/BDMV/STREAM/file.m2ts
+    if (parts.length < 4) return null;
+
+    // 找到 BDMV 目录的位置
+    for (var i = parts.length - 3; i >= 0; i--) {
+      if (parts[i].toUpperCase() == 'BDMV' &&
+          i + 1 < parts.length &&
+          parts[i + 1].toUpperCase() == 'STREAM') {
+        // 返回 BDMV 前面的路径（包含 MovieName）
+        if (i > 0) {
+          return '/${parts.sublist(0, i).join('/')}';
+        }
+        return null;
+      }
+    }
+
+    return null;
   }
 
   /// 保存字幕索引到数据库
@@ -1394,12 +1540,16 @@ class _ScannedVideo {
     required this.file,
     this.hasNfoInDirectory = false,
     this.nfoBasicInfo,
+    this.isBdmv = false,
+    this.bdmvTitle,
   });
 
   final String sourceId;
   final FileItem file;
   final bool hasNfoInDirectory; // 同目录下是否有 NFO 文件
   final NfoBasicInfo? nfoBasicInfo; // NFO 基础信息（扫描阶段快速解析）
+  final bool isBdmv; // 是否是蓝光原盘主文件
+  final String? bdmvTitle; // 蓝光原盘电影标题（从目录名提取）
 }
 
 /// NFO 基础信息（轻量级，用于扫描阶段）

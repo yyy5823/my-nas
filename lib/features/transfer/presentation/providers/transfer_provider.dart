@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/book/data/services/book_file_cache_service.dart';
+import 'package:my_nas/features/music/data/services/music_audio_cache_service.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/features/transfer/data/services/media_cache_service.dart';
@@ -31,6 +33,12 @@ final uploadedMarkServiceProvider = Provider<UploadedMarkService>((ref) => Uploa
 
 /// 媒体缓存服务 Provider
 final mediaCacheServiceProvider = Provider<MediaCacheService>((ref) => MediaCacheService());
+
+/// 音乐音频缓存服务 Provider
+final musicAudioCacheServiceProvider = Provider<MusicAudioCacheService>((ref) => MusicAudioCacheService());
+
+/// 图书文件缓存服务 Provider
+final bookFileCacheServiceProvider = Provider<BookFileCacheService>((ref) => BookFileCacheService());
 
 /// 传输任务列表 Provider
 final transferTasksProvider =
@@ -103,12 +111,46 @@ final cachedItemsProvider =
   return cacheService.getCachedItems(mediaType: mediaType);
 });
 
-/// 缓存统计信息
+/// 缓存统计信息（聚合所有缓存服务）
 final cacheStatsProvider =
     FutureProvider<Map<MediaType, ({int count, int size})>>((ref) async {
-  final cacheService = ref.watch(mediaCacheServiceProvider);
-  await cacheService.init();
-  return cacheService.getCacheStats();
+  final mediaCacheService = ref.watch(mediaCacheServiceProvider);
+  final musicAudioCacheService = ref.watch(musicAudioCacheServiceProvider);
+  final bookFileCacheService = ref.watch(bookFileCacheServiceProvider);
+
+  // 初始化所有缓存服务
+  await Future.wait([
+    mediaCacheService.init(),
+    musicAudioCacheService.init(),
+    bookFileCacheService.init(),
+  ]);
+
+  // 获取 MediaCacheService 的统计
+  final stats = await mediaCacheService.getCacheStats();
+
+  // 添加 MusicAudioCacheService 的统计（独立缓存目录）
+  final musicCacheCount = await musicAudioCacheService.getCacheCount();
+  final musicCacheSize = await musicAudioCacheService.getCacheSize();
+  if (musicCacheCount > 0 || musicCacheSize > 0) {
+    final existing = stats[MediaType.music] ?? (count: 0, size: 0);
+    stats[MediaType.music] = (
+      count: existing.count + musicCacheCount,
+      size: existing.size + musicCacheSize,
+    );
+  }
+
+  // 添加 BookFileCacheService 的统计（独立缓存目录）
+  final bookCacheCount = await bookFileCacheService.getCacheCount();
+  final bookCacheSize = await bookFileCacheService.getCacheSize();
+  if (bookCacheCount > 0 || bookCacheSize > 0) {
+    final existing = stats[MediaType.book] ?? (count: 0, size: 0);
+    stats[MediaType.book] = (
+      count: existing.count + bookCacheCount,
+      size: existing.size + bookCacheSize,
+    );
+  }
+
+  return stats;
 });
 
 /// 检查文件是否已上传
@@ -407,7 +449,21 @@ class TransferTasksNotifier extends StateNotifier<TransferTasksState> {
   Future<void> clearAllCache({MediaType? mediaType}) async {
     try {
       final cacheService = _ref.read(mediaCacheServiceProvider);
+      final musicAudioCacheService = _ref.read(musicAudioCacheServiceProvider);
+      final bookFileCacheService = _ref.read(bookFileCacheServiceProvider);
+
+      // 清空 MediaCacheService
       await cacheService.clearCache(mediaType: mediaType);
+
+      // 如果清空音乐缓存，同时清空 MusicAudioCacheService
+      if (mediaType == null || mediaType == MediaType.music) {
+        await musicAudioCacheService.clearAll();
+      }
+
+      // 如果清空图书缓存，同时清空 BookFileCacheService
+      if (mediaType == null || mediaType == MediaType.book) {
+        await bookFileCacheService.clearAll();
+      }
 
       // 清除对应的缓存任务记录
       final service = _ref.read(transferServiceProvider);

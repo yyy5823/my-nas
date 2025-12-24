@@ -21,7 +21,7 @@ import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/pages/media_library_page.dart';
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
-import 'package:my_nas/features/transfer/presentation/pages/transfer_manager_page.dart';
+import 'package:my_nas/features/transfer/presentation/widgets/transfer_sheet.dart';
 import 'package:my_nas/features/transfer/presentation/providers/transfer_provider.dart';
 import 'package:my_nas/features/transfer/presentation/widgets/target_picker_sheet.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
@@ -105,11 +105,7 @@ enum PhotoSourceFilter {
 }
 
 /// 判断是否为本机源
-bool _isLocalSourceType(SourceType type) =>
-    type == SourceType.mobileGallery ||
-    type == SourceType.mobileMusic ||
-    type == SourceType.mobileFiles ||
-    type == SourceType.local;
+bool _isLocalSourceType(SourceType type) => type == SourceType.local;
 
 sealed class PhotoListState {}
 
@@ -1957,8 +1953,6 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
   ) =>
       Column(
         children: [
-          // 来源筛选栏
-          _buildSourceFilterBar(context, ref, state, isDark),
           // 时间筛选栏（有筛选时显示，或在时间线模式下显示）
           if (state.filterYear != null || state.viewMode == PhotoViewMode.timeline)
             _buildTimelineFilterBar(context, ref, state, isDark),
@@ -1982,64 +1976,6 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
             _buildSelectionActionBar(context, ref, state, isDark),
         ],
       );
-
-  /// 来源筛选栏
-  Widget _buildSourceFilterBar(
-    BuildContext context,
-    WidgetRef ref,
-    PhotoListLoaded state,
-    bool isDark,
-  ) => Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : Colors.white,
-        border: Border(
-          bottom: BorderSide(
-            color: isDark ? Colors.grey[800]! : Colors.grey[200]!,
-          ),
-        ),
-      ),
-      child: Row(
-        children: [
-          for (final filter in PhotoSourceFilter.values) ...[
-            if (filter != PhotoSourceFilter.values.first) const SizedBox(width: 8),
-            FilterChip(
-              label: Text(filter.label),
-              selected: state.sourceFilter == filter,
-              onSelected: (_) => ref.read(photoListProvider.notifier).setSourceFilter(filter),
-              showCheckmark: false,
-              labelStyle: TextStyle(
-                fontSize: 13,
-                color: state.sourceFilter == filter
-                    ? (isDark ? Colors.white : AppColors.primary)
-                    : (isDark ? Colors.grey[400] : Colors.grey[600]),
-                fontWeight: state.sourceFilter == filter ? FontWeight.w600 : FontWeight.normal,
-              ),
-              backgroundColor: isDark ? AppColors.darkSurfaceElevated : Colors.grey[100],
-              selectedColor: isDark
-                  ? AppColors.primary.withValues(alpha: 0.3)
-                  : AppColors.primary.withValues(alpha: 0.15),
-              side: BorderSide(
-                color: state.sourceFilter == filter
-                    ? AppColors.primary
-                    : Colors.transparent,
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-            ),
-          ],
-          const Spacer(),
-          // 显示当前筛选结果数量
-          Text(
-            '${state.displayPhotos.length}',
-            style: TextStyle(
-              fontSize: 13,
-              color: isDark ? Colors.grey[400] : Colors.grey[600],
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
-      ),
-    );
 
   /// 多选模式底部操作栏
   Widget _buildSelectionActionBar(
@@ -2175,12 +2111,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
           behavior: SnackBarBehavior.floating,
           action: SnackBarAction(
             label: '查看',
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute<void>(
-                builder: (_) => const TransferManagerPage(initialTab: 1),
-              ),
-            ),
+            onPressed: () => showTransferUploads(context),
           ),
         ),
       );
@@ -2226,12 +2157,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
           behavior: SnackBarBehavior.floating,
           action: SnackBarAction(
             label: '查看',
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute<void>(
-                builder: (_) => const TransferManagerPage(initialTab: 0),
-              ),
-            ),
+            onPressed: () => showTransferDownloads(context),
           ),
         ),
       );

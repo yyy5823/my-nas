@@ -7727,10 +7727,8 @@ class _MovieCollectionGridCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 获取系列封面（使用第一部电影的封面）
-    final posterUrl = collection.movies.isNotEmpty
-        ? collection.movies.first.displayPosterUrl
-        : null;
+    // 获取系列封面（优先使用系列专属封面，与首页卡片保持一致）
+    final posterUrl = collection.posterUrl;
     final hasPoster = posterUrl != null && posterUrl.isNotEmpty;
 
     return GestureDetector(
@@ -7756,13 +7754,15 @@ class _MovieCollectionGridCard extends StatelessWidget {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    // 海报（使用 VideoPoster 支持 NAS 路径）
-                    if (hasPoster) VideoPoster(
-                            posterUrl: posterUrl,
-                            sourceId: collection.movies.first.sourceId,
-                            placeholder: _buildPlaceholder(),
-                            errorWidget: _buildPlaceholder(),
-                          ) else _buildPlaceholder(),
+                    // 海报（使用 AdaptiveImage 支持网络和本地路径）
+                    if (hasPoster)
+                      AdaptiveImage(
+                        imageUrl: posterUrl,
+                        placeholder: (_) => _buildPlaceholder(),
+                        errorWidget: (_, _) => _buildPlaceholder(),
+                      )
+                    else
+                      _buildPlaceholder(),
                     // 电影数量徽章
                     Positioned(
                       top: 8,
@@ -7858,11 +7858,14 @@ class _MovieCollectionPage extends ConsumerWidget {
   }
 
   Widget _buildAppBar(bool isDark, AsyncValue<TmdbCollection?> tmdbAsync) {
-    // 优先使用 TMDB 的背景图
-    final backdropUrl = tmdbAsync.valueOrNull?.backdropUrl ?? collection.backdropUrl;
+    // 优先使用 TMDB 的背景图，其次本地背景图，最后使用海报作为回退
+    final backdropUrl = tmdbAsync.valueOrNull?.backdropUrl ??
+        collection.backdropUrl ??
+        collection.posterUrl;
+    final hasBackground = backdropUrl != null && backdropUrl.isNotEmpty;
 
     return SliverAppBar(
-      expandedHeight: 200,
+      expandedHeight: hasBackground ? 200 : 120,
       pinned: true,
       backgroundColor: isDark ? const Color(0xFF0D0D1A) : Colors.white,
       flexibleSpace: FlexibleSpaceBar(
@@ -7873,7 +7876,7 @@ class _MovieCollectionPage extends ConsumerWidget {
             fontWeight: FontWeight.bold,
           ),
         ),
-        background: backdropUrl != null
+        background: hasBackground
             ? Stack(
                 fit: StackFit.expand,
                 children: [
@@ -7893,7 +7896,25 @@ class _MovieCollectionPage extends ConsumerWidget {
                   ),
                 ],
               )
-            : null,
+            : Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      AppColors.primary.withValues(alpha: 0.3),
+                      if (isDark) const Color(0xFF0D0D1A) else Colors.white,
+                    ],
+                  ),
+                ),
+                child: Center(
+                  child: Icon(
+                    Icons.collections_bookmark_rounded,
+                    size: 48,
+                    color: isDark ? Colors.grey[700] : Colors.grey[400],
+                  ),
+                ),
+              ),
       ),
     );
   }

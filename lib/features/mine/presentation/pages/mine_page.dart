@@ -18,17 +18,13 @@ import 'package:my_nas/features/sources/presentation/pages/media_library_page.da
 import 'package:my_nas/features/sources/presentation/pages/service_sources_page.dart';
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
-import 'package:my_nas/features/transfer/domain/entities/transfer_task.dart';
-import 'package:my_nas/features/transfer/presentation/pages/transfer_manager_page.dart';
 import 'package:my_nas/features/transfer/presentation/providers/transfer_provider.dart';
+import 'package:my_nas/features/transfer/presentation/widgets/transfer_sheet.dart';
 import 'package:my_nas/features/video/domain/entities/scraper_source.dart';
 import 'package:my_nas/features/video/presentation/pages/scraper_sources_page.dart';
 import 'package:my_nas/features/video/presentation/providers/scraper_provider.dart';
-import 'package:my_nas/shared/providers/download_provider.dart';
 import 'package:my_nas/shared/providers/language_preference_provider.dart';
 import 'package:my_nas/shared/providers/theme_provider.dart';
-import 'package:my_nas/shared/services/download_service.dart';
-import 'package:my_nas/shared/widgets/download_manager_sheet.dart';
 import 'package:my_nas/shared/widgets/update_dialog.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
@@ -1101,7 +1097,6 @@ class _TransferCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final transferState = ref.watch(transferTasksProvider);
     final downloadingCount = ref.watch(downloadingCountProvider);
     final uploadingCount = ref.watch(uploadingCountProvider);
     final cachingCount = ref.watch(cachingCountProvider);
@@ -1158,12 +1153,7 @@ class _TransferCard extends ConsumerWidget {
                   : '暂无下载任务',
               color: AppColors.primary,
               isActive: downloadingCount > 0,
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute<void>(
-                  builder: (_) => const TransferManagerPage(initialTab: 0),
-                ),
-              ),
+              onTap: () => showTransferDownloads(context),
             ),
             // 分隔线
             _buildDivider(),
@@ -1178,12 +1168,7 @@ class _TransferCard extends ConsumerWidget {
                   : '暂无上传任务',
               color: AppColors.accent,
               isActive: uploadingCount > 0,
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute<void>(
-                  builder: (_) => const TransferManagerPage(initialTab: 1),
-                ),
-              ),
+              onTap: () => showTransferUploads(context),
             ),
             // 分隔线
             _buildDivider(),
@@ -1200,12 +1185,7 @@ class _TransferCard extends ConsumerWidget {
                       : '暂无缓存',
               color: Colors.teal,
               isActive: cachingCount > 0,
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute<void>(
-                  builder: (_) => const TransferManagerPage(initialTab: 2),
-                ),
-              ),
+              onTap: () => showTransferCache(context),
             ),
           ],
         ),

@@ -230,7 +230,8 @@ class TmdbService {
       final params = {
         'api_key': _apiKey,
         'language': language ?? getPreferredMetadataLanguage(),
-        'append_to_response': 'credits,videos,images',
+        // 添加 release_dates 获取内容分级，external_ids 获取 IMDb ID
+        'append_to_response': 'credits,videos,images,release_dates,external_ids',
       };
 
       final uri = Uri.parse('$_apiUrl/movie/$movieId').replace(queryParameters: params);
@@ -799,11 +800,64 @@ class TmdbMovieDetail {
     required this.budget,
     required this.revenue,
     this.belongsToCollection,
+    this.imdbId,
+    this.certification,
   });
 
   factory TmdbMovieDetail.fromJson(Map<String, dynamic> json) {
     final credits = json['credits'] as Map<String, dynamic>?;
     final collectionData = json['belongs_to_collection'] as Map<String, dynamic>?;
+    final externalIds = json['external_ids'] as Map<String, dynamic>?;
+    final releaseDates = json['release_dates'] as Map<String, dynamic>?;
+
+    // 解析 IMDb ID
+    final imdbId = externalIds?['imdb_id'] as String?;
+
+    // 解析内容分级（优先 US，其次任意可用）
+    String? certification;
+    if (releaseDates != null) {
+      final results = releaseDates['results'] as List?;
+      if (results != null) {
+        // 优先查找 US 分级
+        for (final result in results) {
+          if (result is Map && result['iso_3166_1'] == 'US') {
+            final releases = result['release_dates'] as List?;
+            if (releases != null && releases.isNotEmpty) {
+              for (final release in releases) {
+                if (release is Map) {
+                  final cert = release['certification'] as String?;
+                  if (cert != null && cert.isNotEmpty) {
+                    certification = cert;
+                    break;
+                  }
+                }
+              }
+            }
+            break;
+          }
+        }
+        // 如果没有 US 分级，尝试其他地区
+        if (certification == null) {
+          for (final result in results) {
+            if (result is Map) {
+              final releases = result['release_dates'] as List?;
+              if (releases != null && releases.isNotEmpty) {
+                for (final release in releases) {
+                  if (release is Map) {
+                    final cert = release['certification'] as String?;
+                    if (cert != null && cert.isNotEmpty) {
+                      certification = cert;
+                      break;
+                    }
+                  }
+                }
+                if (certification != null) break;
+              }
+            }
+          }
+        }
+      }
+    }
 
     return TmdbMovieDetail(
       id: json['id'] as int,
@@ -844,6 +898,8 @@ class TmdbMovieDetail {
       belongsToCollection: collectionData != null
           ? TmdbCollectionInfo.fromJson(collectionData)
           : null,
+      imdbId: imdbId,
+      certification: certification,
     );
   }
 
@@ -867,6 +923,8 @@ class TmdbMovieDetail {
   final int budget;
   final int revenue;
   final TmdbCollectionInfo? belongsToCollection;
+  final String? imdbId; // IMDb ID
+  final String? certification; // 内容分级（PG, R, NC-17 等）
 
   String get posterUrl => TmdbService.getImageUrl(posterPath);
   String get backdropUrl => TmdbService.getImageUrl(backdropPath, size: ImageSize.original);
@@ -892,6 +950,35 @@ class TmdbMovieDetail {
   String get countriesText => productionCountries.map((c) => c.name).join(', ');
 
   TmdbCrew? get director => crew.where((c) => c.job == 'Director').firstOrNull;
+
+  // === 系列信息便捷访问 ===
+
+  /// 系列 ID
+  int? get collectionId => belongsToCollection?.id;
+
+  /// 系列名称
+  String? get collectionName => belongsToCollection?.name;
+
+  /// 系列海报 URL
+  String? get collectionPosterUrl =>
+      belongsToCollection?.posterPath != null ? belongsToCollection!.posterUrl : null;
+
+  /// 系列背景图 URL
+  String? get collectionBackdropUrl =>
+      belongsToCollection?.backdropPath != null ? belongsToCollection!.backdropUrl : null;
+
+  /// 类型列表（字符串格式）
+  List<String>? get genresList => genres.isNotEmpty ? genres.map((g) => g.name).toList() : null;
+
+  /// 国家/地区列表（字符串格式）
+  List<String>? get countriesList =>
+      productionCountries.isNotEmpty ? productionCountries.map((c) => c.name).toList() : null;
+
+  /// 导演名称
+  String? get directorName => director?.name;
+
+  /// 演员名称列表
+  List<String>? get castNames => cast.isNotEmpty ? cast.map((c) => c.name).toList() : null;
 }
 
 /// 电视剧详情

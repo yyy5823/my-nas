@@ -3,6 +3,7 @@ import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
 import 'package:my_nas/features/video/presentation/providers/scraper_provider.dart'
     show ScrapingStatus, ScrapingTaskState;
+import 'package:my_nas/features/video/presentation/widgets/media_info_badges.dart';
 import 'package:my_nas/features/video/presentation/widgets/video_poster.dart';
 import 'package:my_nas/shared/widgets/adaptive_image.dart';
 
@@ -30,11 +31,14 @@ class DetailHeroSection extends StatelessWidget {
     this.tmdbRating,
     this.doubanRating,
     this.traktRating,
+    this.imdbRating,
+    this.metacriticRating,
     this.voteCount,
     this.sourceId,
     this.hideEpisodeInfo = false,
     this.scrapingTask,
     this.onScrapingDismiss,
+    this.showMediaInfoBadges = true,
     super.key,
   });
 
@@ -54,6 +58,10 @@ class DetailHeroSection extends StatelessWidget {
   /// 豆瓣评分（当只有豆瓣数据时使用）
   final double? doubanRating;
   final double? traktRating;
+  /// IMDb 评分
+  final double? imdbRating;
+  /// Metacritic 评分（0-100）
+  final int? metacriticRating;
   final int? voteCount;
   /// 用于加载 NAS 路径图片的 sourceId
   final String? sourceId;
@@ -63,6 +71,8 @@ class DetailHeroSection extends StatelessWidget {
   final ScrapingTaskState? scrapingTask;
   /// 刮削完成后关闭回调
   final VoidCallback? onScrapingDismiss;
+  /// 是否显示媒体信息标签（4K, HDR, Atmos 等）
+  final bool showMediaInfoBadges;
 
   @override
   Widget build(BuildContext context) {
@@ -486,124 +496,40 @@ class DetailHeroSection extends StatelessWidget {
       ),
     );
 
-  /// 评分标识区域
-  Widget _buildRatingBadges() {
-    final badges = <Widget>[];
-
-    // TMDB 评分（优先显示）
-    if (tmdbRating != null && tmdbRating! > 0) {
-      badges.add(_buildRatingBadge(
-        label: 'TMDB',
-        rating: tmdbRating!,
-        color: const Color(0xFF01D277), // TMDB 绿色
-        voteCount: voteCount,
-      ));
-    }
-
-    // 豆瓣评分（如果没有 TMDB 评分，显示豆瓣）
-    if (badges.isEmpty && doubanRating != null && doubanRating! > 0) {
-      badges.add(_buildRatingBadge(
-        label: '豆瓣',
-        rating: doubanRating!,
-        color: const Color(0xFF2BC16B), // 豆瓣绿色
-      ));
-    }
-    // 如果没有任何评分但 metadata 中有评分，使用 metadata 的评分作为备选
-    if (badges.isEmpty && metadata.rating != null && metadata.rating! > 0) {
-      badges.add(_buildRatingBadge(
-        label: '评分',
-        rating: metadata.rating!,
-        color: Colors.grey,
-      ));
-    }
-
-    // Trakt 评分 (如果有)
-    if (traktRating != null && traktRating! > 0) {
-      badges.add(_buildRatingBadge(
-        label: 'Trakt',
-        rating: traktRating!,
-        color: const Color(0xFFED1C24), // Trakt 红色
-      ));
-    }
-
-    if (badges.isEmpty) return const SizedBox.shrink();
-
-    return Wrap(
-      spacing: 12,
-      runSpacing: 8,
-      children: badges,
-    );
-  }
-
-  Widget _buildRatingBadge({
-    required String label,
-    required double rating,
-    required Color color,
-    int? voteCount,
-  }) =>
-      Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.6),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: color.withValues(alpha: 0.5),
+  /// 评分和媒体信息标识区域
+  Widget _buildRatingBadges() => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 评分标签
+          RatingBadges(
+            tmdbRating: tmdbRating,
+            imdbRating: imdbRating,
+            metacriticRating: metacriticRating,
+            traktRating: traktRating,
+            doubanRating: doubanRating ?? (tmdbRating == null ? metadata.rating : null),
+            voteCount: voteCount,
           ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // 平台标识
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: color,
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
+          // 媒体信息标签（4K, HDR, Atmos 等）
+          if (showMediaInfoBadges && _hasMediaInfo()) ...[
+            const SizedBox(height: 8),
+            MediaInfoBadges(
+              metadata: metadata,
+              showCodec: false, // 不显示编码信息，太技术化
+              compact: false,
             ),
-            const SizedBox(width: 8),
-            // 评分数值
-            Icon(Icons.star_rounded, size: 16, color: color),
-            const SizedBox(width: 4),
-            Text(
-              rating.toStringAsFixed(1),
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-            // 投票数
-            if (voteCount != null && voteCount > 0) ...[
-              const SizedBox(width: 6),
-              Text(
-                '(${_formatVoteCount(voteCount)})',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Colors.white.withValues(alpha: 0.6),
-                ),
-              ),
-            ],
           ],
-        ),
+        ],
       );
 
-  String _formatVoteCount(int count) {
-    if (count >= 1000000) {
-      return '${(count / 1000000).toStringAsFixed(1)}M';
-    } else if (count >= 1000) {
-      return '${(count / 1000).toStringAsFixed(1)}K';
-    }
-    return count.toString();
-  }
+  /// 检查是否有媒体信息可显示
+  bool _hasMediaInfo() =>
+      metadata.certification != null ||
+      metadata.resolution != null ||
+      metadata.hdrFormat != null ||
+      metadata.audioFormat != null ||
+      metadata.videoSource != null ||
+      metadata.isRemux ||
+      metadata.is3D;
 
   /// 简介区域 (浮动在 Banner 上)
   Widget _buildOverviewSection(String overview, {bool large = false}) {

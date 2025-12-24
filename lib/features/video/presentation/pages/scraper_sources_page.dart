@@ -1,11 +1,15 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/video/domain/entities/scraper_source.dart';
 import 'package:my_nas/features/video/presentation/providers/scraper_provider.dart';
 
-/// 刮削源管理页面 - 简化版
-/// 所有刮削源类型直接显示，可展开配置，支持拖拽排序
+/// 刮削源管理页面
+/// - 点击需要配置的卡片弹出配置弹框
+/// - 长按拖拽调整顺序
 class ScraperSourcesPage extends ConsumerStatefulWidget {
   const ScraperSourcesPage({super.key});
 
@@ -14,53 +18,12 @@ class ScraperSourcesPage extends ConsumerStatefulWidget {
 }
 
 class _ScraperSourcesPageState extends ConsumerState<ScraperSourcesPage> {
-  // 展开状态管理
-  final Set<ScraperType> _expandedTypes = {};
-
-  // 各类型的配置控制器
-  final Map<ScraperType, _ScraperConfig> _configs = {};
-
-  // 正在测试的源 ID
   String? _testingSourceId;
-
-  @override
-  void initState() {
-    super.initState();
-    // 初始化所有类型的配置控制器
-    for (final type in ScraperType.values) {
-      _configs[type] = _ScraperConfig();
-    }
-  }
-
-  @override
-  void dispose() {
-    for (final config in _configs.values) {
-      config.dispose();
-    }
-    super.dispose();
-  }
-
-  /// 从现有数据加载配置到控制器
-  void _loadConfigFromSource(ScraperSourceEntity source) {
-    final config = _configs[source.type];
-    if (config == null) return;
-
-    config.apiKeyController.text = source.apiKey ?? '';
-    config.apiUrlController.text = source.apiUrl ?? '';
-    config.cookieController.text = source.cookie ?? '';
-
-    // TMDB 特有配置
-    if (source.type == ScraperType.tmdb) {
-      config.tmdbApiUrl = source.apiUrl ?? 'https://api.themoviedb.org/3';
-      config.imageProxyController.text = source.extraConfig?['imageProxy'] as String? ?? '';
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
     final sourcesAsync = ref.watch(scraperSourcesProvider);
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       backgroundColor: isDark ? AppColors.darkBackground : Colors.grey[50],
@@ -92,75 +55,42 @@ class _ScraperSourcesPageState extends ConsumerState<ScraperSourcesPage> {
   }
 
   Widget _buildContent(List<ScraperSourceEntity> sources, bool isDark) {
-    // 创建一个包含所有类型的列表，已配置的优先
-    final configuredTypes = sources.map((s) => s.type).toSet();
-    final allTypes = [
-      ...ScraperType.values.where(configuredTypes.contains),
-      ...ScraperType.values.where((t) => !configuredTypes.contains(t)),
-    ];
+    // 构建排序后的类型列表
+    final sortedTypes = _getSortedTypes(sources);
 
-    // 按已配置的源的优先级排序
-    final sortedTypes = <ScraperType>[];
-    for (final source in sources) {
-      if (!sortedTypes.contains(source.type)) {
-        sortedTypes.add(source.type);
-      }
-    }
-    for (final type in allTypes) {
-      if (!sortedTypes.contains(type)) {
-        sortedTypes.add(type);
-      }
-    }
+    return ReorderableListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: sortedTypes.length,
+      buildDefaultDragHandles: false,
+      onReorder: (oldIndex, newIndex) => _handleReorder(sources, sortedTypes, oldIndex, newIndex),
+      proxyDecorator: (child, index, animation) => Material(
+        elevation: 8,
+        borderRadius: BorderRadius.circular(16),
+        child: child,
+      ),
+      itemBuilder: (context, index) {
+        final type = sortedTypes[index];
+        final source = sources.where((s) => s.type == type).firstOrNull;
 
-    return Column(
-      children: [
-        // 刮削源列表
-        Expanded(
-          child: ReorderableListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: sortedTypes.length,
-            buildDefaultDragHandles: false,
-            onReorder: (oldIndex, newIndex) => _handleReorder(
-              sources,
-              sortedTypes,
-              oldIndex,
-              newIndex,
-            ),
-            proxyDecorator: (child, index, animation) => Material(
-              elevation: 8,
-              borderRadius: BorderRadius.circular(16),
-              child: child,
-            ),
-            itemBuilder: (context, index) {
-              final type = sortedTypes[index];
-              final source = sources.where((s) => s.type == type).firstOrNull;
-              final isExpanded = _expandedTypes.contains(type);
-
-              // 如果有已配置的源，加载配置
-              if (source != null && !_expandedTypes.contains(type)) {
-                _loadConfigFromSource(source);
-              }
-
-              return _ScraperTypeCard(
-                key: ValueKey(type),
-                index: index,
-                type: type,
-                source: source,
-                priorityNumber: index + 1,
-                isExpanded: isExpanded,
-                config: _configs[type]!,
-                onToggle: (enabled) => _handleToggle(type, source, enabled),
-                onExpandToggle: () => _toggleExpanded(type),
-                onSave: () => _saveConfig(type, source),
-                onTest: source != null ? () => _testConnection(source) : null,
-                isTesting: source != null && _testingSourceId == source.id,
-                isDark: Theme.of(context).brightness == Brightness.dark,
-              );
-            },
-          ),
-        ),
-      ],
+        return _ScraperTypeCard(
+          key: ValueKey(type),
+          index: index,
+          type: type,
+          source: source,
+          isDark: isDark,
+          isTesting: source != null && _testingSourceId == source.id,
+          onTap: () => _handleTap(type, source),
+          onToggle: (enabled) => _handleToggle(type, source, enabled),
+          onTest: source != null ? () => _testConnection(source) : null,
+        );
+      },
     );
+  }
+
+  List<ScraperType> _getSortedTypes(List<ScraperSourceEntity> sources) {
+    final configuredTypes = sources.map((s) => s.type).toList();
+    final unconfiguredTypes = ScraperType.values.where((t) => !configuredTypes.contains(t)).toList();
+    return [...configuredTypes, ...unconfiguredTypes];
   }
 
   void _handleReorder(
@@ -174,14 +104,10 @@ class _ScraperSourcesPageState extends ConsumerState<ScraperSourcesPage> {
       adjustedNewIndex -= 1;
     }
 
-    // 获取要移动的类型
     final type = sortedTypes[oldIndex];
-
-    // 找到对应的源
     final sourceIndex = sources.indexWhere((s) => s.type == type);
     if (sourceIndex == -1) return;
 
-    // 计算新的目标位置（在已配置的源中）
     final targetType = sortedTypes[adjustedNewIndex];
     final targetSourceIndex = sources.indexWhere((s) => s.type == targetType);
     if (targetSourceIndex == -1) return;
@@ -189,60 +115,30 @@ class _ScraperSourcesPageState extends ConsumerState<ScraperSourcesPage> {
     ref.read(scraperSourcesProvider.notifier).reorderSources(sourceIndex, targetSourceIndex);
   }
 
-  void _toggleExpanded(ScraperType type) {
-    setState(() {
-      if (_expandedTypes.contains(type)) {
-        _expandedTypes.remove(type);
-      } else {
-        _expandedTypes.add(type);
-      }
-    });
+  void _handleTap(ScraperType type, ScraperSourceEntity? source) {
+    final needsConfig = type.requiresApiKey || type.requiresApiUrl || type.requiresCookie;
+    if (!needsConfig) return;
+
+    _showConfigSheet(type, source);
   }
 
   Future<void> _handleToggle(ScraperType type, ScraperSourceEntity? source, bool enabled) async {
+    final needsConfig = type.requiresApiKey || type.requiresApiUrl || type.requiresCookie;
+
     if (source != null) {
-      // 已有配置记录
-      if (enabled && !source.isConfigured && _needsConfiguration(type)) {
-        // 尝试启用但未配置必要信息，展开卡片提示配置
-        setState(() {
-          _expandedTypes.add(type);
-        });
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('请先填写 ${type.displayName} 的配置信息'),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
+      if (enabled && !source.isConfigured && needsConfig) {
+        _showConfigSheet(type, source);
       } else {
-        // 已配置或关闭，直接切换启用状态
         await ref.read(scraperSourcesProvider.notifier).toggleSource(source.id, enabled: enabled);
       }
     } else if (enabled) {
-      // 没有配置记录，需要检查是否需要必填项
-      if (_needsConfiguration(type)) {
-        // 需要配置，展开卡片
-        setState(() {
-          _expandedTypes.add(type);
-        });
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('请先填写 ${type.displayName} 的配置信息'),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
+      if (needsConfig) {
+        _showConfigSheet(type, null);
       } else {
-        // 不需要配置，直接创建并启用
         await _createAndEnableSource(type);
       }
     }
   }
-
-  bool _needsConfiguration(ScraperType type) =>
-      type.requiresApiKey || type.requiresApiUrl || type.requiresCookie;
 
   Future<void> _createAndEnableSource(ScraperType type) async {
     final newSource = ScraperSourceEntity(
@@ -253,90 +149,70 @@ class _ScraperSourcesPageState extends ConsumerState<ScraperSourcesPage> {
     await ref.read(scraperSourcesProvider.notifier).addSource(newSource);
   }
 
-  Future<void> _saveConfig(ScraperType type, ScraperSourceEntity? existingSource) async {
-    final config = _configs[type]!;
+  void _showConfigSheet(ScraperType type, ScraperSourceEntity? source) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _VideoScraperConfigSheet(
+        type: type,
+        source: source,
+        onSave: (config) => _saveConfig(type, source, config),
+        onTest: source != null ? () => _testConnection(source) : null,
+        isTesting: source != null && _testingSourceId == source.id,
+      ),
+    );
+  }
 
-    // 验证必填项
-    if (type.requiresApiKey && config.apiKeyController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('请填写 API Key'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
-    if (type.requiresApiUrl && config.apiUrlController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('请填写 API 地址'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
-    if (type.requiresCookie && config.cookieController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('请填写 Cookie'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
-
-    // 处理 TMDB 特有配置
+  Future<void> _saveConfig(
+    ScraperType type,
+    ScraperSourceEntity? existingSource,
+    _VideoScraperConfigData config,
+  ) async {
     String? apiUrl;
     Map<String, dynamic>? extraConfig;
+
+    final apiKey = config.apiKey;
+    final cookie = config.cookie;
+    final configApiUrl = config.apiUrl;
+    final imageProxy = config.imageProxy;
+    final hasApiKey = apiKey != null && apiKey.isNotEmpty;
+    final hasCookie = cookie != null && cookie.isNotEmpty;
+    final hasConfigApiUrl = configApiUrl != null && configApiUrl.isNotEmpty;
+
     if (type == ScraperType.tmdb) {
       apiUrl = config.tmdbApiUrl;
-      final imageProxy = config.imageProxyController.text.trim();
-      if (imageProxy.isNotEmpty) {
+      if (imageProxy != null && imageProxy.isNotEmpty) {
         extraConfig = {'imageProxy': imageProxy};
       }
     } else {
-      apiUrl = config.apiUrlController.text.trim().isEmpty
-          ? null
-          : config.apiUrlController.text.trim();
+      apiUrl = hasConfigApiUrl ? configApiUrl : null;
     }
 
     if (existingSource != null) {
-      // 更新现有配置
       final updated = existingSource.copyWith(
-        apiKey: config.apiKeyController.text.trim().isEmpty
-            ? null
-            : config.apiKeyController.text.trim(),
+        apiKey: hasApiKey ? apiKey : null,
         apiUrl: apiUrl,
-        cookie: config.cookieController.text.trim().isEmpty
-            ? null
-            : config.cookieController.text.trim(),
+        cookie: hasCookie ? cookie : null,
         extraConfig: extraConfig ?? existingSource.extraConfig,
       );
       await ref.read(scraperSourcesProvider.notifier).updateSource(updated);
     } else {
-      // 创建新配置
       final newSource = ScraperSourceEntity(
         name: '',
         type: type,
         isEnabled: true,
-        apiKey: config.apiKeyController.text.trim().isEmpty
-            ? null
-            : config.apiKeyController.text.trim(),
+        apiKey: hasApiKey ? apiKey : null,
         apiUrl: apiUrl,
-        cookie: config.cookieController.text.trim().isEmpty
-            ? null
-            : config.cookieController.text.trim(),
+        cookie: hasCookie ? cookie : null,
         extraConfig: extraConfig,
       );
       await ref.read(scraperSourcesProvider.notifier).addSource(newSource);
     }
 
-    // 收起卡片
-    setState(() {
-      _expandedTypes.remove(type);
-    });
-
     if (mounted) {
+      Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('${type.displayName} 配置已保存'),
@@ -347,17 +223,12 @@ class _ScraperSourcesPageState extends ConsumerState<ScraperSourcesPage> {
   }
 
   Future<void> _testConnection(ScraperSourceEntity source) async {
-    // 避免重复测试
     if (_testingSourceId != null) return;
 
-    setState(() {
-      _testingSourceId = source.id;
-    });
+    setState(() => _testingSourceId = source.id);
 
     try {
-      final success =
-          await ref.read(scraperSourcesProvider.notifier).testConnection(source);
-
+      final success = await ref.read(scraperSourcesProvider.notifier).testConnection(source);
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -369,7 +240,6 @@ class _ScraperSourcesPageState extends ConsumerState<ScraperSourcesPage> {
       );
     } on Exception catch (e) {
       if (!mounted) return;
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('连接失败: $e'),
@@ -378,336 +248,457 @@ class _ScraperSourcesPageState extends ConsumerState<ScraperSourcesPage> {
         ),
       );
     } finally {
-      if (mounted) {
-        setState(() {
-          _testingSourceId = null;
-        });
-      }
+      if (mounted) setState(() => _testingSourceId = null);
     }
   }
 }
 
-/// 刮削源配置控制器
-class _ScraperConfig {
-  final apiKeyController = TextEditingController();
-  final apiUrlController = TextEditingController();
-  final cookieController = TextEditingController();
-  final imageProxyController = TextEditingController();
-
-  /// TMDB API URL（默认官方）
-  String tmdbApiUrl = 'https://api.themoviedb.org/3';
-
-  void dispose() {
-    apiKeyController.dispose();
-    apiUrlController.dispose();
-    cookieController.dispose();
-    imageProxyController.dispose();
-  }
-}
-
-/// 刮削源类型卡片
-class _ScraperTypeCard extends StatefulWidget {
+/// 刮削源卡片
+class _ScraperTypeCard extends StatelessWidget {
   const _ScraperTypeCard({
     super.key,
     required this.index,
     required this.type,
     required this.source,
-    required this.priorityNumber,
-    required this.isExpanded,
-    required this.config,
-    required this.onToggle,
-    required this.onExpandToggle,
-    required this.onSave,
-    required this.onTest,
-    required this.isTesting,
     required this.isDark,
+    required this.isTesting,
+    required this.onTap,
+    required this.onToggle,
+    required this.onTest,
   });
 
   final int index;
   final ScraperType type;
   final ScraperSourceEntity? source;
-  final int priorityNumber;
-  final bool isExpanded;
-  final _ScraperConfig config;
-  final void Function(bool) onToggle;
-  final VoidCallback onExpandToggle;
-  final VoidCallback onSave;
-  final VoidCallback? onTest;
-  final bool isTesting;
   final bool isDark;
+  final bool isTesting;
+  final VoidCallback onTap;
+  final void Function(bool) onToggle;
+  final VoidCallback? onTest;
 
-  @override
-  State<_ScraperTypeCard> createState() => _ScraperTypeCardState();
-}
-
-class _ScraperTypeCardState extends State<_ScraperTypeCard> {
-  bool _obscureApiKey = true;
-  bool _obscureCookie = true;
-
-  bool get _isEnabled => widget.source?.isEnabled ?? false;
-  bool get _isConfigured => widget.source?.isConfigured ?? false;
-  bool get _needsConfig =>
-      widget.type.requiresApiKey ||
-      widget.type.requiresApiUrl ||
-      widget.type.requiresCookie;
+  bool get _isEnabled => source?.isEnabled ?? false;
+  bool get _isConfigured => source?.isConfigured ?? false;
+  bool get _needsConfig => type.requiresApiKey || type.requiresApiUrl || type.requiresCookie;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Material(
-        color: widget.isDark ? AppColors.darkSurfaceElevated : Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        elevation: widget.isExpanded ? 4 : 1,
-        shadowColor: widget.type.themeColor.withValues(alpha: 0.3),
-        child: Column(
-          children: [
-            // 主卡片内容
-            InkWell(
-              onTap: _needsConfig ? widget.onExpandToggle : null,
-              borderRadius: BorderRadius.circular(16),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    // 拖动手柄
-                    ReorderableDragStartListener(
-                      index: widget.index,
-                      child: Icon(
-                        Icons.drag_handle,
-                        color: widget.isDark ? Colors.grey[500] : Colors.grey[400],
-                      ),
+    return ReorderableDelayedDragStartListener(
+      index: index,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        child: Material(
+          color: isDark ? AppColors.darkSurfaceElevated : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          elevation: 1,
+          shadowColor: type.themeColor.withValues(alpha: 0.3),
+          child: InkWell(
+            onTap: _needsConfig ? onTap : null,
+            borderRadius: BorderRadius.circular(16),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                children: [
+                  // 图标
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: _isEnabled
+                          ? type.themeColor.withValues(alpha: 0.15)
+                          : (isDark ? Colors.grey[800] : Colors.grey[200]),
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    const SizedBox(width: 12),
-
-                    // 图标（带主题色背景）
-                    Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: _isEnabled
-                            ? widget.type.themeColor.withValues(alpha: 0.15)
-                            : (widget.isDark ? Colors.grey[800] : Colors.grey[200]),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(
-                        widget.type.icon,
-                        size: 26,
-                        color: _isEnabled
-                            ? widget.type.themeColor
-                            : (widget.isDark ? Colors.grey[600] : Colors.grey[400]),
-                      ),
+                    child: Icon(
+                      type.icon,
+                      size: 24,
+                      color: _isEnabled
+                          ? type.themeColor
+                          : (isDark ? Colors.grey[600] : Colors.grey[400]),
                     ),
-                    const SizedBox(width: 16),
+                  ),
+                  const SizedBox(width: 12),
 
-                    // 名称和描述
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Text(
-                                widget.type.displayName,
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                  color: _isEnabled
-                                      ? null
-                                      : (widget.isDark
-                                          ? Colors.grey[500]
-                                          : Colors.grey[600]),
+                  // 名称和描述
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              type.displayName,
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: _isEnabled
+                                    ? null
+                                    : (isDark ? Colors.grey[500] : Colors.grey[600]),
+                              ),
+                            ),
+                            if (_isConfigured) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: Colors.green.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text(
+                                  '已配置',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.green,
+                                    fontWeight: FontWeight.w500,
+                                  ),
                                 ),
                               ),
-                              if (_isConfigured) ...[
-                                const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 6,
-                                    vertical: 2,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.green.withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: const Text(
-                                    '已配置',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      color: Colors.green,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ),
-                              ],
                             ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _getDescription(),
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: widget.isDark ? Colors.grey[500] : Colors.grey[600],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    // 展开/收起按钮（如果需要配置）
-                    if (_needsConfig) ...[
-                      IconButton(
-                        onPressed: widget.onExpandToggle,
-                        icon: Icon(
-                          widget.isExpanded
-                              ? Icons.expand_less_rounded
-                              : Icons.expand_more_rounded,
-                          color: widget.isDark ? Colors.grey[500] : Colors.grey[400],
+                          ],
                         ),
-                        tooltip: widget.isExpanded ? '收起配置' : '展开配置',
-                        visualDensity: VisualDensity.compact,
-                      ),
-                    ],
-
-                    // 启用开关
-                    Switch(
-                      value: _isEnabled,
-                      onChanged: widget.onToggle,
-                      activeTrackColor: widget.type.themeColor.withValues(alpha: 0.5),
-                      activeThumbColor: widget.type.themeColor,
+                        const SizedBox(height: 4),
+                        Text(
+                          _getDescription(),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: isDark ? Colors.grey[500] : Colors.grey[600],
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+
+                  // 配置按钮（如果需要配置）
+                  if (_needsConfig)
+                    IconButton(
+                      onPressed: onTap,
+                      icon: Icon(
+                        Icons.settings_outlined,
+                        color: isDark ? Colors.grey[500] : Colors.grey[400],
+                        size: 22,
+                      ),
+                      tooltip: '配置',
+                      visualDensity: VisualDensity.compact,
+                    ),
+
+                  // 启用开关
+                  Switch(
+                    value: _isEnabled,
+                    onChanged: onToggle,
+                    activeTrackColor: type.themeColor.withValues(alpha: 0.5),
+                    activeThumbColor: type.themeColor,
+                  ),
+                ],
               ),
             ),
-
-            // 展开的配置区域
-            if (widget.isExpanded) _buildExpandedContent(theme),
-          ],
+          ),
         ),
       ),
     );
   }
 
   String _getDescription() {
-    if (!_needsConfig) {
-      return '内置服务，无需配置';
+    if (!_needsConfig) return '内置服务，无需配置';
+    if (type.requiresApiKey) return '需要 API Key';
+    if (type.requiresApiUrl) return '需要 API 地址';
+    if (type.requiresCookie) return '需要登录 Cookie';
+    return type.description;
+  }
+}
+
+/// 配置数据
+class _VideoScraperConfigData {
+  String? apiKey;
+  String? apiUrl;
+  String? cookie;
+  String? tmdbApiUrl;
+  String? imageProxy;
+}
+
+/// 配置弹框
+class _VideoScraperConfigSheet extends StatefulWidget {
+  const _VideoScraperConfigSheet({
+    required this.type,
+    required this.source,
+    required this.onSave,
+    required this.onTest,
+    required this.isTesting,
+  });
+
+  final ScraperType type;
+  final ScraperSourceEntity? source;
+  final void Function(_VideoScraperConfigData) onSave;
+  final VoidCallback? onTest;
+  final bool isTesting;
+
+  @override
+  State<_VideoScraperConfigSheet> createState() => _VideoScraperConfigSheetState();
+}
+
+class _VideoScraperConfigSheetState extends State<_VideoScraperConfigSheet> {
+  final _apiKeyController = TextEditingController();
+  final _apiUrlController = TextEditingController();
+  final _cookieController = TextEditingController();
+  final _imageProxyController = TextEditingController();
+  String _tmdbApiUrl = 'https://api.themoviedb.org/3';
+  bool _obscureApiKey = true;
+  bool _obscureCookie = true;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.source != null) {
+      _apiKeyController.text = widget.source!.apiKey ?? '';
+      _apiUrlController.text = widget.source!.apiUrl ?? '';
+      _cookieController.text = widget.source!.cookie ?? '';
+      if (widget.type == ScraperType.tmdb) {
+        _tmdbApiUrl = widget.source!.apiUrl ?? 'https://api.themoviedb.org/3';
+        _imageProxyController.text = widget.source!.extraConfig?['imageProxy'] as String? ?? '';
+      }
     }
-    if (widget.type.requiresApiKey) {
-      return '需要 API Key';
-    }
-    if (widget.type.requiresApiUrl) {
-      return '需要 API 地址';
-    }
-    if (widget.type.requiresCookie) {
-      return '需要登录 Cookie';
-    }
-    return widget.type.description;
   }
 
-  Widget _buildExpandedContent(ThemeData theme) => Container(
-        decoration: BoxDecoration(
-          color: widget.isDark
-              ? Colors.black.withValues(alpha: 0.2)
-              : Colors.grey[50],
-          borderRadius: const BorderRadius.only(
-            bottomLeft: Radius.circular(16),
-            bottomRight: Radius.circular(16),
-          ),
-        ),
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // API Key 输入
-            if (widget.type.requiresApiKey || widget.type == ScraperType.doubanApi) ...[
-              _buildConfigField(
-                label: 'API Key',
-                hint: widget.type == ScraperType.tmdb
-                    ? '从 themoviedb.org 获取'
-                    : '可选',
-                controller: widget.config.apiKeyController,
-                isRequired: widget.type.requiresApiKey,
-                isObscure: _obscureApiKey,
-                onToggleObscure: () => setState(() => _obscureApiKey = !_obscureApiKey),
-              ),
-              const SizedBox(height: 16),
-            ],
+  @override
+  void dispose() {
+    _apiKeyController.dispose();
+    _apiUrlController.dispose();
+    _cookieController.dispose();
+    _imageProxyController.dispose();
+    super.dispose();
+  }
 
-            // TMDB API URL 选择
-            if (widget.type == ScraperType.tmdb) ...[
-              _buildTmdbApiUrlDropdown(),
-              const SizedBox(height: 16),
-              _buildConfigField(
-                label: '图片代理',
-                hint: '留空使用官方源 image.tmdb.org',
-                controller: widget.config.imageProxyController,
-                isRequired: false,
-                isUrl: true,
-              ),
-              const SizedBox(height: 16),
-            ],
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-            // API URL 输入
-            if (widget.type.requiresApiUrl) ...[
-              _buildConfigField(
-                label: 'API 地址',
-                hint: '第三方豆瓣 API 服务地址',
-                controller: widget.config.apiUrlController,
-                isRequired: true,
-                isUrl: true,
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      minChildSize: 0.4,
+      maxChildSize: 0.9,
+      expand: false,
+      builder: (context, scrollController) => ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: isDark
+                  ? AppColors.darkSurface.withValues(alpha: 0.95)
+                  : AppColors.lightSurface.withValues(alpha: 0.98),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              border: Border(
+                top: BorderSide(
+                  color: isDark ? AppColors.glassStroke : AppColors.lightOutline.withValues(alpha: 0.2),
+                ),
               ),
-              const SizedBox(height: 16),
-            ],
-
-            // Cookie 输入
-            if (widget.type.requiresCookie) ...[
-              _buildConfigField(
-                label: 'Cookie',
-                hint: '从浏览器复制登录后的 Cookie',
-                controller: widget.config.cookieController,
-                isRequired: true,
-                isObscure: _obscureCookie,
-                onToggleObscure: () => setState(() => _obscureCookie = !_obscureCookie),
-                isMultiline: true,
-              ),
-              const SizedBox(height: 16),
-            ],
-
-            // 操作按钮
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+            ),
+            child: Column(
               children: [
-                if (widget.onTest != null)
-                  TextButton.icon(
-                    onPressed: widget.isTesting ? null : widget.onTest,
-                    icon: widget.isTesting
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.wifi_tethering_rounded, size: 18),
-                    label: Text(widget.isTesting ? '测试中...' : '测试'),
+                // 拖动指示器
+                Container(
+                  margin: const EdgeInsets.only(top: 12, bottom: 8),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.3)
+                        : AppColors.lightOnSurfaceVariant.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(2),
                   ),
-                const SizedBox(width: 8),
-                FilledButton.icon(
-                  onPressed: widget.isTesting ? null : widget.onSave,
-                  icon: const Icon(Icons.check_rounded, size: 18),
-                  label: const Text('保存'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: widget.type.themeColor,
+                ),
+                // 标题栏
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: widget.type.themeColor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(widget.type.icon, color: widget.type.themeColor, size: 20),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.type.displayName,
+                              style: context.textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: isDark ? AppColors.darkOnSurface : null,
+                              ),
+                            ),
+                            Text(
+                              widget.type.description,
+                              style: context.textTheme.bodySmall?.copyWith(
+                                color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                    ],
+                  ),
+                ),
+                Divider(
+                  height: 1,
+                  color: isDark
+                      ? AppColors.darkOutline.withValues(alpha: 0.2)
+                      : AppColors.lightOutline.withValues(alpha: 0.3),
+                ),
+                // 表单内容
+                Expanded(
+                  child: ListView(
+                    controller: scrollController,
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      // API Key
+                      if (widget.type.requiresApiKey || widget.type == ScraperType.doubanApi) ...[
+                        _buildTextField(
+                          label: 'API Key',
+                          hint: widget.type == ScraperType.tmdb ? '从 themoviedb.org 获取' : '可选',
+                          controller: _apiKeyController,
+                          isRequired: widget.type.requiresApiKey,
+                          isObscure: _obscureApiKey,
+                          onToggleObscure: () => setState(() => _obscureApiKey = !_obscureApiKey),
+                          isDark: isDark,
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+
+                      // TMDB 特有配置
+                      if (widget.type == ScraperType.tmdb) ...[
+                        _buildTmdbApiUrlDropdown(isDark),
+                        const SizedBox(height: 16),
+                        _buildTextField(
+                          label: '图片代理',
+                          hint: '留空使用官方源 image.tmdb.org',
+                          controller: _imageProxyController,
+                          isRequired: false,
+                          isUrl: true,
+                          isDark: isDark,
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+
+                      // API URL
+                      if (widget.type.requiresApiUrl) ...[
+                        _buildTextField(
+                          label: 'API 地址',
+                          hint: '第三方豆瓣 API 服务地址',
+                          controller: _apiUrlController,
+                          isRequired: true,
+                          isUrl: true,
+                          isDark: isDark,
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+
+                      // Cookie
+                      if (widget.type.requiresCookie) ...[
+                        _buildTextField(
+                          label: 'Cookie',
+                          hint: '从浏览器复制登录后的 Cookie',
+                          controller: _cookieController,
+                          isRequired: true,
+                          isObscure: _obscureCookie,
+                          onToggleObscure: () => setState(() => _obscureCookie = !_obscureCookie),
+                          isMultiline: true,
+                          isDark: isDark,
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+                    ],
+                  ),
+                ),
+                // 底部按钮
+                Container(
+                  padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + MediaQuery.of(context).padding.bottom),
+                  decoration: BoxDecoration(
+                    color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+                    border: Border(
+                      top: BorderSide(
+                        color: isDark
+                            ? AppColors.darkOutline.withValues(alpha: 0.2)
+                            : AppColors.lightOutline.withValues(alpha: 0.3),
+                      ),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      if (widget.onTest != null)
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: widget.isTesting ? null : widget.onTest,
+                            icon: widget.isTesting
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                : const Icon(Icons.wifi_tethering_rounded, size: 18),
+                            label: Text(widget.isTesting ? '测试中...' : '测试连接'),
+                          ),
+                        ),
+                      if (widget.onTest != null) const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: _handleSave,
+                          icon: const Icon(Icons.check_rounded, size: 18),
+                          label: const Text('保存'),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: widget.type.themeColor,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
-          ],
+          ),
         ),
-      );
+      ),
+    );
+  }
 
-  /// TMDB API URL 下拉选择
-  Widget _buildTmdbApiUrlDropdown() {
+  void _handleSave() {
+    // 验证必填项
+    if (widget.type.requiresApiKey && _apiKeyController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请填写 API Key'), behavior: SnackBarBehavior.floating),
+      );
+      return;
+    }
+    if (widget.type.requiresApiUrl && _apiUrlController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请填写 API 地址'), behavior: SnackBarBehavior.floating),
+      );
+      return;
+    }
+    if (widget.type.requiresCookie && _cookieController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请填写 Cookie'), behavior: SnackBarBehavior.floating),
+      );
+      return;
+    }
+
+    widget.onSave(_VideoScraperConfigData()
+      ..apiKey = _apiKeyController.text.trim()
+      ..apiUrl = _apiUrlController.text.trim()
+      ..cookie = _cookieController.text.trim()
+      ..tmdbApiUrl = _tmdbApiUrl
+      ..imageProxy = _imageProxyController.text.trim());
+  }
+
+  Widget _buildTmdbApiUrlDropdown(bool isDark) {
     const options = [
       ('https://api.themoviedb.org/3', 'TMDB 官方', 'api.themoviedb.org（默认）'),
       ('https://api.tmdb.org/3', 'TMDB 备用', 'api.tmdb.org'),
@@ -723,25 +714,23 @@ class _ScraperTypeCardState extends State<_ScraperTypeCard> {
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w500,
-            color: widget.isDark ? Colors.grey[300] : Colors.grey[700],
+            color: isDark ? Colors.grey[300] : Colors.grey[700],
           ),
         ),
         const SizedBox(height: 8),
         DecoratedBox(
           decoration: BoxDecoration(
-            color: widget.isDark ? Colors.grey[900] : Colors.white,
+            color: isDark ? Colors.grey[900] : Colors.white,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: widget.isDark ? Colors.grey[700]! : Colors.grey[300]!,
-            ),
+            border: Border.all(color: isDark ? Colors.grey[700]! : Colors.grey[300]!),
           ),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<String>(
-              value: widget.config.tmdbApiUrl,
+              value: _tmdbApiUrl,
               isExpanded: true,
               padding: const EdgeInsets.symmetric(horizontal: 14),
               borderRadius: BorderRadius.circular(10),
-              dropdownColor: widget.isDark ? Colors.grey[850] : Colors.white,
+              dropdownColor: isDark ? Colors.grey[850] : Colors.white,
               items: options.map((option) {
                 final (value, label, description) = option;
                 return DropdownMenuItem<String>(
@@ -755,7 +744,7 @@ class _ScraperTypeCardState extends State<_ScraperTypeCard> {
                         description,
                         style: TextStyle(
                           fontSize: 11,
-                          color: widget.isDark ? Colors.grey[500] : Colors.grey[600],
+                          color: isDark ? Colors.grey[500] : Colors.grey[600],
                         ),
                       ),
                     ],
@@ -763,11 +752,7 @@ class _ScraperTypeCardState extends State<_ScraperTypeCard> {
                 );
               }).toList(),
               onChanged: (value) {
-                if (value != null) {
-                  setState(() {
-                    widget.config.tmdbApiUrl = value;
-                  });
-                }
+                if (value != null) setState(() => _tmdbApiUrl = value);
               },
             ),
           ),
@@ -776,10 +761,11 @@ class _ScraperTypeCardState extends State<_ScraperTypeCard> {
     );
   }
 
-  Widget _buildConfigField({
+  Widget _buildTextField({
     required String label,
     required String hint,
     required TextEditingController controller,
+    required bool isDark,
     bool isRequired = false,
     bool isObscure = false,
     bool isUrl = false,
@@ -795,15 +781,12 @@ class _ScraperTypeCardState extends State<_ScraperTypeCard> {
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w500,
-                  color: widget.isDark ? Colors.grey[300] : Colors.grey[700],
+                  color: isDark ? Colors.grey[300] : Colors.grey[700],
                 ),
               ),
               if (isRequired) ...[
                 const SizedBox(width: 4),
-                const Text(
-                  '*',
-                  style: TextStyle(color: Colors.red, fontSize: 13),
-                ),
+                const Text('*', style: TextStyle(color: Colors.red, fontSize: 13)),
               ],
             ],
           ),
@@ -816,43 +799,28 @@ class _ScraperTypeCardState extends State<_ScraperTypeCard> {
             style: const TextStyle(fontSize: 14),
             decoration: InputDecoration(
               hintText: hint,
-              hintStyle: TextStyle(
-                fontSize: 13,
-                color: widget.isDark ? Colors.grey[600] : Colors.grey[400],
-              ),
+              hintStyle: TextStyle(fontSize: 13, color: isDark ? Colors.grey[600] : Colors.grey[400]),
               filled: true,
-              fillColor: widget.isDark ? Colors.grey[900] : Colors.white,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 12,
-              ),
+              fillColor: isDark ? Colors.grey[900] : Colors.white,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide(
-                  color: widget.isDark ? Colors.grey[700]! : Colors.grey[300]!,
-                ),
+                borderSide: BorderSide(color: isDark ? Colors.grey[700]! : Colors.grey[300]!),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide(
-                  color: widget.isDark ? Colors.grey[700]! : Colors.grey[300]!,
-                ),
+                borderSide: BorderSide(color: isDark ? Colors.grey[700]! : Colors.grey[300]!),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide(
-                  color: widget.type.themeColor,
-                  width: 2,
-                ),
+                borderSide: BorderSide(color: widget.type.themeColor, width: 2),
               ),
               suffixIcon: onToggleObscure != null
                   ? IconButton(
                       icon: Icon(
-                        isObscure
-                            ? Icons.visibility_outlined
-                            : Icons.visibility_off_outlined,
+                        isObscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
                         size: 20,
-                        color: widget.isDark ? Colors.grey[500] : Colors.grey[600],
+                        color: isDark ? Colors.grey[500] : Colors.grey[600],
                       ),
                       onPressed: onToggleObscure,
                     )

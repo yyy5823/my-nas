@@ -121,6 +121,20 @@ class VideoDatabaseService {
   static const String _colResolution = 'resolution'; // 视频分辨率 (4K, 1080p, 720p 等)
   static const String _colLocalizedTitles = 'localized_titles'; // 多语言标题 JSON
   static const String _colLocalizedOverviews = 'localized_overviews'; // 多语言简介 JSON
+  // 扩展视频信息
+  static const String _colVideoSource = 'video_source'; // 视频来源（BluRay, WEB-DL）
+  static const String _colVideoCodec = 'video_codec'; // 视频编码（HEVC, x265）
+  static const String _colHdrFormat = 'hdr_format'; // HDR 格式（HDR10, Dolby Vision）
+  static const String _colAudioFormat = 'audio_format'; // 音频格式（Atmos, DTS-HD MA）
+  static const String _colIs3D = 'is_3d'; // 是否 3D 内容
+  static const String _colIsRemux = 'is_remux'; // 是否 Remux 版本
+  // 扩展评分
+  static const String _colImdbId = 'imdb_id'; // IMDb ID
+  static const String _colImdbRating = 'imdb_rating'; // IMDb 评分
+  static const String _colMetacriticRating = 'metacritic_rating'; // Metacritic 评分
+  static const String _colTraktRating = 'trakt_rating'; // Trakt 评分
+  // 内容分级
+  static const String _colCertification = 'certification'; // 内容分级（PG, R 等）
 
   // 字幕表
   static const String _tableSubtitles = 'video_subtitles';
@@ -189,7 +203,7 @@ class VideoDatabaseService {
 
       _db = await openDatabase(
         dbPath,
-        version: 15, // 升级版本以添加系列海报字段
+        version: 17, // 添加扩展视频信息、评分和内容分级字段
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onConfigure: _onConfigure,
@@ -258,6 +272,8 @@ class VideoDatabaseService {
         $_colFileModifiedTime INTEGER,
         $_colCollectionId INTEGER,
         $_colCollectionName TEXT,
+        $_colCollectionPosterUrl TEXT,
+        $_colCollectionBackdropUrl TEXT,
         $_colHasNfo INTEGER DEFAULT 0,
         $_colScrapePriority INTEGER DEFAULT 2,
         $_colShowDirectory TEXT,
@@ -265,6 +281,17 @@ class VideoDatabaseService {
         $_colResolution TEXT,
         $_colLocalizedTitles TEXT,
         $_colLocalizedOverviews TEXT,
+        $_colVideoSource TEXT,
+        $_colVideoCodec TEXT,
+        $_colHdrFormat TEXT,
+        $_colAudioFormat TEXT,
+        $_colIs3D INTEGER DEFAULT 0,
+        $_colIsRemux INTEGER DEFAULT 0,
+        $_colImdbId TEXT,
+        $_colImdbRating REAL,
+        $_colMetacriticRating INTEGER,
+        $_colTraktRating REAL,
+        $_colCertification TEXT,
         UNIQUE($_colSourceId, $_colFilePath)
       )
     ''');
@@ -638,6 +665,54 @@ class VideoDatabaseService {
     logger.i('VideoDatabaseService: resolution 迁移完成');
   }
 
+  /// 迁移扩展视频信息（从文件名解析 HDR、音频格式等）
+  Future<void> _migrateExtendedVideoInfo(Database db) async {
+    // 获取所有没有扩展视频信息的记录
+    final videos = await db.query(
+      _tableMetadata,
+      columns: [_colId, _colFileName],
+      where: '$_colVideoSource IS NULL AND $_colHdrFormat IS NULL',
+    );
+
+    if (videos.isEmpty) {
+      logger.d('VideoDatabaseService: 无视频需要迁移扩展视频信息');
+      return;
+    }
+
+    logger.i('VideoDatabaseService: 开始迁移 ${videos.length} 条视频的扩展视频信息');
+
+    // 批量更新
+    final batch = db.batch();
+    for (final row in videos) {
+      final id = row[_colId] as int?;
+      final fileName = row[_colFileName] as String?;
+      if (id == null || fileName == null) continue;
+
+      final fileInfo = VideoFileNameParser.parse(fileName);
+
+      // 只有当解析出有效信息时才更新
+      final updates = <String, dynamic>{};
+      if (fileInfo.source != null) updates[_colVideoSource] = fileInfo.source;
+      if (fileInfo.codec != null) updates[_colVideoCodec] = fileInfo.codec;
+      if (fileInfo.hdrFormat != null) updates[_colHdrFormat] = fileInfo.hdrFormat;
+      if (fileInfo.audioFormat != null) updates[_colAudioFormat] = fileInfo.audioFormat;
+      if (fileInfo.is3D) updates[_colIs3D] = 1;
+      if (fileInfo.isRemux) updates[_colIsRemux] = 1;
+
+      if (updates.isNotEmpty) {
+        batch.update(
+          _tableMetadata,
+          updates,
+          where: '$_colId = ?',
+          whereArgs: [id],
+        );
+      }
+    }
+
+    await batch.commit(noResult: true);
+    logger.i('VideoDatabaseService: 扩展视频信息迁移完成');
+  }
+
   /// 数据库升级
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     logger.i('VideoDatabaseService: 数据库升级 $oldVersion -> $newVersion');
@@ -824,6 +899,58 @@ class VideoDatabaseService {
           'ALTER TABLE $_tableMetadata ADD COLUMN $_colCollectionBackdropUrl TEXT');
 
       logger.i('VideoDatabaseService: 版本14->15 升级完成（添加系列海报字段）');
+    }
+
+    // 从版本15升级到版本16
+    // 修复：版本15的迁移可能在某些情况下没有成功执行，导致列缺失
+    if (oldVersion < 16) {
+      // 安全地检查并添加缺失的列
+      await _safeAddColumn(
+          db, _tableMetadata, _colCollectionPosterUrl, 'TEXT');
+      await _safeAddColumn(
+          db, _tableMetadata, _colCollectionBackdropUrl, 'TEXT');
+
+      logger.i('VideoDatabaseService: 版本15->16 升级完成（修复系列海报字段）');
+    }
+
+    // 从版本16升级到版本17
+    if (oldVersion < 17) {
+      // 添加扩展视频信息字段
+      await _safeAddColumn(db, _tableMetadata, _colVideoSource, 'TEXT');
+      await _safeAddColumn(db, _tableMetadata, _colVideoCodec, 'TEXT');
+      await _safeAddColumn(db, _tableMetadata, _colHdrFormat, 'TEXT');
+      await _safeAddColumn(db, _tableMetadata, _colAudioFormat, 'TEXT');
+      await _safeAddColumn(db, _tableMetadata, _colIs3D, 'INTEGER DEFAULT 0');
+      await _safeAddColumn(db, _tableMetadata, _colIsRemux, 'INTEGER DEFAULT 0');
+      // 添加扩展评分字段
+      await _safeAddColumn(db, _tableMetadata, _colImdbId, 'TEXT');
+      await _safeAddColumn(db, _tableMetadata, _colImdbRating, 'REAL');
+      await _safeAddColumn(db, _tableMetadata, _colMetacriticRating, 'INTEGER');
+      await _safeAddColumn(db, _tableMetadata, _colTraktRating, 'REAL');
+      // 添加内容分级字段
+      await _safeAddColumn(db, _tableMetadata, _colCertification, 'TEXT');
+
+      // 迁移现有数据：从文件名解析扩展视频信息
+      await _migrateExtendedVideoInfo(db);
+
+      logger.i('VideoDatabaseService: 版本16->17 升级完成（添加扩展视频信息、评分和内容分级字段）');
+    }
+  }
+
+  /// 安全地添加列（如果列不存在则添加，存在则忽略）
+  Future<void> _safeAddColumn(
+    Database db,
+    String table,
+    String column,
+    String type,
+  ) async {
+    // 检查列是否已存在
+    final columns = await db.rawQuery('PRAGMA table_info($table)');
+    final columnExists = columns.any((col) => col['name'] == column);
+
+    if (!columnExists) {
+      await db.execute('ALTER TABLE $table ADD COLUMN $column $type');
+      logger.d('VideoDatabaseService: 添加列 $table.$column');
     }
   }
 
@@ -2147,6 +2274,20 @@ class VideoDatabaseService {
         _colLocalizedOverviews: m.localizedOverviews != null
             ? _encodeLocalizedMap(m.localizedOverviews!)
             : null,
+        // 扩展视频信息
+        _colVideoSource: m.videoSource,
+        _colVideoCodec: m.videoCodec,
+        _colHdrFormat: m.hdrFormat,
+        _colAudioFormat: m.audioFormat,
+        _colIs3D: m.is3D ? 1 : 0,
+        _colIsRemux: m.isRemux ? 1 : 0,
+        // 扩展评分
+        _colImdbId: m.imdbId,
+        _colImdbRating: m.imdbRating,
+        _colMetacriticRating: m.metacriticRating,
+        _colTraktRating: m.traktRating,
+        // 内容分级
+        _colCertification: m.certification,
       };
 
   /// 编码多语言 Map 为 JSON 字符串
@@ -2212,6 +2353,20 @@ class VideoDatabaseService {
         resolution: row[_colResolution] as String?,
         localizedTitles: _parseLocalizedJson(row[_colLocalizedTitles] as String?),
         localizedOverviews: _parseLocalizedJson(row[_colLocalizedOverviews] as String?),
+        // 扩展视频信息
+        videoSource: row[_colVideoSource] as String?,
+        videoCodec: row[_colVideoCodec] as String?,
+        hdrFormat: row[_colHdrFormat] as String?,
+        audioFormat: row[_colAudioFormat] as String?,
+        is3D: row[_colIs3D] == 1,
+        isRemux: row[_colIsRemux] == 1,
+        // 扩展评分
+        imdbId: row[_colImdbId] as String?,
+        imdbRating: (row[_colImdbRating] as num?)?.toDouble(),
+        metacriticRating: row[_colMetacriticRating] as int?,
+        traktRating: (row[_colTraktRating] as num?)?.toDouble(),
+        // 内容分级
+        certification: row[_colCertification] as String?,
       );
 
   /// 解析 JSON 字符串为多语言 Map
@@ -2682,6 +2837,29 @@ class VideoDatabaseService {
     final results = await _db!.query(
       _tableMetadata,
       where: '$_colCategory = ? AND $_colTmdbId IS NOT NULL AND $_colCollectionId IS NULL',
+      whereArgs: [MediaCategory.movie.index],
+    );
+
+    return results.map(_fromRow).toList();
+  }
+
+  /// 获取有 TMDB ID 但缺少地区、类型等元数据的电影
+  ///
+  /// 用于批量更新元数据
+  Future<List<VideoMetadata>> getMoviesWithIncompleteMetadata() async {
+    if (!_initialized) await init();
+
+    // 查找有 TMDB ID 但缺少地区或类型信息的电影
+    final results = await _db!.query(
+      _tableMetadata,
+      where: '''
+        $_colCategory = ?
+        AND $_colTmdbId IS NOT NULL
+        AND (
+          $_colCountries IS NULL OR $_colCountries = ''
+          OR $_colGenres IS NULL OR $_colGenres = ''
+        )
+      ''',
       whereArgs: [MediaCategory.movie.index],
     );
 

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:battery_plus/battery_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_foliate_viewer/flutter_foliate_viewer.dart';
@@ -148,6 +149,12 @@ class _EbookReaderPageState extends ConsumerState<EbookReaderPage> {
   String? _initialCfi;
   List<FoliateTocItem> _tocItems = [];
 
+  // 时间和电池状态
+  Timer? _clockTimer;
+  DateTime _currentTime = DateTime.now();
+  int _batteryLevel = 100;
+  bool _isCharging = false;
+
   /// 展平的目录列表（包含层级深度信息）
   List<(FoliateTocItem, int)> get _flattenedTocItems {
     final result = <(FoliateTocItem, int)>[];
@@ -174,6 +181,55 @@ class _EbookReaderPageState extends ConsumerState<EbookReaderPage> {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _initWakelock();
     _loadProgress();
+    _initClockAndBattery();
+  }
+
+  Future<void> _initClockAndBattery() async {
+    // 每分钟更新一次时间
+    _clockTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) {
+        setState(() {
+          _currentTime = DateTime.now();
+        });
+      }
+    });
+
+    // 获取电池状态
+    await _updateBatteryStatus();
+  }
+
+  Future<void> _updateBatteryStatus() async {
+    try {
+      final battery = Battery();
+      final level = await battery.batteryLevel;
+      final state = await battery.batteryState;
+      if (mounted) {
+        setState(() {
+          _batteryLevel = level;
+          _isCharging = state == BatteryState.charging ||
+              state == BatteryState.full;
+        });
+      }
+      // 监听电池状态变化
+      battery.onBatteryStateChanged.listen((state) {
+        if (mounted) {
+          setState(() {
+            _isCharging = state == BatteryState.charging ||
+                state == BatteryState.full;
+          });
+          // 状态变化时也更新电量
+          battery.batteryLevel.then((level) {
+            if (mounted) {
+              setState(() {
+                _batteryLevel = level;
+              });
+            }
+          });
+        }
+      });
+    } on Exception catch (_) {
+      // 电池 API 可能在某些平台不可用
+    }
   }
 
   Future<void> _initWakelock() async {
@@ -187,6 +243,7 @@ class _EbookReaderPageState extends ConsumerState<EbookReaderPage> {
   void dispose() {
     // 页面关闭时立即保存待保存的进度
     _saveProgressTimer?.cancel();
+    _clockTimer?.cancel();
     if (_pendingLocation != null) {
       _saveProgressImmediately(_pendingLocation!);
     }
@@ -810,39 +867,104 @@ class _EbookReaderPageState extends ConsumerState<EbookReaderPage> {
       ),
     );
 
-  /// 固定底栏 - 显示进度信息
+  /// 固定底栏 - 显示进度信息、时间和电池
   Widget _buildFixedFooter(BookReaderSettings settings, bool isDark) {
     final progress = _currentLocation?.fraction ?? 0.0;
-    final sectionIndex = _currentLocation?.sectionIndex ?? 0;
-    final totalSections = _currentLocation?.totalSections ?? 0;
+    final chapterCurrentPage = _currentLocation?.chapterCurrentPage ?? 0;
+    final chapterTotalPages = _currentLocation?.chapterTotalPages ?? 0;
+
+    final textColor = (isDark ? Colors.white : Colors.black87).withValues(alpha: 0.5);
+    const textStyle = TextStyle(fontSize: 11);
+
+    // 格式化时间 HH:mm
+    final timeString =
+        '${_currentTime.hour.toString().padLeft(2, '0')}:${_currentTime.minute.toString().padLeft(2, '0')}';
 
     return SizedBox(
       height: 20,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
+            // 左侧：当前章节页数 x/y + 整本书进度百分比
+            if (chapterTotalPages > 0) ...[
+              Text(
+                '$chapterCurrentPage/$chapterTotalPages',
+                style: textStyle.copyWith(color: textColor),
+              ),
+              const SizedBox(width: 12),
+            ],
             Text(
               '${(progress * 100).toStringAsFixed(1)}%',
-              style: TextStyle(
-                color: (isDark ? Colors.white : Colors.black87)
-                    .withValues(alpha: 0.5),
-                fontSize: 11,
-              ),
+              style: textStyle.copyWith(color: textColor),
             ),
-            if (totalSections > 0)
-              Text(
-                '${sectionIndex + 1}/$totalSections',
-                style: TextStyle(
-                  color: (isDark ? Colors.white : Colors.black87)
-                      .withValues(alpha: 0.5),
-                  fontSize: 11,
-                ),
-              ),
+            const Spacer(),
+            // 右侧：时间和电池
+            Text(
+              timeString,
+              style: textStyle.copyWith(color: textColor),
+            ),
+            const SizedBox(width: 6),
+            _buildBatteryIcon(isDark, textColor),
           ],
         ),
       ),
+    );
+  }
+
+  /// 构建电池图标
+  Widget _buildBatteryIcon(bool isDark, Color textColor) {
+    final batteryColor = _isCharging
+        ? Colors.green
+        : _batteryLevel <= 20
+            ? Colors.red
+            : textColor;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (_isCharging)
+          Icon(
+            Icons.bolt,
+            size: 10,
+            color: Colors.green,
+          ),
+        Container(
+          width: 22,
+          height: 10,
+          decoration: BoxDecoration(
+            border: Border.all(color: textColor, width: 1),
+            borderRadius: BorderRadius.circular(2),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(1),
+            child: FractionallySizedBox(
+              alignment: Alignment.centerLeft,
+              widthFactor: (_batteryLevel / 100).clamp(0.0, 1.0),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: batteryColor,
+                  borderRadius: BorderRadius.circular(1),
+                ),
+              ),
+            ),
+          ),
+        ),
+        Container(
+          width: 2,
+          height: 5,
+          margin: const EdgeInsets.only(left: 1),
+          decoration: BoxDecoration(
+            color: textColor,
+            borderRadius: const BorderRadius.horizontal(right: Radius.circular(1)),
+          ),
+        ),
+        const SizedBox(width: 3),
+        Text(
+          '$_batteryLevel%',
+          style: TextStyle(fontSize: 10, color: textColor),
+        ),
+      ],
     );
   }
 

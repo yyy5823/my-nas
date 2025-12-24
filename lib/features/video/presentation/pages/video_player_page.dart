@@ -13,7 +13,7 @@ import 'package:my_nas/features/sources/data/services/source_manager_service.dar
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
-import 'package:my_nas/features/transfer/presentation/pages/transfer_manager_page.dart';
+import 'package:my_nas/features/transfer/presentation/widgets/transfer_sheet.dart';
 import 'package:my_nas/features/transfer/presentation/providers/transfer_provider.dart';
 import 'package:my_nas/features/video/data/services/subtitle_service.dart';
 import 'package:my_nas/features/video/data/services/video_metadata_service.dart';
@@ -1037,12 +1037,7 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
           behavior: SnackBarBehavior.floating,
           action: SnackBarAction(
             label: '查看',
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute<void>(
-                builder: (_) => const TransferManagerPage(initialTab: 2),
-              ),
-            ),
+            onPressed: () => showTransferCache(context),
           ),
         ),
       );

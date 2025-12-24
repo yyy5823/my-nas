@@ -6,6 +6,8 @@ class FoliateLocation {
     required this.sectionIndex,
     required this.sectionFraction,
     this.totalSections = 0,
+    this.chapterCurrentPage = 0,
+    this.chapterTotalPages = 0,
   });
 
   factory FoliateLocation.fromMap(Map<String, dynamic> map) => FoliateLocation(
@@ -18,6 +20,8 @@ class FoliateLocation {
         sectionFraction:
             (map['sectionFraction'] as num?)?.toDouble() ?? 0.0,
         totalSections: map['totalSections'] as int? ?? 0,
+        chapterCurrentPage: map['chapterCurrentPage'] as int? ?? 0,
+        chapterTotalPages: map['chapterTotalPages'] as int? ?? 0,
       );
 
   /// EPUB CFI 位置标识
@@ -35,6 +39,12 @@ class FoliateLocation {
   /// 总章节数
   final int totalSections;
 
+  /// 当前章节的当前页码
+  final int chapterCurrentPage;
+
+  /// 当前章节的总页数
+  final int chapterTotalPages;
+
   /// 阅读进度百分比
   double get progressPercent => fraction * 100;
 
@@ -44,6 +54,8 @@ class FoliateLocation {
         'sectionIndex': sectionIndex,
         'sectionFraction': sectionFraction,
         'totalSections': totalSections,
+        'chapterCurrentPage': chapterCurrentPage,
+        'chapterTotalPages': chapterTotalPages,
       };
 
   @override

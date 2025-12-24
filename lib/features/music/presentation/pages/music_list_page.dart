@@ -255,11 +255,7 @@ enum MusicSourceFilter {
 }
 
 /// 判断是否为本机源
-bool _isLocalMusicSource(SourceType type) =>
-    type == SourceType.mobileGallery ||
-    type == SourceType.mobileMusic ||
-    type == SourceType.mobileFiles ||
-    type == SourceType.local;
+bool _isLocalMusicSource(SourceType type) => type == SourceType.local;
 
 sealed class MusicListState {}
 

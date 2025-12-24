@@ -163,6 +163,65 @@ class BookFileCacheService {
     }
   }
 
+  /// 获取缓存文件数量
+  Future<int> getCacheCount() async {
+    if (!_initialized) await init();
+
+    var count = 0;
+    try {
+      final dir = Directory(_cacheDir!);
+      if (await dir.exists()) {
+        await for (final entity in dir.list()) {
+          if (entity is File) {
+            count++;
+          }
+        }
+      }
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '计算缓存数量失败，非关键功能');
+    }
+    return count;
+  }
+
+  /// 获取缓存大小（字节）
+  Future<int> getCacheSize() async {
+    if (!_initialized) await init();
+
+    var totalSize = 0;
+    try {
+      final dir = Directory(_cacheDir!);
+      if (await dir.exists()) {
+        await for (final entity in dir.list()) {
+          if (entity is File) {
+            totalSize += await entity.length();
+          }
+        }
+      }
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '计算缓存大小失败，非关键功能');
+    }
+    return totalSize;
+  }
+
+  /// 清空所有图书缓存
+  Future<void> clearAll() async {
+    if (!_initialized) await init();
+
+    try {
+      final dir = Directory(_cacheDir!);
+      if (await dir.exists()) {
+        await for (final entity in dir.list()) {
+          if (entity is File) {
+            await entity.delete();
+          }
+        }
+      }
+      logger.i('BookFileCacheService: 已清空所有图书缓存');
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'BookFileCacheService.clearAll');
+    }
+  }
+
   /// 清理过期缓存（LRU 策略）
   Future<void> _cleanupIfNeeded() async {
     try {

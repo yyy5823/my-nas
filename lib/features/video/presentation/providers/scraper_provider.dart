@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/video/data/services/scraper_factory.dart';
 import 'package:my_nas/features/video/data/services/scraper_manager_service.dart';
+import 'package:my_nas/features/video/data/services/tmdb_service.dart';
+import 'package:my_nas/features/video/data/services/video_database_service.dart';
 import 'package:my_nas/features/video/data/services/video_metadata_service.dart';
 import 'package:my_nas/features/video/domain/entities/scraper_result.dart';
 import 'package:my_nas/features/video/domain/entities/scraper_source.dart';
@@ -650,3 +654,251 @@ final backgroundScrapingProvider =
 final scrapingTaskProvider = Provider.family<ScrapingTaskState?, String>(
   (ref, showDirectory) => ref.watch(backgroundScrapingProvider)[showDirectory],
 );
+
+// ============ 元数据增强服务 ============
+
+/// 元数据增强状态
+class MetadataEnrichmentState {
+  const MetadataEnrichmentState({
+    this.isRunning = false,
+    this.progress = 0,
+    this.total = 0,
+    this.currentItem = '',
+    this.successCount = 0,
+    this.failCount = 0,
+    this.lastError,
+  });
+
+  final bool isRunning;
+  final int progress;
+  final int total;
+  final String currentItem;
+  final int successCount;
+  final int failCount;
+  final String? lastError;
+
+  double get progressPercent => total > 0 ? progress / total : 0.0;
+
+  MetadataEnrichmentState copyWith({
+    bool? isRunning,
+    int? progress,
+    int? total,
+    String? currentItem,
+    int? successCount,
+    int? failCount,
+    String? lastError,
+  }) => MetadataEnrichmentState(
+      isRunning: isRunning ?? this.isRunning,
+      progress: progress ?? this.progress,
+      total: total ?? this.total,
+      currentItem: currentItem ?? this.currentItem,
+      successCount: successCount ?? this.successCount,
+      failCount: failCount ?? this.failCount,
+      lastError: lastError ?? this.lastError,
+    );
+}
+
+/// 元数据增强服务 Notifier
+///
+/// 当添加新的刮削源时，自动检测并更新缺失的元数据：
+/// - 电影系列信息（collectionId, collectionName, collectionPosterUrl, collectionBackdropUrl）
+/// - 地区和类型信息
+/// - 其他可能缺失的 TMDB 元数据
+class MetadataEnrichmentNotifier extends StateNotifier<MetadataEnrichmentState> {
+  MetadataEnrichmentNotifier(this._ref) : super(const MetadataEnrichmentState()) {
+    _init();
+  }
+
+  final Ref _ref;
+  final _dbService = VideoDatabaseService();
+  StreamSubscription<ScraperSourceEvent>? _subscription;
+
+  void _init() {
+    // 监听刮削源变更事件
+    final manager = _ref.read(scraperManagerProvider);
+    _subscription = manager.onSourceChanged.listen(_onSourceChanged);
+  }
+
+  void _onSourceChanged(ScraperSourceEvent event) {
+    // 仅当添加 TMDB 源时触发增强
+    if (event.type == ScraperSourceEventType.added &&
+        event.source.type == ScraperType.tmdb) {
+      logger.i('检测到新增 TMDB 刮削源，开始元数据增强');
+      AppError.fireAndForget(
+        enrichAllMetadata(),
+        action: 'MetadataEnrichmentNotifier.enrichAllMetadata',
+      );
+    }
+  }
+
+  /// 增强所有元数据
+  ///
+  /// 包括：电影系列信息、地区、类型、演员、导演等
+  Future<void> enrichAllMetadata() async {
+    if (state.isRunning) {
+      logger.w('元数据增强正在进行中，跳过');
+      return;
+    }
+
+    try {
+      await _dbService.init();
+
+      // 获取需要增强的电影列表（有 TMDB ID 但缺少系列信息或其他元数据）
+      final moviesWithoutCollection = await _dbService.getMoviesWithoutCollection();
+      final moviesWithoutMetadata = await _dbService.getMoviesWithIncompleteMetadata();
+
+      // 合并去重
+      final movieSet = <int>{};
+      final movies = <VideoMetadata>[];
+      for (final movie in [...moviesWithoutCollection, ...moviesWithoutMetadata]) {
+        if (movie.tmdbId != null && !movieSet.contains(movie.tmdbId)) {
+          movieSet.add(movie.tmdbId!);
+          movies.add(movie);
+        }
+      }
+
+      if (movies.isEmpty) {
+        logger.i('没有需要增强元数据的电影');
+        return;
+      }
+
+      state = MetadataEnrichmentState(
+        isRunning: true,
+        total: movies.length,
+        currentItem: '正在检查电影元数据...',
+      );
+
+      final tmdbService = TmdbService();
+      if (!tmdbService.hasApiKey) {
+        logger.w('TMDB API Key 未配置，无法增强元数据');
+        state = state.copyWith(
+          isRunning: false,
+          lastError: 'TMDB API Key 未配置',
+        );
+        return;
+      }
+
+      var successCount = 0;
+      var failCount = 0;
+      var progress = 0;
+
+      for (final movie in movies) {
+        if (movie.tmdbId == null) continue;
+
+        state = state.copyWith(
+          progress: progress,
+          currentItem: movie.displayTitle,
+        );
+
+        try {
+          // 获取电影详情
+          final detail = await tmdbService.getMovieDetail(movie.tmdbId!);
+          if (detail != null) {
+            // 检查需要更新哪些字段
+            var needsUpdate = false;
+            var updatedMovie = movie;
+
+            // 更新系列信息
+            if (detail.collectionId != null && movie.collectionId == null) {
+              updatedMovie = updatedMovie.copyWith(
+                collectionId: detail.collectionId,
+                collectionName: detail.collectionName,
+                collectionPosterUrl: detail.collectionPosterUrl,
+                collectionBackdropUrl: detail.collectionBackdropUrl,
+              );
+              needsUpdate = true;
+              logger.d('更新电影系列信息: ${movie.displayTitle} -> ${detail.collectionName}');
+            }
+
+            // 更新地区信息
+            final countriesList = detail.countriesList;
+            if ((movie.countries == null || movie.countries!.isEmpty) &&
+                countriesList != null &&
+                countriesList.isNotEmpty) {
+              updatedMovie = updatedMovie.copyWith(countries: countriesList.join(', '));
+              needsUpdate = true;
+              logger.d('更新电影地区: ${movie.displayTitle} -> $countriesList');
+            }
+
+            // 更新类型信息
+            final genresList = detail.genresList;
+            if ((movie.genres == null || movie.genres!.isEmpty) &&
+                genresList != null &&
+                genresList.isNotEmpty) {
+              updatedMovie = updatedMovie.copyWith(genres: genresList.join(' / '));
+              needsUpdate = true;
+              logger.d('更新电影类型: ${movie.displayTitle} -> $genresList');
+            }
+
+            // 更新导演信息
+            if ((movie.director == null || movie.director!.isEmpty) &&
+                detail.directorName != null) {
+              updatedMovie = updatedMovie.copyWith(director: detail.directorName);
+              needsUpdate = true;
+            }
+
+            // 更新演员信息
+            final castNames = detail.castNames;
+            if ((movie.cast == null || movie.cast!.isEmpty) &&
+                castNames != null &&
+                castNames.isNotEmpty) {
+              updatedMovie = updatedMovie.copyWith(cast: castNames.join(', '));
+              needsUpdate = true;
+            }
+
+            if (needsUpdate) {
+              await _dbService.upsert(updatedMovie);
+            }
+            successCount++;
+          } else {
+            // 无法获取详情
+            failCount++;
+          }
+        } on Exception catch (e, st) {
+          AppError.handle(e, st, 'MetadataEnrichmentNotifier.enrichAllMetadata');
+          failCount++;
+        }
+
+        progress++;
+
+        // 添加延迟避免 API 限流
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+      }
+
+      state = MetadataEnrichmentState(
+        isRunning: false,
+        progress: progress,
+        total: movies.length,
+        successCount: successCount,
+        failCount: failCount,
+      );
+
+      logger.i('元数据增强完成: 成功=$successCount, 失败=$failCount');
+
+      // 刷新首页数据
+      // 通过 invalidate video list provider 来触发刷新
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'MetadataEnrichmentNotifier.enrichAllMetadata');
+      state = state.copyWith(
+        isRunning: false,
+        lastError: e.toString(),
+      );
+    }
+  }
+
+  /// 手动触发增强
+  Future<void> startEnrichment() async {
+    await enrichAllMetadata();
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    super.dispose();
+  }
+}
+
+/// 元数据增强服务 Provider
+final metadataEnrichmentProvider =
+    StateNotifierProvider<MetadataEnrichmentNotifier, MetadataEnrichmentState>(
+        MetadataEnrichmentNotifier.new);

@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:my_nas/features/sources/domain/entities/source_category.dart';
@@ -27,13 +25,8 @@ enum SourceType {
   nfs('NFS', 'nfs'),
   // 媒体发现（无需认证）
   upnp('UPnP/DLNA', 'upnp'),
-  // 本地存储
-  local('本地存储', 'local'),
-
-  // 移动端媒体（仅在 iOS/Android 可用）
-  mobileGallery('手机相册', 'mobile_gallery'),
-  mobileMusic('手机音乐', 'mobile_music'),
-  mobileFiles('手机文件', 'mobile_files'),
+  // 本地存储（系统自动创建，代表本机）
+  local('本机', 'local'),
 
   // === 服务类源 ===
   // 下载工具
@@ -73,11 +66,6 @@ enum SourceType {
         SourceType.upnp => 0, // 自动发现，无固定端口
         // 本地存储
         SourceType.local => 0,
-        // 移动端媒体（无端口）
-        SourceType.mobileGallery ||
-        SourceType.mobileMusic ||
-        SourceType.mobileFiles =>
-          0,
         // 下载工具
         SourceType.qbittorrent => 8080,
         SourceType.transmission => 9091,
@@ -112,10 +100,6 @@ enum SourceType {
         SourceType.upnp => true,
         // 本地存储
         SourceType.local => true,
-        // 移动端媒体
-        SourceType.mobileGallery => true,
-        SourceType.mobileMusic => true,
-        SourceType.mobileFiles => true,
         // 下载工具
         SourceType.qbittorrent => true,
         SourceType.transmission => true,
@@ -152,11 +136,6 @@ enum SourceType {
           SourceCategory.genericProtocols,
         // 本地存储
         SourceType.local => SourceCategory.localStorage,
-        // 移动端媒体
-        SourceType.mobileGallery ||
-        SourceType.mobileMusic ||
-        SourceType.mobileFiles =>
-          SourceCategory.mobileDevice,
         // 媒体服务器
         SourceType.jellyfin ||
         SourceType.emby ||
@@ -191,38 +170,21 @@ enum SourceType {
         SourceType.sftp ||
         SourceType.nfs ||
         SourceType.upnp ||
-        SourceType.local ||
-        SourceType.mobileGallery ||
-        SourceType.mobileMusic ||
-        SourceType.mobileFiles =>
-          true,
-        _ => false,
-      };
-
-  /// 是否为移动端媒体源类型
-  bool get isMobileSource => switch (this) {
-        SourceType.mobileGallery ||
-        SourceType.mobileMusic ||
-        SourceType.mobileFiles =>
+        SourceType.local =>
           true,
         _ => false,
       };
 
   /// 当前平台是否可用此源类型（用于连接源管理页面过滤）
   ///
-  /// - 本地存储 (local)：仅在桌面端可用（iOS/Android 沙盒无价值）
-  /// - 移动端媒体源：不在连接源页面显示，仅通过媒体库添加
+  /// - 本地存储 (local)：由系统自动创建，不在添加源页面显示
   bool get isAvailableOnCurrentPlatform {
-    // Web 平台不支持本地存储和移动端媒体
+    // Web 平台不支持本地存储
     if (kIsWeb) {
-      return this != SourceType.local && !isMobileSource;
+      return this != SourceType.local;
     }
-    // 本地存储仅在桌面端可用
+    // 本地存储由系统自动创建，不在添加源页面显示
     if (this == SourceType.local) {
-      return Platform.isWindows || Platform.isMacOS || Platform.isLinux;
-    }
-    // 移动端媒体源不在连接源页面显示，仅通过媒体库添加
-    if (isMobileSource) {
       return false;
     }
     return true;
@@ -246,11 +208,7 @@ enum SourceType {
         SourceType.nfs => Icons.share,
         SourceType.upnp => Icons.cast,
         // 本地存储
-        SourceType.local => Icons.folder,
-        // 移动端媒体
-        SourceType.mobileGallery => Icons.photo_library,
-        SourceType.mobileMusic => Icons.library_music,
-        SourceType.mobileFiles => Icons.folder_special,
+        SourceType.local => Icons.smartphone,
         // 下载工具
         SourceType.qbittorrent => Icons.download,
         SourceType.transmission => Icons.download,
@@ -283,12 +241,8 @@ enum SourceType {
         SourceType.sftp => const Color(0xFF607D8B), // 蓝灰 - 安全协议
         SourceType.nfs => const Color(0xFF009688), // 青绿 - Unix协议
         SourceType.upnp => const Color(0xFFE91E63), // 粉红 - 媒体发现
-        // 本地存储 - 灰色
-        SourceType.local => const Color(0xFF757575),
-        // 移动端媒体 - 渐变色系
-        SourceType.mobileGallery => const Color(0xFFE91E63), // 粉红 - 相册
-        SourceType.mobileMusic => const Color(0xFFFF5722), // 橙红 - 音乐
-        SourceType.mobileFiles => const Color(0xFF03A9F4), // 浅蓝 - 文件
+        // 本地存储 - 蓝色
+        SourceType.local => const Color(0xFF2196F3),
         // 下载工具 - 绿色系
         SourceType.qbittorrent => const Color(0xFF2196F3), // qB蓝
         SourceType.transmission => const Color(0xFFFF5722), // Tr橙红
@@ -322,11 +276,7 @@ enum SourceType {
         SourceType.nfs => '网络文件系统',
         SourceType.upnp => '自动发现局域网媒体设备',
         // 本地存储
-        SourceType.local => '设备本地存储',
-        // 移动端媒体
-        SourceType.mobileGallery => '访问手机系统相册中的照片和视频',
-        SourceType.mobileMusic => '访问手机音乐库和下载的音乐',
-        SourceType.mobileFiles => '访问手机文件App中的文档和书籍',
+        SourceType.local => '本机存储，手机端自动获取系统媒体库',
         // 下载工具
         SourceType.qbittorrent => '开源 BT 下载客户端',
         SourceType.transmission => '轻量级 BT 下载客户端',
@@ -364,10 +314,6 @@ enum SourceType {
         SourceType.aria2 ||
         // UPnP 自动发现无需认证
         SourceType.upnp ||
-        // 移动端媒体无需认证
-        SourceType.mobileGallery ||
-        SourceType.mobileMusic ||
-        SourceType.mobileFiles ||
         // 本地存储无需认证
         SourceType.local ||
         // PT 站点使用 API 或 Cookie 认证，不需要用户名
@@ -379,12 +325,9 @@ enum SourceType {
       };
 
   /// 是否需要连接配置（主机、端口等）
-  /// 移动端媒体和本地存储不需要配置连接信息
+  /// 本地存储不需要配置连接信息
   bool get requiresConnectionConfig => switch (this) {
         SourceType.local ||
-        SourceType.mobileGallery ||
-        SourceType.mobileMusic ||
-        SourceType.mobileFiles ||
         // 字幕站点使用固定的 API 地址
         SourceType.opensubtitles =>
           false,

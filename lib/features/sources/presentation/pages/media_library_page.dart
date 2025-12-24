@@ -118,9 +118,8 @@ class _MediaTypeTab extends ConsumerWidget {
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (e, st) => Center(child: Text('加载失败: $e')),
           data: (sources) {
-            // 判断是否为移动端
+            // 桌面端如果没有源则显示提示（本机源由系统自动创建）
             final isMobile = !kIsWeb && (Platform.isIOS || Platform.isAndroid);
-
             if (sources.isEmpty && !isMobile) {
               return _buildNoSourcesState(context);
             }
@@ -136,10 +135,7 @@ class _MediaTypeTab extends ConsumerWidget {
                       onPressed: () =>
                           _addPath(context, ref, sources, connections, paths),
                       icon: const Icon(Icons.add),
-                      // 移动端显示"添加本机"，桌面端显示"添加目录"
-                      label: Text(isMobile
-                          ? '添加本机'
-                          : '添加${mediaType.displayName}目录'),
+                      label: const Text('添加目录'),
                     ),
                   ),
                 ),
@@ -253,166 +249,51 @@ class _MediaTypeTab extends ConsumerWidget {
     Map<String, SourceConnection> connections,
     List<MediaLibraryPath> existingPaths,
   ) {
-    // 判断是否为移动端
-    final isMobile = !kIsWeb && (Platform.isIOS || Platform.isAndroid);
-
-    if (isMobile) {
-      // 移动端：显示添加本机选项
-      _showMobileAddOptions(context, ref, sources, connections, existingPaths);
-    } else {
-      // 桌面端：保持原有逻辑
-      _showDesktopAddOptions(context, ref, sources, connections, existingPaths);
-    }
+    // 统一显示源选择对话框
+    _showSourceSelectionDialog(
+      context,
+      ref,
+      sources,
+      connections,
+      existingPaths,
+    );
   }
 
-  /// 移动端：显示添加本机选项
-  void _showMobileAddOptions(
-    BuildContext context,
-    WidgetRef ref,
-    List<SourceEntity> sources,
-    Map<String, SourceConnection> connections,
-    List<MediaLibraryPath> existingPaths,
-  ) {
-    // 根据当前 mediaType 确定对应的移动端源类型
-    final mobileSourceType = _getMobileSourceType(mediaType);
-
-    // 检查是否已添加本机
-    final alreadyAdded = existingPaths.any((p) {
-      final source = sources.firstWhereOrNull((s) => s.id == p.sourceId);
-      return source?.type == mobileSourceType;
-    });
-
-    if (alreadyAdded) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('本机已添加到此媒体库')),
-      );
-      return;
-    }
-
-    // 直接添加本机
-    _addMobileSourceToLibrary(context, ref, sources, mobileSourceType);
-  }
-
-  /// 根据 MediaType 获取对应的移动端源类型
-  SourceType _getMobileSourceType(MediaType type) => switch (type) {
-    MediaType.photo => SourceType.mobileGallery,
-    MediaType.video => SourceType.mobileGallery,
-    MediaType.music => SourceType.mobileMusic,
-    MediaType.book || MediaType.comic || MediaType.note => SourceType.mobileFiles,
-  };
-
-  /// 添加移动端源到媒体库
-  Future<void> _addMobileSourceToLibrary(
-    BuildContext context,
-    WidgetRef ref,
-    List<SourceEntity> existingSources,
-    SourceType sourceType,
-  ) async {
-    try {
-      // 1. 检查是否已存在该类型的移动端源
-      var mobileSource = existingSources.firstWhereOrNull(
-        (s) => s.type == sourceType,
-      );
-
-      if (mobileSource == null) {
-        // 自动创建移动端源
-        mobileSource = SourceEntity(
-          name: sourceType.displayName,
-          type: sourceType,
-          host: 'localhost',
-          username: 'local',
-          autoConnect: true,
-        );
-        await ref.read(sourcesProvider.notifier).addSource(mobileSource);
-      }
-
-      // 2. 连接源（如果未连接）
-      final connections = ref.read(activeConnectionsProvider);
-      if (connections[mobileSource.id]?.status != SourceStatus.connected) {
-        await ref.read(activeConnectionsProvider.notifier).connect(
-          mobileSource,
-          password: '',
-        );
-      }
-
-      // 3. 添加到媒体库（路径为 "/"，表示整个源）
-      final newPath = MediaLibraryPath(
-        sourceId: mobileSource.id,
-        path: '/',
-        name: '本机${mediaType.displayName}',
-      );
-
-      await ref.read(mediaLibraryConfigProvider.notifier).addPath(mediaType, newPath);
-
-      // 4. 触发扫描
-      final currentConnections = ref.read(activeConnectionsProvider);
-      _autoScanPath(ref, mediaType, newPath, currentConnections);
-
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已添加本机${mediaType.displayName}，正在扫描...')),
-        );
-      }
-    } on Exception catch (e, st) {
-      logger.e('添加本机失败', e, st);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('添加失败: $e')),
-        );
-      }
-    }
-  }
-
-  /// 桌面端：显示添加选项（保持原有逻辑）
-  void _showDesktopAddOptions(
-    BuildContext context,
-    WidgetRef ref,
-    List<SourceEntity> sources,
-    Map<String, SourceConnection> connections,
-    List<MediaLibraryPath> existingPaths,
-  ) {
-    // 过滤出已连接的源
-    final connectedSources = sources.where((s) {
-      final conn = connections[s.id];
-      return conn?.status == SourceStatus.connected;
-    }).toList();
-
-    if (connectedSources.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('没有已连接的源，请先连接一个源')));
-      return;
-    }
-
-    // 分离移动端源和普通源
-    final mobileSources = connectedSources.where((s) => s.type.isMobileSource).toList();
-    final normalSources = connectedSources.where((s) => !s.type.isMobileSource).toList();
-
-    // 如果有移动端源，显示源选择对话框
-    if (mobileSources.isNotEmpty) {
-      _showSourceSelectionDialog(
-        context,
-        ref,
-        mobileSources,
-        normalSources,
-        connections,
-        existingPaths,
-      );
-    } else {
-      // 只有普通源，直接显示目录选择器
-      _showFolderPicker(context, ref, normalSources, connections);
-    }
-  }
-
-  /// 显示源选择对话框（移动端源 + 普通源）
+  /// 显示源选择对话框
   void _showSourceSelectionDialog(
     BuildContext context,
     WidgetRef ref,
-    List<SourceEntity> mobileSources,
-    List<SourceEntity> normalSources,
+    List<SourceEntity> sources,
     Map<String, SourceConnection> connections,
     List<MediaLibraryPath> existingPaths,
   ) {
+    // 过滤出支持文件系统的已连接源
+    final connectedSources = sources.where((s) {
+      final conn = connections[s.id];
+      return conn?.status == SourceStatus.connected && s.supportsFileSystem;
+    }).toList();
+
+    if (connectedSources.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('没有已连接的源，请先连接一个源')),
+      );
+      return;
+    }
+
+    // 分离本机源和远程源
+    // 移动端：本机源只支持照片和视频
+    final isMobile = !kIsWeb && (Platform.isIOS || Platform.isAndroid);
+    final localSourceSupported = !isMobile ||
+        mediaType == MediaType.photo ||
+        mediaType == MediaType.video;
+
+    final localSource = localSourceSupported
+        ? connectedSources.firstWhereOrNull((s) => s.type == SourceType.local)
+        : null;
+    final remoteSources = connectedSources.where(
+      (s) => s.type != SourceType.local,
+    ).toList();
+
     showModalBottomSheet<void>(
       context: context,
       builder: (context) => SafeArea(
@@ -428,42 +309,37 @@ class _MediaTypeTab extends ConsumerWidget {
             ),
             const Divider(height: 1),
 
-            // 移动端源（直接添加，不需要选择目录）
-            if (mobileSources.isNotEmpty) ...[
-              const Padding(
-                padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    '手机媒体',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.grey,
-                    ),
-                  ),
-                ),
-              ),
-              ...mobileSources.map((source) {
-                // 检查是否已添加
-                final alreadyAdded = existingPaths.any((p) => p.sourceId == source.id);
+            // 本机源（移动端自动添加系统媒体库，桌面端选择目录）
+            if (localSource != null) ...[
+              Builder(builder: (context) {
+                // 检查本机是否已添加到此媒体库
+                final alreadyAdded = existingPaths.any((p) =>
+                    p.sourceId == localSource.id);
                 return ListTile(
-                  leading: Icon(source.type.icon, color: source.type.themeColor),
-                  title: Text(source.displayName),
-                  subtitle: Text(source.type.description),
+                  leading: Icon(
+                    localSource.type.icon,
+                    color: localSource.type.themeColor,
+                  ),
+                  title: Text(localSource.displayName),
+                  subtitle: Text(localSource.type.description),
                   trailing: alreadyAdded
                       ? const Chip(label: Text('已添加'))
-                      : const Icon(Icons.add),
+                      : const Icon(Icons.chevron_right),
                   enabled: !alreadyAdded,
                   onTap: alreadyAdded
                       ? null
-                      : () => _addMobileSource(context, ref, source, connections),
+                      : () => _handleLocalSourceSelection(
+                            context,
+                            ref,
+                            localSource,
+                            connections,
+                          ),
                 );
               }),
             ],
 
-            // 普通源（需要选择目录）
-            if (normalSources.isNotEmpty) ...[
+            // 远程源（需要选择目录）
+            if (remoteSources.isNotEmpty) ...[
               const Padding(
                 padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
                 child: Align(
@@ -485,7 +361,7 @@ class _MediaTypeTab extends ConsumerWidget {
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () {
                   Navigator.pop(context);
-                  _showFolderPicker(context, ref, normalSources, connections);
+                  _showFolderPicker(context, ref, remoteSources, connections);
                 },
               ),
             ],
@@ -497,30 +373,70 @@ class _MediaTypeTab extends ConsumerWidget {
     );
   }
 
-  /// 添加移动端源到媒体库
-  Future<void> _addMobileSource(
+  /// 处理选择本机源
+  void _handleLocalSourceSelection(
     BuildContext context,
     WidgetRef ref,
-    SourceEntity source,
+    SourceEntity localSource,
+    Map<String, SourceConnection> connections,
+  ) {
+    final isMobile = !kIsWeb && (Platform.isIOS || Platform.isAndroid);
+
+    if (isMobile) {
+      // 移动端：只支持照片和视频（使用系统相册API）
+      if (mediaType == MediaType.photo || mediaType == MediaType.video) {
+        Navigator.pop(context);
+        _addLocalSourceToLibrary(context, ref, localSource, connections);
+      } else {
+        // 音乐、图书、漫画等在移动端不支持本机源
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '移动端暂不支持本机${mediaType.displayName}，请使用 NAS 或云存储',
+            ),
+          ),
+        );
+      }
+    } else {
+      // 桌面端：显示文件夹选择器
+      Navigator.pop(context);
+      _showFolderPicker(context, ref, [localSource], connections);
+    }
+  }
+
+  /// 添加本机源到媒体库（移动端）
+  Future<void> _addLocalSourceToLibrary(
+    BuildContext context,
+    WidgetRef ref,
+    SourceEntity localSource,
     Map<String, SourceConnection> connections,
   ) async {
-    // 移动端源使用根路径 "/"
-    final newPath = MediaLibraryPath(
-      sourceId: source.id,
-      path: '/',
-      name: source.displayName,
-    );
-
-    await ref.read(mediaLibraryConfigProvider.notifier).addPath(mediaType, newPath);
-
-    if (context.mounted) {
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('已添加 ${source.displayName}，正在扫描...')),
+    try {
+      // 添加到媒体库（路径为 "/"，表示整个系统媒体库）
+      final newPath = MediaLibraryPath(
+        sourceId: localSource.id,
+        path: '/',
+        name: '本机${mediaType.displayName}',
       );
 
-      // 添加后自动扫描该路径
+      await ref.read(mediaLibraryConfigProvider.notifier).addPath(mediaType, newPath);
+
+      // 触发扫描
       _autoScanPath(ref, mediaType, newPath, connections);
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已添加本机${mediaType.displayName}，正在扫描...')),
+        );
+      }
+    } on Exception catch (e, st) {
+      logger.e('添加本机失败', e, st);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('添加失败: $e')),
+        );
+      }
     }
   }
 

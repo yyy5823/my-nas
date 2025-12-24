@@ -15,6 +15,10 @@ const _baseUrl = 'https://api.opensubtitles.com/api/v1';
 /// 用户代理字符串
 const _userAgent = 'MyNas v1.0';
 
+/// 内置默认 API Key（在 opensubtitles.com 申请）
+/// TODO: 替换为正式申请的 API Key
+const _defaultApiKey = 'eBSGArWsmT2iiGX0Et8CAqOBsKZCPYjM';
+
 /// OpenSubtitles 字幕搜索结果
 class OpenSubtitleResult {
   const OpenSubtitleResult({
@@ -518,11 +522,9 @@ final openSubtitlesServiceProvider = Provider<OpenSubtitlesService?>((ref) {
   }
 
   final source = openSubtitlesSources.first;
-  final apiKey = source.apiKey ?? source.extraConfig?['apiKey'] as String? ?? '';
-
-  if (apiKey.isEmpty) {
-    return null;
-  }
+  // 优先使用用户自定义的 API Key，否则使用内置默认 Key
+  final customApiKey = source.apiKey ?? source.extraConfig?['apiKey'] as String?;
+  final apiKey = (customApiKey?.isNotEmpty ?? false) ? customApiKey! : _defaultApiKey;
 
   return OpenSubtitlesService(
     apiKey: apiKey,

@@ -24,7 +24,7 @@ import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/pages/media_library_page.dart';
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
-import 'package:my_nas/features/transfer/presentation/pages/transfer_manager_page.dart';
+import 'package:my_nas/features/transfer/presentation/widgets/transfer_sheet.dart';
 import 'package:my_nas/features/transfer/presentation/providers/transfer_provider.dart';
 import 'package:my_nas/features/transfer/presentation/widgets/target_picker_sheet.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
@@ -76,10 +76,7 @@ enum BookSourceFilter {
 }
 
 /// 判断是否为本机来源类型
-bool _isLocalBookSource(SourceType type) => switch (type) {
-      SourceType.local || SourceType.mobileGallery => true,
-      _ => false,
-    };
+bool _isLocalBookSource(SourceType type) => type == SourceType.local;
 
 /// 阅读内容类别
 enum ReadingCategory {
@@ -1874,12 +1871,7 @@ class _BookListPageState extends ConsumerState<BookListPage> {
         content: Text('已添加 ${localBooks.length} 本图书到上传队列'),
         action: SnackBarAction(
           label: '查看',
-          onPressed: () => Navigator.push(
-            context,
-            MaterialPageRoute<void>(
-              builder: (_) => const TransferManagerPage(initialTab: 1),
-            ),
-          ),
+          onPressed: () => showTransferUploads(context),
         ),
       ),
     );
@@ -1915,12 +1907,7 @@ class _BookListPageState extends ConsumerState<BookListPage> {
         content: Text('已添加 ${remoteBooks.length} 本图书到下载队列'),
         action: SnackBarAction(
           label: '查看',
-          onPressed: () => Navigator.push(
-            context,
-            MaterialPageRoute<void>(
-              builder: (_) => const TransferManagerPage(initialTab: 0),
-            ),
-          ),
+          onPressed: () => showTransferDownloads(context),
         ),
       ),
     );

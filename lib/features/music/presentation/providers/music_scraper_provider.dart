@@ -95,11 +95,11 @@ class MusicScraperSourcesNotifier extends StateNotifier<MusicScraperSourcesState
   }
 
   /// 调整顺序
+  /// [oldIndex] 和 [newIndex] 都是已调整后的索引（不需要再次调整）
   Future<void> reorder(int oldIndex, int newIndex) async {
+    if (oldIndex == newIndex) return;
+
     final sources = List<MusicScraperSourceEntity>.from(state.sources);
-    if (newIndex > oldIndex) {
-      newIndex -= 1;
-    }
     final item = sources.removeAt(oldIndex);
     sources.insert(newIndex, item);
 

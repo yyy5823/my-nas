@@ -10,9 +10,6 @@ import 'package:my_nas/nas_adapters/base/nas_adapter.dart';
 import 'package:my_nas/nas_adapters/base/nas_connection.dart';
 import 'package:my_nas/nas_adapters/fnos/fnos_adapter.dart';
 import 'package:my_nas/nas_adapters/local/local_adapter.dart';
-import 'package:my_nas/nas_adapters/mobile/mobile_files_adapter.dart';
-import 'package:my_nas/nas_adapters/mobile/mobile_gallery_adapter.dart';
-import 'package:my_nas/nas_adapters/mobile/mobile_music_adapter.dart';
 import 'package:my_nas/nas_adapters/qnap/qnap_adapter.dart';
 import 'package:my_nas/nas_adapters/smb/smb_adapter.dart';
 import 'package:my_nas/nas_adapters/synology/synology_adapter.dart';
@@ -570,8 +567,8 @@ class SourceManagerService {
     if (pwd == null) {
       final credential = await getCredential(sourceId);
       if (credential == null) {
-        // 本地存储和移动端媒体不需要密码
-        if (source.type == SourceType.local || source.type.isMobileSource) {
+        // 本地存储不需要密码
+        if (source.type == SourceType.local) {
           pwd = '';
         } else {
           logger.e('SourceManagerService: 重连失败 - 没有保存的凭证 $sourceId');
@@ -690,8 +687,8 @@ class SourceManagerService {
     const maxRetries = 1;
 
     try {
-      // 本地存储和移动端媒体不需要凭证，直接连接
-      if (source.type == SourceType.local || source.type.isMobileSource) {
+      // 本地存储不需要凭证，直接连接
+      if (source.type == SourceType.local) {
         logger.i('SourceManagerService: 自动连接 ${source.type.displayName} ${source.name}');
         final connection = await connect(
           source,
@@ -779,10 +776,6 @@ class SourceManagerService {
       SourceType.webdav => WebDavAdapter(),
       SourceType.smb => SmbAdapter(),
       SourceType.local => LocalAdapter(),
-      // 移动端媒体
-      SourceType.mobileGallery => MobileGalleryAdapter(),
-      SourceType.mobileMusic => MobileMusicAdapter(),
-      SourceType.mobileFiles => MobileFilesAdapter(),
       // 新增的通用协议（待实现）
       SourceType.ftp ||
       SourceType.sftp ||
@@ -812,10 +805,6 @@ class SourceManagerService {
       SourceType.webdav => NasAdapterType.webdav,
       SourceType.smb => NasAdapterType.smb,
       SourceType.local => NasAdapterType.local,
-      // 移动端媒体
-      SourceType.mobileGallery => NasAdapterType.mobileGallery,
-      SourceType.mobileMusic => NasAdapterType.mobileMusic,
-      SourceType.mobileFiles => NasAdapterType.mobileFiles,
       // 新增的通用协议（待实现）
       SourceType.ftp ||
       SourceType.sftp ||

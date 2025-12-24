@@ -1,16 +1,16 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/music/data/services/music_scraper_factory.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_source.dart';
 import 'package:my_nas/features/music/presentation/providers/music_scraper_provider.dart';
 
 /// 音乐刮削源管理页面
-///
-/// 简化设计：
-/// - 直接展示所有刮削源类型
-/// - 可拖拽排序
-/// - 可展开配置（API Key、Cookie）
-/// - 内置源无需配置，只需调整顺序
+/// - 点击需要配置的卡片弹出配置弹框
+/// - 长按拖拽调整顺序
 class MusicScraperSourcesPage extends ConsumerStatefulWidget {
   const MusicScraperSourcesPage({super.key});
 
@@ -19,61 +19,19 @@ class MusicScraperSourcesPage extends ConsumerStatefulWidget {
 }
 
 class _MusicScraperSourcesPageState extends ConsumerState<MusicScraperSourcesPage> {
-  // 每个刮削源类型的配置状态
-  final Map<MusicScraperType, _MusicScraperConfig> _configs = {};
-
-  // 展开状态
-  final Set<MusicScraperType> _expandedTypes = {};
-
-  // 正在测试的源 ID
   String? _testingSourceId;
-
-  @override
-  void initState() {
-    super.initState();
-    // 初始化所有类型的配置
-    for (final type in MusicScraperType.values) {
-      _configs[type] = _MusicScraperConfig();
-    }
-    // 加载完成后同步配置
-    WidgetsBinding.instance.addPostFrameCallback((_) => _syncConfigs());
-  }
-
-  @override
-  void dispose() {
-    // 释放所有 TextEditingController
-    for (final config in _configs.values) {
-      config.dispose();
-    }
-    super.dispose();
-  }
-
-  /// 同步已保存的配置到 TextEditingController
-  void _syncConfigs() {
-    final state = ref.read(musicScraperSourcesProvider);
-    for (final source in state.sources) {
-      final config = _configs[source.type];
-      if (config != null) {
-        config.apiKeyController.text = source.apiKey ?? '';
-        config.cookieController.text = source.cookie ?? '';
-        // Music Tag Web 特殊配置
-        if (source.type == MusicScraperType.musicTagWeb) {
-          config.serverUrlController.text = source.extraConfig?['serverUrl'] as String? ?? '';
-          config.usernameController.text = source.extraConfig?['username'] as String? ?? '';
-          config.passwordController.text = source.extraConfig?['password'] as String? ?? '';
-          config.preferredSource = source.extraConfig?['preferredSource'] as String? ?? 'netease';
-        }
-      }
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(musicScraperSourcesProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
+      backgroundColor: isDark ? AppColors.darkBackground : Colors.grey[50],
       appBar: AppBar(
         title: const Text('音乐刮削源'),
+        centerTitle: false,
+        backgroundColor: isDark ? AppColors.darkSurface : null,
         actions: [
           IconButton(
             icon: const Icon(Icons.help_outline),
@@ -82,11 +40,11 @@ class _MusicScraperSourcesPageState extends ConsumerState<MusicScraperSourcesPag
           ),
         ],
       ),
-      body: _buildBody(state),
+      body: _buildBody(state, isDark),
     );
   }
 
-  Widget _buildBody(MusicScraperSourcesState state) {
+  Widget _buildBody(MusicScraperSourcesState state, bool isDark) {
     if (state.isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -109,10 +67,10 @@ class _MusicScraperSourcesPageState extends ConsumerState<MusicScraperSourcesPag
       );
     }
 
-    return _buildScraperList(state);
+    return _buildScraperList(state, isDark);
   }
 
-  Widget _buildScraperList(MusicScraperSourcesState state) {
+  Widget _buildScraperList(MusicScraperSourcesState state, bool isDark) {
     // 构建排序后的类型列表
     final sortedTypes = _getSortedTypes(state.sources);
 
@@ -120,31 +78,26 @@ class _MusicScraperSourcesPageState extends ConsumerState<MusicScraperSourcesPag
       padding: const EdgeInsets.all(16),
       itemCount: sortedTypes.length,
       buildDefaultDragHandles: false,
-      onReorder: (oldIndex, newIndex) => _onReorder(oldIndex, newIndex, sortedTypes, state),
+      onReorder: (oldIndex, newIndex) => _handleReorder(state.sources, sortedTypes, oldIndex, newIndex),
       proxyDecorator: (child, index, animation) => Material(
-        elevation: 4,
-        borderRadius: BorderRadius.circular(12),
+        elevation: 8,
+        borderRadius: BorderRadius.circular(16),
         child: child,
       ),
       itemBuilder: (context, index) {
         final type = sortedTypes[index];
         final source = state.sources.where((s) => s.type == type).firstOrNull;
-        final isExpanded = _expandedTypes.contains(type);
-        final config = _configs[type]!;
 
         return _MusicScraperTypeCard(
           key: ValueKey(type),
           index: index,
           type: type,
           source: source,
-          priorityNumber: index + 1,
-          isExpanded: isExpanded,
-          config: config,
-          onToggle: (enabled) => _toggleSource(type, source, enabled),
-          onExpandToggle: () => _toggleExpand(type),
-          onSave: () => _saveConfig(type, source, config),
-          onTest: source != null ? () => _testConnection(source) : null,
+          isDark: isDark,
           isTesting: source != null && _testingSourceId == source.id,
+          onTap: () => _handleTap(type, source),
+          onToggle: (enabled) => _handleToggle(type, source, enabled),
+          onTest: source != null ? () => _testConnection(source) : null,
         );
       },
     );
@@ -152,155 +105,143 @@ class _MusicScraperSourcesPageState extends ConsumerState<MusicScraperSourcesPag
 
   /// 获取排序后的类型列表
   List<MusicScraperType> _getSortedTypes(List<MusicScraperSourceEntity> sources) {
-    // 已配置的类型按优先级排序
     final configuredTypes = sources.map((s) => s.type).toList();
-
-    // 未配置的类型
     final unconfiguredTypes = MusicScraperType.values.where((t) => !configuredTypes.contains(t)).toList();
-
-    // 合并：已配置的在前，未配置的在后
     return [...configuredTypes, ...unconfiguredTypes];
   }
 
   /// 处理重排序
-  void _onReorder(int oldIndex, int newIndex, List<MusicScraperType> sortedTypes, MusicScraperSourcesState state) {
-    var targetIndex = newIndex;
-    if (oldIndex < targetIndex) {
-      targetIndex -= 1;
+  void _handleReorder(
+    List<MusicScraperSourceEntity> sources,
+    List<MusicScraperType> sortedTypes,
+    int oldIndex,
+    int newIndex,
+  ) {
+    // ReorderableListView 的 onReorder 回调中，如果 oldIndex < newIndex，newIndex 会比实际大 1
+    var adjustedNewIndex = newIndex;
+    if (oldIndex < adjustedNewIndex) {
+      adjustedNewIndex -= 1;
     }
 
-    // 计算在已配置源中的位置
-    final configuredCount = state.sources.length;
+    final type = sortedTypes[oldIndex];
+    final sourceIndex = sources.indexWhere((s) => s.type == type);
+    if (sourceIndex == -1) return;
 
-    // 如果是在已配置的源之间移动
-    if (oldIndex < configuredCount && targetIndex < configuredCount) {
-      ref.read(musicScraperSourcesProvider.notifier).reorder(oldIndex, targetIndex);
-    }
-    // 如果是将未配置的源移动到已配置区域，需要先创建源
-    else if (oldIndex >= configuredCount && targetIndex < configuredCount) {
-      final type = sortedTypes[oldIndex];
-      // 先添加源
-      _addSource(type, priority: targetIndex);
-    }
-    // 其他情况（将已配置的移到未配置区域等）暂不处理
+    final targetType = sortedTypes[adjustedNewIndex];
+    final targetSourceIndex = sources.indexWhere((s) => s.type == targetType);
+    if (targetSourceIndex == -1) return;
+
+    // 直接传递源列表中的索引，不再二次调整
+    ref.read(musicScraperSourcesProvider.notifier).reorder(sourceIndex, targetSourceIndex);
   }
 
-  /// 切换展开状态
-  void _toggleExpand(MusicScraperType type) {
-    setState(() {
-      if (_expandedTypes.contains(type)) {
-        _expandedTypes.remove(type);
-      } else {
-        _expandedTypes.add(type);
-      }
-    });
+  /// 处理点击
+  void _handleTap(MusicScraperType type, MusicScraperSourceEntity? source) {
+    final needsConfig = type.requiresApiKey || type.supportsCookie || type.requiresServerUrl;
+    if (!needsConfig) return;
+
+    _showConfigSheet(type, source);
   }
 
-  /// 切换启用状态
-  Future<void> _toggleSource(MusicScraperType type, MusicScraperSourceEntity? source, bool enabled) async {
+  /// 处理启用/禁用切换
+  Future<void> _handleToggle(MusicScraperType type, MusicScraperSourceEntity? source, bool enabled) async {
     final needsConfig = type.requiresApiKey || type.requiresServerUrl;
+    final isImplemented = MusicScraperFactory.isImplemented(type);
+
+    if (!isImplemented) return;
 
     if (source != null) {
-      // 已有配置记录
       if (enabled && !source.isConfigured && needsConfig) {
-        // 尝试启用但未配置必要信息，展开卡片提示配置
-        setState(() {
-          _expandedTypes.add(type);
-        });
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('请先填写 ${type.displayName} 的配置信息'),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
+        _showConfigSheet(type, source);
       } else {
-        // 已配置或关闭，直接切换启用状态
         await ref.read(musicScraperSourcesProvider.notifier).toggleSource(source.id, isEnabled: enabled);
       }
     } else if (enabled) {
-      // 如果源不存在但要启用
       if (needsConfig) {
-        // 需要配置，展开卡片
-        setState(() {
-          _expandedTypes.add(type);
-        });
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('请先填写 ${type.displayName} 的配置信息'),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
+        _showConfigSheet(type, null);
       } else {
-        // 不需要配置，直接创建并启用
-        await _addSource(type);
+        await _createAndEnableSource(type);
       }
     }
   }
 
-  /// 添加刮削源
-  Future<void> _addSource(MusicScraperType type, {int? priority}) async {
-    final config = _configs[type]!;
+  /// 创建并启用源
+  Future<void> _createAndEnableSource(MusicScraperType type) async {
+    final newSource = MusicScraperSourceEntity(
+      name: '',
+      type: type,
+      isEnabled: true,
+      priority: 999,
+    );
+    await ref.read(musicScraperSourcesProvider.notifier).addSource(newSource);
+  }
 
-    // Music Tag Web 需要额外配置
+  /// 显示配置弹框
+  void _showConfigSheet(MusicScraperType type, MusicScraperSourceEntity? source) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _MusicScraperConfigSheet(
+        type: type,
+        source: source,
+        onSave: (config) => _saveConfig(type, source, config),
+        onTest: source != null ? () => _testConnection(source) : null,
+        isTesting: source != null && _testingSourceId == source.id,
+      ),
+    );
+  }
+
+  /// 保存配置
+  Future<void> _saveConfig(
+    MusicScraperType type,
+    MusicScraperSourceEntity? existingSource,
+    _MusicScraperConfigData config,
+  ) async {
     Map<String, dynamic>? extraConfig;
     if (type == MusicScraperType.musicTagWeb) {
+      final username = config.username;
+      final password = config.password;
       extraConfig = {
-        'serverUrl': config.serverUrlController.text,
-        'username': config.usernameController.text.isEmpty ? null : config.usernameController.text,
-        'password': config.passwordController.text.isEmpty ? null : config.passwordController.text,
+        'serverUrl': config.serverUrl,
+        'username': username != null && username.isNotEmpty ? username : null,
+        'password': password != null && password.isNotEmpty ? password : null,
         'preferredSource': config.preferredSource,
       };
     }
 
-    final source = MusicScraperSourceEntity(
-      name: '',
-      type: type,
-      isEnabled: true,
-      priority: priority ?? 999,
-      apiKey: config.apiKeyController.text.isEmpty ? null : config.apiKeyController.text,
-      cookie: config.cookieController.text.isEmpty ? null : config.cookieController.text,
-      extraConfig: extraConfig,
-    );
-    await ref.read(musicScraperSourcesProvider.notifier).addSource(source);
-  }
+    final apiKey = config.apiKey;
+    final cookie = config.cookie;
+    final hasApiKey = apiKey != null && apiKey.isNotEmpty;
+    final hasCookie = cookie != null && cookie.isNotEmpty;
 
-  /// 保存配置
-  Future<void> _saveConfig(MusicScraperType type, MusicScraperSourceEntity? source, _MusicScraperConfig config) async {
-    if (source != null) {
-      // Music Tag Web 需要额外配置
-      var extraConfig = source.extraConfig;
-      if (type == MusicScraperType.musicTagWeb) {
-        extraConfig = {
-          ...?source.extraConfig,
-          'serverUrl': config.serverUrlController.text,
-          'username': config.usernameController.text.isEmpty ? null : config.usernameController.text,
-          'password': config.passwordController.text.isEmpty ? null : config.passwordController.text,
-          'preferredSource': config.preferredSource,
-        };
-      }
-
-      // 更新现有源
-      final updatedSource = source.copyWith(
-        apiKey: config.apiKeyController.text.isEmpty ? null : config.apiKeyController.text,
-        cookie: config.cookieController.text.isEmpty ? null : config.cookieController.text,
+    if (existingSource != null) {
+      final updated = existingSource.copyWith(
+        apiKey: hasApiKey ? apiKey : null,
+        cookie: hasCookie ? cookie : null,
+        extraConfig: extraConfig ?? existingSource.extraConfig,
+      );
+      await ref.read(musicScraperSourcesProvider.notifier).updateSource(updated);
+    } else {
+      final newSource = MusicScraperSourceEntity(
+        name: '',
+        type: type,
+        isEnabled: true,
+        priority: 999,
+        apiKey: hasApiKey ? apiKey : null,
+        cookie: hasCookie ? cookie : null,
         extraConfig: extraConfig,
       );
-      await ref.read(musicScraperSourcesProvider.notifier).updateSource(updatedSource);
-    } else {
-      // 创建新源
-      await _addSource(type);
+      await ref.read(musicScraperSourcesProvider.notifier).addSource(newSource);
     }
 
     if (mounted) {
+      Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('已保存 ${type.displayName} 配置'),
+          content: Text('${type.displayName} 配置已保存'),
           behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 2),
         ),
       );
     }
@@ -308,12 +249,9 @@ class _MusicScraperSourcesPageState extends ConsumerState<MusicScraperSourcesPag
 
   /// 测试连接
   Future<void> _testConnection(MusicScraperSourceEntity source) async {
-    // 避免重复测试
     if (_testingSourceId != null) return;
 
-    setState(() {
-      _testingSourceId = source.id;
-    });
+    setState(() => _testingSourceId = source.id);
 
     try {
       final manager = ref.read(musicScraperManagerProvider);
@@ -341,11 +279,7 @@ class _MusicScraperSourcesPageState extends ConsumerState<MusicScraperSourcesPag
         ),
       );
     } finally {
-      if (mounted) {
-        setState(() {
-          _testingSourceId = null;
-        });
-      }
+      if (mounted) setState(() => _testingSourceId = null);
     }
   }
 
@@ -392,24 +326,6 @@ class _MusicScraperSourcesPageState extends ConsumerState<MusicScraperSourcesPag
   }
 }
 
-/// 配置状态类
-class _MusicScraperConfig {
-  final apiKeyController = TextEditingController();
-  final cookieController = TextEditingController();
-  final serverUrlController = TextEditingController();
-  final usernameController = TextEditingController();
-  final passwordController = TextEditingController();
-  String preferredSource = 'netease';
-
-  void dispose() {
-    apiKeyController.dispose();
-    cookieController.dispose();
-    serverUrlController.dispose();
-    usernameController.dispose();
-    passwordController.dispose();
-  }
-}
-
 /// 刮削源类型卡片
 class _MusicScraperTypeCard extends StatelessWidget {
   const _MusicScraperTypeCard({
@@ -417,29 +333,24 @@ class _MusicScraperTypeCard extends StatelessWidget {
     required this.index,
     required this.type,
     required this.source,
-    required this.priorityNumber,
-    required this.isExpanded,
-    required this.config,
-    required this.onToggle,
-    required this.onExpandToggle,
-    required this.onSave,
-    required this.onTest,
+    required this.isDark,
     required this.isTesting,
+    required this.onTap,
+    required this.onToggle,
+    required this.onTest,
   });
 
   final int index;
   final MusicScraperType type;
   final MusicScraperSourceEntity? source;
-  final int priorityNumber;
-  final bool isExpanded;
-  final _MusicScraperConfig config;
-  final void Function(bool) onToggle;
-  final VoidCallback onExpandToggle;
-  final VoidCallback onSave;
-  final VoidCallback? onTest;
+  final bool isDark;
   final bool isTesting;
+  final VoidCallback onTap;
+  final void Function(bool) onToggle;
+  final VoidCallback? onTest;
 
   bool get _isEnabled => source?.isEnabled ?? false;
+  bool get _isConfigured => source?.isConfigured ?? false;
   bool get _needsConfig => type.requiresApiKey || type.supportsCookie || type.requiresServerUrl;
   bool get _isImplemented => MusicScraperFactory.isImplemented(type);
 
@@ -448,284 +359,125 @@ class _MusicScraperTypeCard extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          // 主行 - 点击可展开配置
-          InkWell(
-            onTap: _needsConfig ? onExpandToggle : null,
+    return ReorderableDelayedDragStartListener(
+      index: index,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        child: Material(
+          color: isDark ? AppColors.darkSurfaceElevated : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          elevation: 1,
+          shadowColor: type.themeColor.withValues(alpha: 0.3),
+          child: InkWell(
+            onTap: _needsConfig && _isImplemented ? onTap : null,
+            borderRadius: BorderRadius.circular(16),
             child: Padding(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               child: Row(
                 children: [
-                  // 拖动区域 - 包含手柄、序号、图标和名称
-                  Expanded(
-                    child: ReorderableDragStartListener(
-                      index: index,
-                      child: Row(
-                        children: [
-                          // 拖动手柄 - 增大触摸区域
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            margin: const EdgeInsets.only(right: 4),
-                            decoration: BoxDecoration(
-                              color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Icon(
-                              Icons.drag_indicator,
-                              color: colorScheme.outline,
-                              size: 20,
-                            ),
-                          ),
-                          // 优先级序号
-                          Container(
-                            width: 28,
-                            height: 28,
-                            decoration: BoxDecoration(
-                              color: _isEnabled && _isImplemented
-                                  ? colorScheme.primaryContainer
-                                  : colorScheme.surfaceContainerHighest,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Center(
-                              child: Text(
-                                '$priorityNumber',
-                                style: theme.textTheme.labelLarge?.copyWith(
-                                  color: _isEnabled && _isImplemented
-                                      ? colorScheme.onPrimaryContainer
-                                      : colorScheme.onSurfaceVariant,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          // 图标
-                          Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: (_isEnabled && _isImplemented ? type.themeColor : colorScheme.outline)
-                                  .withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Icon(
-                              type.icon,
-                              size: 24,
-                              color: _isEnabled && _isImplemented ? type.themeColor : colorScheme.outline,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          // 名称和描述
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Text(
-                                      type.displayName,
-                                      style: theme.textTheme.titleSmall?.copyWith(
-                                        color: _isEnabled && _isImplemented
-                                            ? colorScheme.onSurface
-                                            : colorScheme.onSurfaceVariant,
-                                      ),
-                                    ),
-                                    if (!_isImplemented) ...[
-                                      const SizedBox(width: 6),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                                        decoration: BoxDecoration(
-                                          color: colorScheme.surfaceContainerHighest,
-                                          borderRadius: BorderRadius.circular(4),
-                                        ),
-                                        child: Text(
-                                          '即将支持',
-                                          style: theme.textTheme.labelSmall?.copyWith(
-                                            color: colorScheme.onSurfaceVariant,
-                                            fontSize: 10,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                                const SizedBox(height: 2),
-                                _buildCapabilityChips(context),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
+                  // 图标
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: (_isEnabled && _isImplemented)
+                          ? type.themeColor.withValues(alpha: 0.15)
+                          : (isDark ? Colors.grey[800] : Colors.grey[200]),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      type.icon,
+                      size: 24,
+                      color: (_isEnabled && _isImplemented)
+                          ? type.themeColor
+                          : (isDark ? Colors.grey[600] : Colors.grey[400]),
                     ),
                   ),
-                  // 展开/收起图标（如果需要配置）
-                  if (_needsConfig)
-                    Icon(
-                      isExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
-                      color: colorScheme.outline,
+                  const SizedBox(width: 12),
+
+                  // 名称和能力标签
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              type.displayName,
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: (_isEnabled && _isImplemented)
+                                    ? null
+                                    : (isDark ? Colors.grey[500] : Colors.grey[600]),
+                              ),
+                            ),
+                            if (!_isImplemented) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: colorScheme.surfaceContainerHighest,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  '即将支持',
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: colorScheme.onSurfaceVariant,
+                                    fontSize: 10,
+                                  ),
+                                ),
+                              ),
+                            ] else if (_isConfigured) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: Colors.green.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text(
+                                  '已配置',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.green,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        _buildCapabilityChips(context),
+                      ],
                     ),
-                  const SizedBox(width: 8),
-                  // 启用开关 - 在拖动区域外
+                  ),
+
+                  // 配置按钮（如果需要配置）
+                  if (_needsConfig && _isImplemented)
+                    IconButton(
+                      onPressed: onTap,
+                      icon: Icon(
+                        Icons.settings_outlined,
+                        color: isDark ? Colors.grey[500] : Colors.grey[400],
+                        size: 22,
+                      ),
+                      tooltip: '配置',
+                      visualDensity: VisualDensity.compact,
+                    ),
+
+                  // 启用开关
                   Switch(
                     value: _isEnabled,
                     onChanged: _isImplemented ? onToggle : null,
+                    activeTrackColor: type.themeColor.withValues(alpha: 0.5),
+                    activeThumbColor: type.themeColor,
                   ),
                 ],
               ),
             ),
           ),
-          // 展开的配置区域
-          if (isExpanded && _needsConfig)
-            Container(
-              decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerLowest,
-                border: Border(
-                  top: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
-                ),
-              ),
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // API Key 输入框
-                  if (type.requiresApiKey) ...[
-                    TextField(
-                      controller: config.apiKeyController,
-                      decoration: InputDecoration(
-                        labelText: 'API Key',
-                        hintText: '请输入 API Key',
-                        helperText: _getApiKeyHelper(),
-                        border: const OutlineInputBorder(),
-                        isDense: true,
-                        suffixIcon: IconButton(
-                          icon: const Icon(Icons.clear, size: 18),
-                          onPressed: config.apiKeyController.clear,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-
-                  // Cookie 输入框
-                  if (type.supportsCookie) ...[
-                    TextField(
-                      controller: config.cookieController,
-                      decoration: InputDecoration(
-                        labelText: 'Cookie（可选）',
-                        hintText: '登录后可获取更多内容',
-                        helperText: '从浏览器开发者工具复制 Cookie',
-                        border: const OutlineInputBorder(),
-                        isDense: true,
-                        suffixIcon: IconButton(
-                          icon: const Icon(Icons.clear, size: 18),
-                          onPressed: config.cookieController.clear,
-                        ),
-                      ),
-                      maxLines: 2,
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-
-                  // Music Tag Web 配置
-                  if (type.requiresServerUrl) ...[
-                    TextField(
-                      controller: config.serverUrlController,
-                      decoration: const InputDecoration(
-                        labelText: '服务器地址',
-                        hintText: '例如: http://192.168.1.100:8002',
-                        helperText: 'Music Tag Web 服务器的地址和端口',
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: config.usernameController,
-                            decoration: const InputDecoration(
-                              labelText: '用户名（可选）',
-                              hintText: '默认: admin',
-                              border: OutlineInputBorder(),
-                              isDense: true,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: TextField(
-                            controller: config.passwordController,
-                            decoration: const InputDecoration(
-                              labelText: '密码（可选）',
-                              hintText: '服务器密码',
-                              border: OutlineInputBorder(),
-                              isDense: true,
-                            ),
-                            obscureText: true,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    StatefulBuilder(
-                      builder: (context, setState) => DropdownButtonFormField<String>(
-                        initialValue: config.preferredSource,
-                        decoration: const InputDecoration(
-                          labelText: '首选音乐源',
-                          helperText: '搜索时优先使用的音乐平台',
-                          border: OutlineInputBorder(),
-                          isDense: true,
-                        ),
-                        items: const [
-                          DropdownMenuItem(value: 'netease', child: Text('网易云音乐')),
-                          DropdownMenuItem(value: 'qmusic', child: Text('QQ音乐')),
-                          DropdownMenuItem(value: 'kugou', child: Text('酷狗音乐')),
-                          DropdownMenuItem(value: 'kuwo', child: Text('酷我音乐')),
-                          DropdownMenuItem(value: 'migu', child: Text('咪咕音乐')),
-                        ],
-                        onChanged: (value) {
-                          if (value != null) {
-                            setState(() => config.preferredSource = value);
-                          }
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-
-                  // 操作按钮
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      if (onTest != null)
-                        OutlinedButton.icon(
-                          onPressed: isTesting ? null : onTest,
-                          icon: isTesting
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : const Icon(Icons.wifi_tethering, size: 18),
-                          label: Text(isTesting ? '测试中...' : '测试'),
-                        ),
-                      const SizedBox(width: 8),
-                      FilledButton.icon(
-                        onPressed: isTesting ? null : onSave,
-                        icon: const Icon(Icons.save, size: 18),
-                        label: const Text('保存'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-        ],
+        ),
       ),
     );
   }
@@ -769,10 +521,469 @@ class _MusicScraperTypeCard extends StatelessWidget {
               ),
         ),
       );
+}
 
-  /// 获取 API Key 帮助文本
-  String? _getApiKeyHelper() => switch (type) {
-        MusicScraperType.acoustId => '访问 acoustid.org 获取',
-        _ => null,
+/// 配置数据
+class _MusicScraperConfigData {
+  String? apiKey;
+  String? cookie;
+  String? serverUrl;
+  String? username;
+  String? password;
+  String preferredSource = 'netease';
+}
+
+/// 配置弹框
+class _MusicScraperConfigSheet extends StatefulWidget {
+  const _MusicScraperConfigSheet({
+    required this.type,
+    required this.source,
+    required this.onSave,
+    required this.onTest,
+    required this.isTesting,
+  });
+
+  final MusicScraperType type;
+  final MusicScraperSourceEntity? source;
+  final void Function(_MusicScraperConfigData) onSave;
+  final VoidCallback? onTest;
+  final bool isTesting;
+
+  @override
+  State<_MusicScraperConfigSheet> createState() => _MusicScraperConfigSheetState();
+}
+
+class _MusicScraperConfigSheetState extends State<_MusicScraperConfigSheet> {
+  final _apiKeyController = TextEditingController();
+  final _cookieController = TextEditingController();
+  final _serverUrlController = TextEditingController();
+  final _usernameController = TextEditingController();
+  final _passwordController = TextEditingController();
+  String _preferredSource = 'netease';
+  bool _obscureApiKey = true;
+  bool _obscureCookie = true;
+  bool _obscurePassword = true;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.source != null) {
+      _apiKeyController.text = widget.source!.apiKey ?? '';
+      _cookieController.text = widget.source!.cookie ?? '';
+      if (widget.type == MusicScraperType.musicTagWeb) {
+        _serverUrlController.text = widget.source!.extraConfig?['serverUrl'] as String? ?? '';
+        _usernameController.text = widget.source!.extraConfig?['username'] as String? ?? '';
+        _passwordController.text = widget.source!.extraConfig?['password'] as String? ?? '';
+        _preferredSource = widget.source!.extraConfig?['preferredSource'] as String? ?? 'netease';
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _apiKeyController.dispose();
+    _cookieController.dispose();
+    _serverUrlController.dispose();
+    _usernameController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      minChildSize: 0.4,
+      maxChildSize: 0.9,
+      expand: false,
+      builder: (context, scrollController) => ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: isDark
+                  ? AppColors.darkSurface.withValues(alpha: 0.95)
+                  : AppColors.lightSurface.withValues(alpha: 0.98),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              border: Border(
+                top: BorderSide(
+                  color: isDark ? AppColors.glassStroke : AppColors.lightOutline.withValues(alpha: 0.2),
+                ),
+              ),
+            ),
+            child: Column(
+              children: [
+                // 拖动指示器
+                Container(
+                  margin: const EdgeInsets.only(top: 12, bottom: 8),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.3)
+                        : AppColors.lightOnSurfaceVariant.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                // 标题栏
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: widget.type.themeColor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(widget.type.icon, color: widget.type.themeColor, size: 20),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.type.displayName,
+                              style: context.textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: isDark ? AppColors.darkOnSurface : null,
+                              ),
+                            ),
+                            Text(
+                              _getTypeDescription(),
+                              style: context.textTheme.bodySmall?.copyWith(
+                                color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                    ],
+                  ),
+                ),
+                Divider(
+                  height: 1,
+                  color: isDark
+                      ? AppColors.darkOutline.withValues(alpha: 0.2)
+                      : AppColors.lightOutline.withValues(alpha: 0.3),
+                ),
+                // 表单内容
+                Expanded(
+                  child: ListView(
+                    controller: scrollController,
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      // API Key
+                      if (widget.type.requiresApiKey) ...[
+                        _buildTextField(
+                          label: 'API Key',
+                          hint: _getApiKeyHint(),
+                          controller: _apiKeyController,
+                          isRequired: true,
+                          isObscure: _obscureApiKey,
+                          onToggleObscure: () => setState(() => _obscureApiKey = !_obscureApiKey),
+                          isDark: isDark,
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+
+                      // Cookie
+                      if (widget.type.supportsCookie) ...[
+                        _buildTextField(
+                          label: 'Cookie（可选）',
+                          hint: '登录后可获取更多内容',
+                          controller: _cookieController,
+                          isRequired: false,
+                          isObscure: _obscureCookie,
+                          onToggleObscure: () => setState(() => _obscureCookie = !_obscureCookie),
+                          isMultiline: true,
+                          isDark: isDark,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          '从浏览器开发者工具复制 Cookie',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isDark ? Colors.grey[500] : Colors.grey[600],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+
+                      // Music Tag Web 配置
+                      if (widget.type.requiresServerUrl) ...[
+                        _buildTextField(
+                          label: '服务器地址',
+                          hint: '例如: http://192.168.1.100:8002',
+                          controller: _serverUrlController,
+                          isRequired: true,
+                          isUrl: true,
+                          isDark: isDark,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Music Tag Web 服务器的地址和端口',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isDark ? Colors.grey[500] : Colors.grey[600],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildTextField(
+                                label: '用户名',
+                                hint: '默认: admin',
+                                controller: _usernameController,
+                                isRequired: false,
+                                isDark: isDark,
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: _buildTextField(
+                                label: '密码',
+                                hint: '服务器密码',
+                                controller: _passwordController,
+                                isRequired: false,
+                                isObscure: _obscurePassword,
+                                onToggleObscure: () => setState(() => _obscurePassword = !_obscurePassword),
+                                isDark: isDark,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        _buildPreferredSourceDropdown(isDark),
+                        const SizedBox(height: 16),
+                      ],
+                    ],
+                  ),
+                ),
+                // 底部按钮
+                Container(
+                  padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + MediaQuery.of(context).padding.bottom),
+                  decoration: BoxDecoration(
+                    color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+                    border: Border(
+                      top: BorderSide(
+                        color: isDark
+                            ? AppColors.darkOutline.withValues(alpha: 0.2)
+                            : AppColors.lightOutline.withValues(alpha: 0.3),
+                      ),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      if (widget.onTest != null)
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: widget.isTesting ? null : widget.onTest,
+                            icon: widget.isTesting
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                : const Icon(Icons.wifi_tethering_rounded, size: 18),
+                            label: Text(widget.isTesting ? '测试中...' : '测试连接'),
+                          ),
+                        ),
+                      if (widget.onTest != null) const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: _handleSave,
+                          icon: const Icon(Icons.check_rounded, size: 18),
+                          label: const Text('保存'),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: widget.type.themeColor,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _getTypeDescription() {
+    final capabilities = <String>[];
+    if (widget.type.supportsMetadata) capabilities.add('元数据');
+    if (widget.type.supportsCover) capabilities.add('封面');
+    if (widget.type.supportsLyrics) capabilities.add('歌词');
+    if (widget.type.supportsFingerprint) capabilities.add('声纹识别');
+    return capabilities.isEmpty ? '音乐刮削源' : '支持: ${capabilities.join('、')}';
+  }
+
+  String _getApiKeyHint() => switch (widget.type) {
+        MusicScraperType.acoustId => '从 acoustid.org 获取',
+        _ => '请输入 API Key',
       };
+
+  void _handleSave() {
+    // 验证必填项
+    if (widget.type.requiresApiKey && _apiKeyController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请填写 API Key'), behavior: SnackBarBehavior.floating),
+      );
+      return;
+    }
+    if (widget.type.requiresServerUrl && _serverUrlController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请填写服务器地址'), behavior: SnackBarBehavior.floating),
+      );
+      return;
+    }
+
+    widget.onSave(_MusicScraperConfigData()
+      ..apiKey = _apiKeyController.text.trim()
+      ..cookie = _cookieController.text.trim()
+      ..serverUrl = _serverUrlController.text.trim()
+      ..username = _usernameController.text.trim()
+      ..password = _passwordController.text.trim()
+      ..preferredSource = _preferredSource);
+  }
+
+  Widget _buildPreferredSourceDropdown(bool isDark) {
+    const options = [
+      ('netease', '网易云音乐'),
+      ('qmusic', 'QQ音乐'),
+      ('kugou', '酷狗音乐'),
+      ('kuwo', '酷我音乐'),
+      ('migu', '咪咕音乐'),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '首选音乐源',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+            color: isDark ? Colors.grey[300] : Colors.grey[700],
+          ),
+        ),
+        const SizedBox(height: 8),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: isDark ? Colors.grey[900] : Colors.white,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: isDark ? Colors.grey[700]! : Colors.grey[300]!),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: _preferredSource,
+              isExpanded: true,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              borderRadius: BorderRadius.circular(10),
+              dropdownColor: isDark ? Colors.grey[850] : Colors.white,
+              items: options.map((option) {
+                final (value, label) = option;
+                return DropdownMenuItem<String>(
+                  value: value,
+                  child: Text(label, style: const TextStyle(fontSize: 14)),
+                );
+              }).toList(),
+              onChanged: (value) {
+                if (value != null) setState(() => _preferredSource = value);
+              },
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          '搜索时优先使用的音乐平台',
+          style: TextStyle(
+            fontSize: 12,
+            color: isDark ? Colors.grey[500] : Colors.grey[600],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTextField({
+    required String label,
+    required String hint,
+    required TextEditingController controller,
+    required bool isDark,
+    bool isRequired = false,
+    bool isObscure = false,
+    bool isUrl = false,
+    bool isMultiline = false,
+    VoidCallback? onToggleObscure,
+  }) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: isDark ? Colors.grey[300] : Colors.grey[700],
+                ),
+              ),
+              if (isRequired) ...[
+                const SizedBox(width: 4),
+                const Text('*', style: TextStyle(color: Colors.red, fontSize: 13)),
+              ],
+            ],
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: controller,
+            obscureText: isObscure,
+            maxLines: isMultiline ? 3 : 1,
+            keyboardType: isUrl ? TextInputType.url : TextInputType.text,
+            style: const TextStyle(fontSize: 14),
+            decoration: InputDecoration(
+              hintText: hint,
+              hintStyle: TextStyle(fontSize: 13, color: isDark ? Colors.grey[600] : Colors.grey[400]),
+              filled: true,
+              fillColor: isDark ? Colors.grey[900] : Colors.white,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: isDark ? Colors.grey[700]! : Colors.grey[300]!),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: isDark ? Colors.grey[700]! : Colors.grey[300]!),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: widget.type.themeColor, width: 2),
+              ),
+              suffixIcon: onToggleObscure != null
+                  ? IconButton(
+                      icon: Icon(
+                        isObscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                        size: 20,
+                        color: isDark ? Colors.grey[500] : Colors.grey[600],
+                      ),
+                      onPressed: onToggleObscure,
+                    )
+                  : null,
+            ),
+          ),
+        ],
+      );
 }

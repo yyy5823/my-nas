@@ -41,7 +41,41 @@ class SourcesNotifier extends StateNotifier<AsyncValue<List<SourceEntity>>> {
     try {
       final manager = _ref.read(sourceManagerProvider);
       await manager.init();
-      final sources = await manager.getSources();
+      var sources = await manager.getSources();
+
+      // 清理旧的移动端媒体源（已废弃）
+      final oldMobileTypes = ['mobile_gallery', 'mobile_music', 'mobile_files'];
+      final oldSources = sources.where((s) => oldMobileTypes.contains(s.type.id)).toList();
+      for (final oldSource in oldSources) {
+        await manager.removeSource(oldSource.id);
+        // 清理关联的媒体库路径
+        await _ref.read(mediaLibraryConfigProvider.notifier).removePathsForSource(oldSource.id);
+      }
+      if (oldSources.isNotEmpty) {
+        sources = await manager.getSources();
+      }
+
+      // 确保存在唯一的本机源
+      final localSources = sources.where((s) => s.type == SourceType.local).toList();
+      if (localSources.isEmpty) {
+        // 创建本机源
+        final localSource = SourceEntity(
+          name: '本机',
+          type: SourceType.local,
+          host: 'localhost',
+          username: 'local',
+          autoConnect: true,
+        );
+        await manager.addSource(localSource);
+        sources = await manager.getSources();
+      } else if (localSources.length > 1) {
+        // 删除多余的本机源，只保留第一个
+        for (var i = 1; i < localSources.length; i++) {
+          await manager.removeSource(localSources[i].id);
+        }
+        sources = await manager.getSources();
+      }
+
       // 按 sortOrder 排序
       sources.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
       state = AsyncValue.data(sources);
@@ -389,6 +423,13 @@ class MediaLibraryConfigNotifier
       MediaType.note => current.copyWith(notePaths: updatedPaths),
     };
 
+    await _save(newConfig);
+  }
+
+  /// 移除指定源的所有路径（用于清理已删除的源）
+  Future<void> removePathsForSource(String sourceId) async {
+    final current = state.valueOrNull ?? const MediaLibraryConfig();
+    final newConfig = current.removePathsForSource(sourceId);
     await _save(newConfig);
   }
 

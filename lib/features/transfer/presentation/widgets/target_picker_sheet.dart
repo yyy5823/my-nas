@@ -141,10 +141,7 @@ class _TargetPickerSheetState extends ConsumerState<TargetPickerSheet> {
     );
   }
 
-  bool _isLocalSource(SourceType type) => type == SourceType.mobileGallery ||
-        type == SourceType.mobileMusic ||
-        type == SourceType.mobileFiles ||
-        type == SourceType.local;
+  bool _isLocalSource(SourceType type) => type == SourceType.local;
 
   Widget _buildEmptyState(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;

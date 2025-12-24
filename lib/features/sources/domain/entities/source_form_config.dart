@@ -135,14 +135,6 @@ class SourceFormConfig {
       case SourceType.local:
         return _getLocalConfig();
 
-      // === 移动端媒体 ===
-      case SourceType.mobileGallery:
-        return _getMobileGalleryConfig();
-      case SourceType.mobileMusic:
-        return _getMobileMusicConfig();
-      case SourceType.mobileFiles:
-        return _getMobileFilesConfig();
-
       // === 下载工具 ===
       case SourceType.qbittorrent:
         return _getQbittorrentConfig();
@@ -562,87 +554,6 @@ class SourceFormConfig {
               helpText: '将自动请求存储权限',
             ),
           ],
-        ),
-      ],
-    );
-
-  // === 移动端媒体配置 ===
-
-  /// 手机相册配置
-  /// 无需配置连接信息，只需一个名称
-  static SourceFormConfig _getMobileGalleryConfig() => const SourceFormConfig(
-      type: SourceType.mobileGallery,
-      testConnectionSupported: false,
-      sections: [
-        SourceFormSection(
-          title: '基本信息',
-          fields: [
-            SourceFormField(
-              key: 'name',
-              label: '名称',
-              placeholder: '手机相册',
-              required: false,
-              helpText: '显示在源列表中的名称',
-            ),
-          ],
-        ),
-        SourceFormSection(
-          title: '说明',
-          description: '将访问您的系统相册中的照片和视频。\n'
-              '首次连接时会请求相册访问权限。',
-          fields: [],
-        ),
-      ],
-    );
-
-  /// 手机音乐配置
-  static SourceFormConfig _getMobileMusicConfig() => const SourceFormConfig(
-      type: SourceType.mobileMusic,
-      testConnectionSupported: false,
-      sections: [
-        SourceFormSection(
-          title: '基本信息',
-          fields: [
-            SourceFormField(
-              key: 'name',
-              label: '名称',
-              placeholder: '手机音乐',
-              required: false,
-              helpText: '显示在源列表中的名称',
-            ),
-          ],
-        ),
-        SourceFormSection(
-          title: '说明',
-          description: '将访问您的系统音乐库和下载的音乐文件。\n'
-              '首次连接时会请求音乐库访问权限。',
-          fields: [],
-        ),
-      ],
-    );
-
-  /// 手机文件配置
-  static SourceFormConfig _getMobileFilesConfig() => const SourceFormConfig(
-      type: SourceType.mobileFiles,
-      testConnectionSupported: false,
-      sections: [
-        SourceFormSection(
-          title: '基本信息',
-          fields: [
-            SourceFormField(
-              key: 'name',
-              label: '名称',
-              placeholder: '手机文件',
-              required: false,
-              helpText: '显示在源列表中的名称',
-            ),
-          ],
-        ),
-        SourceFormSection(
-          title: '说明',
-          description: 'iOS: 访问"文件"App中的文档目录\n'
-              'Android: 访问文档和下载目录',
-          fields: [],
         ),
       ],
     );
@@ -1280,7 +1191,7 @@ class SourceFormConfig {
   // === 字幕站点配置 ===
 
   /// OpenSubtitles 配置
-  /// 使用 API Key 认证，支持登录获取更高配额
+  /// 用户名密码可选（用于获取更高配额），API Key 可选（默认使用内置）
   static SourceFormConfig _getOpenSubtitlesConfig() => const SourceFormConfig(
       type: SourceType.opensubtitles,
       testConnectionSupported: true,
@@ -1299,26 +1210,10 @@ class SourceFormConfig {
             ),
           ],
         ),
-        // API 配置
-        SourceFormSection(
-          title: 'API 配置',
-          description: '请在 opensubtitles.com 注册账号并创建 API Key',
-          fields: [
-            SourceFormField(
-              key: 'apiKey',
-              label: 'API Key',
-              type: SourceFormFieldType.password,
-              placeholder: '从 opensubtitles.com 获取',
-              helpText: '登录 opensubtitles.com → 个人资料 → API Consumers → 创建 API Key',
-            ),
-          ],
-        ),
         // 账号配置（可选，用于获取更高配额）
         SourceFormSection(
           title: '账号配置',
-          description: '可选：登录后可获取更高的下载配额',
-          collapsible: true,
-          defaultExpanded: false,
+          description: '可选：登录后可获取更高的下载配额（每天 10→20 次）',
           fields: [
             SourceFormField(
               key: 'username',
@@ -1367,6 +1262,23 @@ class SourceFormConfig {
               type: SourceFormFieldType.toggle,
               defaultValue: 'false',
               helpText: '为听障人士优化的字幕，包含音效描述',
+            ),
+          ],
+        ),
+        // 高级设置（自定义 API Key）
+        SourceFormSection(
+          title: '高级设置',
+          collapsible: true,
+          defaultExpanded: false,
+          description: '默认使用内置 API Key，一般无需配置',
+          fields: [
+            SourceFormField(
+              key: 'apiKey',
+              label: '自定义 API Key',
+              type: SourceFormFieldType.password,
+              required: false,
+              placeholder: '留空使用内置 API Key',
+              helpText: '如需使用自己的 API Key，可在 opensubtitles.com 申请',
             ),
           ],
         ),

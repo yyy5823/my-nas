@@ -827,15 +827,39 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
       ),
     );
 
-  void _onCollectionMovieTap(TmdbCollectionPart part) {
-    // TODO: 检查本地是否有该电影，如果有则跳转到详情页
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${part.title} (${part.year ?? "未知年份"})'),
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
-      ),
-    );
+  Future<void> _onCollectionMovieTap(TmdbCollectionPart part) async {
+    // 检查本地是否有该电影
+    final metadataService = ref.read(videoMetadataServiceProvider);
+    await metadataService.init();
+    final localVideo = await metadataService.getFirstByTmdbId(part.id);
+
+    if (!mounted) return;
+
+    if (localVideo != null) {
+      // 本地有该电影，跳转到详情页
+      // 使用 pushReplacement 避免详情页嵌套过深
+      await Navigator.of(context).pushReplacement(
+        MaterialPageRoute<void>(
+          builder: (context) => VideoDetailPage(
+            metadata: localVideo,
+            sourceId: localVideo.sourceId,
+          ),
+        ),
+      );
+    } else {
+      // 本地没有该电影，跳转到 TMDB 预览页面
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (context) => TmdbPreviewPage(
+            tmdbId: part.id,
+            isMovie: true, // 电影系列中的都是电影
+            title: part.title,
+            posterUrl: part.posterUrl,
+            backdropUrl: part.backdropUrl,
+          ),
+        ),
+      );
+    }
   }
 
   /// 打开电影系列完整列表页面

@@ -982,12 +982,6 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
       return;
     }
 
-    // 移动端源：不需要密码验证，直接保存并连接
-    if (source.type.isMobileSource) {
-      await _submitMobileSource(source);
-      return;
-    }
-
     // 先尝试连接验证（不保存凭证）
     final connection = await sourceManager.connect(
       source,
@@ -1090,42 +1084,6 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
     } on Exception catch (e) {
       if (!mounted) return;
       _showErrorSnackBar('连接失败: $e');
-    }
-  }
-
-  /// 提交移动端源
-  ///
-  /// 移动端源不需要密码验证，直接保存并尝试连接
-  Future<void> _submitMobileSource(SourceEntity source) async {
-    final sourcesNotifier = ref.read(sourcesProvider.notifier);
-    final sourceManager = ref.read(sourceManagerProvider);
-
-    try {
-      // 尝试连接（会自动请求权限）
-      final connection = await sourceManager.connect(
-        source,
-        password: '',
-        saveCredential: false,
-      );
-
-      if (!mounted) return;
-
-      if (connection.status == SourceStatus.connected) {
-        // 连接成功，保存源
-        await sourcesNotifier.addSource(source);
-        // 刷新连接状态
-        ref.read(activeConnectionsProvider.notifier).refresh();
-        if (mounted) {
-          _showSuccessAndPop(source, '已添加 ${source.displayName}');
-        }
-      } else {
-        // 连接失败（可能是权限被拒绝）
-        await sourceManager.disconnect(source.id);
-        _showErrorSnackBar(connection.errorMessage ?? '连接失败，请检查权限设置');
-      }
-    } on Exception catch (e) {
-      if (!mounted) return;
-      _showErrorSnackBar('添加失败: $e');
     }
   }
 

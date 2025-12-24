@@ -43,6 +43,11 @@ class MusicScraperManagerService {
   Future<List<MusicScraperSourceEntity>> getSources() async {
     await _ensureInit();
 
+    // 检查是否需要初始化默认源
+    if (_box!.isEmpty) {
+      await _initDefaultSources();
+    }
+
     final sources = <MusicScraperSourceEntity>[];
     for (final key in _box!.keys) {
       final data = _box!.get(key);
@@ -70,6 +75,29 @@ class MusicScraperManagerService {
     // 按优先级排序
     sources.sort((a, b) => a.priority.compareTo(b.priority));
     return sources;
+  }
+
+  /// 初始化默认刮削源（不需要配置的源）
+  Future<void> _initDefaultSources() async {
+    // 默认启用不需要额外配置的源
+    final defaultTypes = [
+      MusicScraperType.musicBrainz,   // 无需配置
+      MusicScraperType.neteaseMusic,  // Cookie 可选
+      MusicScraperType.qqMusic,       // Cookie 可选
+      MusicScraperType.kugouMusic,    // 无需配置
+    ];
+
+    for (var i = 0; i < defaultTypes.length; i++) {
+      final type = defaultTypes[i];
+      final source = MusicScraperSourceEntity(
+        name: '',
+        type: type,
+        isEnabled: true,
+        priority: i,
+      );
+      // 直接保存，不通过 addSource 避免重复计算优先级
+      await _box!.put(source.id, source.toJson());
+    }
   }
 
   /// 获取单个刮削源

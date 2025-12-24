@@ -67,6 +67,20 @@ class VideoMetadata {
     this.resolution,
     this.localizedTitles,
     this.localizedOverviews,
+    // 扩展视频信息
+    this.videoSource,
+    this.videoCodec,
+    this.hdrFormat,
+    this.audioFormat,
+    this.is3D = false,
+    this.isRemux = false,
+    // 扩展评分
+    this.imdbId,
+    this.imdbRating,
+    this.metacriticRating,
+    this.traktRating,
+    // 内容分级
+    this.certification,
   });
 
   /// 从 Map 创建
@@ -112,6 +126,20 @@ class VideoMetadata {
       resolution: map['resolution'] as String?,
       localizedTitles: _parseLocalizedMap(map['localizedTitles']),
       localizedOverviews: _parseLocalizedMap(map['localizedOverviews']),
+      // 扩展视频信息
+      videoSource: map['videoSource'] as String?,
+      videoCodec: map['videoCodec'] as String?,
+      hdrFormat: map['hdrFormat'] as String?,
+      audioFormat: map['audioFormat'] as String?,
+      is3D: map['is3D'] == 1 || map['is3D'] == true,
+      isRemux: map['isRemux'] == 1 || map['isRemux'] == true,
+      // 扩展评分
+      imdbId: map['imdbId'] as String?,
+      imdbRating: (map['imdbRating'] as num?)?.toDouble(),
+      metacriticRating: map['metacriticRating'] as int?,
+      traktRating: (map['traktRating'] as num?)?.toDouble(),
+      // 内容分级
+      certification: map['certification'] as String?,
     );
 
   /// 解析多语言 Map（从 JSON 字符串或 Map）
@@ -173,6 +201,26 @@ class VideoMetadata {
 
   /// 多语言简介（语言代码 -> 简介）
   Map<String, String>? localizedOverviews;
+
+  // === 扩展视频信息 ===
+
+  String? videoSource; // 视频来源（BluRay, WEB-DL, HDTV 等）
+  String? videoCodec; // 视频编码（HEVC, x265, AVC 等）
+  String? hdrFormat; // HDR 格式（HDR10, Dolby Vision 等）
+  String? audioFormat; // 音频格式（Atmos, DTS-HD MA 等）
+  bool is3D; // 是否 3D 内容
+  bool isRemux; // 是否 Remux 版本
+
+  // === 扩展评分 ===
+
+  String? imdbId; // IMDb ID
+  double? imdbRating; // IMDb 评分
+  int? metacriticRating; // Metacritic 评分（0-100）
+  double? traktRating; // Trakt 评分
+
+  // === 内容分级 ===
+
+  String? certification; // 内容分级（PG, PG-13, R, NC-17, G 等）
 
   /// 海报显示优先级：
   /// 1. 本地缓存的海报（离线可用，file:// 路径）
@@ -444,6 +492,20 @@ class VideoMetadata {
       'resolution': resolution,
       'localizedTitles': localizedTitles != null ? jsonEncode(localizedTitles) : null,
       'localizedOverviews': localizedOverviews != null ? jsonEncode(localizedOverviews) : null,
+      // 扩展视频信息
+      'videoSource': videoSource,
+      'videoCodec': videoCodec,
+      'hdrFormat': hdrFormat,
+      'audioFormat': audioFormat,
+      'is3D': is3D ? 1 : 0,
+      'isRemux': isRemux ? 1 : 0,
+      // 扩展评分
+      'imdbId': imdbId,
+      'imdbRating': imdbRating,
+      'metacriticRating': metacriticRating,
+      'traktRating': traktRating,
+      // 内容分级
+      'certification': certification,
     };
 
   /// 复制
@@ -485,6 +547,20 @@ class VideoMetadata {
     String? resolution,
     Map<String, String>? localizedTitles,
     Map<String, String>? localizedOverviews,
+    // 扩展视频信息
+    String? videoSource,
+    String? videoCodec,
+    String? hdrFormat,
+    String? audioFormat,
+    bool? is3D,
+    bool? isRemux,
+    // 扩展评分
+    String? imdbId,
+    double? imdbRating,
+    int? metacriticRating,
+    double? traktRating,
+    // 内容分级
+    String? certification,
   }) => VideoMetadata(
       filePath: filePath ?? this.filePath,
       sourceId: sourceId ?? this.sourceId,
@@ -523,6 +599,20 @@ class VideoMetadata {
       resolution: resolution ?? this.resolution,
       localizedTitles: localizedTitles ?? this.localizedTitles,
       localizedOverviews: localizedOverviews ?? this.localizedOverviews,
+      // 扩展视频信息
+      videoSource: videoSource ?? this.videoSource,
+      videoCodec: videoCodec ?? this.videoCodec,
+      hdrFormat: hdrFormat ?? this.hdrFormat,
+      audioFormat: audioFormat ?? this.audioFormat,
+      is3D: is3D ?? this.is3D,
+      isRemux: isRemux ?? this.isRemux,
+      // 扩展评分
+      imdbId: imdbId ?? this.imdbId,
+      imdbRating: imdbRating ?? this.imdbRating,
+      metacriticRating: metacriticRating ?? this.metacriticRating,
+      traktRating: traktRating ?? this.traktRating,
+      // 内容分级
+      certification: certification ?? this.certification,
     );
 
   /// 添加或更新多语言标题
@@ -559,18 +649,52 @@ class VideoFileNameInfo {
     this.resolution,
     this.source,
     this.codec,
+    this.hdrFormat,
+    this.audioFormat,
+    this.is3D = false,
+    this.isRemux = false,
   });
 
   final String cleanTitle;
   final int? year;
   final int? season;
   final int? episode;
-  final String? resolution;
-  final String? source;
-  final String? codec;
+  final String? resolution; // 4K, 2160p, 1080p, 720p, 480p
+  final String? source; // BluRay, WEB-DL, HDTV, DVDRip
+  final String? codec; // HEVC, x265, AVC, x264
+  final String? hdrFormat; // HDR, HDR10, HDR10+, Dolby Vision, DV
+  final String? audioFormat; // Atmos, DTS-X, DTS-HD MA, TrueHD, DTS, AAC, AC3
+  final bool is3D; // 3D 内容
+  final bool isRemux; // Remux 版本
 
   bool get isTvShow => season != null || episode != null;
   bool get isMovie => !isTvShow;
+
+  /// 是否是 4K 内容
+  bool get is4K =>
+      resolution?.toUpperCase() == '4K' ||
+      resolution?.toUpperCase() == '2160P' ||
+      resolution == '2160p';
+
+  /// 是否是 HDR 内容
+  bool get isHDR => hdrFormat != null && hdrFormat!.isNotEmpty;
+
+  /// 是否是杜比视界
+  bool get isDolbyVision =>
+      hdrFormat?.toUpperCase().contains('DOLBY') == true ||
+      hdrFormat?.toUpperCase() == 'DV';
+
+  /// 是否是高清 (1080p+)
+  bool get isHD =>
+      is4K ||
+      resolution?.toUpperCase() == '1080P' ||
+      resolution == '1080p';
+
+  /// 是否是蓝光
+  bool get isBluRay =>
+      source?.toUpperCase().contains('BLU') == true ||
+      source?.toUpperCase().contains('BD') == true ||
+      isRemux;
 }
 
 /// 视频文件名解析器
@@ -718,7 +842,32 @@ class VideoFileNameParser {
     caseSensitive: false,
   );
   static final _codecPattern = RegExp(
-    r'(x264|x265|HEVC|H\.?264|H\.?265|AVC)',
+    r'(x264|x265|HEVC|H\.?264|H\.?265|AVC|VP9|AV1)',
+    caseSensitive: false,
+  );
+
+  /// HDR 格式匹配
+  static final _hdrPattern = RegExp(
+    r'(Dolby[\s._-]*Vision|DV|DoVi|HDR10\+?|HDR|HLG|PQ)',
+    caseSensitive: false,
+  );
+
+  /// 音频格式匹配
+  static final _audioPattern = RegExp(
+    r'(Atmos|DTS[\s._-]?X|DTS[\s._-]?HD[\s._-]?MA|TrueHD|DTS|DD\+?|EAC3|AC3|AAC|FLAC|LPCM|PCM)',
+    caseSensitive: false,
+  );
+
+  /// 3D 内容匹配
+  // ignore: non_constant_identifier_names
+  static final _3DPattern = RegExp(
+    '(3D|SBS|HSBS|TAB|HTAB|OU|HOU)',
+    caseSensitive: false,
+  );
+
+  /// Remux 匹配
+  static final _remuxPattern = RegExp(
+    r'(REMUX|UHD[\s._-]?Remux|BD[\s._-]?Remux)',
     caseSensitive: false,
   );
   static final _cleanupPattern = RegExp(
@@ -851,6 +1000,56 @@ class VideoFileNameParser {
     final codecMatch = _codecPattern.firstMatch(name);
     final codec = codecMatch?.group(1);
 
+    // 提取 HDR 格式
+    final hdrMatch = _hdrPattern.firstMatch(name);
+    String? hdrFormat = hdrMatch?.group(1);
+    // 规范化 HDR 格式名称
+    if (hdrFormat != null) {
+      final upper = hdrFormat.toUpperCase().replaceAll(RegExp(r'[\s._-]+'), '');
+      if (upper.contains('DOLBY') || upper == 'DV' || upper == 'DOVI') {
+        hdrFormat = 'Dolby Vision';
+      } else if (upper == 'HDR10+') {
+        hdrFormat = 'HDR10+';
+      } else if (upper == 'HDR10' || upper == 'HDR') {
+        hdrFormat = 'HDR10';
+      } else if (upper == 'HLG') {
+        hdrFormat = 'HLG';
+      }
+    }
+
+    // 提取音频格式
+    final audioMatch = _audioPattern.firstMatch(name);
+    String? audioFormat = audioMatch?.group(1);
+    // 规范化音频格式名称
+    if (audioFormat != null) {
+      final upper = audioFormat.toUpperCase().replaceAll(RegExp(r'[\s._-]+'), '');
+      if (upper == 'ATMOS') {
+        audioFormat = 'Atmos';
+      } else if (upper == 'DTSX') {
+        audioFormat = 'DTS:X';
+      } else if (upper == 'DTSHDMA') {
+        audioFormat = 'DTS-HD MA';
+      } else if (upper == 'TRUEHD') {
+        audioFormat = 'TrueHD';
+      } else if (upper == 'DTS') {
+        audioFormat = 'DTS';
+      } else if (upper == 'DD+' || upper == 'EAC3') {
+        audioFormat = 'DD+';
+      } else if (upper == 'DD' || upper == 'AC3') {
+        audioFormat = 'AC3';
+      } else if (upper == 'AAC') {
+        audioFormat = 'AAC';
+      } else if (upper == 'FLAC') {
+        audioFormat = 'FLAC';
+      }
+    }
+
+    // 检测 3D 内容
+    final is3D = _3DPattern.hasMatch(name);
+
+    // 检测 Remux
+    final isRemux = _remuxPattern.hasMatch(name);
+
     // 清理标题
     var cleanTitle = name;
 
@@ -884,6 +1083,10 @@ class VideoFileNameParser {
       resolution: resolution,
       source: source,
       codec: codec,
+      hdrFormat: hdrFormat,
+      audioFormat: audioFormat,
+      is3D: is3D,
+      isRemux: isRemux,
     );
   }
 }
