@@ -53,20 +53,42 @@ class PhotoHashService {
     _shouldCancel = false;
 
     try {
+      // 获取初始待处理数量作为总数
+      final stats = await _db.getHashStats();
+      final initialPending = stats.pending;
+
+      if (initialPending == 0) {
+        _progressController.add(HashProgress(
+          processed: 0,
+          total: 0,
+          currentFile: '',
+          status: HashStatus.completed,
+        ));
+        logger.i('PhotoHashService: 没有待处理的照片');
+        return;
+      }
+
       var processed = 0;
       var failed = 0;
+
+      _progressController.add(HashProgress(
+        processed: 0,
+        total: initialPending,
+        currentFile: '',
+        status: HashStatus.processing,
+      ));
 
       while (!_shouldCancel) {
         // 获取一批未处理的照片
         final photos = await _db.getPhotosWithoutHash(limit: batchSize);
         if (photos.isEmpty) break;
 
-        final total = await _db.getCount();
         final remaining = photos.length;
 
         _progressController.add(HashProgress(
           processed: processed,
-          total: total,
+          total: initialPending,
+          failed: failed,
           currentFile: photos.first.fileName,
           status: HashStatus.processing,
         ));
@@ -91,7 +113,7 @@ class PhotoHashService {
 
         _progressController.add(HashProgress(
           processed: processed,
-          total: total,
+          total: initialPending,
           failed: failed,
           currentFile: '',
           status: HashStatus.processing,
@@ -103,7 +125,7 @@ class PhotoHashService {
 
       _progressController.add(HashProgress(
         processed: processed,
-        total: processed + failed,
+        total: initialPending,
         failed: failed,
         currentFile: '',
         status: _shouldCancel ? HashStatus.cancelled : HashStatus.completed,

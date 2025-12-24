@@ -62,7 +62,8 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
   @override
   void initState() {
     super.initState();
-    _loadDuplicates();
+    // 加载数据并自动开始扫描待处理的照片
+    _loadDuplicates(autoStartScan: true);
   }
 
   @override
@@ -71,7 +72,7 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
     super.dispose();
   }
 
-  Future<void> _loadDuplicates() async {
+  Future<void> _loadDuplicates({bool autoStartScan = false}) async {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -99,6 +100,14 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
         _hashCalcStats = hashCalcStats;
         _isLoading = false;
       });
+
+      // 如果有待处理的照片且需要自动开始扫描
+      if (autoStartScan && hashCalcStats.pending > 0 && !_isScanning) {
+        // 延迟一帧确保 UI 已更新
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _startScan();
+        });
+      }
     } on Exception catch (e) {
       setState(() {
         _errorMessage = '加载失败: $e';
@@ -1127,7 +1136,6 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
                   ? '已扫描 ${calcStats.hashed}/${calcStats.total} 张'
                       '${calcStats.pending > 0 ? '，待扫描 ${calcStats.pending}' : ''}'
                       '${calcStats.failed > 0 ? '，失败 ${calcStats.failed}' : ''}'
-                      '\n点击右上角刷新按钮继续扫描'
                   : '全部 ${calcStats.total} 张照片已完成扫描',
               style: TextStyle(
                 fontSize: 12,
@@ -1135,6 +1143,15 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
               ),
             ),
           ),
+          if (needsScan && !_isScanning)
+            TextButton(
+              onPressed: _startScan,
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                minimumSize: const Size(0, 32),
+              ),
+              child: const Text('开始扫描'),
+            ),
         ],
       ),
     );
