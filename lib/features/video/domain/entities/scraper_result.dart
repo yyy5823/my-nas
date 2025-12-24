@@ -118,6 +118,8 @@ class ScraperMovieDetail {
     this.status,
     this.collectionId,
     this.collectionName,
+    this.collectionPosterUrl,
+    this.collectionBackdropUrl,
     this.imdbId,
     this.localizedTitles,
     this.localizedOverviews,
@@ -180,6 +182,12 @@ class ScraperMovieDetail {
   /// 电影系列名称
   final String? collectionName;
 
+  /// 电影系列海报 URL（TMDB 系列专属海报）
+  final String? collectionPosterUrl;
+
+  /// 电影系列背景图 URL
+  final String? collectionBackdropUrl;
+
   /// IMDB ID
   final String? imdbId;
 
@@ -234,8 +242,11 @@ class ScraperMovieDetail {
       case ScraperType.tmdb:
         metadata.tmdbId = int.tryParse(externalId);
         if (collectionId != null) {
-          metadata..collectionId = int.tryParse(collectionId!)
-          ..collectionName = collectionName;
+          metadata
+            ..collectionId = int.tryParse(collectionId!)
+            ..collectionName = collectionName
+            ..collectionPosterUrl = collectionPosterUrl
+            ..collectionBackdropUrl = collectionBackdropUrl;
         }
       case ScraperType.doubanApi:
       case ScraperType.doubanWeb:

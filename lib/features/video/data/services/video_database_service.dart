@@ -112,6 +112,8 @@ class VideoDatabaseService {
   static const String _colFileModifiedTime = 'file_modified_time';
   static const String _colCollectionId = 'collection_id';
   static const String _colCollectionName = 'collection_name';
+  static const String _colCollectionPosterUrl = 'collection_poster_url'; // 系列海报 URL
+  static const String _colCollectionBackdropUrl = 'collection_backdrop_url'; // 系列背景图 URL
   static const String _colHasNfo = 'has_nfo'; // 是否检测到 NFO 文件
   static const String _colScrapePriority = 'scrape_priority'; // 刮削优先级
   static const String _colShowDirectory = 'show_directory'; // TV 剧集所属剧目录
@@ -187,7 +189,7 @@ class VideoDatabaseService {
 
       _db = await openDatabase(
         dbPath,
-        version: 14, // 升级版本以添加 countries 字段
+        version: 15, // 升级版本以添加系列海报字段
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onConfigure: _onConfigure,
@@ -811,6 +813,17 @@ class VideoDatabaseService {
           'ALTER TABLE $_tableMetadata ADD COLUMN $_colCountries TEXT');
 
       logger.i('VideoDatabaseService: 版本13->14 升级完成（添加国家/地区字段）');
+    }
+
+    // 从版本14升级到版本15
+    if (oldVersion < 15) {
+      // 添加电影系列海报字段（存储 TMDB 系列专属海报）
+      await db.execute(
+          'ALTER TABLE $_tableMetadata ADD COLUMN $_colCollectionPosterUrl TEXT');
+      await db.execute(
+          'ALTER TABLE $_tableMetadata ADD COLUMN $_colCollectionBackdropUrl TEXT');
+
+      logger.i('VideoDatabaseService: 版本14->15 升级完成（添加系列海报字段）');
     }
   }
 
@@ -2123,6 +2136,8 @@ class VideoDatabaseService {
         _colFileModifiedTime: m.fileModifiedTime?.millisecondsSinceEpoch,
         _colCollectionId: m.collectionId,
         _colCollectionName: m.collectionName,
+        _colCollectionPosterUrl: m.collectionPosterUrl,
+        _colCollectionBackdropUrl: m.collectionBackdropUrl,
         _colShowDirectory: m.showDirectory,
         _colMovieDirectory: m.movieDirectory,
         _colResolution: m.resolution,
@@ -2190,6 +2205,8 @@ class VideoDatabaseService {
             : null,
         collectionId: row[_colCollectionId] as int?,
         collectionName: row[_colCollectionName] as String?,
+        collectionPosterUrl: row[_colCollectionPosterUrl] as String?,
+        collectionBackdropUrl: row[_colCollectionBackdropUrl] as String?,
         showDirectory: row[_colShowDirectory] as String?,
         movieDirectory: row[_colMovieDirectory] as String?,
         resolution: row[_colResolution] as String?,
@@ -3657,12 +3674,13 @@ class VideoDatabaseService {
     var insertedCount = 0;
 
     // 步骤 2: 聚合有 collection_id 的电影（TMDB 官方系列）
+    // 优先使用系列专属海报，否则使用第一部电影的海报
     final tmdbCollections = await _db!.rawQuery('''
-      SELECT 
+      SELECT
         $_colCollectionId,
         MAX($_colCollectionName) as name,
-        MAX($_colPosterUrl) as poster_url,
-        MAX($_colBackdropUrl) as backdrop_url,
+        COALESCE(MAX($_colCollectionPosterUrl), MAX($_colPosterUrl)) as poster_url,
+        COALESCE(MAX($_colCollectionBackdropUrl), MAX($_colBackdropUrl)) as backdrop_url,
         MAX($_colOverview) as overview,
         COUNT(*) as movie_count
       FROM $_tableMetadata
@@ -4078,12 +4096,28 @@ class MovieCollection {
   /// 代表电影（第一部）
   VideoMetadata? get representative => movies.isNotEmpty ? movies.first : null;
 
-  /// 系列海报（使用第一部电影的海报）
-  String? get posterUrl => representative?.posterUrl;
+  /// 系列海报（优先使用 TMDB 系列专属海报，否则使用第一部电影的海报）
+  String? get posterUrl {
+    // 优先使用系列专属海报
+    for (final movie in movies) {
+      if (movie.collectionPosterUrl != null && movie.collectionPosterUrl!.isNotEmpty) {
+        return movie.collectionPosterUrl;
+      }
+    }
+    // 否则使用代表电影的海报
+    return representative?.posterUrl;
+  }
 
-  /// 系列背景图（使用评分最高的电影的背景图）
+  /// 系列背景图（优先使用系列专属背景图，否则使用评分最高的电影的背景图）
   String? get backdropUrl {
     if (movies.isEmpty) return null;
+    // 优先使用系列专属背景图
+    for (final movie in movies) {
+      if (movie.collectionBackdropUrl != null && movie.collectionBackdropUrl!.isNotEmpty) {
+        return movie.collectionBackdropUrl;
+      }
+    }
+    // 否则使用评分最高的电影的背景图
     final sortedByRating = List<VideoMetadata>.from(movies)
       ..sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
     return sortedByRating.first.backdropUrl;

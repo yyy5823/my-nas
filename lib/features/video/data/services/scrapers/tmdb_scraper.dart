@@ -386,6 +386,8 @@ class TmdbScraper implements MediaScraper {
       status: json['status'] as String?,
       collectionId: collectionData?['id']?.toString(),
       collectionName: collectionData?['name'] as String?,
+      collectionPosterUrl: getImageUrlWithProxy(collectionData?['poster_path'] as String?),
+      collectionBackdropUrl: getImageUrlWithProxy(collectionData?['backdrop_path'] as String?, size: 'w780'),
       imdbId: json['imdb_id'] as String?,
     );
   }

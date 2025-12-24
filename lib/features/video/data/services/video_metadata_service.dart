@@ -737,18 +737,21 @@ class VideoMetadataService {
   /// 从 TMDB 补充电影系列信息
   ///
   /// 用于 NFO 刮削成功但缺少系列信息的情况
-  /// 仅更新 collectionId 和 collectionName，不覆盖其他元数据
+  /// 仅更新 collectionId、collectionName 和系列海报，不覆盖其他元数据
   Future<void> _supplementCollectionFromTmdb(VideoMetadata metadata) async {
     if (!_tmdbService.hasApiKey || metadata.tmdbId == null) return;
 
     try {
       final movieDetail = await _tmdbService.getMovieDetail(metadata.tmdbId!);
       if (movieDetail != null && movieDetail.belongsToCollection != null) {
+        final collection = movieDetail.belongsToCollection!;
         metadata
-          ..collectionId = movieDetail.belongsToCollection!.id
-          ..collectionName = movieDetail.belongsToCollection!.name;
+          ..collectionId = collection.id
+          ..collectionName = collection.name
+          ..collectionPosterUrl = collection.posterUrl
+          ..collectionBackdropUrl = collection.backdropUrl;
         logger.d('VideoMetadataService: 从 TMDB 补充系列信息 '
-            '"${movieDetail.belongsToCollection!.name}" for "${metadata.title}"');
+            '"${collection.name}" for "${metadata.title}"');
       }
     } on Exception catch (e) {
       logger.w('VideoMetadataService: 补充 TMDB 系列信息失败', e);
@@ -1108,13 +1111,16 @@ class VideoMetadataService {
       try {
         final movieDetail = await _tmdbService.getMovieDetail(movie.tmdbId!);
         if (movieDetail != null && movieDetail.belongsToCollection != null) {
+          final collection = movieDetail.belongsToCollection!;
           movie
-            ..collectionId = movieDetail.belongsToCollection!.id
-            ..collectionName = movieDetail.belongsToCollection!.name;
+            ..collectionId = collection.id
+            ..collectionName = collection.name
+            ..collectionPosterUrl = collection.posterUrl
+            ..collectionBackdropUrl = collection.backdropUrl;
           await _db.upsert(movie);
           updatedCount++;
           logger.d('VideoMetadataService: 更新系列信息 "${movie.title}" -> '
-              '"${movieDetail.belongsToCollection!.name}"');
+              '"${collection.name}"');
         }
       } on Exception catch (e) {
         logger.w('VideoMetadataService: 获取 "${movie.title}" 系列信息失败', e);

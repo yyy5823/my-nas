@@ -60,6 +60,8 @@ class VideoMetadata {
     this.fileModifiedTime,
     this.collectionId,
     this.collectionName,
+    this.collectionPosterUrl,
+    this.collectionBackdropUrl,
     this.showDirectory,
     this.movieDirectory,
     this.resolution,
@@ -103,6 +105,8 @@ class VideoMetadata {
           : null,
       collectionId: map['collectionId'] as int?,
       collectionName: map['collectionName'] as String?,
+      collectionPosterUrl: map['collectionPosterUrl'] as String?,
+      collectionBackdropUrl: map['collectionBackdropUrl'] as String?,
       showDirectory: map['showDirectory'] as String?,
       movieDirectory: map['movieDirectory'] as String?,
       resolution: map['resolution'] as String?,
@@ -157,6 +161,8 @@ class VideoMetadata {
   DateTime? fileModifiedTime; // 文件修改时间
   int? collectionId; // TMDB 电影系列 ID
   String? collectionName; // TMDB 电影系列名称
+  String? collectionPosterUrl; // 电影系列海报 URL（TMDB 系列专属海报）
+  String? collectionBackdropUrl; // 电影系列背景图 URL
   String? showDirectory; // 所属剧目录（TV 剧集专用，用于分组）
   String? movieDirectory; // 电影所在目录（用于目录系列识别）
   String? resolution; // 视频分辨率（4K, 1080p, 720p 等）
@@ -431,6 +437,8 @@ class VideoMetadata {
       'fileModifiedTime': fileModifiedTime?.millisecondsSinceEpoch,
       'collectionId': collectionId,
       'collectionName': collectionName,
+      'collectionPosterUrl': collectionPosterUrl,
+      'collectionBackdropUrl': collectionBackdropUrl,
       'showDirectory': showDirectory,
       'movieDirectory': movieDirectory,
       'resolution': resolution,
@@ -470,6 +478,8 @@ class VideoMetadata {
     DateTime? fileModifiedTime,
     int? collectionId,
     String? collectionName,
+    String? collectionPosterUrl,
+    String? collectionBackdropUrl,
     String? showDirectory,
     String? movieDirectory,
     String? resolution,
@@ -506,6 +516,8 @@ class VideoMetadata {
       fileModifiedTime: fileModifiedTime ?? this.fileModifiedTime,
       collectionId: collectionId ?? this.collectionId,
       collectionName: collectionName ?? this.collectionName,
+      collectionPosterUrl: collectionPosterUrl ?? this.collectionPosterUrl,
+      collectionBackdropUrl: collectionBackdropUrl ?? this.collectionBackdropUrl,
       showDirectory: showDirectory ?? this.showDirectory,
       movieDirectory: movieDirectory ?? this.movieDirectory,
       resolution: resolution ?? this.resolution,
