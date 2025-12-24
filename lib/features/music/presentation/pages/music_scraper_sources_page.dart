@@ -453,18 +453,17 @@ class _MusicScraperTypeCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
-          // 主行
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                // 拖动区域 - 包含手柄、序号、图标和名称
-                Expanded(
-                  child: ReorderableDragStartListener(
-                    index: index,
-                    child: InkWell(
-                      onTap: _needsConfig ? onExpandToggle : null,
-                      borderRadius: BorderRadius.circular(8),
+          // 主行 - 点击可展开配置
+          InkWell(
+            onTap: _needsConfig ? onExpandToggle : null,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  // 拖动区域 - 包含手柄、序号、图标和名称
+                  Expanded(
+                    child: ReorderableDragStartListener(
+                      index: index,
                       child: Row(
                         children: [
                           // 拖动手柄 - 增大触摸区域
@@ -563,24 +562,20 @@ class _MusicScraperTypeCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                ),
-                // 展开/收起按钮（如果需要配置）- 在拖动区域外
-                if (_needsConfig)
-                  IconButton(
-                    onPressed: onExpandToggle,
-                    icon: Icon(
-                      isExpanded ? Icons.expand_less : Icons.expand_more,
+                  // 展开/收起图标（如果需要配置）
+                  if (_needsConfig)
+                    Icon(
+                      isExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
                       color: colorScheme.outline,
                     ),
-                    tooltip: isExpanded ? '收起配置' : '展开配置',
-                    visualDensity: VisualDensity.compact,
+                  const SizedBox(width: 8),
+                  // 启用开关 - 在拖动区域外
+                  Switch(
+                    value: _isEnabled,
+                    onChanged: _isImplemented ? onToggle : null,
                   ),
-                // 启用开关 - 在拖动区域外
-                Switch(
-                  value: _isEnabled,
-                  onChanged: _isImplemented ? onToggle : null,
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           // 展开的配置区域

@@ -763,14 +763,14 @@ class _MissingEpisodeActionSheet extends ConsumerWidget {
       : episodeName;
 
   String get _displayTitle => showName.isNotEmpty
-      ? '$showName 第${seasonNumber}季第${episodeNumber}集'
-      : '第${episodeNumber}集';
+      ? '$showName 第$seasonNumber季第$episodeNumber集'
+      : '第$episodeNumber集';
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Container(
+    return DecoratedBox(
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
@@ -933,7 +933,7 @@ class _MissingEpisodeActionSheet extends ConsumerWidget {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
+      builder: (context) => DecoratedBox(
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
@@ -1091,7 +1091,7 @@ class _MissingEpisodeActionSheet extends ConsumerWidget {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
+      builder: (context) => DecoratedBox(
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),

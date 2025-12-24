@@ -1355,8 +1355,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
     WidgetRef ref,
     bool isDark,
     PhotoListLoaded state,
-  ) {
-    return Row(
+  ) => Row(
       children: [
         IconButton(
           onPressed: () => ref.read(photoListProvider.notifier).exitSelectMode(),
@@ -1387,7 +1386,6 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
         ),
       ],
     );
-  }
 
   /// 问候语头部
   Widget _buildGreetingHeader(
@@ -1991,8 +1989,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
     WidgetRef ref,
     PhotoListLoaded state,
     bool isDark,
-  ) {
-    return Container(
+  ) => Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurface : Colors.white,
@@ -2043,7 +2040,6 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
         ],
       ),
     );
-  }
 
   /// 多选模式底部操作栏
   Widget _buildSelectionActionBar(
@@ -2284,7 +2280,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
     bool isDark,
   ) {
     final hasFilter = state.filterYear != null;
-    
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(

@@ -71,7 +71,7 @@ class _TransferManagerPageState extends ConsumerState<TransferManagerPage>
         actions: [
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert),
-            onSelected: (value) => _handleMenuAction(value),
+            onSelected: _handleMenuAction,
             itemBuilder: (context) => [
               const PopupMenuItem(
                 value: 'clear_completed_downloads',
@@ -127,8 +127,7 @@ class _TransferManagerPageState extends ConsumerState<TransferManagerPage>
     required IconData icon,
     required String label,
     required int count,
-  }) {
-    return Tab(
+  }) => Tab(
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -156,7 +155,6 @@ class _TransferManagerPageState extends ConsumerState<TransferManagerPage>
         ],
       ),
     );
-  }
 
   Widget _buildTaskList({
     required List<TransferTask> tasks,

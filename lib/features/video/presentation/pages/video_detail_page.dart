@@ -402,7 +402,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
   void _buildEpisodePlaylist(int seasonNumber, int currentEpisodeNumber) {
     // 获取本地剧集数据
     var localEpisodes = <int, Map<int, VideoMetadata>>{};
-    
+
     if (_hasTmdbId) {
       final data = ref.read(localEpisodeFilesProvider(_selectedMetadata.tmdbId!));
       localEpisodes = data.valueOrNull ?? {};
@@ -432,7 +432,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
     for (var i = 0; i < episodeNumbers.length; i++) {
       final epNum = episodeNumbers[i];
       final episode = seasonEpisodes[epNum]!;
-      
+
       // 使用空 URL 构建 VideoItem（播放时会自动解析）
       playlistItems.add(VideoItem(
         name: episode.episodeTitle ?? episode.displayTitle,
@@ -1963,7 +1963,7 @@ class _MissingMovieActionSheet extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Container(
+    return DecoratedBox(
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
@@ -2048,7 +2048,7 @@ class _MissingMovieActionSheet extends ConsumerWidget {
                   style: TextStyle(fontWeight: FontWeight.w500),
                 ),
                 subtitle: Text(
-                  '搜索 "${title}"',
+                  '搜索 "$title"',
                   style: TextStyle(
                     fontSize: 12,
                     color: isDark ? Colors.grey[400] : Colors.grey[600],
@@ -2169,7 +2169,7 @@ class _MissingMovieActionSheet extends ConsumerWidget {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
+      builder: (context) => DecoratedBox(
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
@@ -2325,7 +2325,7 @@ class _MissingMovieActionSheet extends ConsumerWidget {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
+      builder: (context) => DecoratedBox(
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),

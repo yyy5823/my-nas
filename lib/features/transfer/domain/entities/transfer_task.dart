@@ -58,6 +58,29 @@ class TransferTask {
     this.thumbnailPath,
   });
 
+  /// 从 Map 创建（用于数据库读取）
+  factory TransferTask.fromMap(Map<String, dynamic> map) => TransferTask(
+        id: map['id'] as String,
+        type: TransferType.values.byName(map['type'] as String),
+        mediaType: MediaType.values.byName(map['media_type'] as String),
+        sourceId: map['source_id'] as String,
+        sourcePath: map['source_path'] as String,
+        fileName: map['file_name'] as String,
+        fileSize: map['file_size'] as int,
+        targetSourceId: map['target_source_id'] as String?,
+        targetPath: map['target_path'] as String,
+        status: TransferStatus.values.byName(map['status'] as String),
+        transferredBytes: map['transferred_bytes'] as int? ?? 0,
+        error: map['error'] as String?,
+        createdAt: DateTime.fromMillisecondsSinceEpoch(map['created_at'] as int),
+        completedAt: map['completed_at'] != null
+            ? DateTime.fromMillisecondsSinceEpoch(map['completed_at'] as int)
+            : null,
+        assetId: map['asset_id'] as String?,
+        songId: map['song_id'] as int?,
+        thumbnailPath: map['thumbnail_path'] as String?,
+      );
+
   /// 唯一标识
   final String id;
 
@@ -217,29 +240,6 @@ class TransferTask {
         'thumbnail_path': thumbnailPath,
       };
 
-  /// 从 Map 创建（用于数据库读取）
-  factory TransferTask.fromMap(Map<String, dynamic> map) => TransferTask(
-        id: map['id'] as String,
-        type: TransferType.values.byName(map['type'] as String),
-        mediaType: MediaType.values.byName(map['media_type'] as String),
-        sourceId: map['source_id'] as String,
-        sourcePath: map['source_path'] as String,
-        fileName: map['file_name'] as String,
-        fileSize: map['file_size'] as int,
-        targetSourceId: map['target_source_id'] as String?,
-        targetPath: map['target_path'] as String,
-        status: TransferStatus.values.byName(map['status'] as String),
-        transferredBytes: map['transferred_bytes'] as int? ?? 0,
-        error: map['error'] as String?,
-        createdAt: DateTime.fromMillisecondsSinceEpoch(map['created_at'] as int),
-        completedAt: map['completed_at'] != null
-            ? DateTime.fromMillisecondsSinceEpoch(map['completed_at'] as int)
-            : null,
-        assetId: map['asset_id'] as String?,
-        songId: map['song_id'] as int?,
-        thumbnailPath: map['thumbnail_path'] as String?,
-      );
-
   static String _formatBytes(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
@@ -297,6 +297,23 @@ class CachedMediaItem {
     this.thumbnailPath,
   });
 
+  factory CachedMediaItem.fromMap(Map<String, dynamic> map) => CachedMediaItem(
+        sourceId: map['source_id'] as String,
+        sourcePath: map['source_path'] as String,
+        mediaType: MediaType.values.byName(map['media_type'] as String),
+        fileName: map['file_name'] as String,
+        fileSize: map['file_size'] as int,
+        cachePath: map['cache_path'] as String,
+        cachedAt: DateTime.fromMillisecondsSinceEpoch(map['cached_at'] as int),
+        lastAccessed: map['last_accessed'] != null
+            ? DateTime.fromMillisecondsSinceEpoch(map['last_accessed'] as int)
+            : null,
+        title: map['title'] as String?,
+        artist: map['artist'] as String?,
+        album: map['album'] as String?,
+        thumbnailPath: map['thumbnail_path'] as String?,
+      );
+
   final String sourceId;
   final String sourcePath;
   final MediaType mediaType;
@@ -340,23 +357,6 @@ class CachedMediaItem {
         'album': album,
         'thumbnail_path': thumbnailPath,
       };
-
-  factory CachedMediaItem.fromMap(Map<String, dynamic> map) => CachedMediaItem(
-        sourceId: map['source_id'] as String,
-        sourcePath: map['source_path'] as String,
-        mediaType: MediaType.values.byName(map['media_type'] as String),
-        fileName: map['file_name'] as String,
-        fileSize: map['file_size'] as int,
-        cachePath: map['cache_path'] as String,
-        cachedAt: DateTime.fromMillisecondsSinceEpoch(map['cached_at'] as int),
-        lastAccessed: map['last_accessed'] != null
-            ? DateTime.fromMillisecondsSinceEpoch(map['last_accessed'] as int)
-            : null,
-        title: map['title'] as String?,
-        artist: map['artist'] as String?,
-        album: map['album'] as String?,
-        thumbnailPath: map['thumbnail_path'] as String?,
-      );
 }
 
 /// 已上传标记
@@ -367,6 +367,14 @@ class UploadedMark {
     required this.targetPath,
     required this.uploadedAt,
   });
+
+  factory UploadedMark.fromMap(Map<String, dynamic> map) => UploadedMark(
+        localPath: map['local_path'] as String,
+        targetSourceId: map['target_source_id'] as String,
+        targetPath: map['target_path'] as String,
+        uploadedAt:
+            DateTime.fromMillisecondsSinceEpoch(map['uploaded_at'] as int),
+      );
 
   /// 本地文件路径（或 assetId）
   final String localPath;
@@ -386,12 +394,4 @@ class UploadedMark {
         'target_path': targetPath,
         'uploaded_at': uploadedAt.millisecondsSinceEpoch,
       };
-
-  factory UploadedMark.fromMap(Map<String, dynamic> map) => UploadedMark(
-        localPath: map['local_path'] as String,
-        targetSourceId: map['target_source_id'] as String,
-        targetPath: map['target_path'] as String,
-        uploadedAt:
-            DateTime.fromMillisecondsSinceEpoch(map['uploaded_at'] as int),
-      );
 }

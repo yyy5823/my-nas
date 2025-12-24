@@ -27,19 +27,15 @@ final transferServiceProvider = Provider<TransferService>((ref) {
 });
 
 /// 上传标记服务 Provider
-final uploadedMarkServiceProvider = Provider<UploadedMarkService>((ref) {
-  return UploadedMarkService();
-});
+final uploadedMarkServiceProvider = Provider<UploadedMarkService>((ref) => UploadedMarkService());
 
 /// 媒体缓存服务 Provider
-final mediaCacheServiceProvider = Provider<MediaCacheService>((ref) {
-  return MediaCacheService();
-});
+final mediaCacheServiceProvider = Provider<MediaCacheService>((ref) => MediaCacheService());
 
 /// 传输任务列表 Provider
 final transferTasksProvider =
     StateNotifierProvider<TransferTasksNotifier, TransferTasksState>(
-        (ref) => TransferTasksNotifier(ref));
+        TransferTasksNotifier.new);
 
 /// 上传任务列表
 final uploadTasksProvider = Provider<List<TransferTask>>((ref) {
@@ -426,8 +422,8 @@ class TransferTasksNotifier extends StateNotifier<TransferTasksState> {
       }
 
       // 刷新缓存项列表
-      _ref.invalidate(cachedItemsProvider);
-      _ref.invalidate(cacheStatsProvider);
+      _ref..invalidate(cachedItemsProvider)
+      ..invalidate(cacheStatsProvider);
     } catch (e, st) {
       AppError.handle(e, st, 'TransferTasksNotifier.clearAllCache');
     }

@@ -1111,7 +1111,7 @@ class _TransferCard extends ConsumerWidget {
     final cacheCount = cacheStats.when(
       data: (stats) => stats.values.fold(0, (sum, s) => sum + s.count),
       loading: () => 0,
-      error: (_, __) => 0,
+      error: (_, _) => 0,
     );
     final cacheSizeText = cacheStats.when(
       data: (stats) {
@@ -1119,7 +1119,7 @@ class _TransferCard extends ConsumerWidget {
         return _formatBytes(totalSize);
       },
       loading: () => '计算中...',
-      error: (_, __) => '未知',
+      error: (_, _) => '未知',
     );
 
     return DecoratedBox(

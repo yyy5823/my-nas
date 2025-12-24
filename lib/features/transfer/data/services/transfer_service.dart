@@ -317,9 +317,9 @@ class TransferService {
 
     if (!task.canRetry) return;
 
-    task.status = TransferStatus.pending;
-    task.error = null;
-    task.transferredBytes = 0;
+    task..status = TransferStatus.pending
+    ..error = null
+    ..transferredBytes = 0;
     await _db.updateTask(task);
     _notifyTaskChanged(task);
 
@@ -396,8 +396,8 @@ class TransferService {
           await _executeCache(task);
       }
 
-      task.status = TransferStatus.completed;
-      task.completedAt = DateTime.now();
+      task..status = TransferStatus.completed
+      ..completedAt = DateTime.now();
 
       // 上传完成后标记
       if (task.type == TransferType.upload && task.targetSourceId != null) {
@@ -422,8 +422,8 @@ class TransferService {
 
       logger.i('TransferService: 任务完成 ${task.fileName}');
     } catch (e, st) {
-      task.status = TransferStatus.failed;
-      task.error = e.toString();
+      task..status = TransferStatus.failed
+      ..error = e.toString();
       AppError.handle(e, st, 'TransferService._executeTask');
       logger.e('TransferService: 任务失败 ${task.fileName}', e, st);
     } finally {

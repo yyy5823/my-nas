@@ -114,39 +114,6 @@ class _ScraperSourcesPageState extends ConsumerState<ScraperSourcesPage> {
 
     return Column(
       children: [
-        // 顶部说明
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: isDark ? AppColors.darkSurfaceElevated : Colors.white,
-            border: Border(
-              bottom: BorderSide(
-                color: isDark ? Colors.grey[800]! : Colors.grey[200]!,
-              ),
-            ),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                Icons.info_outline_rounded,
-                size: 20,
-                color: isDark ? Colors.grey[400] : Colors.grey[600],
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  '拖拽调整优先级，优先级高的刮削源将优先使用',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: isDark ? Colors.grey[400] : Colors.grey[600],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-
         // 刮削源列表
         Expanded(
           child: ReorderableListView.builder(

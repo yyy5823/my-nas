@@ -167,7 +167,7 @@ class TransferTaskTile extends StatelessWidget {
     final (text, bgColor, textColor) = switch (task.status) {
       TransferStatus.pending => ('等待中', colorScheme.surfaceContainerHighest, colorScheme.onSurfaceVariant),
       TransferStatus.queued => ('排队中', colorScheme.primaryContainer, colorScheme.onPrimaryContainer),
-      TransferStatus.transferring => ('${task.progressText}', colorScheme.primaryContainer, colorScheme.onPrimaryContainer),
+      TransferStatus.transferring => (task.progressText, colorScheme.primaryContainer, colorScheme.onPrimaryContainer),
       TransferStatus.paused => ('已暂停', colorScheme.secondaryContainer, colorScheme.onSecondaryContainer),
       TransferStatus.completed => ('已完成', colorScheme.tertiaryContainer, colorScheme.onTertiaryContainer),
       TransferStatus.failed => ('失败', colorScheme.errorContainer, colorScheme.onErrorContainer),
@@ -195,8 +195,7 @@ class TransferTaskTile extends StatelessWidget {
     required IconData icon,
     required String label,
     VoidCallback? onTap,
-  }) {
-    return TextButton.icon(
+  }) => TextButton.icon(
       onPressed: onTap,
       icon: Icon(icon, size: 18),
       label: Text(label),
@@ -206,5 +205,4 @@ class TransferTaskTile extends StatelessWidget {
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
     );
-  }
 }

@@ -46,8 +46,7 @@ class TargetPickerSheet extends ConsumerStatefulWidget {
     BuildContext context, {
     required MediaType mediaType,
     String title = '选择上传目标',
-  }) {
-    return showModalBottomSheet<UploadTarget>(
+  }) => showModalBottomSheet<UploadTarget>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -56,7 +55,6 @@ class TargetPickerSheet extends ConsumerStatefulWidget {
         title: title,
       ),
     );
-  }
 
   @override
   ConsumerState<TargetPickerSheet> createState() => _TargetPickerSheetState();
@@ -143,12 +141,10 @@ class _TargetPickerSheetState extends ConsumerState<TargetPickerSheet> {
     );
   }
 
-  bool _isLocalSource(SourceType type) {
-    return type == SourceType.mobileGallery ||
+  bool _isLocalSource(SourceType type) => type == SourceType.mobileGallery ||
         type == SourceType.mobileMusic ||
         type == SourceType.mobileFiles ||
         type == SourceType.local;
-  }
 
   Widget _buildEmptyState(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -351,8 +347,7 @@ class _DirectoryInputDialogState extends State<_DirectoryInputDialog> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
+  Widget build(BuildContext context) => AlertDialog(
       title: const Text('输入目标路径'),
       content: TextField(
         controller: _controller,
@@ -373,5 +368,4 @@ class _DirectoryInputDialogState extends State<_DirectoryInputDialog> {
         ),
       ],
     );
-  }
 }
