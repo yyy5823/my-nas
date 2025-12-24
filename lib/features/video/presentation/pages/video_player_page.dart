@@ -10,8 +10,11 @@ import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/core/widgets/keyboard_shortcuts.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
+import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
+import 'package:my_nas/features/transfer/presentation/pages/transfer_manager_page.dart';
+import 'package:my_nas/features/transfer/presentation/providers/transfer_provider.dart';
 import 'package:my_nas/features/video/data/services/subtitle_service.dart';
 import 'package:my_nas/features/video/data/services/video_metadata_service.dart';
 import 'package:my_nas/features/video/domain/entities/video_item.dart';
@@ -682,6 +685,11 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
                           ),
                         ),
                       ),
+                    // 缓存按钮
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: _buildCacheButton(),
+                    ),
                     // 锁定按钮
                     DecoratedBox(
                       decoration: BoxDecoration(
@@ -935,5 +943,109 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
         (key: '?', description: '显示此帮助'),
       ],
     );
+  }
+
+  /// 构建缓存按钮
+  Widget _buildCacheButton() {
+    final sourceId = widget.video.sourceId;
+
+    // 如果没有 sourceId，不显示缓存按钮
+    if (sourceId == null) {
+      return const SizedBox.shrink();
+    }
+
+    final isCachedAsync = ref.watch(
+      isCachedProvider((
+        sourceId: sourceId,
+        sourcePath: widget.video.path,
+      )),
+    );
+
+    return isCachedAsync.when(
+      data: (isCached) => DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: IconButton(
+          onPressed: isCached ? null : _handleCacheVideo,
+          icon: Icon(
+            isCached ? Icons.download_done_rounded : Icons.download_rounded,
+            color: isCached ? Colors.green : Colors.white,
+            size: 24,
+          ),
+          tooltip: isCached ? '已缓存' : '缓存视频',
+        ),
+      ),
+      loading: () => DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: const Padding(
+          padding: EdgeInsets.all(12),
+          child: SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Colors.white,
+            ),
+          ),
+        ),
+      ),
+      error: (e, st) => DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: IconButton(
+          onPressed: _handleCacheVideo,
+          icon: const Icon(
+            Icons.download_rounded,
+            color: Colors.white,
+            size: 24,
+          ),
+          tooltip: '缓存视频',
+        ),
+      ),
+    );
+  }
+
+  /// 处理缓存视频
+  Future<void> _handleCacheVideo() async {
+    final video = widget.video;
+    final sourceId = video.sourceId;
+
+    // 需要 sourceId 才能缓存
+    if (sourceId == null) return;
+
+    final notifier = ref.read(transferTasksProvider.notifier);
+
+    final task = await notifier.addCacheTask(
+      sourceId: sourceId,
+      sourcePath: video.path,
+      mediaType: MediaType.video,
+      fileSize: video.size,
+      thumbnailPath: video.thumbnailUrl,
+    );
+
+    if (task != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('已添加到缓存队列'),
+          behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: '查看',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) => const TransferManagerPage(initialTab: 2),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
   }
 }

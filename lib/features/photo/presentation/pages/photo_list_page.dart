@@ -21,11 +21,15 @@ import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/pages/media_library_page.dart';
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
+import 'package:my_nas/features/transfer/presentation/pages/transfer_manager_page.dart';
+import 'package:my_nas/features/transfer/presentation/providers/transfer_provider.dart';
+import 'package:my_nas/features/transfer/presentation/widgets/target_picker_sheet.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/animated_list_item.dart';
 import 'package:my_nas/shared/widgets/context_menu_region.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
 import 'package:my_nas/shared/widgets/stream_image.dart';
+import 'package:path_provider/path_provider.dart';
 
 /// 时间线项目类型 - 用于单一 SliverList 渲染
 sealed class TimelineItem {
@@ -90,6 +94,23 @@ enum PhotoSortType { date, name, size }
 /// 照片视图模式
 enum PhotoViewMode { grid, timeline }
 
+/// 照片来源筛选
+enum PhotoSourceFilter {
+  all('全部'),
+  local('本机'),
+  remote('NAS');
+
+  const PhotoSourceFilter(this.label);
+  final String label;
+}
+
+/// 判断是否为本机源
+bool _isLocalSourceType(SourceType type) =>
+    type == SourceType.mobileGallery ||
+    type == SourceType.mobileMusic ||
+    type == SourceType.mobileFiles ||
+    type == SourceType.local;
+
 sealed class PhotoListState {}
 
 class PhotoListLoading extends PhotoListState {
@@ -121,12 +142,19 @@ class PhotoListLoaded extends PhotoListState {
     // 时间线筛选
     this.filterYear,
     this.filterMonth,
+    // 来源筛选
+    this.sourceFilter = PhotoSourceFilter.all,
+    // 多选模式
+    this.isSelectMode = false,
+    this.selectedPaths = const {},
     // 分类数据 - 从 SQLite 预加载
     this.allPhotos = const [],
     this.searchResults = const [],
     this.dateGroups = const [],
     // 用于 O(1) 查找的 Map
     this.photoByPath = const {},
+    // 源类型缓存 - 用于快速判断本机/远程
+    this.sourceTypeCache = const {},
     // 用于 O(1) 索引查找的 Map
     Map<String, int>? pathToIndex,
     // 缓存的分组数据
@@ -145,10 +173,20 @@ class PhotoListLoaded extends PhotoListState {
   final PhotoViewMode viewMode;
   final String searchQuery;
   final bool fromCache;
-  
+
   // 时间线筛选 - 年/月
   final int? filterYear;
   final int? filterMonth;
+
+  // 来源筛选
+  final PhotoSourceFilter sourceFilter;
+
+  // 多选模式
+  final bool isSelectMode;
+  final Set<String> selectedPaths; // 使用 path 作为唯一标识
+
+  // 源类型缓存
+  final Map<String, SourceType> sourceTypeCache;
 
   // 分类数据 - 已从 SQLite 预加载
   final List<PhotoEntity> allPhotos;
@@ -167,10 +205,20 @@ class PhotoListLoaded extends PhotoListState {
   // 缓存的过滤后照片列表 - 避免每次 build 都重新创建对象
   final List<PhotoFileWithSource>? _cachedFilteredPhotos;
 
-  /// 当前显示的照片（搜索时返回搜索结果，应用时间筛选）
+  /// 当前显示的照片（搜索时返回搜索结果，应用时间筛选和来源筛选）
   List<PhotoEntity> get displayPhotos {
     var photos = searchQuery.isNotEmpty ? searchResults : allPhotos;
-    
+
+    // 应用来源筛选
+    if (sourceFilter != PhotoSourceFilter.all) {
+      photos = photos.where((p) {
+        final sourceType = sourceTypeCache[p.sourceId];
+        if (sourceType == null) return true; // 未知类型保留
+        final isLocal = _isLocalSourceType(sourceType);
+        return sourceFilter == PhotoSourceFilter.local ? isLocal : !isLocal;
+      }).toList();
+    }
+
     // 应用时间线筛选
     if (filterYear != null) {
       photos = photos.where((p) {
@@ -182,9 +230,28 @@ class PhotoListLoaded extends PhotoListState {
         return true;
       }).toList();
     }
-    
+
     return photos;
   }
+
+  /// 获取选中的照片列表
+  List<PhotoEntity> get selectedPhotos =>
+      allPhotos.where((p) => selectedPaths.contains(p.filePath)).toList();
+
+  /// 判断照片是否为本机照片
+  bool isLocalPhoto(PhotoEntity photo) {
+    final sourceType = sourceTypeCache[photo.sourceId];
+    if (sourceType == null) return false;
+    return _isLocalSourceType(sourceType);
+  }
+
+  /// 获取选中照片中本机照片的数量
+  int get selectedLocalCount =>
+      selectedPhotos.where(isLocalPhoto).length;
+
+  /// 获取选中照片中远程照片的数量
+  int get selectedRemoteCount =>
+      selectedPhotos.where((p) => !isLocalPhoto(p)).length;
 
   /// 兼容旧代码：返回 PhotoFileWithSource 列表
   List<PhotoFileWithSource> get photos => allPhotos
@@ -406,17 +473,23 @@ class PhotoListLoaded extends PhotoListState {
     int? filterYear,
     int? filterMonth,
     bool clearFilter = false, // 用于清除筛选
+    // 来源筛选
+    PhotoSourceFilter? sourceFilter,
+    // 多选模式
+    bool? isSelectMode,
+    Set<String>? selectedPaths,
     List<PhotoEntity>? allPhotos,
     List<PhotoEntity>? searchResults,
     List<({DateTime date, int count})>? dateGroups,
     Map<String, PhotoEntity>? photoByPath,
+    Map<String, SourceType>? sourceTypeCache,
     Map<String, int>? pathToIndex,
     List<PhotoGroup<PhotoEntity>>? cachedGroupedPhotos,
     List<PhotoFileWithSource>? cachedFilteredPhotos,
   }) {
     // 如果照片列表、搜索结果或筛选条件变化，需要重建索引和所有缓存
     final needsRebuild = allPhotos != null || searchResults != null || searchQuery != null ||
-        filterYear != null || filterMonth != null || clearFilter;
+        filterYear != null || filterMonth != null || sourceFilter != null || clearFilter;
     return PhotoListLoaded(
       totalCount: totalCount ?? this.totalCount,
       dateGroupCount: dateGroupCount ?? this.dateGroupCount,
@@ -428,10 +501,14 @@ class PhotoListLoaded extends PhotoListState {
       fromCache: fromCache ?? this.fromCache,
       filterYear: clearFilter ? null : (filterYear ?? this.filterYear),
       filterMonth: clearFilter ? null : (filterMonth ?? this.filterMonth),
+      sourceFilter: sourceFilter ?? this.sourceFilter,
+      isSelectMode: isSelectMode ?? this.isSelectMode,
+      selectedPaths: selectedPaths ?? this.selectedPaths,
       allPhotos: allPhotos ?? this.allPhotos,
       searchResults: searchResults ?? this.searchResults,
       dateGroups: dateGroups ?? this.dateGroups,
       photoByPath: photoByPath ?? this.photoByPath,
+      sourceTypeCache: sourceTypeCache ?? this.sourceTypeCache,
       pathToIndex: needsRebuild ? null : (pathToIndex ?? _pathToIndex),
       // 如果数据变化，清除所有缓存，让其惰性重新计算
       cachedGroupedPhotos: needsRebuild ? null : (cachedGroupedPhotos ?? _cachedGroupedPhotos),
@@ -537,11 +614,22 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
       pathToIndex[allPhotos[i].filePath] = i;
     }
 
+    // 构建源类型缓存
+    final connections = _ref.read(activeConnectionsProvider);
+    final sourceTypeCache = <String, SourceType>{};
+    for (final entry in connections.entries) {
+      sourceTypeCache[entry.key] = entry.value.source.type;
+    }
+
     // 预计算分组数据
     final cachedGroupedPhotos = PhotoListLoaded.computeGroupedPhotos(allPhotos);
 
     // 预计算过滤后的照片列表
     final cachedFilteredPhotos = PhotoListLoaded.computeFilteredPhotos(allPhotos);
+
+    // 保留之前的筛选状态
+    final current = state;
+    final previousFilter = current is PhotoListLoaded ? current.sourceFilter : PhotoSourceFilter.all;
 
     state = PhotoListLoaded(
       totalCount: stats['total'] as int? ?? 0,
@@ -551,10 +639,12 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
       allPhotos: allPhotos,
       dateGroups: dateGroups,
       photoByPath: photoByPath,
+      sourceTypeCache: sourceTypeCache,
       pathToIndex: pathToIndex,
       cachedGroupedPhotos: cachedGroupedPhotos,
       cachedFilteredPhotos: cachedFilteredPhotos,
       fromCache: true,
+      sourceFilter: previousFilter,
     );
 
     logger.i('PhotoListNotifier: 从 SQLite 加载了 ${allPhotos.length} 张照片');
@@ -1076,6 +1166,72 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
       return false;
     }
   }
+
+  /// 设置来源筛选
+  void setSourceFilter(PhotoSourceFilter filter) {
+    final current = state;
+    if (current is PhotoListLoaded) {
+      state = current.copyWith(sourceFilter: filter);
+    }
+  }
+
+  /// 切换多选模式
+  void toggleSelectMode() {
+    final current = state;
+    if (current is PhotoListLoaded) {
+      state = current.copyWith(
+        isSelectMode: !current.isSelectMode,
+        selectedPaths: {}, // 切换模式时清空选择
+      );
+    }
+  }
+
+  /// 进入多选模式
+  void enterSelectMode() {
+    final current = state;
+    if (current is PhotoListLoaded && !current.isSelectMode) {
+      state = current.copyWith(isSelectMode: true);
+    }
+  }
+
+  /// 退出多选模式
+  void exitSelectMode() {
+    final current = state;
+    if (current is PhotoListLoaded && current.isSelectMode) {
+      state = current.copyWith(isSelectMode: false, selectedPaths: {});
+    }
+  }
+
+  /// 切换照片选择状态
+  void togglePhotoSelection(String path) {
+    final current = state;
+    if (current is PhotoListLoaded) {
+      final newSelected = Set<String>.from(current.selectedPaths);
+      if (newSelected.contains(path)) {
+        newSelected.remove(path);
+      } else {
+        newSelected.add(path);
+      }
+      state = current.copyWith(selectedPaths: newSelected);
+    }
+  }
+
+  /// 选择所有当前显示的照片
+  void selectAll() {
+    final current = state;
+    if (current is PhotoListLoaded) {
+      final allPaths = current.displayPhotos.map((p) => p.filePath).toSet();
+      state = current.copyWith(selectedPaths: allPaths);
+    }
+  }
+
+  /// 清空选择
+  void clearSelection() {
+    final current = state;
+    if (current is PhotoListLoaded) {
+      state = current.copyWith(selectedPaths: {});
+    }
+  }
 }
 
 class PhotoListPage extends ConsumerStatefulWidget {
@@ -1156,7 +1312,10 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
     WidgetRef ref,
     bool isDark,
     PhotoListState state,
-  ) => DecoratedBox(
+  ) {
+    final isSelectMode = state is PhotoListLoaded && state.isSelectMode;
+
+    return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -1175,12 +1334,60 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
             AppSpacing.appBarHorizontalPadding,
             AppSpacing.lg,
           ),
-          child: _showSearch
-              ? _buildSearchBar(context, ref, isDark)
-              : _buildGreetingHeader(context, ref, isDark, state),
+          child: switch ((
+            _showSearch,
+            isSelectMode,
+            state,
+          )) {
+            (true, _, _) => _buildSearchBar(context, ref, isDark),
+            (_, true, PhotoListLoaded loadedState) =>
+              _buildSelectModeHeader(context, ref, isDark, loadedState),
+            _ => _buildGreetingHeader(context, ref, isDark, state),
+          },
         ),
       ),
     );
+  }
+
+  /// 多选模式头部
+  Widget _buildSelectModeHeader(
+    BuildContext context,
+    WidgetRef ref,
+    bool isDark,
+    PhotoListLoaded state,
+  ) {
+    return Row(
+      children: [
+        IconButton(
+          onPressed: () => ref.read(photoListProvider.notifier).exitSelectMode(),
+          icon: Icon(
+            Icons.close,
+            color: isDark ? Colors.white : Colors.black87,
+          ),
+          tooltip: '取消',
+        ),
+        Expanded(
+          child: Text(
+            state.selectedPaths.isEmpty
+                ? '选择照片'
+                : '已选择 ${state.selectedPaths.length} 张',
+            style: context.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
+          ),
+        ),
+        TextButton(
+          onPressed: state.selectedPaths.length == state.displayPhotos.length
+              ? () => ref.read(photoListProvider.notifier).clearSelection()
+              : () => ref.read(photoListProvider.notifier).selectAll(),
+          child: Text(
+            state.selectedPaths.length == state.displayPhotos.length ? '取消全选' : '全选',
+          ),
+        ),
+      ],
+    );
+  }
 
   /// 问候语头部
   Widget _buildGreetingHeader(
@@ -1189,7 +1396,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
     bool isDark,
     PhotoListState state,
   ) {
-    final photoCount = state is PhotoListLoaded ? state.photos.length : 0;
+    final photoCount = state is PhotoListLoaded ? state.displayPhotos.length : 0;
 
     return Row(
       children: [
@@ -1235,7 +1442,15 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
           ),
           tooltip: '搜索',
         ),
-        if (state is PhotoListLoaded)
+        if (state is PhotoListLoaded) ...[
+          IconButton(
+            onPressed: () => ref.read(photoListProvider.notifier).enterSelectMode(),
+            icon: Icon(
+              Icons.check_circle_outline_rounded,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
+            tooltip: '多选',
+          ),
           IconButton(
             onPressed: () => ref.read(photoListProvider.notifier).toggleViewMode(),
             icon: Icon(
@@ -1246,6 +1461,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
             ),
             tooltip: state.viewMode == PhotoViewMode.grid ? '时间线' : '网格',
           ),
+        ],
         IconButton(
           onPressed: () => _showSettingsMenu(context),
           icon: Icon(
@@ -1743,6 +1959,8 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
   ) =>
       Column(
         children: [
+          // 来源筛选栏
+          _buildSourceFilterBar(context, ref, state, isDark),
           // 时间筛选栏（有筛选时显示，或在时间线模式下显示）
           if (state.filterYear != null || state.viewMode == PhotoViewMode.timeline)
             _buildTimelineFilterBar(context, ref, state, isDark),
@@ -1761,8 +1979,302 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
               ),
             ),
           ),
+          // 多选模式底部操作栏
+          if (state.isSelectMode && state.selectedPaths.isNotEmpty)
+            _buildSelectionActionBar(context, ref, state, isDark),
         ],
       );
+
+  /// 来源筛选栏
+  Widget _buildSourceFilterBar(
+    BuildContext context,
+    WidgetRef ref,
+    PhotoListLoaded state,
+    bool isDark,
+  ) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : Colors.white,
+        border: Border(
+          bottom: BorderSide(
+            color: isDark ? Colors.grey[800]! : Colors.grey[200]!,
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          for (final filter in PhotoSourceFilter.values) ...[
+            if (filter != PhotoSourceFilter.values.first) const SizedBox(width: 8),
+            FilterChip(
+              label: Text(filter.label),
+              selected: state.sourceFilter == filter,
+              onSelected: (_) => ref.read(photoListProvider.notifier).setSourceFilter(filter),
+              showCheckmark: false,
+              labelStyle: TextStyle(
+                fontSize: 13,
+                color: state.sourceFilter == filter
+                    ? (isDark ? Colors.white : AppColors.primary)
+                    : (isDark ? Colors.grey[400] : Colors.grey[600]),
+                fontWeight: state.sourceFilter == filter ? FontWeight.w600 : FontWeight.normal,
+              ),
+              backgroundColor: isDark ? AppColors.darkSurfaceElevated : Colors.grey[100],
+              selectedColor: isDark
+                  ? AppColors.primary.withValues(alpha: 0.3)
+                  : AppColors.primary.withValues(alpha: 0.15),
+              side: BorderSide(
+                color: state.sourceFilter == filter
+                    ? AppColors.primary
+                    : Colors.transparent,
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+            ),
+          ],
+          const Spacer(),
+          // 显示当前筛选结果数量
+          Text(
+            '${state.displayPhotos.length}',
+            style: TextStyle(
+              fontSize: 13,
+              color: isDark ? Colors.grey[400] : Colors.grey[600],
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 多选模式底部操作栏
+  Widget _buildSelectionActionBar(
+    BuildContext context,
+    WidgetRef ref,
+    PhotoListLoaded state,
+    bool isDark,
+  ) {
+    final hasLocalSelected = state.selectedLocalCount > 0;
+    final hasRemoteSelected = state.selectedRemoteCount > 0;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 8,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            // 上传按钮（本机照片可用）
+            if (hasLocalSelected)
+              _buildActionButton(
+                icon: Icons.upload_rounded,
+                label: '上传 (${state.selectedLocalCount})',
+                onPressed: () => _handleUploadSelected(context, ref, state),
+                isDark: isDark,
+              ),
+            // 下载按钮（远程照片可用）
+            if (hasRemoteSelected)
+              _buildActionButton(
+                icon: Icons.download_rounded,
+                label: '下载 (${state.selectedRemoteCount})',
+                onPressed: () => _handleDownloadSelected(context, ref, state),
+                isDark: isDark,
+              ),
+            // 删除按钮
+            _buildActionButton(
+              icon: Icons.delete_outline_rounded,
+              label: '删除',
+              onPressed: () => _handleDeleteSelected(context, ref, state),
+              isDark: isDark,
+              isDestructive: true,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onPressed,
+    required bool isDark,
+    bool isDestructive = false,
+  }) {
+    final color = isDestructive
+        ? Colors.red
+        : (isDark ? Colors.white : AppColors.primary);
+
+    return InkWell(
+      onTap: onPressed,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color, size: 24),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                color: color,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 处理上传选中的照片
+  Future<void> _handleUploadSelected(
+    BuildContext context,
+    WidgetRef ref,
+    PhotoListLoaded state,
+  ) async {
+    // 选择上传目标
+    final target = await TargetPickerSheet.show(
+      context,
+      mediaType: MediaType.photo,
+      title: '选择上传目标',
+    );
+
+    if (target == null || !context.mounted) return;
+
+    // 获取选中的本机照片
+    final localPhotos = state.selectedPhotos.where(state.isLocalPhoto).toList();
+    if (localPhotos.isEmpty) return;
+
+    // 添加上传任务
+    final notifier = ref.read(transferTasksProvider.notifier);
+    var addedCount = 0;
+
+    for (final photo in localPhotos) {
+      final task = await notifier.addUploadTask(
+        localPath: photo.filePath,
+        targetSourceId: target.sourceId,
+        targetPath: '${target.path}/${photo.fileName}',
+        mediaType: MediaType.photo,
+        fileSize: photo.size,
+        thumbnailPath: photo.thumbnailUrl,
+      );
+      if (task != null) addedCount++;
+    }
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('已添加 $addedCount 个上传任务'),
+          behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: '查看',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) => const TransferManagerPage(initialTab: 1),
+              ),
+            ),
+          ),
+        ),
+      );
+      ref.read(photoListProvider.notifier).exitSelectMode();
+    }
+  }
+
+  /// 处理下载选中的照片
+  Future<void> _handleDownloadSelected(
+    BuildContext context,
+    WidgetRef ref,
+    PhotoListLoaded state,
+  ) async {
+    // 获取选中的远程照片
+    final remotePhotos = state.selectedPhotos.where((p) => !state.isLocalPhoto(p)).toList();
+    if (remotePhotos.isEmpty) return;
+
+    // 获取下载目录
+    final downloadDir = await getDownloadsDirectory() ??
+        await getApplicationDocumentsDirectory();
+
+    // 添加下载任务
+    final notifier = ref.read(transferTasksProvider.notifier);
+    var addedCount = 0;
+
+    for (final photo in remotePhotos) {
+      final targetPath = '${downloadDir.path}/${photo.fileName}';
+      final task = await notifier.addDownloadTask(
+        sourceId: photo.sourceId,
+        sourcePath: photo.filePath,
+        targetPath: targetPath,
+        mediaType: MediaType.photo,
+        fileSize: photo.size,
+        thumbnailPath: photo.thumbnailUrl,
+      );
+      if (task != null) addedCount++;
+    }
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('已添加 $addedCount 个下载任务'),
+          behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: '查看',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) => const TransferManagerPage(initialTab: 0),
+              ),
+            ),
+          ),
+        ),
+      );
+      ref.read(photoListProvider.notifier).exitSelectMode();
+    }
+  }
+
+  /// 处理删除选中的照片
+  Future<void> _handleDeleteSelected(
+    BuildContext context,
+    WidgetRef ref,
+    PhotoListLoaded state,
+  ) async {
+    final confirmed = await showDeleteConfirmDialog(
+      context: context,
+      title: '删除照片',
+      content: '确定要删除选中的 ${state.selectedPaths.length} 张照片吗？\n\n此操作将同时删除源文件，无法恢复。',
+    );
+
+    if (!confirmed || !context.mounted) return;
+
+    final notifier = ref.read(photoListProvider.notifier);
+    var successCount = 0;
+
+    for (final photo in state.selectedPhotos) {
+      final success = await notifier.deleteFromSource(photo);
+      if (success) successCount++;
+    }
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('已删除 $successCount 张照片'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      ref.read(photoListProvider.notifier).exitSelectMode();
+    }
+  }
 
   /// 构建时间line筛选栏
   Widget _buildTimelineFilterBar(
@@ -1929,6 +2441,8 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
                 allPhotos: photos,
                 isDark: isDark,
                 photoEntity: entity,
+                isSelectMode: state.isSelectMode,
+                isSelected: state.selectedPaths.contains(photo.path),
               ),
             );
           },
@@ -1975,6 +2489,8 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
                   crossAxisCount,
                   isDark,
                   state.photoByPath,
+                  state.isSelectMode,
+                  state.selectedPaths,
                 ),
             };
           },
@@ -2038,6 +2554,8 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
     int crossAxisCount,
     bool isDark,
     Map<String, PhotoEntity> photoByPath,
+    bool isSelectMode,
+    Set<String> selectedPaths,
   ) =>
       Padding(
         padding: const EdgeInsets.only(bottom: 4),
@@ -2054,6 +2572,8 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
                   allPhotos: allPhotos,
                   isDark: isDark,
                   photoEntity: photoByPath['${photos[i].sourceId}:${photos[i].path}'],
+                  isSelectMode: isSelectMode,
+                  isSelected: selectedPaths.contains(photos[i].path),
                 ),
               ),
             ],
@@ -2074,6 +2594,8 @@ class _PhotoGridItem extends ConsumerWidget {
     required this.allPhotos,
     required this.isDark,
     required this.photoEntity,
+    this.isSelectMode = false,
+    this.isSelected = false,
   });
 
   final PhotoFileWithSource photo;
@@ -2081,6 +2603,8 @@ class _PhotoGridItem extends ConsumerWidget {
   final List<PhotoFileWithSource> allPhotos;
   final bool isDark;
   final PhotoEntity? photoEntity;
+  final bool isSelectMode;
+  final bool isSelected;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -2097,18 +2621,68 @@ class _PhotoGridItem extends ConsumerWidget {
             : context.colorScheme.surfaceContainerHighest,
         child: InkWell(
           onTap: () {
-            debugPrint('PhotoGridItem: onTap called for ${photo.name}');
-            _openPhotoViewer(context, ref);
+            if (isSelectMode) {
+              // 选择模式下，点击切换选择状态
+              ref.read(photoListProvider.notifier).togglePhotoSelection(photo.path);
+            } else {
+              debugPrint('PhotoGridItem: onTap called for ${photo.name}');
+              _openPhotoViewer(context, ref);
+            }
           },
-          onLongPress: () => _showContextMenu(context, ref),
+          onLongPress: () {
+            if (!isSelectMode) {
+              // 长按进入选择模式并选中当前项
+              ref.read(photoListProvider.notifier).enterSelectMode();
+              ref.read(photoListProvider.notifier).togglePhotoSelection(photo.path);
+            }
+          },
           onSecondaryTap: () => _showContextMenu(context, ref),
-          child: StreamImage(
-            url: photo.thumbnailUrl,
-            path: photo.path,
-            fileSystem: fileSystem,
-            placeholder: _buildPlaceholder(),
-            errorWidget: _buildPlaceholder(),
-            cacheKey: photo.path,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              StreamImage(
+                url: photo.thumbnailUrl,
+                path: photo.path,
+                fileSystem: fileSystem,
+                placeholder: _buildPlaceholder(),
+                errorWidget: _buildPlaceholder(),
+                cacheKey: photo.path,
+              ),
+              // 选中效果
+              if (isSelectMode) ...[
+                // 半透明遮罩
+                if (isSelected)
+                  Container(
+                    color: AppColors.primary.withValues(alpha: 0.3),
+                  ),
+                // 选择框
+                Positioned(
+                  top: 4,
+                  right: 4,
+                  child: Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? AppColors.primary
+                          : Colors.black.withValues(alpha: 0.3),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white,
+                        width: 2,
+                      ),
+                    ),
+                    child: isSelected
+                        ? const Icon(
+                            Icons.check,
+                            size: 16,
+                            color: Colors.white,
+                          )
+                        : null,
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
       ),

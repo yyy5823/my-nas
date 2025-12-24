@@ -24,6 +24,9 @@ import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/pages/media_library_page.dart';
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
+import 'package:my_nas/features/transfer/presentation/pages/transfer_manager_page.dart';
+import 'package:my_nas/features/transfer/presentation/providers/transfer_provider.dart';
+import 'package:my_nas/features/transfer/presentation/widgets/target_picker_sheet.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/context_menu_region.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
@@ -62,6 +65,22 @@ final bookListProvider =
 /// 图书排序方式
 enum BookSortType { name, date, size, format }
 
+/// 图书来源筛选
+enum BookSourceFilter {
+  all('全部'),
+  local('本机'),
+  remote('NAS');
+
+  const BookSourceFilter(this.label);
+  final String label;
+}
+
+/// 判断是否为本机来源类型
+bool _isLocalBookSource(SourceType type) => switch (type) {
+      SourceType.local || SourceType.mobileGallery => true,
+      _ => false,
+    };
+
 /// 阅读内容类别
 enum ReadingCategory {
   book('图书', Icons.menu_book_rounded),
@@ -99,6 +118,11 @@ class BookListLoaded extends BookListState {
     this.searchResults = const [],
     // 用于 O(1) 查找的 Map
     this.bookByPath = const {},
+    // 来源筛选和选择模式
+    this.sourceFilter = BookSourceFilter.all,
+    this.isSelectMode = false,
+    this.selectedPaths = const {},
+    this.sourceTypeCache = const {},
   });
 
   final int totalCount;
@@ -115,9 +139,43 @@ class BookListLoaded extends BookListState {
   // 用于 O(1) 查找的 Map
   final Map<String, BookEntity> bookByPath;
 
-  /// 当前显示的图书（搜索时返回搜索结果）
-  List<BookEntity> get displayBooks =>
-      searchQuery.isNotEmpty ? searchResults : allBooks;
+  // 来源筛选和选择模式
+  final BookSourceFilter sourceFilter;
+  final bool isSelectMode;
+  final Set<String> selectedPaths; // uniqueKey (sourceId:filePath)
+  final Map<String, SourceType> sourceTypeCache; // sourceId -> SourceType
+
+  /// 当前显示的图书（根据筛选条件返回）
+  List<BookEntity> get displayBooks {
+    final baseList = searchQuery.isNotEmpty ? searchResults : allBooks;
+    if (sourceFilter == BookSourceFilter.all) return baseList;
+
+    return baseList.where((book) {
+      final sourceType = sourceTypeCache[book.sourceId];
+      if (sourceType == null) return sourceFilter == BookSourceFilter.remote;
+      final isLocal = _isLocalBookSource(sourceType);
+      return sourceFilter == BookSourceFilter.local ? isLocal : !isLocal;
+    }).toList();
+  }
+
+  /// 判断图书是否为本机图书
+  bool isLocalBook(BookEntity book) {
+    final sourceType = sourceTypeCache[book.sourceId];
+    if (sourceType == null) return false;
+    return _isLocalBookSource(sourceType);
+  }
+
+  /// 已选中的图书列表
+  List<BookEntity> get selectedBooks =>
+      allBooks.where((b) => selectedPaths.contains(b.uniqueKey)).toList();
+
+  /// 选中的本机图书数量
+  int get selectedLocalCount =>
+      selectedBooks.where(isLocalBook).length;
+
+  /// 选中的远程图书数量
+  int get selectedRemoteCount =>
+      selectedBooks.where((b) => !isLocalBook(b)).length;
 
   /// 兼容旧代码：返回 BookFileWithSource 列表
   List<BookFileWithSource> get books => allBooks
@@ -173,6 +231,10 @@ class BookListLoaded extends BookListState {
     List<BookEntity>? allBooks,
     List<BookEntity>? searchResults,
     Map<String, BookEntity>? bookByPath,
+    BookSourceFilter? sourceFilter,
+    bool? isSelectMode,
+    Set<String>? selectedPaths,
+    Map<String, SourceType>? sourceTypeCache,
   }) =>
       BookListLoaded(
         totalCount: totalCount ?? this.totalCount,
@@ -184,6 +246,10 @@ class BookListLoaded extends BookListState {
         allBooks: allBooks ?? this.allBooks,
         searchResults: searchResults ?? this.searchResults,
         bookByPath: bookByPath ?? this.bookByPath,
+        sourceFilter: sourceFilter ?? this.sourceFilter,
+        isSelectMode: isSelectMode ?? this.isSelectMode,
+        selectedPaths: selectedPaths ?? this.selectedPaths,
+        sourceTypeCache: sourceTypeCache ?? this.sourceTypeCache,
       );
 }
 
@@ -303,12 +369,25 @@ class BookListNotifier extends StateNotifier<BookListState> {
       bookByPath[b.uniqueKey] = b;
     }
 
+    // 构建来源类型缓存
+    final connections = _ref.read(activeConnectionsProvider);
+    final sourceTypeCache = <String, SourceType>{};
+    for (final book in allBooks) {
+      if (!sourceTypeCache.containsKey(book.sourceId)) {
+        final conn = connections[book.sourceId];
+        if (conn != null) {
+          sourceTypeCache[book.sourceId] = conn.source.type;
+        }
+      }
+    }
+
     state = BookListLoaded(
       totalCount: stats['total'] as int? ?? 0,
       totalSize: stats['totalSize'] as int? ?? 0,
       formatStats: formatStats,
       allBooks: allBooks,
       bookByPath: bookByPath,
+      sourceTypeCache: sourceTypeCache,
       fromCache: true,
     );
 
@@ -696,6 +775,83 @@ class BookListNotifier extends StateNotifier<BookListState> {
     }
   }
 
+  /// 设置来源筛选
+  void setSourceFilter(BookSourceFilter filter) {
+    final current = state;
+    if (current is BookListLoaded) {
+      state = current.copyWith(
+        sourceFilter: filter,
+        // 切换筛选时清空选择
+        isSelectMode: false,
+        selectedPaths: {},
+      );
+    }
+  }
+
+  /// 切换选择模式
+  void toggleSelectMode() {
+    final current = state;
+    if (current is BookListLoaded) {
+      state = current.copyWith(
+        isSelectMode: !current.isSelectMode,
+        selectedPaths: {},
+      );
+    }
+  }
+
+  /// 进入选择模式（从长按触发）
+  void enterSelectMode(String bookKey) {
+    final current = state;
+    if (current is BookListLoaded && !current.isSelectMode) {
+      state = current.copyWith(
+        isSelectMode: true,
+        selectedPaths: {bookKey},
+      );
+    }
+  }
+
+  /// 退出选择模式
+  void exitSelectMode() {
+    final current = state;
+    if (current is BookListLoaded) {
+      state = current.copyWith(
+        isSelectMode: false,
+        selectedPaths: {},
+      );
+    }
+  }
+
+  /// 切换图书选择状态
+  void toggleBookSelection(String bookKey) {
+    final current = state;
+    if (current is BookListLoaded) {
+      final newSelected = Set<String>.from(current.selectedPaths);
+      if (newSelected.contains(bookKey)) {
+        newSelected.remove(bookKey);
+      } else {
+        newSelected.add(bookKey);
+      }
+      state = current.copyWith(selectedPaths: newSelected);
+    }
+  }
+
+  /// 全选当前筛选下的图书
+  void selectAll() {
+    final current = state;
+    if (current is BookListLoaded) {
+      final allKeys = current.displayBooks.map((b) => b.uniqueKey).toSet();
+      state = current.copyWith(selectedPaths: allKeys);
+    }
+  }
+
+  /// 清空选择
+  void clearSelection() {
+    final current = state;
+    if (current is BookListLoaded) {
+      state = current.copyWith(selectedPaths: {});
+    }
+  }
+
   /// 强制刷新
   Future<void> forceRefresh() async {
     await _db.clear();
@@ -919,7 +1075,16 @@ class _BookListPageState extends ConsumerState<BookListPage> {
     WidgetRef ref,
     bool isDark,
     BookListState state,
-  ) => DecoratedBox(
+  ) {
+    // 使用模式匹配来避免不必要的类型转换
+    final content = switch (state) {
+      BookListLoaded(:final isSelectMode) when isSelectMode =>
+        _buildSelectModeHeader(context, ref, isDark, state),
+      _ when _showSearch => _buildSearchBarContent(context, ref, isDark),
+      _ => _buildGreetingHeader(context, ref, isDark, state),
+    };
+
+    return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -938,11 +1103,48 @@ class _BookListPageState extends ConsumerState<BookListPage> {
             AppSpacing.appBarHorizontalPadding,
             AppSpacing.lg,
           ),
-          child: _showSearch
-              ? _buildSearchBarContent(context, ref, isDark)
-              : _buildGreetingHeader(context, ref, isDark, state),
+          child: content,
         ),
       ),
+    );
+  }
+
+  /// 选择模式头部
+  Widget _buildSelectModeHeader(
+    BuildContext context,
+    WidgetRef ref,
+    bool isDark,
+    BookListLoaded state,
+  ) => Row(
+      children: [
+        IconButton(
+          onPressed: () => ref.read(bookListProvider.notifier).exitSelectMode(),
+          icon: Icon(
+            Icons.close,
+            color: isDark ? Colors.white : Colors.black87,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          '已选择 ${state.selectedPaths.length} 项',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+            color: isDark ? Colors.white : Colors.black87,
+          ),
+        ),
+        const Spacer(),
+        TextButton(
+          onPressed: state.selectedPaths.length == state.displayBooks.length
+              ? () => ref.read(bookListProvider.notifier).clearSelection()
+              : () => ref.read(bookListProvider.notifier).selectAll(),
+          child: Text(
+            state.selectedPaths.length == state.displayBooks.length
+                ? '取消全选'
+                : '全选',
+          ),
+        ),
+      ],
     );
 
   /// 搜索栏内容（用于在 header 容器内显示）
@@ -1063,6 +1265,15 @@ class _BookListPageState extends ConsumerState<BookListPage> {
               ),
               tooltip: '搜索',
             ),
+            if (state is BookListLoaded && state.displayBooks.isNotEmpty)
+              IconButton(
+                onPressed: () => ref.read(bookListProvider.notifier).toggleSelectMode(),
+                icon: Icon(
+                  Icons.checklist_rounded,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+                tooltip: '选择',
+              ),
             IconButton(
               onPressed: () => ref.read(bookListProvider.notifier).forceRefresh(),
               icon: Icon(
@@ -1082,8 +1293,11 @@ class _BookListPageState extends ConsumerState<BookListPage> {
           ],
         ),
         const SizedBox(height: 16),
-        // 第二行：类别Tab切换
-        _buildCategoryTabs(isDark),
+        // 第二行：类别Tab切换 + 来源筛选
+        if (state is BookListLoaded)
+          _buildSourceFilterBar(ref, isDark, state)
+        else
+          _buildCategoryTabs(isDark),
       ],
     );
   }
@@ -1145,6 +1359,91 @@ class _BookListPageState extends ConsumerState<BookListPage> {
       }).toList(),
     );
   }
+
+  /// 来源筛选栏
+  Widget _buildSourceFilterBar(WidgetRef ref, bool isDark, BookListLoaded state) => Row(
+      children: [
+        // 左侧类别切换（简化版）
+        ...ReadingCategory.values.map((category) {
+          final isSelected = _selectedCategory == category;
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: GestureDetector(
+              onTap: () => setState(() => _selectedCategory = category),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? (isDark ? Colors.white.withValues(alpha: 0.12) : _themeColor.withValues(alpha: 0.15))
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      category.icon,
+                      size: 16,
+                      color: isSelected
+                          ? (isDark ? Colors.white : _themeColor)
+                          : (isDark ? Colors.grey[500] : Colors.grey[600]),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      category.label,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                        color: isSelected
+                            ? (isDark ? Colors.white : _themeColor)
+                            : (isDark ? Colors.grey[500] : Colors.grey[600]),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }),
+        const Spacer(),
+        // 右侧来源筛选
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          decoration: BoxDecoration(
+            color: isDark ? Colors.grey[850] : Colors.grey[200],
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: BookSourceFilter.values.map((filter) {
+              final isSelected = state.sourceFilter == filter;
+              return GestureDetector(
+                onTap: () => ref.read(bookListProvider.notifier).setSourceFilter(filter),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? (isDark ? Colors.white.withValues(alpha: 0.15) : Colors.white)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    filter.label,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                      color: isSelected
+                          ? (isDark ? Colors.white : _themeColor)
+                          : (isDark ? Colors.grey[500] : Colors.grey[600]),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+      ],
+    );
 
   Widget _buildStatChip({
     required IconData icon,
@@ -1391,39 +1690,289 @@ class _BookListPageState extends ConsumerState<BookListPage> {
     WidgetRef ref,
     BookListLoaded state,
     bool isDark,
-  ) => RefreshIndicator(
-      onRefresh: () => ref.read(bookListProvider.notifier).forceRefresh(),
-      child: CustomScrollView(
-        slivers: [
-          // 缓存信息条
-          _BookCacheInfoBar(state: state, isDark: isDark),
-          // 图书网格
-          SliverPadding(
-            padding: const EdgeInsets.all(AppSpacing.md),
-            sliver: SliverGrid(
-              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: 180,
-                childAspectRatio: 0.65,
-                crossAxisSpacing: AppSpacing.md,
-                mainAxisSpacing: AppSpacing.md,
+  ) => Stack(
+      children: [
+        RefreshIndicator(
+          onRefresh: () => ref.read(bookListProvider.notifier).forceRefresh(),
+          child: CustomScrollView(
+            slivers: [
+              // 缓存信息条（非选择模式时显示）
+              if (!state.isSelectMode)
+                _BookCacheInfoBar(state: state, isDark: isDark),
+              // 图书网格
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(
+                  AppSpacing.md,
+                  AppSpacing.md,
+                  AppSpacing.md,
+                  state.isSelectMode && state.selectedPaths.isNotEmpty ? 80 : AppSpacing.md,
+                ),
+                sliver: SliverGrid(
+                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: 180,
+                    childAspectRatio: 0.65,
+                    crossAxisSpacing: AppSpacing.md,
+                    mainAxisSpacing: AppSpacing.md,
+                  ),
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      final book = state.displayBooks[index];
+                      final isSelected = state.selectedPaths.contains(book.uniqueKey);
+                      return _BookGridItem(
+                        key: ValueKey('${book.sourceId}_${book.filePath}'),
+                        bookEntity: book,
+                        isDark: isDark,
+                        isSelectMode: state.isSelectMode,
+                        isSelected: isSelected,
+                        onTap: state.isSelectMode
+                            ? () => ref.read(bookListProvider.notifier).toggleBookSelection(book.uniqueKey)
+                            : null,
+                        onLongPress: !state.isSelectMode
+                            ? () => ref.read(bookListProvider.notifier).enterSelectMode(book.uniqueKey)
+                            : null,
+                      );
+                    },
+                    childCount: state.displayBooks.length,
+                  ),
+                ),
               ),
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final book = state.displayBooks[index];
-                  return _BookGridItem(
-                    key: ValueKey('${book.sourceId}_${book.filePath}'),
-                    bookEntity: book,
-                    isDark: isDark,
-                  );
-                },
-                childCount: state.displayBooks.length,
+              const SliverToBoxAdapter(child: SizedBox(height: 16)),
+            ],
+          ),
+        ),
+        // 选择操作栏
+        if (state.isSelectMode && state.selectedPaths.isNotEmpty)
+          _buildSelectionActionBar(context, ref, state, isDark),
+      ],
+    );
+
+  /// 选择操作栏
+  Widget _buildSelectionActionBar(
+    BuildContext context,
+    WidgetRef ref,
+    BookListLoaded state,
+    bool isDark,
+  ) => Positioned(
+      left: 16,
+      right: 16,
+      bottom: 16,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: isDark ? Colors.grey[850] : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.15),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            // 上传按钮（本机图书）
+            if (state.selectedLocalCount > 0)
+              _buildActionButton(
+                icon: Icons.upload_rounded,
+                label: '上传 (${state.selectedLocalCount})',
+                onTap: () => _handleUploadSelected(context, ref, state),
+                color: Colors.blue,
+              ),
+            // 下载按钮（远程图书）
+            if (state.selectedRemoteCount > 0)
+              _buildActionButton(
+                icon: Icons.download_rounded,
+                label: '下载 (${state.selectedRemoteCount})',
+                onTap: () => _handleDownloadSelected(context, ref, state),
+                color: Colors.green,
+              ),
+            // 删除按钮
+            _buildActionButton(
+              icon: Icons.delete_outline_rounded,
+              label: '删除 (${state.selectedPaths.length})',
+              onTap: () => _handleDeleteSelected(context, ref, state),
+              color: Colors.red,
+            ),
+          ],
+        ),
+      ),
+    );
+
+  Widget _buildActionButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    required Color color,
+  }) => InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color, size: 24),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: color,
               ),
             ),
+          ],
+        ),
+      ),
+    );
+
+  /// 处理上传选中的本机图书
+  Future<void> _handleUploadSelected(
+    BuildContext context,
+    WidgetRef ref,
+    BookListLoaded state,
+  ) async {
+    final localBooks = state.selectedBooks.where(state.isLocalBook).toList();
+    if (localBooks.isEmpty) return;
+
+    // 显示目标选择器
+    final target = await showModalBottomSheet<UploadTarget>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => const TargetPickerSheet(mediaType: MediaType.book),
+    );
+
+    if (target == null || !context.mounted) return;
+
+    final notifier = ref.read(transferTasksProvider.notifier);
+    final connections = ref.read(activeConnectionsProvider);
+
+    for (final book in localBooks) {
+      final conn = connections[book.sourceId];
+      if (conn == null) continue;
+
+      // 获取本地文件路径
+      final localPath = book.filePath;
+
+      await notifier.addUploadTask(
+        localPath: localPath,
+        targetSourceId: target.sourceId,
+        targetPath: '${target.path}/${book.fileName}',
+        mediaType: MediaType.book,
+        fileSize: book.size,
+      );
+    }
+
+    if (!context.mounted) return;
+
+    ref.read(bookListProvider.notifier).exitSelectMode();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('已添加 ${localBooks.length} 本图书到上传队列'),
+        action: SnackBarAction(
+          label: '查看',
+          onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute<void>(
+              builder: (_) => const TransferManagerPage(initialTab: 1),
+            ),
           ),
-          const SliverToBoxAdapter(child: SizedBox(height: 16)),
+        ),
+      ),
+    );
+  }
+
+  /// 处理下载选中的远程图书
+  Future<void> _handleDownloadSelected(
+    BuildContext context,
+    WidgetRef ref,
+    BookListLoaded state,
+  ) async {
+    final remoteBooks = state.selectedBooks.where((b) => !state.isLocalBook(b)).toList();
+    if (remoteBooks.isEmpty) return;
+
+    final notifier = ref.read(transferTasksProvider.notifier);
+
+    for (final book in remoteBooks) {
+      await notifier.addDownloadTask(
+        sourceId: book.sourceId,
+        sourcePath: book.filePath,
+        targetPath: book.fileName, // 使用文件名作为目标路径，服务会处理完整路径
+        mediaType: MediaType.book,
+        fileSize: book.size,
+      );
+    }
+
+    if (!context.mounted) return;
+
+    ref.read(bookListProvider.notifier).exitSelectMode();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('已添加 ${remoteBooks.length} 本图书到下载队列'),
+        action: SnackBarAction(
+          label: '查看',
+          onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute<void>(
+              builder: (_) => const TransferManagerPage(initialTab: 0),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 处理删除选中的图书
+  Future<void> _handleDeleteSelected(
+    BuildContext context,
+    WidgetRef ref,
+    BookListLoaded state,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除图书'),
+        content: Text('确定要删除选中的 ${state.selectedPaths.length} 本图书吗？此操作无法恢复。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('删除'),
+          ),
         ],
       ),
     );
+
+    if (confirmed != true || !context.mounted) return;
+
+    final notifier = ref.read(bookListProvider.notifier);
+    var successCount = 0;
+
+    for (final book in state.selectedBooks) {
+      final success = await notifier.deleteFromSource(
+        book.sourceId,
+        book.filePath,
+        book.displayName,
+      );
+      if (success) successCount++;
+    }
+
+    if (!context.mounted) return;
+
+    notifier.exitSelectMode();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('已删除 $successCount 本图书')),
+    );
+  }
 }
 
 /// 缓存信息条
@@ -1761,11 +2310,19 @@ class _BookGridItem extends ConsumerStatefulWidget {
   const _BookGridItem({
     required this.bookEntity,
     required this.isDark,
+    this.isSelectMode = false,
+    this.isSelected = false,
+    this.onTap,
+    this.onLongPress,
     super.key,
   });
 
   final BookEntity bookEntity;
   final bool isDark;
+  final bool isSelectMode;
+  final bool isSelected;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
 
   @override
   ConsumerState<_BookGridItem> createState() => _BookGridItemState();
@@ -1863,83 +2420,115 @@ class _BookGridItemState extends ConsumerState<_BookGridItem> {
     final author = book.author;
 
     return GestureDetector(
-      onTap: () => _openBook(context, ref),
-      onLongPress: () => _showContextMenu(context, ref),
+      onTap: widget.isSelectMode
+          ? widget.onTap
+          : () => _openBook(context, ref),
+      onLongPress: widget.isSelectMode ? null : widget.onLongPress ?? () => _showContextMenu(context, ref),
       onSecondaryTap: () => _showContextMenu(context, ref),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: widget.isDark ? AppColors.darkSurfaceVariant : context.colorScheme.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: widget.isDark
-                ? AppColors.darkOutline.withValues(alpha: 0.2)
-                : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: widget.isDark ? 0.2 : 0.08),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(
-              flex: 3,
-              child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                child: _buildCover(format),
+      child: Stack(
+        children: [
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: widget.isDark ? AppColors.darkSurfaceVariant : context.colorScheme.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: widget.isSelected
+                    ? Theme.of(context).colorScheme.primary
+                    : widget.isDark
+                        ? AppColors.darkOutline.withValues(alpha: 0.2)
+                        : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
+                width: widget.isSelected ? 2 : 1,
               ),
-            ),
-            Expanded(
-              flex: 2,
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        displayName,
-                        maxLines: author != null ? 1 : 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: context.textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: widget.isDark ? AppColors.darkOnSurface : null,
-                        ),
-                      ),
-                    ),
-                    // 显示作者（如果有）
-                    if (author != null && author.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        author,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: context.textTheme.labelSmall?.copyWith(
-                          color: widget.isDark
-                              ? AppColors.darkOnSurfaceVariant
-                              : context.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 4),
-                    Text(
-                      book.displaySize,
-                      style: context.textTheme.labelSmall?.copyWith(
-                        color: widget.isDark
-                            ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.7)
-                            : context.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                      ),
-                    ),
-                  ],
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: widget.isDark ? 0.2 : 0.08),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
                 ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: ClipRRect(
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                    child: _buildCover(format),
+                  ),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            displayName,
+                            maxLines: author != null ? 1 : 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: context.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: widget.isDark ? AppColors.darkOnSurface : null,
+                            ),
+                          ),
+                        ),
+                        // 显示作者（如果有）
+                        if (author != null && author.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            author,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: context.textTheme.labelSmall?.copyWith(
+                              color: widget.isDark
+                                  ? AppColors.darkOnSurfaceVariant
+                                  : context.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 4),
+                        Text(
+                          book.displaySize,
+                          style: context.textTheme.labelSmall?.copyWith(
+                            color: widget.isDark
+                                ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.7)
+                                : context.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // 选择模式勾选框
+          if (widget.isSelectMode)
+            Positioned(
+              top: 8,
+              left: 8,
+              child: Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: widget.isSelected
+                      ? Theme.of(context).colorScheme.primary
+                      : Colors.black.withValues(alpha: 0.3),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white,
+                    width: 2,
+                  ),
+                ),
+                child: widget.isSelected
+                    ? const Icon(Icons.check, color: Colors.white, size: 16)
+                    : null,
               ),
             ),
-          ],
-        ),
+        ],
       ),
     );
   }

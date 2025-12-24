@@ -31,6 +31,10 @@ import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/pages/media_library_page.dart';
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
+import 'package:my_nas/features/transfer/presentation/pages/transfer_manager_page.dart';
+import 'package:my_nas/features/transfer/presentation/providers/transfer_provider.dart';
+import 'package:my_nas/features/transfer/presentation/widgets/target_picker_sheet.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/animated_list_item.dart';
 import 'package:my_nas/shared/widgets/context_menu_region.dart';
@@ -244,6 +248,23 @@ final musicListProvider =
     StateNotifierProvider<MusicListNotifier, MusicListState>(
         MusicListNotifier.new);
 
+/// 音乐来源筛选
+enum MusicSourceFilter {
+  all('全部'),
+  local('本机'),
+  remote('NAS');
+
+  const MusicSourceFilter(this.label);
+  final String label;
+}
+
+/// 判断是否为本机源
+bool _isLocalMusicSource(SourceType type) =>
+    type == SourceType.mobileGallery ||
+    type == SourceType.mobileMusic ||
+    type == SourceType.mobileFiles ||
+    type == SourceType.local;
+
 sealed class MusicListState {}
 
 class MusicListLoading extends MusicListState {
@@ -324,6 +345,13 @@ class MusicListLoaded extends MusicListState {
     this.searchQuery = '',
     this.isLoadingMetadata = false,
     this.fromCache = false,
+    // 来源筛选
+    this.sourceFilter = MusicSourceFilter.all,
+    // 多选模式
+    this.isSelectMode = false,
+    this.selectedPaths = const {},
+    // 源类型缓存
+    this.sourceTypeCache = const {},
     // 分类数据 - 从 SQLite 分页加载
     this.recentTracks = const [],
     this.allTracks = const [],
@@ -347,6 +375,16 @@ class MusicListLoaded extends MusicListState {
   final String searchQuery;
   final bool isLoadingMetadata;
   final bool fromCache;
+
+  // 来源筛选
+  final MusicSourceFilter sourceFilter;
+
+  // 多选模式
+  final bool isSelectMode;
+  final Set<String> selectedPaths;
+
+  // 源类型缓存
+  final Map<String, SourceType> sourceTypeCache;
 
   // 分类数据 - 已从 SQLite 加载
   final List<MusicTrackEntity> recentTracks;
@@ -387,11 +425,39 @@ class MusicListLoaded extends MusicListState {
           ))
       .toList();
 
-  /// 过滤后的曲目
+  /// 过滤后的曲目（应用来源筛选和搜索）
   List<MusicTrackEntity> get filteredMetadata {
-    if (searchQuery.isNotEmpty) return searchResults;
-    return allTracks;
+    var tracks = searchQuery.isNotEmpty ? searchResults : allTracks;
+
+    // 应用来源筛选
+    if (sourceFilter != MusicSourceFilter.all) {
+      tracks = tracks.where((t) {
+        final sourceType = sourceTypeCache[t.sourceId];
+        if (sourceType == null) return true; // 未知类型保留
+        final isLocal = _isLocalMusicSource(sourceType);
+        return sourceFilter == MusicSourceFilter.local ? isLocal : !isLocal;
+      }).toList();
+    }
+
+    return tracks;
   }
+
+  /// 判断曲目是否为本机曲目
+  bool isLocalTrack(MusicTrackEntity track) {
+    final sourceType = sourceTypeCache[track.sourceId];
+    if (sourceType == null) return false;
+    return _isLocalMusicSource(sourceType);
+  }
+
+  /// 获取选中的曲目列表
+  List<MusicTrackEntity> get selectedTracks =>
+      allTracks.where((t) => selectedPaths.contains(t.filePath)).toList();
+
+  /// 获取选中曲目中本机曲目的数量
+  int get selectedLocalCount => selectedTracks.where(isLocalTrack).length;
+
+  /// 获取选中曲目中远程曲目的数量
+  int get selectedRemoteCount => selectedTracks.where((t) => !isLocalTrack(t)).length;
 
   /// 兼容旧代码
   List<MusicFileWithSource> get filteredTracks => filteredMetadata
@@ -449,6 +515,10 @@ class MusicListLoaded extends MusicListState {
     String? searchQuery,
     bool? isLoadingMetadata,
     bool? fromCache,
+    MusicSourceFilter? sourceFilter,
+    bool? isSelectMode,
+    Set<String>? selectedPaths,
+    Map<String, SourceType>? sourceTypeCache,
     List<MusicTrackEntity>? recentTracks,
     List<MusicTrackEntity>? allTracks,
     List<MusicTrackEntity>? searchResults,
@@ -467,6 +537,10 @@ class MusicListLoaded extends MusicListState {
         searchQuery: searchQuery ?? this.searchQuery,
         isLoadingMetadata: isLoadingMetadata ?? this.isLoadingMetadata,
         fromCache: fromCache ?? this.fromCache,
+        sourceFilter: sourceFilter ?? this.sourceFilter,
+        isSelectMode: isSelectMode ?? this.isSelectMode,
+        selectedPaths: selectedPaths ?? this.selectedPaths,
+        sourceTypeCache: sourceTypeCache ?? this.sourceTypeCache,
         recentTracks: recentTracks ?? this.recentTracks,
         allTracks: allTracks ?? this.allTracks,
         searchResults: searchResults ?? this.searchResults,
@@ -584,6 +658,17 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
       return;
     }
 
+    // 构建源类型缓存
+    final connections = _ref.read(activeConnectionsProvider);
+    final sourceTypeCache = <String, SourceType>{};
+    for (final entry in connections.entries) {
+      sourceTypeCache[entry.key] = entry.value.source.type;
+    }
+
+    // 保留之前的筛选状态
+    final current = state;
+    final previousFilter = current is MusicListLoaded ? current.sourceFilter : MusicSourceFilter.all;
+
     state = MusicListLoaded(
       totalCount: total,
       artistCount: stats['artists'] as int? ?? 0,
@@ -595,6 +680,8 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
       allTracks: validatedAllTracks,
       trackByPath: trackByPath,
       trackByFilePath: trackByFilePath,
+      sourceTypeCache: sourceTypeCache,
+      sourceFilter: previousFilter,
       fromCache: true,
       hasMoreTracks: validatedAllTracks.length < total,
     );
@@ -1321,6 +1408,72 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
     } on Exception catch (e) {
       logger.e('MusicListNotifier: 删除音乐源文件失败', e);
       return false;
+    }
+  }
+
+  /// 设置来源筛选
+  void setSourceFilter(MusicSourceFilter filter) {
+    final current = state;
+    if (current is MusicListLoaded) {
+      state = current.copyWith(sourceFilter: filter);
+    }
+  }
+
+  /// 切换多选模式
+  void toggleSelectMode() {
+    final current = state;
+    if (current is MusicListLoaded) {
+      state = current.copyWith(
+        isSelectMode: !current.isSelectMode,
+        selectedPaths: {},
+      );
+    }
+  }
+
+  /// 进入多选模式
+  void enterSelectMode() {
+    final current = state;
+    if (current is MusicListLoaded && !current.isSelectMode) {
+      state = current.copyWith(isSelectMode: true);
+    }
+  }
+
+  /// 退出多选模式
+  void exitSelectMode() {
+    final current = state;
+    if (current is MusicListLoaded && current.isSelectMode) {
+      state = current.copyWith(isSelectMode: false, selectedPaths: {});
+    }
+  }
+
+  /// 切换曲目选择状态
+  void toggleTrackSelection(String filePath) {
+    final current = state;
+    if (current is MusicListLoaded) {
+      final newSelected = Set<String>.from(current.selectedPaths);
+      if (newSelected.contains(filePath)) {
+        newSelected.remove(filePath);
+      } else {
+        newSelected.add(filePath);
+      }
+      state = current.copyWith(selectedPaths: newSelected);
+    }
+  }
+
+  /// 选择所有当前显示的曲目
+  void selectAll() {
+    final current = state;
+    if (current is MusicListLoaded) {
+      final allPaths = current.filteredMetadata.map((t) => t.filePath).toSet();
+      state = current.copyWith(selectedPaths: allPaths);
+    }
+  }
+
+  /// 清空选择
+  void clearSelection() {
+    final current = state;
+    if (current is MusicListLoaded) {
+      state = current.copyWith(selectedPaths: {});
     }
   }
 }

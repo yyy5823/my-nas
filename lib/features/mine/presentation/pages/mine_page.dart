@@ -18,6 +18,9 @@ import 'package:my_nas/features/sources/presentation/pages/media_library_page.da
 import 'package:my_nas/features/sources/presentation/pages/service_sources_page.dart';
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
+import 'package:my_nas/features/transfer/domain/entities/transfer_task.dart';
+import 'package:my_nas/features/transfer/presentation/pages/transfer_manager_page.dart';
+import 'package:my_nas/features/transfer/presentation/providers/transfer_provider.dart';
 import 'package:my_nas/features/video/domain/entities/scraper_source.dart';
 import 'package:my_nas/features/video/presentation/pages/scraper_sources_page.dart';
 import 'package:my_nas/features/video/presentation/providers/scraper_provider.dart';
@@ -1090,7 +1093,7 @@ class _MusicScraperSourcesTile extends ConsumerWidget {
   }
 }
 
-/// 传输卡片组件 - 下载和同步合并在一个卡片中
+/// 传输卡片组件 - 下载、上传和缓存合并在一个卡片中
 class _TransferCard extends ConsumerWidget {
   const _TransferCard({required this.isDark});
 
@@ -1098,24 +1101,26 @@ class _TransferCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final tasksAsync = ref.watch(downloadTasksProvider);
+    final transferState = ref.watch(transferTasksProvider);
+    final downloadingCount = ref.watch(downloadingCountProvider);
+    final uploadingCount = ref.watch(uploadingCountProvider);
+    final cachingCount = ref.watch(cachingCountProvider);
+    final cacheStats = ref.watch(cacheStatsProvider);
 
-    return tasksAsync.when(
-      data: (tasks) => _buildContent(context, tasks),
-      loading: () => _buildContent(context, []),
-      error: (_, _) => _buildContent(context, []),
+    // 计算缓存总数和大小
+    final cacheCount = cacheStats.when(
+      data: (stats) => stats.values.fold(0, (sum, s) => sum + s.count),
+      loading: () => 0,
+      error: (_, __) => 0,
     );
-  }
-
-  Widget _buildContent(BuildContext context, List<DownloadTask> tasks) {
-    final downloading = tasks
-        .where((t) =>
-            t.status == DownloadStatus.downloading ||
-            t.status == DownloadStatus.pending ||
-            t.status == DownloadStatus.paused)
-        .toList();
-    final completed = tasks.where((t) => t.status == DownloadStatus.completed).toList();
-    final hasActiveTasks = downloading.isNotEmpty;
+    final cacheSizeText = cacheStats.when(
+      data: (stats) {
+        final totalSize = stats.values.fold(0, (sum, s) => sum + s.size);
+        return _formatBytes(totalSize);
+      },
+      loading: () => '计算中...',
+      error: (_, __) => '未知',
+    );
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -1147,34 +1152,60 @@ class _TransferCard extends ConsumerWidget {
               context,
               icon: Icons.download_rounded,
               label: '下载',
-              count: downloading.length,
-              subtitle: hasActiveTasks
-                  ? '${downloading.length} 个任务进行中'
-                  : completed.isEmpty
-                      ? '暂无下载任务'
-                      : '${completed.length} 个已完成',
+              count: downloadingCount,
+              subtitle: downloadingCount > 0
+                  ? '$downloadingCount 个任务进行中'
+                  : '暂无下载任务',
               color: AppColors.primary,
-              isActive: hasActiveTasks,
-            ),
-            // 分隔线
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-              child: Divider(
-                height: 1,
-                color: isDark
-                    ? AppColors.darkOutline.withValues(alpha: 0.2)
-                    : AppColors.lightOutline.withValues(alpha: 0.3),
+              isActive: downloadingCount > 0,
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => const TransferManagerPage(initialTab: 0),
+                ),
               ),
             ),
-            // 同步项
+            // 分隔线
+            _buildDivider(),
+            // 上传项
             _buildTransferItem(
               context,
-              icon: Icons.sync_rounded,
-              label: '同步',
-              count: 0,
-              subtitle: '暂无同步任务',
+              icon: Icons.upload_rounded,
+              label: '上传',
+              count: uploadingCount,
+              subtitle: uploadingCount > 0
+                  ? '$uploadingCount 个任务进行中'
+                  : '暂无上传任务',
               color: AppColors.accent,
-              isActive: false,
+              isActive: uploadingCount > 0,
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => const TransferManagerPage(initialTab: 1),
+                ),
+              ),
+            ),
+            // 分隔线
+            _buildDivider(),
+            // 缓存项
+            _buildTransferItem(
+              context,
+              icon: Icons.storage_rounded,
+              label: '缓存',
+              count: cachingCount > 0 ? cachingCount : null,
+              subtitle: cachingCount > 0
+                  ? '$cachingCount 个任务进行中'
+                  : cacheCount > 0
+                      ? '$cacheCount 个缓存 ($cacheSizeText)'
+                      : '暂无缓存',
+              color: Colors.teal,
+              isActive: cachingCount > 0,
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => const TransferManagerPage(initialTab: 2),
+                ),
+              ),
             ),
           ],
         ),
@@ -1182,19 +1213,30 @@ class _TransferCard extends ConsumerWidget {
     );
   }
 
+  Widget _buildDivider() => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+        child: Divider(
+          height: 1,
+          color: isDark
+              ? AppColors.darkOutline.withValues(alpha: 0.2)
+              : AppColors.lightOutline.withValues(alpha: 0.3),
+        ),
+      );
+
   Widget _buildTransferItem(
     BuildContext context, {
     required IconData icon,
     required String label,
-    required int count,
+    int? count,
     required String subtitle,
     required Color color,
     required bool isActive,
+    required VoidCallback onTap,
   }) =>
       Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () => showDownloadManager(context),
+          onTap: onTap,
           child: Padding(
             padding: const EdgeInsets.symmetric(
               horizontal: AppSpacing.lg,
@@ -1215,11 +1257,11 @@ class _TransferCard extends ConsumerWidget {
                       ),
                       child: Icon(
                         icon,
-                        color: isActive ? color : color,
+                        color: color,
                         size: 20,
                       ),
                     ),
-                    if (count > 0)
+                    if (count != null && count > 0)
                       Positioned(
                         top: -4,
                         right: -4,
@@ -1308,6 +1350,15 @@ class _TransferCard extends ConsumerWidget {
           ),
         ),
       );
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+  }
 }
 
 /// 媒体追踪入口组件
