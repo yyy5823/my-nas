@@ -69,21 +69,17 @@ class SourceTypeSelectionPage extends ConsumerWidget {
                 SourceCategory.genericProtocols,
                 SourceType.byCategory(SourceCategory.genericProtocols),
               ),
-            if (_shouldShowCategory(SourceCategory.localStorage))
+            // 本地存储：仅在桌面端显示（iOS/Android 沙盒无价值）
+            if (_shouldShowCategory(SourceCategory.localStorage) &&
+                !kIsWeb &&
+                (Platform.isWindows || Platform.isMacOS || Platform.isLinux))
               _buildCategorySection(
                 context,
                 SourceCategory.localStorage,
                 SourceType.byCategory(SourceCategory.localStorage),
               ),
-            // 移动端媒体（仅在 iOS/Android 平台显示）
-            if (_shouldShowCategory(SourceCategory.mobileDevice) &&
-                !kIsWeb &&
-                (Platform.isIOS || Platform.isAndroid))
-              _buildCategorySection(
-                context,
-                SourceCategory.mobileDevice,
-                SourceType.byCategory(SourceCategory.mobileDevice),
-              ),
+            // 移动端媒体：不在连接源页面显示，仅通过媒体库添加
+            // 用户在媒体库页面点击"添加本机"时会自动创建对应源
             if (_shouldShowCategory(SourceCategory.mediaServers))
               _buildCategorySection(
                 context,

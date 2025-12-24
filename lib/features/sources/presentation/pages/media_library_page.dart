@@ -1,6 +1,7 @@
 import 'dart:async' show StreamSubscription, unawaited;
 import 'dart:io';
 
+import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -117,7 +118,10 @@ class _MediaTypeTab extends ConsumerWidget {
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (e, st) => Center(child: Text('加载失败: $e')),
           data: (sources) {
-            if (sources.isEmpty) {
+            // 判断是否为移动端
+            final isMobile = !kIsWeb && (Platform.isIOS || Platform.isAndroid);
+
+            if (sources.isEmpty && !isMobile) {
               return _buildNoSourcesState(context);
             }
 
@@ -132,7 +136,10 @@ class _MediaTypeTab extends ConsumerWidget {
                       onPressed: () =>
                           _addPath(context, ref, sources, connections, paths),
                       icon: const Icon(Icons.add),
-                      label: Text('添加${mediaType.displayName}目录'),
+                      // 移动端显示"添加本机"，桌面端显示"添加目录"
+                      label: Text(isMobile
+                          ? '添加本机'
+                          : '添加${mediaType.displayName}目录'),
                     ),
                   ),
                 ),
@@ -240,6 +247,124 @@ class _MediaTypeTab extends ConsumerWidget {
   };
 
   void _addPath(
+    BuildContext context,
+    WidgetRef ref,
+    List<SourceEntity> sources,
+    Map<String, SourceConnection> connections,
+    List<MediaLibraryPath> existingPaths,
+  ) {
+    // 判断是否为移动端
+    final isMobile = !kIsWeb && (Platform.isIOS || Platform.isAndroid);
+
+    if (isMobile) {
+      // 移动端：显示添加本机选项
+      _showMobileAddOptions(context, ref, sources, connections, existingPaths);
+    } else {
+      // 桌面端：保持原有逻辑
+      _showDesktopAddOptions(context, ref, sources, connections, existingPaths);
+    }
+  }
+
+  /// 移动端：显示添加本机选项
+  void _showMobileAddOptions(
+    BuildContext context,
+    WidgetRef ref,
+    List<SourceEntity> sources,
+    Map<String, SourceConnection> connections,
+    List<MediaLibraryPath> existingPaths,
+  ) {
+    // 根据当前 mediaType 确定对应的移动端源类型
+    final mobileSourceType = _getMobileSourceType(mediaType);
+
+    // 检查是否已添加本机
+    final alreadyAdded = existingPaths.any((p) {
+      final source = sources.firstWhereOrNull((s) => s.id == p.sourceId);
+      return source?.type == mobileSourceType;
+    });
+
+    if (alreadyAdded) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('本机已添加到此媒体库')),
+      );
+      return;
+    }
+
+    // 直接添加本机
+    _addMobileSourceToLibrary(context, ref, sources, mobileSourceType);
+  }
+
+  /// 根据 MediaType 获取对应的移动端源类型
+  SourceType _getMobileSourceType(MediaType type) => switch (type) {
+    MediaType.photo => SourceType.mobileGallery,
+    MediaType.video => SourceType.mobileGallery,
+    MediaType.music => SourceType.mobileMusic,
+    MediaType.book || MediaType.comic || MediaType.note => SourceType.mobileFiles,
+  };
+
+  /// 添加移动端源到媒体库
+  Future<void> _addMobileSourceToLibrary(
+    BuildContext context,
+    WidgetRef ref,
+    List<SourceEntity> existingSources,
+    SourceType sourceType,
+  ) async {
+    try {
+      // 1. 检查是否已存在该类型的移动端源
+      var mobileSource = existingSources.firstWhereOrNull(
+        (s) => s.type == sourceType,
+      );
+
+      if (mobileSource == null) {
+        // 自动创建移动端源
+        mobileSource = SourceEntity(
+          name: sourceType.displayName,
+          type: sourceType,
+          host: 'localhost',
+          username: 'local',
+          autoConnect: true,
+        );
+        await ref.read(sourcesProvider.notifier).addSource(mobileSource);
+      }
+
+      // 2. 连接源（如果未连接）
+      final connections = ref.read(activeConnectionsProvider);
+      if (connections[mobileSource.id]?.status != SourceStatus.connected) {
+        await ref.read(activeConnectionsProvider.notifier).connect(
+          mobileSource,
+          password: '',
+        );
+      }
+
+      // 3. 添加到媒体库（路径为 "/"，表示整个源）
+      final newPath = MediaLibraryPath(
+        sourceId: mobileSource.id,
+        path: '/',
+        name: '本机${mediaType.displayName}',
+      );
+
+      await ref.read(mediaLibraryConfigProvider.notifier).addPath(mediaType, newPath);
+
+      // 4. 触发扫描
+      final currentConnections = ref.read(activeConnectionsProvider);
+      _autoScanPath(ref, mediaType, newPath, currentConnections);
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已添加本机${mediaType.displayName}，正在扫描...')),
+        );
+      }
+    } on Exception catch (e, st) {
+      logger.e('添加本机失败', e, st);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('添加失败: $e')),
+        );
+      }
+    }
+  }
+
+  /// 桌面端：显示添加选项（保持原有逻辑）
+  void _showDesktopAddOptions(
     BuildContext context,
     WidgetRef ref,
     List<SourceEntity> sources,

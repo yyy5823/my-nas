@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:my_nas/features/sources/domain/entities/source_category.dart';
 import 'package:uuid/uuid.dart';
@@ -204,6 +207,26 @@ enum SourceType {
           true,
         _ => false,
       };
+
+  /// 当前平台是否可用此源类型（用于连接源管理页面过滤）
+  ///
+  /// - 本地存储 (local)：仅在桌面端可用（iOS/Android 沙盒无价值）
+  /// - 移动端媒体源：不在连接源页面显示，仅通过媒体库添加
+  bool get isAvailableOnCurrentPlatform {
+    // Web 平台不支持本地存储和移动端媒体
+    if (kIsWeb) {
+      return this != SourceType.local && !isMobileSource;
+    }
+    // 本地存储仅在桌面端可用
+    if (this == SourceType.local) {
+      return Platform.isWindows || Platform.isMacOS || Platform.isLinux;
+    }
+    // 移动端媒体源不在连接源页面显示，仅通过媒体库添加
+    if (isMobileSource) {
+      return false;
+    }
+    return true;
+  }
 
   /// 是否为服务类源
   bool get isServiceSource => category.isServiceCategory;

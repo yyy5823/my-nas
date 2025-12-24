@@ -358,8 +358,10 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
   }
 
   Widget _buildSourceTypeSelector() {
-    // 只显示已支持的源类型
-    final supportedTypes = SourceType.values.where((t) => t.isSupported).toList();
+    // 只显示已支持且在当前平台可用的源类型
+    final supportedTypes = SourceType.values
+        .where((t) => t.isSupported && t.isAvailableOnCurrentPlatform)
+        .toList();
 
     return Wrap(
       spacing: 8,
