@@ -86,11 +86,9 @@ class MusicScraperFormConfig {
   static MusicScraperFormConfig forType(MusicScraperType type) => switch (type) {
         MusicScraperType.musicBrainz => _getMusicBrainzConfig(),
         MusicScraperType.acoustId => _getAcoustIdConfig(),
-        MusicScraperType.coverArtArchive => _getCoverArtArchiveConfig(),
-        MusicScraperType.lastFm => _getLastFmConfig(),
         MusicScraperType.neteaseMusic => _getNeteaseConfig(),
         MusicScraperType.qqMusic => _getQQMusicConfig(),
-        MusicScraperType.genius => _getGeniusConfig(),
+        MusicScraperType.kugouMusic => _getKugouConfig(),
         MusicScraperType.musicTagWeb => _getMusicTagWebConfig(),
       };
 
@@ -114,6 +112,7 @@ class MusicScraperFormConfig {
           MusicScraperFormSection(
             title: '说明',
             description: 'MusicBrainz 是开放的音乐数据库，无需认证即可使用\n'
+                '支持元数据查询和封面获取（通过 Cover Art Archive）\n'
                 '为遵守使用规则，请求间隔不低于 1 秒',
             fields: [],
           ),
@@ -147,65 +146,6 @@ class MusicScraperFormConfig {
                 type: MusicScraperFormFieldType.password,
                 placeholder: '输入 AcoustID API Key',
                 helpText: '用于声纹识别查询',
-              ),
-            ],
-          ),
-        ],
-      );
-
-  // === Cover Art Archive 配置 ===
-  static MusicScraperFormConfig _getCoverArtArchiveConfig() =>
-      const MusicScraperFormConfig(
-        type: MusicScraperType.coverArtArchive,
-        sections: [
-          MusicScraperFormSection(
-            title: '基本信息',
-            fields: [
-              MusicScraperFormField(
-                key: 'name',
-                label: '名称',
-                placeholder: 'Cover Art Archive',
-                required: false,
-                helpText: '自定义名称，留空使用默认名称',
-              ),
-            ],
-          ),
-          MusicScraperFormSection(
-            title: '说明',
-            description: 'Cover Art Archive 是 MusicBrainz 的封面数据库\n'
-                '无需认证即可使用',
-            fields: [],
-          ),
-        ],
-      );
-
-  // === Last.fm 配置 ===
-  static MusicScraperFormConfig _getLastFmConfig() =>
-      const MusicScraperFormConfig(
-        type: MusicScraperType.lastFm,
-        sections: [
-          MusicScraperFormSection(
-            title: '基本信息',
-            fields: [
-              MusicScraperFormField(
-                key: 'name',
-                label: '名称',
-                placeholder: 'Last.fm',
-                required: false,
-                helpText: '自定义名称，留空使用默认名称',
-              ),
-            ],
-          ),
-          MusicScraperFormSection(
-            title: 'API 配置',
-            description: '在 last.fm/api 申请免费的 API Key',
-            fields: [
-              MusicScraperFormField(
-                key: 'apiKey',
-                label: 'API Key',
-                type: MusicScraperFormFieldType.password,
-                placeholder: '输入 Last.fm API Key',
-                helpText: '用于获取元数据和封面',
               ),
             ],
           ),
@@ -282,10 +222,10 @@ class MusicScraperFormConfig {
         ],
       );
 
-  // === Genius 配置 ===
-  static MusicScraperFormConfig _getGeniusConfig() =>
+  // === 酷狗音乐配置 ===
+  static MusicScraperFormConfig _getKugouConfig() =>
       const MusicScraperFormConfig(
-        type: MusicScraperType.genius,
+        type: MusicScraperType.kugouMusic,
         sections: [
           MusicScraperFormSection(
             title: '基本信息',
@@ -293,24 +233,17 @@ class MusicScraperFormConfig {
               MusicScraperFormField(
                 key: 'name',
                 label: '名称',
-                placeholder: 'Genius',
+                placeholder: '酷狗音乐',
                 required: false,
                 helpText: '自定义名称，留空使用默认名称',
               ),
             ],
           ),
           MusicScraperFormSection(
-            title: 'API 配置',
-            description: '在 genius.com/api-clients 申请 API Token',
-            fields: [
-              MusicScraperFormField(
-                key: 'apiKey',
-                label: 'Access Token',
-                type: MusicScraperFormFieldType.password,
-                placeholder: '输入 Genius Access Token',
-                helpText: '用于获取歌词和元数据（主要为英文歌曲）',
-              ),
-            ],
+            title: '说明',
+            description: '酷狗音乐歌词库丰富，特别是翻唱和小众歌曲\n'
+                '无需认证即可使用',
+            fields: [],
           ),
         ],
       );

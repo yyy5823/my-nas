@@ -1,8 +1,6 @@
 import 'package:my_nas/features/music/data/services/fingerprint/fingerprint_service.dart';
 import 'package:my_nas/features/music/data/services/scrapers/acoustid_scraper.dart';
-import 'package:my_nas/features/music/data/services/scrapers/coverart_archive_scraper.dart';
-import 'package:my_nas/features/music/data/services/scrapers/genius_scraper.dart';
-import 'package:my_nas/features/music/data/services/scrapers/lastfm_scraper.dart';
+import 'package:my_nas/features/music/data/services/scrapers/kugou_scraper.dart';
 import 'package:my_nas/features/music/data/services/scrapers/music_tag_web_scraper.dart';
 import 'package:my_nas/features/music/data/services/scrapers/musicbrainz_scraper.dart';
 import 'package:my_nas/features/music/data/services/scrapers/netease_scraper.dart';
@@ -21,11 +19,9 @@ class MusicScraperFactory {
             apiKey: source.apiKey ?? '',
             fingerprintService: FingerprintService.getInstance(),
           ),
-        MusicScraperType.coverArtArchive => CoverArtArchiveScraper(),
-        MusicScraperType.lastFm => LastFmScraper(apiKey: source.apiKey ?? ''),
         MusicScraperType.neteaseMusic => NeteaseScraper(cookie: source.cookie),
         MusicScraperType.qqMusic => QQMusicScraper(cookie: source.cookie),
-        MusicScraperType.genius => GeniusScraper(accessToken: source.apiKey ?? ''),
+        MusicScraperType.kugouMusic => KugouScraper(),
         MusicScraperType.musicTagWeb => MusicTagWebScraper(
             serverUrl: source.serverUrl ?? '',
             username: source.extraConfig?['username'] as String?,
@@ -40,11 +36,9 @@ class MusicScraperFactory {
   static bool isImplemented(MusicScraperType type) => [
         MusicScraperType.musicBrainz,
         MusicScraperType.acoustId,
-        MusicScraperType.coverArtArchive,
-        MusicScraperType.lastFm,
         MusicScraperType.neteaseMusic,
         MusicScraperType.qqMusic,
-        MusicScraperType.genius,
+        MusicScraperType.kugouMusic,
         MusicScraperType.musicTagWeb,
       ].contains(type);
 
@@ -52,11 +46,9 @@ class MusicScraperFactory {
   static List<MusicScraperType> get implementedTypes => [
         MusicScraperType.musicBrainz,
         MusicScraperType.acoustId,
-        MusicScraperType.coverArtArchive,
-        MusicScraperType.lastFm,
         MusicScraperType.neteaseMusic,
         MusicScraperType.qqMusic,
-        MusicScraperType.genius,
+        MusicScraperType.kugouMusic,
         MusicScraperType.musicTagWeb,
       ];
 

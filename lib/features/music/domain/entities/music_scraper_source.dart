@@ -5,11 +5,9 @@ import 'package:uuid/uuid.dart';
 enum MusicScraperType {
   musicBrainz('MusicBrainz', 'musicbrainz'),
   acoustId('AcoustID', 'acoustid'),
-  coverArtArchive('Cover Art Archive', 'coverart'),
-  lastFm('Last.fm', 'lastfm'),
   neteaseMusic('网易云音乐', 'netease'),
   qqMusic('QQ音乐', 'qqmusic'),
-  genius('Genius', 'genius'),
+  kugouMusic('酷狗音乐', 'kugou'),
   musicTagWeb('Music Tag Web', 'musictagweb');
 
   const MusicScraperType(this.displayName, this.id);
@@ -24,11 +22,9 @@ enum MusicScraperType {
   IconData get icon => switch (this) {
         MusicScraperType.musicBrainz => Icons.album_rounded,
         MusicScraperType.acoustId => Icons.fingerprint_rounded,
-        MusicScraperType.coverArtArchive => Icons.image_rounded,
-        MusicScraperType.lastFm => Icons.radio_rounded,
         MusicScraperType.neteaseMusic => Icons.cloud_rounded,
         MusicScraperType.qqMusic => Icons.music_note_rounded,
-        MusicScraperType.genius => Icons.lyrics_rounded,
+        MusicScraperType.kugouMusic => Icons.graphic_eq_rounded,
         MusicScraperType.musicTagWeb => Icons.dns_rounded,
       };
 
@@ -36,43 +32,37 @@ enum MusicScraperType {
   Color get themeColor => switch (this) {
         MusicScraperType.musicBrainz => const Color(0xFFBA478F), // MusicBrainz purple
         MusicScraperType.acoustId => const Color(0xFF5BC0DE), // AcoustID blue
-        MusicScraperType.coverArtArchive => const Color(0xFFEB743B), // CAA orange
-        MusicScraperType.lastFm => const Color(0xFFD51007), // Last.fm red
         MusicScraperType.neteaseMusic => const Color(0xFFE60026), // 网易云红
         MusicScraperType.qqMusic => const Color(0xFF31C27C), // QQ音乐绿
-        MusicScraperType.genius => const Color(0xFFFFFF64), // Genius yellow
+        MusicScraperType.kugouMusic => const Color(0xFF2196F3), // 酷狗蓝
         MusicScraperType.musicTagWeb => const Color(0xFF6366F1), // Indigo
       };
 
   /// 描述
   String get description => switch (this) {
-        MusicScraperType.musicBrainz => '开放音乐数据库，支持元数据查询',
+        MusicScraperType.musicBrainz => '开放音乐数据库，支持元数据和封面查询',
         MusicScraperType.acoustId => '声纹识别服务，需要 API Key',
-        MusicScraperType.coverArtArchive => 'MusicBrainz 封面数据库',
-        MusicScraperType.lastFm => '音乐社区，支持元数据和封面',
         MusicScraperType.neteaseMusic => '国内音乐平台，支持歌词和封面',
         MusicScraperType.qqMusic => '国内音乐平台，支持歌词和封面',
-        MusicScraperType.genius => '歌词数据库，支持英文歌词',
+        MusicScraperType.kugouMusic => '国内音乐平台，歌词库丰富',
         MusicScraperType.musicTagWeb => '自托管音乐刮削服务，需配置服务器地址',
       };
 
   /// 是否支持元数据
   bool get supportsMetadata => [
         MusicScraperType.musicBrainz,
-        MusicScraperType.lastFm,
         MusicScraperType.neteaseMusic,
         MusicScraperType.qqMusic,
-        MusicScraperType.genius,
+        MusicScraperType.kugouMusic,
         MusicScraperType.musicTagWeb,
       ].contains(this);
 
   /// 是否支持封面
   bool get supportsCover => [
-        MusicScraperType.coverArtArchive,
-        MusicScraperType.lastFm,
+        MusicScraperType.musicBrainz,
         MusicScraperType.neteaseMusic,
         MusicScraperType.qqMusic,
-        MusicScraperType.genius,
+        MusicScraperType.kugouMusic,
         MusicScraperType.musicTagWeb,
       ].contains(this);
 
@@ -80,7 +70,7 @@ enum MusicScraperType {
   bool get supportsLyrics => [
         MusicScraperType.neteaseMusic,
         MusicScraperType.qqMusic,
-        MusicScraperType.genius,
+        MusicScraperType.kugouMusic,
         MusicScraperType.musicTagWeb,
       ].contains(this);
 
@@ -90,8 +80,6 @@ enum MusicScraperType {
   /// 是否需要 API Key
   bool get requiresApiKey => [
         MusicScraperType.acoustId,
-        MusicScraperType.lastFm,
-        MusicScraperType.genius,
       ].contains(this);
 
   /// 是否需要 Cookie（可选）
@@ -168,11 +156,9 @@ class MusicScraperSourceEntity {
   bool get isConfigured => switch (type) {
         MusicScraperType.musicBrainz => true, // 无需认证
         MusicScraperType.acoustId => apiKey != null && apiKey!.isNotEmpty,
-        MusicScraperType.coverArtArchive => true, // 无需认证
-        MusicScraperType.lastFm => apiKey != null && apiKey!.isNotEmpty,
         MusicScraperType.neteaseMusic => true, // Cookie 可选
         MusicScraperType.qqMusic => true, // Cookie 可选
-        MusicScraperType.genius => apiKey != null && apiKey!.isNotEmpty,
+        MusicScraperType.kugouMusic => true, // 无需认证
         MusicScraperType.musicTagWeb => _isMusicTagWebConfigured,
       };
 

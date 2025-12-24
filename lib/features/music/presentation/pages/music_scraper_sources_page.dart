@@ -362,9 +362,11 @@ class _MusicScraperSourcesPageState extends ConsumerState<MusicScraperSourcesPag
             children: [
               Text('推荐配置：', style: TextStyle(fontWeight: FontWeight.bold)),
               SizedBox(height: 8),
-              Text('1. MusicBrainz - 元数据（内置，无需配置）'),
+              Text('1. MusicBrainz - 元数据和封面（内置，无需配置）'),
               Text('2. AcoustID - 声纹识别（需要 API Key）'),
               Text('3. 网易云音乐 - 歌词和封面（可选 Cookie）'),
+              Text('4. QQ音乐 - 歌词和封面（可选 Cookie）'),
+              Text('5. 酷狗音乐 - 歌词库丰富（无需配置）'),
               SizedBox(height: 16),
               Text('功能说明：', style: TextStyle(fontWeight: FontWeight.bold)),
               SizedBox(height: 8),
@@ -376,8 +378,6 @@ class _MusicScraperSourcesPageState extends ConsumerState<MusicScraperSourcesPag
               Text('API Key 获取：', style: TextStyle(fontWeight: FontWeight.bold)),
               SizedBox(height: 8),
               Text('• AcoustID: acoustid.org/api-key'),
-              Text('• Last.fm: last.fm/api/account/create'),
-              Text('• Genius: genius.com/api-clients'),
             ],
           ),
         ),
@@ -778,8 +778,6 @@ class _MusicScraperTypeCard extends StatelessWidget {
   /// 获取 API Key 帮助文本
   String? _getApiKeyHelper() => switch (type) {
         MusicScraperType.acoustId => '访问 acoustid.org 获取',
-        MusicScraperType.lastFm => '访问 last.fm/api 获取',
-        MusicScraperType.genius => '访问 genius.com/api-clients 获取',
         _ => null,
       };
 }

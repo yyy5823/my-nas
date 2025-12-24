@@ -542,26 +542,37 @@ class SynologyApi {
     final response = await _dio.post<dynamic>(
       '/webapi/entry.cgi',
       data: formData,
+      options: Options(
+        // 上传接口响应格式可能不规范，使用纯文本接收后手动解析
+        responseType: ResponseType.plain,
+        // 不设置 Content-Type，让 Dio 自动处理 multipart
+        headers: {
+          'Accept': '*/*',
+        },
+      ),
     );
 
     // 处理响应数据，可能是 Map 或 String（JSON字符串）
     Map<String, dynamic>? responseData;
-    if (response.data is Map<String, dynamic>) {
-      responseData = response.data as Map<String, dynamic>;
-    } else if (response.data is String) {
+    final rawData = response.data;
+
+    if (rawData is Map<String, dynamic>) {
+      responseData = rawData;
+    } else if (rawData is String && rawData.isNotEmpty) {
       try {
-        final decoded = jsonDecode(response.data as String);
+        final decoded = jsonDecode(rawData);
         if (decoded is Map<String, dynamic>) {
           responseData = decoded;
         }
-      } on FormatException {
-        // JSON 解析失败
+      } on FormatException catch (e) {
+        logger.w('SynologyApi: JSON 解析失败: $e, 原始响应: ${rawData.substring(0, rawData.length.clamp(0, 200))}');
       }
     }
 
     if (responseData == null || responseData['success'] != true) {
       final error = responseData?['error'];
       final errorCode = error is Map<String, dynamic> ? error['code'] as int? : null;
+      logger.e('SynologyApi: 写入失败, error=$error, code=$errorCode');
       throw ServerException(
         message: _getErrorMessage(errorCode),
         statusCode: errorCode,

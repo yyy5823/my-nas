@@ -8,6 +8,7 @@ import 'package:my_nas/features/music/domain/interfaces/music_scraper.dart';
 /// MusicBrainz 刮削器
 ///
 /// 使用 MusicBrainz JSON Web Service 2 API
+/// 封面通过 Cover Art Archive 获取
 /// 文档: https://musicbrainz.org/doc/MusicBrainz_API
 class MusicBrainzScraper implements MusicScraper {
   MusicBrainzScraper({
@@ -22,12 +23,24 @@ class MusicBrainzScraper implements MusicScraper {
         'User-Agent': _userAgent,
       },
     ));
+
+    _coverArtDio = Dio(BaseOptions(
+      baseUrl: _coverArtBaseUrl,
+      connectTimeout: const Duration(seconds: 15),
+      receiveTimeout: const Duration(seconds: 15),
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': _userAgent,
+      },
+    ));
   }
 
   static const String _baseUrl = 'https://musicbrainz.org/ws/2';
+  static const String _coverArtBaseUrl = 'https://coverartarchive.org';
 
   final String _userAgent;
   late final Dio _dio;
+  late final Dio _coverArtDio;
 
   /// 上次请求时间（用于速率限制）
   DateTime? _lastRequestTime;
@@ -127,10 +140,82 @@ class MusicBrainzScraper implements MusicScraper {
       throw _handleDioError(e);
     }
   }
-  /// MusicBrainz 本身不提供封面，需要通过 Cover Art Archive
-  /// 这里返回空列表，由 CoverArtArchiveScraper 处理
+  /// 通过 Cover Art Archive 获取封面
+  /// externalId 可以是 recording ID 或 release ID
   @override
-  Future<List<CoverScraperResult>> getCoverArt(String externalId) async => [];
+  Future<List<CoverScraperResult>> getCoverArt(String externalId) async {
+    try {
+      // 首先尝试作为 release ID 获取封面
+      var releaseId = externalId;
+
+      // 如果是 recording ID，需要先获取关联的 release ID
+      try {
+        final response = await _rateLimitedRequest(() => _dio.get<dynamic>(
+              '/recording/$externalId',
+              queryParameters: {
+                'inc': 'releases',
+                'fmt': 'json',
+              },
+            ));
+
+        final data = response.data as Map<String, dynamic>;
+        final releases =
+            (data['releases'] as List?)?.cast<Map<String, dynamic>>();
+        if (releases != null && releases.isNotEmpty) {
+          releaseId = releases.first['id'] as String;
+        }
+      } on DioException {
+        // 如果获取失败，假设 externalId 就是 release ID
+      }
+
+      // 从 Cover Art Archive 获取封面
+      final response = await _coverArtDio.get<dynamic>('/release/$releaseId');
+
+      final data = response.data as Map<String, dynamic>;
+      final images =
+          (data['images'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+
+      if (images.isEmpty) return [];
+
+      final results = <CoverScraperResult>[];
+      for (final image in images) {
+        final imageUrl = image['image'] as String?;
+        final thumbnails = image['thumbnails'] as Map<String, dynamic>?;
+        final thumbnailUrl = thumbnails?['500'] as String? ??
+            thumbnails?['250'] as String? ??
+            thumbnails?['small'] as String?;
+
+        // 确定封面类型
+        final types = (image['types'] as List?)?.cast<String>() ?? [];
+        var coverType = CoverType.other;
+        if (types.contains('Front')) {
+          coverType = CoverType.front;
+        } else if (types.contains('Back')) {
+          coverType = CoverType.back;
+        } else if (types.contains('Booklet')) {
+          coverType = CoverType.booklet;
+        } else if (types.contains('Medium')) {
+          coverType = CoverType.medium;
+        }
+
+        if (imageUrl != null) {
+          results.add(CoverScraperResult(
+            source: type,
+            coverUrl: imageUrl,
+            thumbnailUrl: thumbnailUrl,
+            type: coverType,
+          ));
+        }
+      }
+
+      return results;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) {
+        return [];
+      }
+      throw _handleDioError(e);
+    }
+  }
 
   /// MusicBrainz 不提供歌词
   @override
@@ -139,6 +224,7 @@ class MusicBrainzScraper implements MusicScraper {
   @override
   void dispose() {
     _dio.close();
+    _coverArtDio.close();
   }
 
   /// 速率限制请求
