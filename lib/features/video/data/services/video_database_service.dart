@@ -1156,20 +1156,31 @@ class VideoDatabaseService {
   /// 获取高评分内容（分页）
   ///
   /// [enabledPaths] 启用的路径列表，如果提供则只返回这些路径下的视频
+  /// [includeUnrated] 是否包含无评分的已刮削视频（用于每日推荐等场景，扩大推荐池）
   Future<List<VideoMetadata>> getTopRated({
     double minRating = 0.0, // 降低默认阈值，确保有数据返回
     MediaCategory? category,
     int limit = 50,
     int offset = 0,
     List<({String sourceId, String path})>? enabledPaths,
+    bool includeUnrated = false,
   }) async {
     if (!_initialized) await init();
 
     final pathFilter = _buildPathFilter(enabledPaths);
 
-    // 只筛选有评分的视频（rating > 0），不设最低分数门槛
-    var where = '$_colRating > ?';
-    final whereArgs = <Object>[minRating];
+    String where;
+    final whereArgs = <Object>[];
+
+    if (includeUnrated) {
+      // 包含所有已刮削的视频（有海报的优先，无评分的排在后面）
+      where = '$_colScrapeStatus = ?';
+      whereArgs.add(ScrapeStatus.completed.index);
+    } else {
+      // 只筛选有评分的视频（rating > 0），不设最低分数门槛
+      where = '$_colRating > ?';
+      whereArgs.add(minRating);
+    }
 
     if (category != null) {
       where += ' AND $_colCategory = ?';
@@ -1185,7 +1196,8 @@ class VideoDatabaseService {
       _tableMetadata,
       where: where,
       whereArgs: whereArgs,
-      orderBy: '$_colRating DESC',
+      // 按评分降序，无评分的排在最后
+      orderBy: '$_colRating DESC NULLS LAST, $_colTitle',
       limit: limit,
       offset: offset,
     );

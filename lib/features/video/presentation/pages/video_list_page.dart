@@ -913,7 +913,8 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     try {
       final batch1Stopwatch = Stopwatch()..start();
       final batch1 = await Future.wait([
-        _db.getTopRated(limit: 100, enabledPaths: effectiveEnabledPaths),
+        // 每日推荐使用 includeUnrated=true，包含所有已刮削视频，扩大推荐池
+        _db.getTopRated(limit: 100, enabledPaths: effectiveEnabledPaths, includeUnrated: true),
         _db.getRecentlyUpdated(limit: 20, enabledPaths: effectiveEnabledPaths),
         _db.getByCategory(MediaCategory.movie, limit: 30, enabledPaths: effectiveEnabledPaths),
       ]).timeout(
