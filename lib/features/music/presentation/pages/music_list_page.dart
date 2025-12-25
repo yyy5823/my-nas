@@ -1006,6 +1006,12 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
       await _metadataService.init();
       await _coverCache.init();
 
+      // 清理该路径的旧数据（避免旧路径格式的数据残留）
+      final deletedCount = await _db.deleteByPath(sourceId, pathPrefix);
+      if (deletedCount > 0) {
+        logger.i('MusicListNotifier: 已清理 $sourceId:$pathPrefix 的 $deletedCount 条旧数据');
+      }
+
       // 阶段1：扫描文件系统
       final tracks = <MusicFileWithSource>[];
       var lastUpdateCount = 0;

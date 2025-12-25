@@ -841,6 +841,12 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
     try {
       await _db.init();
 
+      // 清理该路径的旧数据（避免旧路径格式的数据残留）
+      final deletedCount = await _db.deleteByPath(sourceId, pathPrefix);
+      if (deletedCount > 0) {
+        logger.i('PhotoListNotifier: 已清理 $sourceId:$pathPrefix 的 $deletedCount 条旧数据');
+      }
+
       // 扫描文件系统
       final photos = <PhotoFileWithSource>[];
       var lastUpdateCount = 0;

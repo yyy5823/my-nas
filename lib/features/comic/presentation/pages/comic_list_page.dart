@@ -360,6 +360,12 @@ class ComicListNotifier extends StateNotifier<ComicListState> {
     progressService.startScan(MediaType.comic, sourceId, pathPrefix);
 
     try {
+      // 清理该路径的旧数据（避免旧路径格式的数据残留）
+      final deletedCount = await _cacheService.deleteByPath(sourceId, pathPrefix);
+      if (deletedCount > 0) {
+        logger.i('ComicListNotifier: 已清理 $sourceId:$pathPrefix 的 $deletedCount 条旧数据');
+      }
+
       final comics = <ComicItem>[];
       var lastUpdateCount = 0;
 

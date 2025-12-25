@@ -540,33 +540,10 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
   final TextEditingController _editController = TextEditingController();
   final ScrollController _previewScrollController = ScrollController();
 
-  // 响应式布局断点
-  static const double _mobileBreakpoint = 600;
-
-  // 目录抽屉是否显示
-  bool _isDrawerOpen = false;
-
-  /// 判断是否为移动端布局
-  bool _isMobileLayout(BuildContext context) =>
-      MediaQuery.of(context).size.width < _mobileBreakpoint;
-
-  /// 切换抽屉显示状态
-  void _toggleDrawer() {
-    setState(() => _isDrawerOpen = !_isDrawerOpen);
-  }
-
-  /// 打开抽屉
-  void _openDrawer() {
-    if (!_isDrawerOpen) {
-      setState(() => _isDrawerOpen = true);
-    }
-  }
-
-  /// 关闭抽屉
-  void _closeDrawer() {
-    if (_isDrawerOpen) {
-      setState(() => _isDrawerOpen = false);
-    }
+  /// 返回目录
+  void _backToDirectory() {
+    ref.read(notePageProvider.notifier).setEditing(editing: false);
+    ref.read(notePageProvider.notifier).loadTree();
   }
 
   /// 显示笔记上下文菜单
@@ -783,14 +760,6 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
                   ),
                 ),
               const Spacer(),
-              // 目录按钮（非移动端且已加载时显示）
-              if (state is NotePageLoaded && !_isMobileLayout(context))
-                _buildIconButton(
-                  icon: _isDrawerOpen ? Icons.menu_open_rounded : Icons.menu_rounded,
-                  onTap: _toggleDrawer,
-                  isDark: isDark,
-                  tooltip: _isDrawerOpen ? '关闭目录' : '打开目录',
-                ),
               _buildIconButton(
                 icon: Icons.refresh_rounded,
                 onTap: () => ref.read(notePageProvider.notifier).loadTree(),
@@ -844,82 +813,28 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
     ),
   );
 
+  /// 统一使用目录优先的堆叠式导航
   Widget _buildMainLayout(
     BuildContext context,
     NotePageLoaded state,
     bool isDark,
   ) {
-    // 移动端布局：使用堆叠式导航
-    if (_isMobileLayout(context)) {
-      return _buildMobileLayout(context, state, isDark);
-    }
-
-    // 当没有选中笔记时，自动打开抽屉
-    final shouldAutoOpenDrawer = state.selectedNode == null && !_isDrawerOpen;
-    if (shouldAutoOpenDrawer) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _openDrawer();
-      });
-    }
-
-    // 平板/桌面布局：使用抽屉式目录
-    return GestureDetector(
-      // 支持从左侧向右滑动打开抽屉
-      onHorizontalDragEnd: (details) {
-        if (details.primaryVelocity != null && details.primaryVelocity! > 300) {
-          _openDrawer();
-        }
-      },
-      child: Stack(
-        children: [
-          // 主内容区
-          _buildContentArea(context, state, isDark),
-          // 抽屉遮罩层
-          if (_isDrawerOpen)
-            GestureDetector(
-              onTap: _closeDrawer,
-              child: Container(
-                color: Colors.black.withValues(alpha: 0.3),
-              ),
-            ),
-          // 抽屉目录
-          AnimatedPositioned(
-            duration: const Duration(milliseconds: 250),
-            curve: Curves.easeOutCubic,
-            left: _isDrawerOpen ? 0 : -360,
-            top: 0,
-            bottom: 0,
-            width: 360,
-            child: _buildDrawer(context, state, isDark),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// 移动端布局：堆叠式导航
-  Widget _buildMobileLayout(
-    BuildContext context,
-    NotePageLoaded state,
-    bool isDark,
-  ) {
-    // 如果已选中笔记，显示内容页面
+    // 如果已选中笔记，显示全屏阅读模式
     if (state.selectedNode != null) {
-      return _buildMobileContentView(context, state, isDark);
+      return _buildFullscreenReader(context, state, isDark);
     }
-
-    // 否则显示目录树
-    return _buildMobileTreeView(context, state, isDark);
+    // 否则显示目录视图
+    return _buildDirectoryView(context, state, isDark);
   }
 
-  /// 移动端目录树视图
-  Widget _buildMobileTreeView(
+  /// 目录视图（默认显示）
+  Widget _buildDirectoryView(
     BuildContext context,
     NotePageLoaded state,
     bool isDark,
   ) => NoteTreeWidget(
     nodes: state.treeNodes,
-    selectedPath: state.selectedNode?.path,
+    selectedPath: null, // 目录视图不需要选中状态
     onNodeSelected: (node) =>
         ref.read(notePageProvider.notifier).selectFile(node),
     onFolderToggle: (node) =>
@@ -930,16 +845,16 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
     isDark: isDark,
   );
 
-  /// 移动端内容视图（带返回按钮）
-  Widget _buildMobileContentView(
+  /// 全屏阅读视图
+  Widget _buildFullscreenReader(
     BuildContext context,
     NotePageLoaded state,
     bool isDark,
   ) => Column(
     children: [
-      // 移动端顶部工具栏（带返回按钮）
-      _buildMobileContentHeader(context, state, isDark),
-      // 内容区
+      // 阅读器头部（带返回按钮）
+      _buildReaderHeader(context, state, isDark),
+      // 内容区域
       Expanded(
         child: state.isLoadingContent
             ? Center(child: CircularProgressIndicator(color: AppColors.primary))
@@ -952,8 +867,8 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
     ],
   );
 
-  /// 移动端内容头部（带返回按钮）
-  Widget _buildMobileContentHeader(
+  /// 阅读器头部（带返回按钮）
+  Widget _buildReaderHeader(
     BuildContext context,
     NotePageLoaded state,
     bool isDark,
@@ -978,12 +893,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
           children: [
             // 返回按钮
             IconButton(
-              onPressed: () {
-                // 清除选中状态，返回目录
-                ref.read(notePageProvider.notifier).setEditing(editing: false);
-                // 重新加载树来清除选中
-                ref.read(notePageProvider.notifier).loadTree();
-              },
+              onPressed: _backToDirectory,
               icon: Icon(
                 Icons.arrow_back_rounded,
                 color: isDark ? AppColors.darkOnSurface : null,
@@ -1201,209 +1111,6 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
     );
   }
 
-  /// 抽屉式目录
-  Widget _buildDrawer(
-    BuildContext context,
-    NotePageLoaded state,
-    bool isDark,
-  ) => Material(
-    elevation: 8,
-    color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
-    child: DecoratedBox(
-      decoration: BoxDecoration(
-        border: Border(
-          right: BorderSide(
-            color: isDark
-                ? AppColors.darkOutline.withValues(alpha: 0.3)
-                : context.colorScheme.outlineVariant,
-          ),
-        ),
-      ),
-      child: Column(
-        children: [
-          // 抽屉标题栏
-          _buildDrawerHeader(context, isDark),
-          // 目录树
-          Expanded(
-            child: NoteTreeWidget(
-              nodes: state.treeNodes,
-              selectedPath: state.selectedNode?.path,
-              onNodeSelected: (node) {
-                ref.read(notePageProvider.notifier).selectFile(node);
-                // 选中文件后自动关闭抽屉
-                _closeDrawer();
-              },
-              onFolderToggle: (node) =>
-                  ref.read(notePageProvider.notifier).toggleFolder(node),
-              onFolderLoad: (node) =>
-                  ref.read(notePageProvider.notifier).toggleFolder(node),
-              onContextMenu: _showNoteContextMenu,
-              isDark: isDark,
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
-
-  /// 抽屉标题栏
-  Widget _buildDrawerHeader(BuildContext context, bool isDark) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-    decoration: BoxDecoration(
-      color: isDark
-          ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
-          : context.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-      border: Border(
-        bottom: BorderSide(
-          color: isDark
-              ? AppColors.darkOutline.withValues(alpha: 0.2)
-              : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
-        ),
-      ),
-    ),
-    child: SafeArea(
-      bottom: false,
-      child: Row(
-        children: [
-          Icon(
-            Icons.folder_rounded,
-            size: 22,
-            color: AppColors.primary,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              '笔记目录',
-              style: context.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: isDark ? AppColors.darkOnSurface : null,
-              ),
-            ),
-          ),
-          // 关闭按钮
-          IconButton(
-            onPressed: _closeDrawer,
-            icon: Icon(
-              Icons.close_rounded,
-              size: 22,
-              color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[700],
-            ),
-            tooltip: '关闭目录',
-          ),
-        ],
-      ),
-    ),
-  );
-
-  Widget _buildContentArea(
-    BuildContext context,
-    NotePageLoaded state,
-    bool isDark,
-  ) {
-    if (state.selectedNode == null) {
-      return _buildEmptyContent(context, isDark);
-    }
-
-    if (state.isLoadingContent) {
-      return Center(child: CircularProgressIndicator(color: AppColors.primary));
-    }
-
-    return Column(
-      children: [
-        // 顶部工具栏
-        _buildContentHeader(context, state, isDark),
-        // 内容区
-        Expanded(
-          child: state.isEditing
-              ? (state.livePreview
-                    ? _buildSplitView(context, state, isDark)
-                    : _buildEditorOnly(context, state, isDark))
-              : _buildPreview(context, state, isDark),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildEmptyContent(BuildContext context, bool isDark) => Center(
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(
-          Icons.article_outlined,
-          size: 64,
-          color: isDark
-              ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.3)
-              : Colors.grey.withValues(alpha: 0.3),
-        ),
-        const SizedBox(height: 16),
-        Text(
-          '选择一个笔记开始阅读',
-          style: context.textTheme.bodyLarge?.copyWith(
-            color: isDark
-                ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.5)
-                : Colors.grey,
-          ),
-        ),
-      ],
-    ),
-  );
-
-  Widget _buildContentHeader(
-    BuildContext context,
-    NotePageLoaded state,
-    bool isDark,
-  ) {
-    final node = state.selectedNode!;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
-        border: Border(
-          bottom: BorderSide(
-            color: isDark
-                ? AppColors.darkOutline.withValues(alpha: 0.2)
-                : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
-          ),
-        ),
-      ),
-      child: SafeArea(
-        bottom: false,
-        child: Row(
-          children: [
-            // 文件图标
-            Icon(
-              node.isTaskFile
-                  ? Icons.checklist_rounded
-                  : Icons.article_outlined,
-              size: 20,
-              color: node.isTaskFile ? Colors.orange : AppColors.primary,
-            ),
-            const SizedBox(width: 8),
-            // 文件名
-            Expanded(
-              child: Text(
-                node.displayName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: context.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: isDark ? AppColors.darkOnSurface : null,
-                ),
-              ),
-            ),
-            // 任务文件标记
-            if (node.isTaskFile && state.tasks.isNotEmpty) ...[
-              _buildTaskProgress(state, isDark),
-              const SizedBox(width: 12),
-            ],
-            // 编辑/预览切换
-            _buildModeToggle(state, isDark),
-          ],
-        ),
-      ),
-    );
-  }
 
   Widget _buildTaskProgress(NotePageLoaded state, bool isDark) {
     final completed = state.tasks.where((t) => t.isCompleted).length;
@@ -2023,26 +1730,10 @@ class NoteListContent extends ConsumerStatefulWidget {
 class _NoteListContentState extends ConsumerState<NoteListContent> {
   final ScrollController _previewScrollController = ScrollController();
 
-  // 目录抽屉是否显示
-  bool _isDrawerOpen = false;
-
-  /// 切换抽屉显示状态
-  void _toggleDrawer() {
-    setState(() => _isDrawerOpen = !_isDrawerOpen);
-  }
-
-  /// 打开抽屉
-  void _openDrawer() {
-    if (!_isDrawerOpen) {
-      setState(() => _isDrawerOpen = true);
-    }
-  }
-
-  /// 关闭抽屉
-  void _closeDrawer() {
-    if (_isDrawerOpen) {
-      setState(() => _isDrawerOpen = false);
-    }
+  /// 返回目录
+  void _backToDirectory() {
+    ref.read(notePageProvider.notifier).setEditing(editing: false);
+    ref.read(notePageProvider.notifier).loadTree();
   }
 
   /// 显示笔记上下文菜单
@@ -2122,105 +1813,101 @@ class _NoteListContentState extends ConsumerState<NoteListContent> {
     };
   }
 
+  /// 统一使用目录优先的堆叠式导航
   Widget _buildMainLayout(
     BuildContext context,
     NotePageLoaded state,
     bool isDark,
   ) {
-    // 当没有选中笔记时，自动打开抽屉
-    final shouldAutoOpenDrawer = state.selectedNode == null && !_isDrawerOpen;
-    if (shouldAutoOpenDrawer) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _openDrawer();
-      });
+    // 如果已选中笔记，显示全屏阅读模式
+    if (state.selectedNode != null) {
+      return _buildFullscreenReader(context, state, isDark);
     }
-
-    // 使用抽屉式目录
-    return GestureDetector(
-      // 支持从左侧向右滑动打开抽屉
-      onHorizontalDragEnd: (details) {
-        if (details.primaryVelocity != null && details.primaryVelocity! > 300) {
-          _openDrawer();
-        }
-      },
-      child: Stack(
-        children: [
-          // 主内容区
-          Column(
-            children: [
-              // 顶部工具栏
-              _buildToolbar(context, state, isDark),
-              // 内容区
-              Expanded(child: _buildContentArea(context, state, isDark)),
-            ],
-          ),
-          // 抽屉遮罩层
-          if (_isDrawerOpen)
-            GestureDetector(
-              onTap: _closeDrawer,
-              child: Container(
-                color: Colors.black.withValues(alpha: 0.3),
-              ),
-            ),
-          // 抽屉目录
-          AnimatedPositioned(
-            duration: const Duration(milliseconds: 250),
-            curve: Curves.easeOutCubic,
-            left: _isDrawerOpen ? 0 : -360,
-            top: 0,
-            bottom: 0,
-            width: 360,
-            child: _buildDrawer(context, state, isDark),
-          ),
-        ],
-      ),
-    );
+    // 否则显示目录视图
+    return _buildDirectoryView(context, state, isDark);
   }
 
-  /// 工具栏
-  Widget _buildToolbar(
+  /// 目录视图
+  Widget _buildDirectoryView(
     BuildContext context,
     NotePageLoaded state,
     bool isDark,
-  ) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-    decoration: BoxDecoration(
-      color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
-      border: Border(
-        bottom: BorderSide(
-          color: isDark
-              ? AppColors.darkOutline.withValues(alpha: 0.2)
-              : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
+  ) => NoteTreeWidget(
+    nodes: state.treeNodes,
+    selectedPath: null,
+    onNodeSelected: (node) =>
+        ref.read(notePageProvider.notifier).selectFile(node),
+    onFolderToggle: (node) =>
+        ref.read(notePageProvider.notifier).toggleFolder(node),
+    onFolderLoad: (node) =>
+        ref.read(notePageProvider.notifier).toggleFolder(node),
+    onContextMenu: _showNoteContextMenu,
+    isDark: isDark,
+  );
+
+  /// 全屏阅读视图
+  Widget _buildFullscreenReader(
+    BuildContext context,
+    NotePageLoaded state,
+    bool isDark,
+  ) => Column(
+    children: [
+      // 阅读器头部
+      _buildReaderHeader(context, state, isDark),
+      // 内容区域
+      Expanded(
+        child: state.isLoadingContent
+            ? Center(child: CircularProgressIndicator(color: AppColors.primary))
+            : _buildContentArea(context, state, isDark),
+      ),
+    ],
+  );
+
+  /// 阅读器头部
+  Widget _buildReaderHeader(
+    BuildContext context,
+    NotePageLoaded state,
+    bool isDark,
+  ) {
+    final node = state.selectedNode!;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
+        border: Border(
+          bottom: BorderSide(
+            color: isDark
+                ? AppColors.darkOutline.withValues(alpha: 0.2)
+                : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
+          ),
         ),
       ),
-    ),
-    child: Row(
-      children: [
-        // 目录按钮
-        IconButton(
-          onPressed: _toggleDrawer,
-          icon: Icon(
-            _isDrawerOpen ? Icons.menu_open_rounded : Icons.menu_rounded,
-            color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[700],
+      child: Row(
+        children: [
+          // 返回按钮
+          IconButton(
+            onPressed: _backToDirectory,
+            icon: Icon(
+              Icons.arrow_back_rounded,
+              color: isDark ? AppColors.darkOnSurface : null,
+            ),
+            tooltip: '返回目录',
           ),
-          tooltip: _isDrawerOpen ? '关闭目录' : '打开目录',
-        ),
-        const SizedBox(width: 8),
-        // 当前选中的文件名
-        if (state.selectedNode != null) ...[
+          const SizedBox(width: 4),
+          // 文件图标
           Icon(
-            state.selectedNode!.isTaskFile
+            node.isTaskFile
                 ? Icons.checklist_rounded
                 : Icons.article_outlined,
             size: 18,
-            color: state.selectedNode!.isTaskFile
-                ? Colors.orange
-                : AppColors.primary,
+            color: node.isTaskFile ? Colors.orange : AppColors.primary,
           ),
           const SizedBox(width: 8),
+          // 文件名
           Expanded(
             child: Text(
-              state.selectedNode!.displayName,
+              node.displayName,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: context.textTheme.titleSmall?.copyWith(
@@ -2229,155 +1916,25 @@ class _NoteListContentState extends ConsumerState<NoteListContent> {
               ),
             ),
           ),
-        ] else
-          Expanded(
-            child: Text(
-              '笔记',
-              style: context.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: isDark ? AppColors.darkOnSurface : null,
-              ),
+          // 刷新按钮
+          IconButton(
+            onPressed: () => ref.read(notePageProvider.notifier).loadTree(),
+            icon: Icon(
+              Icons.refresh_rounded,
+              color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[700],
             ),
-          ),
-        // 刷新按钮
-        IconButton(
-          onPressed: () => ref.read(notePageProvider.notifier).loadTree(),
-          icon: Icon(
-            Icons.refresh_rounded,
-            color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[700],
-          ),
-          tooltip: '刷新',
-        ),
-      ],
-    ),
-  );
-
-  /// 抽屉式目录
-  Widget _buildDrawer(
-    BuildContext context,
-    NotePageLoaded state,
-    bool isDark,
-  ) => Material(
-    elevation: 8,
-    color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
-    child: DecoratedBox(
-      decoration: BoxDecoration(
-        border: Border(
-          right: BorderSide(
-            color: isDark
-                ? AppColors.darkOutline.withValues(alpha: 0.3)
-                : context.colorScheme.outlineVariant,
-          ),
-        ),
-      ),
-      child: Column(
-        children: [
-          // 抽屉标题栏
-          _buildDrawerHeader(context, isDark),
-          // 目录树
-          Expanded(
-            child: NoteTreeWidget(
-              nodes: state.treeNodes,
-              selectedPath: state.selectedNode?.path,
-              onNodeSelected: (node) {
-                ref.read(notePageProvider.notifier).selectFile(node);
-                // 选中文件后自动关闭抽屉
-                _closeDrawer();
-              },
-              onFolderToggle: (node) =>
-                  ref.read(notePageProvider.notifier).toggleFolder(node),
-              onFolderLoad: (node) =>
-                  ref.read(notePageProvider.notifier).toggleFolder(node),
-              onContextMenu: _showNoteContextMenu,
-              isDark: isDark,
-            ),
+            tooltip: '刷新',
           ),
         ],
       ),
-    ),
-  );
-
-  /// 抽屉标题栏
-  Widget _buildDrawerHeader(BuildContext context, bool isDark) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-    decoration: BoxDecoration(
-      color: isDark
-          ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
-          : context.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-      border: Border(
-        bottom: BorderSide(
-          color: isDark
-              ? AppColors.darkOutline.withValues(alpha: 0.2)
-              : context.colorScheme.outlineVariant.withValues(alpha: 0.5),
-        ),
-      ),
-    ),
-    child: Row(
-      children: [
-        Icon(
-          Icons.folder_rounded,
-          size: 22,
-          color: AppColors.primary,
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            '笔记目录',
-            style: context.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: isDark ? AppColors.darkOnSurface : null,
-            ),
-          ),
-        ),
-        // 关闭按钮
-        IconButton(
-          onPressed: _closeDrawer,
-          icon: Icon(
-            Icons.close_rounded,
-            size: 22,
-            color: isDark ? AppColors.darkOnSurfaceVariant : Colors.grey[700],
-          ),
-          tooltip: '关闭目录',
-        ),
-      ],
-    ),
-  );
+    );
+  }
 
   Widget _buildContentArea(
     BuildContext context,
     NotePageLoaded state,
     bool isDark,
   ) {
-    if (state.selectedNode == null) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.article_outlined,
-              size: 64,
-              color: isDark
-                  ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.3)
-                  : Colors.grey.withValues(alpha: 0.3),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '选择一个笔记开始阅读',
-              style: context.textTheme.bodyLarge?.copyWith(
-                color: isDark
-                    ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.5)
-                    : Colors.grey,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (state.isLoadingContent) {
-      return Center(child: CircularProgressIndicator(color: AppColors.primary));
-    }
-
     // 显示内容 - 确保内容从顶部开始
     return Align(
       alignment: Alignment.topLeft,

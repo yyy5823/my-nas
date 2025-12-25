@@ -125,6 +125,9 @@ class SynologyAdapter implements NasAdapter {
     _connected = true;
     _fileSystem = SynologyFileSystem(api: _api);
 
+    // 设置会话刷新回调
+    _api.setSessionRefreshCallback(_refreshSession);
+
     // 获取服务器信息
     try {
       final dsmInfo = await _api.getDsmInfo();
@@ -146,9 +149,52 @@ class SynologyAdapter implements NasAdapter {
     );
   }
 
+  /// 刷新会话（重新登录）
+  Future<String?> _refreshSession() async {
+    final config = _config;
+    if (config == null) {
+      logger.w('SynologyAdapter: 无法刷新会话，配置为空');
+      return null;
+    }
+
+    logger.i('SynologyAdapter: 正在刷新会话...');
+
+    try {
+      final authResult = await _api.login(
+        account: config.username,
+        password: config.password,
+        deviceId: config.deviceId,
+        deviceName: config.deviceName,
+        enableDeviceToken: config.enableDeviceToken,
+      );
+
+      return switch (authResult) {
+        AuthSuccess(:final sid) => () {
+            logger.i('SynologyAdapter: 会话刷新成功');
+            return sid;
+          }(),
+        AuthFailure(:final error) => () {
+            logger.e('SynologyAdapter: 会话刷新失败 => $error');
+            _connected = false;
+            return null;
+          }(),
+        AuthRequires2FA() => () {
+            // 如果需要 2FA，无法自动刷新
+            logger.w('SynologyAdapter: 会话刷新需要 2FA，无法自动完成');
+            _connected = false;
+            return null;
+          }(),
+      };
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '会话刷新失败');
+      return null;
+    }
+  }
+
   @override
   Future<void> disconnect() async {
     if (!_connected) return;
+    _api.setSessionRefreshCallback(null);
     await _api.logout();
     _connected = false;
     _config = null;

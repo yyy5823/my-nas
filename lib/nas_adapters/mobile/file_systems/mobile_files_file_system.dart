@@ -8,17 +8,35 @@ import 'package:path_provider/path_provider.dart';
 /// 移动端文件App文件系统
 ///
 /// 访问手机文件 App 中的文档和书籍
-/// - iOS: 访问 Documents 目录（可在 Files App 中看到）
+/// - iOS: 访问应用沙盒 Documents 目录（可在 Files App 的"我的 iPhone"中看到）
 /// - Android: 访问 Documents 和 Downloads 目录
 ///
 /// 虚拟目录结构：
 /// - /documents/    - 应用文档目录
 /// - /downloads/    - 下载目录
+///
+/// 注意：会自动排除缓存目录（包含 cache 的目录），避免扫描到应用缓存文件
 class MobileFilesFileSystem implements NasFileSystem {
   MobileFilesFileSystem();
 
   String? _documentsPath;
   String? _downloadsPath;
+
+  /// 需要排除的目录名（缓存目录等）
+  static const _excludedDirNames = {
+    'cache',
+    'caches',
+    'Cache',
+    'Caches',
+    'media_cache',
+    'music_audio_cache',
+    'book_cache',
+    '.cache',
+    'tmp',
+    'temp',
+    'logs',
+    '.Trash',
+  };
 
   /// 初始化文件系统
   Future<void> initialize() async {
@@ -31,6 +49,16 @@ class MobileFilesFileSystem implements NasFileSystem {
     logger..i('MobileFilesFileSystem: 初始化完成')
     ..d('  Documents: $_documentsPath')
     ..d('  Downloads: $_downloadsPath');
+  }
+
+  /// 检查是否是应该排除的目录
+  bool _isExcludedDir(String path) {
+    final name = p.basename(path);
+    // 检查目录名是否在排除列表中
+    if (_excludedDirNames.contains(name)) return true;
+    // 检查目录名是否包含 cache（不区分大小写）
+    if (name.toLowerCase().contains('cache')) return true;
+    return false;
   }
 
   @override
@@ -94,9 +122,17 @@ class MobileFilesFileSystem implements NasFileSystem {
 
     await for (final entity in dir.list()) {
       try {
-        final stat = await entity.stat();
         final name = p.basename(entity.path);
         final isHidden = name.startsWith('.');
+
+        // 跳过隐藏文件和缓存目录
+        if (isHidden) continue;
+        if (entity is Directory && _isExcludedDir(entity.path)) {
+          logger.d('MobileFilesFileSystem: 跳过缓存目录 ${entity.path}');
+          continue;
+        }
+
+        final stat = await entity.stat();
 
         items.add(
           FileItem(
@@ -359,20 +395,28 @@ class MobileFilesFileSystem implements NasFileSystem {
 
     try {
       await for (final entity in dir.list(recursive: true)) {
-        final name = p.basename(entity.path).toLowerCase();
-        if (name.contains(queryLower)) {
+        final name = p.basename(entity.path);
+        final nameLower = name.toLowerCase();
+
+        // 跳过隐藏文件
+        if (name.startsWith('.')) continue;
+
+        // 跳过缓存目录中的文件
+        if (_isInExcludedDir(entity.path)) continue;
+
+        if (nameLower.contains(queryLower)) {
           final stat = await entity.stat();
           final virtualPath = _toVirtualPath(entity.path);
           if (virtualPath != null) {
             results.add(
               FileItem(
-                name: p.basename(entity.path),
+                name: name,
                 path: virtualPath,
                 isDirectory: entity is Directory,
                 size: stat.size,
                 modifiedTime: stat.modified,
                 extension: entity is File ? p.extension(entity.path) : null,
-                isHidden: name.startsWith('.'),
+                isHidden: false,
               ),
             );
           }
@@ -383,5 +427,17 @@ class MobileFilesFileSystem implements NasFileSystem {
     }
 
     return results;
+  }
+
+  /// 检查路径是否在排除目录中
+  bool _isInExcludedDir(String path) {
+    final parts = path.split(Platform.pathSeparator);
+    for (final part in parts) {
+      if (_excludedDirNames.contains(part) ||
+          part.toLowerCase().contains('cache')) {
+        return true;
+      }
+    }
+    return false;
   }
 }

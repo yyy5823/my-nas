@@ -595,6 +595,12 @@ class BookListNotifier extends StateNotifier<BookListState> {
     try {
       await _db.init();
 
+      // 清理该路径的旧数据（避免旧路径格式的数据残留）
+      final deletedCount = await _db.deleteByPath(sourceId, pathPrefix);
+      if (deletedCount > 0) {
+        logger.i('BookListNotifier: 已清理 $sourceId:$pathPrefix 的 $deletedCount 条旧数据');
+      }
+
       final books = <BookFileWithSource>[];
       var lastUpdateCount = 0;
 

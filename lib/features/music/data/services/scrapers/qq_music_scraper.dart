@@ -360,8 +360,15 @@ class QQMusicScraper implements MusicScraper {
     // 碟号
     final discNumber = data['index_cd'] as int?;
 
-    // 流派
-    final genre = data['genre'] as String?;
+    // 流派 - API 可能返回 String 或 int（流派 ID）
+    String? genre;
+    final genreValue = data['genre'];
+    if (genreValue is String) {
+      genre = genreValue;
+    } else if (genreValue is int) {
+      // 如果是 int，转换为字符串或忽略
+      genre = null; // QQ音乐返回的是流派 ID，无法直接使用
+    }
 
     // 发行时间
     final pubTime = data['time_public'] as String?;

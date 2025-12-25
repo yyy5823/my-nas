@@ -277,6 +277,13 @@ class VideoScannerService {
         sourceIds.add(path.sourceId);
         final fileSystem = conn.adapter.fileSystem;
 
+        // 清理该路径的旧数据（避免旧路径格式的数据残留）
+        final deletedDbCount = await _dbService.deleteByPath(path.sourceId, path.path);
+        final deletedCacheCount = await _cacheService.deleteByPath(path.sourceId, path.path);
+        if (deletedDbCount > 0 || deletedCacheCount > 0) {
+          logger.i('VideoScannerService: 已清理 ${path.sourceId}:${path.path} 的旧数据 (db: $deletedDbCount, cache: $deletedCacheCount)');
+        }
+
         // 为每个目录单独发送扫描开始事件（包含目录标识）
         _emitProgress(VideoScanProgress(
           phase: VideoScanPhase.scanning,

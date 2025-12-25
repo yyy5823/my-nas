@@ -5,6 +5,10 @@ import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/errors/exceptions.dart';
 import 'package:my_nas/core/utils/logger.dart';
 
+/// 会话刷新回调类型
+/// 返回新的 session ID，如果刷新失败则返回 null
+typedef SessionRefreshCallback = Future<String?> Function();
+
 /// Synology DSM API 客户端
 class SynologyApi {
   SynologyApi({required Dio dio}) : _dio = dio;
@@ -12,16 +16,31 @@ class SynologyApi {
   final Dio _dio;
   String? _sid;
 
+  /// 会话刷新回调
+  SessionRefreshCallback? _onSessionRefresh;
+
+  /// 是否正在刷新会话（防止并发刷新）
+  bool _isRefreshing = false;
+
   /// 当前会话ID（用于调试）
   String? get sessionId => _sid;
 
   /// 会话是否有效
   bool get hasSession => _sid != null;
 
+  /// 设置会话刷新回调
+  void setSessionRefreshCallback(SessionRefreshCallback? callback) {
+    _onSessionRefresh = callback;
+  }
+
   /// 清除会话
   void clearSession() {
     _sid = null;
   }
+
+  /// 检查是否是会话过期错误
+  bool _isSessionExpiredError(int? errorCode) =>
+      errorCode == 106 || errorCode == 119;
 
   /// API 信息查询
   Future<Map<String, dynamic>> queryApiInfo() async {
@@ -401,6 +420,7 @@ class SynologyApi {
     bool createParents = true,
     bool overwrite = true,
     void Function(int sent, int total)? onProgress,
+    bool allowRetry = true,
   }) async {
     final file = MultipartFile.fromFileSync(
       localPath,
@@ -430,6 +450,26 @@ class SynologyApi {
     if (data == null || data['success'] != true) {
       final error = data?['error'];
       final errorCode = error is Map<String, dynamic> ? error['code'] as int? : null;
+
+      // 检查是否是会话过期错误，尝试刷新会话
+      if (allowRetry && _isSessionExpiredError(errorCode)) {
+        logger.w('SynologyApi: 上传时会话已过期 (code: $errorCode)，尝试刷新...');
+        final refreshed = await _tryRefreshSession();
+        if (refreshed) {
+          logger.i('SynologyApi: 会话刷新成功，重试上传');
+          // 重试上传，但不允许再次重试
+          return uploadFile(
+            localPath: localPath,
+            destFolderPath: destFolderPath,
+            fileName: fileName,
+            createParents: createParents,
+            overwrite: overwrite,
+            onProgress: onProgress,
+            allowRetry: false,
+          );
+        }
+      }
+
       throw ServerException(
         message: _getErrorMessage(errorCode),
         statusCode: errorCode,
@@ -517,7 +557,12 @@ class SynologyApi {
   /// 直接将内存中的字节数据写入到远程文件
   /// [remotePath] 远程文件完整路径（包含文件名）
   /// [data] 要写入的字节数据
-  Future<void> writeFileData(String remotePath, List<int> data) async {
+  /// [allowRetry] 是否允许在会话过期时重试
+  Future<void> writeFileData(
+    String remotePath,
+    List<int> data, {
+    bool allowRetry = true,
+  }) async {
     // 获取目录和文件名
     final lastSlash = remotePath.lastIndexOf('/');
     final destFolderPath = lastSlash > 0 ? remotePath.substring(0, lastSlash) : '/';
@@ -572,6 +617,18 @@ class SynologyApi {
     if (responseData == null || responseData['success'] != true) {
       final error = responseData?['error'];
       final errorCode = error is Map<String, dynamic> ? error['code'] as int? : null;
+
+      // 检查是否是会话过期错误，尝试刷新会话
+      if (allowRetry && _isSessionExpiredError(errorCode)) {
+        logger.w('SynologyApi: 写入时会话已过期 (code: $errorCode)，尝试刷新...');
+        final refreshed = await _tryRefreshSession();
+        if (refreshed) {
+          logger.i('SynologyApi: 会话刷新成功，重试写入');
+          // 重试写入，但不允许再次重试
+          return writeFileData(remotePath, data, allowRetry: false);
+        }
+      }
+
       logger.e('SynologyApi: 写入失败, error=$error, code=$errorCode');
       throw ServerException(
         message: _getErrorMessage(errorCode),
@@ -626,6 +683,7 @@ class SynologyApi {
     String method, {
     required int version,
     Map<String, dynamic>? params,
+    bool allowRetry = true,
   }) async {
     final queryParams = <String, dynamic>{
       'api': api,
@@ -662,6 +720,18 @@ class SynologyApi {
       if (data['success'] != true) {
         final error = data['error'];
         final errorCode = error is Map<String, dynamic> ? error['code'] as int? : null;
+
+        // 检查是否是会话过期错误，尝试刷新会话
+        if (allowRetry && _isSessionExpiredError(errorCode)) {
+          logger.w('SynologyApi: 会话已过期 (code: $errorCode)，尝试刷新...');
+          final refreshed = await _tryRefreshSession();
+          if (refreshed) {
+            logger.i('SynologyApi: 会话刷新成功，重试请求');
+            // 重试请求，但不允许再次重试
+            return _request(api, method, version: version, params: params, allowRetry: false);
+          }
+        }
+
         final errorMsg = _getErrorMessage(errorCode);
         logger.e('SynologyApi: API 错误 => $errorMsg (code: $errorCode)');
         throw ServerException(
@@ -675,6 +745,41 @@ class SynologyApi {
     } on DioException catch (e, st) {
       AppError.handle(e, st, 'SynologyApi._request');
       rethrow;
+    }
+  }
+
+  /// 尝试刷新会话
+  Future<bool> _tryRefreshSession() async {
+    if (_onSessionRefresh == null) {
+      logger.w('SynologyApi: 未设置会话刷新回调，无法刷新');
+      return false;
+    }
+
+    // 防止并发刷新
+    if (_isRefreshing) {
+      logger.d('SynologyApi: 正在刷新会话，等待...');
+      // 等待刷新完成
+      while (_isRefreshing) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+      return _sid != null;
+    }
+
+    _isRefreshing = true;
+    try {
+      final newSid = await _onSessionRefresh!();
+      if (newSid != null) {
+        _sid = newSid;
+        logger.i('SynologyApi: 会话刷新成功，新 sid => ${_sid!.substring(0, 8)}...');
+        return true;
+      }
+      logger.w('SynologyApi: 会话刷新失败，回调返回 null');
+      return false;
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '会话刷新失败');
+      return false;
+    } finally {
+      _isRefreshing = false;
     }
   }
 

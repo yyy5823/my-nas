@@ -74,13 +74,13 @@ class MusicHomeContent extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 12),
-          // Hero 播放卡片
+          // 1. 开始探索你的音乐 - Hero 播放卡片
           HeroPlayerCard(
             isDark: isDark,
             onShuffleTap: onShuffleTap,
           ),
           const SizedBox(height: 16),
-          // 快捷访问
+          // 2. 快捷访问
           _buildSectionTitle('快捷访问', isDark),
           const SizedBox(height: 8),
           QuickAccessGrid(
@@ -95,26 +95,7 @@ class MusicHomeContent extends ConsumerWidget {
             onPlaylistTap: () => onCategoryTap(MusicCategory.playlists),
           ),
           const SizedBox(height: 16),
-          // 分类浏览
-          _buildSectionTitle('浏览音乐库', isDark),
-          const SizedBox(height: 8),
-          BrowseCategoryGrid(
-            isDark: isDark,
-            counts: _getCategoryCounts(),
-            onCategoryTap: _onBrowseCategoryTap,
-          ),
-          const SizedBox(height: 16),
-          // 最近播放
-          if (recentTracks.isNotEmpty) ...[
-            RecentTracksSection(
-              tracks: recentTracks,
-              isDark: isDark,
-              onTrackTap: (track) => onTrackTap(track, tracks),
-              onMoreTap: () => onCategoryTap(MusicCategory.recent),
-            ),
-            const SizedBox(height: 16),
-          ],
-          // 热门歌曲（随机推荐）
+          // 3. 为你推荐
           if (tracks.isNotEmpty) ...[
             PopularTracksSection(
               tracks: _getRandomTracks(5),
@@ -125,7 +106,7 @@ class MusicHomeContent extends ConsumerWidget {
             ),
             const SizedBox(height: 16),
           ],
-          // 歌单
+          // 4. 歌单
           if (playlistCount > 0) ...[
             _PlaylistsSection(
               isDark: isDark,
@@ -134,6 +115,25 @@ class MusicHomeContent extends ConsumerWidget {
             ),
             const SizedBox(height: 16),
           ],
+          // 5. 最近播放
+          if (recentTracks.isNotEmpty) ...[
+            RecentTracksSection(
+              tracks: recentTracks,
+              isDark: isDark,
+              onTrackTap: (track) => onTrackTap(track, tracks),
+              onMoreTap: () => onCategoryTap(MusicCategory.recent),
+            ),
+            const SizedBox(height: 16),
+          ],
+          // 6. 浏览音乐库
+          _buildSectionTitle('浏览音乐库', isDark),
+          const SizedBox(height: 8),
+          BrowseCategoryGrid(
+            isDark: isDark,
+            counts: _getCategoryCounts(),
+            onCategoryTap: _onBrowseCategoryTap,
+          ),
+          const SizedBox(height: 16),
         ],
       ),
     );
