@@ -547,6 +547,17 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
           const Expanded(
             child: Text('自动识别'),
           ),
+          // 手动搜索按钮放在右上角
+          TextButton.icon(
+            onPressed: _openManualScraper,
+            icon: const Icon(Icons.edit_outlined, size: 16),
+            label: const Text('手动'),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+          ),
         ],
       ),
       content: SizedBox(
@@ -925,12 +936,6 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
             onPressed: () => Navigator.of(context).pop(false),
             child: const Text('取消'),
           ),
-          // 允许用户跳过自动搜索，直接进入手动搜索
-          TextButton.icon(
-            onPressed: _openManualScraper,
-            icon: const Icon(Icons.search, size: 18),
-            label: const Text('手动搜索'),
-          ),
         ];
 
       case _ScrapeStatus.found:
@@ -941,30 +946,11 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
         return [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
             child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: _openManualScraper,
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            child: const Text('手动'),
           ),
           if (hasAction && widget.fileSystem != null)
             FilledButton(
               onPressed: _downloadFiles,
-              style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
               child: Text(hasWritable ? '应用' : '下载'),
             ),
         ];
@@ -987,7 +973,7 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
             onPressed: () => Navigator.of(context).pop(false),
             child: const Text('关闭'),
           ),
-          TextButton(
+          FilledButton(
             onPressed: () {
               setState(() {
                 _status = _ScrapeStatus.searching;
@@ -998,11 +984,6 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
               _startScraping();
             },
             child: const Text('重试'),
-          ),
-          FilledButton.icon(
-            onPressed: _openManualScraper,
-            icon: const Icon(Icons.edit, size: 18),
-            label: const Text('手动搜索'),
           ),
         ];
     }
