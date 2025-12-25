@@ -36,8 +36,17 @@ class BookCoverService {
   static const String _boxName = 'book_covers';
   static const String _coverDir = 'book_covers';
 
+  /// 最大并发提取数量
+  static const int _maxConcurrentExtractions = 2;
+
   Box<String>? _box;
   String? _coverDirPath;
+
+  /// 当前正在进行的提取任务数量
+  int _activeExtractions = 0;
+
+  /// 等待队列
+  final List<Completer<void>> _waitQueue = [];
 
   /// 初始化服务
   Future<void> init() async {
@@ -60,7 +69,29 @@ class BookCoverService {
     return _box?.get(key);
   }
 
-  /// 提取并缓存封面
+  /// 等待获取提取槽位（并发控制）
+  Future<void> _acquireSlot() async {
+    if (_activeExtractions < _maxConcurrentExtractions) {
+      _activeExtractions++;
+      return;
+    }
+    // 需要等待
+    final completer = Completer<void>();
+    _waitQueue.add(completer);
+    await completer.future;
+  }
+
+  /// 释放提取槽位
+  void _releaseSlot() {
+    _activeExtractions--;
+    if (_waitQueue.isNotEmpty) {
+      final next = _waitQueue.removeAt(0);
+      _activeExtractions++;
+      next.complete();
+    }
+  }
+
+  /// 提取并缓存封面（带并发控制）
   Future<String?> extractAndCacheCover({
     required String bookPath,
     required String sourceId,
@@ -71,13 +102,22 @@ class BookCoverService {
 
     final key = _generateKey(bookPath, sourceId);
 
-    // 检查是否已缓存
+    // 检查是否已缓存（快速路径，不需要槽位）
     final cached = _box?.get(key);
     if (cached != null && await File(cached).exists()) {
       return cached;
     }
 
+    // 等待获取槽位
+    await _acquireSlot();
+
     try {
+      // 再次检查缓存（可能在等待期间已被其他任务缓存）
+      final cachedAgain = _box?.get(key);
+      if (cachedAgain != null && await File(cachedAgain).exists()) {
+        return cachedAgain;
+      }
+
       Uint8List? coverBytes;
 
       switch (format) {
@@ -106,6 +146,8 @@ class BookCoverService {
     } on Exception catch (e, st) {
       AppError.ignore(e, st, '封面提取失败不影响核心功能');
       return null;
+    } finally {
+      _releaseSlot();
     }
   }
 

@@ -14,7 +14,7 @@ import 'package:my_nas/features/reading/data/services/reading_progress_service.d
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
-import 'package:my_nas/shared/widgets/loading_widget.dart';
+import 'package:my_nas/shared/widgets/book_flip_loading.dart';
 import 'package:pdfrx/pdfrx.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
@@ -520,7 +520,7 @@ class _PdfReaderPageState extends ConsumerState<PdfReaderPage> {
     return Scaffold(
       backgroundColor: Colors.grey.shade900,
       body: switch (state) {
-        PdfReaderLoading(:final message) => LoadingWidget(message: message),
+        PdfReaderLoading(:final message) => BookFlipLoading(message: message),
         PdfReaderError(:final message) => _buildError(message),
         PdfReaderLoaded() => _buildReader(context, state),
       },

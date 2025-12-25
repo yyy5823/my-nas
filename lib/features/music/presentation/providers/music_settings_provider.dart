@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:my_nas/core/utils/logger.dart';
@@ -59,10 +61,11 @@ class MusicSettings {
 
 /// 音乐设置管理
 class MusicSettingsNotifier extends StateNotifier<MusicSettings> {
-  MusicSettingsNotifier() : super(const MusicSettings()) {
+  MusicSettingsNotifier(this._ref) : super(const MusicSettings()) {
     _load();
   }
 
+  final Ref _ref;
   static const _boxName = 'music_settings';
   static const _settingsKey = 'settings';
 
@@ -100,14 +103,19 @@ class MusicSettingsNotifier extends StateNotifier<MusicSettings> {
 
   /// 设置音量
   Future<void> setVolume(double volume) async {
-    state = state.copyWith(volume: volume.clamp(0.0, 1.0));
+    final clampedVolume = volume.clamp(0.0, 1.0);
+    state = state.copyWith(volume: clampedVolume);
     await _save();
+    // 同步到播放器
+    unawaited(_ref.read(musicPlayerControllerProvider.notifier).player.setVolume(clampedVolume));
   }
 
   /// 设置播放模式
   Future<void> setPlayMode(PlayMode mode) async {
     state = state.copyWith(playMode: mode);
     await _save();
+    // 同步到播放器
+    _ref.read(musicPlayerControllerProvider.notifier).setPlayMode(mode);
   }
 
   /// 设置淡入淡出时长
@@ -143,7 +151,7 @@ class MusicSettingsNotifier extends StateNotifier<MusicSettings> {
 
 /// 音乐设置 provider
 final musicSettingsProvider =
-    StateNotifierProvider<MusicSettingsNotifier, MusicSettings>((ref) => MusicSettingsNotifier());
+    StateNotifierProvider<MusicSettingsNotifier, MusicSettings>(MusicSettingsNotifier.new);
 
 /// 可用的淡入淡出时长选项
 const availableCrossfadeDurations = [0, 2, 4, 6, 8, 10, 12];

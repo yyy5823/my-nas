@@ -2,7 +2,8 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
-import 'package:audio_metadata_reader/audio_metadata_reader.dart';
+import 'package:audio_metadata_reader/audio_metadata_reader.dart'
+    show AudioMetadata, MetadataParserException, NoMetadataParserException, readMetadata;
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/data/services/ncm_decrypt_service.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
@@ -84,6 +85,12 @@ class MusicMetadataService {
 
       logger.i('MusicMetadataService: 提取完成 - hasCover=${result.hasCover}, hasLyrics=${result.hasLyrics}');
       return result;
+    } on NoMetadataParserException {
+      // 文件没有 ID3 标签，使用文件名作为回退
+      logger.i('MusicMetadataService: 文件无元数据标签，使用文件名回退: ${file.path}');
+      final fallback = _parseMetadataFromFilename(file.path);
+      _metadataCache[cacheKey] = fallback;
+      return fallback;
     } on Exception catch (e, stackTrace) {
       logger.e('MusicMetadataService: 提取元数据失败: ${file.path}', e, stackTrace);
       return null;
@@ -161,7 +168,11 @@ class MusicMetadataService {
         logger.d('MusicMetadataService: 尝试更大的读取大小: $path (当前: $bytesToRead)');
       }
 
-      return null;
+      // 所有尝试都失败，使用文件名作为回退
+      logger.i('MusicMetadataService: 使用文件名回退解析: $path');
+      final fallback = _parseMetadataFromFilename(path);
+      _metadataCache[cacheKey] = fallback;
+      return fallback;
     } on Exception catch (e, stackTrace) {
       logger.w('MusicMetadataService: 提取 NAS 文件元数据失败: $path', e, stackTrace);
       return null;
@@ -389,6 +400,46 @@ class MusicMetadataService {
           ? item.duration
           : metadata.duration,
     );
+
+  /// 从文件名解析元数据（用于无 ID3 标签的文件回退）
+  /// 支持的格式:
+  /// - "标题（艺术家）.mp3"
+  /// - "标题 - 艺术家.mp3"
+  /// - "艺术家 - 标题.mp3"
+  /// - "标题.mp3"
+  MusicMetadata _parseMetadataFromFilename(String path) {
+    final filename = p.basenameWithoutExtension(path);
+    String? title;
+    String? artist;
+
+    // 尝试匹配 "标题（艺术家）" 或 "标题(艺术家)" 格式
+    final parenMatch = RegExp(r'^(.+?)[（(](.+?)[）)]$').firstMatch(filename);
+    if (parenMatch != null) {
+      title = parenMatch.group(1)?.trim();
+      artist = parenMatch.group(2)?.trim();
+    } else {
+      // 尝试匹配 "A - B" 格式
+      final dashMatch = RegExp(r'^(.+?)\s*[-–—]\s*(.+)$').firstMatch(filename);
+      if (dashMatch != null) {
+        final part1 = dashMatch.group(1)?.trim();
+        final part2 = dashMatch.group(2)?.trim();
+        // 通常是 "艺术家 - 标题" 格式，但也可能是 "标题 - 艺术家"
+        // 这里我们假设第一部分是艺术家
+        artist = part1;
+        title = part2;
+      } else {
+        // 无法解析，使用整个文件名作为标题
+        title = filename;
+      }
+    }
+
+    logger.d('MusicMetadataService: 从文件名解析 - title=$title, artist=$artist');
+
+    return MusicMetadata(
+      title: title,
+      artist: artist,
+    );
+  }
 
   /// 清除缓存
   void clearCache() {

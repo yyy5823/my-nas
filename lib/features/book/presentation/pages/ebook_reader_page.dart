@@ -19,7 +19,7 @@ import 'package:my_nas/features/reading/presentation/widgets/page_flip_effect.da
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
-import 'package:my_nas/shared/widgets/loading_widget.dart';
+import 'package:my_nas/shared/widgets/book_flip_loading.dart';
 import 'package:my_nas/shared/widgets/reader_settings_sheet.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
@@ -656,7 +656,7 @@ class _EbookReaderPageState extends ConsumerState<EbookReaderPage> {
       // 显示加载提示
       return Scaffold(
         backgroundColor: settings.theme.backgroundColor,
-        body: LoadingWidget(
+        body: BookFlipLoading(
           message: '正在打开漫画阅读器...',
           backgroundColor: settings.theme.backgroundColor,
           textColor: settings.theme.textColor,
@@ -672,7 +672,7 @@ class _EbookReaderPageState extends ConsumerState<EbookReaderPage> {
       child: Scaffold(
         backgroundColor: settings.theme.backgroundColor,
         body: switch (state) {
-          EbookReaderLoading(:final message) => LoadingWidget(
+          EbookReaderLoading(:final message) => BookFlipLoading(
             message: message,
             backgroundColor: settings.theme.backgroundColor,
             textColor: settings.theme.textColor,
@@ -725,7 +725,7 @@ class _EbookReaderPageState extends ConsumerState<EbookReaderPage> {
                 bookSource: FileBookSource(File(filePath)),
                 initialCfi: _initialCfi,
                 style: style,
-                loadingWidget: LoadingWidget(
+                loadingWidget: BookFlipLoading(
                   message: '加载中...',
                   backgroundColor: settings.theme.backgroundColor,
                   textColor: settings.theme.textColor,
@@ -825,22 +825,8 @@ class _EbookReaderPageState extends ConsumerState<EbookReaderPage> {
     }
   }
 
-  /// 获取当前章节标题
-  String? get _currentChapterTitle {
-    final sectionIndex = _currentLocation?.sectionIndex ?? 0;
-    if (_tocItems.isEmpty) return null;
-
-    // 在展平的目录中查找对应章节
-    final flatToc = _flattenedTocItems;
-    if (sectionIndex < flatToc.length) {
-      return flatToc[sectionIndex].$1.label;
-    }
-    // 如果索引超出范围，尝试返回第一个匹配的章节
-    if (_tocItems.isNotEmpty) {
-      return _tocItems.first.label;
-    }
-    return null;
-  }
+  /// 获取当前章节标题（直接使用 book.js 传递的 chapterTitle）
+  String? get _currentChapterTitle => _currentLocation?.chapterTitle;
 
   /// 固定顶栏 - 显示当前章节标题
   Widget _buildFixedHeader(BookReaderSettings settings, bool isDark) => SizedBox(

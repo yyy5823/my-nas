@@ -9,7 +9,7 @@ import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/book/data/services/epub_image_extractor.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
 import 'package:my_nas/features/reading/data/services/reading_progress_service.dart';
-import 'package:my_nas/shared/widgets/loading_widget.dart';
+import 'package:my_nas/shared/widgets/book_flip_loading.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:photo_view/photo_view_gallery.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -257,7 +257,7 @@ class _EpubComicReaderPageState extends ConsumerState<EpubComicReaderPage> {
         child: Focus(
           autofocus: true,
           child: state.isLoading
-              ? const LoadingWidget(message: '加载漫画中...')
+              ? const BookFlipLoading(message: '加载漫画中...')
               : state.error != null
                   ? _buildErrorView(state.error!)
                   : Stack(

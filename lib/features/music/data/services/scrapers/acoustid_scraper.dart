@@ -114,6 +114,12 @@ class AcoustIdScraper implements FingerprintScraper {
             },
           ));
 
+      // 检查返回数据类型
+      if (response.data is! Map<String, dynamic>) {
+        logger.w('AcoustIDScraper: lookupByFingerprint 返回非 JSON 数据: ${response.data.runtimeType}');
+        return null;
+      }
+
       final data = response.data as Map<String, dynamic>;
       final status = data['status'] as String?;
 

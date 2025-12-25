@@ -354,16 +354,9 @@ class SourceFormConfig {
             const SourceFormField(
               key: 'shareName',
               label: '共享名称',
-              placeholder: 'share',
+              placeholder: 'share 或 share/folder',
               required: false,
-              helpText: '可选，留空则浏览时显示所有可访问共享',
-            ),
-            const SourceFormField(
-              key: 'path',
-              label: '子目录路径',
-              placeholder: 'folder/subfolder',
-              required: false,
-              helpText: '可选，共享下的子目录路径',
+              helpText: '可选，留空显示所有共享，可包含子目录如 share/music',
             ),
           ],
         ),

@@ -13,6 +13,7 @@ import 'package:my_nas/features/music/data/services/music_tag_writer_service.dar
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_result.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_source.dart';
+import 'package:my_nas/features/music/presentation/pages/manual_music_scraper_page.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_scraper_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
@@ -59,7 +60,6 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
   MusicScraperDetail? _detail;
   CoverScraperResult? _cover;
   LyricScraperResult? _lyrics;
-  FingerprintResult? _fingerprintResult;
 
   // 下载选项
   bool _downloadCover = true;
@@ -176,7 +176,6 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
       setState(() {
         _statusMessage = '获取详细信息...';
         _progress = 0.7;
-        _fingerprintResult = result;
         _usedFingerprint = true;
       });
 
@@ -498,6 +497,19 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
       AppError.ignore(e, st, '写入标签失败');
       rethrow;
     }
+  }
+
+  /// 打开手动刮削页面
+  void _openManualScraper() {
+    Navigator.of(context).pop(false); // 先关闭当前对话框
+    Navigator.of(context).push(
+      MaterialPageRoute<bool>(
+        builder: (context) => ManualMusicScraperPage(
+          music: widget.music,
+          fileSystem: widget.fileSystem,
+        ),
+      ),
+    );
   }
 
   Future<void> _downloadLyrics_(
@@ -893,6 +905,12 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
             onPressed: () => Navigator.of(context).pop(false),
             child: const Text('取消'),
           ),
+          // 允许用户跳过自动搜索，直接进入手动搜索
+          TextButton.icon(
+            onPressed: _openManualScraper,
+            icon: const Icon(Icons.search, size: 18),
+            label: const Text('手动搜索'),
+          ),
         ];
 
       case _ScrapeStatus.found:
@@ -904,6 +922,12 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
             child: const Text('取消'),
+          ),
+          // 允许用户进入手动搜索以精确查找
+          TextButton.icon(
+            onPressed: _openManualScraper,
+            icon: const Icon(Icons.search, size: 18),
+            label: const Text('手动搜索'),
           ),
           if (hasAction && widget.fileSystem != null)
             FilledButton(
@@ -941,6 +965,11 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
               _startScraping();
             },
             child: const Text('重试'),
+          ),
+          FilledButton.icon(
+            onPressed: _openManualScraper,
+            icon: const Icon(Icons.edit, size: 18),
+            label: const Text('手动搜索'),
           ),
         ];
     }

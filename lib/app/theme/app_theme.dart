@@ -1,8 +1,206 @@
 import 'package:flutter/material.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
+import 'package:my_nas/app/theme/color_scheme_preset.dart';
 
 abstract final class AppTheme {
+  /// 根据配色预设生成浅色主题
+  static ThemeData lightFromPreset(ColorSchemePreset preset) {
+    final colorScheme = ColorScheme.light(
+      primary: preset.primary,
+      primaryContainer: preset.primaryLight,
+      onPrimaryContainer: preset.primaryDark,
+      secondary: preset.secondary,
+      onSecondary: Colors.white,
+      secondaryContainer: preset.secondaryLight,
+      onSecondaryContainer: preset.primaryDark,
+      tertiary: preset.accent,
+      onTertiary: Colors.white,
+      error: AppColors.error,
+      onSurface: AppColors.lightOnSurface,
+      surfaceContainerHighest: AppColors.lightSurfaceVariant,
+      onSurfaceVariant: AppColors.lightOnSurfaceVariant,
+      outline: AppColors.lightOutline,
+      outlineVariant: AppColors.lightOutlineVariant,
+    );
+
+    return ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.light,
+      colorScheme: colorScheme,
+      scaffoldBackgroundColor: AppColors.lightBackground,
+      appBarTheme: _lightAppBarTheme,
+      cardTheme: _lightCardTheme,
+      elevatedButtonTheme: _elevatedButtonTheme,
+      outlinedButtonTheme: _outlinedButtonTheme,
+      textButtonTheme: _textButtonTheme,
+      inputDecorationTheme: _buildLightInputTheme(preset.primary),
+      dividerTheme: _lightDividerTheme,
+      navigationBarTheme: NavigationBarThemeData(
+        elevation: 0,
+        backgroundColor: AppColors.lightSurface,
+        surfaceTintColor: Colors.transparent,
+        indicatorColor: preset.primaryLight,
+      ),
+      navigationRailTheme: NavigationRailThemeData(
+        elevation: 0,
+        backgroundColor: AppColors.lightSurface,
+        indicatorColor: preset.primaryLight,
+      ),
+      bottomSheetTheme: _lightBottomSheetTheme,
+      dialogTheme: _lightDialogTheme,
+      snackBarTheme: _snackBarTheme,
+      listTileTheme: _lightListTileTheme,
+    );
+  }
+
+  /// 根据配色预设生成深色主题
+  static ThemeData darkFromPreset(ColorSchemePreset preset) {
+    final colorScheme = ColorScheme.dark(
+      primary: preset.primaryLight,
+      onPrimary: preset.darkBackground,
+      primaryContainer: preset.primary,
+      onPrimaryContainer: Colors.white,
+      secondary: preset.secondaryLight,
+      onSecondary: preset.darkBackground,
+      secondaryContainer: preset.secondary,
+      onSecondaryContainer: Colors.white,
+      tertiary: preset.accent,
+      onTertiary: preset.darkBackground,
+      error: AppColors.errorLight,
+      onError: preset.darkBackground,
+      surface: preset.darkSurface,
+      onSurface: AppColors.darkOnSurface,
+      surfaceContainerHighest: preset.darkSurfaceVariant,
+      onSurfaceVariant: AppColors.darkOnSurfaceVariant,
+      outline: preset.darkOutline,
+      outlineVariant: preset.darkSurfaceElevated,
+    );
+
+    return ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.dark,
+      colorScheme: colorScheme,
+      scaffoldBackgroundColor: preset.darkBackground,
+      appBarTheme: AppBarTheme(
+        elevation: 0,
+        scrolledUnderElevation: 1,
+        backgroundColor: preset.darkSurface,
+        foregroundColor: AppColors.darkOnSurface,
+        surfaceTintColor: Colors.transparent,
+      ),
+      cardTheme: CardThemeData(
+        elevation: 0,
+        color: preset.darkSurface,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: AppRadius.borderRadiusMd,
+          side: BorderSide(color: preset.darkSurfaceElevated),
+        ),
+      ),
+      elevatedButtonTheme: _elevatedButtonTheme,
+      outlinedButtonTheme: _outlinedButtonTheme,
+      textButtonTheme: _textButtonTheme,
+      inputDecorationTheme: _buildDarkInputTheme(preset),
+      dividerTheme: DividerThemeData(
+        color: preset.darkSurfaceElevated,
+        thickness: 1,
+        space: 1,
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        elevation: 0,
+        backgroundColor: preset.darkSurface,
+        surfaceTintColor: Colors.transparent,
+        indicatorColor: preset.primary,
+      ),
+      navigationRailTheme: NavigationRailThemeData(
+        elevation: 0,
+        backgroundColor: preset.darkSurface,
+        indicatorColor: preset.primary,
+      ),
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: preset.darkSurface,
+        surfaceTintColor: Colors.transparent,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.lg)),
+        ),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: preset.darkSurface,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: AppRadius.borderRadiusLg,
+        ),
+      ),
+      snackBarTheme: _snackBarTheme,
+      listTileTheme: _darkListTileTheme,
+    );
+  }
+
+  /// 构建浅色输入框主题
+  static InputDecorationTheme _buildLightInputTheme(Color primary) {
+    return InputDecorationTheme(
+      filled: true,
+      fillColor: AppColors.lightSurfaceVariant,
+      border: OutlineInputBorder(
+        borderRadius: AppRadius.borderRadiusSm,
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: AppRadius.borderRadiusSm,
+        borderSide: BorderSide.none,
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: AppRadius.borderRadiusSm,
+        borderSide: BorderSide(color: primary, width: 2),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: AppRadius.borderRadiusSm,
+        borderSide: const BorderSide(color: AppColors.error),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: AppRadius.borderRadiusSm,
+        borderSide: const BorderSide(color: AppColors.error, width: 2),
+      ),
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.md,
+      ),
+    );
+  }
+
+  /// 构建深色输入框主题
+  static InputDecorationTheme _buildDarkInputTheme(ColorSchemePreset preset) {
+    return InputDecorationTheme(
+      filled: true,
+      fillColor: preset.darkSurfaceVariant,
+      border: OutlineInputBorder(
+        borderRadius: AppRadius.borderRadiusSm,
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: AppRadius.borderRadiusSm,
+        borderSide: BorderSide.none,
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: AppRadius.borderRadiusSm,
+        borderSide: BorderSide(color: preset.primaryLight, width: 2),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: AppRadius.borderRadiusSm,
+        borderSide: const BorderSide(color: AppColors.errorLight),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: AppRadius.borderRadiusSm,
+        borderSide: const BorderSide(color: AppColors.errorLight, width: 2),
+      ),
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.md,
+      ),
+    );
+  }
+
   static ThemeData get light => ThemeData(
         useMaterial3: true,
         brightness: Brightness.light,

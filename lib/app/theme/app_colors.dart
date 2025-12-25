@@ -1,25 +1,25 @@
 import 'package:flutter/material.dart';
 
 abstract final class AppColors {
-  // Primary colors - 渐变蓝紫色 (参考 Infuse/Plex 风格)
-  static const Color primary = Color(0xFF6366F1);
-  static const Color primaryLight = Color(0xFF818CF8);
-  static const Color primaryDark = Color(0xFF4F46E5);
+  // Primary colors - Teal 青色 (清新现代风格)
+  static const Color primary = Color(0xFF14B8A6);
+  static const Color primaryLight = Color(0xFF2DD4BF);
+  static const Color primaryDark = Color(0xFF0D9488);
 
-  // Accent colors - 青色
+  // Accent colors - Cyan 青蓝色
   static const Color accent = Color(0xFF06B6D4);
   static const Color accentLight = Color(0xFF22D3EE);
   static const Color accentDark = Color(0xFF0891B2);
 
-  // Secondary colors (Violet)
-  static const Color secondary = Color(0xFF8B5CF6);
-  static const Color secondaryLight = Color(0xFFA78BFA);
-  static const Color secondaryDark = Color(0xFF7C3AED);
+  // Secondary colors (Cyan) - 与主色协调
+  static const Color secondary = Color(0xFF06B6D4);
+  static const Color secondaryLight = Color(0xFF22D3EE);
+  static const Color secondaryDark = Color(0xFF0891B2);
 
-  // Tertiary colors (Cyan)
-  static const Color tertiary = Color(0xFF06B6D4);
-  static const Color tertiaryLight = Color(0xFF22D3EE);
-  static const Color tertiaryDark = Color(0xFF0891B2);
+  // Tertiary colors (Amber) - 暖色点缀
+  static const Color tertiary = Color(0xFFF59E0B);
+  static const Color tertiaryLight = Color(0xFFFBBF24);
+  static const Color tertiaryDark = Color(0xFFD97706);
 
   // Neutral colors - Light
   static const Color lightBackground = Color(0xFFF8FAFC);
@@ -30,15 +30,15 @@ abstract final class AppColors {
   static const Color lightOutline = Color(0xFFCBD5E1);
   static const Color lightOutlineVariant = Color(0xFFE2E8F0);
 
-  // Neutral colors - Dark (现代深色主题)
-  static const Color darkBackground = Color(0xFF0F0F1A);
-  static const Color darkSurface = Color(0xFF1A1A2E);
-  static const Color darkSurfaceVariant = Color(0xFF252540);
-  static const Color darkSurfaceElevated = Color(0xFF2D2D4A);
+  // Neutral colors - Dark (中性深灰主题 - 类似 Apple TV+/Infuse)
+  static const Color darkBackground = Color(0xFF0D0D0D);
+  static const Color darkSurface = Color(0xFF1A1A1A);
+  static const Color darkSurfaceVariant = Color(0xFF242424);
+  static const Color darkSurfaceElevated = Color(0xFF2C2C2C);
   static const Color darkOnSurface = Color(0xFFF1F5F9);
-  static const Color darkOnSurfaceVariant = Color(0xFF94A3B8);
-  static const Color darkOutline = Color(0xFF3D3D5C);
-  static const Color darkOutlineVariant = Color(0xFF2D2D4A);
+  static const Color darkOnSurfaceVariant = Color(0xFF9CA3AF);
+  static const Color darkOutline = Color(0xFF3D3D3D);
+  static const Color darkOutlineVariant = Color(0xFF2C2C2C);
 
   // Semantic colors
   static const Color error = Color(0xFFEF4444);
@@ -57,7 +57,7 @@ abstract final class AppColors {
   static const Color infoLight = Color(0xFF93C5FD);
   static const Color infoDark = Color(0xFF2563EB);
 
-  // 渐变色
+  // 渐变色 - Teal/Cyan 青色渐变
   static const LinearGradient primaryGradient = LinearGradient(
     colors: [primary, secondary],
     begin: Alignment.topLeft,
@@ -70,8 +70,9 @@ abstract final class AppColors {
     end: Alignment.bottomRight,
   );
 
+  // 深色渐变 - 纯灰色
   static const LinearGradient darkGradient = LinearGradient(
-    colors: [Color(0xFF1A1A2E), Color(0xFF0F0F1A)],
+    colors: [Color(0xFF1A1A1A), Color(0xFF0D0D0D)],
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
   );

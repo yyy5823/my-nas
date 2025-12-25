@@ -674,6 +674,13 @@ class SourceManagerService {
       return;
     }
 
+    // 如果已连接，跳过自动连接，避免重复登录导致旧会话失效
+    final existing = _connections[source.id];
+    if (existing?.status == SourceStatus.connected) {
+      logger.d('SourceManagerService: ${source.name} 已连接，跳过自动连接');
+      return;
+    }
+
     // 减少超时时间，避免非内网环境下等待过久
     // 如果网络可用，这个时间足够完成连接
     // 如果网络不可用，快速失败让用户可以正常使用本地数据

@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:flutter/foundation.dart';
+import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_result.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_source.dart';
 import 'package:my_nas/features/music/domain/interfaces/music_scraper.dart';
@@ -160,6 +161,12 @@ class QQMusicScraper implements MusicScraper {
             },
           ));
 
+      // 检查返回数据类型
+      if (response.data is! Map<String, dynamic>) {
+        logger.w('QQMusicScraper: getDetail 返回非 JSON 数据: ${response.data.runtimeType}');
+        return null;
+      }
+
       final data = response.data as Map<String, dynamic>;
       final songs = (data['data'] as List?)?.cast<Map<String, dynamic>>() ?? [];
 
@@ -214,6 +221,12 @@ class QQMusicScraper implements MusicScraper {
               },
             ),
           ));
+
+      // 检查返回数据类型，API 可能返回字符串（错误信息或 HTML）
+      if (response.data is! Map<String, dynamic>) {
+        logger.w('QQMusicScraper: getLyrics 返回非 JSON 数据: ${response.data.runtimeType}');
+        return null;
+      }
 
       final data = response.data as Map<String, dynamic>;
 

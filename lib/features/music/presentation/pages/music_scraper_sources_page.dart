@@ -951,7 +951,7 @@ class _MusicScraperConfigSheetState extends State<_MusicScraperConfigSheet> {
           TextField(
             controller: controller,
             obscureText: isObscure,
-            maxLines: isMultiline ? 3 : 1,
+            maxLines: isObscure ? 1 : (isMultiline ? 3 : 1),
             keyboardType: isUrl ? TextInputType.url : TextInputType.text,
             style: const TextStyle(fontSize: 14),
             decoration: InputDecoration(

@@ -175,12 +175,13 @@ class _MyNasAppState extends ConsumerState<MyNasApp> with WidgetsBindingObserver
     _initDeepLinkService();
 
     final themeMode = ref.watch(themeModeProvider);
+    final colorPreset = ref.watch(colorSchemePresetProvider);
 
     return MaterialApp.router(
       title: 'MyNAS',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.light,
-      darkTheme: AppTheme.dark,
+      theme: AppTheme.lightFromPreset(colorPreset),
+      darkTheme: AppTheme.darkFromPreset(colorPreset),
       themeMode: themeMode,
       routerConfig: appRouter,
       // 添加 builder 来处理全局错误边界

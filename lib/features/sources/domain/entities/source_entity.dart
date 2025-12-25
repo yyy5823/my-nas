@@ -489,7 +489,7 @@ class SourceEntity {
   /// 获取文件浏览器的初始路径
   ///
   /// 根据源类型和配置返回初始浏览路径：
-  /// - SMB: 如果配置了 shareName 返回 /{shareName}/{path}，否则返回 /
+  /// - SMB: 如果配置了 shareName 返回 /{shareName}，否则返回 /（显示所有共享）
   /// - FTP/SFTP: 如果配置了 path 返回该路径，否则返回 /
   /// - WebDAV: 如果配置了 basePath 返回该路径，否则返回 /
   /// - 其他类型: 返回 /
@@ -497,16 +497,10 @@ class SourceEntity {
     switch (type) {
       case SourceType.smb:
         final shareName = extraConfig?['shareName'] as String?;
-        final subPath = extraConfig?['path'] as String?;
-
         if (shareName != null && shareName.isNotEmpty) {
-          var path = '/$shareName';
-          if (subPath != null && subPath.isNotEmpty) {
-            // 确保 subPath 不以 / 开头
-            final cleanSubPath = subPath.startsWith('/') ? subPath.substring(1) : subPath;
-            path = '$path/$cleanSubPath';
-          }
-          return path;
+          // shareName 可以包含子目录，如 "share" 或 "share/folder"
+          final cleanPath = shareName.startsWith('/') ? shareName : '/$shareName';
+          return cleanPath;
         }
         return '/';
 

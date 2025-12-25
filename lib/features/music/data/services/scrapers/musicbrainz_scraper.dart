@@ -102,6 +102,12 @@ class MusicBrainzScraper implements MusicScraper {
             },
           ));
 
+      // 检查返回数据类型
+      if (response.data is! Map<String, dynamic>) {
+        logger.w('MusicBrainzScraper: search 返回非 JSON 数据: ${response.data.runtimeType}');
+        return MusicScraperSearchResult.empty(type);
+      }
+
       final data = response.data as Map<String, dynamic>;
       final recordings = (data['recordings'] as List?)?.cast<Map<String, dynamic>>() ?? [];
       final count = data['count'] as int? ?? 0;
@@ -131,6 +137,12 @@ class MusicBrainzScraper implements MusicScraper {
             },
           ));
 
+      // 检查返回数据类型
+      if (response.data is! Map<String, dynamic>) {
+        logger.w('MusicBrainzScraper: getDetail 返回非 JSON 数据: ${response.data.runtimeType}');
+        return null;
+      }
+
       final data = response.data as Map<String, dynamic>;
       return _parseRecordingDetail(data);
     } on DioException catch (e) {
@@ -158,11 +170,13 @@ class MusicBrainzScraper implements MusicScraper {
               },
             ));
 
-        final data = response.data as Map<String, dynamic>;
-        final releases =
-            (data['releases'] as List?)?.cast<Map<String, dynamic>>();
-        if (releases != null && releases.isNotEmpty) {
-          releaseId = releases.first['id'] as String;
+        if (response.data is Map<String, dynamic>) {
+          final data = response.data as Map<String, dynamic>;
+          final releases =
+              (data['releases'] as List?)?.cast<Map<String, dynamic>>();
+          if (releases != null && releases.isNotEmpty) {
+            releaseId = releases.first['id'] as String;
+          }
         }
       } on DioException {
         // 如果获取失败，假设 externalId 就是 release ID
@@ -170,6 +184,12 @@ class MusicBrainzScraper implements MusicScraper {
 
       // 从 Cover Art Archive 获取封面
       final response = await _coverArtDio.get<dynamic>('/release/$releaseId');
+
+      // 检查返回数据类型
+      if (response.data is! Map<String, dynamic>) {
+        logger.w('MusicBrainzScraper: getCoverArt 返回非 JSON 数据: ${response.data.runtimeType}');
+        return [];
+      }
 
       final data = response.data as Map<String, dynamic>;
       final images =

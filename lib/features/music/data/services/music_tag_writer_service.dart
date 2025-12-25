@@ -2,7 +2,15 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
-import 'package:audio_metadata_reader/audio_metadata_reader.dart';
+import 'package:audio_metadata_reader/audio_metadata_reader.dart'
+    show
+        CommonMetadataSetters,
+        Id3v4Writer,
+        MetadataParserException,
+        Mp3Metadata,
+        Picture,
+        PictureType,
+        updateMetadata;
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/data/services/ncm_decrypt_service.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_result.dart';
@@ -180,53 +188,71 @@ class MusicTagWriterService {
     }
 
     try {
-      logger.i('MusicTagWriterService: 开始写入标签到 ${file.path}');
-      logger.d('MusicTagWriterService: 格式=${format.displayName}, 标签类型=${format.tagType}');
+      logger
+        ..i('MusicTagWriterService: 开始写入标签到 ${file.path}')
+        ..d('MusicTagWriterService: 格式=${format.displayName}, 标签类型=${format.tagType}');
 
       final updatedFields = <String>[];
 
-      // 使用 audio_metadata_reader 的 updateMetadata 函数
-      // 扩展方法会自动处理不同格式（MP3/FLAC/MP4/WAV）的差异
-      updateMetadata(file, (metadata) {
-        // metadata 可能是 Mp3Metadata, VorbisMetadata, Mp4Metadata, RiffMetadata 等
-        // 使用扩展方法统一设置属性
-        if (tagData.title != null && tagData.title!.isNotEmpty) {
-          metadata.setTitle(tagData.title!);
-          updatedFields.add('标题');
+      // 尝试使用 updateMetadata（需要文件已有元数据）
+      try {
+        updateMetadata(file, (metadata) {
+          // metadata 可能是 Mp3Metadata, VorbisMetadata, Mp4Metadata, RiffMetadata 等
+          // 使用扩展方法统一设置属性
+          final title = tagData.title;
+          if (title != null && title.isNotEmpty) {
+            metadata.setTitle(title);
+            updatedFields.add('标题');
+          }
+          final artist = tagData.artist;
+          if (artist != null && artist.isNotEmpty) {
+            metadata.setArtist(artist);
+            updatedFields.add('艺术家');
+          }
+          final album = tagData.album;
+          if (album != null && album.isNotEmpty) {
+            metadata.setAlbum(album);
+            updatedFields.add('专辑');
+          }
+          final trackNumber = tagData.trackNumber;
+          if (trackNumber != null) {
+            metadata.setTrackNumber(trackNumber);
+            updatedFields.add('曲目号');
+          }
+          final year = tagData.year;
+          if (year != null) {
+            metadata.setYear(DateTime(year));
+            updatedFields.add('年份');
+          }
+          final genre = tagData.genre;
+          if (genre != null && genre.isNotEmpty) {
+            final genres = genre.split(',').map((g) => g.trim()).toList();
+            metadata.setGenres(genres);
+            updatedFields.add('流派');
+          }
+          final lyrics = tagData.lyrics;
+          if (lyrics != null && lyrics.isNotEmpty) {
+            metadata.setLyrics(lyrics);
+            updatedFields.add('歌词');
+          }
+          final coverData = tagData.coverData;
+          if (coverData != null && coverData.isNotEmpty) {
+            final mimeType = tagData.coverMimeType ?? 'image/jpeg';
+            metadata.setPictures([
+              Picture(coverData, mimeType, PictureType.coverFront),
+            ]);
+            updatedFields.add('封面');
+          }
+        });
+      } on MetadataParserException {
+        // 文件没有现有标签，为 MP3 格式创建新标签
+        if (format == SupportedAudioFormat.mp3) {
+          logger.i('MusicTagWriterService: 文件无现有标签，创建新的 ID3v2 标签');
+          return _createNewId3Tag(file, tagData);
         }
-        if (tagData.artist != null && tagData.artist!.isNotEmpty) {
-          metadata.setArtist(tagData.artist!);
-          updatedFields.add('艺术家');
-        }
-        if (tagData.album != null && tagData.album!.isNotEmpty) {
-          metadata.setAlbum(tagData.album!);
-          updatedFields.add('专辑');
-        }
-        if (tagData.trackNumber != null) {
-          metadata.setTrackNumber(tagData.trackNumber!);
-          updatedFields.add('曲目号');
-        }
-        if (tagData.year != null) {
-          metadata.setYear(DateTime(tagData.year!));
-          updatedFields.add('年份');
-        }
-        if (tagData.genre != null && tagData.genre!.isNotEmpty) {
-          final genres = tagData.genre!.split(',').map((g) => g.trim()).toList();
-          metadata.setGenres(genres);
-          updatedFields.add('流派');
-        }
-        if (tagData.lyrics != null && tagData.lyrics!.isNotEmpty) {
-          metadata.setLyrics(tagData.lyrics!);
-          updatedFields.add('歌词');
-        }
-        if (tagData.coverData != null && tagData.coverData!.isNotEmpty) {
-          final mimeType = tagData.coverMimeType ?? 'image/jpeg';
-          metadata.setPictures([
-            Picture(tagData.coverData!, mimeType, PictureType.coverFront),
-          ]);
-          updatedFields.add('封面');
-        }
-      });
+        // 其他格式暂不支持无标签写入
+        rethrow;
+      }
 
       logger.i('MusicTagWriterService: 写入成功, 更新字段: $updatedFields');
       return MusicTagWriteResult.success(updatedFields);
@@ -234,6 +260,60 @@ class MusicTagWriterService {
       logger.e('MusicTagWriterService: 写入失败', e, st);
       return MusicTagWriteResult.failure('写入失败: $e');
     }
+  }
+
+  /// 为没有标签的 MP3 文件创建新的 ID3v2 标签
+  MusicTagWriteResult _createNewId3Tag(File file, MusicTagData tagData) {
+    final updatedFields = <String>[];
+
+    // 创建新的 Mp3Metadata
+    final metadata = Mp3Metadata();
+
+    if (tagData.title != null && tagData.title!.isNotEmpty) {
+      metadata.songName = tagData.title;
+      updatedFields.add('标题');
+    }
+    if (tagData.artist != null && tagData.artist!.isNotEmpty) {
+      metadata.leadPerformer = tagData.artist;
+      updatedFields.add('艺术家');
+    }
+    if (tagData.album != null && tagData.album!.isNotEmpty) {
+      metadata.album = tagData.album;
+      updatedFields.add('专辑');
+    }
+    if (tagData.albumArtist != null && tagData.albumArtist!.isNotEmpty) {
+      metadata.bandOrOrchestra = tagData.albumArtist;
+    }
+    if (tagData.trackNumber != null) {
+      metadata.trackNumber = tagData.trackNumber;
+      updatedFields.add('曲目号');
+    }
+    if (tagData.year != null) {
+      metadata.year = tagData.year;
+      updatedFields.add('年份');
+    }
+    if (tagData.genre != null && tagData.genre!.isNotEmpty) {
+      final genres = tagData.genre!.split(',').map((g) => g.trim()).toList();
+      metadata.genres = genres;
+      updatedFields.add('流派');
+    }
+    if (tagData.lyrics != null && tagData.lyrics!.isNotEmpty) {
+      metadata.lyric = tagData.lyrics;
+      updatedFields.add('歌词');
+    }
+    if (tagData.coverData != null && tagData.coverData!.isNotEmpty) {
+      final mimeType = tagData.coverMimeType ?? 'image/jpeg';
+      metadata.pictures = [
+        Picture(tagData.coverData!, mimeType, PictureType.coverFront),
+      ];
+      updatedFields.add('封面');
+    }
+
+    // 使用 Id3v4Writer 写入新标签
+    Id3v4Writer().write(file, metadata);
+
+    logger.i('MusicTagWriterService: 创建新 ID3v2 标签成功, 更新字段: $updatedFields');
+    return MusicTagWriteResult.success(updatedFields);
   }
 
   /// 写入标签到 NAS 文件

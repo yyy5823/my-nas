@@ -26,8 +26,8 @@ import 'package:my_nas/features/reading/presentation/providers/reader_settings_p
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
+import 'package:my_nas/shared/widgets/book_flip_loading.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
-import 'package:my_nas/shared/widgets/loading_widget.dart';
 import 'package:my_nas/shared/widgets/reader_settings_sheet.dart';
 import 'package:path/path.dart' as path;
 import 'package:url_launcher/url_launcher.dart';
@@ -803,7 +803,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
       child: Scaffold(
         backgroundColor: settings.theme.backgroundColor,
         body: switch (state) {
-          TxtReaderLoading(:final message) => LoadingWidget(message: message),
+          TxtReaderLoading(:final message) => BookFlipLoading(message: message),
           TxtReaderError(:final message) => AppErrorWidget(
               message: message,
               onRetry: () =>

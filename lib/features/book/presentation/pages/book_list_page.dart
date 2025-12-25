@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 import 'package:my_nas/app/router/app_router.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
@@ -2318,11 +2319,15 @@ class _BookGridItem extends ConsumerStatefulWidget {
 class _BookGridItemState extends ConsumerState<_BookGridItem> {
   String? _coverPath;
   bool _coverLoaded = false;
+  bool _loadingStarted = false;
+  /// 是否已经进入过可视区域（用于懒加载）
+  bool _hasBeenVisible = false;
 
   @override
   void initState() {
     super.initState();
-    _loadCover();
+    // 不在 initState 中立即加载封面
+    // 等待 VisibilityDetector 检测到可见时再加载
   }
 
   @override
@@ -2333,8 +2338,16 @@ class _BookGridItemState extends ConsumerState<_BookGridItem> {
         oldWidget.bookEntity.sourceId != widget.bookEntity.sourceId) {
       _coverPath = null;
       _coverLoaded = false;
-      _loadCover();
+      _loadingStarted = false;
+      // 重置可见性标记，如果当前可见会由 VisibilityDetector 重新触发加载
+      _hasBeenVisible = false;
     }
+  }
+
+  void _loadCoverIfNeeded() {
+    if (_loadingStarted || _coverLoaded) return;
+    _loadingStarted = true;
+    _loadCover();
   }
 
   Future<void> _loadCover() async {
@@ -2346,43 +2359,59 @@ class _BookGridItemState extends ConsumerState<_BookGridItem> {
         format != BookFormat.pdf &&
         format != BookFormat.mobi &&
         format != BookFormat.azw3) {
-      return;
-    }
-
-    // 优先使用已缓存的封面路径（从数据库元数据）
-    if (book.coverPath != null && await File(book.coverPath!).exists()) {
       if (mounted) {
-        setState(() {
-          _coverPath = book.coverPath;
-          _coverLoaded = true;
-        });
+        setState(() => _coverLoaded = true);
       }
       return;
     }
 
+    // 优先使用已缓存的封面路径（从数据库元数据）- 同步检查
+    if (book.coverPath != null) {
+      final coverFile = File(book.coverPath!);
+      if (coverFile.existsSync()) {
+        if (mounted) {
+          setState(() {
+            _coverPath = book.coverPath;
+            _coverLoaded = true;
+          });
+        }
+        return;
+      }
+    }
+
     final coverService = ref.read(bookCoverServiceProvider);
-    final connections = ref.read(activeConnectionsProvider);
-    final connection = connections[book.sourceId];
 
-    if (connection == null) return;
-
-    // 检查封面服务缓存
+    // 检查封面服务缓存 - 同步检查
     final cached = coverService.getCachedCoverPath(
       book.filePath,
       book.sourceId,
     );
 
-    if (cached != null && await File(cached).exists()) {
+    if (cached != null) {
+      final cachedFile = File(cached);
+      if (cachedFile.existsSync()) {
+        if (mounted) {
+          setState(() {
+            _coverPath = cached;
+            _coverLoaded = true;
+          });
+        }
+        return;
+      }
+    }
+
+    // 需要从远程提取封面，使用异步方式
+    final connections = ref.read(activeConnectionsProvider);
+    final connection = connections[book.sourceId];
+
+    if (connection == null) {
       if (mounted) {
-        setState(() {
-          _coverPath = cached;
-          _coverLoaded = true;
-        });
+        setState(() => _coverLoaded = true);
       }
       return;
     }
 
-    // 异步提取封面
+    // 异步提取封面（有并发限制）
     final coverPath = await coverService.extractAndCacheCover(
       bookPath: book.filePath,
       sourceId: book.sourceId,
@@ -2398,6 +2427,20 @@ class _BookGridItemState extends ConsumerState<_BookGridItem> {
     }
   }
 
+  /// 处理可见性变化
+  void _onVisibilityChanged(VisibilityInfo info) {
+    // 当元素进入可视区域（可见比例 > 0）且之前未可见过
+    if (info.visibleFraction > 0 && !_hasBeenVisible) {
+      _hasBeenVisible = true;
+      // 延迟一帧执行，确保滚动停止后再加载
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _loadCoverIfNeeded();
+        }
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final book = widget.bookEntity;
@@ -2406,7 +2449,10 @@ class _BookGridItemState extends ConsumerState<_BookGridItem> {
     final displayName = book.displayName;
     final author = book.author;
 
-    return GestureDetector(
+    return VisibilityDetector(
+      key: Key('book_${book.sourceId}_${book.filePath}'),
+      onVisibilityChanged: _onVisibilityChanged,
+      child: GestureDetector(
       onTap: widget.isSelectMode
           ? widget.onTap
           : () => _openBook(context, ref),
@@ -2517,6 +2563,7 @@ class _BookGridItemState extends ConsumerState<_BookGridItem> {
             ),
         ],
       ),
+      ),
     );
   }
 
@@ -2524,26 +2571,45 @@ class _BookGridItemState extends ConsumerState<_BookGridItem> {
   Widget _buildCover(BookFormat format) {
     // 如果有封面图片，显示封面
     if (_coverPath != null) {
-      return Stack(
-        fit: StackFit.expand,
-        children: [
-          Image.file(
-            File(_coverPath!),
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) => _buildPlaceholder(format),
-          ),
-          // 格式标签
-          Positioned(
-            top: 8,
-            right: 8,
-            child: _buildFormatBadge(format),
-          ),
-        ],
+      return RepaintBoundary(
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.file(
+              File(_coverPath!),
+              fit: BoxFit.cover,
+              // 限制解码大小，避免大图片占用过多内存
+              cacheWidth: 300,
+              cacheHeight: 400,
+              // 淡入效果
+              frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+                if (wasSynchronouslyLoaded) return child;
+                return AnimatedOpacity(
+                  opacity: frame == null ? 0 : 1,
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOut,
+                  child: child,
+                );
+              },
+              errorBuilder: (context, error, stackTrace) => _buildPlaceholder(format),
+            ),
+            // 格式标签
+            Positioned(
+              top: 8,
+              right: 8,
+              child: _buildFormatBadge(format),
+            ),
+          ],
+        ),
       );
     }
 
     // 如果正在加载封面，显示加载指示器
-    if (!_coverLoaded && (format == BookFormat.epub || format == BookFormat.pdf)) {
+    if (!_coverLoaded &&
+        (format == BookFormat.epub ||
+         format == BookFormat.pdf ||
+         format == BookFormat.mobi ||
+         format == BookFormat.azw3)) {
       return DecoratedBox(
         decoration: BoxDecoration(gradient: _getFormatGradient(format)),
         child: Stack(
