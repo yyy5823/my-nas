@@ -21,8 +21,6 @@ class MobileCompositeFileSystem implements NasFileSystem {
   late final MobileMusicFileSystem _musicFileSystem;
   late final MobileFilesFileSystem _filesFileSystem;
 
-  bool _initialized = false;
-
   /// 请求所有必要的权限
   Future<bool> requestPermissions() async {
     _galleryFileSystem = MobileGalleryFileSystem();
@@ -46,7 +44,6 @@ class MobileCompositeFileSystem implements NasFileSystem {
     // 初始化文件系统
     await _filesFileSystem.initialize();
 
-    _initialized = true;
     logger.i('MobileCompositeFileSystem: 初始化完成');
 
     // 只要有一个权限通过就返回 true

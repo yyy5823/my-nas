@@ -377,21 +377,9 @@ class _MediaTypeTab extends ConsumerWidget {
     final isMobile = !kIsWeb && (Platform.isIOS || Platform.isAndroid);
 
     if (isMobile) {
-      // 移动端：只支持照片和视频（使用系统相册API）
-      if (mediaType == MediaType.photo || mediaType == MediaType.video) {
-        Navigator.pop(context);
-        _addLocalSourceToLibrary(context, ref, localSource, connections);
-      } else {
-        // 音乐、图书、漫画等在移动端不支持本机源
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '移动端暂不支持本机${mediaType.displayName}，请使用 NAS 或云存储',
-            ),
-          ),
-        );
-      }
+      // 移动端：根据媒体类型自动选择路径
+      Navigator.pop(context);
+      _addLocalSourceToLibrary(context, ref, localSource, connections);
     } else {
       // 桌面端：显示文件夹选择器
       Navigator.pop(context);
@@ -400,6 +388,11 @@ class _MediaTypeTab extends ConsumerWidget {
   }
 
   /// 添加本机源到媒体库（移动端）
+  ///
+  /// 根据媒体类型选择正确的路径前缀：
+  /// - photo/video → /gallery（系统相册）
+  /// - music → /music（系统音乐库）
+  /// - book/comic/note → /files（文件App）
   Future<void> _addLocalSourceToLibrary(
     BuildContext context,
     WidgetRef ref,
@@ -407,11 +400,17 @@ class _MediaTypeTab extends ConsumerWidget {
     Map<String, SourceConnection> connections,
   ) async {
     try {
-      // 添加到媒体库（路径为 "/"，表示整个系统媒体库）
+      // 根据媒体类型选择路径前缀
+      final (path, displayName) = switch (mediaType) {
+        MediaType.photo || MediaType.video => ('/gallery', '本机相册'),
+        MediaType.music => ('/music', '本机音乐'),
+        MediaType.book || MediaType.comic || MediaType.note => ('/files', '本机文件'),
+      };
+
       final newPath = MediaLibraryPath(
         sourceId: localSource.id,
-        path: '/',
-        name: '本机${mediaType.displayName}',
+        path: path,
+        name: displayName,
       );
 
       await ref.read(mediaLibraryConfigProvider.notifier).addPath(mediaType, newPath);
@@ -421,7 +420,7 @@ class _MediaTypeTab extends ConsumerWidget {
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已添加本机${mediaType.displayName}，正在扫描...')),
+          SnackBar(content: Text('已添加$displayName，正在扫描...')),
         );
       }
     } on Exception catch (e, st) {
