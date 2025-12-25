@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:my_nas/app/theme/app_colors.dart';
 
 extension BuildContextExtensions on BuildContext {
   // Theme
@@ -6,6 +7,31 @@ extension BuildContextExtensions on BuildContext {
   ColorScheme get colorScheme => theme.colorScheme;
   TextTheme get textTheme => theme.textTheme;
   bool get isDarkMode => theme.brightness == Brightness.dark;
+
+  // ============ 语义化颜色（根据亮暗模式自动调整）============
+
+  /// 成功颜色
+  Color get successColor => AppColors.success;
+
+  /// 警告颜色
+  Color get warningColor => AppColors.warning;
+
+  /// 信息颜色（使用主题色）
+  Color get infoColor => colorScheme.primary;
+
+  /// 危险/删除颜色
+  Color get dangerColor => AppColors.error;
+
+  /// 评分星星颜色
+  Color get starColor => AppColors.warning;
+
+  /// 占位符/骨架屏背景色（亮暗模式自适应）
+  Color get placeholderColor =>
+      isDarkMode ? colorScheme.surfaceContainerHighest : const Color(0xFFE0E0E0);
+
+  /// 占位符/骨架屏高亮色（亮暗模式自适应）
+  Color get placeholderHighlightColor =>
+      isDarkMode ? colorScheme.surface : const Color(0xFFF5F5F5);
 
   // MediaQuery
   MediaQueryData get mediaQuery => MediaQuery.of(this);
@@ -62,8 +88,18 @@ extension BuildContextExtensions on BuildContext {
     scaffoldMessenger.showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: Colors.green,
+        backgroundColor: successColor,
+      ),
+    );
+  }
+
+  void showWarningSnackBar(String message) {
+    scaffoldMessenger.showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: warningColor,
       ),
     );
   }
 }
+

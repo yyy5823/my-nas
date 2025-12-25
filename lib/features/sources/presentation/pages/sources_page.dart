@@ -373,11 +373,11 @@ class _ReorderableSourceCard extends StatelessWidget {
 
   Widget _buildStatusChip(ThemeData theme) {
     final (label, color) = switch (_status) {
-      SourceStatus.connected => ('已连接', Colors.green),
-      SourceStatus.connecting => ('连接中', Colors.orange),
-      SourceStatus.requires2FA => ('需要验证', Colors.amber),
-      SourceStatus.error => ('错误', Colors.red),
-      SourceStatus.disconnected => ('未连接', Colors.grey),
+      SourceStatus.connected => ("已连接", AppColors.success),
+      SourceStatus.connecting => ("连接中", AppColors.warning),
+      SourceStatus.requires2FA => ("需要验证", AppColors.warning),
+      SourceStatus.error => ("错误", AppColors.error),
+      SourceStatus.disconnected => ("未连接", AppColors.lightOnSurfaceVariant),
     };
 
     return Container(
@@ -516,11 +516,11 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
 
   Widget _buildStatusChip(ThemeData theme) {
     final (label, color) = switch (_status) {
-      SourceStatus.connected => ('已连接', Colors.green),
-      SourceStatus.connecting => ('连接中', Colors.orange),
-      SourceStatus.requires2FA => ('需要验证', Colors.amber),
-      SourceStatus.error => ('错误', Colors.red),
-      SourceStatus.disconnected => ('未连接', Colors.grey),
+      SourceStatus.connected => ("已连接", AppColors.success),
+      SourceStatus.connecting => ("连接中", AppColors.warning),
+      SourceStatus.requires2FA => ("需要验证", AppColors.warning),
+      SourceStatus.error => ("错误", AppColors.error),
+      SourceStatus.disconnected => ("未连接", AppColors.lightOnSurfaceVariant),
     };
 
     return Container(
@@ -589,8 +589,8 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
             },
           ),
           ListTile(
-            leading: const Icon(Icons.delete, color: Colors.red),
-            title: const Text('删除', style: TextStyle(color: Colors.red)),
+            leading: Icon(Icons.delete, color: AppColors.error),
+            title: Text("删除", style: TextStyle(color: AppColors.error)),
             onTap: () {
               Navigator.pop(context);
               _deleteSource();
@@ -748,7 +748,7 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
             style: FilledButton.styleFrom(
-              backgroundColor: Colors.red,
+              backgroundColor: AppColors.error,
             ),
             child: const Text('删除'),
           ),
@@ -769,7 +769,7 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('删除失败: $e'),
-              backgroundColor: Colors.red,
+              backgroundColor: AppColors.error,
             ),
           );
         }

@@ -119,9 +119,9 @@ class MediaSetupWidget extends ConsumerWidget {
 
     final color = switch (state) {
       MediaSetupState.noSources => AppColors.primary,
-      MediaSetupState.notConnected => Colors.orange,
+      MediaSetupState.notConnected => AppColors.warning,
       MediaSetupState.noLibraryPaths => AppColors.primary,
-      MediaSetupState.pathsNotConnected => Colors.orange,
+      MediaSetupState.pathsNotConnected => AppColors.warning,
       MediaSetupState.ready => AppColors.primary,
     };
 

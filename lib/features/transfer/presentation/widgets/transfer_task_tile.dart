@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/transfer/domain/entities/transfer_task.dart';
 
 /// 传输任务列表项
@@ -141,10 +142,10 @@ class TransferTaskTile extends StatelessWidget {
 
   Widget _buildMediaTypeIcon(ColorScheme colorScheme) {
     final (icon, color) = switch (task.mediaType.name) {
-      'photo' => (Icons.photo_library, Colors.orange),
-      'music' => (Icons.music_note, Colors.purple),
-      'video' => (Icons.movie, Colors.blue),
-      'book' => (Icons.book, Colors.green),
+      'photo' => (Icons.photo_library, AppColors.photoColor),
+      'music' => (Icons.music_note, AppColors.musicColor),
+      'video' => (Icons.movie, AppColors.videoColor),
+      'book' => (Icons.book, AppColors.bookColor),
       _ => (Icons.folder, colorScheme.primary),
     };
 

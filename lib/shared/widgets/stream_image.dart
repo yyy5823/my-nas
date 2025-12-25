@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
+import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:photo_view/photo_view.dart';
 
@@ -420,24 +421,32 @@ class _StreamImageState extends State<StreamImage> {
     );
   }
 
-  Widget _buildPlaceholder() => Container(
-    width: widget.width,
-    height: widget.height,
-    color: Colors.grey[300],
-    child: const Center(
-      child: SizedBox(
-        width: 24,
-        height: 24,
-        child: CircularProgressIndicator(strokeWidth: 2),
+  Widget _buildPlaceholder() => Builder(
+    builder: (context) => Container(
+      width: widget.width,
+      height: widget.height,
+      color: context.placeholderColor,
+      child: const Center(
+        child: SizedBox(
+          width: 24,
+          height: 24,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
       ),
     ),
   );
 
-  Widget _buildError() => Container(
-    width: widget.width,
-    height: widget.height,
-    color: Colors.grey[200],
-    child: Icon(Icons.broken_image_rounded, color: Colors.grey[400], size: 32),
+  Widget _buildError() => Builder(
+    builder: (context) => Container(
+      width: widget.width,
+      height: widget.height,
+      color: context.placeholderHighlightColor,
+      child: Icon(
+        Icons.broken_image_rounded,
+        color: context.colorScheme.onSurfaceVariant,
+        size: 32,
+      ),
+    ),
   );
 }
 

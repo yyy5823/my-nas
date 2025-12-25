@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:my_nas/core/extensions/context_extensions.dart';
 
 /// 骨架屏加载效果
 class SkeletonLoader extends StatefulWidget {
@@ -43,11 +44,8 @@ class _SkeletonLoaderState extends State<SkeletonLoader>
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final baseColor = widget.baseColor ??
-        (isDark ? Colors.grey[800]! : Colors.grey[300]!);
-    final highlightColor = widget.highlightColor ??
-        (isDark ? Colors.grey[700]! : Colors.grey[100]!);
+    final baseColor = widget.baseColor ?? context.placeholderColor;
+    final highlightColor = widget.highlightColor ?? context.placeholderHighlightColor;
 
     return AnimatedBuilder(
       animation: _animation,
@@ -85,17 +83,14 @@ class SkeletonBox extends StatelessWidget {
   final double borderRadius;
 
   @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
+  Widget build(BuildContext context) => Container(
       width: width,
       height: height,
       decoration: BoxDecoration(
-        color: isDark ? Colors.grey[800] : Colors.grey[300],
+        color: context.placeholderColor,
         borderRadius: BorderRadius.circular(borderRadius),
       ),
     );
-  }
 }
 
 /// 文件列表骨架屏
@@ -142,7 +137,8 @@ class _FileListItemSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final placeholderColor = context.placeholderColor;
+    final placeholderLightColor = context.placeholderHighlightColor;
     // 交错的透明度，让骨架屏更自然
     final opacity = 1.0 - (index * 0.08).clamp(0.0, 0.4);
 
@@ -157,7 +153,7 @@ class _FileListItemSkeleton extends StatelessWidget {
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                color: isDark ? Colors.grey[800] : Colors.grey[300],
+                color: placeholderColor,
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
@@ -171,7 +167,7 @@ class _FileListItemSkeleton extends StatelessWidget {
                     width: double.infinity,
                     height: 16,
                     decoration: BoxDecoration(
-                      color: isDark ? Colors.grey[800] : Colors.grey[300],
+                      color: placeholderColor,
                       borderRadius: BorderRadius.circular(4),
                     ),
                   ),
@@ -181,7 +177,7 @@ class _FileListItemSkeleton extends StatelessWidget {
                     width: 100,
                     height: 12,
                     decoration: BoxDecoration(
-                      color: isDark ? Colors.grey[850] : Colors.grey[250],
+                      color: placeholderLightColor,
                       borderRadius: BorderRadius.circular(4),
                     ),
                   ),
@@ -202,14 +198,15 @@ class _FileGridItemSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final placeholderColor = context.placeholderColor;
+    final placeholderLightColor = context.placeholderHighlightColor;
     final opacity = 1.0 - (index * 0.06).clamp(0.0, 0.4);
 
     return Opacity(
       opacity: opacity,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: isDark ? Colors.grey[850] : Colors.grey[200],
+          color: placeholderLightColor,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
@@ -220,7 +217,7 @@ class _FileGridItemSkeleton extends StatelessWidget {
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: isDark ? Colors.grey[800] : Colors.grey[300],
+                color: placeholderColor,
                 borderRadius: BorderRadius.circular(10),
               ),
             ),
@@ -231,7 +228,7 @@ class _FileGridItemSkeleton extends StatelessWidget {
               height: 12,
               margin: const EdgeInsets.symmetric(horizontal: 8),
               decoration: BoxDecoration(
-                color: isDark ? Colors.grey[800] : Colors.grey[300],
+                color: placeholderColor,
                 borderRadius: BorderRadius.circular(4),
               ),
             ),
@@ -241,3 +238,4 @@ class _FileGridItemSkeleton extends StatelessWidget {
     );
   }
 }
+

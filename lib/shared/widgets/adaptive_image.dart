@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
+import 'package:my_nas/core/extensions/context_extensions.dart';
 
 /// 自适应图片组件
 ///
@@ -170,22 +171,24 @@ class _AdaptiveImageState extends State<AdaptiveImage> {
           widget.errorWidget?.call(context, error) ?? _buildDefaultError(context),
     );
 
-  Widget _buildDefaultPlaceholder() => Container(
-      width: widget.width,
-      height: widget.height,
-      color: Colors.grey[300],
-      child: const Center(
-        child: CircularProgressIndicator(strokeWidth: 2),
+  Widget _buildDefaultPlaceholder() => Builder(
+      builder: (ctx) => Container(
+        width: widget.width,
+        height: widget.height,
+        color: ctx.placeholderColor,
+        child: const Center(
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
       ),
     );
 
   Widget _buildDefaultError(BuildContext context) => Container(
       width: widget.width,
       height: widget.height,
-      color: Colors.grey[800],
-      child: const Icon(
+      color: context.placeholderHighlightColor,
+      child: Icon(
         Icons.broken_image_outlined,
-        color: Colors.grey,
+        color: context.colorScheme.onSurfaceVariant,
         size: 48,
       ),
     );
