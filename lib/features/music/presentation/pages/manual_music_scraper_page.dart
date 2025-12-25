@@ -6,11 +6,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/features/music/data/services/music_cover_cache_service.dart';
+import 'package:my_nas/features/music/data/services/music_database_service.dart';
 import 'package:my_nas/features/music/data/services/music_tag_writer_service.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_result.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_source.dart';
+import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_scraper_provider.dart';
+import 'package:my_nas/features/music/presentation/providers/music_tag_write_queue_provider.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
@@ -214,23 +218,33 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
         final result = await _downloadCoverData();
         coverData = result.$1;
         coverMimeType = result.$2;
+
+        // 保存封面文件到目录（这是小文件，可以快速完成）
         await _saveCoverFile(fileSystem, musicDir, baseName, coverData);
+
+        // 立即同步封面到本地缓存，确保 UI 立即显示
+        if (coverData != null) {
+          await _syncCoverToLocalCache(coverData);
+        }
       }
 
-      // 下载歌词
+      // 下载歌词（同样是小文件）
       if (_downloadLyrics && (_selectedLyrics?.hasLyrics ?? false)) {
         await _downloadLyricsToFile(fileSystem, musicDir, baseName);
       }
 
-      // 写入到文件标签
+      // 立即更新当前播放音乐的元数据（如果正在播放此歌曲）
+      _updateCurrentMusicMetadata(coverData);
+
+      // 将文件标签写入加入后台队列（如果需要）
       if (_writeToFile && _audioFormat != null && _selectedDetail != null) {
-        await _writeTagsToFile(fileSystem, coverData, coverMimeType);
+        _queueTagWrite(coverData, coverMimeType);
       }
 
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('刮削完成')),
+        const SnackBar(content: Text('刮削完成，标签后台写入中...')),
       );
 
       Navigator.pop(context, true);
@@ -246,6 +260,92 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
         setState(() => _isScraping = false);
       }
     }
+  }
+
+  /// 同步封面到本地磁盘缓存和数据库
+  /// 确保刮削后的封面能够被正确显示，无需重新提取
+  Future<void> _syncCoverToLocalCache(Uint8List coverData) async {
+    final sourceId = widget.music.sourceId;
+    if (sourceId == null) return;
+
+    try {
+      // 1. 保存封面到本地磁盘缓存
+      final coverCache = MusicCoverCacheService();
+      await coverCache.init();
+
+      final uniqueKey = '${sourceId}_${widget.music.path}';
+      final localCoverPath = await coverCache.saveCover(uniqueKey, coverData);
+
+      if (localCoverPath == null) return;
+
+      // 2. 更新数据库中的封面路径
+      final db = MusicDatabaseService();
+      await db.init();
+
+      // 获取现有的曲目数据并更新封面路径
+      final existing = await db.get(sourceId, widget.music.path);
+      if (existing != null) {
+        await db.upsert(existing.copyWith(coverPath: localCoverPath));
+      } else {
+        // 如果数据库中没有这首歌，创建一个基本条目
+        await db.upsert(MusicTrackEntity(
+          sourceId: sourceId,
+          filePath: widget.music.path,
+          fileName: widget.music.name,
+          title: _selectedDetail?.title ?? widget.music.title,
+          artist: _selectedDetail?.artist ?? widget.music.artist,
+          album: _selectedDetail?.album ?? widget.music.album,
+          coverPath: localCoverPath,
+          duration: widget.music.duration?.inMilliseconds,
+          lastUpdated: DateTime.now(),
+        ));
+      }
+    } on Exception catch (e, st) {
+      // 非关键功能，静默失败
+      AppError.ignore(e, st, '同步封面到本地缓存失败');
+    }
+  }
+
+  /// 立即更新当前播放音乐的元数据（如果正在播放此歌曲）
+  void _updateCurrentMusicMetadata(Uint8List? coverData) {
+    final currentMusic = ref.read(currentMusicProvider);
+    if (currentMusic?.id != widget.music.id) return;
+
+    // 更新 currentMusicProvider 状态
+    ref.read(currentMusicProvider.notifier).state = currentMusic!.copyWith(
+      title: _selectedDetail?.title ?? currentMusic.title,
+      artist: _selectedDetail?.artist ?? currentMusic.artist,
+      album: _selectedDetail?.album ?? currentMusic.album,
+      lyrics: _selectedLyrics?.lrcContent ?? _selectedLyrics?.plainText ?? currentMusic.lyrics,
+      coverData: coverData?.toList() ?? currentMusic.coverData,
+    );
+  }
+
+  /// 将标签写入任务加入后台队列
+  void _queueTagWrite(Uint8List? coverData, String? coverMimeType) {
+    final writeQueue = ref.read(musicTagWriteQueueProvider);
+
+    // 构建标签数据
+    final tagData = MusicTagData(
+      title: _selectedDetail?.title,
+      artist: _selectedDetail?.artist,
+      album: _selectedDetail?.album,
+      albumArtist: _selectedDetail?.albumArtist,
+      year: _selectedDetail?.year,
+      trackNumber: _selectedDetail?.trackNumber,
+      discNumber: _selectedDetail?.discNumber,
+      genre: _selectedDetail?.genres?.join(', '),
+      lyrics: _selectedLyrics?.lrcContent ?? _selectedLyrics?.plainText,
+    );
+
+    // 加入后台写入队列
+    writeQueue.addTask(
+      musicPath: widget.music.path,
+      sourceId: widget.music.sourceId,
+      tagData: tagData,
+      coverData: coverData,
+      coverMimeType: coverMimeType,
+    );
   }
 
   /// 下载封面数据
@@ -303,44 +403,6 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
     }
   }
 
-  /// 写入标签到音频文件
-  Future<void> _writeTagsToFile(
-    NasFileSystem fileSystem,
-    Uint8List? coverData,
-    String? coverMimeType,
-  ) async {
-    try {
-      await _tagWriter.init();
-
-      // 构建要写入的标签数据
-      final tagData = MusicTagData(
-        title: _selectedDetail?.title,
-        artist: _selectedDetail?.artist,
-        album: _selectedDetail?.album,
-        albumArtist: _selectedDetail?.albumArtist,
-        year: _selectedDetail?.year,
-        trackNumber: _selectedDetail?.trackNumber,
-        discNumber: _selectedDetail?.discNumber,
-        genre: _selectedDetail?.genres?.join(', '),
-        lyrics: _selectedLyrics?.lrcContent ?? _selectedLyrics?.plainText,
-        coverData: coverData,
-        coverMimeType: coverMimeType,
-      );
-
-      final result = await _tagWriter.writeToNasFile(
-        fileSystem,
-        widget.music.path,
-        tagData,
-      );
-
-      if (!result.success) {
-        throw Exception(result.error);
-      }
-    } on Exception catch (e, st) {
-      AppError.ignore(e, st, '写入标签失败');
-      rethrow;
-    }
-  }
 
   Future<void> _downloadLyricsToFile(
     NasFileSystem fileSystem,
@@ -637,15 +699,30 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        subtitle: Text(
-          [
-            if (item.artist != null) item.artist,
-            if (item.album != null) item.album,
-            if (item.durationText.isNotEmpty) item.durationText,
-          ].join(' · '),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.bodySmall,
+        subtitle: Row(
+          children: [
+            // 歌词指示器
+            if (item.source.supportsLyrics) ...[
+              Icon(
+                Icons.lyrics_rounded,
+                size: 14,
+                color: isDark ? Colors.cyan[300] : Colors.cyan[700],
+              ),
+              const SizedBox(width: 4),
+            ],
+            Expanded(
+              child: Text(
+                [
+                  if (item.artist != null) item.artist,
+                  if (item.album != null) item.album,
+                  if (item.durationText.isNotEmpty) item.durationText,
+                ].join(' · '),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+          ],
         ),
         trailing: item.score != null
             ? Container(
