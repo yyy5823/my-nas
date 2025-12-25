@@ -356,7 +356,7 @@ class _QBittorrentDetailPageState extends ConsumerState<QBittorrentDetailPage> {
                 color: AppColors.primary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(Icons.info_outline, color: AppColors.primary),
+              child: Icon(Icons.info_outline, color: AppColors.primary),
             ),
             const SizedBox(width: 12),
             const Text('版本信息'),
@@ -642,7 +642,7 @@ class _TorrentList extends ConsumerWidget {
               color: AppColors.primary.withValues(alpha: 0.1),
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.download_done, size: 48, color: AppColors.primary),
+            child: Icon(Icons.download_done, size: 48, color: AppColors.primary),
           ),
           const SizedBox(height: 24),
           Text('暂无下载任务', style: context.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600)),
@@ -810,7 +810,7 @@ class _TorrentTile extends ConsumerWidget {
                             const SizedBox(width: 8),
                           ],
                           if (torrent.upSpeed > 0) ...[
-                            const Icon(Icons.arrow_upward, size: 12, color: AppColors.primary),
+                            Icon(Icons.arrow_upward, size: 12, color: AppColors.primary),
                             Text(
                               _formatSpeed(torrent.upSpeed),
                               style: context.textTheme.labelSmall?.copyWith(color: AppColors.primary),
@@ -836,7 +836,7 @@ class _TorrentTile extends ConsumerWidget {
                 Row(
                   children: [
                     if (torrent.upSpeed > 0) ...[
-                      const Icon(Icons.arrow_upward, size: 14, color: AppColors.primary),
+                      Icon(Icons.arrow_upward, size: 14, color: AppColors.primary),
                       const SizedBox(width: 4),
                       Text(
                         _formatSpeed(torrent.upSpeed),
@@ -1841,7 +1841,7 @@ class _SpeedLimitSheetState extends ConsumerState<_SpeedLimitSheet> {
                       color: AppColors.primary.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.speed,
                       color: AppColors.primary,
                       size: 20,
@@ -2121,7 +2121,7 @@ class _AddTorrentDialogState extends ConsumerState<_AddTorrentDialog> {
                         color: AppColors.primary.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.add_link,
                         color: AppColors.primary,
                         size: 20,
@@ -2204,7 +2204,7 @@ class _AddTorrentDialogState extends ConsumerState<_AddTorrentDialog> {
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: AppColors.primary, width: 2),
+                          borderSide: BorderSide(color: AppColors.primary, width: 2),
                         ),
                         errorBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),

@@ -1934,9 +1934,7 @@ class _NoteListContentState extends ConsumerState<NoteListContent> {
     BuildContext context,
     NotePageLoaded state,
     bool isDark,
-  ) {
-    // 显示内容 - 确保内容从顶部开始
-    return Align(
+  ) => Align(
       alignment: Alignment.topLeft,
       child: SingleChildScrollView(
         controller: _previewScrollController,
@@ -1947,5 +1945,4 @@ class _NoteListContentState extends ConsumerState<NoteListContent> {
         ),
       ),
     );
-  }
 }

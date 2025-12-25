@@ -239,7 +239,7 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
         const SizedBox(height: AppSpacing.xl),
         // 品牌名称
         ShaderMask(
-          shaderCallback: (bounds) => const LinearGradient(
+          shaderCallback: (bounds) => LinearGradient(
             colors: [AppColors.primaryLight, AppColors.accentLight],
           ).createShader(bounds),
           child: Text(
@@ -422,7 +422,7 @@ class _ConnectionPageState extends ConsumerState<ConnectionPage>
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(
+          borderSide: BorderSide(
             color: AppColors.primary,
             width: 2,
           ),

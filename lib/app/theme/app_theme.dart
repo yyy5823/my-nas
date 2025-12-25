@@ -138,8 +138,7 @@ abstract final class AppTheme {
   }
 
   /// 构建浅色输入框主题
-  static InputDecorationTheme _buildLightInputTheme(Color primary) {
-    return InputDecorationTheme(
+  static InputDecorationTheme _buildLightInputTheme(Color primary) => InputDecorationTheme(
       filled: true,
       fillColor: AppColors.lightSurfaceVariant,
       border: OutlineInputBorder(
@@ -167,11 +166,9 @@ abstract final class AppTheme {
         vertical: AppSpacing.md,
       ),
     );
-  }
 
   /// 构建深色输入框主题
-  static InputDecorationTheme _buildDarkInputTheme(ColorSchemePreset preset) {
-    return InputDecorationTheme(
+  static InputDecorationTheme _buildDarkInputTheme(ColorSchemePreset preset) => InputDecorationTheme(
       filled: true,
       fillColor: preset.darkSurfaceVariant,
       border: OutlineInputBorder(
@@ -199,7 +196,6 @@ abstract final class AppTheme {
         vertical: AppSpacing.md,
       ),
     );
-  }
 
   static ThemeData get light => ThemeData(
         useMaterial3: true,
@@ -241,49 +237,49 @@ abstract final class AppTheme {
         listTileTheme: _darkListTileTheme,
       );
 
-  // Color Schemes
-  static const ColorScheme _lightColorScheme = ColorScheme.light(
-    primary: AppColors.primary,
-    primaryContainer: AppColors.primaryLight,
-    onPrimaryContainer: AppColors.primaryDark,
-    secondary: AppColors.secondary,
-    onSecondary: Colors.white,
-    secondaryContainer: AppColors.secondaryLight,
-    onSecondaryContainer: AppColors.secondaryDark,
-    tertiary: AppColors.tertiary,
-    onTertiary: Colors.white,
-    tertiaryContainer: AppColors.tertiaryLight,
-    onTertiaryContainer: AppColors.tertiaryDark,
-    error: AppColors.error,
-    onSurface: AppColors.lightOnSurface,
-    surfaceContainerHighest: AppColors.lightSurfaceVariant,
-    onSurfaceVariant: AppColors.lightOnSurfaceVariant,
-    outline: AppColors.lightOutline,
-    outlineVariant: AppColors.lightOutlineVariant,
-  );
+  // Color Schemes - 使用 getter 因为 AppColors 现在是动态的
+  static ColorScheme get _lightColorScheme => ColorScheme.light(
+        primary: AppColors.primary,
+        primaryContainer: AppColors.primaryLight,
+        onPrimaryContainer: AppColors.primaryDark,
+        secondary: AppColors.secondary,
+        onSecondary: Colors.white,
+        secondaryContainer: AppColors.secondaryLight,
+        onSecondaryContainer: AppColors.secondaryDark,
+        tertiary: AppColors.tertiary,
+        onTertiary: Colors.white,
+        tertiaryContainer: AppColors.tertiaryLight,
+        onTertiaryContainer: AppColors.tertiaryDark,
+        error: AppColors.error,
+        onSurface: AppColors.lightOnSurface,
+        surfaceContainerHighest: AppColors.lightSurfaceVariant,
+        onSurfaceVariant: AppColors.lightOnSurfaceVariant,
+        outline: AppColors.lightOutline,
+        outlineVariant: AppColors.lightOutlineVariant,
+      );
 
-  static const ColorScheme _darkColorScheme = ColorScheme.dark(
-    primary: AppColors.primaryLight,
-    onPrimary: AppColors.darkBackground,
-    primaryContainer: AppColors.primary,
-    onPrimaryContainer: Colors.white,
-    secondary: AppColors.secondaryLight,
-    onSecondary: AppColors.darkBackground,
-    secondaryContainer: AppColors.secondary,
-    onSecondaryContainer: Colors.white,
-    tertiary: AppColors.tertiaryLight,
-    onTertiary: AppColors.darkBackground,
-    tertiaryContainer: AppColors.tertiary,
-    onTertiaryContainer: Colors.white,
-    error: AppColors.errorLight,
-    onError: AppColors.darkBackground,
-    surface: AppColors.darkSurface,
-    onSurface: AppColors.darkOnSurface,
-    surfaceContainerHighest: AppColors.darkSurfaceVariant,
-    onSurfaceVariant: AppColors.darkOnSurfaceVariant,
-    outline: AppColors.darkOutline,
-    outlineVariant: AppColors.darkOutlineVariant,
-  );
+  static ColorScheme get _darkColorScheme => ColorScheme.dark(
+        primary: AppColors.primaryLight,
+        onPrimary: AppColors.darkBackground,
+        primaryContainer: AppColors.primary,
+        onPrimaryContainer: Colors.white,
+        secondary: AppColors.secondaryLight,
+        onSecondary: AppColors.darkBackground,
+        secondaryContainer: AppColors.secondary,
+        onSecondaryContainer: Colors.white,
+        tertiary: AppColors.tertiaryLight,
+        onTertiary: AppColors.darkBackground,
+        tertiaryContainer: AppColors.tertiary,
+        onTertiaryContainer: Colors.white,
+        error: AppColors.errorLight,
+        onError: AppColors.darkBackground,
+        surface: AppColors.darkSurface,
+        onSurface: AppColors.darkOnSurface,
+        surfaceContainerHighest: AppColors.darkSurfaceVariant,
+        onSurfaceVariant: AppColors.darkOnSurfaceVariant,
+        outline: AppColors.darkOutline,
+        outlineVariant: AppColors.darkOutlineVariant,
+      );
 
   // AppBar
   static const AppBarTheme _lightAppBarTheme = AppBarTheme(
@@ -294,13 +290,13 @@ abstract final class AppTheme {
     surfaceTintColor: Colors.transparent,
   );
 
-  static const AppBarTheme _darkAppBarTheme = AppBarTheme(
-    elevation: 0,
-    scrolledUnderElevation: 1,
-    backgroundColor: AppColors.darkSurface,
-    foregroundColor: AppColors.darkOnSurface,
-    surfaceTintColor: Colors.transparent,
-  );
+  static AppBarTheme get _darkAppBarTheme => AppBarTheme(
+        elevation: 0,
+        scrolledUnderElevation: 1,
+        backgroundColor: AppColors.darkSurface,
+        foregroundColor: AppColors.darkOnSurface,
+        surfaceTintColor: Colors.transparent,
+      );
 
   // Card
   static final CardThemeData _lightCardTheme = CardThemeData(
@@ -313,15 +309,15 @@ abstract final class AppTheme {
     ),
   );
 
-  static final CardThemeData _darkCardTheme = CardThemeData(
-    elevation: 0,
-    color: AppColors.darkSurface,
-    surfaceTintColor: Colors.transparent,
-    shape: RoundedRectangleBorder(
-      borderRadius: AppRadius.borderRadiusMd,
-      side: const BorderSide(color: AppColors.darkOutlineVariant),
-    ),
-  );
+  static CardThemeData get _darkCardTheme => CardThemeData(
+        elevation: 0,
+        color: AppColors.darkSurface,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: AppRadius.borderRadiusMd,
+          side: BorderSide(color: AppColors.darkOutlineVariant),
+        ),
+      );
 
   // Buttons
   static final ElevatedButtonThemeData _elevatedButtonTheme =
@@ -364,65 +360,65 @@ abstract final class AppTheme {
   );
 
   // Input
-  static final InputDecorationTheme _lightInputDecorationTheme =
+  static InputDecorationTheme get _lightInputDecorationTheme =>
       InputDecorationTheme(
-    filled: true,
-    fillColor: AppColors.lightSurfaceVariant,
-    border: OutlineInputBorder(
-      borderRadius: AppRadius.borderRadiusSm,
-      borderSide: BorderSide.none,
-    ),
-    enabledBorder: OutlineInputBorder(
-      borderRadius: AppRadius.borderRadiusSm,
-      borderSide: BorderSide.none,
-    ),
-    focusedBorder: OutlineInputBorder(
-      borderRadius: AppRadius.borderRadiusSm,
-      borderSide: const BorderSide(color: AppColors.primary, width: 2),
-    ),
-    errorBorder: OutlineInputBorder(
-      borderRadius: AppRadius.borderRadiusSm,
-      borderSide: const BorderSide(color: AppColors.error),
-    ),
-    focusedErrorBorder: OutlineInputBorder(
-      borderRadius: AppRadius.borderRadiusSm,
-      borderSide: const BorderSide(color: AppColors.error, width: 2),
-    ),
-    contentPadding: const EdgeInsets.symmetric(
-      horizontal: AppSpacing.lg,
-      vertical: AppSpacing.md,
-    ),
-  );
+        filled: true,
+        fillColor: AppColors.lightSurfaceVariant,
+        border: OutlineInputBorder(
+          borderRadius: AppRadius.borderRadiusSm,
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: AppRadius.borderRadiusSm,
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: AppRadius.borderRadiusSm,
+          borderSide: BorderSide(color: AppColors.primary, width: 2),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: AppRadius.borderRadiusSm,
+          borderSide: const BorderSide(color: AppColors.error),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: AppRadius.borderRadiusSm,
+          borderSide: const BorderSide(color: AppColors.error, width: 2),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.lg,
+          vertical: AppSpacing.md,
+        ),
+      );
 
-  static final InputDecorationTheme _darkInputDecorationTheme =
+  static InputDecorationTheme get _darkInputDecorationTheme =>
       InputDecorationTheme(
-    filled: true,
-    fillColor: AppColors.darkSurfaceVariant,
-    border: OutlineInputBorder(
-      borderRadius: AppRadius.borderRadiusSm,
-      borderSide: BorderSide.none,
-    ),
-    enabledBorder: OutlineInputBorder(
-      borderRadius: AppRadius.borderRadiusSm,
-      borderSide: BorderSide.none,
-    ),
-    focusedBorder: OutlineInputBorder(
-      borderRadius: AppRadius.borderRadiusSm,
-      borderSide: const BorderSide(color: AppColors.primaryLight, width: 2),
-    ),
-    errorBorder: OutlineInputBorder(
-      borderRadius: AppRadius.borderRadiusSm,
-      borderSide: const BorderSide(color: AppColors.errorLight),
-    ),
-    focusedErrorBorder: OutlineInputBorder(
-      borderRadius: AppRadius.borderRadiusSm,
-      borderSide: const BorderSide(color: AppColors.errorLight, width: 2),
-    ),
-    contentPadding: const EdgeInsets.symmetric(
-      horizontal: AppSpacing.lg,
-      vertical: AppSpacing.md,
-    ),
-  );
+        filled: true,
+        fillColor: AppColors.darkSurfaceVariant,
+        border: OutlineInputBorder(
+          borderRadius: AppRadius.borderRadiusSm,
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: AppRadius.borderRadiusSm,
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: AppRadius.borderRadiusSm,
+          borderSide: BorderSide(color: AppColors.primaryLight, width: 2),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: AppRadius.borderRadiusSm,
+          borderSide: const BorderSide(color: AppColors.errorLight),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: AppRadius.borderRadiusSm,
+          borderSide: const BorderSide(color: AppColors.errorLight, width: 2),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.lg,
+          vertical: AppSpacing.md,
+        ),
+      );
 
   // Divider
   static const DividerThemeData _lightDividerTheme = DividerThemeData(
@@ -431,43 +427,43 @@ abstract final class AppTheme {
     space: 1,
   );
 
-  static const DividerThemeData _darkDividerTheme = DividerThemeData(
-    color: AppColors.darkOutlineVariant,
-    thickness: 1,
-    space: 1,
-  );
+  static DividerThemeData get _darkDividerTheme => DividerThemeData(
+        color: AppColors.darkOutlineVariant,
+        thickness: 1,
+        space: 1,
+      );
 
   // Navigation Bar (Bottom)
-  static const NavigationBarThemeData _lightNavigationBarTheme =
+  static NavigationBarThemeData get _lightNavigationBarTheme =>
       NavigationBarThemeData(
-    elevation: 0,
-    backgroundColor: AppColors.lightSurface,
-    surfaceTintColor: Colors.transparent,
-    indicatorColor: AppColors.primaryLight,
-  );
+        elevation: 0,
+        backgroundColor: AppColors.lightSurface,
+        surfaceTintColor: Colors.transparent,
+        indicatorColor: AppColors.primaryLight,
+      );
 
-  static const NavigationBarThemeData _darkNavigationBarTheme =
+  static NavigationBarThemeData get _darkNavigationBarTheme =>
       NavigationBarThemeData(
-    elevation: 0,
-    backgroundColor: AppColors.darkSurface,
-    surfaceTintColor: Colors.transparent,
-    indicatorColor: AppColors.primary,
-  );
+        elevation: 0,
+        backgroundColor: AppColors.darkSurface,
+        surfaceTintColor: Colors.transparent,
+        indicatorColor: AppColors.primary,
+      );
 
   // Navigation Rail (Desktop)
-  static const NavigationRailThemeData _lightNavigationRailTheme =
+  static NavigationRailThemeData get _lightNavigationRailTheme =>
       NavigationRailThemeData(
-    elevation: 0,
-    backgroundColor: AppColors.lightSurface,
-    indicatorColor: AppColors.primaryLight,
-  );
+        elevation: 0,
+        backgroundColor: AppColors.lightSurface,
+        indicatorColor: AppColors.primaryLight,
+      );
 
-  static const NavigationRailThemeData _darkNavigationRailTheme =
+  static NavigationRailThemeData get _darkNavigationRailTheme =>
       NavigationRailThemeData(
-    elevation: 0,
-    backgroundColor: AppColors.darkSurface,
-    indicatorColor: AppColors.primary,
-  );
+        elevation: 0,
+        backgroundColor: AppColors.darkSurface,
+        indicatorColor: AppColors.primary,
+      );
 
   // Bottom Sheet
   static final BottomSheetThemeData _lightBottomSheetTheme =
@@ -479,14 +475,14 @@ abstract final class AppTheme {
     ),
   );
 
-  static final BottomSheetThemeData _darkBottomSheetTheme =
-      BottomSheetThemeData(
-    backgroundColor: AppColors.darkSurface,
-    surfaceTintColor: Colors.transparent,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.lg)),
-    ),
-  );
+  static BottomSheetThemeData get _darkBottomSheetTheme => BottomSheetThemeData(
+        backgroundColor: AppColors.darkSurface,
+        surfaceTintColor: Colors.transparent,
+        shape: const RoundedRectangleBorder(
+          borderRadius:
+              BorderRadius.vertical(top: Radius.circular(AppRadius.lg)),
+        ),
+      );
 
   // Dialog
   static final DialogThemeData _lightDialogTheme = DialogThemeData(
@@ -497,13 +493,13 @@ abstract final class AppTheme {
     ),
   );
 
-  static final DialogThemeData _darkDialogTheme = DialogThemeData(
-    backgroundColor: AppColors.darkSurface,
-    surfaceTintColor: Colors.transparent,
-    shape: RoundedRectangleBorder(
-      borderRadius: AppRadius.borderRadiusLg,
-    ),
-  );
+  static DialogThemeData get _darkDialogTheme => DialogThemeData(
+        backgroundColor: AppColors.darkSurface,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: AppRadius.borderRadiusLg,
+        ),
+      );
 
   // SnackBar
   static final SnackBarThemeData _snackBarTheme = SnackBarThemeData(

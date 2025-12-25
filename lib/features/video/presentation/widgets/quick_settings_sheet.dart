@@ -139,7 +139,7 @@ class QuickSettingsSheet extends ConsumerWidget {
                     color: AppColors.primary.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.settings_rounded,
                     color: AppColors.primary,
                     size: 22,

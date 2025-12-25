@@ -274,7 +274,7 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
           child: LinearProgressIndicator(
             value: _service.downloadProgress,
             backgroundColor: isDark ? AppColors.darkSurfaceElevated : AppColors.lightSurfaceVariant,
-            valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primary),
+            valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
             minHeight: 8,
           ),
         ),

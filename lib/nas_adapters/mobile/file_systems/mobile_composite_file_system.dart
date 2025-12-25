@@ -141,10 +141,10 @@ class MobileCompositeFileSystem implements NasFileSystem {
 
   /// 列出根目录
   Future<List<FileItem>> _listRoot() async {
-    final items = <FileItem>[];
+    final items = <FileItem>[]
 
     // 相册（照片和视频）
-    items.add(const FileItem(
+    ..add(const FileItem(
       name: '相册',
       path: '/gallery',
       isDirectory: true,

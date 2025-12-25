@@ -167,7 +167,7 @@ class HeroPlayerCard extends ConsumerWidget {
                           ),
                         ],
                       ),
-                      child: const Column(
+                      child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(
@@ -175,7 +175,7 @@ class HeroPlayerCard extends ConsumerWidget {
                             color: AppColors.primary,
                             size: 28,
                           ),
-                          SizedBox(height: 2),
+                          const SizedBox(height: 2),
                           Text(
                             '随机',
                             style: TextStyle(

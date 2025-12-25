@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 
 // ignore: unused_import
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:flutter/foundation.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_result.dart';
@@ -30,6 +32,24 @@ class NeteaseScraper implements MusicScraper {
       },
       contentType: 'application/x-www-form-urlencoded',
     ));
+
+    // 网易云音乐可能使用 CDN，可能存在证书问题
+    // 仅针对网易云音乐的请求跳过 SSL 验证
+    // Web 平台使用浏览器的 HTTP 实现，不需要此配置
+    if (!kIsWeb) {
+      _dio.httpClientAdapter = IOHttpClientAdapter(
+        createHttpClient: () {
+          final client = HttpClient();
+          client.badCertificateCallback = (cert, host, port) {
+            // 仅信任网易云音乐相关域名
+            return host.endsWith('.163.com') ||
+                host.endsWith('.netease.com') ||
+                host == 'music.163.com';
+          };
+          return client;
+        },
+      );
+    }
   }
 
   static const String _baseUrl = 'https://music.163.com';
@@ -89,14 +109,20 @@ class NeteaseScraper implements MusicScraper {
       debugPrint('[NeteaseScraper] search: query=$searchQuery, page=$page, limit=$limit');
       debugPrint('[NeteaseScraper] request URL: $_baseUrl/weapi/cloudsearch/get/web');
 
+      final encryptedData = _encryptParams(params);
+      debugPrint('[NeteaseScraper] encrypted params length: ${encryptedData.length}');
+      debugPrint('[NeteaseScraper] encrypted params (first 200 chars): ${encryptedData.length > 200 ? encryptedData.substring(0, 200) : encryptedData}');
+
       final response = await _rateLimitedRequest(() => _dio.post<dynamic>(
             '$_baseUrl/weapi/cloudsearch/get/web',
-            data: _encryptParams(params),
+            data: encryptedData,
           ));
 
       debugPrint('[NeteaseScraper] response status: ${response.statusCode}');
       debugPrint('[NeteaseScraper] response data type: ${response.data.runtimeType}');
-      debugPrint('[NeteaseScraper] response data: ${response.data}');
+      // 截断响应数据避免日志过长
+      final dataStr = response.data.toString();
+      debugPrint('[NeteaseScraper] response data (first 500 chars): ${dataStr.length > 500 ? dataStr.substring(0, 500) : dataStr}');
 
       // 检查响应数据是否有效
       if (response.data == null || response.data is! Map<String, dynamic>) {

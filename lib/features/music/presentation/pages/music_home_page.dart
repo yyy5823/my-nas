@@ -7,7 +7,6 @@ import 'package:my_nas/features/music/presentation/providers/home_layout_provide
 import 'package:my_nas/features/music/presentation/providers/playlist_provider.dart';
 import 'package:my_nas/features/music/presentation/widgets/browse_category_grid.dart';
 import 'package:my_nas/features/music/presentation/widgets/hero_player_card.dart';
-import 'package:my_nas/features/music/presentation/widgets/home_layout_sheet.dart';
 import 'package:my_nas/features/music/presentation/widgets/music_stats_card.dart';
 import 'package:my_nas/features/music/presentation/widgets/recent_tracks_section.dart';
 
@@ -569,38 +568,17 @@ class _PlaylistsSection extends ConsumerWidget {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Expanded(
-                child: Text(
-                  '歌单',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: isDark ? Colors.white : Colors.black87,
-                  ),
+              Text(
+                '歌单',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black87,
                 ),
               ),
-              // 布局设置按钮
-              GestureDetector(
-                onTap: () => showHomeLayoutSheet(context),
-                child: Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: isDark
-                        ? Colors.white.withValues(alpha: 0.08)
-                        : Colors.black.withValues(alpha: 0.05),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    Icons.dashboard_customize_rounded,
-                    size: 18,
-                    color: isDark ? Colors.white60 : Colors.black45,
-                  ),
-                ),
-              ),
-              if (playlists.length > 5) ...[
-                const SizedBox(width: 12),
+              if (playlists.length > 5)
                 GestureDetector(
                   onTap: onMoreTap,
                   child: Text(
@@ -611,7 +589,6 @@ class _PlaylistsSection extends ConsumerWidget {
                     ),
                   ),
                 ),
-              ],
             ],
           ),
         ),

@@ -136,10 +136,10 @@ final allCachedItemsProvider = FutureProvider<List<CachedMediaItem>>((ref) async
     ...results[0],
     ...results[1],
     ...results[2],
-  ];
+  ]
 
   // 按媒体类型和时间排序
-  allItems.sort((a, b) {
+  ..sort((a, b) {
     // 先按媒体类型分组
     if (a.mediaType != b.mediaType) {
       return a.mediaType.index.compareTo(b.mediaType.index);

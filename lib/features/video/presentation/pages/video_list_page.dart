@@ -709,11 +709,11 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
         _db.getStats(enabledPaths: enabledPaths),
         _db.getTvShowGroupCount(enabledPaths: enabledPaths),
       ]);
-      
+
       final allVideos = phase1Results[0] as List<VideoMetadata>;
       final stats = phase1Results[1] as Map<String, dynamic>;
       final tvShowGroupCount = phase1Results[2] as int;
-      
+
       stopwatch.stop();
       logger.i('VideoListNotifier: 阶段1完成 - 快速加载 ${allVideos.length} 个视频，耗时 ${stopwatch.elapsedMilliseconds}ms');
 
@@ -7896,7 +7896,7 @@ class _MovieCollectionPage extends ConsumerWidget {
                   ),
                 ],
               )
-            : Container(
+            : DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,

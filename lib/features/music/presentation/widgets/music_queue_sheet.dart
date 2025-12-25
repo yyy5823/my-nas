@@ -201,7 +201,7 @@ class MusicQueueSheet extends ConsumerWidget {
               color: AppColors.primary.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: const Icon(
+            child: Icon(
               Icons.equalizer_rounded,
               color: AppColors.primary,
               size: 20,

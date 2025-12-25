@@ -302,7 +302,7 @@ class _NasToolDetailPageState extends ConsumerState<NasToolDetailPage>
                 color: AppColors.primary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(Icons.info_outline, color: AppColors.primary),
+              child: Icon(Icons.info_outline, color: AppColors.primary),
             ),
             const SizedBox(width: 12),
             const Text('系统信息'),
@@ -815,7 +815,7 @@ class _DownloadsTab extends ConsumerWidget {
                 color: AppColors.primary.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.download_done, size: 48, color: AppColors.primary),
+              child: Icon(Icons.download_done, size: 48, color: AppColors.primary),
             ),
             const SizedBox(height: 24),
             Text(
@@ -1222,7 +1222,7 @@ class _SearchTabState extends ConsumerState<_SearchTab> {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: AppColors.primary, width: 2),
+                  borderSide: BorderSide(color: AppColors.primary, width: 2),
                 ),
               ),
               onSubmitted: (_) => _search(),
@@ -1352,7 +1352,7 @@ class _SearchResultTile extends ConsumerWidget {
                 // 下载按钮
                 if (result.enclosure != null)
                   IconButton(
-                    icon: const Icon(Icons.download, color: AppColors.primary),
+                    icon: Icon(Icons.download, color: AppColors.primary),
                     onPressed: () => _download(context, ref),
                     tooltip: '下载',
                   ),
@@ -1384,7 +1384,7 @@ class _SearchResultTile extends ConsumerWidget {
                       ),
                       child: Text(
                         result.resolution!,
-                        style: const TextStyle(fontSize: 11, color: AppColors.primary),
+                        style: TextStyle(fontSize: 11, color: AppColors.primary),
                       ),
                     ),
                   ],

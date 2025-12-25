@@ -316,7 +316,7 @@ class _TransmissionDetailPageState extends ConsumerState<TransmissionDetailPage>
                 color: AppColors.primary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(Icons.info_outline, color: AppColors.primary),
+              child: Icon(Icons.info_outline, color: AppColors.primary),
             ),
             const SizedBox(width: 12),
             const Text('版本信息'),
@@ -537,7 +537,7 @@ class _TorrentList extends ConsumerWidget {
               color: AppColors.primary.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(50),
             ),
-            child: const Icon(Icons.download_rounded, size: 48, color: AppColors.primary),
+            child: Icon(Icons.download_rounded, size: 48, color: AppColors.primary),
           ),
           const SizedBox(height: 24),
           Text('暂无下载任务', style: context.textTheme.titleMedium),
@@ -655,7 +655,7 @@ class _TorrentTile extends ConsumerWidget {
                   ],
                   // 上传速度
                   if (torrent.rateUpload > 0) ...[
-                    const Icon(Icons.arrow_upward, size: 14, color: AppColors.primary),
+                    Icon(Icons.arrow_upward, size: 14, color: AppColors.primary),
                     const SizedBox(width: 2),
                     Text(
                       _formatSpeed(torrent.rateUpload),
@@ -669,7 +669,7 @@ class _TorrentTile extends ConsumerWidget {
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    const Icon(Icons.cloud_upload_outlined, size: 14, color: AppColors.primary),
+                    Icon(Icons.cloud_upload_outlined, size: 14, color: AppColors.primary),
                     const SizedBox(width: 4),
                     Text(
                       '已上传: ${_formatSize(torrent.uploadedEver!)}',
@@ -1092,7 +1092,7 @@ class _SortOptionsSheet extends ConsumerWidget {
                   return ListTile(
                     leading: Icon(_getSortIcon(mode), color: isSelected ? AppColors.primary : null),
                     title: Text(mode.label),
-                    trailing: isSelected ? const Icon(Icons.check, color: AppColors.primary) : null,
+                    trailing: isSelected ? Icon(Icons.check, color: AppColors.primary) : null,
                     selected: isSelected,
                     onTap: () {
                       ref.read(transmissionSortSettingsProvider(sourceId).notifier).setSortMode(mode);
@@ -1183,7 +1183,7 @@ class _AddTorrentDialogState extends ConsumerState<_AddTorrentDialog> {
                         color: AppColors.primary.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Icon(Icons.add_link, color: AppColors.primary, size: 20),
+                      child: Icon(Icons.add_link, color: AppColors.primary, size: 20),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -1251,7 +1251,7 @@ class _AddTorrentDialogState extends ConsumerState<_AddTorrentDialog> {
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: AppColors.primary, width: 2),
+                          borderSide: BorderSide(color: AppColors.primary, width: 2),
                         ),
                         contentPadding: const EdgeInsets.all(16),
                         suffixIcon: _controller.text.isNotEmpty

@@ -681,7 +681,7 @@ class VideoFileNameInfo {
 
   /// 是否是杜比视界
   bool get isDolbyVision =>
-      hdrFormat?.toUpperCase().contains('DOLBY') == true ||
+      (hdrFormat?.toUpperCase().contains('DOLBY') ?? false) ||
       hdrFormat?.toUpperCase() == 'DV';
 
   /// 是否是高清 (1080p+)
@@ -692,8 +692,8 @@ class VideoFileNameInfo {
 
   /// 是否是蓝光
   bool get isBluRay =>
-      source?.toUpperCase().contains('BLU') == true ||
-      source?.toUpperCase().contains('BD') == true ||
+      (source?.toUpperCase().contains('BLU') ?? false) ||
+      (source?.toUpperCase().contains('BD') ?? false) ||
       isRemux;
 }
 

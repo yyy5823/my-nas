@@ -80,7 +80,7 @@ class _NasToolMainPageState extends ConsumerState<NasToolMainPage> {
                     width: 36,
                     height: 36,
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(
+                      gradient: LinearGradient(
                         colors: [AppColors.primary, AppColors.primaryLight],
                       ),
                       borderRadius: BorderRadius.circular(10),
@@ -682,7 +682,7 @@ class _SitesContent extends ConsumerWidget {
                       color: AppColors.primary.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Icon(Icons.web, color: AppColors.primary),
+                    child: Icon(Icons.web, color: AppColors.primary),
                   ),
                   title: Text(site.name),
                   subtitle: Text(site.signUrl ?? ''),

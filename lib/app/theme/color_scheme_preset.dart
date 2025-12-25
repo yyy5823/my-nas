@@ -3,6 +3,59 @@ import 'package:flutter/material.dart';
 /// 配色方案预设
 /// 参考成熟软件设计：Infuse, Plex, Spotify, Netflix, Apple TV+, Disney+
 class ColorSchemePreset {
+
+  const ColorSchemePreset({
+    required this.id,
+    required this.name,
+    required this.description,
+    required this.iconName,
+    required this.primary,
+    required this.primaryLight,
+    required this.primaryDark,
+    required this.secondary,
+    required this.secondaryLight,
+    required this.accent,
+    required this.music,
+    required this.video,
+    required this.photo,
+    required this.book,
+    required this.download,
+    required this.subscription,
+    required this.ai,
+    required this.control,
+    required this.darkBackground,
+    required this.darkSurface,
+    required this.darkSurfaceVariant,
+    required this.darkSurfaceElevated,
+    required this.darkOutline,
+  });
+
+  /// 从 JSON 创建
+  factory ColorSchemePreset.fromJson(Map<String, dynamic> json) => ColorSchemePreset(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      description: json['description'] as String,
+      iconName: json['iconName'] as String,
+      primary: Color(json['primary'] as int),
+      primaryLight: Color(json['primaryLight'] as int),
+      primaryDark: Color(json['primaryDark'] as int),
+      secondary: Color(json['secondary'] as int),
+      secondaryLight: Color(json['secondaryLight'] as int),
+      accent: Color(json['accent'] as int),
+      music: Color(json['music'] as int),
+      video: Color(json['video'] as int),
+      photo: Color(json['photo'] as int),
+      book: Color(json['book'] as int),
+      download: Color(json['download'] as int),
+      subscription: Color(json['subscription'] as int),
+      ai: Color(json['ai'] as int),
+      control: Color(json['control'] as int),
+      darkBackground: Color(json['darkBackground'] as int),
+      darkSurface: Color(json['darkSurface'] as int),
+      darkSurfaceVariant: Color(json['darkSurfaceVariant'] as int),
+      darkSurfaceElevated: Color(json['darkSurfaceElevated'] as int),
+      darkOutline: Color(json['darkOutline'] as int),
+    );
   final String id;
   final String name;
   final String description;
@@ -36,61 +89,6 @@ class ColorSchemePreset {
   final Color darkSurfaceVariant;
   final Color darkSurfaceElevated;
   final Color darkOutline;
-
-  const ColorSchemePreset({
-    required this.id,
-    required this.name,
-    required this.description,
-    required this.iconName,
-    required this.primary,
-    required this.primaryLight,
-    required this.primaryDark,
-    required this.secondary,
-    required this.secondaryLight,
-    required this.accent,
-    required this.music,
-    required this.video,
-    required this.photo,
-    required this.book,
-    required this.download,
-    required this.subscription,
-    required this.ai,
-    required this.control,
-    required this.darkBackground,
-    required this.darkSurface,
-    required this.darkSurfaceVariant,
-    required this.darkSurfaceElevated,
-    required this.darkOutline,
-  });
-
-  /// 从 JSON 创建
-  factory ColorSchemePreset.fromJson(Map<String, dynamic> json) {
-    return ColorSchemePreset(
-      id: json['id'] as String,
-      name: json['name'] as String,
-      description: json['description'] as String,
-      iconName: json['iconName'] as String,
-      primary: Color(json['primary'] as int),
-      primaryLight: Color(json['primaryLight'] as int),
-      primaryDark: Color(json['primaryDark'] as int),
-      secondary: Color(json['secondary'] as int),
-      secondaryLight: Color(json['secondaryLight'] as int),
-      accent: Color(json['accent'] as int),
-      music: Color(json['music'] as int),
-      video: Color(json['video'] as int),
-      photo: Color(json['photo'] as int),
-      book: Color(json['book'] as int),
-      download: Color(json['download'] as int),
-      subscription: Color(json['subscription'] as int),
-      ai: Color(json['ai'] as int),
-      control: Color(json['control'] as int),
-      darkBackground: Color(json['darkBackground'] as int),
-      darkSurface: Color(json['darkSurface'] as int),
-      darkSurfaceVariant: Color(json['darkSurfaceVariant'] as int),
-      darkSurfaceElevated: Color(json['darkSurfaceElevated'] as int),
-      darkOutline: Color(json['darkOutline'] as int),
-    );
-  }
 
   /// 转为 JSON
   Map<String, dynamic> toJson() => {

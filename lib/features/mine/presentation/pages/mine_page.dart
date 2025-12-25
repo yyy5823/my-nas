@@ -759,8 +759,7 @@ class MinePage extends ConsumerWidget {
     ColorSchemePreset preset,
     bool isSelected,
     bool isDark,
-  ) {
-    return Material(
+  ) => Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: () {
@@ -850,7 +849,6 @@ class MinePage extends ConsumerWidget {
         ),
       ),
     );
-  }
 
   Widget _buildColorDot(Color color, double size) => Container(
         width: size,

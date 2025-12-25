@@ -23,6 +23,7 @@ import 'package:my_nas/features/music/presentation/pages/playlist_detail_page.da
 import 'package:my_nas/features/music/presentation/providers/music_favorites_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/playlist_provider.dart';
+import 'package:my_nas/features/music/presentation/widgets/home_layout_sheet.dart';
 import 'package:my_nas/features/music/presentation/widgets/mini_player.dart';
 import 'package:my_nas/features/music/presentation/widgets/music_queue_sheet.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
@@ -1702,6 +1703,16 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            ListTile(
+              leading: const Icon(Icons.dashboard_customize_rounded),
+              title: const Text('首页布局'),
+              subtitle: const Text('自定义首页内容展示顺序'),
+              onTap: () {
+                Navigator.pop(context);
+                showHomeLayoutSheet(context);
+              },
+            ),
+            const Divider(height: 1),
             ListTile(
               leading: const Icon(Icons.settings_rounded),
               title: const Text('媒体库设置'),
@@ -6287,7 +6298,7 @@ class _ModernMusicTile extends ConsumerWidget {
                           color: AppColors.primary.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: const Icon(
+                        child: Icon(
                           Icons.queue_music_rounded,
                           color: AppColors.primary,
                         ),

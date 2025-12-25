@@ -518,8 +518,7 @@ class SettingsPage extends ConsumerWidget {
     bool isSelected,
     bool isDark,
     VoidCallback onTap,
-  ) {
-    return Material(
+  ) => Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
@@ -608,10 +607,8 @@ class SettingsPage extends ConsumerWidget {
         ),
       ),
     );
-  }
 
-  Widget _buildColorDot(Color color, double size) {
-    return Container(
+  Widget _buildColorDot(Color color, double size) => Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
@@ -630,7 +627,6 @@ class SettingsPage extends ConsumerWidget {
         ],
       ),
     );
-  }
 
   Widget _buildBottomSheet(
     BuildContext context,

@@ -258,7 +258,7 @@ class _TransferManagerPageState extends ConsumerState<TransferManagerPage>
       ),
     );
 
-    if (confirmed == true && mounted) {
+    if ((confirmed ?? false) && mounted) {
       await _handleClearAllCache(null);
     }
   }

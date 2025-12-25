@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:my_nas/core/errors/errors.dart';
@@ -295,22 +296,29 @@ class MusicScraperManagerService {
     final scrapers = await getEnabledScrapers();
     final results = <MusicScraperSearchResult>[];
 
+    debugPrint('[MusicScraperManager] search: query=$query, artist=$artist, album=$album');
+    debugPrint('[MusicScraperManager] Enabled scrapers: ${scrapers.map((s) => s.$1.type.name).join(', ')}');
+
     for (final (source, scraper) in scrapers) {
       try {
+        debugPrint('[MusicScraperManager] Searching with ${source.type.name}...');
         final result = await scraper.search(
           query,
           artist: artist,
           album: album,
           limit: limit,
         );
+        debugPrint('[MusicScraperManager] ${source.type.name}: found ${result.items.length} results');
         if (result.isNotEmpty) {
           results.add(result);
         }
       } on Exception catch (e, st) {
+        debugPrint('[MusicScraperManager] ${source.type.name} search failed: $e');
         AppError.ignore(e, st, '搜索失败: ${source.type}');
       }
     }
 
+    debugPrint('[MusicScraperManager] Total results from ${results.length} sources');
     return results;
   }
 

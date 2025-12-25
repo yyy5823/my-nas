@@ -74,7 +74,7 @@ class DownloadManagerSheet extends ConsumerWidget {
                           color: AppColors.primary.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: const Icon(
+                        child: Icon(
                           Icons.download_rounded,
                           color: AppColors.primary,
                           size: 20,

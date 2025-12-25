@@ -126,7 +126,7 @@ class _StartupPageState extends ConsumerState<StartupPage> {
 
                 // App name
                 ShaderMask(
-                  shaderCallback: (bounds) => const LinearGradient(
+                  shaderCallback: (bounds) => LinearGradient(
                     colors: [AppColors.primaryLight, AppColors.accentLight],
                   ).createShader(bounds),
                   child: Text(

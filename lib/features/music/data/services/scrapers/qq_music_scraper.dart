@@ -28,21 +28,18 @@ class QQMusicScraper implements MusicScraper {
         if (cookie != null && cookie!.isNotEmpty) 'Cookie': cookie,
       },
     ));
-    
+
     // QQ音乐可能使用腾讯云 CDN，可能存在证书域名不匹配问题
     // 仅针对 QQ 音乐的请求跳过 SSL 验证
     // Web 平台使用浏览器的 HTTP 实现，不需要此配置
     if (!kIsWeb) {
       _dio.httpClientAdapter = IOHttpClientAdapter(
         createHttpClient: () {
-          final client = HttpClient();
-          client.badCertificateCallback = (cert, host, port) {
-            // 仅信任 QQ 音乐相关域名
-            return host.endsWith('.qq.com') || 
+          final client = HttpClient()
+          ..badCertificateCallback = (cert, host, port) => host.endsWith('.qq.com') ||
                    host.endsWith('.myqcloud.com') ||
                    host == 'y.qq.com' ||
                    host == 'c.y.qq.com';
-          };
           return client;
         },
       );
@@ -400,7 +397,7 @@ class QQMusicScraper implements MusicScraper {
     final statusMessage = e.response?.statusMessage;
     final responseData = e.response?.data;
     final requestUrl = e.requestOptions.uri.toString();
-    
+
     // 记录详细日志
     debugPrint('[QQMusicScraper] DioException: ${e.type}');
     debugPrint('[QQMusicScraper] Request URL: $requestUrl');
@@ -408,7 +405,7 @@ class QQMusicScraper implements MusicScraper {
     debugPrint('[QQMusicScraper] Response: $responseData');
     debugPrint('[QQMusicScraper] Error: ${e.error}');
     debugPrint('[QQMusicScraper] Message: ${e.message}');
-    
+
     if (statusCode == 401 || statusCode == 403) {
       return MusicScraperAuthException(
         'Cookie 无效或已过期',
@@ -423,7 +420,7 @@ class QQMusicScraper implements MusicScraper {
         cause: e,
       );
     }
-    
+
     if (e.type == DioExceptionType.connectionTimeout ||
         e.type == DioExceptionType.receiveTimeout ||
         e.type == DioExceptionType.connectionError) {
@@ -434,7 +431,7 @@ class QQMusicScraper implements MusicScraper {
         cause: e,
       );
     }
-    
+
     // 构建更详细的错误信息
     String errorMessage;
     if (statusCode != null) {
@@ -452,7 +449,7 @@ class QQMusicScraper implements MusicScraper {
     } else {
       errorMessage = e.message ?? e.error?.toString() ?? '未知错误 (${e.type.name})';
     }
-    
+
     return MusicScraperException(
       errorMessage,
       source: type,

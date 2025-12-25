@@ -387,7 +387,7 @@ class _PTSiteDetailPageState extends ConsumerState<PTSiteDetailPage> {
                               color: AppColors.primary.withValues(alpha: 0.12),
                               borderRadius: BorderRadius.circular(10),
                             ),
-                            child: const Icon(
+                            child: Icon(
                               Icons.tune,
                               color: AppColors.primary,
                               size: 18,
@@ -435,7 +435,7 @@ class _PTSiteDetailPageState extends ConsumerState<PTSiteDetailPage> {
                               ),
                             ),
                             trailing: currentState.category == null
-                                ? const Icon(Icons.check, color: AppColors.primary, size: 20)
+                                ? Icon(Icons.check, color: AppColors.primary, size: 20)
                                 : null,
                             onTap: () {
                               ref
@@ -477,7 +477,7 @@ class _PTSiteDetailPageState extends ConsumerState<PTSiteDetailPage> {
                                     ),
                                   ),
                                   trailing: isSelected
-                                      ? const Icon(Icons.check, color: AppColors.primary, size: 20)
+                                      ? Icon(Icons.check, color: AppColors.primary, size: 20)
                                       : null,
                                   onTap: () {
                                     ref
@@ -560,7 +560,7 @@ class _PTSiteDetailPageState extends ConsumerState<PTSiteDetailPage> {
                               color: AppColors.primary.withValues(alpha: 0.12),
                               borderRadius: BorderRadius.circular(10),
                             ),
-                            child: const Icon(
+                            child: Icon(
                               Icons.swap_vert,
                               color: AppColors.primary,
                               size: 18,
@@ -635,7 +635,7 @@ class _PTSiteDetailPageState extends ConsumerState<PTSiteDetailPage> {
                               ),
                             ),
                             trailing: isSelected
-                                ? const Icon(Icons.check, color: AppColors.primary, size: 20)
+                                ? Icon(Icons.check, color: AppColors.primary, size: 20)
                                 : null,
                             onTap: () {
                               ref
@@ -710,7 +710,7 @@ class _PTSiteDetailPageState extends ConsumerState<PTSiteDetailPage> {
                               color: AppColors.primary.withValues(alpha: 0.12),
                               borderRadius: BorderRadius.circular(10),
                             ),
-                            child: const Icon(
+                            child: Icon(
                               Icons.person,
                               color: AppColors.primary,
                               size: 18,
@@ -748,7 +748,7 @@ class _PTSiteDetailPageState extends ConsumerState<PTSiteDetailPage> {
                                     userInfo.username.isNotEmpty
                                         ? userInfo.username[0].toUpperCase()
                                         : '?',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 24,
                                       fontWeight: FontWeight.bold,
                                       color: AppColors.primary,
@@ -780,7 +780,7 @@ class _PTSiteDetailPageState extends ConsumerState<PTSiteDetailPage> {
                                         ),
                                         child: Text(
                                           userInfo.userClass!,
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                             color: AppColors.primary,
                                             fontWeight: FontWeight.w500,
                                             fontSize: 12,
@@ -1381,7 +1381,7 @@ class _TransferStatsSheetState extends ConsumerState<_TransferStatsSheet> {
                           color: AppColors.primary.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        child: const Icon(
+                        child: Icon(
                           Icons.cloud_sync,
                           color: AppColors.primary,
                           size: 18,

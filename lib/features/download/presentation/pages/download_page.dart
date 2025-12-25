@@ -209,7 +209,7 @@ class DownloadPage extends ConsumerWidget {
               color: AppColors.primary.withValues(alpha: 0.1),
               shape: BoxShape.circle,
             ),
-            child: const Icon(
+            child: Icon(
               Icons.download_done_rounded,
               size: 48,
               color: AppColors.primary,

@@ -1,27 +1,96 @@
 import 'package:flutter/material.dart';
+import 'package:my_nas/app/theme/color_scheme_preset.dart';
 
+/// 应用颜色配置
+/// 支持动态配色方案切换
 abstract final class AppColors {
-  // Primary colors - Teal 青色 (清新现代风格)
-  static const Color primary = Color(0xFF14B8A6);
-  static const Color primaryLight = Color(0xFF2DD4BF);
-  static const Color primaryDark = Color(0xFF0D9488);
+  /// 当前配色方案 - 由 Provider 在应用启动时设置
+  static ColorSchemePreset _currentPreset = ColorSchemePresets.defaultPreset;
 
-  // Accent colors - Cyan 青蓝色
-  static const Color accent = Color(0xFF06B6D4);
-  static const Color accentLight = Color(0xFF22D3EE);
-  static const Color accentDark = Color(0xFF0891B2);
+  /// 获取当前配色方案
+  static ColorSchemePreset get currentPreset => _currentPreset;
 
-  // Secondary colors (Cyan) - 与主色协调
-  static const Color secondary = Color(0xFF06B6D4);
-  static const Color secondaryLight = Color(0xFF22D3EE);
-  static const Color secondaryDark = Color(0xFF0891B2);
+  /// 设置当前配色方案（由 Provider 调用）
+  static void setPreset(ColorSchemePreset preset) {
+    _currentPreset = preset;
+  }
+
+  // ============ 动态主题色（根据配色方案变化）============
+
+  /// 主色
+  static Color get primary => _currentPreset.primary;
+  static Color get primaryLight => _currentPreset.primaryLight;
+  static Color get primaryDark => _currentPreset.primaryDark;
+
+  /// 次要色
+  static Color get secondary => _currentPreset.secondary;
+  static Color get secondaryLight => _currentPreset.secondaryLight;
+
+  /// 强调色
+  static Color get accent => _currentPreset.accent;
+
+  /// 渐变色 - 动态
+  static LinearGradient get primaryGradient => LinearGradient(
+        colors: [primary, secondary],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      );
+
+  static LinearGradient get accentGradient => LinearGradient(
+        colors: [accent, primary],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      );
+
+  // ============ 动态深色背景（根据配色方案变化）============
+
+  static Color get darkBackground => _currentPreset.darkBackground;
+  static Color get darkSurface => _currentPreset.darkSurface;
+  static Color get darkSurfaceVariant => _currentPreset.darkSurfaceVariant;
+  static Color get darkSurfaceElevated => _currentPreset.darkSurfaceElevated;
+  static Color get darkOutline => _currentPreset.darkOutline;
+  static Color get darkOutlineVariant => _currentPreset.darkSurfaceElevated;
+
+  static LinearGradient get darkGradient => LinearGradient(
+        colors: [darkSurface, darkBackground],
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+      );
+
+  // ============ 功能性颜色（根据配色方案变化）============
+
+  /// 音乐类型颜色
+  static Color get musicColor => _currentPreset.music;
+
+  /// 视频类型颜色
+  static Color get videoColor => _currentPreset.video;
+
+  /// 照片类型颜色
+  static Color get photoColor => _currentPreset.photo;
+
+  /// 图书类型颜色
+  static Color get bookColor => _currentPreset.book;
+
+  /// 下载颜色
+  static Color get downloadColor => _currentPreset.download;
+
+  /// 订阅颜色
+  static Color get subscriptionColor => _currentPreset.subscription;
+
+  /// AI 功能颜色
+  static Color get aiColor => _currentPreset.ai;
+
+  /// 控制设置颜色
+  static Color get controlColor => _currentPreset.control;
+
+  // ============ 静态颜色（不随配色方案变化）============
 
   // Tertiary colors (Amber) - 暖色点缀
   static const Color tertiary = Color(0xFFF59E0B);
   static const Color tertiaryLight = Color(0xFFFBBF24);
   static const Color tertiaryDark = Color(0xFFD97706);
 
-  // Neutral colors - Light
+  // 浅色模式背景（固定）
   static const Color lightBackground = Color(0xFFF8FAFC);
   static const Color lightSurface = Color(0xFFFFFFFF);
   static const Color lightSurfaceVariant = Color(0xFFF1F5F9);
@@ -30,17 +99,11 @@ abstract final class AppColors {
   static const Color lightOutline = Color(0xFFCBD5E1);
   static const Color lightOutlineVariant = Color(0xFFE2E8F0);
 
-  // Neutral colors - Dark (中性深灰主题 - 类似 Apple TV+/Infuse)
-  static const Color darkBackground = Color(0xFF0D0D0D);
-  static const Color darkSurface = Color(0xFF1A1A1A);
-  static const Color darkSurfaceVariant = Color(0xFF242424);
-  static const Color darkSurfaceElevated = Color(0xFF2C2C2C);
+  // 深色模式文字颜色（固定）
   static const Color darkOnSurface = Color(0xFFF1F5F9);
   static const Color darkOnSurfaceVariant = Color(0xFF9CA3AF);
-  static const Color darkOutline = Color(0xFF3D3D3D);
-  static const Color darkOutlineVariant = Color(0xFF2C2C2C);
 
-  // Semantic colors
+  // 语义化颜色（固定）
   static const Color error = Color(0xFFEF4444);
   static const Color errorLight = Color(0xFFFCA5A5);
   static const Color errorDark = Color(0xFFDC2626);
@@ -57,32 +120,12 @@ abstract final class AppColors {
   static const Color infoLight = Color(0xFF93C5FD);
   static const Color infoDark = Color(0xFF2563EB);
 
-  // 渐变色 - Teal/Cyan 青色渐变
-  static const LinearGradient primaryGradient = LinearGradient(
-    colors: [primary, secondary],
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-  );
-
-  static const LinearGradient accentGradient = LinearGradient(
-    colors: [accent, primary],
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-  );
-
-  // 深色渐变 - 纯灰色
-  static const LinearGradient darkGradient = LinearGradient(
-    colors: [Color(0xFF1A1A1A), Color(0xFF0D0D0D)],
-    begin: Alignment.topCenter,
-    end: Alignment.bottomCenter,
-  );
-
-  // 玻璃效果颜色
+  // 玻璃效果颜色（固定）
   static const Color glassLight = Color(0x1AFFFFFF);
   static const Color glassDark = Color(0x1A000000);
   static const Color glassStroke = Color(0x33FFFFFF);
 
-  // 文件类型颜色
+  // 文件类型颜色（固定）
   static const Color fileFolder = Color(0xFFFBBF24);
   static const Color fileImage = Color(0xFF10B981);
   static const Color fileVideo = Color(0xFFEC4899);
@@ -91,4 +134,11 @@ abstract final class AppColors {
   static const Color fileArchive = Color(0xFFF59E0B);
   static const Color fileCode = Color(0xFF06B6D4);
   static const Color fileOther = Color(0xFF64748B);
+
+  // ============ 兼容性：静态默认颜色（用于 const 上下文）============
+  // 这些颜色用于需要 const 的地方，不会随配色方案变化
+
+  static const Color accentLight = Color(0xFF22D3EE);
+  static const Color accentDark = Color(0xFF0891B2);
+  static const Color secondaryDark = Color(0xFF0891B2);
 }

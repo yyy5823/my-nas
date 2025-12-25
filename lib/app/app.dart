@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:my_nas/app/router/app_router.dart';
+import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_theme.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/services/background_task_service.dart';
@@ -176,6 +177,9 @@ class _MyNasAppState extends ConsumerState<MyNasApp> with WidgetsBindingObserver
 
     final themeMode = ref.watch(themeModeProvider);
     final colorPreset = ref.watch(colorSchemePresetProvider);
+
+    // 同步更新 AppColors 的静态配色方案
+    AppColors.setPreset(colorPreset);
 
     return MaterialApp.router(
       title: 'MyNAS',

@@ -222,7 +222,7 @@ class _TransferSheet extends ConsumerWidget {
           ],
         ),
       );
-      if (confirmed == true) {
+      if (confirmed ?? false) {
         await notifier.clearAllCache();
       }
     } else if (type == TransferSheetType.download) {
