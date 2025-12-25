@@ -634,7 +634,12 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
     List<MusicScraperItem> items,
     ThemeData theme,
     bool isDark,
-  ) => Column(
+  ) {
+    const displayLimit = 5;
+    final displayItems = items.take(displayLimit).toList();
+    final hasMore = items.length > displayLimit;
+
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // 来源标签
@@ -659,20 +664,56 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
-                  '${items.length} 个结果',
+                  hasMore
+                      ? '显示 ${displayItems.length}/${items.length}'
+                      : '${items.length} 个结果',
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: source.themeColor,
                   ),
                 ),
               ),
+              // 歌词支持指示器（仅表示来源支持词，不保证每首歌都有）
+              if (source.supportsLyrics) ...[
+                const SizedBox(width: 6),
+                Tooltip(
+                  message: '此来源支持获取歌词',
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: (isDark ? Colors.cyan[300] : Colors.cyan[700])!
+                          .withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.lyrics_rounded,
+                          size: 12,
+                          color: isDark ? Colors.cyan[300] : Colors.cyan[700],
+                        ),
+                        const SizedBox(width: 2),
+                        Text(
+                          '词',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: isDark ? Colors.cyan[300] : Colors.cyan[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
         // 结果列表
-        ...items.take(5).map((item) => _buildSearchResultItem(item, theme, isDark)),
+        ...displayItems.map((item) => _buildSearchResultItem(item, theme, isDark)),
         const SizedBox(height: 16),
       ],
     );
+  }
 
   Widget _buildSearchResultItem(MusicScraperItem item, ThemeData theme, bool isDark) => Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -699,30 +740,15 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        subtitle: Row(
-          children: [
-            // 歌词指示器
-            if (item.source.supportsLyrics) ...[
-              Icon(
-                Icons.lyrics_rounded,
-                size: 14,
-                color: isDark ? Colors.cyan[300] : Colors.cyan[700],
-              ),
-              const SizedBox(width: 4),
-            ],
-            Expanded(
-              child: Text(
-                [
-                  if (item.artist != null) item.artist,
-                  if (item.album != null) item.album,
-                  if (item.durationText.isNotEmpty) item.durationText,
-                ].join(' · '),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall,
-              ),
-            ),
-          ],
+        subtitle: Text(
+          [
+            if (item.artist != null) item.artist,
+            if (item.album != null) item.album,
+            if (item.durationText.isNotEmpty) item.durationText,
+          ].join(' · '),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.bodySmall,
         ),
         trailing: item.score != null
             ? Container(

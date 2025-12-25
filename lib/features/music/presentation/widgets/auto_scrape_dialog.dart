@@ -589,6 +589,9 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
           ],
         ),
       ),
+      // 将按钮包裹在 OverflowBar 中以自动处理溢出
+      actionsOverflowButtonSpacing: 8,
+      actionsAlignment: MainAxisAlignment.end,
       actions: _buildActions(isDark),
     );
   }
@@ -761,6 +764,14 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
             '元数据',
             '${_detail!.title} - ${_detail!.artist ?? "未知"}',
             source: _detail!.source,
+            // 显示来源是否支持歌词
+            badge: _detail!.source.supportsLyrics
+                ? Icon(
+                    Icons.lyrics_rounded,
+                    size: 12,
+                    color: isDark ? Colors.cyan[300] : Colors.cyan[700],
+                  )
+                : null,
           ),
 
         // 封面
@@ -858,6 +869,7 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
     String value, {
     MusicScraperType? source,
     Widget? trailing,
+    Widget? badge,
   }) => Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -872,13 +884,21 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: isDark ? Colors.grey[300] : Colors.grey[700],
-                  ),
+                Row(
+                  children: [
+                    Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: isDark ? Colors.grey[300] : Colors.grey[700],
+                      ),
+                    ),
+                    if (badge != null) ...[
+                      const SizedBox(width: 4),
+                      badge,
+                    ],
+                  ],
                 ),
                 Text(
                   value,
@@ -921,17 +941,30 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
         return [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
             child: const Text('取消'),
           ),
-          // 允许用户进入手动搜索以精确查找
-          TextButton.icon(
+          TextButton(
             onPressed: _openManualScraper,
-            icon: const Icon(Icons.search, size: 18),
-            label: const Text('手动搜索'),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: const Text('手动'),
           ),
           if (hasAction && widget.fileSystem != null)
             FilledButton(
               onPressed: _downloadFiles,
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
               child: Text(hasWritable ? '应用' : '下载'),
             ),
         ];
