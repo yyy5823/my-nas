@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
+import 'package:my_nas/app/theme/color_scheme_preset.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/downloader/presentation/pages/downloader_list_page.dart';
 import 'package:my_nas/features/media_management/presentation/pages/media_management_list_page.dart';
@@ -34,6 +35,7 @@ class MinePage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeModeProvider);
+    final colorPreset = ref.watch(colorSchemePresetProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final connections = ref.watch(activeConnectionsProvider);
     final connectedCount = connections.values
@@ -144,10 +146,20 @@ class MinePage extends ConsumerWidget {
                       context,
                       isDark,
                       icon: Icons.brightness_6_rounded,
-                      iconColor: AppColors.primary,
+                      iconColor: Theme.of(context).colorScheme.primary,
                       title: '主题模式',
                       subtitle: _getThemeModeText(themeMode),
                       onTap: () => _showThemeModeDialog(context, ref, themeMode, isDark),
+                    ),
+                    _buildDivider(isDark),
+                    _buildSettingsTile(
+                      context,
+                      isDark,
+                      icon: Icons.color_lens_rounded,
+                      iconColor: Theme.of(context).colorScheme.primary,
+                      title: '配色方案',
+                      subtitle: colorPreset.name,
+                      onTap: () => _showColorSchemeDialog(context, ref, colorPreset, isDark),
                     ),
                   ],
                 ),
@@ -658,6 +670,207 @@ class MinePage extends ConsumerWidget {
       ),
     );
   }
+
+  void _showColorSchemeDialog(
+    BuildContext context,
+    WidgetRef ref,
+    ColorSchemePreset currentPreset,
+    bool isDark,
+  ) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        minChildSize: 0.5,
+        maxChildSize: 0.9,
+        builder: (context, scrollController) => ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: isDark
+                    ? AppColors.darkSurface.withValues(alpha: 0.95)
+                    : AppColors.lightSurface.withValues(alpha: 0.98),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    margin: const EdgeInsets.only(top: 12),
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.3)
+                          : AppColors.lightOnSurfaceVariant.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(AppSpacing.lg),
+                    child: Text(
+                      '选择配色方案',
+                      style: context.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: GridView.builder(
+                      controller: scrollController,
+                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        childAspectRatio: 1.3,
+                        crossAxisSpacing: AppSpacing.md,
+                        mainAxisSpacing: AppSpacing.md,
+                      ),
+                      itemCount: ColorSchemePresets.all.length,
+                      itemBuilder: (context, index) {
+                        final preset = ColorSchemePresets.all[index];
+                        final isSelected = currentPreset.id == preset.id;
+                        return _buildColorSchemeCard(
+                          context,
+                          ref,
+                          preset,
+                          isSelected,
+                          isDark,
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildColorSchemeCard(
+    BuildContext context,
+    WidgetRef ref,
+    ColorSchemePreset preset,
+    bool isSelected,
+    bool isDark,
+  ) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          ref.read(colorSchemePresetProvider.notifier).setPreset(preset);
+          Navigator.pop(context);
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          decoration: BoxDecoration(
+            color: isDark
+                ? AppColors.darkSurfaceVariant.withValues(alpha: 0.5)
+                : AppColors.lightSurfaceVariant.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isSelected ? preset.primary : Colors.transparent,
+              width: 2,
+            ),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // 颜色预览圆点
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _buildColorDot(preset.primary, 20),
+                  const SizedBox(width: 6),
+                  _buildColorDot(preset.secondary, 16),
+                  const SizedBox(width: 6),
+                  _buildColorDot(preset.accent, 14),
+                  const SizedBox(width: 6),
+                  _buildColorDot(preset.darkBackground, 12),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                preset.name,
+                style: context.textTheme.titleSmall?.copyWith(
+                  color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+                child: Text(
+                  preset.description,
+                  style: context.textTheme.bodySmall?.copyWith(
+                    color: isDark
+                        ? AppColors.darkOnSurfaceVariant
+                        : AppColors.lightOnSurfaceVariant,
+                    fontSize: 10,
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (isSelected) ...[
+                const SizedBox(height: AppSpacing.xs),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: preset.primary.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.check_rounded, size: 12, color: preset.primary),
+                      const SizedBox(width: 2),
+                      Text(
+                        '当前',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: preset.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildColorDot(Color color, double size) => Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.2),
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: color.withValues(alpha: 0.3),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+      );
 }
 
 /// 版本号组件

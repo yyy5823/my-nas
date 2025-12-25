@@ -176,7 +176,10 @@ class MusicBrainzScraper implements MusicScraper {
           final releases =
               (data['releases'] as List?)?.cast<Map<String, dynamic>>();
           if (releases != null && releases.isNotEmpty) {
-            releaseId = releases.first['id'] as String;
+            final firstReleaseId = releases.first['id'] as String?;
+            if (firstReleaseId != null && firstReleaseId.isNotEmpty) {
+              releaseId = firstReleaseId;
+            }
           }
         }
       } on DioException {
@@ -264,7 +267,7 @@ class MusicBrainzScraper implements MusicScraper {
 
   /// 解析 Recording 搜索结果
   MusicScraperItem _parseRecording(Map<String, dynamic> data) {
-    final id = data['id'] as String;
+    final id = data['id'] as String? ?? '';
     final title = data['title'] as String? ?? '';
 
     // 艺术家
@@ -312,7 +315,7 @@ class MusicBrainzScraper implements MusicScraper {
 
   /// 解析 Recording 详情
   MusicScraperDetail _parseRecordingDetail(Map<String, dynamic> data) {
-    final id = data['id'] as String;
+    final id = data['id'] as String? ?? '';
     final title = data['title'] as String? ?? '';
 
     // 艺术家
@@ -390,7 +393,9 @@ class MusicBrainzScraper implements MusicScraper {
 
     // 流派
     final genres = (data['genres'] as List?)?.cast<Map<String, dynamic>>()
-        .map((g) => g['name'] as String)
+        .map((g) => g['name'] as String?)
+        .where((name) => name != null && name.isNotEmpty)
+        .cast<String>()
         .toList();
 
     // ISRC

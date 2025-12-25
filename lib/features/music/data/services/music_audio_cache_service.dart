@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/sources/domain/entities/media_library.dart';
+import 'package:my_nas/features/transfer/domain/entities/transfer_task.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -256,4 +258,73 @@ class MusicAudioCacheService {
 
   /// 获取缓存目录路径
   String? get cacheDirectory => _cacheDir;
+
+  /// 获取所有缓存项列表
+  /// 注意：由于使用哈希值存储，无法恢复原始路径，只返回文件信息
+  Future<List<CachedMediaItem>> getCachedItems() async {
+    if (!_initialized) await init();
+
+    final items = <CachedMediaItem>[];
+    try {
+      final dir = Directory(_cacheDir!);
+      if (!await dir.exists()) return items;
+
+      var index = 0;
+      await for (final entity in dir.list()) {
+        if (entity is File &&
+            !entity.path.endsWith('.part') &&
+            !entity.path.endsWith('.mime')) {
+          index++;
+          final stat = await entity.stat();
+          final extension = p.extension(entity.path).toLowerCase();
+
+          items.add(CachedMediaItem(
+            sourceId: 'music_audio_cache',
+            sourcePath: entity.path,
+            mediaType: MediaType.music,
+            fileName: '音乐缓存 $index$extension',
+            fileSize: stat.size,
+            cachePath: entity.path,
+            cachedAt: stat.modified,
+            lastAccessed: stat.accessed,
+          ));
+        }
+      }
+
+      // 按访问时间排序（最新的在前）
+      items.sort((a, b) {
+        final timeA = a.lastAccessed ?? a.cachedAt;
+        final timeB = b.lastAccessed ?? b.cachedAt;
+        return timeB.compareTo(timeA);
+      });
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '获取缓存列表失败，非关键功能');
+    }
+    return items;
+  }
+
+  /// 通过缓存路径删除缓存
+  Future<void> deleteCacheByPath(String cachePath) async {
+    if (!_initialized) await init();
+
+    try {
+      final file = File(cachePath);
+      if (await file.exists()) {
+        await file.delete();
+        logger.d('MusicAudioCacheService: 已删除缓存 $cachePath');
+      }
+
+      // 同时删除关联文件
+      final partFile = File('$cachePath.part');
+      if (await partFile.exists()) {
+        await partFile.delete();
+      }
+      final mimeFile = File('$cachePath.mime');
+      if (await mimeFile.exists()) {
+        await mimeFile.delete();
+      }
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '删除缓存失败，非关键功能');
+    }
+  }
 }

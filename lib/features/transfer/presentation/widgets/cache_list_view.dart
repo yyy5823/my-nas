@@ -8,31 +8,53 @@ import 'package:my_nas/features/transfer/presentation/providers/transfer_provide
 class CacheListView extends ConsumerWidget {
   const CacheListView({
     super.key,
-    required this.tasks,
+    required this.activeTasks,
     required this.onDeleteCache,
     required this.onClearAll,
   });
 
-  final List<TransferTask> tasks;
-  final Future<void> Function(TransferTask task) onDeleteCache;
+  /// 正在进行的缓存任务
+  final List<TransferTask> activeTasks;
+
+  /// 删除缓存回调
+  final Future<void> Function(CachedMediaItem item) onDeleteCache;
+
+  /// 清空所有缓存回调
   final VoidCallback onClearAll;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final cachedItemsAsync = ref.watch(allCachedItemsProvider);
 
-    // 分组任务
-    final activeTasks = tasks.where((t) => !t.isCompleted).toList();
-    final completedTasks = tasks.where((t) => t.isCompleted).toList();
+    return cachedItemsAsync.when(
+      data: (cachedItems) => _buildContent(
+        context,
+        ref,
+        cachedItems,
+        theme,
+        colorScheme,
+      ),
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (_, _) => _buildEmptyState(context),
+    );
+  }
 
-    // 按媒体类型分组已完成的缓存
-    final groupedCache = <MediaType, List<TransferTask>>{};
-    for (final task in completedTasks) {
-      groupedCache.putIfAbsent(task.mediaType, () => []).add(task);
+  Widget _buildContent(
+    BuildContext context,
+    WidgetRef ref,
+    List<CachedMediaItem> cachedItems,
+    ThemeData theme,
+    ColorScheme colorScheme,
+  ) {
+    // 按媒体类型分组已缓存的内容
+    final groupedCache = <MediaType, List<CachedMediaItem>>{};
+    for (final item in cachedItems) {
+      groupedCache.putIfAbsent(item.mediaType, () => []).add(item);
     }
 
-    if (tasks.isEmpty) {
+    if (activeTasks.isEmpty && cachedItems.isEmpty) {
       return _buildEmptyState(context);
     }
 
@@ -69,7 +91,7 @@ class CacheListView extends ConsumerWidget {
         ],
 
         // 已缓存的内容
-        if (completedTasks.isNotEmpty) ...[
+        if (cachedItems.isNotEmpty) ...[
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -100,8 +122,8 @@ class CacheListView extends ConsumerWidget {
             SliverList(
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
-                  final task = entry.value[index];
-                  return _buildCachedItem(context, task);
+                  final item = entry.value[index];
+                  return _buildCachedItem(context, item);
                 },
                 childCount: entry.value.length,
               ),
@@ -324,12 +346,12 @@ class CacheListView extends ConsumerWidget {
     );
   }
 
-  Widget _buildCachedItem(BuildContext context, TransferTask task) {
+  Widget _buildCachedItem(BuildContext context, CachedMediaItem item) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
     return Dismissible(
-      key: ValueKey(task.id),
+      key: ValueKey('${item.sourceId}_${item.sourcePath}'),
       direction: DismissDirection.endToStart,
       background: Container(
         alignment: Alignment.centerRight,
@@ -337,21 +359,21 @@ class CacheListView extends ConsumerWidget {
         color: colorScheme.error,
         child: Icon(Icons.delete, color: colorScheme.onError),
       ),
-      onDismissed: (_) => onDeleteCache(task),
+      onDismissed: (_) => onDeleteCache(item),
       child: ListTile(
         leading: Icon(
-          _getMediaTypeIcon(task.mediaType),
+          _getMediaTypeIcon(item.mediaType),
           color: colorScheme.onSurfaceVariant,
         ),
         title: Text(
-          task.fileName,
+          item.displayTitle,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        subtitle: Text(task.fileSizeText),
+        subtitle: Text(item.fileSizeText),
         trailing: IconButton(
           icon: const Icon(Icons.delete_outline),
-          onPressed: () => onDeleteCache(task),
+          onPressed: () => onDeleteCache(item),
         ),
       ),
     );

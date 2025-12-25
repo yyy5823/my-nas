@@ -230,7 +230,18 @@ class SynologyApi {
 
     final data = response['data'] as Map<String, dynamic>;
     final files = data['files'] as List<dynamic>;
-    return FileStationFile.fromJson(files.first as Map<String, dynamic>);
+    final fileJson = files.first as Map<String, dynamic>;
+
+    // 检查文件级别的错误码（如文件不存在）
+    final fileErrorCode = fileJson['code'] as int?;
+    if (fileErrorCode != null) {
+      throw ServerException(
+        message: _getErrorMessage(fileErrorCode),
+        statusCode: fileErrorCode,
+      );
+    }
+
+    return FileStationFile.fromJson(fileJson);
   }
 
   /// 创建文件夹
@@ -863,10 +874,16 @@ class ShareFolder {
     this.isDir = true,
   });
 
-  factory ShareFolder.fromJson(Map<String, dynamic> json) => ShareFolder(
-        name: json['name'] as String,
-        path: json['path'] as String,
-      );
+  factory ShareFolder.fromJson(Map<String, dynamic> json) {
+    final path = json['path'] as String? ?? '';
+    var name = json['name'] as String?;
+    if (name == null || name.isEmpty) {
+      // 从路径中提取名称
+      final lastSlash = path.lastIndexOf('/');
+      name = lastSlash >= 0 ? path.substring(lastSlash + 1) : path;
+    }
+    return ShareFolder(name: name, path: path);
+  }
 
   final String name;
   final String path;
@@ -889,9 +906,20 @@ class FileStationFile {
     final additional = json['additional'] as Map<String, dynamic>? ?? {};
     final time = additional['time'] as Map<String, dynamic>?;
 
+    // 处理 path，可能为 null（虽然不应该发生）
+    final path = json['path'] as String? ?? '';
+
+    // name 可能为 null（当文件不存在时），从 path 中提取
+    var name = json['name'] as String?;
+    if (name == null || name.isEmpty) {
+      // 从路径中提取文件名
+      final lastSlash = path.lastIndexOf('/');
+      name = lastSlash >= 0 ? path.substring(lastSlash + 1) : path;
+    }
+
     return FileStationFile(
-      name: json['name'] as String,
-      path: json['path'] as String,
+      name: name,
+      path: path,
       isDir: json['isdir'] as bool? ?? false,
       size: additional['size'] as int? ?? 0,
       createTime: time?['crtime'] != null

@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/music/presentation/pages/music_list_page.dart';
 import 'package:my_nas/features/music/presentation/pages/playlist_detail_page.dart';
+import 'package:my_nas/features/music/presentation/providers/home_layout_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/playlist_provider.dart';
 import 'package:my_nas/features/music/presentation/widgets/browse_category_grid.dart';
 import 'package:my_nas/features/music/presentation/widgets/hero_player_card.dart';
+import 'package:my_nas/features/music/presentation/widgets/home_layout_sheet.dart';
 import 'package:my_nas/features/music/presentation/widgets/music_stats_card.dart';
 import 'package:my_nas/features/music/presentation/widgets/recent_tracks_section.dart';
 
@@ -59,84 +61,114 @@ class MusicHomeContent extends ConsumerWidget {
     final screenWidth = MediaQuery.of(context).size.width;
     final isDesktop = screenWidth >= 900;
     final isTablet = screenWidth >= 600 && screenWidth < 900;
+    final layoutState = ref.watch(homeLayoutProvider);
 
     if (isDesktop) {
       return _buildDesktopLayout(context, isDark);
     }
 
-    return _buildMobileLayout(context, isDark, isTablet);
+    return _buildMobileLayout(context, isDark, isTablet, layoutState);
   }
 
   /// 移动端布局
-  Widget _buildMobileLayout(BuildContext context, bool isDark, bool isTablet) => SingleChildScrollView(
+  Widget _buildMobileLayout(
+    BuildContext context,
+    bool isDark,
+    bool isTablet,
+    HomeLayoutState layoutState,
+  ) {
+    final sections = <Widget>[];
+
+    for (final config in layoutState.sections) {
+      if (!config.visible) continue;
+
+      final sectionWidget = _buildSectionByType(context, isDark, config.section);
+      if (sectionWidget != null) {
+        sections
+          ..add(sectionWidget)
+          ..add(const SizedBox(height: 16));
+      }
+    }
+
+    return SingleChildScrollView(
       padding: const EdgeInsets.only(bottom: 100),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 12),
-          // 1. 开始探索你的音乐 - Hero 播放卡片
-          HeroPlayerCard(
-            isDark: isDark,
-            onShuffleTap: onShuffleTap,
-          ),
-          const SizedBox(height: 16),
-          // 2. 快捷访问
-          _buildSectionTitle('快捷访问', isDark),
-          const SizedBox(height: 8),
-          QuickAccessGrid(
-            isDark: isDark,
-            favoritesCount: favoritesCount > 0 ? favoritesCount : favoriteTracks.length,
-            recentCount: recentCount > 0 ? recentCount : recentTracks.length,
-            totalCount: totalCount > 0 ? totalCount : tracks.length,
-            playlistCount: playlistCount,
-            onFavoritesTap: () => onCategoryTap(MusicCategory.favorites),
-            onRecentTap: () => onCategoryTap(MusicCategory.recent),
-            onAllTap: () => onCategoryTap(MusicCategory.all),
-            onPlaylistTap: () => onCategoryTap(MusicCategory.playlists),
-          ),
-          const SizedBox(height: 16),
-          // 3. 为你推荐
-          if (tracks.isNotEmpty) ...[
-            PopularTracksSection(
-              tracks: _getRandomTracks(5),
-              isDark: isDark,
-              title: '为你推荐',
-              onTrackTap: (track) => onTrackTap(track, tracks),
-              onMoreTap: () => onCategoryTap(MusicCategory.all),
-            ),
-            const SizedBox(height: 16),
-          ],
-          // 4. 歌单
-          if (playlistCount > 0) ...[
-            _PlaylistsSection(
-              isDark: isDark,
-              playlistCount: playlistCount,
-              onMoreTap: () => onCategoryTap(MusicCategory.playlists),
-            ),
-            const SizedBox(height: 16),
-          ],
-          // 5. 最近播放
-          if (recentTracks.isNotEmpty) ...[
-            RecentTracksSection(
-              tracks: recentTracks,
-              isDark: isDark,
-              onTrackTap: (track) => onTrackTap(track, tracks),
-              onMoreTap: () => onCategoryTap(MusicCategory.recent),
-            ),
-            const SizedBox(height: 16),
-          ],
-          // 6. 浏览音乐库
-          _buildSectionTitle('浏览音乐库', isDark),
-          const SizedBox(height: 8),
-          BrowseCategoryGrid(
-            isDark: isDark,
-            counts: _getCategoryCounts(),
-            onCategoryTap: _onBrowseCategoryTap,
-          ),
-          const SizedBox(height: 16),
+          ...sections,
         ],
       ),
     );
+  }
+
+  /// 根据区块类型构建对应的 Widget
+  Widget? _buildSectionByType(BuildContext context, bool isDark, HomeSection section) {
+    switch (section) {
+      case HomeSection.heroPlayer:
+        return HeroPlayerCard(
+          isDark: isDark,
+          onShuffleTap: onShuffleTap,
+        );
+      case HomeSection.quickAccess:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildSectionTitle('快捷访问', isDark),
+            const SizedBox(height: 8),
+            QuickAccessGrid(
+              isDark: isDark,
+              favoritesCount: favoritesCount > 0 ? favoritesCount : favoriteTracks.length,
+              recentCount: recentCount > 0 ? recentCount : recentTracks.length,
+              totalCount: totalCount > 0 ? totalCount : tracks.length,
+              playlistCount: playlistCount,
+              onFavoritesTap: () => onCategoryTap(MusicCategory.favorites),
+              onRecentTap: () => onCategoryTap(MusicCategory.recent),
+              onAllTap: () => onCategoryTap(MusicCategory.all),
+              onPlaylistTap: () => onCategoryTap(MusicCategory.playlists),
+            ),
+          ],
+        );
+      case HomeSection.recommended:
+        if (tracks.isEmpty) return null;
+        return PopularTracksSection(
+          tracks: _getRandomTracks(5),
+          isDark: isDark,
+          title: '为你推荐',
+          onTrackTap: (track) => onTrackTap(track, tracks),
+          onMoreTap: () => onCategoryTap(MusicCategory.all),
+        );
+      case HomeSection.playlists:
+        if (playlistCount <= 0) return null;
+        return _PlaylistsSection(
+          isDark: isDark,
+          playlistCount: playlistCount,
+          onMoreTap: () => onCategoryTap(MusicCategory.playlists),
+        );
+      case HomeSection.recentPlays:
+        if (recentTracks.isEmpty) return null;
+        return RecentTracksSection(
+          tracks: recentTracks,
+          isDark: isDark,
+          onTrackTap: (track) => onTrackTap(track, tracks),
+          onMoreTap: () => onCategoryTap(MusicCategory.recent),
+        );
+      case HomeSection.browseLibrary:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildSectionTitle('浏览音乐库', isDark),
+            const SizedBox(height: 8),
+            BrowseCategoryGrid(
+              isDark: isDark,
+              counts: _getCategoryCounts(),
+              onCategoryTap: _onBrowseCategoryTap,
+            ),
+          ],
+        );
+    }
+  }
+
 
   /// 桌面端布局
   Widget _buildDesktopLayout(BuildContext context, bool isDark) => Row(
@@ -537,17 +569,38 @@ class _PlaylistsSection extends ConsumerWidget {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                '歌单',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: isDark ? Colors.white : Colors.black87,
+              Expanded(
+                child: Text(
+                  '歌单',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
                 ),
               ),
-              if (playlists.length > 5)
+              // 布局设置按钮
+              GestureDetector(
+                onTap: () => showHomeLayoutSheet(context),
+                child: Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.08)
+                        : Colors.black.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.dashboard_customize_rounded,
+                    size: 18,
+                    color: isDark ? Colors.white60 : Colors.black45,
+                  ),
+                ),
+              ),
+              if (playlists.length > 5) ...[
+                const SizedBox(width: 12),
                 GestureDetector(
                   onTap: onMoreTap,
                   child: Text(
@@ -558,6 +611,7 @@ class _PlaylistsSection extends ConsumerWidget {
                     ),
                   ),
                 ),
+              ],
             ],
           ),
         ),

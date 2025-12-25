@@ -109,8 +109,8 @@ class _TransferManagerPageState extends ConsumerState<TransferManagerPage>
                 ),
                 // 缓存列表
                 CacheListView(
-                  tasks: cacheTasks,
-                  onDeleteCache: _handleDeleteCache,
+                  activeTasks: cacheTasks.where((t) => !t.isCompleted).toList(),
+                  onDeleteCache: _handleDeleteCacheItem,
                   onClearAll: () => _handleClearAllCache(null),
                 ),
               ],
@@ -283,10 +283,10 @@ class _TransferManagerPageState extends ConsumerState<TransferManagerPage>
     ref.read(transferTasksProvider.notifier).deleteTask(task.id);
   }
 
-  Future<void> _handleDeleteCache(TransferTask task) async {
+  Future<void> _handleDeleteCacheItem(CachedMediaItem item) async {
     await ref.read(transferTasksProvider.notifier).deleteCache(
-          task.sourceId,
-          task.sourcePath,
+          item.sourceId,
+          item.sourcePath,
         );
   }
 

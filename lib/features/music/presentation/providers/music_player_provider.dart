@@ -1076,11 +1076,12 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     _ref.read(musicSettingsProvider.notifier).setPlayMode(newMode);
   }
 
-  /// 设置播放模式
+  /// 设置播放模式（仅更新播放器状态，不回调设置 provider）
+  /// 由 MusicSettingsNotifier.setPlayMode 调用，避免循环调用
   void setPlayMode(PlayMode mode) {
     state = state.copyWith(playMode: mode);
-    // 同步保存到设置
-    _ref.read(musicSettingsProvider.notifier).setPlayMode(mode);
+    // 注意：不要在这里调用 musicSettingsProvider.notifier.setPlayMode
+    // 否则会形成循环调用导致无限闪烁
   }
 
   /// 更新当前索引（用于队列重排序后同步）

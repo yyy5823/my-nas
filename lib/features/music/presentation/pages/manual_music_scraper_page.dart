@@ -844,7 +844,9 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
                   const SizedBox(height: 8),
                   SwitchListTile(
                     title: const Text('下载封面'),
-                    subtitle: const Text('保存到音乐文件所在目录'),
+                    subtitle: Text(
+                      _selectedCover != null ? '保存到音乐文件所在目录' : '封面不可用',
+                    ),
                     value: _downloadCover && _selectedCover != null,
                     onChanged: _selectedCover != null
                         ? (value) => setState(() => _downloadCover = value)
@@ -853,7 +855,11 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
                   ),
                   SwitchListTile(
                     title: const Text('下载歌词'),
-                    subtitle: const Text('保存为同名 .lrc 文件'),
+                    subtitle: Text(
+                      _selectedLyrics?.hasLyrics ?? false
+                          ? '保存为同名 .lrc 文件'
+                          : '歌词不可用',
+                    ),
                     value: _downloadLyrics && (_selectedLyrics?.hasLyrics ?? false),
                     onChanged: _selectedLyrics?.hasLyrics ?? false
                         ? (value) => setState(() => _downloadLyrics = value)

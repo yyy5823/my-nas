@@ -111,6 +111,48 @@ final cachedItemsProvider =
   return cacheService.getCachedItems(mediaType: mediaType);
 });
 
+/// 所有缓存项列表（聚合所有缓存服务）
+final allCachedItemsProvider = FutureProvider<List<CachedMediaItem>>((ref) async {
+  final mediaCacheService = ref.watch(mediaCacheServiceProvider);
+  final musicAudioCacheService = ref.watch(musicAudioCacheServiceProvider);
+  final bookFileCacheService = ref.watch(bookFileCacheServiceProvider);
+
+  // 初始化所有缓存服务
+  await Future.wait([
+    mediaCacheService.init(),
+    musicAudioCacheService.init(),
+    bookFileCacheService.init(),
+  ]);
+
+  // 获取所有缓存项
+  final results = await Future.wait([
+    mediaCacheService.getCachedItems(),
+    musicAudioCacheService.getCachedItems(),
+    bookFileCacheService.getCachedItems(),
+  ]);
+
+  // 合并所有缓存项
+  final allItems = <CachedMediaItem>[
+    ...results[0],
+    ...results[1],
+    ...results[2],
+  ];
+
+  // 按媒体类型和时间排序
+  allItems.sort((a, b) {
+    // 先按媒体类型分组
+    if (a.mediaType != b.mediaType) {
+      return a.mediaType.index.compareTo(b.mediaType.index);
+    }
+    // 同类型按时间倒序
+    final timeA = a.lastAccessed ?? a.cachedAt;
+    final timeB = b.lastAccessed ?? b.cachedAt;
+    return timeB.compareTo(timeA);
+  });
+
+  return allItems;
+});
+
 /// 缓存统计信息（聚合所有缓存服务）
 final cacheStatsProvider =
     FutureProvider<Map<MediaType, ({int count, int size})>>((ref) async {
@@ -422,24 +464,42 @@ class TransferTasksNotifier extends StateNotifier<TransferTasksState> {
     }
   }
 
-  /// 删除缓存
+  /// 删除缓存（兼容 TransferTask 和 CachedMediaItem）
   Future<void> deleteCache(String sourceId, String sourcePath) async {
     try {
-      final cacheService = _ref.read(mediaCacheServiceProvider);
-      await cacheService.deleteCache(sourceId, sourcePath);
+      // 根据 sourceId 判断缓存来源
+      if (sourceId == 'music_audio_cache') {
+        // 音乐音频缓存 - sourcePath 就是 cachePath
+        final musicCacheService = _ref.read(musicAudioCacheServiceProvider);
+        await musicCacheService.deleteCacheByPath(sourcePath);
+      } else if (sourceId == 'book_file_cache') {
+        // 图书文件缓存 - sourcePath 就是 cachePath
+        final bookCacheService = _ref.read(bookFileCacheServiceProvider);
+        await bookCacheService.deleteCacheByPath(sourcePath);
+      } else {
+        // MediaCacheService 缓存
+        final cacheService = _ref.read(mediaCacheServiceProvider);
+        await cacheService.deleteCache(sourceId, sourcePath);
 
-      // 同时删除对应的缓存任务记录
-      final task = state.tasks.firstWhere(
-        (t) =>
-            t.type == TransferType.cache &&
-            t.sourceId == sourceId &&
-            t.sourcePath == sourcePath,
-        orElse: () => throw StateError('Task not found'),
-      );
-      await deleteTask(task.id);
+        // 同时删除对应的缓存任务记录（如果存在）
+        try {
+          final task = state.tasks.firstWhere(
+            (t) =>
+                t.type == TransferType.cache &&
+                t.sourceId == sourceId &&
+                t.sourcePath == sourcePath,
+          );
+          await deleteTask(task.id);
+        } catch (_) {
+          // 任务不存在，忽略
+        }
+      }
 
       // 刷新缓存项列表
-      _ref.invalidate(cachedItemsProvider);
+      _ref
+        ..invalidate(cachedItemsProvider)
+        ..invalidate(allCachedItemsProvider)
+        ..invalidate(cacheStatsProvider);
     } catch (e, st) {
       AppError.ignore(e, st, '删除缓存失败');
     }
@@ -478,8 +538,10 @@ class TransferTasksNotifier extends StateNotifier<TransferTasksState> {
       }
 
       // 刷新缓存项列表
-      _ref..invalidate(cachedItemsProvider)
-      ..invalidate(cacheStatsProvider);
+      _ref
+        ..invalidate(cachedItemsProvider)
+        ..invalidate(allCachedItemsProvider)
+        ..invalidate(cacheStatsProvider);
     } catch (e, st) {
       AppError.handle(e, st, 'TransferTasksNotifier.clearAllCache');
     }

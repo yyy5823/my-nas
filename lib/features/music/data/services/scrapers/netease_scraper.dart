@@ -6,6 +6,7 @@ import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:encrypt/encrypt.dart' as encrypt;
+import 'package:flutter/foundation.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_result.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_source.dart';
 import 'package:my_nas/features/music/domain/interfaces/music_scraper.dart';
@@ -85,23 +86,43 @@ class NeteaseScraper implements MusicScraper {
         'offset': offset,
       };
 
+      debugPrint('[NeteaseScraper] search: query=$searchQuery, page=$page, limit=$limit');
+      debugPrint('[NeteaseScraper] request URL: $_baseUrl/weapi/cloudsearch/get/web');
+
       final response = await _rateLimitedRequest(() => _dio.post<dynamic>(
             '$_baseUrl/weapi/cloudsearch/get/web',
             data: _encryptParams(params),
           ));
 
+      debugPrint('[NeteaseScraper] response status: ${response.statusCode}');
+      debugPrint('[NeteaseScraper] response data type: ${response.data.runtimeType}');
+      debugPrint('[NeteaseScraper] response data: ${response.data}');
+
       // 检查响应数据是否有效
       if (response.data == null || response.data is! Map<String, dynamic>) {
+        debugPrint('[NeteaseScraper] Invalid response data format');
         return MusicScraperSearchResult.empty(type);
       }
       final data = response.data as Map<String, dynamic>;
+
+      // 检查返回码
+      final code = data['code'] as int?;
+      debugPrint('[NeteaseScraper] response code: $code');
+      if (code != null && code != 200) {
+        debugPrint('[NeteaseScraper] API returned error code: $code, message: ${data['message']}');
+        return MusicScraperSearchResult.empty(type);
+      }
+
       final result = data['result'] as Map<String, dynamic>?;
       if (result == null) {
+        debugPrint('[NeteaseScraper] No result in response');
         return MusicScraperSearchResult.empty(type);
       }
 
       final songs = (result['songs'] as List?)?.whereType<Map<String, dynamic>>().toList() ?? [];
       final songCount = result['songCount'] as int? ?? 0;
+
+      debugPrint('[NeteaseScraper] Found ${songs.length} songs, total: $songCount');
 
       final items = songs.map(_parseSong).toList();
 
@@ -113,7 +134,13 @@ class NeteaseScraper implements MusicScraper {
         totalResults: songCount,
       );
     } on DioException catch (e) {
+      debugPrint('[NeteaseScraper] DioException: ${e.type}, message: ${e.message}');
+      debugPrint('[NeteaseScraper] Response: ${e.response?.data}');
       throw _handleDioError(e);
+    } on Exception catch (e, st) {
+      debugPrint('[NeteaseScraper] Exception: $e');
+      debugPrint('[NeteaseScraper] StackTrace: $st');
+      rethrow;
     }
   }
 
