@@ -106,12 +106,26 @@ class KugouScraper implements MusicScraper {
       debugPrint('[KugouScraper] response data type: ${response.data.runtimeType}');
       debugPrint('[KugouScraper] response data: ${response.data}');
 
-      if (response.data == null || response.data is! Map<String, dynamic>) {
-        debugPrint('[KugouScraper] Invalid response data format');
+      // 处理响应数据 - 可能是 String 或 Map
+      Map<String, dynamic> data;
+      if (response.data == null) {
+        debugPrint('[KugouScraper] Response data is null');
+        return MusicScraperSearchResult.empty(type);
+      } else if (response.data is String) {
+        // 服务器可能返回 JSON 字符串，需要手动解析
+        try {
+          data = json.decode(response.data as String) as Map<String, dynamic>;
+          debugPrint('[KugouScraper] Parsed JSON string to Map');
+        } on FormatException catch (e) {
+          debugPrint('[KugouScraper] Failed to parse JSON: $e');
+          return MusicScraperSearchResult.empty(type);
+        }
+      } else if (response.data is Map<String, dynamic>) {
+        data = response.data as Map<String, dynamic>;
+      } else {
+        debugPrint('[KugouScraper] Invalid response data format: ${response.data.runtimeType}');
         return MusicScraperSearchResult.empty(type);
       }
-
-      final data = response.data as Map<String, dynamic>;
       final status = data['status'] as int?;
       final errcode = data['errcode'] as int?;
       debugPrint('[KugouScraper] status: $status, errcode: $errcode');

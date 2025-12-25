@@ -124,18 +124,37 @@ class NeteaseScraper implements MusicScraper {
       final dataStr = response.data.toString();
       debugPrint('[NeteaseScraper] response data (first 500 chars): ${dataStr.length > 500 ? dataStr.substring(0, 500) : dataStr}');
 
-      // 检查响应数据是否有效
-      if (response.data == null || response.data is! Map<String, dynamic>) {
-        debugPrint('[NeteaseScraper] Invalid response data format');
+      // 处理响应数据 - 可能是 String 或 Map
+      Map<String, dynamic> data;
+      if (response.data == null) {
+        debugPrint('[NeteaseScraper] Response data is null');
+        return MusicScraperSearchResult.empty(type);
+      } else if (response.data is String) {
+        // 服务器可能返回 JSON 字符串，需要手动解析
+        try {
+          data = json.decode(response.data as String) as Map<String, dynamic>;
+          debugPrint('[NeteaseScraper] Parsed JSON string to Map');
+        } on FormatException catch (e) {
+          debugPrint('[NeteaseScraper] Failed to parse JSON: $e');
+          return MusicScraperSearchResult.empty(type);
+        }
+      } else if (response.data is Map<String, dynamic>) {
+        data = response.data as Map<String, dynamic>;
+      } else {
+        debugPrint('[NeteaseScraper] Invalid response data format: ${response.data.runtimeType}');
         return MusicScraperSearchResult.empty(type);
       }
-      final data = response.data as Map<String, dynamic>;
 
       // 检查返回码
       final code = data['code'] as int?;
       debugPrint('[NeteaseScraper] response code: $code');
       if (code != null && code != 200) {
         debugPrint('[NeteaseScraper] API returned error code: $code, message: ${data['message']}');
+        // 如果加密 API 失败，尝试使用备用 API
+        if (code == 50000005 || code == -460) {
+          debugPrint('[NeteaseScraper] Trying fallback API...');
+          return _searchWithFallbackApi(searchQuery, page: page, limit: limit);
+        }
         return MusicScraperSearchResult.empty(type);
       }
 
@@ -283,6 +302,77 @@ class NeteaseScraper implements MusicScraper {
     }
     _lastRequestTime = DateTime.now();
     return request();
+  }
+
+  /// 备用搜索 API（不使用加密）
+  Future<MusicScraperSearchResult> _searchWithFallbackApi(
+    String query, {
+    int page = 1,
+    int limit = 20,
+  }) async {
+    try {
+      final offset = (page - 1) * limit;
+
+      // 使用公开 API（无需加密）
+      final response = await _rateLimitedRequest(() => _dio.get<dynamic>(
+            '$_baseUrl/api/search/get',
+            queryParameters: {
+              's': query,
+              'type': 1, // 1: 单曲
+              'limit': limit,
+              'offset': offset,
+            },
+          ));
+
+      debugPrint('[NeteaseScraper] Fallback API response status: ${response.statusCode}');
+      debugPrint('[NeteaseScraper] Fallback API response type: ${response.data.runtimeType}');
+
+      // 处理响应数据
+      Map<String, dynamic> data;
+      if (response.data == null) {
+        return MusicScraperSearchResult.empty(type);
+      } else if (response.data is String) {
+        try {
+          data = json.decode(response.data as String) as Map<String, dynamic>;
+        } on FormatException {
+          return MusicScraperSearchResult.empty(type);
+        }
+      } else if (response.data is Map<String, dynamic>) {
+        data = response.data as Map<String, dynamic>;
+      } else {
+        return MusicScraperSearchResult.empty(type);
+      }
+
+      final code = data['code'] as int?;
+      debugPrint('[NeteaseScraper] Fallback API code: $code');
+
+      if (code != null && code != 200) {
+        return MusicScraperSearchResult.empty(type);
+      }
+
+      final result = data['result'] as Map<String, dynamic>?;
+      if (result == null) {
+        return MusicScraperSearchResult.empty(type);
+      }
+
+      final songs = (result['songs'] as List?)?.whereType<Map<String, dynamic>>().toList() ?? [];
+      final songCount = result['songCount'] as int? ?? 0;
+
+      debugPrint('[NeteaseScraper] Fallback API found ${songs.length} songs');
+
+      final items = songs.map(_parseSong).toList();
+
+      return MusicScraperSearchResult(
+        items: items,
+        source: type,
+        page: page,
+        totalPages: (songCount / limit).ceil(),
+        totalResults: songCount,
+      );
+    } on DioException catch (e) {
+      debugPrint('[NeteaseScraper] Fallback API error: ${e.message}');
+      throw _handleDioError(e);
+    }
   }
 
   /// 解析歌曲搜索结果

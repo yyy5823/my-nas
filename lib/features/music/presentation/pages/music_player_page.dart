@@ -541,60 +541,84 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
           height: size,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: isDark ? Colors.grey[850] : Colors.grey[300],
             boxShadow: [
+              // 主阴影
               BoxShadow(
-                color: AppColors.primary.withValues(alpha: 0.3),
-                blurRadius: 40,
-                spreadRadius: 5,
+                color: Colors.black.withValues(alpha: 0.4),
+                blurRadius: 30,
+                spreadRadius: 2,
+                offset: const Offset(0, 8),
               ),
+              // 发光效果
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.2),
-                blurRadius: 20,
-                offset: const Offset(0, 10),
+                color: AppColors.primary.withValues(alpha: 0.15),
+                blurRadius: 50,
+                spreadRadius: 10,
               ),
             ],
           ),
           child: Stack(
             alignment: Alignment.center,
             children: [
-              // 外圈
+              // 黑胶唱片主体
+              CustomPaint(
+                size: Size(size, size),
+                painter: _VinylRecordPainter(isDark: isDark),
+              ),
+              // 中心标签（封面）
               Container(
-                width: size,
-                height: size,
+                width: size * 0.38,
+                height: size * 0.38,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      AppColors.primary.withValues(alpha: 0.8),
-                      AppColors.secondary.withValues(alpha: 0.8),
+                      AppColors.primary,
+                      AppColors.secondary,
                     ],
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: _buildCoverImage(currentMusic, size * 0.38, isDark),
+              ),
+              // 中心唱针孔
+              Container(
+                width: size * 0.04,
+                height: size * 0.04,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.black,
+                  border: Border.all(
+                    color: Colors.grey[800]!,
+                    width: 1.5,
                   ),
                 ),
               ),
-              // 内圈（封面）
+              // 光泽效果
               Container(
-                width: size * 0.9,
-                height: size * 0.9,
+                width: size,
+                height: size,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: isDark ? AppColors.darkSurface : Colors.white,
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: _buildCoverImage(currentMusic, size * 0.9, isDark),
-              ),
-              // 中心圆点
-              Container(
-                width: size * 0.15,
-                height: size * 0.15,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: isDark ? AppColors.darkBackground : Colors.grey[100],
-                  border: Border.all(
-                    color: isDark ? Colors.grey[700]! : Colors.grey[300]!,
-                    width: 2,
+                  gradient: LinearGradient(
+                    begin: const Alignment(-0.8, -0.8),
+                    end: const Alignment(0.8, 0.8),
+                    colors: [
+                      Colors.white.withValues(alpha: 0.1),
+                      Colors.transparent,
+                      Colors.transparent,
+                      Colors.white.withValues(alpha: 0.03),
+                    ],
+                    stops: const [0.0, 0.3, 0.7, 1.0],
                   ),
                 ),
               ),
@@ -609,6 +633,7 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
       width: size,
       height: size,
       decoration: BoxDecoration(
+        shape: BoxShape.circle,
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -964,4 +989,96 @@ class _VolumeButtonState extends ConsumerState<_VolumeButton> {
           ),
       ],
     );
+}
+
+/// 黑胶唱片绘制器
+class _VinylRecordPainter extends CustomPainter {
+  _VinylRecordPainter({required this.isDark});
+
+  final bool isDark;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2;
+
+    // 黑胶唱片主体背景
+    final basePaint = Paint()
+      ..color = const Color(0xFF1A1A1A)
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(center, radius, basePaint);
+
+    // 外边缘高光
+    final edgePaint = Paint()
+      ..shader = RadialGradient(
+        center: Alignment.center,
+        radius: 0.5,
+        colors: [
+          Colors.transparent,
+          Colors.transparent,
+          Colors.grey[800]!.withValues(alpha: 0.5),
+          Colors.grey[600]!.withValues(alpha: 0.3),
+        ],
+        stops: const [0.0, 0.96, 0.98, 1.0],
+      ).createShader(Rect.fromCircle(center: center, radius: radius));
+    canvas.drawCircle(center, radius, edgePaint);
+
+    // 绘制同心圆纹路（唱片凹槽效果）
+    final groovePaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.5;
+
+    // 从外到内绘制多圈纹路
+    final labelRadius = radius * 0.38; // 标签区域半径
+    final grooveStart = radius * 0.95; // 纹路开始位置
+    final grooveEnd = labelRadius + radius * 0.02; // 纹路结束位置
+
+    // 绘制粗纹路（较明显的沟槽）
+    for (var r = grooveStart; r > grooveEnd; r -= 3) {
+      // 交替使用两种颜色来模拟反光效果
+      final alpha = 0.05 + (r / radius) * 0.1;
+      groovePaint.color = Colors.grey[400]!.withValues(alpha: alpha);
+      canvas.drawCircle(center, r, groovePaint);
+    }
+
+    // 绘制细纹路（更细的沟槽）
+    groovePaint.strokeWidth = 0.3;
+    for (var r = grooveStart - 1.5; r > grooveEnd; r -= 3) {
+      groovePaint.color = Colors.grey[700]!.withValues(alpha: 0.15);
+      canvas.drawCircle(center, r, groovePaint);
+    }
+
+    // 标签区域的边缘阴影
+    final labelEdgePaint = Paint()
+      ..shader = RadialGradient(
+        center: Alignment.center,
+        radius: 0.5,
+        colors: [
+          Colors.transparent,
+          Colors.black.withValues(alpha: 0.3),
+          Colors.transparent,
+        ],
+        stops: const [0.85, 0.98, 1.0],
+      ).createShader(Rect.fromCircle(center: center, radius: labelRadius));
+    canvas.drawCircle(center, labelRadius, labelEdgePaint);
+
+    // 添加反光效果（模拟光照）
+    final shinePaint = Paint()
+      ..shader = LinearGradient(
+        begin: const Alignment(-0.7, -0.7),
+        end: const Alignment(0.7, 0.7),
+        colors: [
+          Colors.white.withValues(alpha: 0.05),
+          Colors.transparent,
+          Colors.transparent,
+          Colors.white.withValues(alpha: 0.02),
+        ],
+        stops: const [0.0, 0.4, 0.6, 1.0],
+      ).createShader(Rect.fromCircle(center: center, radius: radius));
+    canvas.drawCircle(center, radius, shinePaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _VinylRecordPainter oldDelegate) =>
+      isDark != oldDelegate.isDark;
 }
