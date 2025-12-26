@@ -12,6 +12,8 @@ class NtTransferHistory {
     this.transferTime,
     this.success,
     this.mode,
+    this.seasonEpisode,
+    this.category,
   });
 
   factory NtTransferHistory.fromJson(Map<String, dynamic> json) => NtTransferHistory(
@@ -27,6 +29,8 @@ class NtTransferHistory {
             : null),
     success: json['SUCCESS'] == 1 || json['success'] == true || json['state'] == 'SUCCESS',
     mode: json['MODE'] as String? ?? json['mode'] as String?,
+    seasonEpisode: json['SE'] as String? ?? json['season_episode'] as String?,
+    category: json['CATEGORY'] as String? ?? json['category'] as String?,
   );
 
   final int id;
@@ -37,6 +41,11 @@ class NtTransferHistory {
   final DateTime? transferTime;
   final bool? success;
   final String? mode;
+  final String? seasonEpisode;
+  final String? category;
+
+  /// 别名：转移日期
+  DateTime? get date => transferTime;
 }
 
 /// 未识别记录

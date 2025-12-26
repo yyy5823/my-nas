@@ -189,7 +189,7 @@ class _TargetPickerSheetState extends ConsumerState<TargetPickerSheet> {
     // 获取该源下对应媒体类型的媒体库
     final libraries = libraryConfig
             ?.getPathsForType(widget.mediaType)
-            .where((MediaLibraryPath lib) => lib.sourceId == source.id)
+            .where((lib) => lib.sourceId == source.id)
             .toList() ??
         [];
 
@@ -243,7 +243,7 @@ class _TargetPickerSheetState extends ConsumerState<TargetPickerSheet> {
                 ),
               )
             else
-              ...libraries.map((MediaLibraryPath lib) => _buildLibraryItem(context, source, lib)),
+              ...libraries.map((lib) => _buildLibraryItem(context, source, lib)),
 
             // 选择自定义路径选项
             ListTile(

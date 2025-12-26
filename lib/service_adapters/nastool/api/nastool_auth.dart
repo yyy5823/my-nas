@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:my_nas/core/utils/logger.dart';
 
 /// NASTool 认证管理器
 ///
@@ -52,11 +54,24 @@ class NasToolAuth {
     try {
       final url = Uri.parse('$baseUrl/api/v1/user/login');
 
+      // 调试日志：登录请求
+      if (kDebugMode) {
+        logger.d('[NasToolAuth] Login Request - URL: $url, Username: $username');
+      }
+
       final response = await http.post(
         url,
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
+        },
         body: {'username': username, 'password': password},
       );
+
+      // 调试日志：登录响应
+      if (kDebugMode) {
+        logger.d('[NasToolAuth] Login Response - Status: ${response.statusCode}, Body: ${response.body}');
+      }
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
@@ -70,10 +85,14 @@ class NasToolAuth {
         final apiKey = responseData?['apikey'] as String?;
 
         if ((code == 0 || success) && apiKey != null) {
-          // 登录成功，保存 API Key（使用 Bearer 格式）
-          _sessionToken = 'Bearer $apiKey';
+          // 登录成功，保存 API Key（直接使用，不加 Bearer 前缀）
+          _sessionToken = apiKey;
           _username = username;
           _isCookieAuth = false;
+
+          if (kDebugMode) {
+            logger.i('[NasToolAuth] Login successful, token saved');
+          }
 
           return NasToolLoginResult.success(
             token: apiKey,
@@ -83,7 +102,7 @@ class NasToolAuth {
           // 兼容旧版本：如果没有 apikey，尝试使用 token
           final token = responseData?['token'] as String? ?? data['token'] as String?;
           if (token != null) {
-            _sessionToken = 'Bearer $token';
+            _sessionToken = token;
             _username = username;
             _isCookieAuth = false;
             return NasToolLoginResult.success(
@@ -127,13 +146,14 @@ class NasToolAuth {
   /// 登出
   Future<void> logout() async {
     if (!isAuthenticated) return;
-    
+
     try {
       final url = Uri.parse('$baseUrl/api/v1/system/logout');
       await http.post(
         url,
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
           ...authHeaders,
         },
       );
@@ -148,20 +168,21 @@ class NasToolAuth {
   /// 验证会话是否有效
   Future<bool> validateSession() async {
     if (!isAuthenticated) return false;
-    
+
     try {
       final url = Uri.parse('$baseUrl/api/v1/system/version');
       final response = await http.post(
         url,
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
           ...authHeaders,
         },
       );
-      
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
-        return data['code'] == 0 || data['version'] != null;
+        return data['code'] == 0 || data['data']?['version'] != null;
       }
       return false;
     } on Exception {
@@ -171,13 +192,13 @@ class NasToolAuth {
 
   /// 设置 API Key（用于 API Key 认证）
   ///
-  /// [apiKey] 为纯 API Key 值，会自动添加 Bearer 前缀
+  /// [apiKey] 为纯 API Key 值，直接使用不加前缀
   void setApiToken(String apiKey) {
-    // 如果已经包含 Bearer 前缀，直接使用
+    // 移除可能存在的 Bearer 前缀
     if (apiKey.startsWith('Bearer ')) {
-      _sessionToken = apiKey;
+      _sessionToken = apiKey.substring(7);
     } else {
-      _sessionToken = 'Bearer $apiKey';
+      _sessionToken = apiKey;
     }
     _username = 'API Key';
     _isCookieAuth = false;
@@ -188,31 +209,48 @@ class NasToolAuth {
     try {
       final url = Uri.parse('$baseUrl/api/v1/system/version');
 
-      // 优先使用 Bearer 格式（官方推荐）
-      final authFormats = ['Bearer $apiKey', apiKey, 'Token $apiKey'];
+      // 直接使用 apiKey，不加前缀
+      final pureApiKey = apiKey.startsWith('Bearer ') ? apiKey.substring(7) : apiKey;
 
-      for (final auth in authFormats) {
-        final response = await http.post(
-          url,
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Authorization': auth,
-          },
-        );
+      if (kDebugMode) {
+        logger.d('[NasToolAuth] Validate API Token - URL: $url');
+      }
 
-        if (response.statusCode == 200) {
-          final data = jsonDecode(response.body) as Map<String, dynamic>;
-          if (data['code'] == 0 || data['version'] != null) {
-            // API Key 有效，设置认证信息
-            _sessionToken = auth;
-            _username = 'API Key';
-            _isCookieAuth = false;
-            return true;
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
+          'Authorization': pureApiKey,
+        },
+      );
+
+      if (kDebugMode) {
+        logger.d('[NasToolAuth] Validate Response - Status: ${response.statusCode}');
+      }
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        if (data['code'] == 0 || data['data']?['version'] != null) {
+          // API Key 有效，设置认证信息
+          _sessionToken = pureApiKey;
+          _username = 'API Key';
+          _isCookieAuth = false;
+          if (kDebugMode) {
+            logger.i('[NasToolAuth] API Token valid');
           }
+          return true;
         }
       }
+
+      if (kDebugMode) {
+        logger.w('[NasToolAuth] API Token invalid');
+      }
       return false;
-    } on Exception {
+    } on Exception catch (e) {
+      if (kDebugMode) {
+        logger.e('[NasToolAuth] Validate exception', e);
+      }
       return false;
     }
   }
@@ -228,14 +266,14 @@ class NasToolAuth {
 /// 登录结果
 sealed class NasToolLoginResult {
   const NasToolLoginResult();
-  
+
   const factory NasToolLoginResult.success({
     String? token,
     required String username,
   }) = NasToolLoginSuccess;
-  
+
   const factory NasToolLoginResult.failure(String message) = NasToolLoginFailure;
-  
+
   T when<T>({
     required T Function(String? token, String username) success,
     required T Function(String message) failure,
@@ -244,10 +282,10 @@ sealed class NasToolLoginResult {
 
 class NasToolLoginSuccess extends NasToolLoginResult {
   const NasToolLoginSuccess({this.token, required this.username});
-  
+
   final String? token;
   final String username;
-  
+
   @override
   T when<T>({
     required T Function(String? token, String username) success,
@@ -257,9 +295,9 @@ class NasToolLoginSuccess extends NasToolLoginResult {
 
 class NasToolLoginFailure extends NasToolLoginResult {
   const NasToolLoginFailure(this.message);
-  
+
   final String message;
-  
+
   @override
   T when<T>({
     required T Function(String? token, String username) success,

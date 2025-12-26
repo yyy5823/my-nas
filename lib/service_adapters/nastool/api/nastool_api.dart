@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/service_adapters/nastool/api/nastool_auth.dart';
 import 'package:my_nas/service_adapters/nastool/models/models.dart';
 
@@ -152,15 +154,35 @@ class NasToolApi {
   /// 获取电影订阅
   Future<List<NtSubscribe>> getMovieSubscribes() async {
     final data = await _post('/subscribe/movie/list');
-    final items = data['result'] as List? ?? [];
-    return items.map((e) => NtSubscribe.fromJson(e as Map<String, dynamic>, 'MOV')).toList();
+    return _parseSubscribeList(data, 'MOV');
   }
 
   /// 获取电视剧订阅
   Future<List<NtSubscribe>> getTvSubscribes() async {
     final data = await _post('/subscribe/tv/list');
-    final items = data['result'] as List? ?? [];
-    return items.map((e) => NtSubscribe.fromJson(e as Map<String, dynamic>, 'TV')).toList();
+    return _parseSubscribeList(data, 'TV');
+  }
+
+  /// 解析订阅列表（支持对象格式和数组格式）
+  List<NtSubscribe> _parseSubscribeList(Map<String, dynamic> data, String type) {
+    final result = data['result'];
+    if (result == null) return [];
+
+    // 如果是数组格式
+    if (result is List) {
+      return result
+          .map((e) => NtSubscribe.fromJson(e as Map<String, dynamic>, type))
+          .toList();
+    }
+
+    // 如果是对象格式（key 是 id）
+    if (result is Map<String, dynamic>) {
+      return result.values
+          .map((e) => NtSubscribe.fromJson(e as Map<String, dynamic>, type))
+          .toList();
+    }
+
+    return [];
   }
 
   /// 获取所有订阅
@@ -1564,15 +1586,28 @@ class NasToolApi {
 
     final headers = <String, String>{
       'Content-Type': 'application/x-www-form-urlencoded',
+      'Accept': 'application/json',
       ..._auth.authHeaders,
     };
+
+    final body = params?.map((k, v) => MapEntry(k, v.toString()));
+
+    // 调试日志：请求信息
+    if (kDebugMode) {
+      logger.d('[NasToolApi] POST $url');
+    }
 
     try {
       final response = await client.post(
         url,
         headers: headers,
-        body: params?.map((k, v) => MapEntry(k, v.toString())),
+        body: body,
       );
+
+      // 调试日志：响应信息
+      if (kDebugMode) {
+        logger.d('[NasToolApi] Response ${response.statusCode}');
+      }
 
       if (response.statusCode == 401) {
         throw const NasToolApiException('认证失败，请重新登录');
@@ -1588,14 +1623,30 @@ class NasToolApi {
 
       if (response.body.isEmpty) return {};
 
-      final data = jsonDecode(response.body);
+      final json = jsonDecode(response.body);
+      if (json is! Map<String, dynamic>) {
+        return {'result': json};
+      }
+
+      // NASTool API 返回格式: {"code": 0, "success": true, "data": {...}}
+      // 提取 data 字段作为实际返回数据
+      final data = json['data'];
       if (data is Map<String, dynamic>) {
         return data;
+      } else if (data is List) {
+        return {'result': data};
       }
-      return {'result': data};
+      // 如果没有 data 字段，返回原始 json（兼容旧格式）
+      return json;
     } on SocketException catch (e) {
+      if (kDebugMode) {
+        logger.e('[NasToolApi] SocketException', e);
+      }
       throw NasToolApiException('无法连接服务器: ${e.message}');
-    } on FormatException {
+    } on FormatException catch (e) {
+      if (kDebugMode) {
+        logger.e('[NasToolApi] FormatException', e);
+      }
       throw const NasToolApiException('响应格式错误');
     }
   }
@@ -1604,11 +1655,22 @@ class NasToolApi {
     final url = Uri.parse('$baseUrl/api/v1$path');
 
     final headers = <String, String>{
+      'Accept': 'application/json',
       ..._auth.authHeaders,
     };
 
+    // 调试日志：请求信息
+    if (kDebugMode) {
+      logger.d('[NasToolApi] GET $url');
+    }
+
     try {
       final response = await client.get(url, headers: headers);
+
+      // 调试日志：响应信息
+      if (kDebugMode) {
+        logger.d('[NasToolApi] Response ${response.statusCode}');
+      }
 
       if (response.statusCode == 401) {
         throw const NasToolApiException('认证失败，请重新登录');
@@ -1619,8 +1681,26 @@ class NasToolApi {
       }
 
       if (response.body.isEmpty) return {};
-      return jsonDecode(response.body);
+
+      final json = jsonDecode(response.body);
+      if (json is! Map<String, dynamic>) {
+        return {'result': json};
+      }
+
+      // NASTool API 返回格式: {"code": 0, "success": true, "data": {...}}
+      // 提取 data 字段作为实际返回数据
+      final data = json['data'];
+      if (data is Map<String, dynamic>) {
+        return data;
+      } else if (data is List) {
+        return {'result': data};
+      }
+      // 如果没有 data 字段，返回原始 json（兼容旧格式）
+      return json;
     } on SocketException catch (e) {
+      if (kDebugMode) {
+        logger.e('[NasToolApi] SocketException', e);
+      }
       throw NasToolApiException('无法连接服务器: ${e.message}');
     }
   }

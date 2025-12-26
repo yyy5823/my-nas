@@ -2106,7 +2106,7 @@ class _MissingMovieActionSheet extends ConsumerWidget {
                   style: TextStyle(fontWeight: FontWeight.w500),
                 ),
                 subtitle: Text(
-                  '订阅 "${title}"',
+                  '订阅 "$title"',
                   style: TextStyle(
                     fontSize: 12,
                     color: isDark ? Colors.grey[400] : Colors.grey[600],

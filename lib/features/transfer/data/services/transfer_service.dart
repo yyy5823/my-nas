@@ -471,7 +471,7 @@ class TransferService {
       localFile.path,
       p.dirname(task.targetPath),
       fileName: task.fileName,
-      onProgress: (int sent, int total) {
+      onProgress: (sent, total) {
         task.transferredBytes = sent;
         _notifyTaskChanged(task);
       },

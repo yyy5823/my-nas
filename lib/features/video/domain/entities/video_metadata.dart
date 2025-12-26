@@ -1002,7 +1002,7 @@ class VideoFileNameParser {
 
     // 提取 HDR 格式
     final hdrMatch = _hdrPattern.firstMatch(name);
-    String? hdrFormat = hdrMatch?.group(1);
+    var hdrFormat = hdrMatch?.group(1);
     // 规范化 HDR 格式名称
     if (hdrFormat != null) {
       final upper = hdrFormat.toUpperCase().replaceAll(RegExp(r'[\s._-]+'), '');

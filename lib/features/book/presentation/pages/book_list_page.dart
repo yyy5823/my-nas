@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:visibility_detector/visibility_detector.dart';
 import 'package:my_nas/app/router/app_router.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
@@ -25,13 +24,14 @@ import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/pages/media_library_page.dart';
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
-import 'package:my_nas/features/transfer/presentation/widgets/transfer_sheet.dart';
 import 'package:my_nas/features/transfer/presentation/providers/transfer_provider.dart';
 import 'package:my_nas/features/transfer/presentation/widgets/target_picker_sheet.dart';
+import 'package:my_nas/features/transfer/presentation/widgets/transfer_sheet.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/context_menu_region.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
 import 'package:my_nas/shared/widgets/media_setup_widget.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 /// 图书文件及其来源
 class BookFileWithSource {

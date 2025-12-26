@@ -36,19 +36,45 @@ class NtLibraryStatistics {
     required this.tvCount,
     this.animeCount,
     this.episodeCount,
+    this.musicCount,
+    this.userCount,
   });
 
   factory NtLibraryStatistics.fromJson(Map<String, dynamic> json) => NtLibraryStatistics(
-    movieCount: json['MovieCount'] as int? ?? json['movie_count'] as int? ?? 0,
-    tvCount: json['SeriesCount'] as int? ?? json['tv_count'] as int? ?? 0,
-    animeCount: json['anime_count'] as int?,
-    episodeCount: json['EpisodeCount'] as int? ?? json['episode_count'] as int?,
+    // NASTool API 返回格式: {"Movie": "950", "Series": "301", "Episodes": "7,706", ...}
+    // 数字可能是字符串且带逗号分隔符
+    movieCount: _parseCount(json['Movie']) ??
+                _parseCount(json['MovieCount']) ??
+                _parseCount(json['movie_count']) ?? 0,
+    tvCount: _parseCount(json['Series']) ??
+             _parseCount(json['SeriesCount']) ??
+             _parseCount(json['tv_count']) ?? 0,
+    animeCount: _parseCount(json['anime_count']),
+    episodeCount: _parseCount(json['Episodes']) ??
+                  _parseCount(json['EpisodeCount']) ??
+                  _parseCount(json['episode_count']),
+    musicCount: _parseCount(json['Music']),
+    userCount: _parseCount(json['User']),
   );
+
+  /// 解析数字，支持整数、带逗号的字符串（如 "7,706"）
+  static int? _parseCount(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is String) {
+      // 移除逗号分隔符后解析
+      final cleaned = value.replaceAll(',', '');
+      return int.tryParse(cleaned);
+    }
+    return null;
+  }
 
   final int movieCount;
   final int tvCount;
   final int? animeCount;
   final int? episodeCount;
+  final int? musicCount;
+  final int? userCount;
 
   int get totalCount => movieCount + tvCount + (animeCount ?? 0);
 }

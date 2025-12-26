@@ -124,7 +124,7 @@ final nastoolStatsProvider = FutureProvider.family
 
   try {
     final adapter = connection.adapter;
-    
+
     // 并行获取各项数据
     final results = await Future.wait([
       adapter.getLibraryStatistics().catchError((_) => const NtLibraryStatistics(movieCount: 0, tvCount: 0)),
@@ -217,6 +217,173 @@ final nastoolTransferHistoryProvider = FutureProvider.family
   }
 });
 
+/// NASTool 站点统计 Provider
+final nastoolSiteStatisticsProvider = FutureProvider.family
+    .autoDispose<List<NtSiteStatistics>, String>((ref, sourceId) async {
+  final connection = ref.watch(nastoolConnectionProvider(sourceId));
+  if (connection == null || connection.status != NasToolConnectionStatus.connected) {
+    return [];
+  }
+
+  try {
+    return await connection.adapter.getSiteStatistics();
+  } on Exception catch (e) {
+    logger.e('NasToolProvider: 获取站点统计失败', e);
+    return [];
+  }
+});
+
+/// NASTool 下载历史 Provider
+final nastoolDownloadHistoryProvider = FutureProvider.family
+    .autoDispose<List<NtDownloadHistory>, String>((ref, sourceId) async {
+  final connection = ref.watch(nastoolConnectionProvider(sourceId));
+  if (connection == null || connection.status != NasToolConnectionStatus.connected) {
+    return [];
+  }
+
+  try {
+    return await connection.adapter.getDownloadHistory();
+  } on Exception catch (e) {
+    logger.e('NasToolProvider: 获取下载历史失败', e);
+    return [];
+  }
+});
+
+/// NASTool 刷流任务 Provider
+final nastoolBrushTasksProvider = FutureProvider.family
+    .autoDispose<List<NtBrushTask>, String>((ref, sourceId) async {
+  final connection = ref.watch(nastoolConnectionProvider(sourceId));
+  if (connection == null || connection.status != NasToolConnectionStatus.connected) {
+    return [];
+  }
+
+  try {
+    return await connection.adapter.getBrushTasks();
+  } on Exception catch (e) {
+    logger.e('NasToolProvider: 获取刷流任务失败', e);
+    return [];
+  }
+});
+
+/// NASTool RSS 任务 Provider
+final nastoolRssTasksProvider = FutureProvider.family
+    .autoDispose<List<NtRssTask>, String>((ref, sourceId) async {
+  final connection = ref.watch(nastoolConnectionProvider(sourceId));
+  if (connection == null || connection.status != NasToolConnectionStatus.connected) {
+    return [];
+  }
+
+  try {
+    return await connection.adapter.getRssTasks();
+  } on Exception catch (e) {
+    logger.e('NasToolProvider: 获取RSS任务失败', e);
+    return [];
+  }
+});
+
+/// NASTool RSS 解析器 Provider
+final nastoolRssParsersProvider = FutureProvider.family
+    .autoDispose<List<NtRssParser>, String>((ref, sourceId) async {
+  final connection = ref.watch(nastoolConnectionProvider(sourceId));
+  if (connection == null || connection.status != NasToolConnectionStatus.connected) {
+    return [];
+  }
+
+  try {
+    return await connection.adapter.getRssParsers();
+  } on Exception catch (e) {
+    logger.e('NasToolProvider: 获取RSS解析器失败', e);
+    return [];
+  }
+});
+
+/// NASTool 插件列表 Provider
+final nastoolPluginsProvider = FutureProvider.family
+    .autoDispose<List<NtPlugin>, String>((ref, sourceId) async {
+  final connection = ref.watch(nastoolConnectionProvider(sourceId));
+  if (connection == null || connection.status != NasToolConnectionStatus.connected) {
+    return [];
+  }
+
+  try {
+    return await connection.adapter.getPlugins();
+  } on Exception catch (e) {
+    logger.e('NasToolProvider: 获取插件列表失败', e);
+    return [];
+  }
+});
+
+/// NASTool 插件商店 Provider
+final nastoolPluginAppsProvider = FutureProvider.family
+    .autoDispose<List<NtPluginApp>, String>((ref, sourceId) async {
+  final connection = ref.watch(nastoolConnectionProvider(sourceId));
+  if (connection == null || connection.status != NasToolConnectionStatus.connected) {
+    return [];
+  }
+
+  try {
+    return await connection.adapter.getPluginApps();
+  } on Exception catch (e) {
+    logger.e('NasToolProvider: 获取插件商店失败', e);
+    return [];
+  }
+});
+
+/// NASTool 同步目录 Provider
+final nastoolSyncDirsProvider = FutureProvider.family
+    .autoDispose<List<NtSyncDir>, String>((ref, sourceId) async {
+  final connection = ref.watch(nastoolConnectionProvider(sourceId));
+  if (connection == null || connection.status != NasToolConnectionStatus.connected) {
+    return [];
+  }
+
+  try {
+    final dirs = await connection.adapter.getSyncDirectories();
+    return dirs.map((d) => NtSyncDir(
+      id: d.id,
+      name: d.from,
+      from: d.from,
+      to: d.to,
+      mode: d.syncMode,
+      state: d.enabled,
+    )).toList();
+  } on Exception catch (e) {
+    logger.e('NasToolProvider: 获取同步目录失败', e);
+    return [];
+  }
+});
+
+/// NASTool 系统信息 Provider
+final nastoolSystemInfoProvider = FutureProvider.family
+    .autoDispose<NtSystemInfo, String>((ref, sourceId) async {
+  final connection = ref.watch(nastoolConnectionProvider(sourceId));
+  if (connection == null || connection.status != NasToolConnectionStatus.connected) {
+    return const NtSystemInfo();
+  }
+
+  try {
+    final version = await connection.adapter.getSystemVersion();
+    final space = await connection.adapter.getLibrarySpace();
+    return NtSystemInfo(
+      version: version.version,
+      latestVersion: version.latestVersion,
+      totalSpace: space.total,
+      freeSpace: space.free,
+    );
+  } on Exception catch (e) {
+    logger.e('NasToolProvider: 获取系统信息失败', e);
+    return const NtSystemInfo();
+  }
+});
+
+/// NASTool 服务列表 Provider
+final nastoolServicesProvider = FutureProvider.family
+    .autoDispose<List<NtService>, String>((ref, sourceId) async => []);
+
+/// NASTool 进程列表 Provider
+final nastoolProcessesProvider = FutureProvider.family
+    .autoDispose<List<NtProcess>, String>((ref, sourceId) async => []);
+
 /// NASTool 操作 Provider
 final nastoolActionsProvider = Provider.family<NasToolActions, String>(NasToolActions.new);
 
@@ -237,6 +404,8 @@ class NasToolActions {
       ..invalidate(nastoolSitesProvider(_sourceId))
       ..invalidate(nastoolTransferHistoryProvider(_sourceId));
   }
+
+  // === 订阅操作 ===
 
   /// 添加订阅
   Future<void> addSubscribe({
@@ -268,6 +437,16 @@ class NasToolActions {
     _ref.invalidate(nastoolSubscribesProvider(_sourceId));
   }
 
+  /// 搜索订阅资源
+  Future<void> searchSubscribe(int rssId, String type) async {
+    final adapter = _adapter;
+    if (adapter == null) return;
+
+    await adapter.searchSubscribe(rssId, type);
+  }
+
+  // === 搜索操作 ===
+
   /// 搜索资源
   Future<List<NtSearchResult>> searchResources(String keyword) async {
     final adapter = _adapter;
@@ -275,6 +454,8 @@ class NasToolActions {
 
     return adapter.searchResources(keyword);
   }
+
+  // === 下载操作 ===
 
   /// 下载资源
   Future<void> downloadResource({
@@ -288,6 +469,106 @@ class NasToolActions {
     _ref.invalidate(nastoolDownloadsProvider(_sourceId));
   }
 
+  /// 开始下载任务
+  Future<void> startDownload(String id) async {
+    final adapter = _adapter;
+    if (adapter == null) return;
+
+    await adapter.startDownload(id);
+    _ref.invalidate(nastoolDownloadsProvider(_sourceId));
+  }
+
+  /// 停止下载任务
+  Future<void> stopDownload(String id) async {
+    final adapter = _adapter;
+    if (adapter == null) return;
+
+    await adapter.stopDownload(id);
+    _ref.invalidate(nastoolDownloadsProvider(_sourceId));
+  }
+
+  /// 删除下载任务
+  Future<void> removeDownload(String id) async {
+    final adapter = _adapter;
+    if (adapter == null) return;
+
+    await adapter.removeDownload(id);
+    _ref.invalidate(nastoolDownloadsProvider(_sourceId));
+  }
+
+  // === 站点操作 ===
+
+  /// 测试站点连接
+  Future<bool> testSite(int id) async {
+    final adapter = _adapter;
+    if (adapter == null) return false;
+
+    return adapter.testSite(id);
+  }
+
+  // === 刷流操作 ===
+
+  /// 运行刷流任务
+  Future<void> runBrushTask(int id) async {
+    final adapter = _adapter;
+    if (adapter == null) return;
+
+    await adapter.runBrushTask(id);
+  }
+
+  /// 获取刷流任务种子列表
+  Future<List<NtBrushTorrent>> getBrushTaskTorrents(String id) async {
+    final adapter = _adapter;
+    if (adapter == null) return [];
+
+    return adapter.getBrushTaskTorrents(id);
+  }
+
+  // === RSS 操作 ===
+
+  /// 预览 RSS 任务文章
+  Future<List<NtRssArticle>> previewRssTask(int id) async {
+    final adapter = _adapter;
+    if (adapter == null) return [];
+
+    return adapter.previewRssTask(id);
+  }
+
+  // === 插件操作 ===
+
+  /// 安装插件
+  Future<void> installPlugin(int id) async {
+    final adapter = _adapter;
+    if (adapter == null) return;
+
+    await adapter.installPlugin(id);
+    _ref.invalidate(nastoolPluginsProvider(_sourceId));
+  }
+
+  /// 卸载插件
+  Future<void> uninstallPlugin(int id) async {
+    final adapter = _adapter;
+    if (adapter == null) return;
+
+    await adapter.uninstallPlugin(id);
+    _ref.invalidate(nastoolPluginsProvider(_sourceId));
+  }
+
+  // === 同步操作 ===
+
+  /// 运行同步目录
+  Future<void> runSyncDir(int id) async {
+    final adapter = _adapter;
+    if (adapter == null) return;
+
+    await adapter.runSyncDirectory(id);
+  }
+
+  /// 获取同步历史（暂时返回空列表，API 不支持）
+  Future<List<NtSyncHistory>> getSyncHistory(int dirId) async => [];
+
+  // === 系统操作 ===
+
   /// 刷新媒体库
   Future<void> refreshLibrary() async {
     final adapter = _adapter;
@@ -295,6 +576,25 @@ class NasToolActions {
 
     await adapter.refreshLibrary();
   }
+
+  /// 重启服务
+  Future<void> restartService() async {
+    final adapter = _adapter;
+    if (adapter == null) return;
+
+    await adapter.restartSystem();
+  }
+
+  /// 检查更新
+  Future<bool> checkUpdate() async {
+    final adapter = _adapter;
+    if (adapter == null) return false;
+
+    return adapter.checkUpdate();
+  }
+
+  /// 获取日志（暂时返回空列表，API 不支持）
+  Future<List<NtLogEntry>> getLogs({String level = 'INFO'}) async => [];
 
   /// 刷新所有数据
   void refreshAll() {

@@ -1260,8 +1260,8 @@ class _TonearmPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
 
-    armPath.moveTo(armStartX, armStartY);
-    armPath.quadraticBezierTo(
+    armPath..moveTo(armStartX, armStartY)
+    ..quadraticBezierTo(
       armEndX + armWidth,
       armEndY * 0.5,
       armEndX,

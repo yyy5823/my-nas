@@ -373,11 +373,11 @@ class _ReorderableSourceCard extends StatelessWidget {
 
   Widget _buildStatusChip(ThemeData theme) {
     final (label, color) = switch (_status) {
-      SourceStatus.connected => ("已连接", AppColors.success),
-      SourceStatus.connecting => ("连接中", AppColors.warning),
-      SourceStatus.requires2FA => ("需要验证", AppColors.warning),
-      SourceStatus.error => ("错误", AppColors.error),
-      SourceStatus.disconnected => ("未连接", AppColors.lightOnSurfaceVariant),
+      SourceStatus.connected => ('已连接', AppColors.success),
+      SourceStatus.connecting => ('连接中', AppColors.warning),
+      SourceStatus.requires2FA => ('需要验证', AppColors.warning),
+      SourceStatus.error => ('错误', AppColors.error),
+      SourceStatus.disconnected => ('未连接', AppColors.lightOnSurfaceVariant),
     };
 
     return Container(
@@ -516,11 +516,11 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
 
   Widget _buildStatusChip(ThemeData theme) {
     final (label, color) = switch (_status) {
-      SourceStatus.connected => ("已连接", AppColors.success),
-      SourceStatus.connecting => ("连接中", AppColors.warning),
-      SourceStatus.requires2FA => ("需要验证", AppColors.warning),
-      SourceStatus.error => ("错误", AppColors.error),
-      SourceStatus.disconnected => ("未连接", AppColors.lightOnSurfaceVariant),
+      SourceStatus.connected => ('已连接', AppColors.success),
+      SourceStatus.connecting => ('连接中', AppColors.warning),
+      SourceStatus.requires2FA => ('需要验证', AppColors.warning),
+      SourceStatus.error => ('错误', AppColors.error),
+      SourceStatus.disconnected => ('未连接', AppColors.lightOnSurfaceVariant),
     };
 
     return Container(
@@ -590,7 +590,7 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
           ),
           ListTile(
             leading: Icon(Icons.delete, color: AppColors.error),
-            title: Text("删除", style: TextStyle(color: AppColors.error)),
+            title: Text('删除', style: TextStyle(color: AppColors.error)),
             onTap: () {
               Navigator.pop(context);
               _deleteSource();

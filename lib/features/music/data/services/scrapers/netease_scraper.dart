@@ -39,13 +39,10 @@ class NeteaseScraper implements MusicScraper {
     if (!kIsWeb) {
       _dio.httpClientAdapter = IOHttpClientAdapter(
         createHttpClient: () {
-          final client = HttpClient();
-          client.badCertificateCallback = (cert, host, port) {
-            // 仅信任网易云音乐相关域名
-            return host.endsWith('.163.com') ||
+          final client = HttpClient()
+          ..badCertificateCallback = (cert, host, port) => host.endsWith('.163.com') ||
                 host.endsWith('.netease.com') ||
                 host == 'music.163.com';
-          };
           return client;
         },
       );

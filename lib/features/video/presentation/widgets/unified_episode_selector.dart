@@ -889,7 +889,7 @@ class _MissingEpisodeActionSheet extends ConsumerWidget {
                   style: TextStyle(fontWeight: FontWeight.w500),
                 ),
                 subtitle: Text(
-                  '订阅整季: $showName 第${seasonNumber}季',
+                  '订阅整季: $showName 第$seasonNumber季',
                   style: TextStyle(
                     fontSize: 12,
                     color: isDark ? Colors.grey[400] : Colors.grey[600],
@@ -1067,7 +1067,7 @@ class _MissingEpisodeActionSheet extends ConsumerWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('已添加订阅: $showName 第${seasonNumber}季'),
+            content: Text('已添加订阅: $showName 第$seasonNumber季'),
             backgroundColor: Colors.green,
           ),
         );
@@ -1138,7 +1138,7 @@ class _MissingEpisodeActionSheet extends ConsumerWidget {
                             ),
                           ),
                           Text(
-                            '订阅: $showName 第${seasonNumber}季',
+                            '订阅: $showName 第$seasonNumber季',
                             style: TextStyle(
                               fontSize: 12,
                               color: isDark ? Colors.grey[400] : Colors.grey[600],

@@ -2,7 +2,6 @@ import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/service_adapters/base/service_adapter.dart';
 import 'package:my_nas/service_adapters/nastool/api/nastool_api.dart';
-import 'package:my_nas/service_adapters/nastool/api/nastool_auth.dart';
 import 'package:my_nas/service_adapters/nastool/models/models.dart';
 
 /// NASTool 服务适配器
@@ -260,6 +259,142 @@ class NasToolAdapter implements ServiceAdapter {
   Future<NtSystemVersion> getSystemVersion() async {
     _ensureConnected();
     return _api!.getSystemVersion();
+  }
+
+  /// 重启系统
+  Future<void> restartSystem() async {
+    _ensureConnected();
+    await _api!.restartSystem();
+  }
+
+  /// 检查更新
+  Future<bool> checkUpdate() async {
+    _ensureConnected();
+    final version = await _api!.getSystemVersion();
+    return version.hasUpdate ?? false;
+  }
+
+  // === 下载历史方法 ===
+
+  /// 获取下载历史
+  Future<List<NtDownloadHistory>> getDownloadHistory({int page = 1}) async {
+    _ensureConnected();
+    return _api!.getDownloadHistory(page);
+  }
+
+  /// 开始下载任务
+  Future<void> startDownload(String id) async {
+    _ensureConnected();
+    await _api!.startDownload(id);
+  }
+
+  /// 停止下载任务
+  Future<void> stopDownload(String id) async {
+    _ensureConnected();
+    await _api!.stopDownload(id);
+  }
+
+  /// 删除下载任务
+  Future<void> removeDownload(String id) async {
+    _ensureConnected();
+    await _api!.removeDownload(id);
+  }
+
+  // === 订阅搜索方法 ===
+
+  /// 搜索订阅资源
+  Future<void> searchSubscribe(int rssId, String type) async {
+    _ensureConnected();
+    await _api!.searchSubscribe(rssId, type);
+  }
+
+  // === 刷流任务方法 ===
+
+  /// 获取刷流任务列表
+  Future<List<NtBrushTask>> getBrushTasks() async {
+    _ensureConnected();
+    return _api!.listBrushTasks();
+  }
+
+  /// 运行刷流任务
+  Future<void> runBrushTask(int id) async {
+    _ensureConnected();
+    await _api!.runBrushTask(id);
+  }
+
+  /// 获取刷流任务种子列表
+  Future<List<NtBrushTorrent>> getBrushTaskTorrents(String id) async {
+    _ensureConnected();
+    return _api!.getBrushTaskTorrents(id);
+  }
+
+  // === RSS 方法 ===
+
+  /// 获取 RSS 任务列表
+  Future<List<NtRssTask>> getRssTasks() async {
+    _ensureConnected();
+    return _api!.listRssTasks();
+  }
+
+  /// 获取 RSS 解析器列表
+  Future<List<NtRssParser>> getRssParsers() async {
+    _ensureConnected();
+    return _api!.listRssParsers();
+  }
+
+  /// 预览 RSS 任务
+  Future<List<NtRssArticle>> previewRssTask(int id) async {
+    _ensureConnected();
+    return _api!.previewRssTask(id);
+  }
+
+  // === 插件方法 ===
+
+  /// 获取已安装插件列表
+  Future<List<NtPlugin>> getPlugins() async {
+    _ensureConnected();
+    return _api!.listPlugins();
+  }
+
+  /// 获取插件市场列表
+  Future<List<NtPluginApp>> getPluginApps() async {
+    _ensureConnected();
+    return _api!.getPluginApps();
+  }
+
+  /// 安装插件
+  Future<void> installPlugin(int id) async {
+    _ensureConnected();
+    await _api!.installPlugin(id);
+  }
+
+  /// 卸载插件
+  Future<void> uninstallPlugin(int id) async {
+    _ensureConnected();
+    await _api!.uninstallPlugin(id);
+  }
+
+  // === 同步目录方法 ===
+
+  /// 获取同步目录列表
+  Future<List<NtSyncDirectory>> getSyncDirectories() async {
+    _ensureConnected();
+    return _api!.listSyncDirectories();
+  }
+
+  /// 运行同步目录
+  Future<void> runSyncDirectory(int id) async {
+    _ensureConnected();
+    // NASTool API 没有直接运行同步目录的方法，使用 runService
+    await _api!.runService('sync');
+  }
+
+  // === 站点测试方法 ===
+
+  /// 测试站点连接
+  Future<bool> testSite(int id) async {
+    _ensureConnected();
+    return _api!.testSite(id);
   }
 
   void _ensureConnected() {

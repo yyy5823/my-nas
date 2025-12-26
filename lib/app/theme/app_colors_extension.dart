@@ -37,9 +37,9 @@ extension FunctionalColorsExtension on WidgetRef {
 /// 功能性颜色工具类
 /// 用于在没有 WidgetRef 的地方获取功能性颜色
 class FunctionalColors {
-  final ColorSchemePreset preset;
 
   const FunctionalColors(this.preset);
+  final ColorSchemePreset preset;
 
   /// 音乐类型颜色
   Color get music => preset.music;

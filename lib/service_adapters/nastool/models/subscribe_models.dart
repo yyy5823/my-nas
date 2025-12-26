@@ -51,6 +51,28 @@ class NtSubscribe {
 
   bool get isMovie => type.toUpperCase() == 'MOV';
   bool get isTv => type.toUpperCase() == 'TV';
+
+  /// 订阅进度 (0.0 - 1.0)
+  double? get progress {
+    if (isMovie || totalEp == null || totalEp == 0) return null;
+    return (currentEp ?? 0) / totalEp!;
+  }
+
+  /// 季度显示文本
+  String? get seasonDisplay {
+    if (isMovie || season == null) return null;
+    return '第$season季';
+  }
+
+  /// 是否已完成
+  bool get isCompleted {
+    if (isMovie) return state == 'D' || state == 'R';
+    if (totalEp == null) return false;
+    return (currentEp ?? 0) >= totalEp!;
+  }
+
+  /// 简介（占位用）
+  String? get overview => keyword;
 }
 
 /// 订阅历史

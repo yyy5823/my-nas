@@ -457,4 +457,3 @@ class QQMusicScraper implements MusicScraper {
     );
   }
 }
-

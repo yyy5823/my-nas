@@ -222,7 +222,7 @@ class MusicTagWriteQueueService {
   /// 处理单个任务
   Future<void> _processTask(WriteTask task) async {
     task.status = WriteTaskStatus.processing;
-    _persistTask(task);
+    await _persistTask(task);
     _notifyStatus();
 
     try {
@@ -259,9 +259,9 @@ class MusicTagWriteQueueService {
       }
 
       // 成功
-      task.status = WriteTaskStatus.completed;
-      task.errorMessage = null;
-      _persistTask(task);
+      task..status = WriteTaskStatus.completed
+      ..errorMessage = null;
+      await _persistTask(task);
       _notifyStatus(lastCompletedTaskId: task.id);
 
       logger.i('MusicTagWriteQueueService: 写入成功 - ${task.musicPath}');
@@ -284,7 +284,7 @@ class MusicTagWriteQueueService {
         logger.e('MusicTagWriteQueueService: 写入失败，已达最大重试次数 - ${task.musicPath}');
       }
 
-      _persistTask(task);
+      await _persistTask(task);
       _notifyStatus(lastError: task.errorMessage);
     }
   }
