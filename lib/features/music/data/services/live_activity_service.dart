@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
@@ -34,6 +35,9 @@ class LiveActivityService {
 
   /// 当前封面数据（用于更新时携带）
   Uint8List? _currentCoverData;
+
+  /// 当前主题颜色（ARGB 格式）
+  int? _currentThemeColor;
 
   /// Event Channel 订阅
   StreamSubscription<dynamic>? _eventSubscription;
@@ -291,6 +295,13 @@ class LiveActivityService {
   /// 检查是否正在运行 Live Activity
   bool get isActivityRunning => _currentActivityId != null;
 
+  /// 设置主题颜色
+  /// 当主题切换时由外部调用
+  void setThemeColor(Color color) {
+    _currentThemeColor = color.toARGB32();
+    logger.d('LiveActivity: 主题颜色已设置为 0x${_currentThemeColor!.toRadixString(16)}');
+  }
+
   /// 构建 Activity 数据
   Map<String, dynamic> _buildActivityData({
     required MusicItem music,
@@ -319,6 +330,11 @@ class LiveActivityService {
     // 直接传递 Uint8List，iOS 端会处理保存到文件
     if (coverData != null && coverData.isNotEmpty) {
       data['coverImage'] = coverData;
+    }
+
+    // 添加主题颜色（用于波形动效）
+    if (_currentThemeColor != null) {
+      data['themeColor'] = _currentThemeColor;
     }
 
     return data;

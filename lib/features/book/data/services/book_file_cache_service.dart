@@ -277,42 +277,46 @@ class BookFileCacheService {
       final dir = Directory(_cacheDir!);
       if (!await dir.exists()) return items;
 
-      var index = 0;
+      // 先收集所有文件信息
+      final fileInfos = <({File file, FileStat stat, String extension})>[];
       await for (final entity in dir.list()) {
         if (entity is File) {
-          index++;
           final stat = await entity.stat();
           final extension = p.extension(entity.path).toLowerCase();
-
-          // 根据扩展名生成更友好的名称
-          final typeName = switch (extension) {
-            '.epub' => 'EPUB 电子书',
-            '.pdf' => 'PDF 文档',
-            '.mobi' => 'Mobi 电子书',
-            '.azw3' => 'AZW3 电子书',
-            '.txt' => '文本文件',
-            _ => '图书缓存',
-          };
-
-          items.add(CachedMediaItem(
-            sourceId: 'book_file_cache',
-            sourcePath: entity.path,
-            mediaType: MediaType.book,
-            fileName: '$typeName $index',
-            fileSize: stat.size,
-            cachePath: entity.path,
-            cachedAt: stat.modified,
-            lastAccessed: stat.accessed,
-          ));
+          fileInfos.add((file: entity, stat: stat, extension: extension));
         }
       }
 
       // 按访问时间排序（最新的在前）
-      items.sort((a, b) {
-        final timeA = a.lastAccessed ?? a.cachedAt;
-        final timeB = b.lastAccessed ?? b.cachedAt;
-        return timeB.compareTo(timeA);
+      fileInfos.sort((a, b) {
+        return b.stat.accessed.compareTo(a.stat.accessed);
       });
+
+      // 排序后再编号
+      for (var i = 0; i < fileInfos.length; i++) {
+        final info = fileInfos[i];
+
+        // 根据扩展名生成更友好的名称
+        final typeName = switch (info.extension) {
+          '.epub' => 'EPUB 电子书',
+          '.pdf' => 'PDF 文档',
+          '.mobi' => 'Mobi 电子书',
+          '.azw3' => 'AZW3 电子书',
+          '.txt' => '文本文件',
+          _ => '图书缓存',
+        };
+
+        items.add(CachedMediaItem(
+          sourceId: 'book_file_cache',
+          sourcePath: info.file.path,
+          mediaType: MediaType.book,
+          fileName: '$typeName ${i + 1}',
+          fileSize: info.stat.size,
+          cachePath: info.file.path,
+          cachedAt: info.stat.modified,
+          lastAccessed: info.stat.accessed,
+        ));
+      }
     } on Exception catch (e, st) {
       AppError.ignore(e, st, '获取缓存列表失败，非关键功能');
     }

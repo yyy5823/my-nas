@@ -353,15 +353,17 @@ class MediaCacheService {
   String? getCacheDirectory(MediaType mediaType) => _cacheDirs[mediaType];
 
   /// 获取缓存统计信息
+  /// 注意：会验证文件存在性，确保返回准确的统计数据
   Future<Map<MediaType, ({int count, int size})>> getCacheStats() async {
     if (!_initialized) await init();
 
     final stats = <MediaType, ({int count, int size})>{};
 
     for (final type in MediaType.values) {
-      final count = await getCacheCount(mediaType: type);
-      final size = await getCacheSize(mediaType: type);
-      stats[type] = (count: count, size: size);
+      // 使用 getCachedItems 获取准确的缓存列表（会验证文件存在性）
+      final items = await getCachedItems(mediaType: type);
+      final totalSize = items.fold<int>(0, (sum, item) => sum + item.fileSize);
+      stats[type] = (count: items.length, size: totalSize);
     }
 
     return stats;

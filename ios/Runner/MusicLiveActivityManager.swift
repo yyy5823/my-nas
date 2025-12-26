@@ -348,7 +348,7 @@ class MusicLiveActivityManager {
     private func clearDefaultsData(prefix: UUID) {
         guard let defaults = sharedDefaults else { return }
 
-        let keys = ["title", "artist", "album", "isPlaying", "progress", "currentTime", "totalTime", "coverImage"]
+        let keys = ["title", "artist", "album", "isPlaying", "progress", "currentTime", "totalTime", "coverImage", "themeColor"]
         for key in keys {
             defaults.removeObject(forKey: "\(prefix)_\(key)")
         }

@@ -20,6 +20,8 @@ import 'package:my_nas/features/music/presentation/providers/music_settings_prov
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/main.dart' show audioHandler;
+import 'package:my_nas/app/theme/color_scheme_preset.dart';
+import 'package:my_nas/shared/providers/theme_provider.dart';
 import 'package:path/path.dart' as p;
 
 /// 当前播放的音乐
@@ -167,6 +169,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       action: 'initLiveActivity',
     );
     _initMediaProxy();
+    _listenToThemeChanges();
   }
 
   final Ref _ref;
@@ -197,6 +200,9 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   // 是否正在启动 Live Activity（防止重复启动导致竞争条件）
   bool _isStartingLiveActivity = false;
 
+  // 主题颜色监听订阅
+  ProviderSubscription<ColorSchemePreset>? _themeSubscription;
+
   // 音频缓存服务（用于持久化缓存，避免重复下载）
   final MusicAudioCacheService _audioCacheService = MusicAudioCacheService();
 
@@ -208,6 +214,26 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   /// 初始化媒体代理服务器
   Future<void> _initMediaProxy() async {
     await _mediaProxyServer.start();
+  }
+
+  /// 监听主题变化，自动更新 Live Activity 波形颜色
+  void _listenToThemeChanges() {
+    _themeSubscription = _ref.listen<ColorSchemePreset>(
+      colorSchemePresetProvider,
+      (previous, next) {
+        if (previous != next) {
+          logger.d('MusicPlayer: 检测到主题变化，更新 Live Activity 颜色');
+          _updateLiveActivityThemeColor();
+          // 如果正在运行 Live Activity，立即触发更新
+          if (_liveActivityService.isActivityRunning) {
+            AppError.fireAndForget(
+              _updateLiveActivity(),
+              action: 'updateLiveActivityThemeChange',
+            );
+          }
+        }
+      },
+    );
   }
 
   void _initPlayer() {
@@ -379,6 +405,9 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
     await _liveActivityService.init();
 
+    // 设置初始主题颜色（用于灵动岛波形）
+    _updateLiveActivityThemeColor();
+
     // 设置控制命令回调（来自灵动岛按钮点击）
     _liveActivityService.onControlAction = (action) {
       logger.i('MusicPlayer: 收到 Live Activity 控制命令: $action');
@@ -408,6 +437,33 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     };
 
     logger.i('MusicPlayer: Live Activity 服务已初始化');
+  }
+
+  /// 更新 Live Activity 主题颜色
+  /// 当主题切换时调用，会更新灵动岛波形颜色
+  void _updateLiveActivityThemeColor() {
+    if (!_liveActivityService.isSupported) return;
+
+    try {
+      final colorScheme = _ref.read(colorSchemePresetProvider);
+      _liveActivityService.setThemeColor(colorScheme.primary);
+      logger.d('MusicPlayer: Live Activity 主题颜色已更新');
+    } on Exception catch (e) {
+      // 非关键功能，忽略错误
+      logger.w('MusicPlayer: 更新 Live Activity 主题颜色失败: $e');
+    }
+  }
+
+  /// 供外部调用更新主题颜色（当主题切换时）
+  void updateThemeColor() {
+    _updateLiveActivityThemeColor();
+    // 如果正在运行 Live Activity，立即触发更新
+    if (_liveActivityService.isActivityRunning) {
+      AppError.fireAndForget(
+        _updateLiveActivity(),
+        action: 'updateLiveActivityThemeChange',
+      );
+    }
   }
 
   /// 启动 Live Activity 并开始定时更新
@@ -1133,6 +1189,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   void dispose() {
     _cleanupCurrentProxy();
     _stopLiveActivityUpdateTimer();
+    _themeSubscription?.close();
     _liveActivityService.dispose();
     // 注意：不 dispose _audioHandler，因为它是全局单例
     // 它会在应用退出时自动清理

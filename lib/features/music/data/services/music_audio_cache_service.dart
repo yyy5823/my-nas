@@ -269,34 +269,37 @@ class MusicAudioCacheService {
       final dir = Directory(_cacheDir!);
       if (!await dir.exists()) return items;
 
-      var index = 0;
+      // 先收集所有文件信息
+      final fileInfos = <({File file, FileStat stat, String extension})>[];
       await for (final entity in dir.list()) {
         if (entity is File &&
             !entity.path.endsWith('.part') &&
             !entity.path.endsWith('.mime')) {
-          index++;
           final stat = await entity.stat();
           final extension = p.extension(entity.path).toLowerCase();
-
-          items.add(CachedMediaItem(
-            sourceId: 'music_audio_cache',
-            sourcePath: entity.path,
-            mediaType: MediaType.music,
-            fileName: '音乐缓存 $index$extension',
-            fileSize: stat.size,
-            cachePath: entity.path,
-            cachedAt: stat.modified,
-            lastAccessed: stat.accessed,
-          ));
+          fileInfos.add((file: entity, stat: stat, extension: extension));
         }
       }
 
       // 按访问时间排序（最新的在前）
-      items.sort((a, b) {
-        final timeA = a.lastAccessed ?? a.cachedAt;
-        final timeB = b.lastAccessed ?? b.cachedAt;
-        return timeB.compareTo(timeA);
+      fileInfos.sort((a, b) {
+        return b.stat.accessed.compareTo(a.stat.accessed);
       });
+
+      // 排序后再编号
+      for (var i = 0; i < fileInfos.length; i++) {
+        final info = fileInfos[i];
+        items.add(CachedMediaItem(
+          sourceId: 'music_audio_cache',
+          sourcePath: info.file.path,
+          mediaType: MediaType.music,
+          fileName: '音乐缓存 ${i + 1}${info.extension}',
+          fileSize: info.stat.size,
+          cachePath: info.file.path,
+          cachedAt: info.stat.modified,
+          lastAccessed: info.stat.accessed,
+        ));
+      }
     } on Exception catch (e, st) {
       AppError.ignore(e, st, '获取缓存列表失败，非关键功能');
     }

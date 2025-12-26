@@ -154,6 +154,7 @@ final allCachedItemsProvider = FutureProvider<List<CachedMediaItem>>((ref) async
 });
 
 /// 缓存统计信息（聚合所有缓存服务）
+/// 使用实际缓存列表计算统计数据，确保与列表数量一致
 final cacheStatsProvider =
     FutureProvider<Map<MediaType, ({int count, int size})>>((ref) async {
   final mediaCacheService = ref.watch(mediaCacheServiceProvider);
@@ -167,28 +168,30 @@ final cacheStatsProvider =
     bookFileCacheService.init(),
   ]);
 
-  // 获取 MediaCacheService 的统计
+  // 获取 MediaCacheService 的统计（已验证文件存在性）
   final stats = await mediaCacheService.getCacheStats();
 
-  // 添加 MusicAudioCacheService 的统计（独立缓存目录）
-  final musicCacheCount = await musicAudioCacheService.getCacheCount();
-  final musicCacheSize = await musicAudioCacheService.getCacheSize();
-  if (musicCacheCount > 0 || musicCacheSize > 0) {
+  // 添加 MusicAudioCacheService 的统计（使用实际缓存列表）
+  final musicCachedItems = await musicAudioCacheService.getCachedItems();
+  if (musicCachedItems.isNotEmpty) {
+    final musicTotalSize =
+        musicCachedItems.fold<int>(0, (sum, item) => sum + item.fileSize);
     final existing = stats[MediaType.music] ?? (count: 0, size: 0);
     stats[MediaType.music] = (
-      count: existing.count + musicCacheCount,
-      size: existing.size + musicCacheSize,
+      count: existing.count + musicCachedItems.length,
+      size: existing.size + musicTotalSize,
     );
   }
 
-  // 添加 BookFileCacheService 的统计（独立缓存目录）
-  final bookCacheCount = await bookFileCacheService.getCacheCount();
-  final bookCacheSize = await bookFileCacheService.getCacheSize();
-  if (bookCacheCount > 0 || bookCacheSize > 0) {
+  // 添加 BookFileCacheService 的统计（使用实际缓存列表）
+  final bookCachedItems = await bookFileCacheService.getCachedItems();
+  if (bookCachedItems.isNotEmpty) {
+    final bookTotalSize =
+        bookCachedItems.fold<int>(0, (sum, item) => sum + item.fileSize);
     final existing = stats[MediaType.book] ?? (count: 0, size: 0);
     stats[MediaType.book] = (
-      count: existing.count + bookCacheCount,
-      size: existing.size + bookCacheSize,
+      count: existing.count + bookCachedItems.length,
+      size: existing.size + bookTotalSize,
     );
   }
 
