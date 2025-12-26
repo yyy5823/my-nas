@@ -851,11 +851,11 @@ class VideoDatabaseService {
 
     // 从版本11升级到版本12
     if (oldVersion < 12) {
-      // 添加 local_poster_url 列到聚合表
-      await db.execute(
-          'ALTER TABLE $_tableTvShowGroups ADD COLUMN $_tvgColLocalPosterUrl TEXT');
-      await db.execute(
-          'ALTER TABLE $_tableMovieCollectionGroups ADD COLUMN $_mcgColLocalPosterUrl TEXT');
+      // 添加 local_poster_url 列到聚合表（使用 _safeAddColumn 避免重复添加）
+      await _safeAddColumn(
+          db, _tableTvShowGroups, _tvgColLocalPosterUrl, 'TEXT');
+      await _safeAddColumn(
+          db, _tableMovieCollectionGroups, _mcgColLocalPosterUrl, 'TEXT');
 
       // 从 video_metadata 同步 local_poster_url 到 tv_show_groups
       await db.execute('''
