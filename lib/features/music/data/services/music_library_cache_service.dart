@@ -320,4 +320,29 @@ class MusicLibraryCacheService {
     if (cache == null) return [];
     return cache.tracks.where((t) => !t.metadataExtracted).toList();
   }
+
+  /// 根据 sourceId 和路径前缀删除缓存条目（用于移除文件夹）
+  Future<int> deleteByPath(String sourceId, String pathPrefix) async {
+    await init();
+    final cache = getCache();
+    if (cache == null) return 0;
+
+    final originalCount = cache.tracks.length;
+    final filteredTracks = cache.tracks
+        .where((t) => !(t.sourceId == sourceId && t.filePath.startsWith(pathPrefix)))
+        .toList();
+
+    final deletedCount = originalCount - filteredTracks.length;
+    if (deletedCount > 0) {
+      final newCache = MusicLibraryCache(
+        tracks: filteredTracks,
+        lastUpdated: cache.lastUpdated,
+        sourceIds: cache.sourceIds,
+      );
+      await _box?.put(_cacheKey, newCache.toMap());
+      logger.i('MusicLibraryCacheService: 已删除 $deletedCount 首音乐缓存 (sourceId: $sourceId, path: $pathPrefix)');
+    }
+
+    return deletedCount;
+  }
 }

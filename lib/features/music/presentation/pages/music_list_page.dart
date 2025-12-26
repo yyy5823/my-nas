@@ -573,6 +573,24 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
   final MusicDatabaseService _db = MusicDatabaseService();
   final MusicCoverCacheService _coverCache = MusicCoverCacheService();
 
+  /// 防抖计时器
+  Timer? _debounceTimer;
+
+  /// 获取当前启用的媒体库路径
+  List<({String sourceId, String path})> _getEnabledPaths() {
+    final config = _ref.read(mediaLibraryConfigProvider).valueOrNull;
+    if (config == null) return [];
+
+    final paths = config.getEnabledPathsForType(MediaType.music);
+    return paths.map((p) => (sourceId: p.sourceId, path: p.path)).toList();
+  }
+
+  /// 防抖刷新，避免频繁刷新
+  void _scheduleRefresh() {
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 300), _loadCategorizedData);
+  }
+
   void _init() {
     logger.d('MusicListNotifier: 开始初始化...');
 
@@ -613,6 +631,21 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
           loadMusic();
         }
       });
+
+      // 监听媒体库配置变化（启用/停用/移除路径）
+      _ref.listen<AsyncValue<MediaLibraryConfig>>(mediaLibraryConfigProvider, (previous, next) {
+        final prevPaths = previous?.valueOrNull?.getEnabledPathsForType(MediaType.music) ?? [];
+        final nextPaths = next.valueOrNull?.getEnabledPathsForType(MediaType.music) ?? [];
+
+        // 比较路径是否变化
+        final prevKeys = prevPaths.map((p) => '${p.sourceId}|${p.path}').toSet();
+        final nextKeys = nextPaths.map((p) => '${p.sourceId}|${p.path}').toSet();
+
+        if (prevKeys.length != nextKeys.length || !prevKeys.containsAll(nextKeys)) {
+          logger.i('MusicListNotifier: 媒体库配置变化，刷新音乐列表');
+          _scheduleRefresh();
+        }
+      });
     } on Exception catch (e) {
       logger.e('MusicListNotifier: 初始化失败', e);
       // 保持空列表状态，让用户可以正常使用界面
@@ -626,11 +659,14 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
   Future<void> _loadCategorizedData() async {
     state = MusicListLoading(fromCache: true, currentFolder: '加载数据...');
 
-    // 并行查询统计数据和初始数据
+    // 获取启用的路径
+    final enabledPaths = _getEnabledPaths();
+
+    // 并行查询统计数据和初始数据（使用路径过滤）
     final results = await Future.wait([
-      _db.getStats(),
-      _db.getRecentlyAdded(limit: 20),
-      _db.getPage(limit: _pageSize),
+      _db.getStats(enabledPaths: enabledPaths),
+      _db.getRecentlyAdded(limit: 20, enabledPaths: enabledPaths),
+      _db.getPage(limit: _pageSize, enabledPaths: enabledPaths),
     ]);
 
     final stats = results[0] as Map<String, dynamic>;
@@ -703,7 +739,12 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
 
     try {
       final offset = current.allTracks.length;
-      final moreTracks = await _db.getPage(limit: _pageSize, offset: offset);
+      final enabledPaths = _getEnabledPaths();
+      final moreTracks = await _db.getPage(
+        limit: _pageSize,
+        offset: offset,
+        enabledPaths: enabledPaths,
+      );
 
       if (moreTracks.isEmpty) {
         state = current.copyWith(

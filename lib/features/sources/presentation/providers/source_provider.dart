@@ -3,6 +3,7 @@ import 'package:my_nas/core/services/nas_file_system_registry.dart';
 import 'package:my_nas/features/book/data/services/book_database_service.dart';
 import 'package:my_nas/features/comic/data/services/comic_library_cache_service.dart';
 import 'package:my_nas/features/music/data/services/music_database_service.dart';
+import 'package:my_nas/features/music/data/services/music_library_cache_service.dart';
 import 'package:my_nas/features/photo/data/services/photo_database_service.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
@@ -387,7 +388,11 @@ class MediaLibraryConfigNotifier
             VideoLibraryCacheService().deleteByPath(sourceId, path),
           ]);
         case MediaType.music:
-          await MusicDatabaseService().deleteByPath(sourceId, path);
+          // 同时删除 SQLite 数据库和 Hive 缓存
+          await Future.wait([
+            MusicDatabaseService().deleteByPath(sourceId, path),
+            MusicLibraryCacheService().deleteByPath(sourceId, path),
+          ]);
         case MediaType.photo:
           await PhotoDatabaseService().deleteByPath(sourceId, path);
         case MediaType.book:

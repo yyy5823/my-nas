@@ -415,73 +415,127 @@ class MusicDatabaseService {
   }
 
   /// 获取最近添加的曲目（分页）
+  ///
+  /// [enabledPaths] 启用的路径列表，如果提供则只返回这些路径下的音乐
   Future<List<MusicTrackEntity>> getRecentlyAdded({
     int limit = 50,
     int offset = 0,
+    List<({String sourceId, String path})>? enabledPaths,
   }) async {
     if (!_initialized) await init();
 
-    final results = await _db!.query(
-      _tableMetadata,
-      orderBy: '$_colModifiedTime DESC',
-      limit: limit,
-      offset: offset,
-    );
+    final pathFilter = _buildPathFilter(enabledPaths);
 
+    if (pathFilter.where.isEmpty) {
+      final results = await _db!.query(
+        _tableMetadata,
+        orderBy: '$_colModifiedTime DESC',
+        limit: limit,
+        offset: offset,
+      );
+      return results.map(_fromRow).toList();
+    }
+
+    final sql = '''
+      SELECT * FROM $_tableMetadata${pathFilter.where}
+      ORDER BY $_colModifiedTime DESC
+      LIMIT ? OFFSET ?
+    ''';
+    final results = await _db!.rawQuery(sql, [...pathFilter.args, limit, offset]);
     return results.map(_fromRow).toList();
   }
 
   /// 分页获取所有曲目
+  ///
+  /// [enabledPaths] 启用的路径列表，如果提供则只返回这些路径下的音乐
   Future<List<MusicTrackEntity>> getPage({
     int limit = 50,
     int offset = 0,
     String? orderBy,
+    List<({String sourceId, String path})>? enabledPaths,
   }) async {
     if (!_initialized) await init();
 
-    final results = await _db!.query(
-      _tableMetadata,
-      orderBy: orderBy ?? '$_colArtist, $_colAlbum, $_colTrackNumber',
-      limit: limit,
-      offset: offset,
-    );
+    final pathFilter = _buildPathFilter(enabledPaths);
+    final orderClause = orderBy ?? '$_colArtist, $_colAlbum, $_colTrackNumber';
 
+    if (pathFilter.where.isEmpty) {
+      final results = await _db!.query(
+        _tableMetadata,
+        orderBy: orderClause,
+        limit: limit,
+        offset: offset,
+      );
+      return results.map(_fromRow).toList();
+    }
+
+    final sql = '''
+      SELECT * FROM $_tableMetadata${pathFilter.where}
+      ORDER BY $orderClause
+      LIMIT ? OFFSET ?
+    ''';
+    final results = await _db!.rawQuery(sql, [...pathFilter.args, limit, offset]);
     return results.map(_fromRow).toList();
   }
 
   /// 搜索曲目
+  ///
+  /// [enabledPaths] 启用的路径列表，如果提供则只在这些路径下搜索
   Future<List<MusicTrackEntity>> search(
     String query, {
     int limit = 50,
     int offset = 0,
+    List<({String sourceId, String path})>? enabledPaths,
   }) async {
     if (!_initialized) await init();
     if (query.isEmpty) return [];
 
     final searchPattern = '%$query%';
-    final results = await _db!.query(
-      _tableMetadata,
-      where: '$_colTitle LIKE ? OR $_colArtist LIKE ? OR $_colAlbum LIKE ? OR $_colFileName LIKE ?',
-      whereArgs: [searchPattern, searchPattern, searchPattern, searchPattern],
-      orderBy: '$_colArtist, $_colAlbum',
-      limit: limit,
-      offset: offset,
-    );
+    final pathFilter = _buildPathFilter(enabledPaths);
 
+    final searchCondition = '($_colTitle LIKE ? OR $_colArtist LIKE ? OR $_colAlbum LIKE ? OR $_colFileName LIKE ?)';
+    final searchArgs = [searchPattern, searchPattern, searchPattern, searchPattern];
+
+    if (pathFilter.where.isEmpty) {
+      final results = await _db!.query(
+        _tableMetadata,
+        where: searchCondition,
+        whereArgs: searchArgs,
+        orderBy: '$_colArtist, $_colAlbum',
+        limit: limit,
+        offset: offset,
+      );
+      return results.map(_fromRow).toList();
+    }
+
+    final sql = '''
+      SELECT * FROM $_tableMetadata
+      WHERE $searchCondition${pathFilter.andWhere}
+      ORDER BY $_colArtist, $_colAlbum
+      LIMIT ? OFFSET ?
+    ''';
+    final results = await _db!.rawQuery(sql, [...searchArgs, ...pathFilter.args, limit, offset]);
     return results.map(_fromRow).toList();
   }
 
   /// 获取所有唯一艺术家（带曲目数量）
-  Future<List<({String artist, int count})>> getArtists() async {
+  ///
+  /// [enabledPaths] 启用的路径列表，如果提供则只统计这些路径下的音乐
+  Future<List<({String artist, int count})>> getArtists({
+    List<({String sourceId, String path})>? enabledPaths,
+  }) async {
     if (!_initialized) await init();
 
-    final results = await _db!.rawQuery('''
+    final pathFilter = _buildPathFilter(enabledPaths);
+
+    final sql = '''
       SELECT $_colArtist as artist, COUNT(*) as count
       FROM $_tableMetadata
-      WHERE $_colArtist IS NOT NULL AND $_colArtist != ''
+      WHERE $_colArtist IS NOT NULL AND $_colArtist != ''${pathFilter.andWhere}
       GROUP BY $_colArtist
       ORDER BY $_colArtist
-    ''');
+    ''';
+    final results = await _db!.rawQuery(sql, pathFilter.args);
 
     return results
         .map((r) => (artist: r['artist']! as String, count: r['count']! as int))
@@ -489,19 +543,26 @@ class MusicDatabaseService {
   }
 
   /// 获取所有唯一专辑（带艺术家和曲目数量）
-  Future<List<({String album, String? artist, int count, String? coverPath})>> getAlbums() async {
+  ///
+  /// [enabledPaths] 启用的路径列表，如果提供则只统计这些路径下的音乐
+  Future<List<({String album, String? artist, int count, String? coverPath})>> getAlbums({
+    List<({String sourceId, String path})>? enabledPaths,
+  }) async {
     if (!_initialized) await init();
 
-    final results = await _db!.rawQuery('''
+    final pathFilter = _buildPathFilter(enabledPaths);
+
+    final sql = '''
       SELECT $_colAlbum as album, $_colArtist as artist, COUNT(*) as count,
              (SELECT $_colCoverPath FROM $_tableMetadata m2
               WHERE m2.$_colAlbum = $_tableMetadata.$_colAlbum
               AND m2.$_colCoverPath IS NOT NULL LIMIT 1) as cover_path
       FROM $_tableMetadata
-      WHERE $_colAlbum IS NOT NULL AND $_colAlbum != ''
+      WHERE $_colAlbum IS NOT NULL AND $_colAlbum != ''${pathFilter.andWhere}
       GROUP BY $_colAlbum
       ORDER BY $_colAlbum
-    ''');
+    ''';
+    final results = await _db!.rawQuery(sql, pathFilter.args);
 
     return results
         .map((r) => (
@@ -514,16 +575,23 @@ class MusicDatabaseService {
   }
 
   /// 获取所有唯一年份（带曲目数量）
-  Future<List<({int year, int count})>> getYears() async {
+  ///
+  /// [enabledPaths] 启用的路径列表，如果提供则只统计这些路径下的音乐
+  Future<List<({int year, int count})>> getYears({
+    List<({String sourceId, String path})>? enabledPaths,
+  }) async {
     if (!_initialized) await init();
 
-    final results = await _db!.rawQuery('''
+    final pathFilter = _buildPathFilter(enabledPaths);
+
+    final sql = '''
       SELECT $_colYear as year, COUNT(*) as count
       FROM $_tableMetadata
-      WHERE $_colYear IS NOT NULL AND $_colYear > 1900
+      WHERE $_colYear IS NOT NULL AND $_colYear > 1900${pathFilter.andWhere}
       GROUP BY $_colYear
       ORDER BY $_colYear DESC
-    ''');
+    ''';
+    final results = await _db!.rawQuery(sql, pathFilter.args);
 
     return results
         .map((r) => (year: r['year']! as int, count: r['count']! as int))
@@ -531,16 +599,23 @@ class MusicDatabaseService {
   }
 
   /// 获取所有唯一流派（带曲目数量）
-  Future<List<({String genre, int count})>> getGenres() async {
+  ///
+  /// [enabledPaths] 启用的路径列表，如果提供则只统计这些路径下的音乐
+  Future<List<({String genre, int count})>> getGenres({
+    List<({String sourceId, String path})>? enabledPaths,
+  }) async {
     if (!_initialized) await init();
 
-    final results = await _db!.rawQuery('''
+    final pathFilter = _buildPathFilter(enabledPaths);
+
+    final sql = '''
       SELECT $_colGenre as genre, COUNT(*) as count
       FROM $_tableMetadata
-      WHERE $_colGenre IS NOT NULL AND $_colGenre != ''
+      WHERE $_colGenre IS NOT NULL AND $_colGenre != ''${pathFilter.andWhere}
       GROUP BY $_colGenre
       ORDER BY count DESC
-    ''');
+    ''';
+    final results = await _db!.rawQuery(sql, pathFilter.args);
 
     return results
         .map((r) => (genre: r['genre']! as String, count: r['count']! as int))
@@ -548,18 +623,25 @@ class MusicDatabaseService {
   }
 
   /// 获取所有唯一文件夹
-  Future<List<({String folder, int count})>> getFolders() async {
+  ///
+  /// [enabledPaths] 启用的路径列表，如果提供则只统计这些路径下的音乐
+  Future<List<({String folder, int count})>> getFolders({
+    List<({String sourceId, String path})>? enabledPaths,
+  }) async {
     if (!_initialized) await init();
 
+    final pathFilter = _buildPathFilter(enabledPaths);
+
     // 使用 SQLite 的字符串函数提取文件夹路径
-    final results = await _db!.rawQuery('''
+    final sql = '''
       SELECT
         SUBSTR($_colFilePath, 1, LENGTH($_colFilePath) - LENGTH($_colFileName) - 1) as folder,
         COUNT(*) as count
-      FROM $_tableMetadata
+      FROM $_tableMetadata${pathFilter.where}
       GROUP BY folder
       ORDER BY folder
-    ''');
+    ''';
+    final results = await _db!.rawQuery(sql, pathFilter.args);
 
     return results
         .where((r) => r['folder'] != null && (r['folder']! as String).isNotEmpty)
@@ -568,32 +650,44 @@ class MusicDatabaseService {
   }
 
   /// 获取统计信息
-  Future<Map<String, dynamic>> getStats() async {
+  ///
+  /// [enabledPaths] 启用的路径列表，如果提供则只统计这些路径下的音乐
+  Future<Map<String, dynamic>> getStats({
+    List<({String sourceId, String path})>? enabledPaths,
+  }) async {
     if (!_initialized) await init();
 
-    final totalCount = Sqflite.firstIntValue(
-        await _db!.rawQuery('SELECT COUNT(*) FROM $_tableMetadata'));
+    final pathFilter = _buildPathFilter(enabledPaths);
+
+    final totalCount = Sqflite.firstIntValue(await _db!.rawQuery(
+        'SELECT COUNT(*) FROM $_tableMetadata${pathFilter.where}',
+        pathFilter.args));
 
     final artistCount = Sqflite.firstIntValue(await _db!.rawQuery(
-        'SELECT COUNT(DISTINCT $_colArtist) FROM $_tableMetadata WHERE $_colArtist IS NOT NULL'));
+        'SELECT COUNT(DISTINCT $_colArtist) FROM $_tableMetadata WHERE $_colArtist IS NOT NULL${pathFilter.andWhere}',
+        pathFilter.args));
 
     final albumCount = Sqflite.firstIntValue(await _db!.rawQuery(
-        'SELECT COUNT(DISTINCT $_colAlbum) FROM $_tableMetadata WHERE $_colAlbum IS NOT NULL'));
+        'SELECT COUNT(DISTINCT $_colAlbum) FROM $_tableMetadata WHERE $_colAlbum IS NOT NULL${pathFilter.andWhere}',
+        pathFilter.args));
 
     final genreCount = Sqflite.firstIntValue(await _db!.rawQuery(
-        'SELECT COUNT(DISTINCT $_colGenre) FROM $_tableMetadata WHERE $_colGenre IS NOT NULL'));
+        'SELECT COUNT(DISTINCT $_colGenre) FROM $_tableMetadata WHERE $_colGenre IS NOT NULL${pathFilter.andWhere}',
+        pathFilter.args));
 
     final yearCount = Sqflite.firstIntValue(await _db!.rawQuery(
-        'SELECT COUNT(DISTINCT $_colYear) FROM $_tableMetadata WHERE $_colYear IS NOT NULL'));
+        'SELECT COUNT(DISTINCT $_colYear) FROM $_tableMetadata WHERE $_colYear IS NOT NULL${pathFilter.andWhere}',
+        pathFilter.args));
 
     // 计算文件夹数量
     final folderCount = Sqflite.firstIntValue(await _db!.rawQuery('''
       SELECT COUNT(DISTINCT SUBSTR($_colFilePath, 1, LENGTH($_colFilePath) - LENGTH($_colFileName) - 1))
-      FROM $_tableMetadata
-    '''));
+      FROM $_tableMetadata${pathFilter.where}
+    ''', pathFilter.args));
 
     final totalDuration = Sqflite.firstIntValue(await _db!.rawQuery(
-            'SELECT SUM($_colDuration) FROM $_tableMetadata')) ??
+            'SELECT SUM($_colDuration) FROM $_tableMetadata${pathFilter.where}',
+            pathFilter.args)) ??
         0;
 
     return {
@@ -694,6 +788,31 @@ class MusicDatabaseService {
       _initialized = false;
       logger.i('MusicDatabaseService: 数据库已安全关闭');
     }
+  }
+
+  /// 构建路径过滤条件
+  ///
+  /// 返回 WHERE 子句和 AND 子句，用于 SQL 查询
+  ({String where, String andWhere, List<Object> args}) _buildPathFilter(
+    List<({String sourceId, String path})>? enabledPaths,
+  ) {
+    if (enabledPaths == null || enabledPaths.isEmpty) {
+      return (where: '', andWhere: '', args: []);
+    }
+
+    // 构建 (source_id = ? AND file_path LIKE ?) OR ... 条件
+    final conditions = enabledPaths
+        .map((_) => '($_colSourceId = ? AND $_colFilePath LIKE ?)')
+        .join(' OR ');
+    final args = enabledPaths
+        .expand((p) => [p.sourceId, '${p.path}%'])
+        .toList();
+
+    return (
+      where: ' WHERE ($conditions)',
+      andWhere: ' AND ($conditions)',
+      args: args,
+    );
   }
 
   Map<String, dynamic> _toRow(MusicTrackEntity m) => {
