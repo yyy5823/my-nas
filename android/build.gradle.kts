@@ -19,23 +19,7 @@ subprojects {
     project.evaluationDependsOn(":app")
 }
 
-// Fix JVM target compatibility for ALL subprojects (including plugins)
-// Use gradle.projectsEvaluated to run AFTER all projects are configured
-gradle.projectsEvaluated {
-    allprojects {
-        tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-            compilerOptions {
-                jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
-            }
-        }
-
-        tasks.withType<JavaCompile>().configureEach {
-            sourceCompatibility = JavaVersion.VERSION_17.toString()
-            targetCompatibility = JavaVersion.VERSION_17.toString()
-        }
-    }
-}
-
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
 }
+
