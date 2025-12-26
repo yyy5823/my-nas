@@ -28,19 +28,19 @@ class MobileMusicFileSystem implements NasFileSystem {
   final Map<int, SongModel> _songCache = {};
 
   /// 请求音乐库访问权限
+  ///
+  /// iOS 需要 NSAppleMusicUsageDescription 权限声明才能访问 Apple Music 库
+  /// Android 需要 READ_EXTERNAL_STORAGE 权限
   Future<bool> requestPermission() async {
-    // Android 需要请求权限
-    if (Platform.isAndroid) {
-      final hasPermission = await _audioQuery.permissionsStatus();
-      if (!hasPermission) {
-        final granted = await _audioQuery.permissionsRequest();
-        if (!granted) {
-          logger.w('MobileMusicFileSystem: 权限被拒绝');
-          return false;
-        }
+    // iOS 和 Android 都需要请求权限
+    final hasPermission = await _audioQuery.permissionsStatus();
+    if (!hasPermission) {
+      final granted = await _audioQuery.permissionsRequest();
+      if (!granted) {
+        logger.w('MobileMusicFileSystem: 权限被拒绝 (${Platform.operatingSystem})');
+        return false;
       }
     }
-    // iOS 不需要额外权限
     return true;
   }
 

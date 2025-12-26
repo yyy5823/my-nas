@@ -151,16 +151,13 @@ class MobileCompositeFileSystem implements NasFileSystem {
       size: 0,
     ));
 
-    // 音乐库
-    if (Platform.isAndroid) {
-      // iOS 音乐库访问受限，只在 Android 上显示
-      items.add(const FileItem(
-        name: '音乐',
-        path: '/music',
-        isDirectory: true,
-        size: 0,
-      ));
-    }
+    // 音乐库（iOS 和 Android 都支持）
+    items.add(const FileItem(
+      name: '音乐',
+      path: '/music',
+      isDirectory: true,
+      size: 0,
+    ));
 
     // 文件（Documents 和 Downloads）
     items.add(const FileItem(
@@ -318,19 +315,17 @@ class MobileCompositeFileSystem implements NasFileSystem {
       extension: item.extension,
     )));
 
-    // 搜索音乐
-    if (Platform.isAndroid) {
-      final musicItems = await _musicFileSystem.search(query);
-      results.addAll(musicItems.map((item) => FileItem(
-        name: item.name,
-        path: '/music${item.path}',
-        isDirectory: item.isDirectory,
-        size: item.size,
-        modifiedTime: item.modifiedTime,
-        createdTime: item.createdTime,
-        extension: item.extension,
-      )));
-    }
+    // 搜索音乐（iOS 和 Android 都支持）
+    final musicItems = await _musicFileSystem.search(query);
+    results.addAll(musicItems.map((item) => FileItem(
+      name: item.name,
+      path: '/music${item.path}',
+      isDirectory: item.isDirectory,
+      size: item.size,
+      modifiedTime: item.modifiedTime,
+      createdTime: item.createdTime,
+      extension: item.extension,
+    )));
 
     // 搜索文件
     final filesItems = await _filesFileSystem.search(query);

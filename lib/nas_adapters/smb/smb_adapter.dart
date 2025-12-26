@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:my_nas/core/constants/app_constants.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/nas_adapters/base/nas_adapter.dart';
@@ -43,14 +45,36 @@ class SmbAdapter implements NasAdapter {
 
   @override
   Future<ConnectionResult> connect(ConnectionConfig config) async {
-    logger..i('SmbAdapter: 开始连接')
-    ..i('SmbAdapter: 目标地址 => ${config.host}:${config.port}')
-    ..i('SmbAdapter: 用户名 => ${config.username}');
+    logger
+      ..i('SmbAdapter: 开始连接')
+      ..i('SmbAdapter: 目标地址 => ${config.host}:${config.port}')
+      ..i('SmbAdapter: 用户名 => ${config.username}');
 
     _config = config;
 
-    // 清理主机地址 - 移除可能存在的协议前缀
-    var host = config.host.trim();
+    // 清理主机地址
+    final host = _cleanupHost(config.host);
+    logger.i('SmbAdapter: 清理后的主机地址 => $host');
+
+    // 预解析 DNS，解决 mDNS (.local) 首次解析慢的问题
+    final resolvedHost = await _resolveDns(host);
+    logger.i('SmbAdapter: 解析后的地址 => $resolvedHost');
+
+    // 使用重试机制连接
+    return _connectWithRetry(
+      host: resolvedHost,
+      originalHost: host,
+      username: config.username,
+      password: config.password,
+      maxRetries: 2,
+    );
+  }
+
+  /// 清理主机地址
+  String _cleanupHost(String rawHost) {
+    var host = rawHost.trim();
+
+    // 移除协议前缀
     if (host.startsWith('http://')) {
       host = host.substring(7);
       logger.w('SmbAdapter: 移除 http:// 前缀');
@@ -63,6 +87,7 @@ class SmbAdapter implements NasAdapter {
       host = host.substring(6);
       logger.w('SmbAdapter: 移除 smb:// 前缀');
     }
+
     // 移除尾部的斜杠和端口
     if (host.contains('/')) {
       host = host.split('/').first;
@@ -71,72 +96,160 @@ class SmbAdapter implements NasAdapter {
       host = host.split(':').first;
     }
 
-    logger.i('SmbAdapter: 清理后的主机地址 => $host');
+    // 移除末尾的点（FQDN 格式可能导致 mDNS 解析问题）
+    while (host.endsWith('.')) {
+      host = host.substring(0, host.length - 1);
+      logger.w('SmbAdapter: 移除末尾的点');
+    }
+
+    return host;
+  }
+
+  /// 预解析 DNS 地址
+  ///
+  /// 对于 .local 域名（mDNS），首次解析可能较慢，
+  /// 预解析可以避免在 SMB 连接过程中超时
+  Future<String> _resolveDns(String host) async {
+    // 如果已经是 IP 地址，直接返回
+    if (_isIpAddress(host)) {
+      logger.d('SmbAdapter: 已经是 IP 地址，跳过 DNS 解析');
+      return host;
+    }
 
     try {
-      // SMB 连接使用 IP 地址（端口由系统处理，默认 445）
-      logger.d('SmbAdapter: 正在建立 SMB 连接...');
+      logger.d('SmbAdapter: 开始 DNS 解析 $host');
+      final stopwatch = Stopwatch()..start();
 
-      // 添加连接超时
-      _client = await SmbConnect.connectAuth(
-        host: host,
-        domain: '', // 工作组/域，通常留空
-        username: config.username,
-        password: config.password,
-        // debugPrint: true, // 禁用调试输出，避免日志刷屏
-      ).timeout(
-        const Duration(seconds: 30),
+      final addresses = await InternetAddress.lookup(host).timeout(
+        const Duration(seconds: 10),
         onTimeout: () {
-          throw Exception('SMB 连接超时 (30秒)');
+          logger.w('SmbAdapter: DNS 解析超时，使用原始主机名');
+          return <InternetAddress>[];
         },
       );
 
-      logger.d('SmbAdapter: SMB 连接已建立，正在获取共享列表...');
+      stopwatch.stop();
+      logger.d('SmbAdapter: DNS 解析耗时 ${stopwatch.elapsedMilliseconds}ms');
 
-      // 测试连接 - 获取共享列表 (带超时)
-      final shares = await _client!.listShares().timeout(
-        const Duration(seconds: 15),
-        onTimeout: () {
-          throw Exception('获取共享列表超时');
-        },
-      );
-      logger.i('SmbAdapter: 连接成功，发现 ${shares.length} 个共享');
-
-      for (final share in shares) {
-        logger.d('SmbAdapter: 共享 => ${share.name} (${share.path})');
+      if (addresses.isNotEmpty) {
+        final ip = addresses.first.address;
+        logger.i('SmbAdapter: DNS 解析成功 $host -> $ip');
+        return ip;
       }
-
-      // 创建连接池（根据平台动态配置）
-      logger.i('SmbAdapter: ${SmbPoolConfig.summary}');
-      _connectionPool = SmbConnectionPool(
-        host: host,
-        username: config.username,
-        password: config.password,
-        maxConnections: SmbPoolConfig.maxConnections,
-        maxDedicatedConnections: SmbPoolConfig.maxDedicatedConnections,
-        maxIdleTime: SmbPoolConfig.maxIdleTime,
-      );
-
-      _fileSystem = SmbFileSystem(
-        client: _client!,
-        connectionPool: _connectionPool,
-      );
-      _connected = true;
-
-      return ConnectionSuccess(
-        sessionId: 'smb-${DateTime.now().millisecondsSinceEpoch}',
-        serverInfo: ServerInfo(
-          hostname: host, // 使用清理后的主机地址
-          model: 'SMB/CIFS Server',
-        ),
-      );
-    // 使用通用 catch 捕获所有类型的异常（包括 SMB 库抛出的 String 异常）
-    // ignore: avoid_catches_without_on_clauses
-    } catch (e, stackTrace) {
-      logger.e('SmbAdapter: 连接失败', e, stackTrace);
-      _connected = false;
-      return ConnectionFailure(error: _parseErrorAny(e));
+    } catch (e) {
+      logger.w('SmbAdapter: DNS 解析失败，使用原始主机名', e);
     }
+
+    return host;
+  }
+
+  /// 检查是否为 IP 地址
+  bool _isIpAddress(String host) {
+    // IPv4 检查
+    final ipv4Regex = RegExp(r'^(\d{1,3}\.){3}\d{1,3}$');
+    if (ipv4Regex.hasMatch(host)) {
+      return true;
+    }
+
+    // IPv6 检查（简单判断）
+    if (host.contains(':') && !host.contains('.')) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /// 带重试的连接方法
+  Future<ConnectionResult> _connectWithRetry({
+    required String host,
+    required String originalHost,
+    required String username,
+    required String password,
+    required int maxRetries,
+  }) async {
+    dynamic lastError;
+    StackTrace? lastStackTrace;
+
+    for (var attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        logger.d('SmbAdapter: 连接尝试 $attempt/$maxRetries');
+
+        // SMB 连接
+        _client = await SmbConnect.connectAuth(
+          host: host,
+          domain: '',
+          username: username,
+          password: password,
+        ).timeout(
+          const Duration(seconds: 30),
+          onTimeout: () {
+            throw Exception('SMB 连接超时 (30秒)');
+          },
+        );
+
+        logger.d('SmbAdapter: SMB 连接已建立，正在获取共享列表...');
+
+        // 测试连接 - 获取共享列表
+        final shares = await _client!.listShares().timeout(
+          const Duration(seconds: 15),
+          onTimeout: () {
+            throw Exception('获取共享列表超时');
+          },
+        );
+        logger.i('SmbAdapter: 连接成功，发现 ${shares.length} 个共享');
+
+        for (final share in shares) {
+          logger.d('SmbAdapter: 共享 => ${share.name} (${share.path})');
+        }
+
+        // 创建连接池
+        logger.i('SmbAdapter: ${SmbPoolConfig.summary}');
+        _connectionPool = SmbConnectionPool(
+          host: host,
+          username: username,
+          password: password,
+          maxConnections: SmbPoolConfig.maxConnections,
+          maxDedicatedConnections: SmbPoolConfig.maxDedicatedConnections,
+          maxIdleTime: SmbPoolConfig.maxIdleTime,
+        );
+
+        _fileSystem = SmbFileSystem(
+          client: _client!,
+          connectionPool: _connectionPool,
+        );
+        _connected = true;
+
+        return ConnectionSuccess(
+          sessionId: 'smb-${DateTime.now().millisecondsSinceEpoch}',
+          serverInfo: ServerInfo(
+            hostname: originalHost,
+            model: 'SMB/CIFS Server',
+          ),
+        );
+      } catch (e, stackTrace) {
+        lastError = e;
+        lastStackTrace = stackTrace;
+        logger.w('SmbAdapter: 连接尝试 $attempt 失败: $e');
+
+        // 清理失败的连接
+        try {
+          await _client?.close();
+        } catch (_) {}
+        _client = null;
+
+        // 如果不是最后一次尝试，等待后重试
+        if (attempt < maxRetries) {
+          final delay = Duration(milliseconds: 500 * attempt);
+          logger.d('SmbAdapter: ${delay.inMilliseconds}ms 后重试');
+          await Future<void>.delayed(delay);
+        }
+      }
+    }
+
+    // 所有重试都失败
+    logger.e('SmbAdapter: 连接失败，已重试 $maxRetries 次', lastError, lastStackTrace);
+    _connected = false;
+    return ConnectionFailure(error: _parseErrorAny(lastError));
   }
 
   // ignore: unused_element

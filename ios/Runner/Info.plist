@@ -48,9 +48,12 @@
 		<key>UIStatusBarHidden</key>
 		<false/>
 		<key>NSPhotoLibraryUsageDescription</key>
-		<string>需要访问相册以保存照片</string>
+		<string>需要访问相册以浏览和管理照片视频</string>
 		<key>NSPhotoLibraryAddUsageDescription</key>
 		<string>需要访问相册以保存照片</string>
+		<!-- Apple Music 音乐库访问权限 -->
+		<key>NSAppleMusicUsageDescription</key>
+		<string>需要访问音乐库以浏览和播放本地音乐</string>
 		<key>UIBackgroundModes</key>
 		<array>
 			<string>audio</string>

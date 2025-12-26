@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -14,6 +15,7 @@ import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_result.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_source.dart';
 import 'package:my_nas/features/music/presentation/pages/manual_music_scraper_page.dart';
+import 'package:my_nas/features/music/presentation/providers/lyric_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_scraper_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
@@ -319,6 +321,15 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
         setState(() {
           _progress = completedSteps / totalSteps;
         });
+
+        // 如果当前正在播放这首歌，通知歌词 provider 重新加载
+        final currentMusic = ref.read(currentMusicProvider);
+        if (currentMusic?.id == widget.music.id) {
+          AppError.fireAndForget(
+            ref.read(currentLyricProvider.notifier).loadLyrics(widget.music),
+            action: 'reloadLyricsAfterScrape',
+          );
+        }
       }
 
       // 写入到文件标签
@@ -524,7 +535,9 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
       if (lrcContent.isEmpty) return;
 
       final lrcPath = p.join(musicDir, '$baseName.lrc');
-      await fileSystem.writeFile(lrcPath, Uint8List.fromList(lrcContent.codeUnits));
+      // 使用 UTF-8 编码保存歌词文件
+      final utf8Bytes = const Utf8Encoder().convert(lrcContent);
+      await fileSystem.writeFile(lrcPath, Uint8List.fromList(utf8Bytes));
     } on Exception catch (e, st) {
       AppError.ignore(e, st, '下载歌词失败');
     }

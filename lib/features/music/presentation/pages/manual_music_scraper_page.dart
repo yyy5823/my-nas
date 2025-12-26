@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
@@ -12,6 +13,7 @@ import 'package:my_nas/features/music/data/services/music_tag_writer_service.dar
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_result.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_source.dart';
+import 'package:my_nas/features/music/presentation/providers/lyric_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_scraper_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_tag_write_queue_provider.dart';
@@ -231,6 +233,15 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
       // 下载歌词（同样是小文件）
       if (_downloadLyrics && (_selectedLyrics?.hasLyrics ?? false)) {
         await _downloadLyricsToFile(fileSystem, musicDir, baseName);
+
+        // 如果当前正在播放这首歌，通知歌词 provider 重新加载
+        final currentMusic = ref.read(currentMusicProvider);
+        if (currentMusic?.id == widget.music.id) {
+          AppError.fireAndForget(
+            ref.read(currentLyricProvider.notifier).loadLyrics(widget.music),
+            action: 'reloadLyricsAfterScrape',
+          );
+        }
       }
 
       // 立即更新当前播放音乐的元数据（如果正在播放此歌曲）
@@ -416,7 +427,9 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
       if (lrcContent.isEmpty) return;
 
       final lrcPath = p.join(musicDir, '$baseName.lrc');
-      await fileSystem.writeFile(lrcPath, Uint8List.fromList(lrcContent.codeUnits));
+      // 使用 UTF-8 编码保存歌词文件
+      final utf8Bytes = const Utf8Encoder().convert(lrcContent);
+      await fileSystem.writeFile(lrcPath, Uint8List.fromList(utf8Bytes));
     } on Exception catch (e, st) {
       AppError.ignore(e, st, '下载歌词失败');
     }
