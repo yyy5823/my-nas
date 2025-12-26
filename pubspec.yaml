@@ -125,7 +125,7 @@ dependencies:
   visibility_detector: ^0.4.0+2  # Lazy load book covers when visible
 
   # Picture in Picture
-  floating: ^2.0.1  # Android/iOS PiP support
+  floating: ^6.0.0  # Android/iOS PiP support
   window_manager: ^0.4.3  # Desktop window control
   bonsoir: ^6.0.1  # Native mDNS/Bonjour discovery (iOS/Android/macOS/Windows/Linux)
   ffi: ^2.1.4
@@ -148,6 +148,9 @@ dev_dependencies:
   # Icon & Splash Generation
   flutter_launcher_icons: ^0.14.2
 
+  # Windows MSIX Packaging
+  msix: ^3.16.12
+
 flutter:
   uses-material-design: true
 
@@ -167,7 +170,7 @@ msix_config:
   display_name: MyNAS
   publisher_display_name: kkape
   identity_name: com.kkape.mynas
-  msix_version: 0.1.5.0
+  msix_version: 0.2.7.0
   capabilities: internetClient, privateNetworkClientServer
   languages: zh-cn, en-us
 

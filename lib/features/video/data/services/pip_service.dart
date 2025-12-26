@@ -115,7 +115,7 @@ class PipService {
     // 计算宽高比 Rational
     final rational = _aspectRatioToRational(aspectRatio);
 
-    final status = await _floating!.enable(aspectRatio: rational);
+    final status = await _floating!.enable(ImmediatePiP(aspectRatio: rational));
 
     _isPipMode = status == PiPStatus.enabled;
     logger.i('PipService: 移动端画中画 ${_isPipMode ? "已启用" : "启用失败"}');

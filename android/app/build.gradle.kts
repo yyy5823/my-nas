@@ -7,8 +7,8 @@ plugins {
 
 android {
     namespace = "com.kkape.mynas"
-    compileSdk = flutter.compileSdkVersion
-    ndkVersion = "26.3.11579264"  // NDK r26d
+    compileSdk = 36
+    ndkVersion = "27.0.12077973"  // NDK r27
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -23,15 +23,10 @@ android {
         applicationId = "com.kkape.mynas"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        minSdk = 24
+        targetSdk = 35
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-
-        // NDK 配置 - 支持的 ABI 架构
-        ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
-        }
 
         // CMake 配置 - 编译 Chromaprint JNI
         externalNativeBuild {
@@ -61,6 +56,10 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 }
