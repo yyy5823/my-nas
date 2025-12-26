@@ -924,12 +924,12 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
       }
     }
 
-    // 第一阶段：扫描文件系统
-    state = MusicListLoading();
-    final tracks = <MusicFileWithSource>[];
+    // 渐进式加载：扫描时边扫边保存，立即切换到可用状态
+    state = MusicListLoading(currentFolder: '正在扫描...');
+    final allTracks = <MusicFileWithSource>[];
     var scannedFolders = 0;
     final totalFolders = connectedPaths.length;
-    var lastUpdateCount = 0;
+    var lastSaveCount = 0;
 
     for (final mediaPath in connectedPaths) {
       final connection = connections[mediaPath.sourceId];
@@ -938,26 +938,24 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
       state = MusicListLoading(
         progress: scannedFolders / totalFolders,
         currentFolder: mediaPath.displayName,
-        partialTracks: List.from(tracks),
-        scannedCount: tracks.length,
+        scannedCount: allTracks.length,
       );
 
       try {
         await _scanForMusic(
           connection.adapter.fileSystem,
           mediaPath.path,
-          tracks,
+          allTracks,
           sourceId: mediaPath.sourceId,
           onBatchFound: () {
-            // 每发现 5 个文件更新一次进度，使进度显示更平滑
-            if (tracks.length - lastUpdateCount >= 5) {
-              lastUpdateCount = tracks.length;
-              state = MusicListLoading(
-                progress: scannedFolders / totalFolders,
-                currentFolder: '${mediaPath.displayName} (${tracks.length})',
-                partialTracks: List.from(tracks),
-                scannedCount: tracks.length,
+            // 每发现 20 个文件保存一次并更新 UI
+            if (allTracks.length - lastSaveCount >= 20) {
+              // 异步保存，不阻塞扫描
+              _saveTracksAndUpdateUI(
+                allTracks.sublist(lastSaveCount),
+                connections,
               );
+              lastSaveCount = allTracks.length;
             }
           },
         );
@@ -968,16 +966,163 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
       scannedFolders++;
     }
 
-    logger.i('音乐扫描完成，共找到 ${tracks.length} 首音乐');
-
-    // 第二阶段：提取元数据并保存到 SQLite
-    if (tracks.isNotEmpty) {
-      await _extractAndSaveMetadata(tracks, connections);
+    // 保存剩余的音乐
+    if (allTracks.length > lastSaveCount) {
+      await _saveTracksToDb(allTracks.sublist(lastSaveCount));
     }
 
-    // 重新加载数据
+    logger.i('音乐扫描完成，共找到 ${allTracks.length} 首音乐');
+
+    // 立即切换到可用状态（用户可以开始使用）
     await _loadCategorizedData();
-    logger.i('音乐库加载完成');
+
+    // 后台增量提取元数据（不阻塞 UI）
+    if (allTracks.isNotEmpty) {
+      _extractMetadataInBackground(allTracks, connections);
+    }
+
+    logger.i('音乐库加载完成，元数据正在后台提取');
+  }
+
+  /// 保存音乐并更新 UI（异步，不阻塞扫描）
+  void _saveTracksAndUpdateUI(
+    List<MusicFileWithSource> tracks,
+    Map<String, SourceConnection> connections,
+  ) {
+    unawaited(_saveTracksToDb(tracks).then((_) async {
+      // 保存后刷新 UI
+      if (state is MusicListLoading) {
+        // 扫描中：更新进度
+        final loading = state as MusicListLoading;
+        state = MusicListLoading(
+          progress: loading.progress,
+          currentFolder: loading.currentFolder,
+          scannedCount: loading.scannedCount,
+        );
+      } else if (state is MusicListLoaded) {
+        // 已加载：增量更新
+        await _loadCategorizedData();
+      }
+    }));
+  }
+
+  /// 保存音乐到数据库（仅基本信息，无元数据）
+  Future<void> _saveTracksToDb(List<MusicFileWithSource> tracks) async {
+    final entities = tracks.map((t) => MusicTrackEntity(
+      sourceId: t.sourceId,
+      filePath: t.path,
+      fileName: t.name,
+      size: t.size,
+      modifiedTime: t.modifiedTime,
+      lastUpdated: DateTime.now(),
+    )).toList();
+
+    await _db.upsertBatch(entities);
+  }
+
+  /// 后台增量提取元数据（不阻塞 UI）
+  void _extractMetadataInBackground(
+    List<MusicFileWithSource> tracks,
+    Map<String, SourceConnection> connections,
+  ) {
+    // 标记正在提取元数据
+    final current = state;
+    if (current is MusicListLoaded) {
+      state = current.copyWith(isLoadingMetadata: true);
+    }
+
+    unawaited(_doExtractMetadataInBackground(tracks, connections));
+  }
+
+  Future<void> _doExtractMetadataInBackground(
+    List<MusicFileWithSource> tracks,
+    Map<String, SourceConnection> connections,
+  ) async {
+    await _metadataService.init();
+
+    var processedCount = 0;
+    var lastRefreshCount = 0;
+    final batch = <MusicTrackEntity>[];
+
+    for (final track in tracks) {
+      final connection = connections[track.sourceId];
+      if (connection == null || connection.status != SourceStatus.connected) {
+        processedCount++;
+        continue;
+      }
+
+      try {
+        final metadata = await _metadataService.extractFromNasFile(
+          connection.adapter.fileSystem,
+          track.path,
+          skipLyrics: true,
+        );
+
+        String? coverPath;
+        if (metadata?.coverData != null && metadata!.coverData!.isNotEmpty) {
+          final uniqueKey = '${track.sourceId}_${track.path}';
+          coverPath = await _coverCache.saveCover(
+            uniqueKey,
+            Uint8List.fromList(metadata.coverData!),
+          );
+        }
+
+        batch.add(MusicTrackEntity(
+          sourceId: track.sourceId,
+          filePath: track.path,
+          fileName: track.name,
+          title: metadata?.title,
+          artist: metadata?.artist,
+          album: metadata?.album,
+          duration: metadata?.duration?.inMilliseconds,
+          trackNumber: metadata?.trackNumber,
+          year: metadata?.year,
+          genre: metadata?.genre,
+          coverPath: coverPath,
+          size: track.size,
+          modifiedTime: track.modifiedTime,
+          lastUpdated: DateTime.now(),
+        ));
+      } on Exception catch (e) {
+        logger.w('提取元数据失败 ${track.path}: $e');
+      }
+
+      processedCount++;
+
+      // 每处理 10 首保存一次，每 30 首刷新一次 UI
+      if (batch.length >= 10) {
+        await _db.upsertBatch(batch);
+        batch.clear();
+
+        // 定期刷新 UI（但不要太频繁）
+        if (processedCount - lastRefreshCount >= 30) {
+          lastRefreshCount = processedCount;
+          await _loadCategorizedData();
+
+          // 更新进度
+          final current = state;
+          if (current is MusicListLoaded) {
+            state = current.copyWith(isLoadingMetadata: true);
+          }
+        }
+      }
+    }
+
+    // 保存剩余
+    if (batch.isNotEmpty) {
+      await _db.upsertBatch(batch);
+    }
+
+    // 最终刷新
+    await _loadCategorizedData();
+
+    // 标记元数据提取完成
+    final finalState = state;
+    if (finalState is MusicListLoaded) {
+      state = finalState.copyWith(isLoadingMetadata: false);
+    }
+
+    logger.i('后台元数据提取完成，处理了 $processedCount 首音乐');
   }
 
   /// 扫描单个目录（用于媒体库页面的单目录扫描）
@@ -1207,103 +1352,6 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
     }
 
     logger.i('目录 $pathPrefix 元数据提取完成，处理了 $processedCount 首音乐');
-  }
-
-  /// 提取元数据并保存到 SQLite（优化：封面保存到磁盘）
-  Future<void> _extractAndSaveMetadata(
-    List<MusicFileWithSource> tracks,
-    Map<String, SourceConnection> connections,
-  ) async {
-    await _metadataService.init();
-
-    final totalTracks = tracks.length;
-    var processedCount = 0;
-    final metadataList = <MusicTrackEntity>[];
-
-    state = MusicListLoading(
-      phase: MusicScanPhase.metadata,
-      currentFolder: '正在提取元数据...',
-      scannedCount: totalTracks,
-    );
-
-    for (var i = 0; i < tracks.length; i++) {
-      final track = tracks[i];
-      final connection = connections[track.sourceId];
-
-      if (connection == null || connection.status != SourceStatus.connected) {
-        processedCount++;
-        continue;
-      }
-
-      try {
-        final metadata = await _metadataService.extractFromNasFile(
-          connection.adapter.fileSystem,
-          track.path,
-          skipLyrics: true,
-        );
-
-        String? coverPath;
-        if (metadata?.coverData != null && metadata!.coverData!.isNotEmpty) {
-          // 保存封面到磁盘缓存
-          final uniqueKey = '${track.sourceId}_${track.path}';
-          coverPath = await _coverCache.saveCover(
-            uniqueKey,
-            Uint8List.fromList(metadata.coverData!),
-          );
-        }
-
-        metadataList.add(MusicTrackEntity(
-          sourceId: track.sourceId,
-          filePath: track.path,
-          fileName: track.name,
-          title: metadata?.title,
-          artist: metadata?.artist,
-          album: metadata?.album,
-          duration: metadata?.duration?.inMilliseconds,
-          trackNumber: metadata?.trackNumber,
-          year: metadata?.year,
-          genre: metadata?.genre,
-          coverPath: coverPath,
-          size: track.size,
-          modifiedTime: track.modifiedTime,
-          lastUpdated: DateTime.now(),
-        ));
-      } on Exception catch (e) {
-        logger.w('提取元数据失败 ${track.path}: $e');
-        // 即使失败也保存基本信息
-        metadataList.add(MusicTrackEntity(
-          sourceId: track.sourceId,
-          filePath: track.path,
-          fileName: track.name,
-          size: track.size,
-          modifiedTime: track.modifiedTime,
-          lastUpdated: DateTime.now(),
-        ));
-      }
-
-      processedCount++;
-
-      // 每处理 10 首保存一次，并更新进度（使进度显示更平滑）
-      if (processedCount % 10 == 0 || processedCount == totalTracks) {
-        await _db.upsertBatch(metadataList);
-        metadataList.clear();
-
-        final progress = processedCount / totalTracks;
-        state = MusicListLoading(
-          phase: MusicScanPhase.metadata,
-          currentFolder: '提取元数据 ($processedCount/$totalTracks)',
-          metadataProgress: progress,
-          scannedCount: totalTracks,
-        );
-      }
-    }
-
-    // 保存剩余数据
-    if (metadataList.isNotEmpty) {
-      await _db.upsertBatch(metadataList);
-    }
-
-    logger.i('元数据提取完成，处理了 $processedCount 首音乐');
   }
 
   /// 递归扫描音乐文件（无深度限制）
@@ -1610,6 +1658,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
   /// 问候语头部
   Widget _buildGreetingHeader(BuildContext context, WidgetRef ref, bool isDark, MusicListState state) {
     final trackCount = state is MusicListLoaded ? state.totalCount : 0;
+    final isLoadingMetadata = state is MusicListLoaded && state.isLoadingMetadata;
 
     return Row(
       children: [
@@ -1625,12 +1674,35 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
                 ),
               ),
               if (trackCount > 0)
-                Text(
-                  '共 $trackCount 首歌曲',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: isDark ? Colors.grey[400] : Colors.grey[600],
-                  ),
+                Row(
+                  children: [
+                    Text(
+                      '共 $trackCount 首歌曲',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: isDark ? Colors.grey[400] : Colors.grey[600],
+                      ),
+                    ),
+                    if (isLoadingMetadata) ...[
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        width: 12,
+                        height: 12,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 1.5,
+                          color: isDark ? Colors.deepOrange[300] : Colors.deepOrange,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        '正在加载元数据...',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark ? Colors.grey[500] : Colors.grey[500],
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
             ],
           ),
