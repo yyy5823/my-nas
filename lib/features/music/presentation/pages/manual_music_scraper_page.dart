@@ -648,10 +648,6 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
     ThemeData theme,
     bool isDark,
   ) {
-    const displayLimit = 5;
-    final displayItems = items.take(displayLimit).toList();
-    final hasMore = items.length > displayLimit;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -677,9 +673,7 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
-                  hasMore
-                      ? '显示 ${displayItems.length}/${items.length}'
-                      : '${items.length} 个结果',
+                  '${items.length} 个结果',
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: source.themeColor,
                   ),
@@ -721,8 +715,8 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
             ],
           ),
         ),
-        // 结果列表
-        ...displayItems.map((item) => _buildSearchResultItem(item, theme, isDark)),
+        // 结果列表（显示全部）
+        ...items.map((item) => _buildSearchResultItem(item, theme, isDark)),
         const SizedBox(height: 16),
       ],
     );

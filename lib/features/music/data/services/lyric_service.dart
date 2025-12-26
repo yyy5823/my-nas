@@ -110,9 +110,9 @@ class LyricService {
             final lrcPath = p.join(dir, fileName);
             logger.i('LyricService: 找到歌词文件 $lrcPath');
 
-            // 下载并解析歌词
-            final url = await fileSystem.getFileUrl(lrcPath);
-            return await _downloadAndParseLyrics(url);
+            // 直接通过文件系统读取歌词文件
+            // 避免 SMB/WebDAV 等协议的 URL 无法被 HttpClient 处理
+            return await _readAndParseLyrics(fileSystem, lrcPath);
           }
         }
       }
@@ -125,33 +125,31 @@ class LyricService {
     }
   }
 
-  /// 下载并解析歌词
-  Future<LyricData> _downloadAndParseLyrics(String url) async {
+  /// 通过文件系统直接读取并解析歌词
+  /// 支持 SMB、WebDAV 等各种协议
+  Future<LyricData> _readAndParseLyrics(
+    NasFileSystem fileSystem,
+    String lrcPath,
+  ) async {
     try {
-      final client = HttpClient()
-      // 允许自签名证书
-      ..badCertificateCallback = (_, _, _) => true;
+      // 通过文件系统获取文件流并读取内容
+      final stream = await fileSystem.getFileStream(lrcPath);
+      final bytes = await stream.fold<List<int>>(
+        [],
+        (previous, element) => previous..addAll(element),
+      );
 
-      final request = await client.getUrl(Uri.parse(url));
-      final response = await request.close();
-
-      if (response.statusCode == 200) {
-        final bytes = await response.fold<List<int>>(
-          [],
-          (previous, element) => previous..addAll(element),
-        );
-
-        // 智能检测并解码歌词内容
-        final content = await _decodeBytes(bytes);
-
-        client.close();
-        return parseLrc(content);
+      if (bytes.isEmpty) {
+        logger.w('LyricService: 歌词文件为空 $lrcPath');
+        return LyricData.empty;
       }
 
-      client.close();
-      return LyricData.empty;
+      // 智能检测并解码歌词内容
+      final content = await _decodeBytes(bytes);
+      logger.d('LyricService: 成功读取歌词文件，共 ${bytes.length} 字节');
+      return parseLrc(content);
     } on Exception catch (e) {
-      logger.e('LyricService: 下载歌词失败', e);
+      logger.e('LyricService: 读取歌词文件失败 $lrcPath', e);
       return LyricData.empty;
     }
   }
