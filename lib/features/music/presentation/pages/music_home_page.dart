@@ -232,7 +232,7 @@ class MusicHomeContent extends ConsumerWidget {
           Padding(
             padding: const EdgeInsets.all(16),
             child: MusicStatsCard(
-              totalTracks: tracks.length,
+              totalTracks: totalCount > 0 ? totalCount : tracks.length,
               totalArtists: artistCount,
               totalAlbums: albumCount,
               isDark: isDark,
@@ -491,9 +491,9 @@ class MusicHomeContent extends ConsumerWidget {
   }
 
   Map<MusicBrowseCategory, int> _getCategoryCounts() => {
-      MusicBrowseCategory.all: tracks.length,
-      MusicBrowseCategory.favorites: favoriteTracks.length,
-      MusicBrowseCategory.recent: recentTracks.length,
+      MusicBrowseCategory.all: totalCount > 0 ? totalCount : tracks.length,
+      MusicBrowseCategory.favorites: favoritesCount > 0 ? favoritesCount : favoriteTracks.length,
+      MusicBrowseCategory.recent: recentCount > 0 ? recentCount : recentTracks.length,
       MusicBrowseCategory.artists: artistCount,
       MusicBrowseCategory.albums: albumCount,
       MusicBrowseCategory.genres: genreCount,
