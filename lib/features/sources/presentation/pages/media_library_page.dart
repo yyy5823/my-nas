@@ -223,11 +223,29 @@ class _MediaLibraryPageState extends ConsumerState<MediaLibraryPage> {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            newValue
-                ? '性能模式已开启，刮削并发数已提升'
-                : '性能模式已关闭，恢复默认配置',
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                newValue
+                    ? '性能模式已开启'
+                    : '性能模式已关闭',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              Text(
+                newValue
+                    ? '新任务将使用更高的并发数 (${SmbPoolConfig.maxBackgroundTasks} 并发)'
+                    : '新任务将使用默认并发数 (${SmbPoolConfig.maxBackgroundTasks} 并发)',
+                style: const TextStyle(fontSize: 12),
+              ),
+              const Text(
+                '已在运行的任务不受影响',
+                style: TextStyle(fontSize: 11, color: Colors.white70),
+              ),
+            ],
           ),
+          duration: const Duration(seconds: 4),
           action: SnackBarAction(
             label: '详情',
             onPressed: () => _showConfigDetails(context),

@@ -91,15 +91,25 @@ class BackgroundTaskPool {
       name: taskName,
     );
 
-    if (_running < maxConcurrency) {
+    final currentMax = maxConcurrency;
+    if (_running < currentMax) {
+      // 首次添加任务时打印当前并发配置（每 10 个任务打印一次）
+      if (_running == 0 || (_running + _queue.length) % 10 == 0) {
+        logger.d(
+          'BackgroundTaskPool[$name]: maxConcurrency=$currentMax, '
+          'running=$_running, queued=${_queue.length}',
+        );
+      }
       // ignore: unawaited_futures - 故意不等待，由 completer 处理结果
       _executeTask(queuedTask);
     } else {
       _queue.add(queuedTask);
-      // logger.d(
-      //   'BackgroundTaskPool[$name]: 任务入队 '
-      //   '(running: $_running, queued: ${_queue.length})',
-      // );
+      // 队列满时打印警告
+      if (_queue.length == 1) {
+        logger.d(
+          'BackgroundTaskPool[$name]: 达到并发上限 $currentMax，任务入队',
+        );
+      }
     }
 
     return completer.future;

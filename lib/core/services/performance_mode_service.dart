@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:hive_ce_flutter/hive_flutter.dart';
+import 'package:my_nas/core/utils/logger.dart';
 
 /// 性能模式服务
 ///
@@ -68,6 +69,13 @@ class PerformanceModeService {
     _controller.add(enabled);
 
     await _box?.put(_key, enabled);
+
+    // 打印当前配置以便调试
+    logger.i(
+      'PerformanceMode: ${enabled ? "ENABLED" : "DISABLED"} - '
+      'Changes will apply to NEW tasks only. '
+      'Running tasks will continue at current concurrency.',
+    );
   }
 
   /// 切换性能模式
