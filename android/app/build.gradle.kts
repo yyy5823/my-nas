@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "com.kkape.mynas"
-    compileSdk = 36
+    compileSdk = 35
     ndkVersion = "27.0.12077973"  // NDK r27
 
     compileOptions {
