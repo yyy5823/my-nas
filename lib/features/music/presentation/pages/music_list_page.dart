@@ -8,6 +8,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/services/media_scan_progress_service.dart';
 import 'package:my_nas/core/utils/logger.dart';
@@ -1059,7 +1060,10 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
       await _loadCategorizedData();
 
       return tracks.length;
-    } on Exception catch (e) {
+    // ignore: avoid_catches_without_on_clauses
+    } catch (e, st) {
+      // 使用通用 catch 捕获所有类型（SMB 库可能抛出 String 类型异常）
+      AppError.handle(e, st, 'MusicListNotifier.scanSinglePath', {'path': pathPrefix});
       logger.e('MusicListNotifier: 扫描目录 $pathPrefix 失败', e);
       progressService.endScan(MediaType.music, sourceId, pathPrefix, success: false);
       rethrow;
@@ -1098,7 +1102,9 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
           onBatchFound?.call();
         }
       }
-    } on Exception catch (e) {
+    // ignore: avoid_catches_without_on_clauses
+    } catch (e) {
+      // 使用通用 catch 捕获所有类型（SMB 库可能抛出 String 类型异常）
       logger.w('扫描子文件夹失败: $path - $e');
     }
   }

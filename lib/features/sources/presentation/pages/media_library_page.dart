@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/services/media_scan_progress_service.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/book/data/services/book_database_service.dart';
@@ -1337,11 +1338,11 @@ class _PathCardState extends ConsumerState<_PathCard> {
         case MediaType.note:
           break;
       }
-    } on Exception catch (e) {
+    // ignore: avoid_catches_without_on_clauses
+    } catch (e, st) {
+      // 使用通用 catch 捕获所有类型（SMB 库可能抛出 String 类型异常）
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('扫描失败: $e')),
-        );
+        context.handleError(e, st, '扫描失败');
       }
     }
     // 不需要在 finally 中重置 _isScanning，因为它通过 progressStream 管理
