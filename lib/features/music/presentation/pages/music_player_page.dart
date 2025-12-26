@@ -525,32 +525,22 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
   ) {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
-    // 桌面端限制封面最大尺寸，移动端使用屏幕宽度的70%
-    final maxSize = screenHeight * 0.32; // 最大为屏幕高度的32%
+    // 桌面端限制封面最大尺寸，移动端使用屏幕宽度的65%
+    final maxSize = screenHeight * 0.32;
     final size = (screenWidth * 0.65).clamp(150.0, maxSize);
-    final tonearmHeight = size * 0.25; // 唱针臂高度
+    final tonearmLength = size * 0.5; // 唱针臂长度
+    final pivotSize = size * 0.08; // 小的转轴球
 
     return Center(
       child: SizedBox(
-        width: size,
-        height: size + tonearmHeight,
+        width: size + pivotSize,
+        height: size + tonearmLength * 0.3,
         child: Stack(
-          alignment: Alignment.center,
           clipBehavior: Clip.none,
           children: [
-            // 唱针臂（顶部右上角，水平方向）
+            // 唱片（居中显示）
             Positioned(
-              top: 0,
-              right: size * 0.05,
-              child: _HorizontalTonearmWidget(
-                isPlaying: playerState.isPlaying,
-                width: size * 0.5,
-                height: tonearmHeight,
-                isDark: isDark,
-              ),
-            ),
-            // 唱片（居中，略微下移给唱针臂留空间）
-            Positioned(
+              left: 0,
               bottom: 0,
               child: AnimatedBuilder(
                 animation: _rotationController,
@@ -564,14 +554,12 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     boxShadow: [
-                      // 主阴影
                       BoxShadow(
                         color: Colors.black.withValues(alpha: 0.4),
                         blurRadius: 30,
                         spreadRadius: 2,
                         offset: const Offset(0, 8),
                       ),
-                      // 发光效果
                       BoxShadow(
                         color: AppColors.primary.withValues(alpha: 0.15),
                         blurRadius: 50,
@@ -582,12 +570,10 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
-                      // 黑胶唱片主体
                       CustomPaint(
                         size: Size(size, size),
                         painter: _VinylRecordPainter(isDark: isDark),
                       ),
-                      // 中心标签（封面）
                       Container(
                         width: size * 0.38,
                         height: size * 0.38,
@@ -596,10 +582,7 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
                           gradient: LinearGradient(
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
-                            colors: [
-                              AppColors.primary,
-                              AppColors.secondary,
-                            ],
+                            colors: [AppColors.primary, AppColors.secondary],
                           ),
                           boxShadow: [
                             BoxShadow(
@@ -612,20 +595,15 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
                         clipBehavior: Clip.antiAlias,
                         child: _buildCoverImage(currentMusic, size * 0.38, isDark),
                       ),
-                      // 中心唱针孔
                       Container(
                         width: size * 0.04,
                         height: size * 0.04,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: Colors.black,
-                          border: Border.all(
-                            color: Colors.grey[800]!,
-                            width: 1.5,
-                          ),
+                          border: Border.all(color: Colors.grey[800]!, width: 1.5),
                         ),
                       ),
-                      // 光泽效果
                       Container(
                         width: size,
                         height: size,
@@ -647,6 +625,18 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
                     ],
                   ),
                 ),
+              ),
+            ),
+            // 唱针臂（顶部中央偏右，参考网易云设计）
+            Positioned(
+              top: 0,
+              right: 0,
+              child: _NeteaseTonearmWidget(
+                isPlaying: playerState.isPlaying,
+                armLength: tonearmLength,
+                pivotSize: pivotSize,
+                recordRadius: size / 2,
+                isDark: isDark,
               ),
             ),
           ],
@@ -1506,5 +1496,202 @@ class _HorizontalTonearmPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _HorizontalTonearmPainter oldDelegate) =>
+      isDark != oldDelegate.isDark;
+}
+
+/// 网易云风格唱针臂组件
+class _NeteaseTonearmWidget extends StatefulWidget {
+  const _NeteaseTonearmWidget({
+    required this.isPlaying,
+    required this.armLength,
+    required this.pivotSize,
+    required this.recordRadius,
+    required this.isDark,
+  });
+
+  final bool isPlaying;
+  final double armLength;
+  final double pivotSize;
+  final double recordRadius;
+  final bool isDark;
+
+  @override
+  State<_NeteaseTonearmWidget> createState() => _NeteaseTonearmWidgetState();
+}
+
+class _NeteaseTonearmWidgetState extends State<_NeteaseTonearmWidget>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+
+    // 唱针臂角度动画：从抬起(-25度)到落下(0度)
+    _animation = Tween<double>(
+      begin: -0.4, // 抬起 ~-23度
+      end: 0.0, // 落到唱片上
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOut,
+    ));
+
+    if (widget.isPlaying) {
+      _controller.forward();
+    }
+  }
+
+  @override
+  void didUpdateWidget(_NeteaseTonearmWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isPlaying != oldWidget.isPlaying) {
+      if (widget.isPlaying) {
+        _controller.forward();
+      } else {
+        _controller.reverse();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+      animation: _animation,
+      builder: (context, child) => Transform(
+          alignment: Alignment.topRight,
+          transform: Matrix4.identity()..rotateZ(_animation.value),
+          child: child,
+        ),
+      child: CustomPaint(
+        size: Size(widget.armLength, widget.armLength),
+        painter: _NeteaseTonearmPainter(
+          pivotSize: widget.pivotSize,
+          recordRadius: widget.recordRadius,
+          isDark: widget.isDark,
+        ),
+      ),
+    );
+}
+
+/// 网易云风格唱针臂绘制器
+class _NeteaseTonearmPainter extends CustomPainter {
+  _NeteaseTonearmPainter({
+    required this.pivotSize,
+    required this.recordRadius,
+    required this.isDark,
+  });
+
+  final double pivotSize;
+  final double recordRadius;
+  final bool isDark;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final pivotRadius = pivotSize / 2;
+    // 转轴球在右上角
+    final pivotCenter = Offset(size.width - pivotRadius, pivotRadius);
+    
+    // 唱针臂从转轴延伸到唱片边缘
+    // 终点应该在唱片的右上边缘附近
+    final armEndX = size.width * 0.15;
+    final armEndY = size.height * 0.85;
+
+    // 绘制唱针臂（直线或微弯）
+    final armPaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topRight,
+        end: Alignment.bottomLeft,
+        colors: [
+          Colors.grey[400]!,
+          Colors.grey[500]!,
+          Colors.grey[600]!,
+        ],
+      ).createShader(Rect.fromPoints(pivotCenter, Offset(armEndX, armEndY)))
+      ..strokeWidth = size.width * 0.03
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+
+    // 臂路径 - 从转轴下方开始
+    final armStartX = pivotCenter.dx - pivotRadius * 0.7;
+    final armStartY = pivotCenter.dy + pivotRadius * 0.5;
+    
+    final armPath = Path()
+      ..moveTo(armStartX, armStartY)
+      ..lineTo(armEndX, armEndY);
+    canvas.drawPath(armPath, armPaint);
+
+    // 臂高光
+    final highlightPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.3)
+      ..strokeWidth = size.width * 0.01
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+    canvas.drawPath(armPath, highlightPaint);
+
+    // 转轴球 - 金属质感
+    final pivotPaint = Paint()
+      ..shader = RadialGradient(
+        center: const Alignment(-0.3, -0.3),
+        colors: [
+          Colors.grey[300]!,
+          Colors.grey[500]!,
+          Colors.grey[700]!,
+        ],
+        stops: const [0.0, 0.5, 1.0],
+      ).createShader(Rect.fromCircle(center: pivotCenter, radius: pivotRadius));
+    canvas.drawCircle(pivotCenter, pivotRadius, pivotPaint);
+
+    // 转轴球高光
+    final pivotHighlight = Paint()
+      ..shader = RadialGradient(
+        center: const Alignment(-0.5, -0.5),
+        colors: [
+          Colors.white.withValues(alpha: 0.6),
+          Colors.transparent,
+        ],
+      ).createShader(Rect.fromCircle(center: pivotCenter, radius: pivotRadius));
+    canvas.drawCircle(pivotCenter, pivotRadius * 0.7, pivotHighlight);
+
+    // 唱针头（小方块）
+    final headSize = size.width * 0.06;
+    final headRect = Rect.fromCenter(
+      center: Offset(armEndX, armEndY),
+      width: headSize,
+      height: headSize * 1.5,
+    );
+    final headPaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [Colors.grey[500]!, Colors.grey[700]!],
+      ).createShader(headRect);
+    canvas.drawRect(headRect, headPaint);
+
+    // 唱针尖
+    final needlePaint = Paint()
+      ..color = Colors.grey[400]!
+      ..strokeWidth = 1.5
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(
+      Offset(armEndX, armEndY + headSize * 0.75),
+      Offset(armEndX, armEndY + headSize * 0.75 + 3),
+      needlePaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _NeteaseTonearmPainter oldDelegate) =>
+      pivotSize != oldDelegate.pivotSize ||
+      recordRadius != oldDelegate.recordRadius ||
       isDark != oldDelegate.isDark;
 }

@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/services/media_scan_progress_service.dart';
+import 'package:my_nas/core/services/performance_mode_service.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/book/data/services/book_database_service.dart';
 import 'package:my_nas/features/book/presentation/pages/book_list_page.dart';
@@ -25,12 +26,38 @@ import 'package:my_nas/features/sources/presentation/widgets/folder_picker_sheet
 import 'package:my_nas/features/video/data/services/video_database_service.dart';
 import 'package:my_nas/features/video/data/services/video_scanner_service.dart';
 import 'package:my_nas/features/video/presentation/pages/video_list_page.dart';
+import 'package:my_nas/nas_adapters/smb/smb_pool_config.dart';
 
-class MediaLibraryPage extends ConsumerWidget {
+class MediaLibraryPage extends ConsumerStatefulWidget {
   const MediaLibraryPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MediaLibraryPage> createState() => _MediaLibraryPageState();
+}
+
+class _MediaLibraryPageState extends ConsumerState<MediaLibraryPage> {
+  bool _isPerformanceMode = false;
+  StreamSubscription<bool>? _performanceModeSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _isPerformanceMode = PerformanceModeService().isEnabled;
+    _performanceModeSub = PerformanceModeService().stream.listen((enabled) {
+      if (mounted) {
+        setState(() => _isPerformanceMode = enabled);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _performanceModeSub?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     // 判断是否为移动端
@@ -45,6 +72,10 @@ class MediaLibraryPage extends ConsumerWidget {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('媒体库'),
+          actions: [
+            // 性能模式开关
+            _buildPerformanceModeButton(context, isMobile),
+          ],
           bottom: TabBar(
             isScrollable: useScrollableTab,
             tabAlignment: useScrollableTab
@@ -87,6 +118,188 @@ class MediaLibraryPage extends ConsumerWidget {
       ),
     );
   }
+
+  /// 构建性能模式开关按钮
+  Widget _buildPerformanceModeButton(BuildContext context, bool isMobile) {
+    final theme = Theme.of(context);
+
+    return Tooltip(
+      message: _isPerformanceMode ? '性能模式已开启' : '性能模式已关闭',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: () => _togglePerformanceMode(context, isMobile),
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: _isPerformanceMode
+                ? Colors.orange.withValues(alpha: 0.15)
+                : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: _isPerformanceMode
+                  ? Colors.orange.withValues(alpha: 0.5)
+                  : Colors.transparent,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                _isPerformanceMode ? Icons.rocket_launch : Icons.rocket_outlined,
+                size: 18,
+                color: _isPerformanceMode ? Colors.orange : null,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '性能',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: _isPerformanceMode ? FontWeight.bold : FontWeight.normal,
+                  color: _isPerformanceMode ? Colors.orange : null,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 切换性能模式
+  Future<void> _togglePerformanceMode(BuildContext context, bool isMobile) async {
+    final newValue = !_isPerformanceMode;
+
+    // 如果是移动端开启性能模式，显示警告
+    if (newValue && isMobile) {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.orange),
+              SizedBox(width: 8),
+              Text('开启性能模式'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('性能模式会大幅提高刮削速度，但可能导致：'),
+              const SizedBox(height: 12),
+              _buildWarningItem(Icons.thermostat, '设备发热'),
+              _buildWarningItem(Icons.battery_alert, '电池消耗加快'),
+              _buildWarningItem(Icons.memory, '内存占用增加'),
+              const SizedBox(height: 12),
+              Text(
+                '建议在充电时使用',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.primary,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: FilledButton.styleFrom(backgroundColor: Colors.orange),
+              child: const Text('开启'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirm != true) return;
+    }
+
+    await PerformanceModeService().setEnabled(newValue);
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            newValue
+                ? '性能模式已开启，刮削并发数已提升'
+                : '性能模式已关闭，恢复默认配置',
+          ),
+          action: SnackBarAction(
+            label: '详情',
+            onPressed: () => _showConfigDetails(context),
+          ),
+        ),
+      );
+    }
+  }
+
+  /// 显示配置详情
+  void _showConfigDetails(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(
+              _isPerformanceMode ? Icons.rocket_launch : Icons.settings,
+              color: _isPerformanceMode ? Colors.orange : null,
+            ),
+            const SizedBox(width: 8),
+            Text(_isPerformanceMode ? '性能模式配置' : '普通模式配置'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildConfigRow('刮削并发数', '${SmbPoolConfig.maxBackgroundTasks}'),
+            _buildConfigRow('SMB 连接数', '${SmbPoolConfig.maxConnections}'),
+            _buildConfigRow('专用连接数', '${SmbPoolConfig.maxDedicatedConnections}'),
+            _buildConfigRow('传输块大小', '${SmbPoolConfig.streamChunkSize ~/ 1024}KB'),
+            _buildConfigRow('CPU 核心数', '${SmbPoolConfig.cpuCores}'),
+            _buildConfigRow('平台', SmbPoolConfig.isDesktop ? '桌面端' : '移动端'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWarningItem(IconData icon, String text) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Row(
+      children: [
+        Icon(icon, size: 18, color: Colors.orange),
+        const SizedBox(width: 8),
+        Text(text),
+      ],
+    ),
+  );
+
+  Widget _buildConfigRow(String label, String value) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 6),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: const TextStyle(color: Colors.grey)),
+        Text(
+          value,
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: _isPerformanceMode ? Colors.orange : null,
+          ),
+        ),
+      ],
+    ),
+  );
 
   IconData _getMediaTypeIcon(MediaType type) => switch (type) {
     MediaType.video => Icons.movie_outlined,

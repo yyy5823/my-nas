@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
+import 'package:my_nas/core/utils/hive_utils.dart';
 import 'package:my_nas/features/video/data/services/audio_track_service.dart';
 import 'package:my_nas/features/video/data/services/subtitle_service.dart';
 import 'package:my_nas/features/video/data/services/tmdb_service.dart';
@@ -226,13 +226,12 @@ class LanguagePreferenceNotifier extends StateNotifier<LanguagePreference> {
     _loadFromStorage();
   }
 
-  static const _boxName = 'settings';
   static const _key = 'language_preference';
 
   Future<void> _loadFromStorage() async {
     try {
-      final box = await Hive.openBox<String>(_boxName);
-      final jsonStr = box.get(_key);
+      final box = await HiveUtils.getSettingsBox();
+      final jsonStr = box.get(_key) as String?;
       if (jsonStr != null && jsonStr.isNotEmpty) {
         final json = _parseJson(jsonStr);
         if (json != null) {
@@ -271,7 +270,7 @@ class LanguagePreferenceNotifier extends StateNotifier<LanguagePreference> {
 
   Future<void> _saveToStorage() async {
     try {
-      final box = await Hive.openBox<String>(_boxName);
+      final box = await HiveUtils.getSettingsBox();
       final jsonStr = _toJsonString(state.toJson());
       await box.put(_key, jsonStr);
 

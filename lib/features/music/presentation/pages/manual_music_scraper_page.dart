@@ -66,10 +66,27 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
   final _tagWriter = MusicTagWriterService();
   SupportedAudioFormat? _audioFormat;
 
+  /// 检查是否已有封面
+  bool get _hasCover =>
+      widget.music.coverUrl != null || widget.music.coverData != null;
+
+  /// 检查是否已有歌词
+  bool get _hasLyrics =>
+      widget.music.lyrics != null && widget.music.lyrics!.isNotEmpty;
+
   @override
   void initState() {
     super.initState();
     _audioFormat = _tagWriter.getFormat(widget.music.path);
+
+    // 如果已有封面/歌词，默认不下载（但用户可以勾选覆盖）
+    if (_hasCover) {
+      _downloadCover = false;
+    }
+    if (_hasLyrics) {
+      _downloadLyrics = false;
+    }
+
     _initFromMusic();
   }
 
@@ -953,9 +970,13 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
                   ),
                   const SizedBox(height: 8),
                   SwitchListTile(
-                    title: const Text('下载封面'),
+                    title: Text('下载封面${_hasCover ? " (已有)" : ""}'),
                     subtitle: Text(
-                      _selectedCover != null ? '保存到音乐文件所在目录' : '封面不可用',
+                      _selectedCover != null
+                          ? (_hasCover && _downloadCover
+                              ? '覆盖现有封面'
+                              : '保存到音乐文件所在目录')
+                          : '封面不可用',
                     ),
                     value: _downloadCover && _selectedCover != null,
                     onChanged: _selectedCover != null
@@ -964,10 +985,12 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
                     contentPadding: EdgeInsets.zero,
                   ),
                   SwitchListTile(
-                    title: const Text('下载歌词'),
+                    title: Text('下载歌词${_hasLyrics ? " (已有)" : ""}'),
                     subtitle: Text(
                       _selectedLyrics?.hasLyrics ?? false
-                          ? '保存为同名 .lrc 文件'
+                          ? (_hasLyrics && _downloadLyrics
+                              ? '覆盖现有歌词'
+                              : '保存为同名 .lrc 文件')
                           : '歌词不可用',
                     ),
                     value: _downloadLyrics && (_selectedLyrics?.hasLyrics ?? false),

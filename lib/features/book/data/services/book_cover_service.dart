@@ -8,10 +8,12 @@ import 'package:epub_plus/epub_plus.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:image/image.dart' as img;
 import 'package:my_nas/core/errors/app_error_handler.dart';
+import 'package:my_nas/core/services/performance_mode_service.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/book/data/services/mobi_parser_service.dart';
 import 'package:my_nas/features/book/domain/entities/book_item.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
+import 'package:my_nas/nas_adapters/smb/smb_pool_config.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:pdfrx/pdfrx.dart';
@@ -36,8 +38,16 @@ class BookCoverService {
   static const String _boxName = 'book_covers';
   static const String _coverDir = 'book_covers';
 
-  /// 最大并发提取数量
-  static const int _maxConcurrentExtractions = 2;
+  /// 最大并发提取数量（动态计算，支持性能模式）
+  ///
+  /// 普通模式：2
+  /// 性能模式：桌面 8，移动 4
+  static int get _maxConcurrentExtractions {
+    if (PerformanceModeService.isPerformanceMode) {
+      return SmbPoolConfig.isDesktop ? 8 : 4;
+    }
+    return 2;
+  }
 
   Box<String>? _box;
   String? _coverDirPath;

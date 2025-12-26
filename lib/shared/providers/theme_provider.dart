@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:my_nas/app/theme/color_scheme_preset.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
+import 'package:my_nas/core/utils/hive_utils.dart';
 
 final themeModeProvider =
     StateNotifierProvider<ThemeModeNotifier, ThemeMode>((ref) => ThemeModeNotifier());
@@ -18,13 +18,12 @@ class ThemeModeNotifier extends StateNotifier<ThemeMode> {
     _loadFromStorage();
   }
 
-  static const _boxName = 'settings';
   static const _key = 'theme_mode';
 
   Future<void> _loadFromStorage() async {
     try {
-      final box = await Hive.openBox<String>(_boxName);
-      final value = box.get(_key);
+      final box = await HiveUtils.getSettingsBox();
+      final value = box.get(_key) as String?;
       if (value != null) {
         state = _parseThemeMode(value);
       }
@@ -40,7 +39,7 @@ class ThemeModeNotifier extends StateNotifier<ThemeMode> {
 
   Future<void> _saveToStorage(ThemeMode mode) async {
     try {
-      final box = await Hive.openBox<String>(_boxName);
+      final box = await HiveUtils.getSettingsBox();
       await box.put(_key, mode.name);
     } on Exception catch (e, st) {
       AppError.ignore(e, st, '保存主题模式失败');
@@ -69,13 +68,12 @@ class ColorSchemePresetNotifier extends StateNotifier<ColorSchemePreset> {
     _loadFromStorage();
   }
 
-  static const _boxName = 'settings';
   static const _key = 'color_scheme_preset';
 
   Future<void> _loadFromStorage() async {
     try {
-      final box = await Hive.openBox<String>(_boxName);
-      final value = box.get(_key);
+      final box = await HiveUtils.getSettingsBox();
+      final value = box.get(_key) as String?;
       if (value != null) {
         final preset = ColorSchemePresets.getById(value);
         if (preset != null) {
@@ -94,7 +92,7 @@ class ColorSchemePresetNotifier extends StateNotifier<ColorSchemePreset> {
 
   Future<void> _saveToStorage(String presetId) async {
     try {
-      final box = await Hive.openBox<String>(_boxName);
+      final box = await HiveUtils.getSettingsBox();
       await box.put(_key, presetId);
     } on Exception catch (e, st) {
       AppError.ignore(e, st, '保存配色方案失败');

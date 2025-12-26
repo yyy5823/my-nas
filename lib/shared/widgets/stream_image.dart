@@ -5,7 +5,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/core/services/performance_mode_service.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
+import 'package:my_nas/nas_adapters/smb/smb_pool_config.dart';
 import 'package:photo_view/photo_view.dart';
 
 /// 支持流式加载的图片组件
@@ -91,7 +93,18 @@ class StreamImage extends StatefulWidget {
 
   // 并发加载控制
   static int _activeLoads = 0;
-  static const int _maxConcurrentLoads = 6; // 最多同时加载 6 张图片
+
+  /// 最大并发加载数（动态计算，支持性能模式）
+  ///
+  /// 普通模式：6
+  /// 性能模式：桌面 16，移动 10
+  static int get _maxConcurrentLoads {
+    if (PerformanceModeService.isPerformanceMode) {
+      return SmbPoolConfig.isDesktop ? 16 : 10;
+    }
+    return 6;
+  }
+
   static final List<Future<void> Function()> _loadQueue = [];
 
   /// 清除所有内存缓存

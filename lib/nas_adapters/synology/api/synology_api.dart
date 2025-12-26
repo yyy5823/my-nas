@@ -38,6 +38,33 @@ class SynologyApi {
     _sid = null;
   }
 
+  /// 确保会话有效
+  ///
+  /// 在执行耗时操作（如大文件上传）前调用，
+  /// 通过轻量级 API 调用来验证会话是否有效，
+  /// 如果会话已过期，会自动触发刷新机制。
+  ///
+  /// 这对于移动端特别重要，因为下载大文件可能需要较长时间，
+  /// 期间会话可能已经超时。
+  Future<void> ensureSession() async {
+    if (_sid == null) return;
+
+    try {
+      // 使用轻量级的 API 调用来验证会话
+      // _request 内部会处理会话过期并自动刷新
+      await _request(
+        'SYNO.FileStation.Info',
+        'get',
+        version: 1,
+      );
+      logger.d('SynologyApi: 会话验证成功');
+    } on Exception catch (e) {
+      // 如果验证失败（可能是网络问题），记录日志但不抛出异常
+      // 后续的实际操作如果失败会有自己的重试机制
+      logger.w('SynologyApi: 会话验证失败，继续尝试操作', e);
+    }
+  }
+
   /// 检查是否是会话过期错误
   bool _isSessionExpiredError(int? errorCode) =>
       errorCode == 106 || errorCode == 119;
@@ -74,6 +101,8 @@ class SynologyApi {
       'account': account,
       'passwd': password,
       'format': 'sid',
+      // 指定会话名称为 FileStation，确保会话对 FileStation API 有效
+      'session': 'FileStation',
     };
 
     if (otpCode != null) {
@@ -132,6 +161,9 @@ class SynologyApi {
       'SYNO.API.Auth',
       'logout',
       version: 1,
+      params: {
+        'session': 'FileStation',
+      },
     );
     _sid = null;
   }
@@ -574,6 +606,11 @@ class SynologyApi {
     List<int> data, {
     bool allowRetry = true,
   }) async {
+    // 在上传前确保会话有效
+    // 这对于移动端特别重要，因为前序操作（如下载大文件）可能耗时较长
+    // 导致会话在此期间过期
+    await ensureSession();
+
     // 获取目录和文件名
     final lastSlash = remotePath.lastIndexOf('/');
     final destFolderPath = lastSlash > 0 ? remotePath.substring(0, lastSlash) : '/';
@@ -582,6 +619,8 @@ class SynologyApi {
     // 使用 MultipartFile.fromBytes
     final file = MultipartFile.fromBytes(data, filename: fileName);
 
+    // 注意：Synology Upload API 的 _sid 应该放在 query string 中
+    // 而不是 form data 中，以确保认证正确处理
     final formData = FormData.fromMap({
       'api': 'SYNO.FileStation.Upload',
       'version': 2,
@@ -589,15 +628,17 @@ class SynologyApi {
       'path': destFolderPath,
       'create_parents': true,
       'overwrite': true,
-      if (_sid != null) '_sid': _sid,
       'file': file,
     });
 
-    logger.d('SynologyApi: 写入文件到 $remotePath (${data.length} bytes)');
+    logger.d('SynologyApi: 写入文件到 $remotePath (${data.length} bytes), sid=${_sid?.substring(0, 8)}...');
 
     final response = await _dio.post<dynamic>(
       '/webapi/entry.cgi',
       data: formData,
+      queryParameters: {
+        if (_sid != null) '_sid': _sid,
+      },
       options: Options(
         // 上传接口响应格式可能不规范，使用纯文本接收后手动解析
         responseType: ResponseType.plain,
@@ -634,6 +675,9 @@ class SynologyApi {
         logger.w('SynologyApi: 写入时会话已过期 (code: $errorCode)，尝试刷新...');
         final refreshed = await _tryRefreshSession();
         if (refreshed) {
+          // 等待一小段时间，确保会话在 File Station 服务中生效
+          // Synology 的各个服务之间可能存在会话传播延迟
+          await Future<void>.delayed(const Duration(milliseconds: 500));
           logger.i('SynologyApi: 会话刷新成功，重试写入');
           // 重试写入，但不允许再次重试
           return writeFileData(remotePath, data, allowRetry: false);
@@ -737,6 +781,8 @@ class SynologyApi {
           logger.w('SynologyApi: 会话已过期 (code: $errorCode)，尝试刷新...');
           final refreshed = await _tryRefreshSession();
           if (refreshed) {
+            // 等待一小段时间，确保会话在各服务中生效
+            await Future<void>.delayed(const Duration(milliseconds: 500));
             logger.i('SynologyApi: 会话刷新成功，重试请求');
             // 重试请求，但不允许再次重试
             return _request(api, method, version: version, params: params, allowRetry: false);

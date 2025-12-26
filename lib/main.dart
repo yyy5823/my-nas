@@ -15,6 +15,7 @@ import 'package:my_nas/core/di/injection.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/services/error_report/error_report.dart';
 import 'package:my_nas/core/services/native_log_bridge_service.dart';
+import 'package:my_nas/core/services/performance_mode_service.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/video/data/services/audio_track_service.dart';
 import 'package:my_nas/features/video/data/services/subtitle_service.dart';
@@ -148,6 +149,10 @@ Future<void> _initApp() async {
   // Initialize Hive for local storage
   await Hive.initFlutter();
 
+  // 初始化性能模式服务（需要 SharedPreferences）
+  await PerformanceModeService().init();
+  logger.i('PerformanceMode: ${PerformanceModeService.isPerformanceMode ? "enabled" : "disabled"}');
+
   // Configure dependency injection
   await configureDependencies();
 
@@ -159,34 +164,34 @@ Future<void> _initApp() async {
 
 Future<void> _loadTmdbApiKey() async {
   try {
-    // Hive 已经在 configureDependencies 中通过其他服务初始化了
-    // 这里直接打开 box 即可
-    final box = await Hive.openBox<String>('settings');
+    // Hive 已经在 PerformanceModeService 中打开了 'settings' box（Box<dynamic>）
+    // 直接获取已打开的 box，而不是尝试以不同类型重新打开
+    final box = Hive.box<dynamic>('settings');
     final tmdbService = TmdbService();
 
     // 加载 TMDB API Key
-    final apiKey = box.get('tmdb_api_key', defaultValue: '');
+    final apiKey = box.get('tmdb_api_key') as String?;
     if (apiKey != null && apiKey.isNotEmpty) {
       tmdbService.setApiKey(apiKey);
       logger.i('TMDB API key loaded');
     }
 
     // 加载 TMDB API URL（自定义代理）
-    final apiUrl = box.get('tmdb_api_url');
+    final apiUrl = box.get('tmdb_api_url') as String?;
     if (apiUrl != null && apiUrl.isNotEmpty) {
       tmdbService.setApiUrl(apiUrl);
       logger.i('TMDB API URL loaded: $apiUrl');
     }
 
     // 加载 TMDB 图片 URL（自定义代理）
-    final imageUrl = box.get('tmdb_image_url');
+    final imageUrl = box.get('tmdb_image_url') as String?;
     if (imageUrl != null && imageUrl.isNotEmpty) {
       tmdbService.setImageUrl(imageUrl);
       logger.i('TMDB image URL loaded: $imageUrl');
     }
 
     // 加载语言偏好设置并传递给相关服务
-    final langPrefJson = box.get('language_preference');
+    final langPrefJson = box.get('language_preference') as String?;
     if (langPrefJson != null && langPrefJson.isNotEmpty) {
       final preference = _parseLanguagePreference(langPrefJson);
       if (preference != null) {

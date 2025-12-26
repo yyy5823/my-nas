@@ -11,43 +11,54 @@ import 'package:my_nas/nas_adapters/smb/smb_pool_config.dart';
 /// - 内存占用过高
 /// - 网络请求过多被限流
 ///
+/// 支持性能模式：
+/// - 普通模式：保守配置，适合后台运行
+/// - 性能模式：激进配置，最大化利用硬件资源
+///
 /// 使用示例：
 /// ```dart
 /// final pool = BackgroundTaskPool.media; // 媒体处理任务池
 /// await pool.add(() => downloadPoster(url));
 /// ```
 class BackgroundTaskPool {
-
   BackgroundTaskPool({
     required this.name,
-    required this.maxConcurrency,
-  });
+    required int Function() concurrencyGetter,
+  }) : _concurrencyGetter = concurrencyGetter;
+
   /// 媒体处理任务池（海报下载、缩略图生成等）
   ///
-  /// 使用 SmbPoolConfig 根据平台动态配置
+  /// 使用 SmbPoolConfig 根据平台和性能模式动态配置
   static final media = BackgroundTaskPool(
     name: 'media',
-    maxConcurrency: SmbPoolConfig.maxBackgroundTasks,
+    concurrencyGetter: () => SmbPoolConfig.maxBackgroundTasks,
   );
 
   /// 网络请求任务池（API 调用等）
   ///
   /// 网络请求可以比后台任务多一些并发
+  /// 性能模式下翻倍
   static final network = BackgroundTaskPool(
     name: 'network',
-    maxConcurrency: SmbPoolConfig.isDesktop ? 8 : 4,
+    concurrencyGetter: () {
+      final base = SmbPoolConfig.isDesktop ? 8 : 4;
+      return SmbPoolConfig.isPerformanceMode ? base * 2 : base;
+    },
   );
 
   /// 刮削任务池
   ///
-  /// 使用 SmbPoolConfig 根据平台动态配置
+  /// 使用 SmbPoolConfig 根据平台和性能模式动态配置
   static final scrape = BackgroundTaskPool(
     name: 'scrape',
-    maxConcurrency: SmbPoolConfig.maxBackgroundTasks,
+    concurrencyGetter: () => SmbPoolConfig.maxBackgroundTasks,
   );
 
   final String name;
-  final int maxConcurrency;
+  final int Function() _concurrencyGetter;
+
+  /// 获取当前最大并发数（动态计算，支持性能模式切换）
+  int get maxConcurrency => _concurrencyGetter();
 
   final _queue = Queue<_QueuedTask<dynamic>>();
   int _running = 0;

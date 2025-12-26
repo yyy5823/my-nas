@@ -80,6 +80,14 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
   // 文件格式支持信息
   SupportedAudioFormat? _audioFormat;
 
+  /// 检查是否已有封面
+  bool get _hasCover =>
+      widget.music.coverUrl != null || widget.music.coverData != null;
+
+  /// 检查是否已有歌词
+  bool get _hasLyrics =>
+      widget.music.lyrics != null && widget.music.lyrics!.isNotEmpty;
+
   @override
   void initState() {
     super.initState();
@@ -249,9 +257,14 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
       _cover = result.cover;
       _lyrics = result.lyrics;
 
-      // 如果已有封面，默认不下载
-      if (widget.music.coverUrl != null || widget.music.coverData != null) {
+      // 如果已有封面，默认不下载（但用户可以勾选覆盖）
+      if (_hasCover) {
         _downloadCover = false;
+      }
+
+      // 如果已有歌词，默认不下载（但用户可以勾选覆盖）
+      if (_hasLyrics) {
+        _downloadLyrics = false;
       }
     });
   }
@@ -803,8 +816,10 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
           _buildResultRow(
             isDark,
             Icons.image_rounded,
-            '封面',
-            '来自 ${_cover!.source.displayName}',
+            '封面${_hasCover ? " (已有)" : ""}',
+            _hasCover && _downloadCover
+                ? '覆盖现有封面'
+                : '来自 ${_cover!.source.displayName}',
             source: _cover!.source,
             trailing: Checkbox(
               value: _downloadCover,
@@ -818,8 +833,12 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
           _buildResultRow(
             isDark,
             Icons.lyrics_rounded,
-            '歌词',
-            _lyrics!.isLrc ? 'LRC (时间同步)' : '纯文本',
+            '歌词${_hasLyrics ? " (已有)" : ""}',
+            _hasLyrics && _downloadLyrics
+                ? '覆盖现有歌词'
+                : _lyrics!.isLrc
+                    ? 'LRC (时间同步)'
+                    : '纯文本',
             source: _lyrics!.source,
             trailing: Checkbox(
               value: _downloadLyrics,

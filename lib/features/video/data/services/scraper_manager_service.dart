@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_ce/hive.dart';
+import 'package:my_nas/core/utils/hive_utils.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/video/data/services/scraper_factory.dart';
 import 'package:my_nas/features/video/data/services/tmdb_service.dart';
@@ -341,7 +342,7 @@ class ScraperManagerService {
       ..setImageUrl(imageProxy);
 
       // 同步到 Hive 存储（用于 app 重启后恢复）
-      final box = await Hive.openBox<String>('settings');
+      final box = await HiveUtils.getSettingsBox();
       await box.put('tmdb_api_key', apiKey);
       if (apiUrl != null && apiUrl.isNotEmpty) {
         await box.put('tmdb_api_url', apiUrl);
@@ -635,8 +636,8 @@ class ScraperManagerService {
     }
 
     try {
-      final settingsBox = await Hive.openBox<String>('settings');
-      final oldApiKey = settingsBox.get('tmdb_api_key');
+      final settingsBox = await HiveUtils.getSettingsBox();
+      final oldApiKey = settingsBox.get('tmdb_api_key') as String?;
 
       if (oldApiKey != null && oldApiKey.isNotEmpty) {
         // 创建 TMDB 刮削源

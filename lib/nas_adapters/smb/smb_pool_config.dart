@@ -1,10 +1,16 @@
 import 'dart:io';
 
+import 'package:my_nas/core/services/performance_mode_service.dart';
+
 /// SMB 连接池配置
 ///
 /// 根据平台和 CPU 核心数动态调整连接池大小：
 /// - 桌面端：资源充足，基于 CPU 核心数分配更多连接
 /// - 移动端：考虑电池和发热，适度限制并发数
+///
+/// 支持性能模式：
+/// - 普通模式：保守配置，适合后台运行
+/// - 性能模式：激进配置，最大化利用硬件资源
 class SmbPoolConfig {
   SmbPoolConfig._();
 
@@ -18,12 +24,21 @@ class SmbPoolConfig {
   /// 是否为移动平台
   static bool get isMobile => Platform.isIOS || Platform.isAndroid;
 
+  /// 是否启用性能模式
+  static bool get isPerformanceMode => PerformanceModeService.isPerformanceMode;
+
   /// 共享连接池大小
   ///
   /// 用于短操作（目录浏览、文件信息等）
-  /// 桌面端：核心数（最小4，最大12）
-  /// 移动端：核心数/2（最小2，最大6）
+  /// 普通模式：桌面端 4-12，移动端 2-6
+  /// 性能模式：桌面端 16-24，移动端 8-12
   static int get maxConnections {
+    if (isPerformanceMode) {
+      if (isDesktop) {
+        return (cpuCores * 2).clamp(16, 24);
+      }
+      return cpuCores.clamp(8, 12);
+    }
     if (isDesktop) {
       return cpuCores.clamp(4, 12);
     }
@@ -33,9 +48,15 @@ class SmbPoolConfig {
   /// 专用连接池大小
   ///
   /// 用于长操作（视频流、文件下载等）
-  /// 桌面端：核心数 * 1.5（最小6，最大16）
-  /// 移动端：限制最大 4 个以减少内存压力
+  /// 普通模式：桌面端 6-16，移动端 2-4
+  /// 性能模式：桌面端 24-32，移动端 8-12
   static int get maxDedicatedConnections {
+    if (isPerformanceMode) {
+      if (isDesktop) {
+        return (cpuCores * 3).clamp(24, 32);
+      }
+      return cpuCores.clamp(8, 12);
+    }
     if (isDesktop) {
       return (cpuCores * 1.5).round().clamp(6, 16);
     }
@@ -47,7 +68,14 @@ class SmbPoolConfig {
   ///
   /// 桌面端：64KB - 大块可提高吞吐量
   /// 移动端：16KB - 小块可减少内存峰值
+  /// 性能模式：桌面端 128KB，移动端 32KB
   static int get streamChunkSize {
+    if (isPerformanceMode) {
+      if (isDesktop) {
+        return 128 * 1024; // 128KB
+      }
+      return 32 * 1024; // 32KB
+    }
     if (isDesktop) {
       return 64 * 1024; // 64KB
     }
@@ -57,9 +85,15 @@ class SmbPoolConfig {
   /// 后台任务并发数
   ///
   /// 用于刮削、扫描等批量操作
-  /// 桌面端：核心数/2（最小3，最大8）
-  /// 移动端：核心数/3（最小2，最大4）- 考虑电池和发热
+  /// 普通模式：桌面端 3-8，移动端 2-4
+  /// 性能模式：桌面端 16-32，移动端 8-12
   static int get maxBackgroundTasks {
+    if (isPerformanceMode) {
+      if (isDesktop) {
+        return (cpuCores * 2).clamp(16, 32);
+      }
+      return cpuCores.clamp(8, 12);
+    }
     if (isDesktop) {
       return (cpuCores ~/ 2).clamp(3, 8);
     }
@@ -74,5 +108,6 @@ class SmbPoolConfig {
   static String get summary =>
       'SmbPoolConfig: platform=${isDesktop ? "desktop" : "mobile"}, '
       'cores=$cpuCores, connections=$maxConnections, '
-      'dedicated=$maxDedicatedConnections, background=$maxBackgroundTasks';
+      'dedicated=$maxDedicatedConnections, background=$maxBackgroundTasks, '
+      'performanceMode=$isPerformanceMode';
 }

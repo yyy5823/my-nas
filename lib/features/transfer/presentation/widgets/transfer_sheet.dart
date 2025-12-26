@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/transfer/domain/entities/transfer_task.dart';
 import 'package:my_nas/features/transfer/presentation/providers/transfer_provider.dart';
 
@@ -149,11 +150,19 @@ class _TransferSheet extends ConsumerWidget {
                 ),
                 // 缓存统计（仅缓存类型显示）
                 if (type == TransferSheetType.cache) _CacheStats(isDark: isDark),
-                // 任务列表
+                // 内容区域
                 Expanded(
-                  child: tasks.isEmpty
-                      ? _buildEmptyState(context, isDark, emptyIcon, emptyText)
-                      : _buildTaskList(context, ref, scrollController, tasks, isDark),
+                  child: type == TransferSheetType.cache
+                      ? _CacheContent(
+                          scrollController: scrollController,
+                          isDark: isDark,
+                          activeTasks: tasks.where((t) => !t.isCompleted).toList(),
+                          emptyIcon: emptyIcon,
+                          emptyText: emptyText,
+                        )
+                      : tasks.isEmpty
+                          ? _buildEmptyState(context, isDark, emptyIcon, emptyText)
+                          : _buildTaskList(context, ref, scrollController, tasks, isDark),
                 ),
               ],
             ),
@@ -305,6 +314,299 @@ class _TransferSheet extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// 缓存内容区域 - 使用真实缓存项
+class _CacheContent extends ConsumerWidget {
+  const _CacheContent({
+    required this.scrollController,
+    required this.isDark,
+    required this.activeTasks,
+    required this.emptyIcon,
+    required this.emptyText,
+  });
+
+  final ScrollController scrollController;
+  final bool isDark;
+  final List<TransferTask> activeTasks;
+  final IconData emptyIcon;
+  final String emptyText;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cachedItemsAsync = ref.watch(allCachedItemsProvider);
+
+    return cachedItemsAsync.when(
+      data: (cachedItems) {
+        if (activeTasks.isEmpty && cachedItems.isEmpty) {
+          return _buildEmptyState(context);
+        }
+
+        // 按媒体类型分组
+        final groupedCache = <MediaType, List<CachedMediaItem>>{};
+        for (final item in cachedItems) {
+          groupedCache.putIfAbsent(item.mediaType, () => []).add(item);
+        }
+
+        return CustomScrollView(
+          controller: scrollController,
+          slivers: [
+            // 正在缓存的任务
+            if (activeTasks.isNotEmpty) ...[
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                  child: Text(
+                    '正在缓存',
+                    style: context.textTheme.titleSmall?.copyWith(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+              SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) => Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    child: _TransferTaskTile(
+                      task: activeTasks[index],
+                      isDark: isDark,
+                      type: TransferSheetType.cache,
+                    ),
+                  ),
+                  childCount: activeTasks.length,
+                ),
+              ),
+            ],
+
+            // 已缓存的内容
+            if (cachedItems.isNotEmpty) ...[
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: Text(
+                    '已缓存',
+                    style: context.textTheme.titleSmall?.copyWith(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+
+              // 按媒体类型显示
+              for (final entry in groupedCache.entries) ...[
+                SliverToBoxAdapter(
+                  child: _buildMediaTypeHeader(context, entry.key, entry.value.length),
+                ),
+                SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) => _CachedItemTile(
+                      item: entry.value[index],
+                      isDark: isDark,
+                    ),
+                    childCount: entry.value.length,
+                  ),
+                ),
+              ],
+            ],
+
+            const SliverPadding(padding: EdgeInsets.only(bottom: 32)),
+          ],
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (_, _) => _buildEmptyState(context),
+    );
+  }
+
+  Widget _buildEmptyState(BuildContext context) => Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: AppColors.success.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(emptyIcon, size: 40, color: AppColors.success),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              emptyText,
+              style: context.textTheme.titleMedium?.copyWith(
+                color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '缓存的内容可以离线访问',
+              style: context.textTheme.bodyMedium?.copyWith(
+                color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      );
+
+  Widget _buildMediaTypeHeader(BuildContext context, MediaType mediaType, int count) {
+    final (icon, label) = switch (mediaType) {
+      MediaType.photo => (Icons.photo_library, '照片'),
+      MediaType.music => (Icons.music_note, '音乐'),
+      MediaType.video => (Icons.movie, '视频'),
+      MediaType.book => (Icons.book, '图书'),
+      MediaType.comic => (Icons.menu_book, '漫画'),
+      MediaType.note => (Icons.note, '笔记'),
+    };
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: Row(
+        children: [
+          Icon(
+            icon,
+            size: 18,
+            color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: context.textTheme.bodyMedium?.copyWith(
+              color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            '($count)',
+            style: context.textTheme.bodySmall?.copyWith(
+              color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 缓存项卡片
+class _CachedItemTile extends ConsumerWidget {
+  const _CachedItemTile({
+    required this.item,
+    required this.isDark,
+  });
+
+  final CachedMediaItem item;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final notifier = ref.read(transferTasksProvider.notifier);
+
+    return Dismissible(
+      key: ValueKey('${item.sourceId}_${item.sourcePath}'),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 16),
+        color: AppColors.error,
+        child: const Icon(Icons.delete, color: Colors.white),
+      ),
+      onDismissed: (_) => notifier.deleteCache(item.sourceId, item.sourcePath),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        decoration: BoxDecoration(
+          color: isDark
+              ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
+              : AppColors.lightSurface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isDark
+                ? AppColors.darkOutline.withValues(alpha: 0.2)
+                : AppColors.lightOutline.withValues(alpha: 0.3),
+          ),
+        ),
+        child: ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          leading: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: _getMediaTypeColor(item.mediaType).withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              _getMediaTypeIcon(item.mediaType),
+              color: _getMediaTypeColor(item.mediaType),
+              size: 20,
+            ),
+          ),
+          title: Text(
+            item.displayTitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: context.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w500,
+              color: isDark ? AppColors.darkOnSurface : null,
+            ),
+          ),
+          subtitle: Text(
+            item.fileSizeText,
+            style: context.textTheme.bodySmall?.copyWith(
+              color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+            ),
+          ),
+          trailing: _buildDeleteButton(context, notifier),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDeleteButton(BuildContext context, TransferTasksNotifier notifier) => Tooltip(
+        message: '删除缓存',
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () => notifier.deleteCache(item.sourceId, item.sourcePath),
+            borderRadius: BorderRadius.circular(10),
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: isDark ? AppColors.darkSurfaceElevated : AppColors.lightSurfaceVariant,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                Icons.delete_outline_rounded,
+                size: 18,
+                color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+              ),
+            ),
+          ),
+        ),
+      );
+
+  IconData _getMediaTypeIcon(MediaType mediaType) => switch (mediaType) {
+        MediaType.photo => Icons.photo,
+        MediaType.music => Icons.audiotrack,
+        MediaType.video => Icons.videocam,
+        MediaType.book => Icons.book,
+        MediaType.comic => Icons.menu_book,
+        MediaType.note => Icons.note,
+      };
+
+  Color _getMediaTypeColor(MediaType mediaType) => switch (mediaType) {
+        MediaType.photo => AppColors.fileImage,
+        MediaType.music => AppColors.fileAudio,
+        MediaType.video => AppColors.fileVideo,
+        MediaType.book => AppColors.fileDocument,
+        MediaType.comic => AppColors.fileDocument,
+        MediaType.note => AppColors.fileDocument,
+      };
 }
 
 /// 缓存统计
