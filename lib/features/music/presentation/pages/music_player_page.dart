@@ -1532,10 +1532,11 @@ class _NeteaseTonearmWidgetState extends State<_NeteaseTonearmWidget>
       vsync: this,
     );
 
-    // 唱针臂角度动画：从抬起(-25度)到落下(0度)
+    // 唱针臂角度动画：从抬起到落下
+    // 停止时向右上方抬起（针头在唱片外），播放时落到唱片上
     _animation = Tween<double>(
-      begin: -0.4, // 抬起 ~-23度
-      end: 0.0, // 落到唱片上
+      begin: -0.55, // 停止时抬起 ~-31度，针头在唱片外
+      end: 0.0, // 播放时落到唱片上
     ).animate(CurvedAnimation(
       parent: _controller,
       curve: Curves.easeOut,
@@ -1601,42 +1602,85 @@ class _NeteaseTonearmPainter extends CustomPainter {
     // 转轴球在右上角
     final pivotCenter = Offset(size.width - pivotRadius, pivotRadius);
     
-    // 唱针臂从转轴延伸到唱片边缘
-    // 终点应该在唱片的右上边缘附近
-    final armEndX = size.width * 0.15;
-    final armEndY = size.height * 0.85;
+    // 唱针臂弯折设计：
+    // 第一段：从转轴向左下延伸（主臂）
+    // 第二段：在中间弯折，向下延伸（短臂+唱针头）
+    
+    final armStartX = pivotCenter.dx - pivotRadius * 0.5;
+    final armStartY = pivotCenter.dy + pivotRadius * 0.3;
+    
+    // 弯折点（臂的中间）
+    final bendX = size.width * 0.35;
+    final bendY = size.height * 0.55;
+    
+    // 唱针头位置（弯折后向下）
+    final armEndX = bendX - size.width * 0.08;
+    final armEndY = size.height * 0.75;
 
-    // 绘制唱针臂（直线或微弯）
-    final armPaint = Paint()
+    // 绘制主臂（从转轴到弯折点）
+    final mainArmPaint = Paint()
       ..shader = LinearGradient(
         begin: Alignment.topRight,
         end: Alignment.bottomLeft,
         colors: [
           Colors.grey[400]!,
           Colors.grey[500]!,
-          Colors.grey[600]!,
         ],
-      ).createShader(Rect.fromPoints(pivotCenter, Offset(armEndX, armEndY)))
-      ..strokeWidth = size.width * 0.03
+      ).createShader(Rect.fromPoints(
+        Offset(armStartX, armStartY),
+        Offset(bendX, bendY),
+      ))
+      ..strokeWidth = size.width * 0.035
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
 
-    // 臂路径 - 从转轴下方开始
-    final armStartX = pivotCenter.dx - pivotRadius * 0.7;
-    final armStartY = pivotCenter.dy + pivotRadius * 0.5;
-    
-    final armPath = Path()
+    final mainArmPath = Path()
       ..moveTo(armStartX, armStartY)
+      ..lineTo(bendX, bendY);
+    canvas.drawPath(mainArmPath, mainArmPaint);
+
+    // 绘制短臂（从弯折点到唱针头）
+    final shortArmPaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          Colors.grey[500]!,
+          Colors.grey[600]!,
+        ],
+      ).createShader(Rect.fromPoints(
+        Offset(bendX, bendY),
+        Offset(armEndX, armEndY),
+      ))
+      ..strokeWidth = size.width * 0.025
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+
+    final shortArmPath = Path()
+      ..moveTo(bendX, bendY)
       ..lineTo(armEndX, armEndY);
-    canvas.drawPath(armPath, armPaint);
+    canvas.drawPath(shortArmPath, shortArmPaint);
 
     // 臂高光
     final highlightPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.3)
+      ..color = Colors.white.withValues(alpha: 0.25)
       ..strokeWidth = size.width * 0.01
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
-    canvas.drawPath(armPath, highlightPaint);
+    canvas.drawPath(mainArmPath, highlightPaint);
+
+    // 弯折处关节（小圆点）
+    final jointPaint = Paint()
+      ..shader = RadialGradient(
+        colors: [
+          Colors.grey[400]!,
+          Colors.grey[600]!,
+        ],
+      ).createShader(Rect.fromCircle(
+        center: Offset(bendX, bendY),
+        radius: size.width * 0.025,
+      ));
+    canvas.drawCircle(Offset(bendX, bendY), size.width * 0.02, jointPaint);
 
     // 转轴球 - 金属质感
     final pivotPaint = Paint()
@@ -1656,18 +1700,18 @@ class _NeteaseTonearmPainter extends CustomPainter {
       ..shader = RadialGradient(
         center: const Alignment(-0.5, -0.5),
         colors: [
-          Colors.white.withValues(alpha: 0.6),
+          Colors.white.withValues(alpha: 0.5),
           Colors.transparent,
         ],
       ).createShader(Rect.fromCircle(center: pivotCenter, radius: pivotRadius));
-    canvas.drawCircle(pivotCenter, pivotRadius * 0.7, pivotHighlight);
+    canvas.drawCircle(pivotCenter, pivotRadius * 0.6, pivotHighlight);
 
     // 唱针头（小方块）
-    final headSize = size.width * 0.06;
+    final headSize = size.width * 0.045;
     final headRect = Rect.fromCenter(
       center: Offset(armEndX, armEndY),
       width: headSize,
-      height: headSize * 1.5,
+      height: headSize * 1.8,
     );
     final headPaint = Paint()
       ..shader = LinearGradient(
@@ -1683,8 +1727,8 @@ class _NeteaseTonearmPainter extends CustomPainter {
       ..strokeWidth = 1.5
       ..strokeCap = StrokeCap.round;
     canvas.drawLine(
-      Offset(armEndX, armEndY + headSize * 0.75),
-      Offset(armEndX, armEndY + headSize * 0.75 + 3),
+      Offset(armEndX, armEndY + headSize * 0.9),
+      Offset(armEndX, armEndY + headSize * 0.9 + 4),
       needlePaint,
     );
   }

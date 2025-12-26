@@ -10,6 +10,7 @@ import 'package:my_nas/core/services/media_proxy_server.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/data/services/live_activity_service.dart';
 import 'package:my_nas/features/music/data/services/music_audio_cache_service.dart';
+import 'package:my_nas/features/music/data/services/music_audio_handler.dart';
 import 'package:my_nas/features/music/data/services/music_cover_cache_service.dart';
 import 'package:my_nas/features/music/data/services/music_metadata_service.dart';
 import 'package:my_nas/features/music/data/services/ncm_decrypt_service.dart';
@@ -18,6 +19,7 @@ import 'package:my_nas/features/music/presentation/providers/music_favorites_pro
 import 'package:my_nas/features/music/presentation/providers/music_settings_provider.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
+import 'package:my_nas/main.dart' show audioHandler;
 import 'package:path/path.dart' as p;
 
 /// 当前播放的音乐
@@ -168,7 +170,13 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   }
 
   final Ref _ref;
-  late final AudioPlayer _player;
+
+  /// 使用全局 AudioHandler（通过 audio_service 初始化）
+  /// 这提供了后台音频播放和系统媒体控制（锁屏、控制中心、蓝牙耳机）
+  MusicAudioHandler get _audioHandler => audioHandler;
+
+  /// 获取底层的 AudioPlayer
+  AudioPlayer get _player => _audioHandler.player;
 
   // 媒体代理服务器（用于流式播放 NAS 文件）
   final MediaProxyServer _mediaProxyServer = MediaProxyServer();
@@ -203,8 +211,13 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   }
 
   void _initPlayer() {
-    _player = AudioPlayer();
-    logger.i('MusicPlayer: AudioPlayer 实例已创建');
+    logger.i('MusicPlayer: 使用全局 AudioHandler');
+
+    // 设置 audioHandler 的切歌回调
+    // 当用户通过锁屏、控制中心或蓝牙耳机点击上一首/下一首时调用
+    _audioHandler.onSkipToIndex = (index) async {
+      await playAt(index);
+    };
 
     // 应用保存的设置
     _applySettings();
@@ -660,6 +673,19 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       await _player.play();
       logger.i('MusicPlayer: play() 调用完成');
 
+      // 设置 AudioHandler 的当前音乐信息
+      // 这会更新 iOS/Android 锁屏和控制中心显示的歌曲信息
+      Uint8List? coverData;
+      if (music.coverData != null && music.coverData!.isNotEmpty) {
+        coverData = Uint8List.fromList(music.coverData!);
+      } else {
+        // 尝试从封面缓存中获取
+        final uniqueKey = '${music.sourceId ?? ''}_${music.path}';
+        final coverCacheService = MusicCoverCacheService();
+        coverData = await coverCacheService.getCover(uniqueKey);
+      }
+      await _audioHandler.setCurrentMusic(music, artworkData: coverData);
+
       // 添加到播放历史
       await _ref.read(musicHistoryProvider.notifier).addToHistory(music);
 
@@ -907,14 +933,23 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
           // 更新 Live Activity 封面图片
           // 使用完整的 updateActivity 方法确保灵动岛正确刷新
           if (metadata.coverData != null && metadata.coverData!.isNotEmpty) {
+            final coverBytes = Uint8List.fromList(metadata.coverData!);
             final showPlayingAnimation = state.isPlaying || state.isBuffering;
+
+            // 更新 AudioHandler 的封面（用于锁屏和控制中心）
+            AppError.fireAndForget(
+              _audioHandler.updateArtwork(coverBytes),
+              action: 'updateAudioHandlerArtwork',
+            );
+
+            // 更新 Live Activity（用于灵动岛）
             AppError.fireAndForget(
               _liveActivityService.updateActivity(
                 music: updatedMusic,
                 isPlaying: showPlayingAnimation,
                 position: state.position,
                 duration: state.duration,
-                coverData: Uint8List.fromList(metadata.coverData!),
+                coverData: coverBytes,
               ),
               action: 'updateLiveActivityWithCover',
             );
@@ -967,6 +1002,11 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   Future<void> playQueue(List<MusicItem> tracks, {int startIndex = 0}) async {
     _ref.read(playQueueProvider.notifier).setQueue(tracks);
     state = state.copyWith(currentIndex: startIndex);
+
+    // 同步设置 AudioHandler 的队列
+    // 这样锁屏和控制中心的上一首/下一首才能正确工作
+    _audioHandler.setQueue(tracks, startIndex: startIndex);
+
     if (tracks.isNotEmpty && startIndex < tracks.length) {
       await play(tracks[startIndex]);
     }
@@ -1094,7 +1134,8 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     _cleanupCurrentProxy();
     _stopLiveActivityUpdateTimer();
     _liveActivityService.dispose();
-    _player.dispose();
+    // 注意：不 dispose _audioHandler，因为它是全局单例
+    // 它会在应用退出时自动清理
     super.dispose();
   }
 }

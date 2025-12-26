@@ -300,12 +300,18 @@ struct MusicActivityWidgetLiveActivity: Widget {
                 // 使用已同步的 defaults
                 let isPlaying = defaults.bool(forKey: context.attributes.prefixedKey("isPlaying"))
                 let progress = defaults.double(forKey: context.attributes.prefixedKey("progress"))
+
+                // 加载封面图片用于提取颜色
+                let coverKey = context.attributes.prefixedKey("coverImage")
+                let filename = defaults.string(forKey: coverKey) ?? ""
+                let coverImage = loadCoverImageForWaveform(filename: filename)
+
                 if isPlaying {
-                    AnimatedMusicBars(progress: progress)
+                    AnimatedMusicBars(progress: progress, coverImage: coverImage)
                         .frame(width: 16, height: 14)
                 } else {
                     // 暂停时显示静态波形图标
-                    StaticMusicBars()
+                    StaticMusicBars(coverImage: coverImage)
                         .frame(width: 16, height: 14)
                 }
             } minimal: {
@@ -313,12 +319,18 @@ struct MusicActivityWidgetLiveActivity: Widget {
                 // 使用已同步的 defaults
                 let isPlaying = defaults.bool(forKey: context.attributes.prefixedKey("isPlaying"))
                 let progress = defaults.double(forKey: context.attributes.prefixedKey("progress"))
+
+                // 加载封面图片用于提取颜色
+                let coverKey = context.attributes.prefixedKey("coverImage")
+                let filename = defaults.string(forKey: coverKey) ?? ""
+                let coverImage = loadCoverImageForWaveform(filename: filename)
+
                 if isPlaying {
-                    AnimatedMusicBars(progress: progress)
+                    AnimatedMusicBars(progress: progress, coverImage: coverImage)
                         .frame(width: 12, height: 10)
                 } else {
                     // 暂停时显示静态波形图标
-                    StaticMusicBars()
+                    StaticMusicBars(coverImage: coverImage)
                         .frame(width: 12, height: 10)
                 }
             }
@@ -333,17 +345,154 @@ struct MusicActivityWidgetLiveActivity: Widget {
     }
 }
 
+// MARK: - Cover Image Loading for Waveform
+
+/// 加载封面图片用于波形颜色提取
+/// 这是一个轻量级的加载方法，用于在 Widget 中提取颜色
+func loadCoverImageForWaveform(filename: String) -> UIImage? {
+    guard !filename.isEmpty else { return nil }
+
+    guard let containerURL = getAppGroupContainerURL() else {
+        return nil
+    }
+
+    let fileURL = containerURL.appendingPathComponent(filename)
+    guard FileManager.default.fileExists(atPath: fileURL.path) else {
+        return nil
+    }
+
+    guard let imageData = try? Data(contentsOf: fileURL),
+          let image = UIImage(data: imageData) else {
+        return nil
+    }
+
+    return image
+}
+
+// MARK: - Color Extraction from Cover Image
+
+/// 从封面图片中提取主色调
+/// 返回 4 个渐变色用于波形显示
+func extractColorsFromCover(_ image: UIImage?) -> [Color] {
+    // 默认颜色（如果没有封面或提取失败）
+    let defaultColors: [Color] = [
+        Color(red: 0.4, green: 0.8, blue: 1.0),   // 青色
+        Color(red: 0.6, green: 0.5, blue: 1.0),   // 蓝紫色
+        Color(red: 1.0, green: 0.5, blue: 0.7),   // 粉色
+        Color(red: 1.0, green: 0.7, blue: 0.3),   // 橙色
+    ]
+
+    guard let image = image,
+          let cgImage = image.cgImage else {
+        return defaultColors
+    }
+
+    // 将图片缩小到 4x4 来快速提取颜色
+    let width = 4
+    let height = 4
+    let bytesPerPixel = 4
+    let bytesPerRow = bytesPerPixel * width
+    let bitsPerComponent = 8
+
+    var rawData = [UInt8](repeating: 0, count: width * height * bytesPerPixel)
+
+    guard let context = CGContext(
+        data: &rawData,
+        width: width,
+        height: height,
+        bitsPerComponent: bitsPerComponent,
+        bytesPerRow: bytesPerRow,
+        space: CGColorSpaceCreateDeviceRGB(),
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    ) else {
+        return defaultColors
+    }
+
+    context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+    // 收集所有像素颜色
+    var colors: [(r: CGFloat, g: CGFloat, b: CGFloat)] = []
+    for y in 0..<height {
+        for x in 0..<width {
+            let offset = (y * width + x) * bytesPerPixel
+            let r = CGFloat(rawData[offset]) / 255.0
+            let g = CGFloat(rawData[offset + 1]) / 255.0
+            let b = CGFloat(rawData[offset + 2]) / 255.0
+            // 跳过太暗或太亮的颜色
+            let brightness = (r + g + b) / 3.0
+            if brightness > 0.15 && brightness < 0.85 {
+                colors.append((r: r, g: g, b: b))
+            }
+        }
+    }
+
+    // 如果没有合适的颜色，返回默认颜色
+    if colors.isEmpty {
+        return defaultColors
+    }
+
+    // 按色调排序并选取 4 个不同的颜色
+    colors.sort { c1, c2 in
+        // 简单的色调排序
+        let hue1 = atan2(c1.g - c1.b, c1.r - 0.5 * (c1.g + c1.b))
+        let hue2 = atan2(c2.g - c2.b, c2.r - 0.5 * (c2.g + c2.b))
+        return hue1 < hue2
+    }
+
+    // 选取均匀分布的 4 个颜色
+    var result: [Color] = []
+    let step = max(1, colors.count / 4)
+    for i in 0..<4 {
+        let index = min(i * step, colors.count - 1)
+        let c = colors[index]
+        // 提高饱和度和亮度使颜色更鲜艳
+        let enhanced = enhanceColor(r: c.r, g: c.g, b: c.b)
+        result.append(Color(red: enhanced.r, green: enhanced.g, blue: enhanced.b))
+    }
+
+    return result
+}
+
+/// 增强颜色的饱和度和亮度
+private func enhanceColor(r: CGFloat, g: CGFloat, b: CGFloat) -> (r: CGFloat, g: CGFloat, b: CGFloat) {
+    let maxC = max(r, g, b)
+    let minC = min(r, g, b)
+    let delta = maxC - minC
+
+    // 如果颜色太灰，增加饱和度
+    if delta < 0.2 {
+        let factor: CGFloat = 1.5
+        let avg = (r + g + b) / 3.0
+        return (
+            r: min(1.0, avg + (r - avg) * factor),
+            g: min(1.0, avg + (g - avg) * factor),
+            b: min(1.0, avg + (b - avg) * factor)
+        )
+    }
+
+    // 轻微提高亮度
+    let brightnessFactor: CGFloat = 1.1
+    return (
+        r: min(1.0, r * brightnessFactor),
+        g: min(1.0, g * brightnessFactor),
+        b: min(1.0, b * brightnessFactor)
+    )
+}
+
 // MARK: - Animated Music Bars (彩色渐变音乐波形，垂直居中，基于播放进度)
 
 struct AnimatedMusicBars: View {
     var progress: Double = 0  // 播放进度 0.0-1.0，用于影响波形
+    var coverImage: UIImage? = nil  // 封面图片，用于提取颜色
 
     // 使用 TimelineView 实现持续动画
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 0.1)) { timeline in
+        let colors = extractColorsFromCover(coverImage)
+
+        TimelineView(.periodic(from: .now, by: 0.08)) { timeline in
             HStack(alignment: .center, spacing: 1) {
                 ForEach(0..<4, id: \.self) { index in
-                    MusicBar(index: index, date: timeline.date, progress: progress)
+                    MusicBar(index: index, date: timeline.date, progress: progress, color: colors[index])
                 }
             }
         }
@@ -353,18 +502,14 @@ struct AnimatedMusicBars: View {
 // MARK: - Static Music Bars (暂停时显示的静态彩色波形)
 
 struct StaticMusicBars: View {
+    var coverImage: UIImage? = nil  // 封面图片，用于提取颜色
+
     // 静态波形，不同高度
     private let heights: [CGFloat] = [0.5, 0.8, 0.6, 0.4]
 
-    // 彩色渐变颜色数组
-    private let colors: [Color] = [
-        Color(red: 0.4, green: 0.8, blue: 1.0),   // 青色
-        Color(red: 0.6, green: 0.5, blue: 1.0),   // 蓝紫色
-        Color(red: 1.0, green: 0.5, blue: 0.7),   // 粉色
-        Color(red: 1.0, green: 0.7, blue: 0.3),   // 橙色
-    ]
-
     var body: some View {
+        let colors = extractColorsFromCover(coverImage)
+
         HStack(alignment: .center, spacing: 1) {
             ForEach(0..<4, id: \.self) { index in
                 RoundedRectangle(cornerRadius: 0.5)
@@ -381,17 +526,7 @@ struct MusicBar: View {
     let index: Int
     let date: Date
     var progress: Double = 0
-
-    // 彩色渐变颜色数组（从左到右）
-    private var barColor: Color {
-        let colors: [Color] = [
-            Color(red: 0.4, green: 0.8, blue: 1.0),   // 青色
-            Color(red: 0.6, green: 0.5, blue: 1.0),   // 蓝紫色
-            Color(red: 1.0, green: 0.5, blue: 0.7),   // 粉色
-            Color(red: 1.0, green: 0.7, blue: 0.3),   // 橙色
-        ]
-        return colors[index % colors.count]
-    }
+    var color: Color = .white  // 使用传入的颜色
 
     var body: some View {
         // 使用播放进度来影响波形的基础相位
@@ -399,16 +534,17 @@ struct MusicBar: View {
         let phase = Double(index) * 1.5 + progressPhase
         let time = date.timeIntervalSinceReferenceDate
 
-        // 基于时间和进度的波形动画
-        let wave1 = sin(time * 4.0 + phase)
-        let wave2 = sin(time * 2.5 + phase * 0.7) * 0.5
-        let combinedWave = abs(wave1 + wave2) / 1.5
+        // 多重波形叠加，模拟音乐节奏感
+        let wave1 = sin(time * 5.0 + phase)
+        let wave2 = sin(time * 3.0 + phase * 0.8) * 0.6
+        let wave3 = sin(time * 7.0 + phase * 1.2) * 0.3
+        let combinedWave = abs(wave1 + wave2 + wave3) / 1.9
 
-        // 高度范围从 0.25 到 1.0
-        let height = 0.25 + 0.75 * combinedWave
+        // 高度范围从 0.2 到 1.0，更有节奏感
+        let height = 0.2 + 0.8 * combinedWave
 
         RoundedRectangle(cornerRadius: 0.5)
-            .fill(barColor)
+            .fill(color)
             .frame(width: 2)  // 更细的竖线
             .scaleEffect(y: height, anchor: .center)  // 垂直居中对齐
     }

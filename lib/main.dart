@@ -17,11 +17,16 @@ import 'package:my_nas/core/services/error_report/error_report.dart';
 import 'package:my_nas/core/services/native_log_bridge_service.dart';
 import 'package:my_nas/core/services/performance_mode_service.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/music/data/services/music_audio_handler.dart';
 import 'package:my_nas/features/video/data/services/audio_track_service.dart';
 import 'package:my_nas/features/video/data/services/subtitle_service.dart';
 import 'package:my_nas/features/video/data/services/tmdb_service.dart';
 import 'package:my_nas/shared/providers/language_preference_provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+
+/// 全局 AudioHandler 实例
+/// 用于音乐后台播放和系统媒体控制（锁屏、控制中心、蓝牙耳机等）
+late MusicAudioHandler audioHandler;
 
 Future<void> main() async {
   final widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
@@ -145,6 +150,15 @@ Future<void> _initApp() async {
   // Initialize AudioSession for proper audio playback on iOS/Android
   // This is critical for just_audio to work correctly
   await _initAudioSession();
+
+  // 初始化 AudioHandler 用于后台音频播放和系统媒体控制
+  // 这会自动处理：
+  // - iOS 锁屏和控制中心媒体控制
+  // - Android 通知栏媒体控制
+  // - 蓝牙耳机/AirPods 按钮控制
+  // - 后台音频稳定播放
+  audioHandler = await initAudioHandler();
+  logger.i('AudioHandler initialized for background audio and media controls');
 
   // Initialize Hive for local storage
   await Hive.initFlutter();

@@ -141,26 +141,28 @@ class _LyricViewState extends ConsumerState<LyricView>
     final screenHeight = MediaQuery.of(context).size.height;
     final verticalPadding = screenHeight * 0.4; // 40% 的空白用于居中效果
 
-    return GestureDetector(
-      onTap: widget.onTap,
-      child: NotificationListener<ScrollNotification>(
-        onNotification: (notification) {
-          if (notification is UserScrollNotification) {
-            // 用户开始手动滚动
-            _userScrolling = true;
-            _lastUserScrollTime = DateTime.now();
-          } else if (notification is ScrollEndNotification) {
-            // 滚动结束后，延迟恢复自动滚动
-            Future.delayed(const Duration(seconds: 3), () {
-              if (mounted) {
-                setState(() {
-                  _userScrolling = false;
-                });
-              }
-            });
-          }
-          return false;
-        },
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification is UserScrollNotification) {
+          // 用户开始手动滚动
+          _userScrolling = true;
+          _lastUserScrollTime = DateTime.now();
+        } else if (notification is ScrollEndNotification) {
+          // 滚动结束后，延迟恢复自动滚动
+          Future.delayed(const Duration(seconds: 3), () {
+            if (mounted) {
+              setState(() {
+                _userScrolling = false;
+              });
+            }
+          });
+        }
+        return false;
+      },
+      child: GestureDetector(
+        // 整个区域可点击返回唱片视图
+        onTap: widget.onTap,
+        behavior: HitTestBehavior.translucent,
         child: ShaderMask(
           shaderCallback: (bounds) => LinearGradient(
             begin: Alignment.topCenter,
@@ -196,7 +198,7 @@ class _LyricViewState extends ConsumerState<LyricView>
                 isDark: isDark,
                 showFullScreen: widget.showFullScreen,
                 onTap: () {
-                  // 点击歌词跳转到对应位置
+                  // 点击歌词跳转到对应位置（而不是切换视图）
                   ref.read(musicPlayerControllerProvider.notifier).seek(line.time);
                 },
               );
@@ -255,49 +257,53 @@ class _LyricViewState extends ConsumerState<LyricView>
       ),
     );
 
-  Widget _buildNoLyric(bool isDark) => Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // 装饰性音符
-          Container(
-            width: 100,
-            height: 100,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  AppColors.primary.withValues(alpha: 0.15),
-                  AppColors.secondary.withValues(alpha: 0.1),
-                ],
+  Widget _buildNoLyric(bool isDark) => GestureDetector(
+      onTap: widget.onTap, // 点击切换回唱片视图
+      behavior: HitTestBehavior.opaque,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 装饰性音符
+            Container(
+              width: 100,
+              height: 100,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    AppColors.primary.withValues(alpha: 0.15),
+                    AppColors.secondary.withValues(alpha: 0.1),
+                  ],
+                ),
+              ),
+              child: Icon(
+                Icons.music_note_rounded,
+                size: 48,
+                color: AppColors.primary.withValues(alpha: 0.6),
               ),
             ),
-            child: Icon(
-              Icons.music_note_rounded,
-              size: 48,
-              color: AppColors.primary.withValues(alpha: 0.6),
+            const SizedBox(height: 24),
+            Text(
+              '暂无歌词',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white70 : Colors.black54,
+              ),
             ),
-          ),
-          const SizedBox(height: 24),
-          Text(
-            '暂无歌词',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: isDark ? Colors.white70 : Colors.black54,
+            const SizedBox(height: 8),
+            Text(
+              '点击返回唱片视图',
+              style: TextStyle(
+                fontSize: 14,
+                color: isDark ? Colors.white38 : Colors.black38,
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '尽情享受音乐吧',
-            style: TextStyle(
-              fontSize: 14,
-              color: isDark ? Colors.white38 : Colors.black38,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
 }
@@ -354,45 +360,19 @@ class _LyricLineWidget extends StatelessWidget {
         padding: EdgeInsets.symmetric(
           vertical: showFullScreen ? 14 : 10,
         ),
-        child: Row(
-          children: [
-            // 当前行指示器
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              width: isCurrent ? 4 : 0,
-              height: showFullScreen ? 28 : 22,
-              margin: EdgeInsets.only(right: isCurrent ? 12 : 0),
-              decoration: BoxDecoration(
-                color: AppColors.primary,
-                borderRadius: BorderRadius.circular(2),
-                boxShadow: isCurrent
-                    ? [
-                        BoxShadow(
-                          color: AppColors.primary.withValues(alpha: 0.5),
-                          blurRadius: 8,
-                        ),
-                      ]
-                    : null,
-              ),
-            ),
-            // 歌词文本
-            Expanded(
-              child: AnimatedDefaultTextStyle(
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeOutCubic,
-                style: TextStyle(
-                  fontSize: fontSize,
-                  fontWeight: fontWeight,
-                  color: textColor,
-                  height: 1.4,
-                ),
-                child: Text(
-                  line.text,
-                  textAlign: TextAlign.left,
-                ),
-              ),
-            ),
-          ],
+        child: AnimatedDefaultTextStyle(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOutCubic,
+          style: TextStyle(
+            fontSize: fontSize,
+            fontWeight: fontWeight,
+            color: textColor,
+            height: 1.4,
+          ),
+          child: Text(
+            line.text,
+            textAlign: TextAlign.center,
+          ),
         ),
       ),
     );
