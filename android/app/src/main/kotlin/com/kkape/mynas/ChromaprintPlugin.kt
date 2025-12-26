@@ -1,4 +1,4 @@
-package com.kkape.nas
+package com.kkape.mynas
 
 import android.content.Context
 import android.media.MediaCodec

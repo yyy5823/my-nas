@@ -17,3 +17,10 @@
 -keepclasseswithmembernames class * {
     native <methods>;
 }
+
+# Suppress warnings for optional dependencies
+-dontwarn com.google.android.play.core.**
+-dontwarn com.google.android.gms.**
+-dontwarn com.google.errorprone.annotations.**
+-dontwarn javax.annotation.**
+-dontwarn kotlin.Metadata
