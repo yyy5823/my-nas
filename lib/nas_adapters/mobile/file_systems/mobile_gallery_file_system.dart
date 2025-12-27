@@ -152,13 +152,17 @@ class MobileGalleryFileSystem implements NasFileSystem {
 
   /// 列出所有相册
   Future<List<FileItem>> _listAlbums() async {
+    logger.i('MobileGalleryFileSystem: _listAlbums 开始');
     final albums = await _getAlbums();
+    logger.i('MobileGalleryFileSystem: _listAlbums 获取到 ${albums.length} 个相册');
+
     final items = <FileItem>[];
 
     for (final album in albums) {
       final count = await album.assetCountAsync;
       // 对 album ID 进行编码，避免包含斜杠导致路径解析错误
       final encodedId = _encodeId(album.id);
+      logger.d('MobileGalleryFileSystem: 相册 "${album.name}" (id: ${album.id}) 有 $count 个资源');
       items.add(FileItem(
         name: album.name,
         path: '/albums/$encodedId',
@@ -167,6 +171,7 @@ class MobileGalleryFileSystem implements NasFileSystem {
       ));
     }
 
+    logger.i('MobileGalleryFileSystem: _listAlbums 返回 ${items.length} 个相册');
     return items;
   }
 

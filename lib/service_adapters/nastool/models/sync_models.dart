@@ -9,6 +9,7 @@ class NtSyncDirectory {
     this.to,
     this.unknown,
     this.syncMode,
+    this.syncModeName,
     this.compatibility,
     this.rename,
     this.enabled,
@@ -20,25 +21,36 @@ class NtSyncDirectory {
         to: json['to'] as String?,
         unknown: json['unknown'] as String?,
         syncMode: json['syncmod'] as String?,
-        compatibility: json['compatibility'] as String?,
-        rename: json['rename'] as String?,
-        enabled: json['enabled'] as String?,
+        syncModeName: json['syncmod_name'] as String?,
+        // 支持布尔值和字符串类型
+        compatibility: _toBoolString(json['compatibility']),
+        rename: _toBoolString(json['rename']),
+        enabled: _toBoolString(json['enabled']),
       );
+
+  // 将各种类型转换为统一的布尔字符串
+  static String? _toBoolString(dynamic value) {
+    if (value == null) return null;
+    if (value is bool) return value ? 'Y' : 'N';
+    if (value is String) return value;
+    return value.toString();
+  }
 
   final int id;
   final String? from;
   final String? to;
   final String? unknown;
   final String? syncMode;
+  final String? syncModeName;
   final String? compatibility;
   final String? rename;
   final String? enabled;
 
   /// 是否启用
-  bool get isEnabled => enabled == 'Y' || enabled == '1';
+  bool get isEnabled => enabled == 'Y' || enabled == '1' || enabled == 'true';
 
   /// 是否重命名
-  bool get isRename => rename == 'Y' || rename == '1';
+  bool get isRename => rename == 'Y' || rename == '1' || rename == 'true';
 }
 
 /// 同步目录（用于 UI 展示）
@@ -59,8 +71,9 @@ class NtSyncDir {
         name: json['name'] as String? ?? json['from'] as String?,
         from: json['from'] as String?,
         to: json['to'] as String?,
-        mode: json['syncmod'] as String? ?? json['mode'] as String?,
-        state: json['enabled'] as String? ?? json['state'] as String?,
+        mode: json['syncmod'] as String? ?? json['syncmod_name'] as String? ?? json['mode'] as String?,
+        // enabled 字段可能是 bool 或 String
+        state: NtSyncDirectory._toBoolString(json['enabled']) ?? json['state'] as String?,
         include: json['include'] as String?,
         exclude: json['exclude'] as String?,
       );
@@ -74,7 +87,7 @@ class NtSyncDir {
   final String? include;
   final String? exclude;
 
-  bool get isEnabled => state == 'Y' || state == '1';
+  bool get isEnabled => state == 'Y' || state == '1' || state == 'true';
 }
 
 /// 同步历史记录

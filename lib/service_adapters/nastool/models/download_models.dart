@@ -51,18 +51,33 @@ class NtDownloadHistory {
     this.site,
     this.description,
     this.date,
+    this.type,
+    this.year,
+    this.imageUrl,
+    this.tmdbId,
   });
 
   factory NtDownloadHistory.fromJson(Map<String, dynamic> json) => NtDownloadHistory(
-    id: json['id'] as int? ?? 0,
-    title: json['TITLE'] as String? ?? json['title'] as String? ?? '',
-    enclosure: json['ENCLOSURE'] as String? ?? json['enclosure'] as String?,
-    site: json['SITE'] as String? ?? json['site'] as String?,
-    description: json['DESCRIPTION'] as String? ?? json['description'] as String?,
-    date: json['DATE'] != null
-        ? DateTime.tryParse(json['DATE'] as String)
-        : null,
+    // ID 可能是 int 或 String
+    id: json['id'] is int ? json['id'] as int : (int.tryParse(json['id']?.toString() ?? '0') ?? 0),
+    // title 字段支持多种大小写格式
+    title: json['title'] as String? ?? json['TITLE'] as String? ?? json['name'] as String? ?? '',
+    enclosure: json['enclosure'] as String? ?? json['ENCLOSURE'] as String?,
+    site: json['site'] as String? ?? json['SITE'] as String?,
+    description: json['description'] as String? ?? json['DESCRIPTION'] as String? ?? json['overview'] as String?,
+    date: _parseDate(json['date'] ?? json['DATE']),
+    type: json['type'] as String? ?? json['media_type'] as String?,
+    year: json['year']?.toString(),
+    imageUrl: json['image'] as String?,
+    tmdbId: json['tmdbid']?.toString() ?? json['orgid']?.toString(),
   );
+
+  static DateTime? _parseDate(dynamic value) {
+    if (value == null) return null;
+    if (value is DateTime) return value;
+    if (value is String) return DateTime.tryParse(value);
+    return null;
+  }
 
   final int id;
   final String title;
@@ -70,6 +85,10 @@ class NtDownloadHistory {
   final String? site;
   final String? description;
   final DateTime? date;
+  final String? type;
+  final String? year;
+  final String? imageUrl;
+  final String? tmdbId;
 }
 
 /// 下载器客户端
