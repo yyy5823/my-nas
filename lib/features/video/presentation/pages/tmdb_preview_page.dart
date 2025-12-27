@@ -263,7 +263,7 @@ class _TmdbPreviewPageState extends ConsumerState<TmdbPreviewPage> {
         item,
         style: TextStyle(
           fontSize: 14,
-          color: isDark ? Colors.grey[400] : Colors.grey[600],
+          color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
         ),
       )).toList(),
     );
@@ -506,7 +506,7 @@ class _TmdbPreviewPageState extends ConsumerState<TmdbPreviewPage> {
                             '搜索: $keyword',
                             style: TextStyle(
                               fontSize: 12,
-                              color: isDark ? Colors.grey[400] : Colors.grey[600],
+                              color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -541,7 +541,7 @@ class _TmdbPreviewPageState extends ConsumerState<TmdbPreviewPage> {
                   site.host,
                   style: TextStyle(
                     fontSize: 12,
-                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                   ),
                 ),
                 trailing: const Icon(Icons.chevron_right),
@@ -674,7 +674,7 @@ class _TmdbPreviewPageState extends ConsumerState<TmdbPreviewPage> {
                             '订阅: $title',
                             style: TextStyle(
                               fontSize: 12,
-                              color: isDark ? Colors.grey[400] : Colors.grey[600],
+                              color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -709,7 +709,7 @@ class _TmdbPreviewPageState extends ConsumerState<TmdbPreviewPage> {
                   source.host,
                   style: TextStyle(
                     fontSize: 12,
-                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                   ),
                 ),
                 trailing: const Icon(Icons.chevron_right),

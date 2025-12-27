@@ -249,7 +249,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
                         Text(
                           _error!,
                           style: TextStyle(
-                            color: isDark ? Colors.grey[400] : Colors.grey[600],
+                            color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                           ),
                         ),
                         const SizedBox(height: 16),
@@ -394,7 +394,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
               '${_tracks.length} 首歌曲',
               style: TextStyle(
                 fontSize: 14,
-                color: isDark ? Colors.grey[400] : Colors.grey[600],
+                color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
               ),
             ),
             const SizedBox(height: 24),
@@ -476,7 +476,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
           style: TextStyle(
             fontSize: 12,
             color: isConnected
-                ? (isDark ? Colors.grey[400] : Colors.grey[600])
+                ? (isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant)
                 : AppColors.error,
           ),
         ),
@@ -492,7 +492,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
             IconButton(
               icon: Icon(
                 Icons.more_vert_rounded,
-                color: isDark ? Colors.grey[400] : Colors.grey[600],
+                color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
               ),
               onPressed: () => _showTrackOptions(track),
             ),
@@ -573,7 +573,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
               '浏览音乐库添加歌曲到歌单',
               style: TextStyle(
                 fontSize: 14,
-                color: isDark ? Colors.grey[400] : Colors.grey[600],
+                color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
               ),
             ),
           ],

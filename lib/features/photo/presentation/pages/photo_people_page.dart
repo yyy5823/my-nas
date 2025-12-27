@@ -310,7 +310,7 @@ class _PhotoPeoplePageState extends ConsumerState<PhotoPeoplePage> {
               Text(
                 '已处理 ${progress.processed}/${progress.total} 张照片，发现 ${progress.facesFound} 张人脸',
                 style: context.textTheme.bodySmall?.copyWith(
-                  color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                 ),
               ),
             ],
@@ -390,7 +390,7 @@ class _PhotoPeoplePageState extends ConsumerState<PhotoPeoplePage> {
             Text(
               label,
               style: context.textTheme.bodySmall?.copyWith(
-                color: isDark ? Colors.grey[400] : Colors.grey[600],
+                color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
               ),
             ),
           ],
@@ -417,7 +417,7 @@ class _PhotoPeoplePageState extends ConsumerState<PhotoPeoplePage> {
             Text(
               '点击右上角按钮扫描照片中的人脸',
               style: context.textTheme.bodyMedium?.copyWith(
-                color: isDark ? Colors.grey[400] : Colors.grey[600],
+                color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
               ),
             ),
             const SizedBox(height: 24),
@@ -488,7 +488,7 @@ class _PhotoPeoplePageState extends ConsumerState<PhotoPeoplePage> {
                   Text(
                     '${person.photoCount} 张照片',
                     style: context.textTheme.bodySmall?.copyWith(
-                      color: isDark ? Colors.grey[400] : Colors.grey[600],
+                      color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                     ),
                   ),
                 ],

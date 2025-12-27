@@ -1191,7 +1191,7 @@ class _BookListPageState extends ConsumerState<BookListPage> {
             },
             icon: Icon(
               Icons.close,
-              color: isDark ? Colors.grey[400] : Colors.grey[600],
+              color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
             ),
           ),
       ],
@@ -1254,7 +1254,7 @@ class _BookListPageState extends ConsumerState<BookListPage> {
                       '正在加载...',
                       style: TextStyle(
                         fontSize: 13,
-                        color: isDark ? Colors.grey[400] : Colors.grey[600],
+                        color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                       ),
                     ),
                 ],
@@ -1463,7 +1463,7 @@ class _BookListPageState extends ConsumerState<BookListPage> {
           label,
           style: TextStyle(
             fontSize: 12,
-            color: isDark ? Colors.grey[400] : Colors.grey[600],
+            color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
           ),
         ),
       ],
@@ -1644,14 +1644,14 @@ class _BookListPageState extends ConsumerState<BookListPage> {
                   Icon(
                     Icons.storage_rounded,
                     size: 14,
-                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                   ),
                   const SizedBox(width: 6),
                   Text(
                     cacheInfo,
                     style: TextStyle(
                       fontSize: 12,
-                      color: isDark ? Colors.grey[400] : Colors.grey[600],
+                      color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                     ),
                   ),
                 ],
@@ -2184,14 +2184,14 @@ class _BookListContentState extends ConsumerState<BookListContent> {
                   Icon(
                     Icons.storage_rounded,
                     size: 14,
-                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                   ),
                   const SizedBox(width: 6),
                   Text(
                     cacheInfo,
                     style: TextStyle(
                       fontSize: 12,
-                      color: isDark ? Colors.grey[400] : Colors.grey[600],
+                      color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                     ),
                   ),
                 ],

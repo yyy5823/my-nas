@@ -808,7 +808,7 @@ class _ModernPlaylistCard extends StatelessWidget {
                       '${playlist.trackPaths.length} 首歌曲',
                       style: TextStyle(
                         fontSize: 11,
-                        color: isDark ? Colors.grey[400] : Colors.grey[600],
+                        color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                       ),
                     ),
                   ],

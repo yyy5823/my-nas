@@ -675,7 +675,7 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 12,
-                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                   ),
                 ),
               ],
@@ -919,7 +919,7 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
           Icon(
             icon,
             size: 18,
-            color: isDark ? Colors.grey[400] : Colors.grey[600],
+            color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
           ),
           const SizedBox(width: 8),
           Expanded(

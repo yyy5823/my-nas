@@ -334,7 +334,7 @@ class _PosterCardState extends State<PosterCard> with SingleTickerProviderStateM
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: isDark ? Colors.grey[400] : Colors.grey[600],
+                color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                 fontSize: 11,
               ),
             ),

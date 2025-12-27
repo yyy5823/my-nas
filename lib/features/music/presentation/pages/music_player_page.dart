@@ -418,7 +418,7 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
             '正在播放',
             style: TextStyle(
               fontSize: 12,
-              color: isDark ? Colors.grey[400] : Colors.grey[600],
+              color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
             ),
           ),
           Text(
@@ -731,7 +731,7 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
             currentMusic.displayArtist,
             style: TextStyle(
               fontSize: 16,
-              color: isDark ? Colors.grey[400] : Colors.grey[600],
+              color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
             ),
             textAlign: TextAlign.center,
             maxLines: 1,
@@ -771,7 +771,7 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
               _getPlayModeIcon(state.playMode),
               color: state.playMode != PlayMode.loop
                   ? AppColors.primary
-                  : (isDark ? Colors.grey[400] : Colors.grey[600]),
+                  : (isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant),
             ),
             tooltip: _getPlayModeTooltip(state.playMode),
           ),
@@ -835,7 +835,7 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
             iconSize: 28,
             icon: Icon(
               Icons.queue_music_rounded,
-              color: isDark ? Colors.grey[400] : Colors.grey[600],
+              color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
             ),
             tooltip: '播放队列',
           ),
@@ -863,7 +863,7 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
             onPressed: _toggleLyricView,
             icon: Icon(
               Icons.lyrics_rounded,
-              color: isDark ? Colors.grey[400] : Colors.grey[600],
+              color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
             ),
             tooltip: '歌词',
           ),
@@ -872,7 +872,7 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
             onPressed: () => _showSleepTimer(context),
             icon: Icon(
               Icons.timer_outlined,
-              color: isDark ? Colors.grey[400] : Colors.grey[600],
+              color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
             ),
             tooltip: '定时关闭',
           ),
@@ -981,7 +981,7 @@ class _VolumeButtonState extends ConsumerState<_VolumeButton> {
                 : widget.volume < 0.5
                     ? Icons.volume_down_rounded
                     : Icons.volume_up_rounded,
-            color: widget.isDark ? Colors.grey[400] : Colors.grey[600],
+            color: widget.isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
           ),
           tooltip: '音量',
         ),

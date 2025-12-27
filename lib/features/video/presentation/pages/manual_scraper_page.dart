@@ -292,7 +292,7 @@ class _ManualScraperPageState extends ConsumerState<ManualScraperPage> {
                   Text(
                     widget.metadata.filePath,
                     style: context.textTheme.bodySmall?.copyWith(
-                      color: isDark ? Colors.grey[400] : Colors.grey[600],
+                      color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -549,7 +549,7 @@ class _ManualScraperPageState extends ConsumerState<ManualScraperPage> {
                         Text(
                           item.originalTitle!,
                           style: context.textTheme.bodySmall?.copyWith(
-                            color: isDark ? Colors.grey[400] : Colors.grey[600],
+                            color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -655,7 +655,7 @@ class _ManualScraperPageState extends ConsumerState<ManualScraperPage> {
                       Text(
                         originalTitle,
                         style: context.textTheme.titleMedium?.copyWith(
-                          color: isDark ? Colors.grey[400] : Colors.grey[600],
+                          color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                         ),
                       ),
                     ],

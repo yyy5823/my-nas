@@ -404,7 +404,7 @@ class _SeasonScraperPageState extends ConsumerState<SeasonScraperPage> {
                 Text(
                   '共 ${_localEpisodes.length} 季，$totalEpisodes 集',
                   style: context.textTheme.bodySmall?.copyWith(
-                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                   ),
                 ),
               ],
@@ -587,7 +587,7 @@ class _SeasonScraperPageState extends ConsumerState<SeasonScraperPage> {
                         Text(
                           item.originalTitle!,
                           style: context.textTheme.bodySmall?.copyWith(
-                            color: isDark ? Colors.grey[400] : Colors.grey[600],
+                            color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -665,7 +665,7 @@ class _SeasonScraperPageState extends ConsumerState<SeasonScraperPage> {
                       Text(
                         tvDetail.originalTitle!,
                         style: context.textTheme.titleMedium?.copyWith(
-                          color: isDark ? Colors.grey[400] : Colors.grey[600],
+                          color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                         ),
                       ),
                     ],

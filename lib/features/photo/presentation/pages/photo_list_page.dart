@@ -1426,7 +1426,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
                       '$photoCount 张照片',
                       style: TextStyle(
                         fontSize: 13,
-                        color: isDark ? Colors.grey[400] : Colors.grey[600],
+                        color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                       ),
                     ),
                   ],
@@ -1508,7 +1508,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
               _searchController.clear();
               ref.read(photoListProvider.notifier).setSearchQuery('');
             },
-            icon: Icon(Icons.close, color: isDark ? Colors.grey[400] : Colors.grey[600]),
+            icon: Icon(Icons.close, color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant),
           ),
         if (_searchController.text.isNotEmpty)
           IconButton(
@@ -1518,7 +1518,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
             },
             icon: Icon(
               Icons.close_rounded,
-              color: isDark ? Colors.grey[400] : Colors.grey[600],
+              color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
             ),
             tooltip: '清除',
           ),
@@ -1823,14 +1823,14 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
                   Icon(
                     Icons.storage_rounded,
                     size: 14,
-                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                   ),
                   const SizedBox(width: 6),
                   Text(
                     cacheInfo,
                     style: TextStyle(
                       fontSize: 12,
-                      color: isDark ? Colors.grey[400] : Colors.grey[600],
+                      color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                     ),
                   ),
                 ],
@@ -2230,7 +2230,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
           Icon(
             Icons.calendar_month_rounded,
             size: 20,
-            color: hasFilter ? AppColors.primary : (isDark ? Colors.grey[400] : Colors.grey[600]),
+            color: hasFilter ? AppColors.primary : (isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant),
           ),
           const SizedBox(width: 8),
           // 筛选按钮
@@ -2271,7 +2271,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
                       size: 18,
                       color: hasFilter
                           ? AppColors.primary
-                          : (isDark ? Colors.grey[400] : Colors.grey[600]),
+                          : (isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant),
                     ),
                   ],
                 ),
@@ -2292,7 +2292,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
                 child: Icon(
                   Icons.close,
                   size: 16,
-                  color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                 ),
               ),
             ),
@@ -2303,7 +2303,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
             '${state.displayPhotos.length}张',
             style: TextStyle(
               fontSize: 13,
-              color: isDark ? Colors.grey[400] : Colors.grey[600],
+              color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
             ),
           ),
         ],

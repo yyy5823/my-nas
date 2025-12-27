@@ -130,7 +130,7 @@ class _ReadingPageState extends ConsumerState<ReadingPage> {
                             ReadingContentType.values[currentTab].label,
                             style: TextStyle(
                               fontSize: 13,
-                              color: isDark ? Colors.grey[400] : Colors.grey[600],
+                              color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                             ),
                           ),
                         ],

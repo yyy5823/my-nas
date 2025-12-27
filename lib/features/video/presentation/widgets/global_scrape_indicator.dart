@@ -137,7 +137,7 @@ class _GlobalScrapeIndicatorState extends State<GlobalScrapeIndicator>
                   '${stats.processed}/${stats.total}',
                   style: TextStyle(
                     fontSize: 12,
-                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                   ),
                 ),
               ],

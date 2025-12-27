@@ -2040,7 +2040,7 @@ class _MissingMovieActionSheet extends ConsumerWidget {
                           title,
                           style: TextStyle(
                             fontSize: 12,
-                            color: isDark ? Colors.grey[400] : Colors.grey[600],
+                            color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -2076,7 +2076,7 @@ class _MissingMovieActionSheet extends ConsumerWidget {
                   '搜索 "$title"',
                   style: TextStyle(
                     fontSize: 12,
-                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -2110,7 +2110,7 @@ class _MissingMovieActionSheet extends ConsumerWidget {
                   '订阅 "$title"',
                   style: TextStyle(
                     fontSize: 12,
-                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -2132,7 +2132,7 @@ class _MissingMovieActionSheet extends ConsumerWidget {
                 ),
                 child: Icon(
                   Icons.info_outline,
-                  color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                   size: 20,
                 ),
               ),
@@ -2144,7 +2144,7 @@ class _MissingMovieActionSheet extends ConsumerWidget {
                 '查看 TMDB 信息',
                 style: TextStyle(
                   fontSize: 12,
-                  color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                 ),
               ),
               trailing: const Icon(Icons.chevron_right),
@@ -2244,7 +2244,7 @@ class _MissingMovieActionSheet extends ConsumerWidget {
                             '搜索: $title',
                             style: TextStyle(
                               fontSize: 12,
-                              color: isDark ? Colors.grey[400] : Colors.grey[600],
+                              color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -2278,7 +2278,7 @@ class _MissingMovieActionSheet extends ConsumerWidget {
                   site.host,
                   style: TextStyle(
                     fontSize: 12,
-                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                   ),
                 ),
                 trailing: const Icon(Icons.chevron_right),
@@ -2385,7 +2385,7 @@ class _MissingMovieActionSheet extends ConsumerWidget {
                             '订阅: $title',
                             style: TextStyle(
                               fontSize: 12,
-                              color: isDark ? Colors.grey[400] : Colors.grey[600],
+                              color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -2419,7 +2419,7 @@ class _MissingMovieActionSheet extends ConsumerWidget {
                   source.host,
                   style: TextStyle(
                     fontSize: 12,
-                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                   ),
                 ),
                 trailing: const Icon(Icons.chevron_right),

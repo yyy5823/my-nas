@@ -1779,7 +1779,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
                       '共 $trackCount 首歌曲',
                       style: TextStyle(
                         fontSize: 13,
-                        color: isDark ? Colors.grey[400] : Colors.grey[600],
+                        color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                       ),
                     ),
                     if (isLoadingMetadata) ...[
@@ -1870,7 +1870,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
               _searchController.clear();
               ref.read(musicListProvider.notifier).setSearchQuery('');
             },
-            icon: Icon(Icons.close, color: isDark ? Colors.grey[400] : Colors.grey[600]),
+            icon: Icon(Icons.close, color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant),
           ),
       ],
     );
@@ -2468,14 +2468,14 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
                   Icon(
                     Icons.storage_rounded,
                     size: 14,
-                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                   ),
                   const SizedBox(width: 6),
                   Text(
                     cacheInfo,
                     style: TextStyle(
                       fontSize: 12,
-                      color: isDark ? Colors.grey[400] : Colors.grey[600],
+                      color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                     ),
                   ),
                 ],
@@ -2742,7 +2742,7 @@ class _AllSongsPageState extends ConsumerState<AllSongsPage> {
                       '共 $trackCount 首',
                       style: TextStyle(
                         fontSize: 12,
-                        color: isDark ? Colors.grey[400] : Colors.grey[600],
+                        color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                       ),
                     ),
                   ],
@@ -2815,7 +2815,7 @@ class _AllSongsPageState extends ConsumerState<AllSongsPage> {
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w500,
-              color: isDark ? Colors.grey[400] : Colors.grey[600],
+              color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
             ),
           ),
           const SizedBox(height: 8),
@@ -3123,7 +3123,7 @@ class _SortButton extends StatelessWidget {
               Icon(
                 Icons.expand_more_rounded,
                 size: 18,
-                color: isDark ? Colors.grey[400] : Colors.grey[600],
+                color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
               ),
             ],
           ),
@@ -3202,7 +3202,7 @@ class _AllSongsContentState extends ConsumerState<_AllSongsContent> {
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w500,
-                color: widget.isDark ? Colors.grey[400] : Colors.grey[600],
+                color: widget.isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
               ),
             ),
             const SizedBox(height: 8),
@@ -4173,7 +4173,7 @@ class _MusicListTile extends ConsumerWidget {
                     '${playlist.trackCount} 首歌曲',
                     style: TextStyle(
                       fontSize: 12,
-                      color: isDark ? Colors.grey[400] : Colors.grey[600],
+                      color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                     ),
                   ),
                   onTap: () async {
@@ -4223,7 +4223,7 @@ class _MusicListTile extends ConsumerWidget {
             onPressed: () => Navigator.pop(context),
             child: Text(
               '取消',
-              style: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[600]),
+              style: TextStyle(color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant),
             ),
           ),
           ElevatedButton(
@@ -4409,7 +4409,7 @@ class _CategoryDetailPageState extends ConsumerState<CategoryDetailPage> {
                             widget.subtitle,
                             style: TextStyle(
                               fontSize: 14,
-                              color: isDark ? Colors.grey[400] : Colors.grey[600],
+                              color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                             ),
                           ),
                         ],
@@ -4746,7 +4746,7 @@ class _ArtistCard extends StatelessWidget {
                       '${tracks.length} 首歌曲',
                       style: TextStyle(
                         fontSize: 12,
-                        color: isDark ? Colors.grey[400] : Colors.grey[600],
+                        color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                       ),
                     ),
                   ],
@@ -4908,7 +4908,7 @@ class _AlbumCard extends ConsumerWidget {
                       '${tracks.length} 首歌曲',
                       style: TextStyle(
                         fontSize: 11,
-                        color: isDark ? Colors.grey[400] : Colors.grey[600],
+                        color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                       ),
                     ),
                   ],
@@ -4981,7 +4981,7 @@ class _AlbumCard extends ConsumerWidget {
                               '${tracks.length} 首歌曲',
                               style: TextStyle(
                                 fontSize: 13,
-                                color: isDark ? Colors.grey[400] : Colors.grey[600],
+                                color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                               ),
                             ),
                           ],
@@ -5125,7 +5125,7 @@ class _FolderCard extends StatelessWidget {
                         '${tracks.length} 首歌曲',
                         style: TextStyle(
                           fontSize: 13,
-                          color: isDark ? Colors.grey[400] : Colors.grey[600],
+                          color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                         ),
                       ),
                     ],
@@ -5587,7 +5587,7 @@ class _FavoriteTrackTile extends ConsumerWidget {
           item.displayArtist,
           style: TextStyle(
             fontSize: 12,
-            color: isDark ? Colors.grey[400] : Colors.grey[600],
+            color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
           ),
         ),
         trailing: IconButton(
@@ -5743,12 +5743,12 @@ class _RecentTrackTile extends ConsumerWidget {
           item.displayArtist,
           style: TextStyle(
             fontSize: 12,
-            color: isDark ? Colors.grey[400] : Colors.grey[600],
+            color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
           ),
         ),
         trailing: Icon(
           Icons.play_arrow_rounded,
-          color: isDark ? Colors.grey[400] : Colors.grey[600],
+          color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
         ),
       ),
     );
@@ -6008,13 +6008,13 @@ class _PlaylistTile extends ConsumerWidget {
             '${playlist.trackCount} 首歌曲',
             style: TextStyle(
               fontSize: 12,
-              color: isDark ? Colors.grey[400] : Colors.grey[600],
+              color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
             ),
           ),
           trailing: PopupMenuButton<String>(
             icon: Icon(
               Icons.more_vert_rounded,
-              color: isDark ? Colors.grey[400] : Colors.grey[600],
+              color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
             ),
             onSelected: (value) => _handleMenuAction(context, ref, value),
             itemBuilder: (context) => [
@@ -6720,7 +6720,7 @@ class _ModernMusicTile extends ConsumerWidget {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 13,
-                            color: isDark ? Colors.grey[400] : Colors.grey[600],
+                            color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                           ),
                         ),
                       ],
@@ -6886,7 +6886,7 @@ class _ModernMusicTile extends ConsumerWidget {
                       Text(
                         '暂无歌单',
                         style: TextStyle(
-                          color: isDark ? Colors.grey[400] : Colors.grey[600],
+                          color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -7198,7 +7198,7 @@ class _CompactMusicTile extends ConsumerWidget {
         icon: Icon(
           Icons.more_vert_rounded,
           size: 20,
-          color: isDark ? Colors.grey[400] : Colors.grey[600],
+          color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
         ),
         itemBuilder: (context) => [
           const PopupMenuItem(value: 'play_next', child: Text('下一首播放')),
@@ -7645,7 +7645,7 @@ Widget _buildEmptyView(String message, IconData icon, bool isDark) => Center(
           message,
           style: TextStyle(
             fontSize: 16,
-            color: isDark ? Colors.grey[400] : Colors.grey[600],
+            color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
           ),
         ),
       ],

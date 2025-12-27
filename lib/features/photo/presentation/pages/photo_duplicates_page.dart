@@ -455,7 +455,7 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
               Text(
                 '已分析 ${progress.processed} / ${progress.total} 个分组',
                 style: context.textTheme.bodySmall?.copyWith(
-                  color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                 ),
               ),
             ],
@@ -650,7 +650,7 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
                           photo.filePath,
                           style: TextStyle(
                             fontSize: 11,
-                            color: isDark ? Colors.grey[400] : Colors.grey[600],
+                            color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                             decoration: isSelected ? TextDecoration.lineThrough : null,
                           ),
                           maxLines: 1,
@@ -756,7 +756,7 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
                     fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                     color: isSelected
                         ? AppColors.primary
-                        : (isDark ? Colors.grey[400] : Colors.grey[600]),
+                        : (isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant),
                   ),
                 ),
                 if (count > 0) ...[
@@ -776,7 +776,7 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
                         fontWeight: FontWeight.bold,
                         color: isSelected
                             ? AppColors.primary
-                            : (isDark ? Colors.grey[400] : Colors.grey[600]),
+                            : (isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant),
                       ),
                     ),
                   ),
@@ -856,7 +856,7 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
                 '已处理 ${progress.processed} / ${progress.total} 张'
                 '${progress.failed > 0 ? '，失败 ${progress.failed}' : ''}',
                 style: context.textTheme.bodySmall?.copyWith(
-                  color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                 ),
               ),
               if (progress.currentFile.isNotEmpty)
@@ -953,7 +953,7 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
                     '相似度阈值: ',
                     style: TextStyle(
                       fontSize: 12,
-                      color: isDark ? Colors.grey[400] : Colors.grey[600],
+                      color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                     ),
                   ),
                   Expanded(
@@ -1012,7 +1012,7 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
                         '阈值越低越严格，越高则匹配更宽松。',
                         style: TextStyle(
                           fontSize: 12,
-                          color: isDark ? Colors.grey[400] : Colors.grey[600],
+                          color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                         ),
                       ),
                     ),
@@ -1071,7 +1071,7 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
                         '快速检测基于相同的文件名和大小，可能存在误判。建议使用深度检测确认。',
                         style: TextStyle(
                           fontSize: 12,
-                          color: isDark ? Colors.grey[400] : Colors.grey[600],
+                          color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                         ),
                       ),
                     ),
@@ -1101,7 +1101,7 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
             Text(
               label,
               style: context.textTheme.bodySmall?.copyWith(
-                color: isDark ? Colors.grey[400] : Colors.grey[600],
+                color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
               ),
             ),
           ],
@@ -1137,7 +1137,7 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
                   : '全部 ${calcStats.total} 张照片已完成扫描',
               style: TextStyle(
                 fontSize: 12,
-                color: isDark ? Colors.grey[400] : Colors.grey[600],
+                color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
               ),
             ),
           ),
@@ -1196,7 +1196,7 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
           Text(
             subtitle,
             style: context.textTheme.bodyMedium?.copyWith(
-              color: isDark ? Colors.grey[400] : Colors.grey[600],
+              color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
             ),
             textAlign: TextAlign.center,
           ),
@@ -1428,7 +1428,7 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
                           photo.filePath,
                           style: TextStyle(
                             fontSize: 11,
-                            color: isDark ? Colors.grey[400] : Colors.grey[600],
+                            color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                             decoration: isSelected ? TextDecoration.lineThrough : null,
                           ),
                           maxLines: 1,

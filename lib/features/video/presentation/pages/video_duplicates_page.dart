@@ -380,7 +380,7 @@ class _VideoDuplicatesPageState extends ConsumerState<VideoDuplicatesPage> {
                       fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                       color: isSelected
                           ? AppColors.primary
-                          : (isDark ? Colors.grey[400] : Colors.grey[600]),
+                          : (isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant),
                     ),
                   ),
                   if (count > 0) ...[
@@ -400,7 +400,7 @@ class _VideoDuplicatesPageState extends ConsumerState<VideoDuplicatesPage> {
                           fontWeight: FontWeight.bold,
                           color: isSelected
                               ? AppColors.primary
-                              : (isDark ? Colors.grey[400] : Colors.grey[600]),
+                              : (isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant),
                         ),
                       ),
                     ),
@@ -471,7 +471,7 @@ class _VideoDuplicatesPageState extends ConsumerState<VideoDuplicatesPage> {
                           : '基于标题和年份匹配，仅针对未刮削的视频。可能存在误判。',
                       style: TextStyle(
                         fontSize: 12,
-                        color: isDark ? Colors.grey[400] : Colors.grey[600],
+                        color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                       ),
                     ),
                   ),
@@ -505,7 +505,7 @@ class _VideoDuplicatesPageState extends ConsumerState<VideoDuplicatesPage> {
             Text(
               label,
               style: context.textTheme.bodySmall?.copyWith(
-                color: isDark ? Colors.grey[400] : Colors.grey[600],
+                color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
               ),
             ),
           ],
@@ -539,7 +539,7 @@ class _VideoDuplicatesPageState extends ConsumerState<VideoDuplicatesPage> {
           Text(
             subtitle,
             style: context.textTheme.bodyMedium?.copyWith(
-              color: isDark ? Colors.grey[400] : Colors.grey[600],
+              color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
             ),
             textAlign: TextAlign.center,
           ),
@@ -613,7 +613,7 @@ class _VideoDuplicatesPageState extends ConsumerState<VideoDuplicatesPage> {
                           Text(
                             subtitle,
                             style: context.textTheme.bodySmall?.copyWith(
-                              color: isDark ? Colors.grey[400] : Colors.grey[600],
+                              color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                             ),
                           ),
                         ],
@@ -701,14 +701,14 @@ class _VideoDuplicatesPageState extends ConsumerState<VideoDuplicatesPage> {
                                   Icon(
                                     Icons.storage,
                                     size: 14,
-                                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                                    color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                                   ),
                                   const SizedBox(width: 4),
                                   Text(
                                     video.fileSizeText,
                                     style: context.textTheme.bodySmall?.copyWith(
                                       color:
-                                          isDark ? Colors.grey[400] : Colors.grey[600],
+                                          isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                                     ),
                                   ),
                                   const SizedBox(width: 12),

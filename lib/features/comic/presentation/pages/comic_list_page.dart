@@ -802,14 +802,14 @@ class _ComicListContentState extends ConsumerState<ComicListContent> {
                   Icon(
                     Icons.storage_rounded,
                     size: 14,
-                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                   ),
                   const SizedBox(width: 6),
                   Text(
                     cacheInfo,
                     style: TextStyle(
                       fontSize: 12,
-                      color: isDark ? Colors.grey[400] : Colors.grey[600],
+                      color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                     ),
                   ),
                 ],

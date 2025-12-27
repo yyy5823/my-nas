@@ -369,7 +369,7 @@ class MonthQuickIndex extends StatelessWidget {
                         '${monthData.month}',
                         style: TextStyle(
                           fontSize: 11,
-                          color: isDark ? Colors.grey[400] : Colors.grey[600],
+                          color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                         ),
                       ),
                     ),
@@ -450,7 +450,7 @@ class TimelineNavigatorPanel extends ConsumerWidget {
                         turns: state.isExpanded ? 0.5 : 0,
                         child: Icon(
                           Icons.keyboard_arrow_down,
-                          color: isDark ? Colors.grey[400] : Colors.grey[600],
+                          color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                         ),
                       ),
                       const SizedBox(width: 16),

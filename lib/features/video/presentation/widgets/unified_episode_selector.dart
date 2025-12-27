@@ -823,7 +823,7 @@ class _MissingEpisodeActionSheet extends ConsumerWidget {
                           _displayTitle,
                           style: TextStyle(
                             fontSize: 12,
-                            color: isDark ? Colors.grey[400] : Colors.grey[600],
+                            color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -859,7 +859,7 @@ class _MissingEpisodeActionSheet extends ConsumerWidget {
                   '搜索 "$_searchKeyword"',
                   style: TextStyle(
                     fontSize: 12,
-                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -893,7 +893,7 @@ class _MissingEpisodeActionSheet extends ConsumerWidget {
                   '订阅整季: $showName 第$seasonNumber季',
                   style: TextStyle(
                     fontSize: 12,
-                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -984,7 +984,7 @@ class _MissingEpisodeActionSheet extends ConsumerWidget {
                             '搜索: $_searchKeyword',
                             style: TextStyle(
                               fontSize: 12,
-                              color: isDark ? Colors.grey[400] : Colors.grey[600],
+                              color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,

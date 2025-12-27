@@ -1782,7 +1782,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               _searchController.clear();
               ref.read(videoListProvider.notifier).setSearchQuery('');
             },
-            icon: Icon(Icons.close, color: isDark ? Colors.grey[400] : Colors.grey[600]),
+            icon: Icon(Icons.close, color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant),
           ),
       ],
     );
@@ -1802,7 +1802,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
           label,
           style: TextStyle(
             fontSize: 12,
-            color: isDark ? Colors.grey[400] : Colors.grey[600],
+            color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
           ),
         ),
       ],
@@ -2160,14 +2160,14 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
                   Icon(
                     Icons.storage_rounded,
                     size: 14,
-                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                   ),
                   const SizedBox(width: 6),
                   Text(
                     cacheInfo,
                     style: TextStyle(
                       fontSize: 12,
-                      color: isDark ? Colors.grey[400] : Colors.grey[600],
+                      color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                     ),
                   ),
                 ],
@@ -2872,7 +2872,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               '未找到 "${state.searchQuery}" 的相关结果',
               style: TextStyle(
                 fontSize: 16,
-                color: isDark ? Colors.grey[400] : Colors.grey[600],
+                color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
               ),
             ),
           ],
@@ -2889,7 +2889,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               '找到 ${results.length} 个结果',
               style: TextStyle(
                 fontSize: 14,
-                color: isDark ? Colors.grey[400] : Colors.grey[600],
+                color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
               ),
             ),
           ),
@@ -3216,7 +3216,7 @@ class _ContinueWatchingCard extends ConsumerWidget {
                           '${_formatDuration(item.lastPosition!)} / ${_formatDuration(item.duration!)}',
                           style: TextStyle(
                             fontSize: 10,
-                            color: isDark ? Colors.grey[400] : Colors.grey[600],
+                            color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                           ),
                         ),
                     ],
@@ -4163,7 +4163,7 @@ class _ViewMoreCardState extends State<_ViewMoreCard> {
                             Icons.grid_view_rounded,
                             color: _isHovered
                                 ? AppColors.primary
-                                : (widget.isDark ? Colors.grey[400] : Colors.grey[600]),
+                                : (widget.isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant),
                             size: 28,
                           ),
                         ),
@@ -4284,7 +4284,7 @@ class _ViewMoreCardState extends State<_ViewMoreCard> {
                       Icons.grid_view_rounded,
                       color: _isHovered
                           ? AppColors.primary
-                          : (widget.isDark ? Colors.grey[400] : Colors.grey[600]),
+                          : (widget.isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant),
                       size: 20,
                     ),
                   ),

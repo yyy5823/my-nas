@@ -300,7 +300,7 @@ class _GlowingSegmentControlState extends State<GlowingSegmentControl>
                           style: TextStyle(
                             color: isSelected
                                 ? Colors.white
-                                : (isDark ? Colors.grey[400] : Colors.grey[600]),
+                                : (isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant),
                             fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                             fontSize: 14,
                           ),
@@ -313,7 +313,7 @@ class _GlowingSegmentControlState extends State<GlowingSegmentControl>
                                 size: 18,
                                 color: isSelected
                                     ? Colors.white
-                                    : (isDark ? Colors.grey[400] : Colors.grey[600]),
+                                    : (isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant),
                               ),
                               const SizedBox(width: 6),
                               Text(item.label),
@@ -393,7 +393,7 @@ class ChipSegmentControl extends StatelessWidget {
                           size: 16,
                           color: isSelected
                               ? Colors.white
-                              : (isDark ? Colors.grey[400] : Colors.grey[600]),
+                              : (isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant),
                         ),
                         const SizedBox(width: 6),
                         Text(
@@ -401,7 +401,7 @@ class ChipSegmentControl extends StatelessWidget {
                           style: TextStyle(
                             color: isSelected
                                 ? Colors.white
-                                : (isDark ? Colors.grey[400] : Colors.grey[600]),
+                                : (isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant),
                             fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                             fontSize: 13,
                           ),
