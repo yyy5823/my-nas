@@ -927,9 +927,16 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
     VoidCallback? onBatchFound,
   }) async {
     try {
+      // ignore: avoid_print
+      print('📷 PhotoScan: 扫描目录 "$path"');
       final files = await fileSystem.listDirectory(path);
+      // ignore: avoid_print
+      print('📷 PhotoScan: 目录 "$path" 返回 ${files.length} 个文件');
 
       for (final file in files) {
+        // ignore: avoid_print
+        print('📷 PhotoScan:   - ${file.name} (isDir=${file.isDirectory}, type=${file.type}, ext=${file.extension})');
+
         if (file.type == FileType.image) {
           var thumbnailUrl = file.thumbnailUrl;
           if (thumbnailUrl == null || thumbnailUrl.isEmpty) {

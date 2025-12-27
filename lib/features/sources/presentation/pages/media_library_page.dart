@@ -608,10 +608,14 @@ class _MediaTypeTab extends ConsumerWidget {
     SourceEntity localSource,
     Map<String, SourceConnection> connections,
   ) async {
+    // ignore: avoid_print
+    print('🟠 MediaLibrary: _addLocalSourceToLibrary 开始, mediaType=$mediaType');
     try {
       // 获取 LocalAdapter 以请求权限
       final conn = connections[localSource.id];
       final adapter = conn?.adapter;
+      // ignore: avoid_print
+      print('🟠 MediaLibrary: adapter=${adapter?.runtimeType}');
 
       // 根据媒体类型请求对应权限
       if (adapter is LocalAdapter) {
@@ -621,7 +625,11 @@ class _MediaTypeTab extends ConsumerWidget {
           case MediaType.photo:
           case MediaType.video:
             // 请求相册权限
+            // ignore: avoid_print
+            print('🟠 MediaLibrary: 请求相册权限...');
             hasPermission = await adapter.requestGalleryPermission();
+            // ignore: avoid_print
+            print('🟠 MediaLibrary: 相册权限结果=$hasPermission');
             if (!hasPermission && context.mounted) {
               context.showErrorToast('需要相册访问权限才能添加本机相册');
               return;
@@ -660,12 +668,16 @@ class _MediaTypeTab extends ConsumerWidget {
       await ref.read(mediaLibraryConfigProvider.notifier).addPath(mediaType, newPath);
 
       // 触发扫描
+      // ignore: avoid_print
+      print('🟠 MediaLibrary: 触发扫描, path="${newPath.path}", sourceId="${newPath.sourceId}"');
       _autoScanPath(ref, mediaType, newPath, connections);
 
       if (context.mounted) {
         context.showSuccessToast('已添加$displayName，正在扫描...');
       }
     } on Exception catch (e, st) {
+      // ignore: avoid_print
+      print('🟠 MediaLibrary: ❌ 添加本机失败: $e');
       logger.e('添加本机失败', e, st);
       if (context.mounted) {
         context.showErrorToast('添加失败: $e');

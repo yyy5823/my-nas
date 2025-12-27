@@ -20,20 +20,29 @@ class NtSubscribe {
   });
 
   factory NtSubscribe.fromJson(Map<String, dynamic> json, [String? defaultType]) => NtSubscribe(
-    id: json['id'] as int? ?? json['rssid'] as int? ?? 0,
+    id: json['id'] is int ? json['id'] as int : (int.tryParse(json['id']?.toString() ?? '0') ?? 0),
     name: json['name'] as String? ?? json['title'] as String? ?? '',
     type: json['type'] as String? ?? defaultType ?? 'MOV',
     tmdbId: json['tmdbid']?.toString() ?? json['mediaid']?.toString(),
     year: json['year']?.toString(),
-    season: json['season'] as int?,
+    season: json['season'] is int ? json['season'] as int : int.tryParse(json['season']?.toString() ?? ''),
     state: json['state'] as String?,
     posterPath: json['poster'] as String? ?? json['image'] as String?,
     keyword: json['keyword'] as String?,
-    sites: json['rss_sites'] as String? ?? json['search_sites'] as String?,
-    filterRule: json['filter_rule'] as int? ?? json['filterrule'] as int?,
-    totalEp: json['total_ep'] as int? ?? json['total'] as int?,
-    currentEp: json['current_ep'] as int? ?? json['current'] as int?,
+    // rss_sites 和 search_sites 可能是 List 或 String
+    sites: _parseSites(json['rss_sites']) ?? _parseSites(json['search_sites']),
+    filterRule: json['filter_rule'] is int ? json['filter_rule'] as int : int.tryParse(json['filter_rule']?.toString() ?? ''),
+    totalEp: json['total_ep'] is int ? json['total_ep'] as int : int.tryParse(json['total_ep']?.toString() ?? ''),
+    currentEp: json['current_ep'] is int ? json['current_ep'] as int : int.tryParse(json['current_ep']?.toString() ?? ''),
   );
+
+  // 将 sites 字段（可能是 List 或 String）转换为字符串
+  static String? _parseSites(dynamic value) {
+    if (value == null) return null;
+    if (value is String) return value.isNotEmpty ? value : null;
+    if (value is List) return value.isNotEmpty ? value.join(',') : null;
+    return value.toString();
+  }
 
   final int id;
   final String name;

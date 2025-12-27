@@ -260,14 +260,18 @@ class MusicAudioHandler extends BaseAudioHandler
     }
   }
 
-  /// 通过"清空-重设"策略强制刷新 iOS Now Playing / 灵动岛
+  /// 刷新计数器
+  int _refreshCounter = 0;
+
+  /// 强制刷新 iOS Now Playing / 灵动岛
   ///
   /// 关键发现：iOS MediaRemote 框架在系统级别有去重机制
   /// 日志显示: "[NowPlayingInfo] Setting identical nowPlayingInfo, skipping update."
+  /// 即使调用 center.nowPlayingInfo = nowPlayingInfo，iOS 也会检测内容是否相同
   ///
-  /// 根据 Apple Developer Forums 和 audio_service issue #684 的讨论：
-  /// 解决方案是**先清空 nowPlayingInfo 再重新设置**
-  /// 这样 iOS 会认为发生了变化，强制触发更新
+  /// 解决方案：在 title 末尾添加不可见的零宽空格字符 (\u200B)
+  /// 每次刷新时增加/减少零宽空格的数量，iOS 会认为 title 变化了
+  /// 但用户完全看不出区别
   ///
   /// 参考：
   /// - https://developer.apple.com/forums/thread/32475
@@ -276,37 +280,34 @@ class MusicAudioHandler extends BaseAudioHandler
     final currentItem = mediaItem.value;
     if (currentItem == null) return;
 
-    logger.i('MusicAudioHandler: 开始清空-重设策略刷新灵动岛');
+    _refreshCounter++;
 
-    // 保存当前状态
-    final wasPlaying = _player.playing;
-    final savedArtUri = currentItem.artUri;
+    // 使用零宽空格修改 title，让 iOS 认为内容变化了
+    // 零宽空格 \u200B 是不可见字符，用户看不出区别
+    // 根据计数器奇偶交替添加 1 个或 2 个零宽空格
+    final invisibleSuffix = _refreshCounter.isEven ? '\u200B' : '\u200B\u200B';
 
-    // 步骤 1：清空 mediaItem（触发 iOS 清空 nowPlayingInfo）
-    mediaItem.add(null);
-    _broadcastState(PlaybackEvent());
+    // 移除之前可能添加的零宽空格，然后添加新的
+    final cleanTitle = currentItem.title.replaceAll('\u200B', '');
+    final modifiedTitle = '$cleanTitle$invisibleSuffix';
 
-    // 步骤 2：等待 iOS 处理清空操作
-    // 根据 Apple 论坛讨论，需要一定延迟让 iOS 完成处理
-    await Future<void>.delayed(const Duration(milliseconds: 100));
+    logger.i('MusicAudioHandler: 刷新灵动岛 (counter=$_refreshCounter) - $cleanTitle');
 
-    // 步骤 3：重新设置 mediaItem
+    // 创建新的 MediaItem
     final refreshedItem = MediaItem(
       id: currentItem.id,
-      title: currentItem.title,
+      title: modifiedTitle,
       artist: currentItem.artist,
       album: currentItem.album,
       duration: _player.duration ?? currentItem.duration ?? Duration.zero,
-      artUri: savedArtUri,
+      artUri: currentItem.artUri,
       extras: currentItem.extras,
     );
 
     mediaItem.add(refreshedItem);
 
-    // 步骤 4：广播正确的播放状态
-    _broadcastStateWithPlaying(wasPlaying);
-
-    logger.i('MusicAudioHandler: 清空-重设完成 - ${currentItem.title}');
+    // 广播播放状态
+    _broadcastStateWithPlaying(_player.playing);
   }
 
   /// 广播指定的播放状态

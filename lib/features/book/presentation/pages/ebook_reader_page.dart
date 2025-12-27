@@ -722,6 +722,8 @@ class _EbookReaderPageState extends ConsumerState<EbookReaderPage> {
                 bookSource: FileBookSource(File(filePath)),
                 initialCfi: _initialCfi,
                 style: style,
+                // 当使用 Flutter 翻页效果时，禁用 WebView 原生手势
+                disableNativeGestures: useFlutterFlip,
                 loadingWidget: const LottieLoading.book(
                   message: '加载中...',
                 ),
@@ -771,11 +773,8 @@ class _EbookReaderPageState extends ConsumerState<EbookReaderPage> {
           await _controller.prevPage();
         },
         onTap: (details) => _handleTapForFlipMode(details, settings),
-        // 使用 AbsorbPointer 阻止 WebView 内部处理手势，避免双重翻页
-        child: AbsorbPointer(
-          absorbing: true,
-          child: readerContent,
-        ),
+        // WebView 已通过 disableNativeGestures 禁用原生手势
+        child: readerContent,
       );
     }
 

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_foliate_viewer/src/foliate_controller.dart';
@@ -83,6 +84,7 @@ class FoliateViewer extends StatefulWidget {
     this.fontSize = 100,
     this.lineHeight = 1.5,
     this.loadingWidget,
+    this.disableNativeGestures = false,
     super.key,
   });
 
@@ -124,6 +126,9 @@ class FoliateViewer extends StatefulWidget {
 
   /// 自定义加载指示器
   final Widget? loadingWidget;
+
+  /// 是否禁用 WebView 原生手势处理（用于 Flutter 层面的翻页效果）
+  final bool disableNativeGestures;
 
   @override
   State<FoliateViewer> createState() => _FoliateViewerState();
@@ -538,6 +543,10 @@ $bundleJs
             // 设置 baseUrl 以便相对路径资源能正确加载
             baseUrl: WebUri('about:blank'),
           ),
+          // 当禁用原生手势时，传入空集合让 Flutter 层处理所有手势
+          gestureRecognizers: widget.disableNativeGestures
+              ? <Factory<OneSequenceGestureRecognizer>>{}
+              : null,
           initialSettings: InAppWebViewSettings(
             isInspectable: kDebugMode,
             javaScriptEnabled: true,
@@ -546,6 +555,7 @@ $bundleJs
             verticalScrollBarEnabled: false,
             horizontalScrollBarEnabled: false,
             disableVerticalScroll: true,
+            disableHorizontalScroll: widget.disableNativeGestures,
             // iOS 特定设置
             allowsInlineMediaPlayback: true,
             // Android 特定设置

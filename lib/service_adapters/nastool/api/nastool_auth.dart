@@ -23,7 +23,7 @@ class NasToolAuth {
   /// 当前用户名
   String? get username => _username;
 
-  /// 获取认证头
+  /// 获取认证头（用于需要 header 认证的场景）
   Map<String, String> get authHeaders {
     if (_sessionToken == null) return {};
 
@@ -31,8 +31,14 @@ class NasToolAuth {
     if (_isCookieAuth) {
       return {'Cookie': _sessionToken!};
     }
+    // 注意：NASTool 主要使用 apikey 作为 URL 查询参数
+    // 但某些端点可能还需要 header，保留以便兼容
     return {'Authorization': _sessionToken!};
   }
+
+  /// 获取 API Key（用于 URL 查询参数）
+  /// NASTool API 要求将 apikey 添加到 URL 查询参数中
+  String? get apiKey => _isCookieAuth ? null : _sessionToken;
 
   /// 登录
   ///

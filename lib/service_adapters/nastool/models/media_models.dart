@@ -21,17 +21,37 @@ class NtMediaDetail {
   factory NtMediaDetail.fromJson(Map<String, dynamic> json) => NtMediaDetail(
     title: json['title'] as String? ?? json['name'] as String? ?? '',
     type: json['type'] as String? ?? json['media_type'] as String? ?? 'MOV',
-    tmdbId: json['tmdb_id'] as int? ?? json['tmdbid'] as int?,
+    // tmdbId 可能是 String 或 int
+    tmdbId: _parseInt(json['tmdb_id'] ?? json['tmdbid']),
     imdbId: json['imdb_id'] as String? ?? json['imdbid'] as String?,
-    year: json['year'] as int?,
+    // year 可能是 String 或 int
+    year: _parseInt(json['year']),
     overview: json['overview'] as String? ?? json['description'] as String?,
-    posterPath: json['poster_path'] as String? ?? json['poster'] as String?,
+    posterPath: json['poster_path'] as String? ?? json['poster'] as String? ?? json['image'] as String?,
     backdropPath: json['backdrop_path'] as String? ?? json['backdrop'] as String?,
-    voteAverage: (json['vote_average'] as num?)?.toDouble(),
+    // vote 可能是 num、String 或 null
+    voteAverage: _parseDouble(json['vote_average'] ?? json['vote']),
     releaseDate: json['release_date'] as String? ?? json['first_air_date'] as String?,
     genres: (json['genres'] as List?)?.map((e) => e.toString()).toList(),
-    runtime: json['runtime'] as int?,
+    runtime: _parseInt(json['runtime']),
   );
+
+  static int? _parseInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is String) return int.tryParse(value);
+    if (value is num) return value.toInt();
+    return null;
+  }
+
+  static double? _parseDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is String) return double.tryParse(value);
+    if (value is num) return value.toDouble();
+    return null;
+  }
 
   final String title;
   final String type;
