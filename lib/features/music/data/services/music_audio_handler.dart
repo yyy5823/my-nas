@@ -211,18 +211,21 @@ class MusicAudioHandler extends BaseAudioHandler
       case AppLifecycleState.inactive:
         // App 即将进入后台（iOS 会先进入 inactive 再进入 paused）
         // 这是设置 Now Playing 的关键时机
-        if (mediaItem.value != null && _player.playing) {
+        // 注意：即使是暂停状态也需要刷新，否则灵动岛不会显示
+        if (mediaItem.value != null) {
           logger.i('MusicAudioHandler: App 即将进入后台 (inactive)，强制刷新 Now Playing');
           // 重要：重新设置 mediaItem 而不只是广播状态
           // iOS 的 MPNowPlayingInfoCenter 可能在 app 返回前台后丢失信息
           // 参考：https://github.com/ryanheise/audio_service/issues/684
+          // ignore: discarded_futures
           _resetMediaItemForNowPlaying();
         }
 
       case AppLifecycleState.paused:
         // App 已进入后台
         // 再次确保状态已广播（作为 inactive 的备份）
-        if (_player.playing && mediaItem.value != null) {
+        // 注意：暂停状态也需要广播，否则灵动岛可能丢失
+        if (mediaItem.value != null) {
           // 使用防抖避免重复广播
           final now = DateTime.now();
           if (_lastBroadcastTime == null ||
@@ -238,10 +241,10 @@ class MusicAudioHandler extends BaseAudioHandler
         // 关键：iOS 返回前台后 MPNowPlayingInfoCenter 可能丢失状态
         // 需要重新设置 mediaItem 以确保下次进入后台时能正确显示
         logger.i('MusicAudioHandler: App 返回前台 (resumed)');
-        if (mediaItem.value != null && _player.playing) {
-          // 延迟后重新设置 mediaItem
-          Future.delayed(const Duration(milliseconds: 500), () {
-            if (mediaItem.value != null && _player.playing) {
+        if (mediaItem.value != null) {
+          // 延迟后重新设置 mediaItem（确保封面和状态同步）
+          Future.delayed(const Duration(milliseconds: 300), () {
+            if (mediaItem.value != null) {
               logger.i('MusicAudioHandler: 返回前台后重新设置 mediaItem');
               _resetMediaItemForNowPlaying();
             }
@@ -258,9 +261,16 @@ class MusicAudioHandler extends BaseAudioHandler
   /// 重新设置 mediaItem 以刷新 iOS Now Playing 信息
   /// 这是解决 MPNowPlayingInfoCenter 竞态条件的关键
   /// 只广播 playbackState 不够，需要重新设置完整的 mediaItem
-  void _resetMediaItemForNowPlaying() {
+  Future<void> _resetMediaItemForNowPlaying() async {
     final currentItem = mediaItem.value;
     if (currentItem == null) return;
+
+    // 如果有缓存的封面数据但 artUri 为 null，尝试重新保存封面
+    var artUri = currentItem.artUri;
+    if (artUri == null && _currentArtworkData != null && _currentArtworkData!.isNotEmpty) {
+      logger.i('MusicAudioHandler: artUri 为空但有缓存封面，重新保存');
+      artUri = await _saveArtworkToFile(_currentArtworkData!, currentItem.id);
+    }
 
     // 创建新的 MediaItem 实例（包含所有属性）
     // 这会强制 audio_service 重新设置 iOS 的 Now Playing 信息
@@ -270,7 +280,7 @@ class MusicAudioHandler extends BaseAudioHandler
       artist: currentItem.artist,
       album: currentItem.album,
       duration: _player.duration ?? currentItem.duration,
-      artUri: currentItem.artUri,
+      artUri: artUri,
       extras: currentItem.extras,
     );
 
@@ -281,7 +291,7 @@ class MusicAudioHandler extends BaseAudioHandler
     _broadcastState(PlaybackEvent());
     _lastBroadcastTime = DateTime.now();
 
-    logger.i('MusicAudioHandler: mediaItem 已重新设置 - ${currentItem.title}');
+    logger.i('MusicAudioHandler: mediaItem 已重新设置 - ${currentItem.title}, artUri=$artUri');
   }
 
   /// 广播播放状态

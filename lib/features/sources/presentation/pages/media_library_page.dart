@@ -842,7 +842,10 @@ class _MediaTypeTab extends ConsumerWidget {
   ) async {
     try {
       // 获取虚拟路径前缀
-      final virtualPathPrefix = FileImportService.instance.getVirtualPathPrefix(importType);
+      // 注意：MobileCompositeFileSystem 会将 /documents/xxx 映射到 /files/documents/xxx
+      // 所以这里需要使用 /files 前缀，确保路径格式一致
+      final subPath = FileImportService.instance.getVirtualPathPrefix(importType);
+      final virtualPathPrefix = '/files$subPath';
       final displayName = switch (importType) {
         FileImportType.book => '本机书籍',
         FileImportType.comic => '本机漫画',
@@ -855,14 +858,28 @@ class _MediaTypeTab extends ConsumerWidget {
         name: displayName,
       );
 
-      // 检查是否已添加
+      // 检查是否已添加（同时检查新旧格式路径）
       final configAsync = ref.read(mediaLibraryConfigProvider);
       final existingPaths = configAsync.valueOrNull?.getPathsForType(mediaType) ?? [];
-      final alreadyExists = existingPaths.any(
+
+      // 检查新格式路径
+      final newFormatExists = existingPaths.any(
         (p) => p.sourceId == localSource.id && p.path == virtualPathPrefix,
       );
 
-      if (!alreadyExists) {
+      // 检查旧格式路径（没有 /files 前缀）
+      final oldFormatPath = existingPaths.firstWhere(
+        (p) => p.sourceId == localSource.id && p.path == subPath,
+        orElse: () => MediaLibraryPath(sourceId: '', path: '', name: ''),
+      );
+
+      // 如果存在旧格式路径，先删除它
+      if (oldFormatPath.sourceId.isNotEmpty) {
+        await ref.read(mediaLibraryConfigProvider.notifier).removePath(mediaType, oldFormatPath.id);
+        logger.i('MediaLibraryPage: 已删除旧格式路径 ${oldFormatPath.path}');
+      }
+
+      if (!newFormatExists) {
         await ref.read(mediaLibraryConfigProvider.notifier).addPath(mediaType, newPath);
       }
 

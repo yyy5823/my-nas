@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
+import 'package:my_nas/features/transfer/data/services/cache_config_service.dart';
 import 'package:my_nas/features/transfer/domain/entities/transfer_task.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -21,8 +22,18 @@ class BookFileCacheService {
   String? _cacheDir;
   bool _initialized = false;
 
-  /// 缓存目录最大总大小（1GB）
-  static const int maxTotalCacheSize = 1024 * 1024 * 1024;
+  /// 默认缓存目录最大总大小（512MB），可通过 CacheConfigService 配置
+  static const int defaultMaxCacheSize = 512 * 1024 * 1024;
+
+  /// 获取配置的缓存大小限制
+  Future<int> _getMaxCacheSize() async {
+    try {
+      final configService = CacheConfigService();
+      return await configService.getCacheSizeLimit(MediaType.book);
+    } catch (_) {
+      return defaultMaxCacheSize;
+    }
+  }
 
   /// 初始化缓存目录
   Future<void> init() async {
@@ -227,6 +238,10 @@ class BookFileCacheService {
   /// 清理过期缓存（LRU 策略）
   Future<void> _cleanupIfNeeded() async {
     try {
+      final maxCacheSize = await _getMaxCacheSize();
+      // 如果限制为 0，表示无限制
+      if (maxCacheSize == 0) return;
+
       final dir = Directory(_cacheDir!);
       if (!await dir.exists()) return;
 
@@ -243,14 +258,14 @@ class BookFileCacheService {
       }
 
       // 如果超过最大缓存大小，删除最旧的文件
-      if (totalSize > maxTotalCacheSize) {
+      if (totalSize > maxCacheSize) {
         // 按访问时间排序（最旧的在前）
         fileStats.sort(
           (a, b) => a.$2.accessed.compareTo(b.$2.accessed),
         );
 
         var freedSize = 0;
-        final targetFreeSize = totalSize - maxTotalCacheSize ~/ 2;
+        final targetFreeSize = totalSize - maxCacheSize ~/ 2;
 
         for (final (file, stat) in fileStats) {
           if (freedSize >= targetFreeSize) break;

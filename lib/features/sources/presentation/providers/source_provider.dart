@@ -380,25 +380,50 @@ class MediaLibraryConfigNotifier
       final sourceId = pathToRemove.sourceId;
       final path = pathToRemove.path;
 
+      // 处理本机文件路径的兼容性（旧格式 /documents/xxx 和新格式 /files/documents/xxx）
+      // MobileCompositeFileSystem 会将 /documents/xxx 映射为 /files/documents/xxx
+      // 所以需要同时尝试删除两种格式
+      final pathsToDelete = <String>[path];
+      if (path.startsWith('/documents') || path.startsWith('/downloads')) {
+        // 旧格式路径，添加新格式
+        pathsToDelete.add('/files$path');
+      } else if (path.startsWith('/files/documents') || path.startsWith('/files/downloads')) {
+        // 新格式路径，添加旧格式
+        pathsToDelete.add(path.replaceFirst('/files', ''));
+      }
+
       switch (type) {
         case MediaType.video:
           // 同时删除 SQLite 数据库和 Hive 缓存
           await Future.wait([
-            VideoDatabaseService().deleteByPath(sourceId, path),
-            VideoLibraryCacheService().deleteByPath(sourceId, path),
+            for (final p in pathsToDelete) ...[
+              VideoDatabaseService().deleteByPath(sourceId, p),
+              VideoLibraryCacheService().deleteByPath(sourceId, p),
+            ],
           ]);
         case MediaType.music:
           // 同时删除 SQLite 数据库和 Hive 缓存
           await Future.wait([
-            MusicDatabaseService().deleteByPath(sourceId, path),
-            MusicLibraryCacheService().deleteByPath(sourceId, path),
+            for (final p in pathsToDelete) ...[
+              MusicDatabaseService().deleteByPath(sourceId, p),
+              MusicLibraryCacheService().deleteByPath(sourceId, p),
+            ],
           ]);
         case MediaType.photo:
-          await PhotoDatabaseService().deleteByPath(sourceId, path);
+          await Future.wait([
+            for (final p in pathsToDelete)
+              PhotoDatabaseService().deleteByPath(sourceId, p),
+          ]);
         case MediaType.book:
-          await BookDatabaseService().deleteByPath(sourceId, path);
+          await Future.wait([
+            for (final p in pathsToDelete)
+              BookDatabaseService().deleteByPath(sourceId, p),
+          ]);
         case MediaType.comic:
-          await ComicLibraryCacheService().deleteByPath(sourceId, path);
+          await Future.wait([
+            for (final p in pathsToDelete)
+              ComicLibraryCacheService().deleteByPath(sourceId, p),
+          ]);
         case MediaType.note:
           // 笔记暂不处理
           break;

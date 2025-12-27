@@ -7,10 +7,23 @@ import 'package:my_nas/features/book/data/services/book_file_cache_service.dart'
 import 'package:my_nas/features/music/data/services/music_audio_cache_service.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
+import 'package:my_nas/features/transfer/data/services/cache_config_service.dart';
 import 'package:my_nas/features/transfer/data/services/media_cache_service.dart';
 import 'package:my_nas/features/transfer/data/services/transfer_service.dart';
 import 'package:my_nas/features/transfer/data/services/uploaded_mark_service.dart';
 import 'package:my_nas/features/transfer/domain/entities/transfer_task.dart';
+
+/// 缓存配置服务 Provider
+final cacheConfigServiceProvider = Provider<CacheConfigService>((ref) {
+  return CacheConfigService();
+});
+
+/// 缓存配置 Provider（用于 UI 显示和设置）
+final cacheConfigProvider = FutureProvider<Map<MediaType, int>>((ref) async {
+  final configService = ref.watch(cacheConfigServiceProvider);
+  await configService.init();
+  return configService.getAllCacheSizeLimits();
+});
 
 /// 传输服务 Provider
 final transferServiceProvider = Provider<TransferService>((ref) {

@@ -6,6 +6,7 @@ import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
+import 'package:my_nas/features/transfer/data/services/cache_config_service.dart';
 import 'package:my_nas/features/transfer/domain/entities/transfer_task.dart';
 import 'package:my_nas/features/transfer/presentation/providers/transfer_provider.dart';
 
@@ -637,57 +638,106 @@ class _CacheStats extends ConsumerWidget {
                 : AppColors.lightSurfaceVariant,
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Row(
+          child: Column(
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '缓存占用',
-                      style: context.textTheme.bodySmall?.copyWith(
-                        color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '缓存占用',
+                          style: context.textTheme.bodySmall?.copyWith(
+                            color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _formatBytes(totalSize),
+                          style: context.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: isDark ? AppColors.darkOnSurface : null,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    width: 1,
+                    height: 40,
+                    color: isDark
+                        ? AppColors.darkOutline.withValues(alpha: 0.3)
+                        : AppColors.lightOutline.withValues(alpha: 0.3),
+                  ),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '缓存数量',
+                            style: context.textTheme.bodySmall?.copyWith(
+                              color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '$totalCount 个',
+                            style: context.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: isDark ? AppColors.darkOnSurface : null,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _formatBytes(totalSize),
-                      style: context.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: isDark ? AppColors.darkOnSurface : null,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              // 缓存限制设置按钮
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () => _showCacheSettingsDialog(context, ref),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? AppColors.darkSurfaceElevated.withValues(alpha: 0.5)
+                          : AppColors.lightSurface,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: isDark
+                            ? AppColors.darkOutline.withValues(alpha: 0.3)
+                            : AppColors.lightOutline.withValues(alpha: 0.3),
                       ),
                     ),
-                  ],
-                ),
-              ),
-              Container(
-                width: 1,
-                height: 40,
-                color: isDark
-                    ? AppColors.darkOutline.withValues(alpha: 0.3)
-                    : AppColors.lightOutline.withValues(alpha: 0.3),
-              ),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '缓存数量',
-                        style: context.textTheme.bodySmall?.copyWith(
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.settings_outlined,
+                          size: 18,
                           color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '$totalCount 个',
-                        style: context.textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: isDark ? AppColors.darkOnSurface : null,
+                        const SizedBox(width: 8),
+                        Text(
+                          '缓存限制设置',
+                          style: context.textTheme.bodyMedium?.copyWith(
+                            color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                          ),
                         ),
-                      ),
-                    ],
+                        const Spacer(),
+                        Icon(
+                          Icons.chevron_right_rounded,
+                          size: 20,
+                          color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -703,6 +753,15 @@ class _CacheStats extends ConsumerWidget {
     );
   }
 
+  Future<void> _showCacheSettingsDialog(BuildContext context, WidgetRef ref) async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => _CacheSettingsDialog(isDark: isDark),
+    );
+    // 刷新缓存统计
+    ref.invalidate(cacheStatsProvider);
+  }
+
   String _formatBytes(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
@@ -710,6 +769,211 @@ class _CacheStats extends ConsumerWidget {
       return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
     }
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+  }
+}
+
+/// 缓存设置对话框
+class _CacheSettingsDialog extends ConsumerStatefulWidget {
+  const _CacheSettingsDialog({required this.isDark});
+
+  final bool isDark;
+
+  @override
+  ConsumerState<_CacheSettingsDialog> createState() => _CacheSettingsDialogState();
+}
+
+class _CacheSettingsDialogState extends ConsumerState<_CacheSettingsDialog> {
+  final _configService = CacheConfigService();
+  final Map<MediaType, int> _cacheLimits = {};
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    await _configService.init();
+    final limits = await _configService.getAllCacheSizeLimits();
+    if (mounted) {
+      setState(() {
+        _cacheLimits.addAll(limits);
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _updateLimit(MediaType type, int sizeMB) async {
+    await _configService.setCacheSizeLimit(type, sizeMB);
+    if (mounted) {
+      setState(() {
+        _cacheLimits[type] = sizeMB;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = widget.isDark;
+
+    return AlertDialog(
+      backgroundColor: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(Icons.storage_rounded, color: AppColors.primary, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            '缓存限制设置',
+            style: context.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: isDark ? AppColors.darkOnSurface : null,
+            ),
+          ),
+        ],
+      ),
+      content: _isLoading
+          ? const SizedBox(
+              height: 200,
+              child: Center(child: CircularProgressIndicator()),
+            )
+          : SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '设置各类型媒体的最大缓存空间，超出限制时自动清理最久未访问的缓存',
+                    style: context.textTheme.bodySmall?.copyWith(
+                      color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  ..._buildMediaTypeSettings(context),
+                ],
+              ),
+            ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('关闭'),
+        ),
+      ],
+    );
+  }
+
+  List<Widget> _buildMediaTypeSettings(BuildContext context) {
+    final isDark = widget.isDark;
+    final mediaTypes = [
+      (MediaType.photo, '照片', Icons.photo_library_rounded),
+      (MediaType.music, '音乐', Icons.music_note_rounded),
+      (MediaType.video, '视频', Icons.movie_rounded),
+      (MediaType.book, '图书', Icons.book_rounded),
+      (MediaType.comic, '漫画', Icons.menu_book_rounded),
+    ];
+
+    return mediaTypes.map((item) {
+      final (type, label, icon) = item;
+      final currentLimit = _cacheLimits[type] ?? CacheConfigService.defaultCacheSizesMB[type] ?? 1024;
+
+      return Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isDark
+              ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
+              : AppColors.lightSurfaceVariant,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  icon,
+                  size: 18,
+                  color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: context.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w500,
+                    color: isDark ? AppColors.darkOnSurface : null,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  CacheConfigService.formatSizeMB(currentLimit),
+                  style: context.textTheme.bodyMedium?.copyWith(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 32,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: CacheSizeOption.options.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 8),
+                itemBuilder: (context, index) {
+                  final option = CacheSizeOption.options[index];
+                  final isSelected = option.sizeMB == currentLimit;
+
+                  return Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () => _updateLimit(type, option.sizeMB),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? AppColors.primary
+                              : (isDark
+                                  ? AppColors.darkSurfaceElevated
+                                  : AppColors.lightSurface),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: isSelected
+                                ? AppColors.primary
+                                : (isDark
+                                    ? AppColors.darkOutline.withValues(alpha: 0.3)
+                                    : AppColors.lightOutline.withValues(alpha: 0.3)),
+                          ),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          option.label,
+                          style: context.textTheme.labelSmall?.copyWith(
+                            color: isSelected
+                                ? Colors.white
+                                : (isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface),
+                            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      );
+    }).toList();
   }
 }
 

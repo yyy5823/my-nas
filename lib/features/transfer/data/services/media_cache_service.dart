@@ -5,6 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
+import 'package:my_nas/features/transfer/data/services/cache_config_service.dart';
 import 'package:my_nas/features/transfer/data/services/transfer_database_service.dart';
 import 'package:my_nas/features/transfer/domain/entities/transfer_task.dart';
 import 'package:path/path.dart' as p;
@@ -19,18 +20,28 @@ class MediaCacheService {
   static MediaCacheService? _instance;
 
   final _dbService = TransferDatabaseService();
+  final _configService = CacheConfigService();
   bool _initialized = false;
 
   String? _baseCacheDir;
   final Map<MediaType, String> _cacheDirs = {};
 
-  /// 各类型缓存配额（字节）
-  static const Map<MediaType, int> cacheQuotas = {
+  /// 默认缓存配额（字节），可通过 CacheConfigService 配置
+  static const Map<MediaType, int> defaultCacheQuotas = {
     MediaType.photo: 1024 * 1024 * 1024, // 1GB
     MediaType.music: 2 * 1024 * 1024 * 1024, // 2GB
     MediaType.video: 5 * 1024 * 1024 * 1024, // 5GB
     MediaType.book: 512 * 1024 * 1024, // 512MB
   };
+
+  /// 获取指定类型的缓存配额
+  Future<int> _getCacheQuota(MediaType mediaType) async {
+    try {
+      return await _configService.getCacheSizeLimit(mediaType);
+    } catch (_) {
+      return defaultCacheQuotas[mediaType] ?? 1024 * 1024 * 1024;
+    }
+  }
 
   /// 初始化缓存服务
   Future<void> init() async {
@@ -303,9 +314,11 @@ class MediaCacheService {
 
   /// 确保缓存不超过配额
   Future<void> _ensureQuota(MediaType mediaType) async {
-    final quota = cacheQuotas[mediaType] ?? 1024 * 1024 * 1024;
-    final currentSize = await getCacheSize(mediaType: mediaType);
+    final quota = await _getCacheQuota(mediaType);
+    // 如果配额为 0，表示无限制
+    if (quota == 0) return;
 
+    final currentSize = await getCacheSize(mediaType: mediaType);
     if (currentSize <= quota) return;
 
     try {

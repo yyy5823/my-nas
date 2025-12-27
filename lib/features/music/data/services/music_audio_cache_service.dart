@@ -5,6 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
+import 'package:my_nas/features/transfer/data/services/cache_config_service.dart';
 import 'package:my_nas/features/transfer/domain/entities/transfer_task.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -20,8 +21,18 @@ class MusicAudioCacheService {
   String? _cacheDir;
   bool _initialized = false;
 
-  /// 缓存目录最大总大小（2GB）
-  static const int maxTotalCacheSize = 2 * 1024 * 1024 * 1024;
+  /// 默认缓存目录最大总大小（2GB），可通过 CacheConfigService 配置
+  static const int defaultMaxCacheSize = 2 * 1024 * 1024 * 1024;
+
+  /// 获取配置的缓存大小限制
+  Future<int> _getMaxCacheSize() async {
+    try {
+      final configService = CacheConfigService();
+      return await configService.getCacheSizeLimit(MediaType.music);
+    } catch (_) {
+      return defaultMaxCacheSize;
+    }
+  }
 
   /// 初始化缓存目录
   Future<void> init() async {
@@ -125,9 +136,13 @@ class MusicAudioCacheService {
   Future<void> ensureCacheQuota({int? newFileSize}) async {
     if (!_initialized) await init();
 
+    final maxCacheSize = await _getMaxCacheSize();
+    // 如果限制为 0，表示无限制
+    if (maxCacheSize == 0) return;
+
     final requiredSize = newFileSize ?? 0;
     final currentSize = await getCacheSize();
-    if (currentSize + requiredSize <= maxTotalCacheSize) return;
+    if (currentSize + requiredSize <= maxCacheSize) return;
 
     try {
       final dir = Directory(_cacheDir!);
@@ -147,7 +162,7 @@ class MusicAudioCacheService {
 
       // 删除最旧的文件直到有足够空间
       var freedSize = 0;
-      final targetFreeSize = (currentSize + requiredSize) - maxTotalCacheSize;
+      final targetFreeSize = (currentSize + requiredSize) - maxCacheSize;
       for (final entry in files) {
         if (freedSize >= targetFreeSize) break;
 
