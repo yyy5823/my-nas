@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:my_nas/app/router/routes.dart';
+import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/services/error_report/route_tracker.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/connection/presentation/pages/connection_page.dart';
@@ -41,7 +42,7 @@ final appRouter = GoRouter(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.error_outline, size: 48, color: Colors.red),
+            Icon(Icons.error_outline, size: 48, color: AppColors.error),
             const SizedBox(height: 16),
             Text('导航错误: ${state.uri}'),
             const SizedBox(height: 16),

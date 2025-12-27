@@ -465,9 +465,9 @@ class _SeasonScraperPageState extends ConsumerState<SeasonScraperPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.error_outline, size: 48, color: Colors.red[300]),
+            Icon(Icons.error_outline, size: 48, color: AppColors.error),
             const SizedBox(height: 16),
-            Text(_errorMessage!, style: TextStyle(color: Colors.red[300])),
+            Text(_errorMessage!, style: TextStyle(color: AppColors.error)),
           ],
         ),
       );
@@ -867,7 +867,7 @@ class _SeasonScraperPageState extends ConsumerState<SeasonScraperPage> {
                           Icon(
                             hasMatch ? Icons.check_circle : Icons.help_outline,
                             size: 16,
-                            color: hasMatch ? Colors.green : Colors.orange,
+                            color: hasMatch ? AppColors.success : AppColors.warning,
                           ),
                           const SizedBox(width: 8),
                           Expanded(

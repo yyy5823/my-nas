@@ -76,7 +76,16 @@ class MobileGalleryFileSystem implements NasFileSystem {
 
     // 具体相册内容
     if (path.startsWith('/albums/')) {
-      final albumId = path.replaceFirst('/albums/', '').replaceAll('/', '');
+      final segments = path.replaceFirst('/albums/', '').split('/');
+      final albumId = segments.first;
+
+      // 如果路径包含多个段（如 /albums/{albumId}/{assetId}），
+      // 说明是访问具体资源，不是目录，返回空列表
+      if (segments.length > 1 && segments[1].isNotEmpty) {
+        logger.d('MobileGalleryFileSystem: 跳过资源路径 - $path');
+        return [];
+      }
+
       return _listAlbumAssets(albumId);
     }
 

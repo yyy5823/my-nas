@@ -136,12 +136,12 @@ class _MediaLibraryPageState extends ConsumerState<MediaLibraryPage> {
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
             color: _isPerformanceMode
-                ? Colors.orange.withValues(alpha: 0.15)
+                ? AppColors.warning.withValues(alpha: 0.15)
                 : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: _isPerformanceMode
-                  ? Colors.orange.withValues(alpha: 0.5)
+                  ? AppColors.warning.withValues(alpha: 0.5)
                   : Colors.transparent,
             ),
           ),
@@ -151,7 +151,7 @@ class _MediaLibraryPageState extends ConsumerState<MediaLibraryPage> {
               Icon(
                 _isPerformanceMode ? Icons.rocket_launch : Icons.rocket_outlined,
                 size: 18,
-                color: _isPerformanceMode ? Colors.orange : null,
+                color: _isPerformanceMode ? AppColors.warning : null,
               ),
               const SizedBox(width: 4),
               Text(
@@ -159,7 +159,7 @@ class _MediaLibraryPageState extends ConsumerState<MediaLibraryPage> {
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: _isPerformanceMode ? FontWeight.bold : FontWeight.normal,
-                  color: _isPerformanceMode ? Colors.orange : null,
+                  color: _isPerformanceMode ? AppColors.warning : null,
                 ),
               ),
             ],
@@ -180,7 +180,7 @@ class _MediaLibraryPageState extends ConsumerState<MediaLibraryPage> {
         builder: (context) => AlertDialog(
           title: const Row(
             children: [
-              Icon(Icons.warning_amber_rounded, color: Colors.orange),
+              Icon(Icons.warning_amber_rounded, color: AppColors.warning),
               SizedBox(width: 8),
               Text('开启性能模式'),
             ],
@@ -211,7 +211,7 @@ class _MediaLibraryPageState extends ConsumerState<MediaLibraryPage> {
             ),
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
-              style: FilledButton.styleFrom(backgroundColor: Colors.orange),
+              style: FilledButton.styleFrom(backgroundColor: AppColors.warning),
               child: const Text('开启'),
             ),
           ],
@@ -243,7 +243,7 @@ class _MediaLibraryPageState extends ConsumerState<MediaLibraryPage> {
           children: [
             Icon(
               _isPerformanceMode ? Icons.rocket_launch : Icons.settings,
-              color: _isPerformanceMode ? Colors.orange : null,
+              color: _isPerformanceMode ? AppColors.warning : null,
             ),
             const SizedBox(width: 8),
             Text(_isPerformanceMode ? '性能模式配置' : '普通模式配置'),
@@ -274,7 +274,7 @@ class _MediaLibraryPageState extends ConsumerState<MediaLibraryPage> {
     padding: const EdgeInsets.symmetric(vertical: 4),
     child: Row(
       children: [
-        Icon(icon, size: 18, color: Colors.orange),
+        Icon(icon, size: 18, color: AppColors.warning),
         const SizedBox(width: 8),
         Text(text),
       ],
@@ -291,7 +291,7 @@ class _MediaLibraryPageState extends ConsumerState<MediaLibraryPage> {
           value,
           style: TextStyle(
             fontWeight: FontWeight.bold,
-            color: _isPerformanceMode ? Colors.orange : null,
+            color: _isPerformanceMode ? AppColors.warning : null,
           ),
         ),
       ],
@@ -731,10 +731,10 @@ class _MediaTypeTab extends ConsumerWidget {
               leading: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.green.withValues(alpha: 0.1),
+                  color: AppColors.success.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.refresh, color: Colors.green),
+                child: Icon(Icons.refresh, color: AppColors.success),
               ),
               title: const Text('扫描已有文件'),
               subtitle: const Text('扫描之前导入到应用的文件'),
@@ -793,26 +793,67 @@ class _MediaTypeTab extends ConsumerWidget {
     Map<String, SourceConnection> connections,
     FileImportType importType,
   ) async {
+    // 进度状态
+    var currentFile = 1;
+    var totalFiles = 0;
+    var currentFileName = '';
+    var copiedBytes = 0;
+    var totalBytes = 0;
+    StateSetter? dialogSetState;
+
     try {
-      // 显示加载指示器
+      // 显示进度对话框
       if (context.mounted) {
         unawaited(showDialog<void>(
           context: context,
           barrierDismissible: false,
-          builder: (context) => const Center(
-            child: Card(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CircularProgressIndicator(),
-                    SizedBox(height: 16),
-                    Text('正在导入...'),
-                  ],
+          builder: (dialogContext) => StatefulBuilder(
+            builder: (context, setState) {
+              dialogSetState = setState;
+              return Center(
+                child: Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (totalFiles > 0) ...[
+                          // 文件进度
+                          Text(
+                            '正在导入 ($currentFile/$totalFiles)',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            currentFileName,
+                            style: const TextStyle(fontSize: 12, color: Colors.grey),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 16),
+                          // 字节进度条
+                          if (totalBytes > 0) ...[
+                            LinearProgressIndicator(
+                              value: copiedBytes / totalBytes,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              '${_formatBytes(copiedBytes)} / ${_formatBytes(totalBytes)}',
+                              style: const TextStyle(fontSize: 12, color: Colors.grey),
+                            ),
+                          ] else
+                            const CircularProgressIndicator(),
+                        ] else ...[
+                          const CircularProgressIndicator(),
+                          const SizedBox(height: 16),
+                          const Text('正在选择文件...'),
+                        ],
+                      ],
+                    ),
+                  ),
                 ),
-              ),
-            ),
+              );
+            },
           ),
         ));
       }
@@ -821,6 +862,14 @@ class _MediaTypeTab extends ConsumerWidget {
       final importedFiles = await FileImportService.instance.importFiles(
         type: importType,
         allowMultiple: true,
+        onProgress: (current, total, fileName, copied, fileSize) {
+          currentFile = current;
+          totalFiles = total;
+          currentFileName = fileName;
+          copiedBytes = copied;
+          totalBytes = fileSize;
+          dialogSetState?.call(() {});
+        },
       );
 
       // 关闭加载对话框
@@ -852,6 +901,16 @@ class _MediaTypeTab extends ConsumerWidget {
         context.showErrorToast('导入失败: $e');
       }
     }
+  }
+
+  /// 格式化字节数
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / 1024 / 1024).toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / 1024 / 1024 / 1024).toStringAsFixed(1)} GB';
   }
 
   /// 添加文件路径到媒体库
@@ -1505,7 +1564,7 @@ class _PathCardState extends ConsumerState<_PathCard> {
         icon: Icons.check_circle_outline,
         label: '已刮削',
         value: _scrapedCount,
-        color: Colors.green,
+        color: AppColors.success,
         isDark: isDark,
       ),
       const SizedBox(width: 8),
@@ -1514,7 +1573,7 @@ class _PathCardState extends ConsumerState<_PathCard> {
         icon: Icons.pending_outlined,
         label: '待处理',
         value: _pendingScrapeCount,
-        color: _pendingScrapeCount > 0 ? Colors.orange : Colors.grey,
+        color: _pendingScrapeCount > 0 ? AppColors.warning : AppColors.disabled,
         isDark: isDark,
       ),
     ],
@@ -1631,8 +1690,8 @@ class _PathCardState extends ConsumerState<_PathCard> {
               Icon(
                 _isScraping ? Icons.hourglass_empty : Icons.auto_fix_high_rounded,
                 color: isConnected && !_isScraping && _itemCount > 0
-                    ? Colors.orange
-                    : Colors.grey,
+                    ? AppColors.warning
+                    : AppColors.disabled,
               ),
               const SizedBox(width: 12),
               Text(

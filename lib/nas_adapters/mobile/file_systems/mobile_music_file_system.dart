@@ -120,7 +120,16 @@ class MobileMusicFileSystem implements NasFileSystem {
 
     // 具体专辑内容
     if (path.startsWith('/albums/')) {
-      final albumId = int.tryParse(path.replaceFirst('/albums/', '').replaceAll('/', ''));
+      final segments = path.replaceFirst('/albums/', '').split('/');
+      final albumId = int.tryParse(segments.first);
+
+      // 如果路径包含多个段（如 /albums/{albumId}/{songId}），
+      // 说明是访问具体歌曲，不是目录，返回空列表
+      if (segments.length > 1 && segments[1].isNotEmpty) {
+        logger.d('MobileMusicFileSystem: 跳过歌曲路径 - $path');
+        return [];
+      }
+
       if (albumId != null) {
         return _listAlbumSongs(albumId);
       }
@@ -128,7 +137,15 @@ class MobileMusicFileSystem implements NasFileSystem {
 
     // 具体艺术家内容
     if (path.startsWith('/artists/')) {
-      final artistId = int.tryParse(path.replaceFirst('/artists/', '').replaceAll('/', ''));
+      final segments = path.replaceFirst('/artists/', '').split('/');
+      final artistId = int.tryParse(segments.first);
+
+      // 如果路径包含多个段，说明是访问具体歌曲
+      if (segments.length > 1 && segments[1].isNotEmpty) {
+        logger.d('MobileMusicFileSystem: 跳过歌曲路径 - $path');
+        return [];
+      }
+
       if (artistId != null) {
         return _listArtistSongs(artistId);
       }

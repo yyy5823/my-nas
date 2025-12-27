@@ -413,9 +413,9 @@ class _ManualScraperPageState extends ConsumerState<ManualScraperPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.error_outline, size: 48, color: Colors.red[300]),
+            Icon(Icons.error_outline, size: 48, color: AppColors.error),
             const SizedBox(height: 16),
-            Text(_errorMessage!, style: TextStyle(color: Colors.red[300])),
+            Text(_errorMessage!, style: TextStyle(color: AppColors.error)),
           ],
         ),
       );

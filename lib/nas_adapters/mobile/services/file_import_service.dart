@@ -37,13 +37,16 @@ class FileImportService {
   ///
   /// [type] 导入的文件类型，决定目标目录和文件过滤器
   /// [allowMultiple] 是否允许选择多个文件
-  /// [onProgress] 复制进度回调 (当前文件索引, 总文件数, 当前文件名)
+  /// [onProgress] 复制进度回调 (当前文件索引, 总文件数, 当前文件名, 已复制字节, 文件总字节)
   ///
   /// 返回: 成功导入的文件路径列表（相对于 Documents 目录的虚拟路径）
+  ///
+  /// 注意：由于 iOS 安全限制，从 iCloud 或外部存储选择的文件必须复制到应用沙盒。
+  /// 对于大文件（如电子书），复制可能需要一些时间。
   Future<List<ImportedFile>> importFiles({
     required FileImportType type,
     bool allowMultiple = true,
-    void Function(int current, int total, String fileName)? onProgress,
+    void Function(int current, int total, String fileName, int copied, int fileSize)? onProgress,
   }) async {
     try {
       // 获取目标目录
@@ -78,8 +81,10 @@ class FileImportService {
         final file = result.files[i];
         final fileName = file.name;
         final sourcePath = file.path;
+        final fileSize = file.size;
 
-        onProgress?.call(i + 1, totalFiles, fileName);
+        // 初始进度回调
+        onProgress?.call(i + 1, totalFiles, fileName, 0, fileSize);
 
         if (sourcePath == null) {
           logger.w('FileImportService: 文件路径为空 - $fileName');
@@ -87,35 +92,48 @@ class FileImportService {
         }
 
         try {
-          // 检查文件是否已存在于目标目录
-          final targetPath = p.join(targetDir.path, fileName);
+          // 检查源文件是否在应用目录内（不需要复制）
+          final sourceFile = File(sourcePath);
+          final isInAppDir = sourcePath.startsWith(docDir.path);
+
+          if (isInAppDir) {
+            // 文件已在应用目录内，直接添加引用
+            importedFiles.add(ImportedFile(
+              name: fileName,
+              virtualPath: '/documents/$subdir/$fileName',
+              realPath: sourcePath,
+              size: fileSize,
+            ));
+            onProgress?.call(i + 1, totalFiles, fileName, fileSize, fileSize);
+            logger.d('FileImportService: 文件已在应用目录 - $fileName');
+            continue;
+          }
+
+          // 确定目标文件名
+          var targetFileName = fileName;
+          var targetPath = p.join(targetDir.path, fileName);
           final targetFile = File(targetPath);
 
           if (await targetFile.exists()) {
             // 文件已存在，生成新文件名
-            final newFileName = _generateUniqueFileName(targetDir.path, fileName);
-            final newTargetPath = p.join(targetDir.path, newFileName);
-            await File(sourcePath).copy(newTargetPath);
-
-            importedFiles.add(ImportedFile(
-              name: newFileName,
-              virtualPath: '/documents/$subdir/$newFileName',
-              realPath: newTargetPath,
-              size: file.size,
-            ));
-            logger.d('FileImportService: 导入文件（重命名）- $newFileName');
-          } else {
-            // 复制文件
-            await File(sourcePath).copy(targetPath);
-
-            importedFiles.add(ImportedFile(
-              name: fileName,
-              virtualPath: '/documents/$subdir/$fileName',
-              realPath: targetPath,
-              size: file.size,
-            ));
-            logger.d('FileImportService: 导入文件 - $fileName');
+            targetFileName = _generateUniqueFileName(targetDir.path, fileName);
+            targetPath = p.join(targetDir.path, targetFileName);
           }
+
+          // 使用流式复制以提供进度反馈
+          await _copyFileWithProgress(
+            sourceFile,
+            File(targetPath),
+            (copied) => onProgress?.call(i + 1, totalFiles, fileName, copied, fileSize),
+          );
+
+          importedFiles.add(ImportedFile(
+            name: targetFileName,
+            virtualPath: '/documents/$subdir/$targetFileName',
+            realPath: targetPath,
+            size: fileSize,
+          ));
+          logger.d('FileImportService: 导入文件 - $targetFileName');
         } on Exception catch (e) {
           logger.e('FileImportService: 复制文件失败 - $fileName', e);
         }
@@ -127,6 +145,39 @@ class FileImportService {
       logger.e('FileImportService: 导入失败', e, st);
       rethrow;
     }
+  }
+
+  /// 使用流式复制文件并提供进度回调
+  Future<void> _copyFileWithProgress(
+    File source,
+    File target,
+    void Function(int copied)? onProgress,
+  ) async {
+    final input = source.openRead();
+    final output = target.openWrite();
+
+    var copied = 0;
+    const chunkSize = 65536; // 64KB chunks for smooth progress updates
+    var lastProgressTime = DateTime.now();
+
+    await for (final chunk in input) {
+      output.add(chunk);
+      copied += chunk.length;
+
+      // 每 100ms 或每 256KB 更新一次进度，避免过于频繁
+      final now = DateTime.now();
+      if (now.difference(lastProgressTime).inMilliseconds >= 100 ||
+          copied % (chunkSize * 4) == 0) {
+        onProgress?.call(copied);
+        lastProgressTime = now;
+      }
+    }
+
+    await output.flush();
+    await output.close();
+
+    // 最终进度
+    onProgress?.call(copied);
   }
 
   /// 选择目录（用于浏览外部存储）
