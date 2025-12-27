@@ -299,12 +299,12 @@ class _MediaLibraryPageState extends ConsumerState<MediaLibraryPage> {
   );
 
   IconData _getMediaTypeIcon(MediaType type) => switch (type) {
-    MediaType.video => Icons.movie_outlined,
-    MediaType.music => Icons.music_note_outlined,
-    MediaType.photo => Icons.photo_library_outlined,
-    MediaType.comic => Icons.collections_outlined,
-    MediaType.book => Icons.book_outlined,
-    MediaType.note => Icons.note_outlined,
+    MediaType.video => Icons.movie_filter_outlined,
+    MediaType.music => Icons.library_music_outlined,
+    MediaType.photo => Icons.photo_album_outlined,
+    MediaType.comic => Icons.collections_bookmark_outlined,
+    MediaType.book => Icons.menu_book_outlined,
+    MediaType.note => Icons.edit_note_outlined,
   };
 }
 
@@ -445,12 +445,12 @@ class _MediaTypeTab extends ConsumerWidget {
   );
 
   IconData _getEmptyIcon() => switch (mediaType) {
-    MediaType.video => Icons.video_library_outlined,
+    MediaType.video => Icons.movie_filter_outlined,
     MediaType.music => Icons.library_music_outlined,
-    MediaType.photo => Icons.photo_library_outlined,
+    MediaType.photo => Icons.photo_album_outlined,
     MediaType.comic => Icons.collections_bookmark_outlined,
-    MediaType.book => Icons.library_books_outlined,
-    MediaType.note => Icons.sticky_note_2_outlined,
+    MediaType.book => Icons.menu_book_outlined,
+    MediaType.note => Icons.edit_note_outlined,
   };
 
   void _addPath(
@@ -558,7 +558,7 @@ class _MediaTypeTab extends ConsumerWidget {
                 ),
               ),
               ListTile(
-                leading: const Icon(Icons.folder_open),
+                leading: const Icon(Icons.snippet_folder_outlined),
                 title: const Text('选择目录...'),
                 subtitle: const Text('从 NAS 或网络存储选择'),
                 trailing: const Icon(Icons.chevron_right),
@@ -715,7 +715,7 @@ class _MediaTypeTab extends ConsumerWidget {
                   color: Colors.blue.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.folder_open, color: Colors.blue),
+                child: const Icon(Icons.snippet_folder_outlined, color: Colors.blue),
               ),
               title: const Text('从文件导入'),
               subtitle: Text('从 iCloud、其他云盘或本地选择$typeDisplayName文件'),

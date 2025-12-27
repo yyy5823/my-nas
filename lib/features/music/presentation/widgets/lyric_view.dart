@@ -138,8 +138,11 @@ class _LyricViewState extends ConsumerState<LyricView>
     }
 
     // 计算视口高度用于 padding
+    // 顶部 padding 较小，让当前歌词显示在屏幕上方约 1/3 处
+    // 底部 padding 较大，为后续歌词预留滚动空间
     final screenHeight = MediaQuery.of(context).size.height;
-    final verticalPadding = screenHeight * 0.4; // 40% 的空白用于居中效果
+    final topPadding = screenHeight * 0.28; // 28% 顶部空白
+    final bottomPadding = screenHeight * 0.5; // 50% 底部空白
 
     return NotificationListener<ScrollNotification>(
       onNotification: (notification) {
@@ -180,9 +183,11 @@ class _LyricViewState extends ConsumerState<LyricView>
             key: _listKey,
             controller: _scrollController,
             physics: const BouncingScrollPhysics(),
-            padding: EdgeInsets.symmetric(
-              vertical: verticalPadding,
-              horizontal: widget.showFullScreen ? 32 : 24,
+            padding: EdgeInsets.only(
+              top: topPadding,
+              bottom: bottomPadding,
+              left: widget.showFullScreen ? 32 : 24,
+              right: widget.showFullScreen ? 32 : 24,
             ),
             itemCount: lyrics.lines.length,
             itemBuilder: (context, index) {

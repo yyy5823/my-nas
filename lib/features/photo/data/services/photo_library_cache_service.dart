@@ -146,6 +146,33 @@ class PhotoLibraryCacheService {
     logger.i('PhotoLibraryCacheService: 缓存已清除');
   }
 
+  /// 根据 sourceId 和路径前缀删除（用于移除文件夹）
+  Future<int> deleteByPath(String sourceId, String pathPrefix) async {
+    await init();
+    final cache = getCache();
+    if (cache == null) return 0;
+
+    final originalCount = cache.photos.length;
+    final filteredPhotos = cache.photos.where((p) {
+      // 保留不匹配的条目
+      if (p.sourceId != sourceId) return true;
+      if (!p.filePath.startsWith(pathPrefix)) return true;
+      return false;
+    }).toList();
+
+    final deletedCount = originalCount - filteredPhotos.length;
+    if (deletedCount > 0) {
+      final newCache = PhotoLibraryCache(
+        photos: filteredPhotos,
+        lastUpdated: cache.lastUpdated,
+        sourceIds: cache.sourceIds,
+      );
+      await saveCache(newCache);
+      logger.i('PhotoLibraryCacheService: 已删除 $deletedCount 张照片 (sourceId: $sourceId, path: $pathPrefix)');
+    }
+    return deletedCount;
+  }
+
   /// 获取缓存大小（字节）
   int getCacheSize() {
     final data = _box?.get(_cacheKey);

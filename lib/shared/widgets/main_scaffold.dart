@@ -54,32 +54,32 @@ class _MainScaffoldState extends State<MainScaffold> {
 
   static const _destinations = [
     _Destination(
-      icon: Icons.play_circle_outline_rounded,
-      selectedIcon: Icons.play_circle_rounded,
+      icon: Icons.movie_filter_outlined,
+      selectedIcon: Icons.movie_filter_rounded,
       label: '影视',
       route: Routes.video,
     ),
     _Destination(
-      icon: Icons.music_note_outlined,
-      selectedIcon: Icons.music_note_rounded,
+      icon: Icons.library_music_outlined,
+      selectedIcon: Icons.library_music_rounded,
       label: '曲库',
       route: Routes.music,
     ),
     _Destination(
-      icon: Icons.photo_library_outlined,
-      selectedIcon: Icons.photo_library_rounded,
+      icon: Icons.photo_album_outlined,
+      selectedIcon: Icons.photo_album_rounded,
       label: '相册',
       route: Routes.photo,
     ),
     _Destination(
-      icon: Icons.auto_stories_outlined,
-      selectedIcon: Icons.auto_stories_rounded,
+      icon: Icons.menu_book_outlined,
+      selectedIcon: Icons.menu_book_rounded,
       label: '阅读',
       route: Routes.reading,
     ),
     _Destination(
-      icon: Icons.person_outline_rounded,
-      selectedIcon: Icons.person_rounded,
+      icon: Icons.account_circle_outlined,
+      selectedIcon: Icons.account_circle_rounded,
       label: '我的',
       route: Routes.mine,
     ),

@@ -90,7 +90,9 @@ class MusicSettingsNotifier extends StateNotifier<MusicSettings> {
     final data = _box!.get(_settingsKey);
     if (data != null) {
       state = MusicSettings.fromMap(data);
-      logger.i('MusicSettingsNotifier: 加载设置成功');
+      logger.i('MusicSettingsNotifier: 加载设置成功, playMode=${state.playMode}');
+      // 同步播放模式到播放器
+      _ref.read(musicPlayerControllerProvider.notifier).setPlayMode(state.playMode);
     }
   }
 

@@ -9,6 +9,11 @@ import UIKit
   ) -> Bool {
     GeneratedPluginRegistrant.register(with: self)
 
+    // 启用远程控制事件接收
+    // 这是 iOS Now Playing / 灵动岛显示的关键
+    // 必须在 app 启动时调用，否则系统可能不会正确显示控制中心的媒体控件
+    application.beginReceivingRemoteControlEvents()
+
     // 注册自定义的 Music Live Activity Channel
     // 用于支持个人开发者账号（不需要 Push Notification 能力）
     if let registrar = self.registrar(forPlugin: "MusicLiveActivityChannel") {

@@ -225,6 +225,7 @@ class VideoLibraryCacheService {
 
   /// 根据 sourceId 和路径前缀删除（用于移除文件夹）
   Future<int> deleteByPath(String sourceId, String pathPrefix) async {
+    await init();
     final cache = getCache();
     if (cache == null) return 0;
 

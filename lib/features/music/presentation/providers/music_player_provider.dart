@@ -204,6 +204,9 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       await playAt(index);
     };
 
+    // 配置 AudioSession（关键：确保灵动岛/Now Playing 正常显示）
+    _configureAudioSession();
+
     // 应用保存的设置
     _applySettings();
 
@@ -254,6 +257,46 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       },
     );
 
+  }
+
+  /// 配置 AudioSession
+  /// 这是确保灵动岛/Now Playing 正常显示的关键配置
+  ///
+  /// 根据 Apple 文档，Now Playing 显示需要：
+  /// 1. AVAudioSession 使用非 mixable 的 category（如 .playback）
+  /// 2. 注册至少一个 remote command handler（由 audio_service 自动处理）
+  /// 3. 正确设置 MPNowPlayingInfoCenter（由 audio_service 自动处理）
+  ///
+  /// 参考：https://developer.apple.com/documentation/mediaplayer/mpnowplayinginfocenter
+  Future<void> _configureAudioSession() async {
+    try {
+      final session = await AudioSession.instance;
+
+      // 配置 AudioSession 为音乐播放模式
+      // - category: playback - 音频应用，即使静音开关开启也播放
+      // - mode: defaultMode - 默认模式
+      // - 注意：不使用 mixWithOthers，这样系统才会将此 app 识别为 Now Playing app
+      await session.configure(const AudioSessionConfiguration(
+        // iOS 配置
+        avAudioSessionCategory: AVAudioSessionCategory.playback,
+        avAudioSessionCategoryOptions: AVAudioSessionCategoryOptions.none,
+        avAudioSessionMode: AVAudioSessionMode.defaultMode,
+        avAudioSessionRouteSharingPolicy:
+            AVAudioSessionRouteSharingPolicy.defaultPolicy,
+        avAudioSessionSetActiveOptions: AVAudioSessionSetActiveOptions.none,
+        // Android 配置
+        androidAudioAttributes: AndroidAudioAttributes(
+          contentType: AndroidAudioContentType.music,
+          usage: AndroidAudioUsage.media,
+        ),
+        androidAudioFocusGainType: AndroidAudioFocusGainType.gain,
+        androidWillPauseWhenDucked: true,
+      ));
+
+      logger.i('MusicPlayer: AudioSession 已配置为 playback category（非 mixable）');
+    } on Exception catch (e) {
+      logger.w('MusicPlayer: 配置 AudioSession 失败: $e');
+    }
   }
 
   /// 初始化音频会话中断处理

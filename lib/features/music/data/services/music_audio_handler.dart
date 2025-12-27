@@ -201,8 +201,15 @@ class MusicAudioHandler extends BaseAudioHandler
   /// 上次状态广播时间（用于防抖）
   DateTime? _lastBroadcastTime;
 
+  /// 标记是否刚从后台返回（用于处理 后台->前台->后台 的场景）
+  bool _justResumedFromBackground = false;
+
   /// 处理 App 生命周期变化
   /// 当 App 从后台返回前台时，需要重新广播状态以刷新灵动岛/锁屏控制
+  ///
+  /// 关键问题：后台 -> 前台 -> 后台 时灵动岛可能消失
+  /// 原因：iOS 的 MPNowPlayingInfoCenter 在 app 返回前台后可能被系统清除
+  /// 解决：在每次生命周期变化时都强制刷新完整的媒体信息
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     logger.i('MusicAudioHandler: App 生命周期变化 - $state, playing=${_player.playing}, hasMediaItem=${mediaItem.value != null}');
@@ -221,18 +228,35 @@ class MusicAudioHandler extends BaseAudioHandler
           _resetMediaItemForNowPlaying();
         }
 
+      case AppLifecycleState.hidden:
+        // Flutter 3.13+ 新增的状态，在 inactive 和 paused 之间
+        // 在某些平台上会触发，需要同样处理
+        if (mediaItem.value != null) {
+          logger.i('MusicAudioHandler: App 进入 hidden 状态，刷新 Now Playing');
+          // ignore: discarded_futures
+          _resetMediaItemForNowPlaying();
+        }
+
       case AppLifecycleState.paused:
         // App 已进入后台
         // 再次确保状态已广播（作为 inactive 的备份）
-        // 注意：暂停状态也需要广播，否则灵动岛可能丢失
+        // 关键：如果是从前台刚返回后台，需要强制完整刷新
         if (mediaItem.value != null) {
-          // 使用防抖避免重复广播
-          final now = DateTime.now();
-          if (_lastBroadcastTime == null ||
-              now.difference(_lastBroadcastTime!) > const Duration(milliseconds: 500)) {
-            logger.i('MusicAudioHandler: App 已进入后台 (paused)，补充广播状态');
-            _broadcastState(PlaybackEvent());
-            _lastBroadcastTime = now;
+          if (_justResumedFromBackground) {
+            // 刚从后台返回又进入后台，需要强制完整刷新
+            logger.i('MusicAudioHandler: 后台->前台->后台 场景，强制完整刷新 Now Playing');
+            _justResumedFromBackground = false;
+            // ignore: discarded_futures
+            _resetMediaItemForNowPlaying();
+          } else {
+            // 普通的进入后台，使用防抖避免重复广播
+            final now = DateTime.now();
+            if (_lastBroadcastTime == null ||
+                now.difference(_lastBroadcastTime!) > const Duration(milliseconds: 500)) {
+              logger.i('MusicAudioHandler: App 已进入后台 (paused)，补充广播状态');
+              _broadcastState(PlaybackEvent());
+              _lastBroadcastTime = now;
+            }
           }
         }
 
@@ -241,19 +265,22 @@ class MusicAudioHandler extends BaseAudioHandler
         // 关键：iOS 返回前台后 MPNowPlayingInfoCenter 可能丢失状态
         // 需要重新设置 mediaItem 以确保下次进入后台时能正确显示
         logger.i('MusicAudioHandler: App 返回前台 (resumed)');
+        _justResumedFromBackground = true;
         if (mediaItem.value != null) {
-          // 延迟后重新设置 mediaItem（确保封面和状态同步）
-          Future.delayed(const Duration(milliseconds: 300), () {
+          // 立即刷新一次
+          // ignore: discarded_futures
+          _resetMediaItemForNowPlaying();
+          // 延迟后再次刷新（确保封面和状态同步，防止竞态条件）
+          Future.delayed(const Duration(milliseconds: 500), () {
             if (mediaItem.value != null) {
-              logger.i('MusicAudioHandler: 返回前台后重新设置 mediaItem');
+              logger.i('MusicAudioHandler: 返回前台后延迟刷新 mediaItem');
               _resetMediaItemForNowPlaying();
             }
           });
         }
 
       case AppLifecycleState.detached:
-      case AppLifecycleState.hidden:
-        // 不需要处理
+        // App 即将被销毁，不需要处理
         break;
     }
   }

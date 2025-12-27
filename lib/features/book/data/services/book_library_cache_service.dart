@@ -142,6 +142,33 @@ class BookLibraryCacheService {
     logger.i('BookLibraryCacheService: 缓存已清除');
   }
 
+  /// 根据 sourceId 和路径前缀删除（用于移除文件夹）
+  Future<int> deleteByPath(String sourceId, String pathPrefix) async {
+    await init();
+    final cache = getCache();
+    if (cache == null) return 0;
+
+    final originalCount = cache.books.length;
+    final filteredBooks = cache.books.where((b) {
+      // 保留不匹配的条目
+      if (b.sourceId != sourceId) return true;
+      if (!b.filePath.startsWith(pathPrefix)) return true;
+      return false;
+    }).toList();
+
+    final deletedCount = originalCount - filteredBooks.length;
+    if (deletedCount > 0) {
+      final newCache = BookLibraryCache(
+        books: filteredBooks,
+        lastUpdated: cache.lastUpdated,
+        sourceIds: cache.sourceIds,
+      );
+      await saveCache(newCache);
+      logger.i('BookLibraryCacheService: 已删除 $deletedCount 本图书 (sourceId: $sourceId, path: $pathPrefix)');
+    }
+    return deletedCount;
+  }
+
   /// 获取缓存大小（字节）
   int getCacheSize() {
     final data = _box?.get(_cacheKey);

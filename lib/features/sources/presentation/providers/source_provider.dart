@@ -1,10 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/core/services/nas_file_system_registry.dart';
 import 'package:my_nas/features/book/data/services/book_database_service.dart';
+import 'package:my_nas/features/book/data/services/book_library_cache_service.dart';
 import 'package:my_nas/features/comic/data/services/comic_library_cache_service.dart';
 import 'package:my_nas/features/music/data/services/music_database_service.dart';
 import 'package:my_nas/features/music/data/services/music_library_cache_service.dart';
 import 'package:my_nas/features/photo/data/services/photo_database_service.dart';
+import 'package:my_nas/features/photo/data/services/photo_library_cache_service.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/media_library.dart';
 import 'package:my_nas/features/sources/domain/entities/source_category.dart';
@@ -410,14 +412,20 @@ class MediaLibraryConfigNotifier
             ],
           ]);
         case MediaType.photo:
+          // 同时删除 SQLite 数据库和 Hive 缓存
           await Future.wait([
-            for (final p in pathsToDelete)
+            for (final p in pathsToDelete) ...[
               PhotoDatabaseService().deleteByPath(sourceId, p),
+              PhotoLibraryCacheService().deleteByPath(sourceId, p),
+            ],
           ]);
         case MediaType.book:
+          // 同时删除 SQLite 数据库和 Hive 缓存
           await Future.wait([
-            for (final p in pathsToDelete)
+            for (final p in pathsToDelete) ...[
               BookDatabaseService().deleteByPath(sourceId, p),
+              BookLibraryCacheService().deleteByPath(sourceId, p),
+            ],
           ]);
         case MediaType.comic:
           await Future.wait([
