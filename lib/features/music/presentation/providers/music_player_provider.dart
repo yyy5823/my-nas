@@ -182,6 +182,10 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   // 音频缓存服务（用于持久化缓存，避免重复下载）
   final MusicAudioCacheService _audioCacheService = MusicAudioCacheService();
 
+  // 防止并发播放的标志
+  // 当 play() 正在执行时，新的 play() 调用会等待或取消
+  bool _isPlayOperationInProgress = false;
+
   // NCM 解密服务
   final NcmDecryptService _ncmDecryptService = NcmDecryptService();
 
@@ -343,6 +347,14 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
   /// 播放指定音乐
   Future<void> play(MusicItem music, {Duration? startPosition}) async {
+    // 防止并发播放操作
+    // 如果已有播放操作进行中，等待一小段时间后再尝试
+    if (_isPlayOperationInProgress) {
+      logger.w('MusicPlayer: 播放操作进行中，跳过本次请求: ${music.name}');
+      return;
+    }
+
+    _isPlayOperationInProgress = true;
     _ref.read(currentMusicProvider.notifier).state = music;
     state = state.copyWith(isBuffering: true);
 
@@ -356,7 +368,11 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       // 如果 Audio Session 没有在 App 进入后台前激活，Live Activity 可能不会出现
       await _activateAudioSession();
 
-      // 先停止当前播放并清理之前的代理
+      // 重要：通过 audioHandler 准备切换歌曲
+      // 这会正确暂停当前播放并广播状态，避免灵动岛内容不同步
+      await _audioHandler.prepareForNewTrack();
+
+      // 停止播放器并清理资源
       await _player.stop();
       _cleanupCurrentProxy();
       state = state.copyWith(position: Duration.zero, duration: Duration.zero);
@@ -523,6 +539,9 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     } on Exception catch (e, stackTrace) {
       logger.e('MusicPlayer: 播放失败', e, stackTrace);
       state = state.copyWith(errorMessage: '播放失败: $e', isBuffering: false);
+    } finally {
+      // 重置播放操作标志
+      _isPlayOperationInProgress = false;
     }
   }
 

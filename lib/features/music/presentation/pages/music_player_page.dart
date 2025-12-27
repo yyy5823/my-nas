@@ -18,7 +18,6 @@ import 'package:my_nas/features/music/presentation/widgets/music_queue_sheet.dar
 import 'package:my_nas/features/music/presentation/widgets/music_settings_sheet.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
-import 'package:my_nas/core/extensions/context_extensions.dart';
 
 class MusicPlayerPage extends ConsumerStatefulWidget {
   const MusicPlayerPage({super.key});
@@ -526,124 +525,124 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
   ) {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
-    // 桌面端限制封面最大尺寸，移动端使用屏幕宽度的65%
-    final maxSize = screenHeight * 0.32;
-    final size = (screenWidth * 0.65).clamp(150.0, maxSize);
-    final tonearmHeight = size * 0.45; // 唱针臂高度
-    final pivotSize = size * 0.07; // 转轴球大小
+    // 桌面端限制封面最大尺寸，移动端使用屏幕宽度的60%
+    final maxSize = screenHeight * 0.30;
+    final size = (screenWidth * 0.60).clamp(140.0, maxSize);
+    final tonearmLength = size * 0.6; // 唱针臂长度
+    final pivotSize = size * 0.08; // 转轴球大小
+    // 唱片和唱针的总区域高度：唱针在上方，唱片在下方
+    final tonearmHeight = tonearmLength * 0.4; // 唱针在唱片上方的高度
+    final totalHeight = size + tonearmHeight;
 
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // 唱针臂（顶部中央）
-          SizedBox(
-            width: size,
-            height: tonearmHeight,
-            child: Stack(
-              clipBehavior: Clip.none,
-              alignment: Alignment.topCenter,
-              children: [
-                // 唱针臂放在中间偏右，向唱片方向伸展
-                Positioned(
-                  top: 0,
-                  right: size * 0.2,
-                  child: _TopTonearmWidget(
-                    isPlaying: playerState.isPlaying,
-                    armLength: tonearmHeight,
-                    pivotSize: pivotSize,
-                    isDark: isDark,
+      child: SizedBox(
+        width: size, // 唱片宽度
+        height: totalHeight,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            // 唱针臂（上方中间，斜向唱片右侧）
+            Positioned(
+              left: size * 0.45, // 转轴在中间偏右
+              top: 0,
+              child: _CenterTonearmWidget(
+                isPlaying: playerState.isPlaying,
+                armLength: tonearmLength,
+                pivotSize: pivotSize,
+                isDark: isDark,
+              ),
+            ),
+            // 唱片（居中）
+            Positioned(
+              left: 0,
+              top: tonearmHeight, // 唱片在唱针下方
+              child: AnimatedBuilder(
+                animation: _rotationController,
+                builder: (context, child) => Transform.rotate(
+                    angle: playerState.isPlaying ? _rotationController.value * 2 * math.pi : 0,
+                    child: child,
+                  ),
+                child: Container(
+                  width: size,
+                  height: size,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.4),
+                        blurRadius: 30,
+                        spreadRadius: 2,
+                        offset: const Offset(0, 8),
+                      ),
+                      BoxShadow(
+                        color: AppColors.primary.withValues(alpha: 0.15),
+                        blurRadius: 50,
+                        spreadRadius: 10,
+                      ),
+                    ],
+                  ),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      CustomPaint(
+                        size: Size(size, size),
+                        painter: _VinylRecordPainter(isDark: isDark),
+                      ),
+                      Container(
+                        width: size * 0.38,
+                        height: size * 0.38,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [AppColors.primary, AppColors.secondary],
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: _buildCoverImage(currentMusic, size * 0.38, isDark),
+                      ),
+                      Container(
+                        width: size * 0.04,
+                        height: size * 0.04,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.black,
+                          border: Border.all(color: Colors.grey[800]!, width: 1.5),
+                        ),
+                      ),
+                      Container(
+                        width: size,
+                        height: size,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: LinearGradient(
+                            begin: const Alignment(-0.8, -0.8),
+                            end: const Alignment(0.8, 0.8),
+                            colors: [
+                              Colors.white.withValues(alpha: 0.1),
+                              Colors.transparent,
+                              Colors.transparent,
+                              Colors.white.withValues(alpha: 0.03),
+                            ],
+                            stops: const [0.0, 0.3, 0.7, 1.0],
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
-          ),
-          // 唱片（居中显示）
-          AnimatedBuilder(
-            animation: _rotationController,
-            builder: (context, child) => Transform.rotate(
-                angle: playerState.isPlaying ? _rotationController.value * 2 * math.pi : 0,
-                child: child,
-              ),
-            child: Container(
-              width: size,
-              height: size,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.4),
-                    blurRadius: 30,
-                    spreadRadius: 2,
-                    offset: const Offset(0, 8),
-                  ),
-                  BoxShadow(
-                    color: AppColors.primary.withValues(alpha: 0.15),
-                    blurRadius: 50,
-                    spreadRadius: 10,
-                  ),
-                ],
-              ),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  CustomPaint(
-                    size: Size(size, size),
-                    painter: _VinylRecordPainter(isDark: isDark),
-                  ),
-                  Container(
-                    width: size * 0.38,
-                    height: size * 0.38,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [AppColors.primary, AppColors.secondary],
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.3),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: _buildCoverImage(currentMusic, size * 0.38, isDark),
-                  ),
-                  Container(
-                    width: size * 0.04,
-                    height: size * 0.04,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.black,
-                      border: Border.all(color: Colors.grey[800]!, width: 1.5),
-                    ),
-                  ),
-                  Container(
-                    width: size,
-                    height: size,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: LinearGradient(
-                        begin: const Alignment(-0.8, -0.8),
-                        end: const Alignment(0.8, 0.8),
-                        colors: [
-                          Colors.white.withValues(alpha: 0.1),
-                          Colors.transparent,
-                          Colors.transparent,
-                          Colors.white.withValues(alpha: 0.03),
-                        ],
-                        stops: const [0.0, 0.3, 0.7, 1.0],
-                      ),
-                    ),
-                  ),
-                ],
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1743,9 +1742,9 @@ class _NeteaseTonearmPainter extends CustomPainter {
       isDark != oldDelegate.isDark;
 }
 
-/// 顶部唱针臂组件 - 从顶部向下伸展到唱片
-class _TopTonearmWidget extends StatefulWidget {
-  const _TopTonearmWidget({
+/// 中置唱针臂组件 - 转轴在上方中间，斜向唱片右侧
+class _CenterTonearmWidget extends StatefulWidget {
+  const _CenterTonearmWidget({
     required this.isPlaying,
     required this.armLength,
     required this.pivotSize,
@@ -1758,10 +1757,10 @@ class _TopTonearmWidget extends StatefulWidget {
   final bool isDark;
 
   @override
-  State<_TopTonearmWidget> createState() => _TopTonearmWidgetState();
+  State<_CenterTonearmWidget> createState() => _CenterTonearmWidgetState();
 }
 
-class _TopTonearmWidgetState extends State<_TopTonearmWidget>
+class _CenterTonearmWidgetState extends State<_CenterTonearmWidget>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _animation;
@@ -1770,15 +1769,15 @@ class _TopTonearmWidgetState extends State<_TopTonearmWidget>
   void initState() {
     super.initState();
     _controller = AnimationController(
-      duration: const Duration(milliseconds: 400),
+      duration: const Duration(milliseconds: 500),
       vsync: this,
     );
 
-    // 唱针臂角度动画：从抬起（向右旋转）到落下（垂直）
-    // 停止时向右抬起，播放时落下到唱片上
+    // 唱针臂角度动画：
+    // 停止时向右抬起（正角度），播放时落到唱片右侧边缘
     _animation = Tween<double>(
-      begin: 0.5, // 停止时向右抬起 ~28度
-      end: 0.0, // 播放时垂直落下
+      begin: 0.25, // 停止时向右抬起约15度
+      end: 0.0, // 播放时落到正常位置
     ).animate(CurvedAnimation(
       parent: _controller,
       curve: Curves.easeOutBack,
@@ -1791,7 +1790,7 @@ class _TopTonearmWidgetState extends State<_TopTonearmWidget>
   }
 
   @override
-  void didUpdateWidget(_TopTonearmWidget oldWidget) {
+  void didUpdateWidget(_CenterTonearmWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.isPlaying != oldWidget.isPlaying) {
       if (widget.isPlaying) {
@@ -1812,13 +1811,13 @@ class _TopTonearmWidgetState extends State<_TopTonearmWidget>
   Widget build(BuildContext context) => AnimatedBuilder(
       animation: _animation,
       builder: (context, child) => Transform(
-          alignment: Alignment.topCenter, // 以顶部中心为轴心旋转
+          alignment: Alignment.topLeft, // 以左上角为轴心旋转（转轴位置）
           transform: Matrix4.identity()..rotateZ(_animation.value),
           child: child,
         ),
       child: CustomPaint(
-        size: Size(widget.armLength * 0.6, widget.armLength),
-        painter: _TopTonearmPainter(
+        size: Size(widget.armLength, widget.armLength),
+        painter: _CenterTonearmPainter(
           pivotSize: widget.pivotSize,
           isDark: widget.isDark,
         ),
@@ -1826,9 +1825,9 @@ class _TopTonearmWidgetState extends State<_TopTonearmWidget>
     );
 }
 
-/// 顶部唱针臂绘制器
-class _TopTonearmPainter extends CustomPainter {
-  _TopTonearmPainter({
+/// 两段式唱针臂绘制器 - 垂直段 + 斜向段
+class _CenterTonearmPainter extends CustomPainter {
+  _CenterTonearmPainter({
     required this.pivotSize,
     required this.isDark,
   });
@@ -1839,54 +1838,93 @@ class _TopTonearmPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final pivotRadius = pivotSize / 2;
-    // 转轴在顶部中央
-    final pivotCenter = Offset(size.width / 2, pivotRadius);
+    // 转轴在左上角
+    final pivotCenter = Offset(pivotRadius, pivotRadius);
 
     // 臂的参数
-    final armWidth = size.width * 0.08;
-    final headWidth = size.width * 0.12;
-    final headHeight = size.height * 0.08;
+    final armWidth = size.width * 0.04;
 
-    // 主臂从转轴向下延伸
-    final armStartY = pivotCenter.dy + pivotRadius * 0.5;
-    final armEndY = size.height - headHeight - 4;
+    // 第一段：垂直向下
+    final arm1StartX = pivotCenter.dx;
+    final arm1StartY = pivotCenter.dy + pivotRadius * 0.5;
+    final arm1EndX = pivotCenter.dx;
+    final arm1EndY = size.height * 0.35; // 垂直段结束点
 
-    // 绘制主臂
-    final mainArmPaint = Paint()
+    // 第二段：斜向右下（指向唱片）
+    final arm2StartX = arm1EndX;
+    final arm2StartY = arm1EndY;
+    final arm2EndX = size.width * 0.85;
+    final arm2EndY = size.height * 0.9;
+
+    // 绘制第一段臂 - 垂直向下
+    final arm1Paint = Paint()
       ..shader = LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: [
           Colors.grey[400]!,
           Colors.grey[500]!,
-          Colors.grey[600]!,
         ],
-      ).createShader(Rect.fromLTWH(
-        size.width / 2 - armWidth / 2,
-        armStartY,
-        armWidth,
-        armEndY - armStartY,
-      ))
+      ).createShader(Rect.fromLTRB(arm1StartX - armWidth, arm1StartY, arm1StartX + armWidth, arm1EndY))
       ..strokeWidth = armWidth
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
 
-    final armPath = Path()
-      ..moveTo(size.width / 2, armStartY)
-      ..lineTo(size.width / 2, armEndY);
-    canvas.drawPath(armPath, mainArmPaint);
+    canvas.drawLine(
+      Offset(arm1StartX, arm1StartY),
+      Offset(arm1EndX, arm1EndY),
+      arm1Paint,
+    );
 
-    // 臂高光
-    final highlightPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.3)
-      ..strokeWidth = armWidth * 0.2
+    // 绘制第二段臂 - 斜向右下
+    final arm2Rect = Rect.fromPoints(
+      Offset(arm2StartX, arm2StartY),
+      Offset(arm2EndX, arm2EndY),
+    );
+    final arm2Paint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Colors.grey[500]!,
+          Colors.grey[600]!,
+        ],
+      ).createShader(arm2Rect)
+      ..strokeWidth = armWidth
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
 
-    final highlightPath = Path()
-      ..moveTo(size.width / 2 - armWidth * 0.25, armStartY)
-      ..lineTo(size.width / 2 - armWidth * 0.25, armEndY);
-    canvas.drawPath(highlightPath, highlightPaint);
+    canvas.drawLine(
+      Offset(arm2StartX, arm2StartY),
+      Offset(arm2EndX, arm2EndY),
+      arm2Paint,
+    );
+
+    // 关节处 - 小圆点
+    final jointPaint = Paint()
+      ..color = Colors.grey[500]!
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(Offset(arm1EndX, arm1EndY), armWidth * 0.8, jointPaint);
+
+    // 臂高光 - 第一段
+    final highlightPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.25)
+      ..strokeWidth = armWidth * 0.25
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+
+    canvas.drawLine(
+      Offset(arm1StartX - armWidth * 0.3, arm1StartY),
+      Offset(arm1EndX - armWidth * 0.3, arm1EndY),
+      highlightPaint,
+    );
+
+    // 臂高光 - 第二段
+    canvas.drawLine(
+      Offset(arm2StartX - armWidth * 0.15, arm2StartY - armWidth * 0.15),
+      Offset(arm2EndX - armWidth * 0.15, arm2EndY - armWidth * 0.15),
+      highlightPaint,
+    );
 
     // 转轴球 - 金属质感
     final pivotPaint = Paint()
@@ -1912,9 +1950,18 @@ class _TopTonearmPainter extends CustomPainter {
       ).createShader(Rect.fromCircle(center: pivotCenter, radius: pivotRadius));
     canvas.drawCircle(pivotCenter, pivotRadius * 0.5, pivotHighlight);
 
-    // 唱针头（小方块）
+    // 唱针头（小方块）- 在第二段臂的末端
+    final headWidth = armWidth * 2.5;
+    final headHeight = armWidth * 4;
+    // 计算头的位置和角度（基于第二段臂的角度）
+    final armAngle = math.atan2(arm2EndY - arm2StartY, arm2EndX - arm2StartX);
+
+    canvas.save();
+    canvas.translate(arm2EndX, arm2EndY);
+    canvas.rotate(armAngle + math.pi / 2); // 让头垂直于臂
+
     final headRect = Rect.fromCenter(
-      center: Offset(size.width / 2, armEndY + headHeight / 2),
+      center: Offset(0, headHeight / 2),
       width: headWidth,
       height: headHeight,
     );
@@ -1932,17 +1979,19 @@ class _TopTonearmPainter extends CustomPainter {
     // 唱针尖
     final needlePaint = Paint()
       ..color = Colors.grey[400]!
-      ..strokeWidth = 2
+      ..strokeWidth = 1.5
       ..strokeCap = StrokeCap.round;
     canvas.drawLine(
-      Offset(size.width / 2, armEndY + headHeight),
-      Offset(size.width / 2, armEndY + headHeight + 5),
+      Offset(0, headHeight),
+      Offset(0, headHeight + 4),
       needlePaint,
     );
+
+    canvas.restore();
   }
 
   @override
-  bool shouldRepaint(covariant _TopTonearmPainter oldDelegate) =>
+  bool shouldRepaint(covariant _CenterTonearmPainter oldDelegate) =>
       pivotSize != oldDelegate.pivotSize ||
       isDark != oldDelegate.isDark;
 }

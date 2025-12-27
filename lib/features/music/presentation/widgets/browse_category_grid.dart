@@ -9,11 +9,11 @@ enum MusicBrowseCategory {
   all('全部歌曲', Icons.queue_music_rounded, Color(0xFF1DB954)),
   favorites('我喜欢', Icons.favorite_rounded, Color(0xFFE91E63)),
   recent('最近播放', Icons.history_rounded, Color(0xFF2196F3)),
-  artists('艺术家', Icons.person_rounded, Color(0xFF9C27B0)),
+  artists('艺术家', Icons.mic_rounded, Color(0xFF9C27B0)),
   albums('专辑', Icons.album_rounded, Color(0xFFFF9800)),
-  genres('流派', Icons.category_rounded, Color(0xFFE91E63)),
-  years('年代', Icons.date_range_rounded, Color(0xFF00BCD4)),
-  folders('文件夹', Icons.folder_rounded, Color(0xFF795548));
+  genres('流派', Icons.library_music_rounded, Color(0xFFE91E63)),
+  years('年代', Icons.schedule_rounded, Color(0xFF00BCD4)),
+  folders('文件夹', Icons.folder_open_rounded, Color(0xFF795548));
 
   const MusicBrowseCategory(this.label, this.icon, this.color);
   final String label;

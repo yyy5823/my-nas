@@ -4256,7 +4256,347 @@ class _MusicListTile extends ConsumerWidget {
   }
 }
 
-/// 艺术家视图
+/// 分类详情页 - 通用的音乐列表页面
+/// 用于显示艺术家、流派、年代、文件夹下的所有歌曲
+class CategoryDetailPage extends ConsumerStatefulWidget {
+  const CategoryDetailPage({
+    required this.title,
+    required this.subtitle,
+    required this.tracks,
+    required this.icon,
+    required this.color,
+    this.coverWidget,
+    super.key,
+  });
+
+  final String title;
+  final String subtitle;
+  final List<MusicFileWithSource> tracks;
+  final IconData icon;
+  final Color color;
+  final Widget? coverWidget;
+
+  @override
+  ConsumerState<CategoryDetailPage> createState() => _CategoryDetailPageState();
+}
+
+class _CategoryDetailPageState extends ConsumerState<CategoryDetailPage> {
+  final _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Scaffold(
+      backgroundColor: isDark ? AppColors.darkBackground : Colors.grey[50],
+      body: Column(
+        children: [
+          // 顶部区域
+          _buildHeader(context, isDark),
+          // 播放控制
+          _buildPlayControls(context, isDark),
+          // 歌曲列表
+          Expanded(
+            child: widget.tracks.isEmpty
+                ? _buildEmptyState(isDark)
+                : ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.only(bottom: 80),
+                    itemCount: widget.tracks.length,
+                    itemBuilder: (context, index) => _ModernMusicTile(
+                      track: widget.tracks[index],
+                      index: index,
+                      isDark: isDark,
+                      allTracks: widget.tracks,
+                    ),
+                  ),
+          ),
+          const MiniPlayer(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeader(BuildContext context, bool isDark) => DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            widget.color.withValues(alpha: isDark ? 0.3 : 0.15),
+            isDark ? AppColors.darkBackground : Colors.grey[50]!,
+          ],
+        ),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(4, 8, 16, 16),
+          child: Column(
+            children: [
+              // 返回按钮行
+              Row(
+                children: [
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: Icon(
+                      Icons.arrow_back_rounded,
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                  const Spacer(),
+                ],
+              ),
+              const SizedBox(height: 8),
+              // 信息卡片
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Row(
+                  children: [
+                    // 图标/封面
+                    widget.coverWidget ??
+                        Container(
+                          width: 80,
+                          height: 80,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                widget.color,
+                                widget.color.withValues(alpha: 0.6),
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: widget.color.withValues(alpha: 0.3),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Icon(
+                            widget.icon,
+                            color: Colors.white,
+                            size: 36,
+                          ),
+                        ),
+                    const SizedBox(width: 16),
+                    // 标题信息
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.title,
+                            style: TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                              color: isDark ? Colors.white : Colors.black87,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            widget.subtitle,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: isDark ? Colors.grey[400] : Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+  Widget _buildPlayControls(BuildContext context, bool isDark) {
+    if (widget.tracks.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: _SpotifyPlayButton(
+              onPressed: () => _playAll(context),
+              icon: Icons.play_arrow_rounded,
+              label: '播放全部',
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: _SpotifyPlayButton(
+              onPressed: () => _shufflePlay(context),
+              icon: Icons.shuffle_rounded,
+              label: '随机播放',
+              isPrimary: false,
+              isDark: isDark,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(bool isDark) => Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            widget.icon,
+            size: 64,
+            color: isDark ? Colors.grey[700] : Colors.grey[400],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            '暂无歌曲',
+            style: TextStyle(
+              fontSize: 16,
+              color: isDark ? Colors.grey[500] : Colors.grey[600],
+            ),
+          ),
+        ],
+      ),
+    );
+
+  Future<void> _playAll(BuildContext context) async {
+    if (widget.tracks.isEmpty) return;
+
+    final connections = ref.read(activeConnectionsProvider);
+    final first = widget.tracks.first;
+    final connection = connections[first.sourceId];
+
+    if (connection == null || connection.status != SourceStatus.connected) {
+      if (context.mounted) {
+        context.showWarningToast('源未连接，请先连接到 NAS');
+      }
+      return;
+    }
+
+    try {
+      final url = await connection.adapter.fileSystem.getFileUrl(first.path);
+      final musicItem = MusicItem.fromFileItem(
+        first.file,
+        url,
+        sourceId: first.sourceId,
+        title: first.title,
+        artist: first.artist,
+        album: first.album,
+        durationMs: first.duration,
+        coverData: first.coverData,
+        coverUrl: first.coverFileUrl,
+      );
+
+      // 构建播放队列
+      final queue = <MusicItem>[];
+      for (final track in widget.tracks.take(100)) {
+        final conn = connections[track.sourceId];
+        if (conn == null || conn.status != SourceStatus.connected) continue;
+        final trackUrl = await conn.adapter.fileSystem.getFileUrl(track.path);
+        queue.add(MusicItem.fromFileItem(
+          track.file,
+          trackUrl,
+          sourceId: track.sourceId,
+          title: track.title,
+          artist: track.artist,
+          album: track.album,
+          durationMs: track.duration,
+          coverData: track.coverData,
+          coverUrl: track.coverFileUrl,
+        ));
+      }
+
+      ref.read(playQueueProvider.notifier).setQueue(queue);
+      await ref.read(musicPlayerControllerProvider.notifier).play(musicItem);
+
+      if (context.mounted) {
+        await MusicPlayerPage.open(context);
+      }
+    } on Exception catch (e) {
+      if (context.mounted) {
+        context.showErrorToast('播放失败: $e');
+      }
+    }
+  }
+
+  Future<void> _shufflePlay(BuildContext context) async {
+    if (widget.tracks.isEmpty) return;
+
+    final shuffled = List<MusicFileWithSource>.from(widget.tracks)..shuffle();
+    final connections = ref.read(activeConnectionsProvider);
+    final first = shuffled.first;
+    final connection = connections[first.sourceId];
+
+    if (connection == null || connection.status != SourceStatus.connected) {
+      if (context.mounted) {
+        context.showWarningToast('源未连接，请先连接到 NAS');
+      }
+      return;
+    }
+
+    try {
+      final url = await connection.adapter.fileSystem.getFileUrl(first.path);
+      final musicItem = MusicItem.fromFileItem(
+        first.file,
+        url,
+        sourceId: first.sourceId,
+        title: first.title,
+        artist: first.artist,
+        album: first.album,
+        durationMs: first.duration,
+        coverData: first.coverData,
+        coverUrl: first.coverFileUrl,
+      );
+
+      final queue = <MusicItem>[];
+      for (final track in shuffled.take(100)) {
+        final conn = connections[track.sourceId];
+        if (conn == null || conn.status != SourceStatus.connected) continue;
+        final trackUrl = await conn.adapter.fileSystem.getFileUrl(track.path);
+        queue.add(MusicItem.fromFileItem(
+          track.file,
+          trackUrl,
+          sourceId: track.sourceId,
+          title: track.title,
+          artist: track.artist,
+          album: track.album,
+          durationMs: track.duration,
+          coverData: track.coverData,
+          coverUrl: track.coverFileUrl,
+        ));
+      }
+
+      ref.read(playQueueProvider.notifier).setQueue(queue);
+      ref.read(musicPlayerControllerProvider.notifier).setPlayMode(PlayMode.shuffle);
+      await ref.read(musicPlayerControllerProvider.notifier).play(musicItem);
+
+      if (context.mounted) {
+        await MusicPlayerPage.open(context);
+      }
+    } on Exception catch (e) {
+      if (context.mounted) {
+        context.showErrorToast('播放失败: $e');
+      }
+    }
+  }
+}
+
+/// 艺术家视图 - 网格布局
 class _ArtistsView extends ConsumerWidget {
   const _ArtistsView({
     required this.tracks,
@@ -4268,7 +4608,7 @@ class _ArtistsView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // 按艺术家分组（使用元数据或从文件名解析）
+    // 按艺术家分组
     final artistMap = <String, List<MusicFileWithSource>>{};
     for (final track in tracks) {
       final artist = track.displayArtist;
@@ -4282,12 +4622,18 @@ class _ArtistsView extends ConsumerWidget {
       return _buildEmptyView('暂无艺术家', Icons.person_off_rounded, isDark);
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+    return GridView.builder(
+      padding: const EdgeInsets.all(16),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 12,
+        childAspectRatio: 0.9,
+      ),
       itemCount: artists.length,
       itemBuilder: (context, index) {
         final entry = artists[index];
-        return _ArtistTile(
+        return _ArtistCard(
           artistName: entry.key,
           tracks: entry.value,
           isDark: isDark,
@@ -4297,8 +4643,9 @@ class _ArtistsView extends ConsumerWidget {
   }
 }
 
-class _ArtistTile extends ConsumerWidget {
-  const _ArtistTile({
+/// 艺术家卡片 - 点击导航到详情页
+class _ArtistCard extends StatelessWidget {
+  const _ArtistCard({
     required this.artistName,
     required this.tracks,
     required this.isDark,
@@ -4309,63 +4656,129 @@ class _ArtistTile extends ConsumerWidget {
   final bool isDark;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) => Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      decoration: BoxDecoration(
-        color: isDark
-            ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
-            : Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isDark
-              ? AppColors.darkOutline.withValues(alpha: 0.2)
-              : Colors.grey.withValues(alpha: 0.2),
+  Widget build(BuildContext context) {
+    // 获取第一首有封面的歌曲作为艺术家封面
+    final trackWithCover = tracks.firstWhere(
+      (t) => t.hasCover,
+      orElse: () => tracks.first,
+    );
+
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute<void>(
+          builder: (_) => CategoryDetailPage(
+            title: artistName,
+            subtitle: '${tracks.length} 首歌曲',
+            tracks: tracks,
+            icon: Icons.person_rounded,
+            color: AppColors.primary,
+          ),
         ),
       ),
-      child: ExpansionTile(
-        leading: Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                AppColors.primary.withValues(alpha: 0.8),
-                AppColors.secondary.withValues(alpha: 0.8),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: isDark ? AppColors.darkSurfaceVariant : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
             ),
-            borderRadius: BorderRadius.circular(24),
-          ),
-          child: const Icon(Icons.person_rounded, color: Colors.white, size: 24),
+          ],
         ),
-        title: Text(
-          artistName,
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            color: isDark ? Colors.white : Colors.black87,
-          ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // 封面区域 - 圆形头像
+            Expanded(
+              flex: 3,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: !trackWithCover.hasCover
+                        ? LinearGradient(
+                            colors: [
+                              AppColors.primary.withValues(alpha: 0.8),
+                              AppColors.secondary.withValues(alpha: 0.8),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          )
+                        : null,
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.primary.withValues(alpha: 0.2),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: _buildCover(trackWithCover),
+                ),
+              ),
+            ),
+            // 信息区域
+            Expanded(
+              flex: 2,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      artistName,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                        color: isDark ? Colors.white : Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${tracks.length} 首歌曲',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDark ? Colors.grey[400] : Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
-        subtitle: Text(
-          '${tracks.length} 首歌曲',
-          style: TextStyle(
-            fontSize: 12,
-            color: isDark ? Colors.grey[400] : Colors.grey[600],
-          ),
-        ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        collapsedShape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        children: tracks.asMap().entries.map((entry) => _CompactMusicTile(
-            track: entry.value,
-            isDark: isDark,
-            allTracks: tracks,
-            trackIndex: entry.key,
-          )).toList(),
       ),
+    );
+  }
+
+  Widget _buildCover(MusicFileWithSource track) {
+    if (track.coverFile != null) {
+      return Image.file(
+        track.coverFile!,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => _buildDefaultCover(),
+      );
+    }
+    if (track.coverData != null) {
+      return Image.memory(
+        Uint8List.fromList(track.coverData!),
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => _buildDefaultCover(),
+      );
+    }
+    return _buildDefaultCover();
+  }
+
+  Widget _buildDefaultCover() => const Center(
+      child: Icon(Icons.person_rounded, size: 40, color: Colors.white),
     );
 }
 
@@ -4599,7 +5012,7 @@ class _AlbumCard extends ConsumerWidget {
   }
 }
 
-/// 文件夹视图
+/// 文件夹视图 - 列表布局
 class _FoldersView extends ConsumerWidget {
   const _FoldersView({
     required this.tracks,
@@ -4627,11 +5040,11 @@ class _FoldersView extends ConsumerWidget {
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
       itemCount: folders.length,
       itemBuilder: (context, index) {
         final entry = folders[index];
-        return _FolderTile(
+        return _FolderCard(
           folderName: entry.key,
           tracks: entry.value,
           isDark: isDark,
@@ -4641,8 +5054,9 @@ class _FoldersView extends ConsumerWidget {
   }
 }
 
-class _FolderTile extends ConsumerWidget {
-  const _FolderTile({
+/// 文件夹卡片 - 点击导航到详情页
+class _FolderCard extends StatelessWidget {
+  const _FolderCard({
     required this.folderName,
     required this.tracks,
     required this.isDark,
@@ -4653,60 +5067,84 @@ class _FolderTile extends ConsumerWidget {
   final bool isDark;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) => Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      decoration: BoxDecoration(
-        color: isDark
-            ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
-            : Colors.white,
+  Widget build(BuildContext context) => Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: isDark ? AppColors.darkSurfaceVariant : Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isDark
-              ? AppColors.darkOutline.withValues(alpha: 0.2)
-              : Colors.grey.withValues(alpha: 0.2),
-        ),
-      ),
-      child: ExpansionTile(
-        leading: Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            color: AppColors.fileAudio.withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute<void>(
+              builder: (_) => CategoryDetailPage(
+                title: folderName,
+                subtitle: '${tracks.length} 首歌曲',
+                tracks: tracks,
+                icon: Icons.folder_rounded,
+                color: AppColors.fileAudio,
+              ),
+            ),
           ),
-          child: Icon(Icons.folder_rounded, color: AppColors.fileAudio, size: 24),
-        ),
-        title: Text(
-          folderName,
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            color: isDark ? Colors.white : Colors.black87,
-          ),
-        ),
-        subtitle: Text(
-          '${tracks.length} 首歌曲',
-          style: TextStyle(
-            fontSize: 12,
-            color: isDark ? Colors.grey[400] : Colors.grey[600],
-          ),
-        ),
-        shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                // 文件夹图标
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: AppColors.fileAudio.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    Icons.folder_rounded,
+                    color: AppColors.fileAudio,
+                    size: 28,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                // 文件夹信息
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        folderName,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${tracks.length} 首歌曲',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: isDark ? Colors.grey[400] : Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // 箭头
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: isDark ? Colors.grey[600] : Colors.grey[400],
+                ),
+              ],
+            ),
+          ),
         ),
-        collapsedShape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        children: tracks.asMap().entries.map((entry) => _CompactMusicTile(
-            track: entry.value,
-            isDark: isDark,
-            allTracks: tracks,
-            trackIndex: entry.key,
-          )).toList(),
       ),
     );
 }
 
-/// 流派视图
+/// 流派视图 - 网格布局
 class _GenresView extends ConsumerWidget {
   const _GenresView({
     required this.tracks,
@@ -4735,18 +5173,24 @@ class _GenresView extends ConsumerWidget {
     }
 
     final genres = genreMap.entries.toList()
-      ..sort((a, b) => b.value.length.compareTo(a.value.length)); // 按歌曲数量排序
+      ..sort((a, b) => b.value.length.compareTo(a.value.length));
 
     if (genres.isEmpty) {
       return _buildEmptyView('暂无流派信息', Icons.category_outlined, isDark);
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+    return GridView.builder(
+      padding: const EdgeInsets.all(16),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 12,
+        childAspectRatio: 1.3,
+      ),
       itemCount: genres.length,
       itemBuilder: (context, index) {
         final entry = genres[index];
-        return _GenreTile(
+        return _GenreCard(
           genreName: entry.key,
           tracks: entry.value,
           isDark: isDark,
@@ -4773,8 +5217,9 @@ class _GenresView extends ConsumerWidget {
   }
 }
 
-class _GenreTile extends ConsumerWidget {
-  const _GenreTile({
+/// 流派卡片 - 点击导航到详情页
+class _GenreCard extends StatelessWidget {
+  const _GenreCard({
     required this.genreName,
     required this.tracks,
     required this.isDark,
@@ -4787,64 +5232,82 @@ class _GenreTile extends ConsumerWidget {
   final Color color;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) => Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      decoration: BoxDecoration(
-        color: isDark
-            ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
-            : Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isDark
-              ? AppColors.darkOutline.withValues(alpha: 0.2)
-              : Colors.grey.withValues(alpha: 0.2),
+  Widget build(BuildContext context) => GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute<void>(
+          builder: (_) => CategoryDetailPage(
+            title: genreName,
+            subtitle: '${tracks.length} 首歌曲',
+            tracks: tracks,
+            icon: Icons.category_rounded,
+            color: color,
+          ),
         ),
       ),
-      child: ExpansionTile(
-        leading: Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [color.withValues(alpha: 0.8), color.withValues(alpha: 0.4)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [color.withValues(alpha: 0.9), color.withValues(alpha: 0.6)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: color.withValues(alpha: 0.3),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
             ),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: const Icon(Icons.category_rounded, color: Colors.white, size: 24),
+          ],
         ),
-        title: Text(
-          genreName,
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            color: isDark ? Colors.white : Colors.black87,
-          ),
+        child: Stack(
+          children: [
+            // 装饰性图标
+            Positioned(
+              right: -10,
+              bottom: -10,
+              child: Icon(
+                Icons.category_rounded,
+                size: 60,
+                color: Colors.white.withValues(alpha: 0.15),
+              ),
+            ),
+            // 内容
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    genreName,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${tracks.length} 首歌曲',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.white.withValues(alpha: 0.8),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
-        subtitle: Text(
-          '${tracks.length} 首歌曲',
-          style: TextStyle(
-            fontSize: 12,
-            color: isDark ? Colors.grey[400] : Colors.grey[600],
-          ),
-        ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        collapsedShape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        children: tracks.asMap().entries.map((entry) => _CompactMusicTile(
-            track: entry.value,
-            isDark: isDark,
-            allTracks: tracks,
-            trackIndex: entry.key,
-          )).toList(),
       ),
     );
 }
 
-/// 年代视图
+/// 年代视图 - 网格布局
 class _YearsView extends ConsumerWidget {
   const _YearsView({
     required this.tracks,
@@ -4871,22 +5334,27 @@ class _YearsView extends ConsumerWidget {
 
     final years = yearMap.entries.toList()
       ..sort((a, b) {
-        // 未知年代放最后
         if (a.key == '未知年代') return 1;
         if (b.key == '未知年代') return -1;
-        return b.key.compareTo(a.key); // 按年代倒序
+        return b.key.compareTo(a.key);
       });
 
     if (years.isEmpty) {
       return _buildEmptyView('暂无年代信息', Icons.date_range_rounded, isDark);
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+    return GridView.builder(
+      padding: const EdgeInsets.all(16),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 12,
+        childAspectRatio: 1.3,
+      ),
       itemCount: years.length,
       itemBuilder: (context, index) {
         final entry = years[index];
-        return _YearTile(
+        return _YearCard(
           yearLabel: entry.key,
           tracks: entry.value,
           isDark: isDark,
@@ -4918,8 +5386,9 @@ class _YearsView extends ConsumerWidget {
   }
 }
 
-class _YearTile extends ConsumerWidget {
-  const _YearTile({
+/// 年代卡片 - 点击导航到详情页
+class _YearCard extends StatelessWidget {
+  const _YearCard({
     required this.yearLabel,
     required this.tracks,
     required this.isDark,
@@ -4932,70 +5401,92 @@ class _YearTile extends ConsumerWidget {
   final Color color;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) => Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      decoration: BoxDecoration(
-        color: isDark
-            ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
-            : Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isDark
-              ? AppColors.darkOutline.withValues(alpha: 0.2)
-              : Colors.grey.withValues(alpha: 0.2),
+  Widget build(BuildContext context) {
+    final displayTitle = yearLabel == '未知年代' ? yearLabel : '$yearLabel 年代';
+    final displayYear = yearLabel == '未知年代' ? '?' : yearLabel.replaceAll('s', '');
+
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute<void>(
+          builder: (_) => CategoryDetailPage(
+            title: displayTitle,
+            subtitle: '${tracks.length} 首歌曲',
+            tracks: tracks,
+            icon: Icons.date_range_rounded,
+            color: color,
+          ),
         ),
       ),
-      child: ExpansionTile(
-        leading: Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [color.withValues(alpha: 0.8), color.withValues(alpha: 0.4)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(12),
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [color.withValues(alpha: 0.9), color.withValues(alpha: 0.6)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
-          child: Center(
-            child: Text(
-              yearLabel.replaceAll('s', ''),
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: color.withValues(alpha: 0.3),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Stack(
+          children: [
+            // 背景年份
+            Positioned(
+              right: 8,
+              bottom: -10,
+              child: Text(
+                displayYear,
+                style: TextStyle(
+                  fontSize: 48,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white.withValues(alpha: 0.15),
+                ),
               ),
             ),
-          ),
+            // 内容
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      displayYear,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${tracks.length} 首歌曲',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.white.withValues(alpha: 0.8),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
-        title: Text(
-          yearLabel == '未知年代' ? yearLabel : '$yearLabel 年代',
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            color: isDark ? Colors.white : Colors.black87,
-          ),
-        ),
-        subtitle: Text(
-          '${tracks.length} 首歌曲',
-          style: TextStyle(
-            fontSize: 12,
-            color: isDark ? Colors.grey[400] : Colors.grey[600],
-          ),
-        ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        collapsedShape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        children: tracks.asMap().entries.map((entry) => _CompactMusicTile(
-            track: entry.value,
-            isDark: isDark,
-            allTracks: tracks,
-            trackIndex: entry.key,
-          )).toList(),
       ),
     );
+  }
 }
 
 /// 收藏视图

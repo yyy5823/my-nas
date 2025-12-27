@@ -334,7 +334,7 @@ class _MusicHomeContentState extends ConsumerState<MusicHomeContent> {
                   ),
                 ),
                 _buildSidebarItem(
-                  icon: Icons.person_rounded,
+                  icon: Icons.mic_rounded,
                   label: '艺术家',
                   count: widget.artistCount,
                   color: const Color(0xFF9C27B0),
@@ -350,7 +350,7 @@ class _MusicHomeContentState extends ConsumerState<MusicHomeContent> {
                   onTap: () => widget.onCategoryTap(MusicCategory.albums),
                 ),
                 _buildSidebarItem(
-                  icon: Icons.category_rounded,
+                  icon: Icons.library_music_rounded,
                   label: '流派',
                   count: widget.genreCount,
                   color: const Color(0xFFE91E63),
@@ -358,7 +358,7 @@ class _MusicHomeContentState extends ConsumerState<MusicHomeContent> {
                   onTap: () => widget.onCategoryTap(MusicCategory.genres),
                 ),
                 _buildSidebarItem(
-                  icon: Icons.folder_rounded,
+                  icon: Icons.folder_open_rounded,
                   label: '文件夹',
                   count: widget.folderCount,
                   color: const Color(0xFF795548),
@@ -707,7 +707,7 @@ class _PlaylistsSection extends ConsumerWidget {
   }
 }
 
-/// 现代化歌单卡片
+/// 现代化歌单卡片 - 与其他卡片风格统一
 class _ModernPlaylistCard extends StatelessWidget {
   const _ModernPlaylistCard({
     required this.playlist,
@@ -726,82 +726,93 @@ class _ModernPlaylistCard extends StatelessWidget {
         width: 130,
         height: 160,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: gradientColors,
-          ),
+          borderRadius: BorderRadius.circular(16),
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.08)
+              : Colors.white,
           boxShadow: [
             BoxShadow(
-              color: gradientColors[0].withValues(alpha: 0.35),
-              blurRadius: 14,
-              offset: const Offset(0, 5),
+              color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.1),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
             ),
           ],
         ),
-        child: Stack(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 装饰性大图标
-            Positioned(
-              right: -20,
-              top: -20,
-              child: Icon(
-                Icons.playlist_play_rounded,
-                size: 90,
-                color: Colors.white.withValues(alpha: 0.12),
+            // 封面区域 - 渐变色
+            Container(
+              height: 90,
+              decoration: BoxDecoration(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: gradientColors,
+                ),
               ),
-            ),
-            // 内容
-            Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Stack(
                 children: [
-                  // 图标
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.25),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(
-                      Icons.playlist_play_rounded,
-                      color: Colors.white,
-                      size: 26,
+                  // 装饰性图标
+                  Positioned(
+                    right: -10,
+                    bottom: -10,
+                    child: Icon(
+                      Icons.queue_music_rounded,
+                      size: 60,
+                      color: Colors.white.withValues(alpha: 0.15),
                     ),
                   ),
-                  const Spacer(),
-                  // 歌单名称
-                  Text(
-                    playlist.name,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 4),
-                  // 歌曲数量
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      '${playlist.trackPaths.length} 首',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.white.withValues(alpha: 0.9),
+                  // 中心图标
+                  Center(
+                    child: Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.25),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.queue_music_rounded,
+                        color: Colors.white,
+                        size: 24,
                       ),
                     ),
                   ),
                 ],
+              ),
+            ),
+            // 信息区域
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // 歌单名称
+                    Text(
+                      playlist.name,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? Colors.white : Colors.black87,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    // 歌曲数量
+                    Text(
+                      '${playlist.trackPaths.length} 首歌曲',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isDark ? Colors.grey[400] : Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
