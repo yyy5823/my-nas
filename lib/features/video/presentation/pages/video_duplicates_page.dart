@@ -390,7 +390,7 @@ class _VideoDuplicatesPageState extends ConsumerState<VideoDuplicatesPage> {
                       decoration: BoxDecoration(
                         color: isSelected
                             ? AppColors.primary.withValues(alpha: 0.15)
-                            : (isDark ? Colors.grey[700] : Colors.grey[300]),
+                            : (isDark ? AppColors.darkOutline : AppColors.lightOutline),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(

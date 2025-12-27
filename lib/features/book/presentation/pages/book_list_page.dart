@@ -2003,7 +2003,7 @@ class _BookCacheInfoBar extends ConsumerWidget {
           color: isDark ? Colors.grey[900] : Colors.grey[100],
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: isDark ? Colors.grey[800]! : Colors.grey[300]!,
+            color: isDark ? AppColors.darkOutline : AppColors.lightOutline,
           ),
         ),
         child: Row(

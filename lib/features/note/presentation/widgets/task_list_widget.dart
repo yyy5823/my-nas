@@ -293,10 +293,10 @@ class _TaskTile extends StatelessWidget {
     );
 
   Color _getBorderColor() {
-    if (task.isOverdue) return Colors.red.withValues(alpha: 0.5);
-    if (task.priority == 2) return Colors.red.withValues(alpha: 0.4);
+    if (task.isOverdue) return AppColors.error.withValues(alpha: 0.5);
+    if (task.priority == 2) return AppColors.error.withValues(alpha: 0.4);
     if (task.priority == 1) return Colors.orange.withValues(alpha: 0.4);
-    if (task.isCompleted) return Colors.green.withValues(alpha: 0.3);
+    if (task.isCompleted) return AppColors.success.withValues(alpha: 0.3);
     return isDark
         ? AppColors.darkOutline.withValues(alpha: 0.2)
         : Colors.grey.shade200;
@@ -308,15 +308,15 @@ class _TaskTile extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: task.isCompleted
-            ? Colors.green
+            ? AppColors.success
             : (task.isOverdue
-                ? Colors.red.withValues(alpha: 0.1)
+                ? AppColors.error.withValues(alpha: 0.1)
                 : (isDark ? AppColors.darkSurfaceVariant : Colors.grey.shade100)),
         border: task.isCompleted
             ? null
             : Border.all(
                 color: task.isOverdue
-                    ? Colors.red
+                    ? AppColors.error
                     : (isDark ? AppColors.darkOutline : Colors.grey.shade400),
                 width: 2,
               ),
@@ -332,7 +332,7 @@ class _TaskTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: isUrgent
-            ? Colors.red.withValues(alpha: 0.1)
+            ? AppColors.error.withValues(alpha: 0.1)
             : Colors.orange.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(4),
       ),
@@ -342,7 +342,7 @@ class _TaskTile extends StatelessWidget {
           Icon(
             isUrgent ? Icons.priority_high_rounded : Icons.flag_rounded,
             size: 12,
-            color: isUrgent ? Colors.red : Colors.orange,
+            color: isUrgent ? AppColors.error : Colors.orange,
           ),
           const SizedBox(width: 2),
           Text(
@@ -350,7 +350,7 @@ class _TaskTile extends StatelessWidget {
             style: TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.bold,
-              color: isUrgent ? Colors.red : Colors.orange,
+              color: isUrgent ? AppColors.error : Colors.orange,
             ),
           ),
         ],
@@ -377,7 +377,7 @@ class _TaskTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: isOverdue
-            ? Colors.red.withValues(alpha: 0.1)
+            ? AppColors.error.withValues(alpha: 0.1)
             : (isToday
                 ? Colors.orange.withValues(alpha: 0.1)
                 : Colors.grey.withValues(alpha: 0.1)),
@@ -390,7 +390,7 @@ class _TaskTile extends StatelessWidget {
             Icons.schedule_rounded,
             size: 12,
             color: isOverdue
-                ? Colors.red
+                ? AppColors.error
                 : (isToday ? Colors.orange : Colors.grey),
           ),
           const SizedBox(width: 4),
@@ -400,7 +400,7 @@ class _TaskTile extends StatelessWidget {
               fontSize: 11,
               fontWeight: FontWeight.w500,
               color: isOverdue
-                  ? Colors.red
+                  ? AppColors.error
                   : (isToday ? Colors.orange : Colors.grey),
             ),
           ),

@@ -508,7 +508,7 @@ class _MarkdownPreview extends StatelessWidget {
             Icon(
               isCompleted ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
               size: 20,
-              color: isCompleted ? Colors.green : (isDark ? AppColors.darkOnSurfaceVariant : null),
+              color: isCompleted ? AppColors.success : (isDark ? AppColors.darkOnSurfaceVariant : null),
             ),
             const SizedBox(width: 8),
             Expanded(

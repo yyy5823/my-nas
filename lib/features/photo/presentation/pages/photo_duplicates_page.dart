@@ -766,7 +766,7 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
                     decoration: BoxDecoration(
                       color: isSelected
                           ? AppColors.primary.withValues(alpha: 0.15)
-                          : (isDark ? Colors.grey[700] : Colors.grey[300]),
+                          : (isDark ? AppColors.darkOutline : AppColors.lightOutline),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
@@ -823,9 +823,9 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
                             ? Icons.error
                             : Icons.cancel,
                     color: progress?.status == HashStatus.completed
-                        ? Colors.green
+                        ? AppColors.success
                         : progress?.status == HashStatus.error
-                            ? Colors.red
+                            ? AppColors.error
                             : Colors.orange,
                   ),
                 const SizedBox(width: 12),
@@ -1281,7 +1281,7 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(8),
                           border: isSelected
-                              ? Border.all(color: Colors.red, width: 3)
+                              ? Border.all(color: AppColors.error, width: 3)
                               : null,
                         ),
                         child: ClipRRect(
@@ -1420,7 +1420,7 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
                       Icon(
                         isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
                         size: 16,
-                        color: isSelected ? Colors.red : Colors.grey,
+                        color: isSelected ? AppColors.error : Colors.grey,
                       ),
                       const SizedBox(width: 8),
                       Expanded(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/media_tracking/presentation/providers/trakt_provider.dart';
 import 'package:my_nas/service_adapters/trakt/api/trakt_api.dart';
 import 'package:my_nas/service_adapters/trakt/trakt_config.dart';
@@ -123,18 +124,18 @@ class _TraktConnectionPageState extends ConsumerState<TraktConnectionPage> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
-                      color: Colors.green.withValues(alpha: 0.1),
+                      color: AppColors.success.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.check_circle, size: 16, color: Colors.green[700]),
+                        Icon(Icons.check_circle, size: 16, color: AppColors.success),
                         const SizedBox(width: 6),
                         Text(
                           '已连接',
                           style: TextStyle(
-                            color: Colors.green[700],
+                            color: AppColors.success,
                             fontWeight: FontWeight.w500,
                           ),
                         ),

@@ -1121,7 +1121,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: completed == total
-            ? Colors.green.withValues(alpha: 0.1)
+            ? AppColors.success.withValues(alpha: 0.1)
             : Colors.orange.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
       ),
@@ -1135,7 +1135,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
               value: progress,
               strokeWidth: 2,
               backgroundColor: Colors.grey.withValues(alpha: 0.2),
-              color: completed == total ? Colors.green : Colors.orange,
+              color: completed == total ? AppColors.success : Colors.orange,
             ),
           ),
           const SizedBox(width: 8),
@@ -1144,7 +1144,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: completed == total ? Colors.green : Colors.orange,
+              color: completed == total ? AppColors.success : Colors.orange,
             ),
           ),
         ],

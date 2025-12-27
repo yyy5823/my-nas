@@ -492,7 +492,7 @@ class _LocalEpisodeCard extends StatelessWidget {
                         child: LinearProgressIndicator(
                           value: watchProgress,
                           minHeight: 3,
-                          backgroundColor: isDark ? Colors.grey[700] : Colors.grey[300],
+                          backgroundColor: isDark ? AppColors.darkOutline : AppColors.lightOutline,
                           valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
                         ),
                       ),

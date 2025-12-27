@@ -1325,7 +1325,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
           end: Alignment.bottomCenter,
           colors: isDark
               ? [const Color(0xFF1A2E1A), AppColors.darkBackground]
-              : [Colors.green.withValues(alpha: 0.08), Colors.grey[50]!],
+              : [AppColors.success.withValues(alpha: 0.08), Colors.grey[50]!],
         ),
       ),
       child: SafeArea(
@@ -1419,7 +1419,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
                     Icon(
                       Icons.photo_library_rounded,
                       size: 14,
-                      color: Colors.green,
+                      color: AppColors.success,
                     ),
                     const SizedBox(width: 4),
                     Text(
@@ -1599,7 +1599,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
               color: isDark ? Colors.grey[900] : Colors.grey[100],
               border: Border(
                 bottom: BorderSide(
-                  color: isDark ? Colors.grey[800]! : Colors.grey[300]!,
+                  color: isDark ? AppColors.darkOutline : AppColors.lightOutline,
                 ),
               ),
             ),
@@ -2049,7 +2049,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
     bool isDestructive = false,
   }) {
     final color = isDestructive
-        ? Colors.red
+        ? AppColors.error
         : (isDark ? Colors.white : AppColors.primary);
 
     return InkWell(

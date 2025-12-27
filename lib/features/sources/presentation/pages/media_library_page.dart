@@ -800,69 +800,80 @@ class _MediaTypeTab extends ConsumerWidget {
     var copiedBytes = 0;
     var totalBytes = 0;
     StateSetter? dialogSetState;
+    var dialogShowing = false;
+
+    // 用于关闭对话框的方法
+    void closeDialog() {
+      if (dialogShowing && context.mounted) {
+        dialogShowing = false;
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+    }
 
     try {
-      // 显示进度对话框
-      if (context.mounted) {
-        unawaited(showDialog<void>(
-          context: context,
-          barrierDismissible: false,
-          builder: (dialogContext) => StatefulBuilder(
-            builder: (context, setState) {
-              dialogSetState = setState;
-              return Center(
-                child: Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (totalFiles > 0) ...[
-                          // 文件进度
-                          Text(
-                            '正在导入 ($currentFile/$totalFiles)',
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            currentFileName,
-                            style: const TextStyle(fontSize: 12, color: Colors.grey),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 16),
-                          // 字节进度条
-                          if (totalBytes > 0) ...[
-                            LinearProgressIndicator(
-                              value: copiedBytes / totalBytes,
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              '${_formatBytes(copiedBytes)} / ${_formatBytes(totalBytes)}',
-                              style: const TextStyle(fontSize: 12, color: Colors.grey),
-                            ),
-                          ] else
-                            const CircularProgressIndicator(),
-                        ] else ...[
-                          const CircularProgressIndicator(),
-                          const SizedBox(height: 16),
-                          const Text('正在选择文件...'),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-        ));
-      }
-
-      // 导入文件
+      // 导入文件（文件选择器打开时不显示进度对话框）
       final importedFiles = await FileImportService.instance.importFiles(
         type: importType,
         allowMultiple: true,
         onProgress: (current, total, fileName, copied, fileSize) {
+          // 首次收到进度时显示对话框
+          if (!dialogShowing && context.mounted) {
+            dialogShowing = true;
+            unawaited(showDialog<void>(
+              context: context,
+              barrierDismissible: false,
+              builder: (dialogContext) => StatefulBuilder(
+                builder: (ctx, setState) {
+                  dialogSetState = setState;
+                  return Center(
+                    child: Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // 文件进度
+                            Text(
+                              '正在导入 ($currentFile/$totalFiles)',
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 8),
+                            SizedBox(
+                              width: 200,
+                              child: Text(
+                                currentFileName,
+                                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            // 字节进度条
+                            if (totalBytes > 0) ...[
+                              SizedBox(
+                                width: 200,
+                                child: LinearProgressIndicator(
+                                  value: copiedBytes / totalBytes,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                '${_formatBytes(copiedBytes)} / ${_formatBytes(totalBytes)}',
+                                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                              ),
+                            ] else
+                              const CircularProgressIndicator(),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ));
+          }
+
+          // 更新进度状态
           currentFile = current;
           totalFiles = total;
           currentFileName = fileName;
@@ -873,9 +884,7 @@ class _MediaTypeTab extends ConsumerWidget {
       );
 
       // 关闭加载对话框
-      if (context.mounted) {
-        Navigator.pop(context);
-      }
+      closeDialog();
 
       if (importedFiles.isEmpty) {
         if (context.mounted) {
@@ -892,9 +901,7 @@ class _MediaTypeTab extends ConsumerWidget {
       }
     } on Exception catch (e, st) {
       // 关闭加载对话框（如果还在显示）
-      if (context.mounted) {
-        Navigator.of(context).popUntil((route) => route.isFirst || route.settings.name != null);
-      }
+      closeDialog();
 
       logger.e('导入文件失败', e, st);
       if (context.mounted) {
@@ -999,6 +1006,8 @@ class _MediaTypeTab extends ConsumerWidget {
   }
 
   /// 自动扫描新添加的路径
+  ///
+  /// 使用 scanSinglePath 只扫描新添加的路径，不会触发其他路径的扫描
   void _autoScanPath(
     WidgetRef ref,
     MediaType type,
@@ -1030,21 +1039,25 @@ class _MediaTypeTab extends ConsumerWidget {
           }
         }));
       case MediaType.music:
+        // 使用 scanSinglePath 只扫描新添加的路径，不触发其他路径扫描
         unawaited(ref
             .read(musicListProvider.notifier)
-            .loadMusic(forceRefresh: true));
+            .scanSinglePath(path: path, connections: connections));
       case MediaType.photo:
+        // 使用 scanSinglePath 只扫描新添加的路径
         unawaited(ref
             .read(photoListProvider.notifier)
-            .loadPhotos(forceRefresh: true));
+            .scanSinglePath(path: path, connections: connections));
       case MediaType.comic:
+        // 使用 scanSinglePath 只扫描新添加的路径
         unawaited(ref
             .read(comicListProvider.notifier)
-            .loadComics(forceRefresh: true));
+            .scanSinglePath(path: path, connections: connections));
       case MediaType.book:
+        // 使用 scanSinglePath 只扫描新添加的路径
         unawaited(ref
             .read(bookListProvider.notifier)
-            .loadBooks(forceRefresh: true));
+            .scanSinglePath(path: path, connections: connections));
       case MediaType.note:
         break;
     }

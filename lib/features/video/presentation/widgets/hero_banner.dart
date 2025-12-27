@@ -548,7 +548,7 @@ class _CompactHeroBannerState extends State<CompactHeroBanner> {
                 decoration: BoxDecoration(
                   color: index == _currentPage
                       ? AppColors.primary
-                      : (isDark ? Colors.grey[700] : Colors.grey[300]),
+                      : (isDark ? AppColors.darkOutline : AppColors.lightOutline),
                   borderRadius: BorderRadius.circular(3),
                 ),
               ),

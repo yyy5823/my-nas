@@ -1731,7 +1731,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               child: CircularProgressIndicator(
                 value: progress,
                 strokeWidth: 2,
-                backgroundColor: isDark ? Colors.grey[700] : Colors.grey[300],
+                backgroundColor: isDark ? AppColors.darkOutline : AppColors.lightOutline,
                 valueColor: const AlwaysStoppedAnimation<Color>(Colors.orange),
               ),
             ),
@@ -1880,7 +1880,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               color: isDark ? Colors.grey[900] : Colors.grey[100],
               border: Border(
                 bottom: BorderSide(
-                  color: isDark ? Colors.grey[800]! : Colors.grey[300]!,
+                  color: isDark ? AppColors.darkOutline : AppColors.lightOutline,
                 ),
               ),
             ),
@@ -3070,12 +3070,12 @@ class _ContinueWatchingSection extends ConsumerWidget {
                     Container(
                       padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
-                        color: Colors.red.withValues(alpha: 0.15),
+                        color: AppColors.error.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: const Icon(
                         Icons.play_circle_rounded,
-                        color: Colors.red,
+                        color: AppColors.error,
                         size: 18,
                       ),
                     ),
@@ -3188,7 +3188,7 @@ class _ContinueWatchingCard extends ConsumerWidget {
                           child: FractionallySizedBox(
                             alignment: Alignment.centerLeft,
                             widthFactor: item.progressPercent.clamp(0.0, 1.0),
-                            child: Container(color: Colors.red),
+                            child: Container(color: AppColors.error),
                           ),
                         ),
                       ),
@@ -3745,7 +3745,7 @@ class _SkeletonCategoryRow extends StatelessWidget {
     final effectiveIconColor = iconColor ?? AppColors.primary;
     const cardWidth = 130.0;
     const cardHeight = 195.0;
-    final shimmerBaseColor = isDark ? Colors.grey[800]! : Colors.grey[300]!;
+    final shimmerBaseColor = isDark ? AppColors.darkOutline : AppColors.lightOutline;
     final shimmerHighlightColor = isDark ? Colors.grey[700]! : Colors.grey[100]!;
 
     return Column(
@@ -5170,7 +5170,7 @@ class _CategoryFullPageState extends ConsumerState<_CategoryFullPage> {
         color: isDark ? Colors.black26 : Colors.grey[100],
         border: Border(
           bottom: BorderSide(
-            color: isDark ? Colors.grey[800]! : Colors.grey[300]!,
+            color: isDark ? AppColors.darkOutline : AppColors.lightOutline,
             width: 0.5,
           ),
         ),
@@ -6199,7 +6199,7 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
                     width: 8,
                     height: 8,
                     decoration: BoxDecoration(
-                      color: Colors.red,
+                      color: AppColors.error,
                       shape: BoxShape.circle,
                     ),
                   ),
@@ -6971,7 +6971,7 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
                     width: 8,
                     height: 8,
                     decoration: BoxDecoration(
-                      color: Colors.red,
+                      color: AppColors.error,
                       shape: BoxShape.circle,
                     ),
                   ),

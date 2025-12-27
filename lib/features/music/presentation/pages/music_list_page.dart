@@ -2260,7 +2260,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
               color: isDark ? Colors.grey[900] : Colors.grey[100],
               border: Border(
                 bottom: BorderSide(
-                  color: isDark ? Colors.grey[800]! : Colors.grey[300]!,
+                  color: isDark ? AppColors.darkOutline : AppColors.lightOutline,
                 ),
               ),
             ),
@@ -2874,7 +2874,7 @@ class _AllSongsPageState extends ConsumerState<AllSongsPage> {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: isDark ? Colors.grey[700] : Colors.grey[300],
+                color: isDark ? AppColors.darkOutline : AppColors.lightOutline,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -3369,7 +3369,7 @@ class _AllSongsContentState extends ConsumerState<_AllSongsContent> {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: widget.isDark ? Colors.grey[700] : Colors.grey[300],
+                color: widget.isDark ? AppColors.darkOutline : AppColors.lightOutline,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),

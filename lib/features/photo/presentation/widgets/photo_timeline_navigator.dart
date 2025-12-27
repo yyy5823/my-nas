@@ -532,7 +532,7 @@ class TimelineFilterBottomSheet extends ConsumerWidget {
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: isDark ? Colors.grey[700] : Colors.grey[300],
+              color: isDark ? AppColors.darkOutline : AppColors.lightOutline,
               borderRadius: BorderRadius.circular(2),
             ),
           ),

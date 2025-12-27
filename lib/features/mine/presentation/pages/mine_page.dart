@@ -243,7 +243,7 @@ class MinePage extends ConsumerWidget {
                       width: 8,
                       height: 8,
                       decoration: BoxDecoration(
-                        color: connectedCount > 0 ? Colors.green : Colors.grey,
+                        color: connectedCount > 0 ? AppColors.success : Colors.grey,
                         shape: BoxShape.circle,
                       ),
                     ),
@@ -429,7 +429,7 @@ class MinePage extends ConsumerWidget {
     final statusColor = connectedCount == 0
         ? AppColors.warning
         : connectedCount == totalCount
-            ? Colors.green
+            ? AppColors.success
             : AppColors.accent;
 
     return Material(
@@ -1022,7 +1022,7 @@ class _VideoScraperSourcesTile extends ConsumerWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: Colors.green.withValues(alpha: 0.12),
+                        color: AppColors.success.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
@@ -1030,7 +1030,7 @@ class _VideoScraperSourcesTile extends ConsumerWidget {
                         style: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: Colors.green,
+                          color: AppColors.success,
                         ),
                       ),
                     )
@@ -1139,12 +1139,12 @@ class _SubtitleSourcesTile extends ConsumerWidget {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: Colors.green.withValues(alpha: 0.12),
+                  color: AppColors.success.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(
                   Icons.subtitles_rounded,
-                  color: Colors.green,
+                  color: AppColors.success,
                   size: 20,
                 ),
               ),
@@ -1176,7 +1176,7 @@ class _SubtitleSourcesTile extends ConsumerWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Colors.green.withValues(alpha: 0.12),
+                    color: AppColors.success.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
@@ -1184,7 +1184,7 @@ class _SubtitleSourcesTile extends ConsumerWidget {
                     style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: Colors.green,
+                      color: AppColors.success,
                     ),
                   ),
                 )
@@ -1272,7 +1272,7 @@ class _MusicScraperSourcesTile extends ConsumerWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Colors.green.withValues(alpha: 0.12),
+                    color: AppColors.success.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
@@ -1280,7 +1280,7 @@ class _MusicScraperSourcesTile extends ConsumerWidget {
                     style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: Colors.green,
+                      color: AppColors.success,
                     ),
                   ),
                 )
