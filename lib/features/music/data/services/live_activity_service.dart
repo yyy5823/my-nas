@@ -217,9 +217,10 @@ class LiveActivityService {
       // 使用自定义 Method Channel 更新
       await _channel.invokeMethod('updateActivity', {'data': activityData});
 
-      // 仅在状态变化时记录日志，避免日志过多
-      if (kDebugMode && position.inSeconds % 10 == 0) {
-        logger.d('LiveActivity: 更新状态 - isPlaying=$isPlaying, position=${position.inSeconds}s');
+      // 每5秒记录一次日志，便于调试
+      if (kDebugMode && position.inSeconds % 5 == 0) {
+        final progress = activityData['progress'] as double;
+        logger.d('LiveActivity: 更新状态 - isPlaying=$isPlaying, position=${position.inSeconds}s, progress=${progress.toStringAsFixed(3)}');
       }
     } on PlatformException catch (e, stackTrace) {
       logger.e('LiveActivity: 更新失败 (PlatformException)', e, stackTrace);

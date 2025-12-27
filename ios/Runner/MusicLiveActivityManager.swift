@@ -202,37 +202,60 @@ class MusicLiveActivityManager {
             return
         }
 
-        // 1. 先更新 UserDefaults 中的数据并确保同步
+        // 1. 先更新 UserDefaults 中的数据
         saveDataToDefaults(data: data, prefix: activityUUID)
 
-        // 2. 确保 UserDefaults 已同步到磁盘
+        // 2. 强制写入磁盘（synchronize 已废弃，但仍然有效）
+        // 在 iOS 12+ 上，系统会自动同步，但我们仍然调用以确保立即同步
         sharedDefaults?.synchronize()
 
-        // 3. 使用唯一的时间戳确保每次更新都被识别为新状态
-        let timestamp = Date().timeIntervalSince1970 * 1000
+        // 3. 额外：通过重新读取来确保数据已写入
+        if let defaults = sharedDefaults {
+            let progressKey = "\(activityUUID)_progress"
+            let savedProgress = defaults.double(forKey: progressKey)
+            let isPlayingKey = "\(activityUUID)_isPlaying"
+            let savedIsPlaying = defaults.bool(forKey: isPlayingKey)
+            print("MusicLiveActivityManager: Verified saved data - progress: \(savedProgress), isPlaying: \(savedIsPlaying)")
+        }
 
-        // 4. 找到当前活动并更新
-        Task {
+        // 4. 使用纳秒级时间戳确保每次更新都是唯一的
+        let timestamp = Date().timeIntervalSince1970 * 1_000_000  // 微秒级
+
+        // 5. 找到当前活动并更新
+        Task { @MainActor in
             let activities = Activity<LiveActivitiesAppAttributes>.activities
+            print("MusicLiveActivityManager: Found \(activities.count) activities, looking for: \(activityId)")
+
             guard let activity = activities.first(where: { $0.id == activityId }) else {
                 print("MusicLiveActivityManager: Activity not found: \(activityId)")
+                // 尝试使用第一个活动
+                if let firstActivity = activities.first {
+                    print("MusicLiveActivityManager: Using first available activity instead: \(firstActivity.id)")
+                    await updateActivityInstance(firstActivity, timestamp: timestamp, dataKeys: Array(data.keys))
+                }
                 return
             }
 
-            // ActivityKit 会比较 ContentState，如果相同则不会触发 Widget 刷新
-            // 使用高精度时间戳（毫秒级）确保每次更新都是唯一的
-            let contentState = LiveActivitiesAppAttributes.ContentState(appGroupId: appGroupId, updateTimestamp: timestamp)
+            await updateActivityInstance(activity, timestamp: timestamp, dataKeys: Array(data.keys))
+        }
+    }
 
-            if #available(iOS 16.2, *) {
-                // iOS 16.2+ 使用 ActivityContent，可以设置 staleDate
-                let activityContent = ActivityContent(state: contentState, staleDate: nil)
-                await activity.update(activityContent)
-                print("MusicLiveActivityManager: Activity updated with iOS 16.2+ API, timestamp: \(timestamp), data keys: \(data.keys)")
-            } else {
-                // iOS 16.1 使用旧 API
-                await activity.update(using: contentState)
-                print("MusicLiveActivityManager: Activity updated with iOS 16.1 API, timestamp: \(timestamp)")
-            }
+    /// 更新活动实例
+    @MainActor
+    private func updateActivityInstance(_ activity: Activity<LiveActivitiesAppAttributes>, timestamp: Double, dataKeys: [String]) async {
+        // ActivityKit 会比较 ContentState，如果相同则不会触发 Widget 刷新
+        // 使用高精度时间戳确保每次更新都是唯一的
+        let contentState = LiveActivitiesAppAttributes.ContentState(appGroupId: appGroupId, updateTimestamp: timestamp)
+
+        if #available(iOS 16.2, *) {
+            // iOS 16.2+ 使用 ActivityContent，设置 staleDate 为 nil 表示内容永不过期
+            let activityContent = ActivityContent(state: contentState, staleDate: nil)
+            await activity.update(activityContent)
+            print("MusicLiveActivityManager: Activity updated (iOS 16.2+), timestamp: \(timestamp), keys: \(dataKeys)")
+        } else {
+            // iOS 16.1 使用旧 API
+            await activity.update(using: contentState)
+            print("MusicLiveActivityManager: Activity updated (iOS 16.1), timestamp: \(timestamp)")
         }
     }
 

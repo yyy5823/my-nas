@@ -71,7 +71,18 @@ private let _sharedDefault: UserDefaults = {
 /// 每次调用都会 synchronize() 确保获取最新数据
 /// 这对于 Widget Extension 从主 App 读取更新后的数据很重要
 func getSharedDefaults() -> UserDefaults {
+    // 强制从磁盘重新读取（synchronize 在 iOS 12+ 已废弃但仍有效）
     _sharedDefault.synchronize()
+
+    #if DEBUG
+    // 调试：打印所有以 UUID 开头的键值
+    let allKeys = _sharedDefault.dictionaryRepresentation().keys
+    let musicKeys = allKeys.filter { $0.contains("isPlaying") || $0.contains("progress") }
+    if !musicKeys.isEmpty {
+        print("WidgetDefaults: Found music keys: \(musicKeys)")
+    }
+    #endif
+
     return _sharedDefault
 }
 
@@ -169,9 +180,13 @@ struct MusicActivityWidgetLiveActivity: Widget {
             // 使用 getSharedDefaults() 确保读取到主 App 写入的最新数据
             let defaults = getSharedDefaults()
 
-            // 调试日志（发布版本会被优化掉）
+            // 读取当前状态用于调试
+            let isPlaying = defaults.bool(forKey: context.attributes.prefixedKey("isPlaying"))
+            let progress = defaults.double(forKey: context.attributes.prefixedKey("progress"))
+
+            // 调试日志
             #if DEBUG
-            print("DynamicIsland: Rendering with timestamp: \(timestamp)")
+            print("DynamicIsland: Rendering - timestamp: \(timestamp), isPlaying: \(isPlaying), progress: \(String(format: "%.3f", progress))")
             #endif
 
             return DynamicIsland {
