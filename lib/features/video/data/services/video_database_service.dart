@@ -3837,21 +3837,20 @@ class VideoDatabaseService {
 
   /// 同步电影系列分组表
   ///
-  /// 新策略：
-  /// 1. 聚合 TMDB collection_id 系列（官方系列）
-  /// 2. 识别目录系列（同目录下 ≥2 部电影且无 TMDB 系列）
+  /// 仅聚合 TMDB collection_id 系列（官方系列）
+  /// 目录系列已禁用，避免将同目录不相关电影误识别为系列
   Future<int> syncMovieCollectionGroups() async {
     if (!_initialized) await init();
 
     final stopwatch = Stopwatch()..start();
 
-    // 步骤 1: 清空旧数据
+    // 清空旧数据
     await _db!.delete(_tableMovieCollectionGroups);
 
     final now = DateTime.now().millisecondsSinceEpoch;
     var insertedCount = 0;
 
-    // 步骤 2: 聚合有 collection_id 的电影（TMDB 官方系列）
+    // 聚合有 collection_id 的电影（TMDB 官方系列）
     // 优先使用系列专属海报，否则使用第一部电影的海报
     final tmdbCollections = await _db!.rawQuery('''
       SELECT
@@ -3893,73 +3892,9 @@ class VideoDatabaseService {
       insertedCount++;
     }
 
-    // 步骤 3: 识别目录系列（同目录下多部电影且无 TMDB 系列）
-    // 条件：
-    // - 电影分类（category = 0）
-    // - 有 movie_directory
-    // - 无 collection_id（避免与 TMDB 系列重复）
-    // - 同目录下至少 2 部电影
-    final directoryCollections = await _db!.rawQuery('''
-      SELECT 
-        $_colMovieDirectory as directory,
-        COUNT(*) as movie_count,
-        MAX($_colPosterUrl) as poster_url,
-        MAX($_colBackdropUrl) as backdrop_url
-      FROM $_tableMetadata
-      WHERE $_colCategory = 0 
-        AND $_colMovieDirectory IS NOT NULL 
-        AND $_colCollectionId IS NULL
-      GROUP BY $_colMovieDirectory
-      HAVING COUNT(*) >= 2
-    ''');
-
-    for (final row in directoryCollections) {
-      final directory = row['directory'] as String?;
-      if (directory == null) continue;
-
-      // 从目录路径提取系列名（取最后一级目录名）
-      final parts = directory.split('/').where((p) => p.isNotEmpty).toList();
-      final collectionName = parts.isNotEmpty ? parts.last : '未知系列';
-
-      // 使用目录哈希作为负数 ID（与 TMDB 正数 ID 区分）
-      final dirCollectionId = -1 * directory.hashCode.abs();
-
-      await _db!.rawInsert('''
-        INSERT OR REPLACE INTO $_tableMovieCollectionGroups (
-          $_mcgColTmdbCollectionId,
-          $_mcgColName,
-          $_mcgColPosterUrl,
-          $_mcgColBackdropUrl,
-          $_mcgColOverview,
-          $_mcgColMovieCount,
-          $_mcgColLastSynced
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
-      ''', [
-        dirCollectionId,
-        collectionName,
-        row['poster_url'] as String?,
-        row['backdrop_url'] as String?,
-        null, // 目录系列没有 overview
-        row['movie_count'] as int? ?? 2,
-        now,
-      ]);
-
-      // 关键修复：更新 metadata 表中电影的 collectionId
-      // 这样 getMovieCollections 查询才能找到这些目录型系列
-      await _db!.rawUpdate('''
-        UPDATE $_tableMetadata
-        SET $_colCollectionId = ?, $_colCollectionName = ?
-        WHERE $_colMovieDirectory = ?
-          AND $_colCategory = 0
-          AND $_colCollectionId IS NULL
-      ''', [dirCollectionId, collectionName, directory]);
-
-      insertedCount++;
-    }
-
     stopwatch.stop();
     logger.i('VideoDatabaseService: 电影系列分组同步完成, '
-        'TMDB: ${tmdbCollections.length}, 目录: ${directoryCollections.length}, '
+        'TMDB: ${tmdbCollections.length}, '
         '总计 $insertedCount 条, 耗时 ${stopwatch.elapsedMilliseconds}ms');
 
     return insertedCount;

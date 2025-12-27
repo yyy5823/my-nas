@@ -1,10 +1,13 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/core/services/nas_file_system_registry.dart';
+import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/book/data/services/book_database_service.dart';
 import 'package:my_nas/features/book/data/services/book_library_cache_service.dart';
 import 'package:my_nas/features/comic/data/services/comic_library_cache_service.dart';
 import 'package:my_nas/features/music/data/services/music_database_service.dart';
 import 'package:my_nas/features/music/data/services/music_library_cache_service.dart';
+import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
+import 'package:my_nas/features/music/presentation/providers/music_settings_provider.dart';
 import 'package:my_nas/features/photo/data/services/photo_database_service.dart';
 import 'package:my_nas/features/photo/data/services/photo_library_cache_service.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
@@ -288,6 +291,19 @@ class ActiveConnectionsNotifier
       final manager = _ref.read(sourceManagerProvider);
       await manager.autoConnectAll();
       refresh();
+
+      // 检查是否有连接成功的源，并检查自动播放设置
+      final hasConnected = state.values.any((c) => c.status == SourceStatus.connected);
+      if (hasConnected) {
+        final settings = _ref.read(musicSettingsProvider);
+        if (settings.autoPlayOnConnect) {
+          logger.i('SourceProvider: 检测到连接成功且启用了自动播放，尝试恢复播放状态');
+          // 延迟一点执行，确保所有连接都已稳定
+          Future.delayed(const Duration(milliseconds: 500), () {
+            _ref.read(musicPlayerControllerProvider.notifier).restoreLastPlayedState();
+          });
+        }
+      }
     } finally {
       _isAutoConnecting = false;
     }

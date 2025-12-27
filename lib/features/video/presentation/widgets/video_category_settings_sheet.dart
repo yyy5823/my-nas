@@ -192,7 +192,7 @@ class _VideoCategorySettingsSheetState
                     isDark,
                     VideoHomeCategory.byMovieGenre,
                     '电影类型',
-                    Icons.movie_rounded,
+                    Icons.theater_comedy_rounded,
                     AppColors.downloadColor,
                     settings,
                   ),
@@ -200,7 +200,7 @@ class _VideoCategorySettingsSheetState
                     isDark,
                     VideoHomeCategory.byMovieRegion,
                     '电影地区',
-                    Icons.public_rounded,
+                    Icons.language_rounded,
                     AppColors.photoColor,
                     settings,
                   ),
@@ -208,7 +208,7 @@ class _VideoCategorySettingsSheetState
                     isDark,
                     VideoHomeCategory.byTvGenre,
                     '剧集类型',
-                    Icons.live_tv_rounded,
+                    Icons.theaters_rounded,
                     AppColors.warning,
                     settings,
                   ),
@@ -216,7 +216,7 @@ class _VideoCategorySettingsSheetState
                     isDark,
                     VideoHomeCategory.byTvRegion,
                     '剧集地区',
-                    Icons.language_rounded,
+                    Icons.flag_rounded,
                     AppColors.musicColor,
                     settings,
                   ),
@@ -584,31 +584,31 @@ class _BasicCategoryTile extends StatelessWidget {
   IconData _getCategoryIcon(VideoHomeCategory category) {
     switch (category) {
       case VideoHomeCategory.heroBanner:
-        return Icons.featured_play_list_rounded;
+        return Icons.auto_awesome_rounded;
       case VideoHomeCategory.continueWatching:
-        return Icons.play_circle_rounded;
+        return Icons.play_circle_filled_rounded;
       case VideoHomeCategory.recentlyAdded:
-        return Icons.schedule_rounded;
+        return Icons.fiber_new_rounded;
       case VideoHomeCategory.movies:
-        return Icons.movie_rounded;
+        return Icons.movie_filter_rounded;
       case VideoHomeCategory.tvShows:
-        return Icons.live_tv_rounded;
+        return Icons.tv_rounded;
       case VideoHomeCategory.movieCollections:
-        return Icons.collections_bookmark_rounded;
+        return Icons.video_library_rounded;
       case VideoHomeCategory.topRated:
         return Icons.star_rounded;
       case VideoHomeCategory.unwatched:
-        return Icons.visibility_off_rounded;
+        return Icons.remove_red_eye_rounded;
       case VideoHomeCategory.others:
-        return Icons.video_file_rounded;
+        return Icons.folder_special_rounded;
       case VideoHomeCategory.browseMovieGenres:
-        return Icons.category_rounded;
+        return Icons.theater_comedy_rounded;
       case VideoHomeCategory.browseMovieRegions:
-        return Icons.public_rounded;
-      case VideoHomeCategory.browseTvGenres:
-        return Icons.category_rounded;
-      case VideoHomeCategory.browseTvRegions:
         return Icons.language_rounded;
+      case VideoHomeCategory.browseTvGenres:
+        return Icons.theaters_rounded;
+      case VideoHomeCategory.browseTvRegions:
+        return Icons.flag_rounded;
       default:
         return Icons.category_rounded;
     }

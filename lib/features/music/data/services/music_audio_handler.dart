@@ -285,9 +285,20 @@ class MusicAudioHandler extends BaseAudioHandler
     }
   }
 
+  /// 刷新计数器，用于强制 audio_service 更新
+  int _refreshCounter = 0;
+
   /// 重新设置 mediaItem 以刷新 iOS Now Playing 信息
   /// 这是解决 MPNowPlayingInfoCenter 竞态条件的关键
   /// 只广播 playbackState 不够，需要重新设置完整的 mediaItem
+  ///
+  /// 关键问题：audio_service 的 iOS 原生代码只在值变化时才更新 nowPlayingInfo
+  /// 如果我们设置相同的 mediaItem，iOS 原生层会认为不需要更新
+  /// 但 iOS 系统可能在 app 返回前台后清除了 MPNowPlayingInfoCenter 的信息
+  ///
+  /// 解决方案：在 extras 中添加一个递增的刷新计数器
+  /// 这样每次调用都会让 audio_service 认为 mediaItem 有变化
+  /// 同时不会影响用户可见的内容，也不会导致 UI 闪烁
   Future<void> _resetMediaItemForNowPlaying() async {
     final currentItem = mediaItem.value;
     if (currentItem == null) return;
@@ -299,8 +310,18 @@ class MusicAudioHandler extends BaseAudioHandler
       artUri = await _saveArtworkToFile(_currentArtworkData!, currentItem.id);
     }
 
-    // 创建新的 MediaItem 实例（包含所有属性）
-    // 这会强制 audio_service 重新设置 iOS 的 Now Playing 信息
+    // 递增刷新计数器
+    _refreshCounter++;
+
+    // 在 extras 中添加刷新计数器，强制 audio_service 认为有变化
+    // 这样可以触发完整的 MPNowPlayingInfoCenter 更新
+    // 同时不会影响用户可见的内容，不会导致 UI 闪烁
+    final updatedExtras = <String, dynamic>{
+      ...?currentItem.extras,
+      '_refreshCounter': _refreshCounter,
+    };
+
+    // 创建新的 MediaItem 实例
     final refreshedItem = MediaItem(
       id: currentItem.id,
       title: currentItem.title,
@@ -308,17 +329,17 @@ class MusicAudioHandler extends BaseAudioHandler
       album: currentItem.album,
       duration: _player.duration ?? currentItem.duration,
       artUri: artUri,
-      extras: currentItem.extras,
+      extras: updatedExtras,
     );
 
-    // 先添加刷新的 mediaItem
+    // 设置 mediaItem
     mediaItem.add(refreshedItem);
 
     // 然后广播最新的播放状态
     _broadcastState(PlaybackEvent());
     _lastBroadcastTime = DateTime.now();
 
-    logger.i('MusicAudioHandler: mediaItem 已重新设置 - ${currentItem.title}, artUri=$artUri');
+    logger.i('MusicAudioHandler: mediaItem 已刷新 (counter=$_refreshCounter) - ${currentItem.title}');
   }
 
   /// 广播播放状态

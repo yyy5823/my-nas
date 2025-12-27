@@ -119,35 +119,35 @@ extension VideoHomeCategoryExtension on VideoHomeCategory {
   String get iconName {
     switch (this) {
       case VideoHomeCategory.heroBanner:
-        return 'featured_play_list';
-      case VideoHomeCategory.continueWatching:
-        return 'play_circle';
-      case VideoHomeCategory.recentlyAdded:
-        return 'schedule';
-      case VideoHomeCategory.movies:
-        return 'movie';
-      case VideoHomeCategory.tvShows:
-        return 'live_tv';
-      case VideoHomeCategory.movieCollections:
-        return 'collections_bookmark';
-      case VideoHomeCategory.topRated:
         return 'auto_awesome';
+      case VideoHomeCategory.continueWatching:
+        return 'play_circle_filled';
+      case VideoHomeCategory.recentlyAdded:
+        return 'fiber_new';
+      case VideoHomeCategory.movies:
+        return 'movie_filter';
+      case VideoHomeCategory.tvShows:
+        return 'tv';
+      case VideoHomeCategory.movieCollections:
+        return 'video_library';
+      case VideoHomeCategory.topRated:
+        return 'star';
       case VideoHomeCategory.unwatched:
-        return 'visibility_off';
+        return 'remove_red_eye';
       case VideoHomeCategory.others:
-        return 'video_file';
+        return 'folder_special';
       case VideoHomeCategory.byMovieGenre:
       case VideoHomeCategory.browseMovieGenres:
-        return 'category';
+        return 'theater_comedy';
       case VideoHomeCategory.byMovieRegion:
       case VideoHomeCategory.browseMovieRegions:
-        return 'public';
+        return 'language';
       case VideoHomeCategory.byTvGenre:
       case VideoHomeCategory.browseTvGenres:
-        return 'category';
+        return 'theaters';
       case VideoHomeCategory.byTvRegion:
       case VideoHomeCategory.browseTvRegions:
-        return 'public';
+        return 'flag';
     }
   }
 

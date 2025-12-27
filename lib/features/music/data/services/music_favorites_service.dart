@@ -171,10 +171,12 @@ class MusicFavoritesService {
 
   static const _favoritesBoxName = 'music_favorites';
   static const _historyBoxName = 'music_history';
+  static const _lastPlayedBoxName = 'music_last_played';
   static const _maxHistoryItems = 100;
 
   Box<Map<dynamic, dynamic>>? _favoritesBox;
   Box<Map<dynamic, dynamic>>? _historyBox;
+  Box<Map<dynamic, dynamic>>? _lastPlayedBox;
 
   bool _initialized = false;
 
@@ -184,6 +186,7 @@ class MusicFavoritesService {
     try {
       _favoritesBox = await Hive.openBox<Map<dynamic, dynamic>>(_favoritesBoxName);
       _historyBox = await Hive.openBox<Map<dynamic, dynamic>>(_historyBoxName);
+      _lastPlayedBox = await Hive.openBox<Map<dynamic, dynamic>>(_lastPlayedBoxName);
       _initialized = true;
       logger.i('MusicFavoritesService: 初始化完成');
     } on Exception catch (e) {
@@ -359,4 +362,84 @@ class MusicFavoritesService {
       }
     }
   }
+
+  // ==================== 最后播放状态相关 ====================
+
+  /// 保存最后播放状态
+  Future<void> saveLastPlayedState({
+    required MusicItem music,
+    required Duration position,
+    required List<MusicItem> queue,
+    required int queueIndex,
+  }) async {
+    await init();
+    if (_lastPlayedBox == null) return;
+
+    final state = {
+      'music': MusicHistoryItem.fromMusicItem(music).toMap(),
+      'position': position.inMilliseconds,
+      'queueIndex': queueIndex,
+      'queue': queue.map((m) => MusicHistoryItem.fromMusicItem(m).toMap()).toList(),
+      'savedAt': DateTime.now().millisecondsSinceEpoch,
+    };
+
+    await _lastPlayedBox!.put('state', state);
+    logger.d('MusicFavoritesService: 保存播放状态 ${music.name} @ ${position.inSeconds}s');
+  }
+
+  /// 获取最后播放状态
+  Future<LastPlayedState?> getLastPlayedState() async {
+    await init();
+    if (_lastPlayedBox == null) return null;
+
+    final data = _lastPlayedBox!.get('state');
+    if (data == null) return null;
+
+    try {
+      final musicData = data['music'] as Map<dynamic, dynamic>?;
+      if (musicData == null) return null;
+
+      final music = MusicHistoryItem.fromMap(musicData).toMusicItem();
+      final position = Duration(milliseconds: data['position'] as int? ?? 0);
+      final queueIndex = data['queueIndex'] as int? ?? 0;
+
+      final queueData = data['queue'] as List<dynamic>? ?? [];
+      final queue = queueData
+          .map((m) => MusicHistoryItem.fromMap(m as Map<dynamic, dynamic>).toMusicItem())
+          .toList();
+
+      return LastPlayedState(
+        music: music,
+        position: position,
+        queue: queue,
+        queueIndex: queueIndex,
+      );
+    } on Exception catch (e) {
+      logger.e('MusicFavoritesService: 解析播放状态失败', e);
+      return null;
+    }
+  }
+
+  /// 清除最后播放状态
+  Future<void> clearLastPlayedState() async {
+    await init();
+    if (_lastPlayedBox == null) return;
+
+    await _lastPlayedBox!.delete('state');
+  }
+}
+
+/// 最后播放状态
+class LastPlayedState {
+  const LastPlayedState({
+    required this.music,
+    required this.position,
+    required this.queue,
+    required this.queueIndex,
+  });
+
+  final MusicItem music;
+  final Duration position;
+  final List<MusicItem> queue;
+  final int queueIndex;
 }

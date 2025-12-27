@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:audio_session/audio_session.dart';
@@ -11,6 +12,7 @@ import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/data/services/music_audio_cache_service.dart';
 import 'package:my_nas/features/music/data/services/music_audio_handler.dart';
 import 'package:my_nas/features/music/data/services/music_cover_cache_service.dart';
+import 'package:my_nas/features/music/data/services/music_favorites_service.dart';
 import 'package:my_nas/features/music/data/services/music_metadata_service.dart';
 import 'package:my_nas/features/music/data/services/ncm_decrypt_service.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
@@ -188,6 +190,22 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   // NCM 解密服务
   final NcmDecryptService _ncmDecryptService = NcmDecryptService();
 
+  // 淡入淡出相关
+  bool _isFadingOut = false;
+  bool _isFadingIn = false;
+  double _targetVolume = 1.0;
+
+  // 交叉淡化相关
+  AudioPlayer? _crossfadePlayer; // 用于交叉淡化的辅助播放器
+  bool _isCrossfading = false;
+  bool _isPreloading = false;
+  MusicItem? _preloadedMusic; // 预加载的下一首歌曲
+
+  // 播放状态持久化
+  final MusicFavoritesService _favoritesService = MusicFavoritesService();
+  DateTime? _lastStateSaveTime;
+  static const _stateSaveInterval = Duration(seconds: 10);
+
   AudioPlayer get player => _player;
 
   /// 初始化媒体代理服务器
@@ -234,6 +252,10 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     // 监听播放位置（使用播放器原生的 positionStream，无需定时器）
     _player.positionStream.listen((position) {
       state = state.copyWith(position: position);
+      // 检查是否需要开始淡出（歌曲快结束时）
+      _checkFadeOut(position);
+      // 定期保存播放状态（用于连接后自动恢复）
+      _savePlayStateIfNeeded(position);
     });
 
     // 监听总时长
@@ -350,6 +372,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   /// 应用保存的设置
   Future<void> _applySettings() async {
     final settings = _ref.read(musicSettingsProvider);
+    _targetVolume = settings.volume;
     await _player.setVolume(settings.volume);
     state = state.copyWith(
       volume: settings.volume,
@@ -376,6 +399,17 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   }
 
   void _onTrackCompleted() {
+    // 如果正在交叉淡化或刚完成交叉淡化，不需要额外处理
+    if (_isCrossfading) {
+      logger.d('MusicPlayer: 歌曲结束，交叉淡化已在处理中');
+      return;
+    }
+
+    // 重置状态
+    _isFadingOut = false;
+    _isFadingIn = false;
+    unawaited(_cleanupPreload());
+
     switch (state.playMode) {
       case PlayMode.repeatOne:
         seek(Duration.zero);
@@ -387,8 +421,367 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     }
   }
 
+  /// 清理预加载状态
+  Future<void> _cleanupPreload() async {
+    _preloadedMusic = null;
+    _isPreloading = false;
+    await _crossfadePlayer?.dispose();
+    _crossfadePlayer = null;
+  }
+
+  /// 检查是否需要开始交叉淡化
+  void _checkFadeOut(Duration position) {
+    final settings = _ref.read(musicSettingsProvider);
+    final crossfadeDuration = settings.crossfadeDuration;
+
+    // 如果淡入淡出未启用，或者正在交叉淡化中，跳过
+    if (crossfadeDuration <= 0 || _isCrossfading) return;
+
+    final duration = state.duration;
+    if (duration <= Duration.zero) return;
+
+    // 计算距离结束的时间
+    final remaining = duration - position;
+    final preloadStart = Duration(seconds: crossfadeDuration + 2); // 提前2秒预加载
+    final crossfadeStart = Duration(seconds: crossfadeDuration);
+
+    // 预加载下一首（提前2秒）
+    if (remaining <= preloadStart && remaining > crossfadeStart && !_isPreloading) {
+      AppError.fireAndForget(
+        _preloadNextTrack(),
+        action: 'preloadNextTrack',
+      );
+    }
+
+    // 开始交叉淡化
+    if (remaining <= crossfadeStart && remaining > Duration.zero) {
+      AppError.fireAndForget(
+        _startCrossfade(remaining),
+        action: 'startCrossfade',
+      );
+    }
+  }
+
+  /// 预加载下一首歌曲
+  Future<void> _preloadNextTrack() async {
+    if (_isPreloading || _preloadedMusic != null) return;
+
+    final queue = _ref.read(playQueueProvider);
+    if (queue.isEmpty) return;
+
+    // 获取下一首歌曲
+    final nextIndex = _getNextIndex();
+    if (nextIndex < 0 || nextIndex >= queue.length) return;
+
+    final nextMusic = queue[nextIndex];
+    _isPreloading = true;
+
+    logger.d('MusicPlayer: 预加载下一首 ${nextMusic.name}');
+
+    try {
+      // 获取下一首的播放 URL
+      final url = await _getPlayableUrl(nextMusic);
+      if (url == null) {
+        logger.w('MusicPlayer: 预加载失败，无法获取 URL');
+        _isPreloading = false;
+        return;
+      }
+
+      // 创建辅助播放器并预加载
+      await _crossfadePlayer?.dispose();
+      _crossfadePlayer = AudioPlayer();
+      await _crossfadePlayer!.setUrl(url);
+      await _crossfadePlayer!.setVolume(0); // 初始音量为0
+
+      _preloadedMusic = nextMusic;
+      logger.i('MusicPlayer: 预加载完成 ${nextMusic.name}');
+    } on Exception catch (e) {
+      logger.e('MusicPlayer: 预加载失败', e);
+      await _crossfadePlayer?.dispose();
+      _crossfadePlayer = null;
+    } finally {
+      _isPreloading = false;
+    }
+  }
+
+  /// 获取下一首的索引
+  int _getNextIndex() {
+    final queue = _ref.read(playQueueProvider);
+    if (queue.isEmpty) return -1;
+
+    if (state.playMode == PlayMode.shuffle) {
+      if (queue.length == 1) return 0;
+      int nextIndex;
+      do {
+        nextIndex = DateTime.now().millisecondsSinceEpoch % queue.length;
+      } while (nextIndex == state.currentIndex);
+      return nextIndex;
+    } else {
+      return (state.currentIndex + 1) % queue.length;
+    }
+  }
+
+  /// 获取音乐的可播放 URL（用于预加载）
+  Future<String?> _getPlayableUrl(MusicItem music) async {
+    try {
+      final uri = Uri.tryParse(music.url);
+      if (uri == null || !uri.hasScheme) return null;
+
+      // NCM 文件需要解密，暂时跳过预加载
+      if (_isNcmFile(music.path) || _isNcmFile(music.name)) {
+        logger.d('MusicPlayer: NCM 文件跳过预加载');
+        return null;
+      }
+
+      if (music.sourceId != null) {
+        // NAS 源：检查是否已有缓存
+        final isCached = await _audioCacheService.isCached(music.sourceId, music.path);
+        if (isCached) {
+          final cacheFile = await _audioCacheService.getCacheFile(music.sourceId, music.path);
+          return Uri.file(cacheFile.path).toString();
+        }
+
+        // 未缓存的 NAS 文件，需要创建代理 URL
+        final connections = _ref.read(activeConnectionsProvider);
+        final connection = connections[music.sourceId];
+        if (connection == null) return null;
+
+        final fileInfo = await connection.adapter.fileSystem.getFileInfo(music.path);
+        final proxyUrl = await _mediaProxyServer.registerFile(
+          sourceId: music.sourceId!,
+          filePath: music.path,
+          fileSize: fileInfo.size,
+        );
+        return proxyUrl;
+      } else if (uri.scheme == 'file') {
+        return music.url;
+      } else if (uri.scheme == 'http' || uri.scheme == 'https') {
+        return music.url;
+      }
+
+      return null;
+    } on Exception catch (e) {
+      logger.e('MusicPlayer: 获取可播放 URL 失败', e);
+      return null;
+    }
+  }
+
+  /// 开始交叉淡化
+  /// 使用等功率曲线：保证 sin²(t) + cos²(t) = 1
+  Future<void> _startCrossfade(Duration remaining) async {
+    // 单曲循环不需要交叉淡化
+    if (state.playMode == PlayMode.repeatOne) return;
+    if (_isCrossfading) return;
+
+    // 如果没有预加载的歌曲，回退到普通淡出
+    if (_crossfadePlayer == null || _preloadedMusic == null) {
+      logger.d('MusicPlayer: 无预加载，使用普通淡出');
+      AppError.fireAndForget(
+        _startSimpleFadeOut(remaining),
+        action: 'simpleFadeOut',
+      );
+      return;
+    }
+
+    _isCrossfading = true;
+    _isFadingOut = false;
+    _isFadingIn = false;
+
+    final fadeMs = remaining.inMilliseconds;
+    final steps = (fadeMs / 16).ceil().clamp(10, 200);
+    final stepMs = fadeMs ~/ steps;
+
+    logger.i('MusicPlayer: 开始交叉淡化到 ${_preloadedMusic!.name}，时长 ${fadeMs}ms');
+
+    // 启动辅助播放器
+    await _crossfadePlayer!.play();
+
+    // 同时调整两个播放器的音量
+    for (var i = 0; i <= steps && _isCrossfading; i++) {
+      final t = i / steps;
+
+      // 等功率交叉淡化曲线
+      // 当前歌曲：cos(t * π/2) - 从1降到0
+      // 下一首：sin(t * π/2) - 从0升到1
+      // 保证 sin²(t) + cos²(t) = 1，总功率恒定
+      final fadeOutGain = math.cos(t * math.pi / 2);
+      final fadeInGain = math.sin(t * math.pi / 2);
+
+      await Future.wait([
+        _player.setVolume((_targetVolume * fadeOutGain).clamp(0.0, 1.0)),
+        _crossfadePlayer!.setVolume((_targetVolume * fadeInGain).clamp(0.0, 1.0)),
+      ]);
+
+      if (i < steps) {
+        await Future<void>.delayed(Duration(milliseconds: stepMs));
+      }
+    }
+
+    if (_isCrossfading) {
+      // 交叉淡化完成，切换到新歌曲
+      await _completeCrossfade();
+    }
+  }
+
+  /// 完成交叉淡化，切换到新歌曲
+  Future<void> _completeCrossfade() async {
+    if (_preloadedMusic == null) return;
+
+    final nextMusic = _preloadedMusic!;
+    final queue = _ref.read(playQueueProvider);
+    final nextIndex = queue.indexWhere((m) => m.id == nextMusic.id);
+
+    logger.i('MusicPlayer: 交叉淡化完成，切换到 ${nextMusic.name}');
+
+    // 停止主播放器
+    await _player.stop();
+    await _player.setVolume(_targetVolume);
+
+    // 停止辅助播放器（我们需要用主播放器继续播放以支持系统媒体控制）
+    final crossfadePosition = _crossfadePlayer?.position ?? Duration.zero;
+    await _crossfadePlayer?.stop();
+    await _crossfadePlayer?.dispose();
+    _crossfadePlayer = null;
+
+    // 更新状态
+    _ref.read(currentMusicProvider.notifier).state = nextMusic;
+    if (nextIndex >= 0) {
+      state = state.copyWith(currentIndex: nextIndex);
+    }
+
+    // 标记交叉淡化结束前清理状态
+    _preloadedMusic = null;
+
+    // 用主播放器从当前位置继续播放，跳过淡入效果（因为已经是满音量了）
+    await play(nextMusic, startPosition: crossfadePosition, skipFadeIn: true);
+
+    // 交叉淡化完成
+    _isCrossfading = false;
+  }
+
+  /// 简单淡出（当没有预加载时使用）
+  Future<void> _startSimpleFadeOut(Duration remaining) async {
+    if (_isFadingOut) return;
+    _isFadingOut = true;
+
+    final fadeMs = remaining.inMilliseconds;
+    final steps = (fadeMs / 16).ceil().clamp(10, 200);
+    final stepMs = fadeMs ~/ steps;
+
+    logger.d('MusicPlayer: 开始简单淡出，剩余 ${fadeMs}ms');
+
+    for (var i = 0; i <= steps && _isFadingOut; i++) {
+      final t = i / steps;
+      final gain = math.cos(t * math.pi / 2);
+      final volume = _targetVolume * gain;
+      await _player.setVolume(volume.clamp(0.0, 1.0));
+      if (i < steps) {
+        await Future<void>.delayed(Duration(milliseconds: stepMs));
+      }
+    }
+
+    if (_isFadingOut) {
+      await _player.setVolume(0);
+    }
+    _isFadingOut = false;
+  }
+
+  /// 定期保存播放状态
+  void _savePlayStateIfNeeded(Duration position) {
+    // 检查是否需要保存
+    final now = DateTime.now();
+    if (_lastStateSaveTime != null &&
+        now.difference(_lastStateSaveTime!) < _stateSaveInterval) {
+      return;
+    }
+
+    final currentMusic = _ref.read(currentMusicProvider);
+    if (currentMusic == null) return;
+
+    final queue = _ref.read(playQueueProvider);
+
+    _lastStateSaveTime = now;
+    AppError.fireAndForget(
+      _favoritesService.saveLastPlayedState(
+        music: currentMusic,
+        position: position,
+        queue: queue,
+        queueIndex: state.currentIndex,
+      ),
+      action: 'savePlayState',
+    );
+  }
+
+  /// 恢复上次播放状态
+  Future<bool> restoreLastPlayedState() async {
+    final lastState = await _favoritesService.getLastPlayedState();
+    if (lastState == null) {
+      logger.d('MusicPlayer: 没有保存的播放状态');
+      return false;
+    }
+
+    logger.i('MusicPlayer: 恢复播放状态 ${lastState.music.name} @ ${lastState.position.inSeconds}s');
+
+    // 恢复队列
+    if (lastState.queue.isNotEmpty) {
+      _ref.read(playQueueProvider.notifier).setQueue(lastState.queue);
+      state = state.copyWith(currentIndex: lastState.queueIndex);
+    }
+
+    // 播放音乐，从上次位置开始
+    await play(lastState.music, startPosition: lastState.position);
+    return true;
+  }
+
+  /// 开始淡入
+  /// 使用正弦曲线实现等功率淡入：sin(t * π/2)
+  /// 这样音量变化在开始时快速上升，接近目标时变化缓慢，符合人耳感知
+  Future<void> _startFadeIn() async {
+    final settings = _ref.read(musicSettingsProvider);
+    final crossfadeDuration = settings.crossfadeDuration;
+
+    // 如果淡入淡出未启用，直接设置目标音量
+    if (crossfadeDuration <= 0) {
+      await _player.setVolume(_targetVolume);
+      return;
+    }
+
+    _isFadingIn = true;
+    _isFadingOut = false; // 取消任何正在进行的淡出
+
+    // 从0开始淡入
+    await _player.setVolume(0);
+
+    final fadeMs = crossfadeDuration * 1000;
+    // 使用更多步数获得更平滑的效果（约60步/秒）
+    final steps = (fadeMs / 16).ceil().clamp(10, 200);
+    final stepMs = fadeMs ~/ steps;
+
+    logger.d('MusicPlayer: 开始淡入，时长 ${crossfadeDuration}s，步数 $steps');
+
+    for (var i = 0; i <= steps && _isFadingIn; i++) {
+      // 归一化进度 t: 0.0 -> 1.0
+      final t = i / steps;
+      // 正弦曲线淡入：sin(t * π/2)
+      // t=0 时 sin(0)=0，t=1 时 sin(π/2)=1
+      final gain = math.sin(t * math.pi / 2);
+      final volume = _targetVolume * gain;
+      await _player.setVolume(volume.clamp(0.0, 1.0));
+      if (i < steps) {
+        await Future<void>.delayed(Duration(milliseconds: stepMs));
+      }
+    }
+
+    // 确保最终音量为目标音量
+    if (_isFadingIn) {
+      await _player.setVolume(_targetVolume);
+    }
+    _isFadingIn = false;
+  }
+
   /// 播放指定音乐
-  Future<void> play(MusicItem music, {Duration? startPosition}) async {
+  /// [skipFadeIn] 如果为 true，跳过淡入效果（用于交叉淡化完成后）
+  Future<void> play(MusicItem music, {Duration? startPosition, bool skipFadeIn = false}) async {
     // 防止并发播放操作
     // 如果已有播放操作进行中，等待一小段时间后再尝试
     if (_isPlayOperationInProgress) {
@@ -397,6 +790,12 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     }
 
     _isPlayOperationInProgress = true;
+
+    // 如果不是交叉淡化完成后的调用，清理预加载状态
+    if (!_isCrossfading) {
+      await _cleanupPreload();
+    }
+
     _ref.read(currentMusicProvider.notifier).state = music;
     state = state.copyWith(isBuffering: true);
 
@@ -529,12 +928,18 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
         await _player.seek(startPosition);
       }
 
-      // 确保音量正确
-      final currentVolume = _player.volume;
-      if (currentVolume == 0) {
-        await _player.setVolume(1);
-        state = state.copyWith(volume: 1);
-        logger.d('MusicPlayer: 音量已重置为 1.0');
+      // 获取淡入淡出设置
+      final settings = _ref.read(musicSettingsProvider);
+      final hasCrossfade = settings.crossfadeDuration > 0 && !skipFadeIn;
+
+      // 如果启用了淡入淡出且不跳过，先将音量设为0，播放后再淡入
+      if (hasCrossfade) {
+        await _player.setVolume(0);
+        logger.d('MusicPlayer: 淡入淡出已启用，初始音量设为0');
+      } else {
+        // 确保音量正确（交叉淡化完成后或未启用淡入淡出时）
+        await _player.setVolume(_targetVolume);
+        state = state.copyWith(volume: _targetVolume);
       }
 
       // 重要：在播放前设置 AudioHandler 的当前音乐信息
@@ -569,6 +974,14 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       logger.d('MusicPlayer: 调用 play()...');
       await _audioHandler.play(); // 使用 audioHandler.play() 确保正确广播状态
       logger.i('MusicPlayer: play() 调用完成');
+
+      // 如果启用了淡入淡出，开始淡入（异步执行，不阻塞）
+      if (hasCrossfade) {
+        AppError.fireAndForget(
+          _startFadeIn(),
+          action: 'musicFadeIn',
+        );
+      }
 
       // 添加到播放历史
       await _ref.read(musicHistoryProvider.notifier).addToHistory(music);
@@ -961,6 +1374,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
   /// 设置音量 (0.0 - 1.0)
   Future<void> setVolume(double volume) async {
+    _targetVolume = volume;
     await _player.setVolume(volume);
     state = state.copyWith(volume: volume);
     // 同步保存到设置

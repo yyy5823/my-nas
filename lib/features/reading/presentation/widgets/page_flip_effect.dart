@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -88,6 +89,9 @@ class _PageFlipEffectState extends State<PageFlipEffect>
   /// 翻页方向
   FlipDirection? _direction;
 
+  /// 原始翻页意图（用于确定最终调用哪个回调）
+  FlipDirection? _originalDirection;
+
   /// 是否正在动画中
   bool _isAnimating = false;
 
@@ -102,6 +106,9 @@ class _PageFlipEffectState extends State<PageFlipEffect>
 
   /// 动画开始时的进度
   double _animationStartProgress = 0.0;
+
+  /// 是否应该完成翻页（而不是取消）
+  bool _shouldComplete = false;
 
   /// 捕获的当前页面图像
   ui.Image? _currentPageImage;
@@ -161,11 +168,11 @@ class _PageFlipEffectState extends State<PageFlipEffect>
 
     final t = Curves.easeOutCubic.transform(_controller.value);
 
-    if (_direction == FlipDirection.forward) {
-      // 向左翻：从起始进度动画到 1.0
+    if (_shouldComplete) {
+      // 完成翻页：从起始进度动画到 1.0
       _dragProgress = _animationStartProgress + (1.0 - _animationStartProgress) * t;
     } else {
-      // 向右翻/取消：从起始进度动画回 0.0
+      // 取消翻页：从起始进度动画回 0.0
       _dragProgress = _animationStartProgress * (1.0 - t);
     }
 
@@ -179,16 +186,18 @@ class _PageFlipEffectState extends State<PageFlipEffect>
   }
 
   Future<void> _onFlipComplete() async {
-    final direction = _direction;
-    final progress = _dragProgress;
+    final originalDirection = _originalDirection;
+    final shouldComplete = _shouldComplete;
 
     _isAnimating = false;
 
-    // 只有当进度接近 1.0 时才触发翻页
-    if (progress > 0.9) {
-      if (direction == FlipDirection.forward) {
+    // 只有当应该完成翻页时才触发回调
+    if (shouldComplete && originalDirection != null) {
+      if (originalDirection == FlipDirection.forward) {
+        logger.d('PageFlipEffect: 翻到下一页');
         await widget.onNextPage();
       } else {
+        logger.d('PageFlipEffect: 翻到上一页');
         await widget.onPrevPage();
       }
     }
@@ -198,8 +207,10 @@ class _PageFlipEffectState extends State<PageFlipEffect>
 
   void _reset() {
     _direction = null;
+    _originalDirection = null;
     _dragStart = null;
     _dragProgress = 0.0;
+    _shouldComplete = false;
     _currentPageImage?.dispose();
     _currentPageImage = null;
     _targetPageImage?.dispose();
@@ -259,11 +270,13 @@ class _PageFlipEffectState extends State<PageFlipEffect>
     // 确定翻页方向
     if (_direction == null && dragRatio > 0.02) {
       _direction = dragDelta < 0 ? FlipDirection.forward : FlipDirection.backward;
+      _originalDirection = _direction;
 
       // 开始拖动时捕获页面
       _currentPageImage = await _captureWidget(_currentPageKey);
       if (_currentPageImage == null) {
         _direction = null;
+        _originalDirection = null;
         return;
       }
 
@@ -284,25 +297,14 @@ class _PageFlipEffectState extends State<PageFlipEffect>
       return;
     }
 
-    final shouldComplete = _dragProgress > widget.dragThreshold;
-
+    _shouldComplete = _dragProgress > widget.dragThreshold;
     _isAnimating = true;
     _animationStartProgress = _dragProgress;
 
-    if (shouldComplete) {
-      // 完成翻页
-      if (_direction == FlipDirection.backward) {
-        // 向右翻（上一页）需要反转方向完成动画
-        _direction = FlipDirection.forward;
-      }
-      _controller.forward(from: 0);
+    _controller.forward(from: 0);
+
+    if (_shouldComplete) {
       HapticFeedback.lightImpact();
-    } else {
-      // 取消翻页
-      if (_direction == FlipDirection.forward) {
-        _direction = FlipDirection.backward;
-      }
-      _controller.forward(from: 0);
     }
   }
 
@@ -310,11 +312,40 @@ class _PageFlipEffectState extends State<PageFlipEffect>
     if (_direction != null && !_isAnimating) {
       _isAnimating = true;
       _animationStartProgress = _dragProgress;
-      _direction = FlipDirection.backward;
+      _shouldComplete = false;
       _controller.forward(from: 0);
     } else {
       _reset();
     }
+  }
+
+  /// 触发点击翻页（平行翻页，从中间位置）
+  Future<void> _triggerTapFlip(FlipDirection direction) async {
+    if (_isAnimating || _direction != null) return;
+
+    _direction = direction;
+    _originalDirection = direction;
+    _dragStartY = 0.5; // 点击翻页使用中间位置，产生平行效果
+
+    // 捕获当前页面
+    _currentPageImage = await _captureWidget(_currentPageKey);
+    if (_currentPageImage == null) {
+      _reset();
+      return;
+    }
+
+    // 捕获目标页面
+    _targetPageImage = await _captureWidget(_targetPageKey);
+
+    _shouldComplete = true;
+    _isAnimating = true;
+    _animationStartProgress = 0.0;
+
+    // 立即触发触觉反馈，不等待
+    unawaited(HapticFeedback.lightImpact());
+
+    // 启动动画（不需要 await，动画完成由 listener 处理）
+    unawaited(_controller.forward(from: 0));
   }
 
   @override
@@ -352,11 +383,25 @@ class _PageFlipEffectState extends State<PageFlipEffect>
           final duration = DateTime.now().difference(_tapDownTime!);
 
           if (distance < 20 && duration.inMilliseconds < 300) {
-            widget.onTap?.call(TapUpDetails(
-              kind: event.kind,
-              localPosition: event.localPosition,
-              globalPosition: event.position,
-            ));
+            // 检测点击位置，决定是翻页还是其他操作
+            final screenWidth = MediaQuery.of(context).size.width;
+            final tapX = event.localPosition.dx;
+            final ratio = tapX / screenWidth;
+
+            if (ratio < 0.25) {
+              // 左侧 25%: 上一页（点击触发平行翻页）
+              _triggerTapFlip(FlipDirection.backward);
+            } else if (ratio > 0.75) {
+              // 右侧 25%: 下一页（点击触发平行翻页）
+              _triggerTapFlip(FlipDirection.forward);
+            } else {
+              // 中间 50%: 触发 onTap 回调
+              widget.onTap?.call(TapUpDetails(
+                kind: event.kind,
+                localPosition: event.localPosition,
+                globalPosition: event.position,
+              ));
+            }
           }
         }
         _tapDownPosition = null;
@@ -380,7 +425,7 @@ class _PageFlipEffectState extends State<PageFlipEffect>
                   offstage: true,
                   child: RepaintBoundary(
                     key: _targetPageKey,
-                    child: _direction == FlipDirection.forward
+                    child: _originalDirection == FlipDirection.forward
                         ? (widget.nextPageBuilder?.call() ?? widget.child)
                         : (widget.prevPageBuilder?.call() ?? widget.child),
                   ),
@@ -418,7 +463,7 @@ class _PageFlipEffectState extends State<PageFlipEffect>
       currentPage: _currentPageImage!,
       nextPage: _targetPageImage ?? _currentPageImage!,
       progress: _dragProgress,
-      direction: _direction == FlipDirection.forward ? 1.0 : -1.0,
+      direction: _originalDirection == FlipDirection.forward ? 1.0 : -1.0,
       dragStartY: _dragStartY,
       backgroundColor: widget.backgroundColor,
     ),
@@ -430,9 +475,14 @@ class _PageFlipEffectState extends State<PageFlipEffect>
     final size = MediaQuery.of(context).size;
 
     // 计算页面偏移
-    final slideOffset = _direction == FlipDirection.forward
-        ? size.width * (1.0 - _dragProgress)
-        : -size.width * _dragProgress;
+    double slideOffset;
+    if (_originalDirection == FlipDirection.forward) {
+      // 向左翻：当前页从右向左滑出
+      slideOffset = -size.width * _dragProgress;
+    } else {
+      // 向右翻：当前页从左向右滑出
+      slideOffset = size.width * _dragProgress;
+    }
 
     return Stack(
       children: [
@@ -463,18 +513,18 @@ class _PageFlipEffectState extends State<PageFlipEffect>
               ),
               // 边缘阴影
               Positioned(
-                left: _direction == FlipDirection.forward ? null : 0,
-                right: _direction == FlipDirection.forward ? 0 : null,
+                left: _originalDirection == FlipDirection.forward ? null : 0,
+                right: _originalDirection == FlipDirection.forward ? 0 : null,
                 top: 0,
                 bottom: 0,
                 width: 30,
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      begin: _direction == FlipDirection.forward
+                      begin: _originalDirection == FlipDirection.forward
                           ? Alignment.centerRight
                           : Alignment.centerLeft,
-                      end: _direction == FlipDirection.forward
+                      end: _originalDirection == FlipDirection.forward
                           ? Alignment.centerLeft
                           : Alignment.centerRight,
                       colors: [
@@ -492,10 +542,10 @@ class _PageFlipEffectState extends State<PageFlipEffect>
         // 页面边缘的阴影（在背景上）
         if (_dragProgress > 0)
           Positioned(
-            left: _direction == FlipDirection.forward
+            left: _originalDirection == FlipDirection.forward
                 ? size.width * (1.0 - _dragProgress) - 20
                 : null,
-            right: _direction == FlipDirection.backward
+            right: _originalDirection == FlipDirection.backward
                 ? size.width * (1.0 - _dragProgress) - 20
                 : null,
             top: 0,

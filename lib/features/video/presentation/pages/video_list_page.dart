@@ -1639,14 +1639,14 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
                   child: Row(
                     children: [
                       _buildStatChip(
-                        icon: Icons.movie_rounded,
+                        icon: Icons.movie_filter_rounded,
                         label: '$movieCount 电影',
                         color: AppColors.primary,
                         isDark: isDark,
                       ),
                       const SizedBox(width: 12),
                       _buildStatChip(
-                        icon: Icons.live_tv_rounded,
+                        icon: Icons.tv_rounded,
                         label: '$tvShowCount 剧集',
                         color: AppColors.accent,
                         isDark: isDark,
@@ -1655,7 +1655,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
                       if (otherCount > 0) ...[
                         const SizedBox(width: 12),
                         _buildStatChip(
-                          icon: Icons.video_file_rounded,
+                          icon: Icons.folder_special_rounded,
                           label: '$otherCount 其他',
                           color: Colors.grey,
                           isDark: isDark,
@@ -2392,7 +2392,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               child: _SkeletonCategoryRow(
                 title: '最近添加',
                 isDark: isDark,
-                icon: Icons.schedule_rounded,
+                icon: Icons.fiber_new_rounded,
                 iconColor: Colors.blue,
               ),
             ),
@@ -2407,7 +2407,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               onItemTap: (m) => _openVideoDetail(context, ref, m),
               onItemContextMenu: (m) => _showVideoContextMenu(context, ref, m),
               isDark: isDark,
-              icon: Icons.schedule_rounded,
+              icon: Icons.fiber_new_rounded,
               iconColor: Colors.blue,
               onViewAll: allRecentVideos.length > 20
                   ? () => _showCategoryPage(context, '最近添加', allRecentVideos)
@@ -2424,7 +2424,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               child: _SkeletonCategoryRow(
                 title: '电影',
                 isDark: isDark,
-                icon: Icons.movie_rounded,
+                icon: Icons.movie_filter_rounded,
                 iconColor: AppColors.primary,
               ),
             ),
@@ -2439,7 +2439,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               onItemTap: (m) => _openVideoDetail(context, ref, m),
               onItemContextMenu: (m) => _showVideoContextMenu(context, ref, m),
               isDark: isDark,
-              icon: Icons.movie_rounded,
+              icon: Icons.movie_filter_rounded,
               iconColor: AppColors.primary,
               totalCount: state.movieCount,
               onViewAll: state.movieCount > 10
@@ -2457,7 +2457,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               child: _SkeletonCategoryRow(
                 title: '剧集',
                 isDark: isDark,
-                icon: Icons.live_tv_rounded,
+                icon: Icons.tv_rounded,
                 iconColor: AppColors.accent,
               ),
             ),
@@ -2471,7 +2471,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               groups: tvShowGroups,
               onGroupTap: (group) => _openTvShowDetail(context, ref, group),
               isDark: isDark,
-              icon: Icons.live_tv_rounded,
+              icon: Icons.tv_rounded,
               iconColor: AppColors.accent,
               totalCount: state.tvShowGroupCount,
               onViewAll: state.tvShowGroupCount > 10
@@ -2489,7 +2489,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               child: _SkeletonCategoryRow(
                 title: '电影系列',
                 isDark: isDark,
-                icon: Icons.collections_bookmark_rounded,
+                icon: Icons.video_library_rounded,
                 iconColor: Colors.purple,
               ),
             ),
@@ -2506,7 +2506,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
                   ? () => _showMovieCollectionsFullPage(context, ref, movieCollections)
                   : null,
               isDark: isDark,
-              icon: Icons.collections_bookmark_rounded,
+              icon: Icons.video_library_rounded,
               iconColor: Colors.purple,
             ),
           ),
@@ -2566,7 +2566,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               child: _SkeletonCategoryRow(
                 title: '其他',
                 isDark: isDark,
-                icon: Icons.video_file_rounded,
+                icon: Icons.folder_special_rounded,
                 iconColor: Colors.grey,
               ),
             ),
@@ -2581,7 +2581,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               onItemTap: (m) => _openVideoDetail(context, ref, m),
               onItemContextMenu: (m) => _showVideoContextMenu(context, ref, m),
               isDark: isDark,
-              icon: Icons.video_file_rounded,
+              icon: Icons.folder_special_rounded,
               iconColor: Colors.grey,
               totalCount: state.otherCount,
               onViewAll: state.otherCount > 10

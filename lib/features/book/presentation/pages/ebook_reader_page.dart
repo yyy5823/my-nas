@@ -803,21 +803,12 @@ class _EbookReaderPageState extends ConsumerState<EbookReaderPage> {
   }
 
   /// 处理 Flutter 翻页模式下的点击事件
+  /// 注意：PageFlipEffect 内部已处理左侧25%和右侧25%的点击翻页
+  /// 这里只需要处理中间区域的切换控制栏
   void _handleTapForFlipMode(TapUpDetails details, BookReaderSettings settings) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final tapX = details.localPosition.dx;
-    final ratio = tapX / screenWidth;
-
-    if (ratio < 0.25) {
-      // 左侧 25%: 上一页
-      _controller.prevPage();
-    } else if (ratio > 0.75) {
-      // 右侧 25%: 下一页
-      _controller.nextPage();
-    } else {
-      // 中间 50%: 切换控制栏
-      _toggleControls();
-    }
+    // PageFlipEffect 只在中间 50% 区域触发 onTap 回调
+    // 左侧 25% 和右侧 25% 的点击由 PageFlipEffect 内部处理翻页
+    _toggleControls();
   }
 
   /// 获取当前章节标题（直接使用 book.js 传递的 chapterTitle）
