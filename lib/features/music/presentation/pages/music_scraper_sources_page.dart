@@ -385,7 +385,7 @@ class _MusicScraperTypeCard extends StatelessWidget {
                       size: 24,
                       color: (_isEnabled && _isImplemented)
                           ? type.themeColor
-                          : (isDark ? Colors.grey[600] : Colors.grey[400]),
+                          : (isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -951,7 +951,7 @@ class _MusicScraperConfigSheetState extends State<_MusicScraperConfigSheet> {
             style: const TextStyle(fontSize: 14),
             decoration: InputDecoration(
               hintText: hint,
-              hintStyle: TextStyle(fontSize: 13, color: isDark ? Colors.grey[600] : Colors.grey[400]),
+              hintStyle: TextStyle(fontSize: 13, color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant),
               filled: true,
               fillColor: isDark ? Colors.grey[900] : Colors.white,
               contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),

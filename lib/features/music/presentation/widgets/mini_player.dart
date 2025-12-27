@@ -162,7 +162,7 @@ class MiniPlayer extends ConsumerWidget {
       color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
       child: Icon(
         Icons.music_note_rounded,
-        color: isDark ? Colors.grey[600] : Colors.grey[400],
+        color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
         size: 24,
       ),
     );

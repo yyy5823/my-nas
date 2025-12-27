@@ -824,7 +824,7 @@ class _DownloadTile extends ConsumerWidget {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: isDark ? Colors.grey[600] : Colors.grey[400],
+                    color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -945,7 +945,7 @@ class _FilterOptionsSheet extends ConsumerWidget {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: isDark ? Colors.grey[600] : Colors.grey[400],
+                  color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -1022,7 +1022,7 @@ class _SortOptionsSheet extends ConsumerWidget {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: isDark ? Colors.grey[600] : Colors.grey[400],
+                  color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -1126,7 +1126,7 @@ class _AddDownloadDialogState extends ConsumerState<_AddDownloadDialog> {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: isDark ? Colors.grey[600] : Colors.grey[400],
+                    color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),

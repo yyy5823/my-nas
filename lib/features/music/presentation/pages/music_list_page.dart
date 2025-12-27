@@ -2332,7 +2332,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
                       children: [
                         Icon(
                           Icons.music_note_rounded,
-                          color: isDark ? Colors.grey[600] : Colors.grey[400],
+                          color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                         ),
                         Positioned(
                           bottom: 2,
@@ -5134,7 +5134,7 @@ class _FolderCard extends StatelessWidget {
                 // 箭头
                 Icon(
                   Icons.chevron_right_rounded,
-                  color: isDark ? Colors.grey[600] : Colors.grey[400],
+                  color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                 ),
               ],
             ),
@@ -6683,7 +6683,7 @@ class _ModernMusicTile extends ConsumerWidget {
                             fit: BoxFit.cover,
                             errorBuilder: (_, _, _) => Icon(
                               Icons.music_note_rounded,
-                              color: isDark ? Colors.grey[600] : Colors.grey[400],
+                              color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                             ),
                           )
                         : track.coverData != null
@@ -6692,12 +6692,12 @@ class _ModernMusicTile extends ConsumerWidget {
                                 fit: BoxFit.cover,
                                 errorBuilder: (_, _, _) => Icon(
                                   Icons.music_note_rounded,
-                                  color: isDark ? Colors.grey[600] : Colors.grey[400],
+                                  color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                                 ),
                               )
                             : Icon(
                                 Icons.music_note_rounded,
-                                color: isDark ? Colors.grey[600] : Colors.grey[400],
+                                color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                               ),
                   ),
                   const SizedBox(width: 12),
@@ -6880,7 +6880,7 @@ class _ModernMusicTile extends ConsumerWidget {
                       Icon(
                         Icons.queue_music_rounded,
                         size: 48,
-                        color: isDark ? Colors.grey[600] : Colors.grey[400],
+                        color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                       ),
                       const SizedBox(height: 12),
                       Text(
@@ -7112,7 +7112,7 @@ class _CompactMusicTile extends ConsumerWidget {
           Icons.music_note_rounded,
           size: 20,
           color: isConnected
-              ? (isDark ? Colors.grey[600] : Colors.grey[400])
+              ? (isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant)
               : (isDark ? Colors.grey[700] : Colors.grey[350]),
         );
 

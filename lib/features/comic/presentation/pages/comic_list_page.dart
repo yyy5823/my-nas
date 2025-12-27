@@ -1019,7 +1019,7 @@ class _ComicCard extends ConsumerWidget {
       child: Icon(
         Icons.collections_bookmark_outlined,
         size: 40,
-        color: isDark ? Colors.grey[600] : Colors.grey[400],
+        color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
       ),
     );
 

@@ -404,7 +404,7 @@ class _PhotoPeoplePageState extends ConsumerState<PhotoPeoplePage> {
             Icon(
               Icons.face_retouching_natural,
               size: 64,
-              color: isDark ? Colors.grey[600] : Colors.grey[400],
+              color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
             ),
             const SizedBox(height: 16),
             Text(
@@ -465,7 +465,7 @@ class _PhotoPeoplePageState extends ConsumerState<PhotoPeoplePage> {
                           child: Icon(
                             Icons.person,
                             size: 48,
-                            color: isDark ? Colors.grey[600] : Colors.grey[400],
+                            color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                           ),
                         ),
                       ),

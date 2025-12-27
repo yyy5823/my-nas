@@ -731,7 +731,7 @@ class _CompactBannerCard extends StatelessWidget {
   }
 
   Widget _buildPlaceholder() => Container(
-      color: isDark ? Colors.grey[850] : Colors.grey[200],
+      color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
       child: Icon(
         Icons.movie_rounded,
         size: 50,

@@ -1679,14 +1679,14 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
                         color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
                         child: Icon(
                           Icons.photo_rounded,
-                          color: isDark ? Colors.grey[600] : Colors.grey[400],
+                          color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                         ),
                       ),
                       errorWidget: Container(
                         color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
                         child: Icon(
                           Icons.photo_rounded,
-                          color: isDark ? Colors.grey[600] : Colors.grey[400],
+                          color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
                         ),
                       ),
                       cacheKey: photo.path,

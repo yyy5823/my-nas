@@ -376,7 +376,7 @@ class ChipSegmentControl extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: isSelected
                           ? AppColors.primary
-                          : (isDark ? Colors.grey[850] : Colors.grey[200]),
+                          : (isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
                         color: isSelected

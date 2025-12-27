@@ -773,7 +773,7 @@ class _TmdbMediaCard extends StatelessWidget {
                           fit: BoxFit.cover,
                         )
                       : Container(
-                          color: isDark ? Colors.grey[850] : Colors.grey[200],
+                          color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
                           child: Icon(
                             isMovie ? Icons.movie : Icons.tv,
                             color: isDark ? Colors.grey[600] : Colors.grey[400],

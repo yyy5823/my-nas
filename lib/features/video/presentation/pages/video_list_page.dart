@@ -2348,7 +2348,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
                 height: isDesktop ? 450 : 200,
                 margin: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: isDark ? Colors.grey[850] : Colors.grey[200],
+                  color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Center(
@@ -3295,7 +3295,7 @@ class _PartialVideoCard extends StatelessWidget {
         Expanded(
           child: DecoratedBox(
             decoration: BoxDecoration(
-              color: isDark ? Colors.grey[850] : Colors.grey[200],
+              color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
               borderRadius: BorderRadius.circular(10),
               boxShadow: [
                 BoxShadow(
@@ -3708,7 +3708,7 @@ class _PosterCardState extends ConsumerState<_PosterCard> {
   }
 
   Widget _buildPlaceholder() => Container(
-      color: widget.isDark ? Colors.grey[850] : Colors.grey[200],
+      color: widget.isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
       child: Center(
         child: Icon(
           widget.metadata.category == MediaCategory.tvShow
@@ -4657,7 +4657,7 @@ class _VerticalPosterCardState extends ConsumerState<_VerticalPosterCard> {
   }
 
   Widget _buildPlaceholder() => Container(
-      color: widget.isDark ? Colors.grey[850] : Colors.grey[200],
+      color: widget.isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
       child: Center(
         child: Icon(
           widget.metadata.category == MediaCategory.tvShow
@@ -4958,7 +4958,7 @@ class _HorizontalVideoCardState extends ConsumerState<_HorizontalVideoCard> {
   }
 
   Widget _buildPlaceholder() => Container(
-      color: widget.isDark ? Colors.grey[850] : Colors.grey[200],
+      color: widget.isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
       child: Center(
         child: Icon(
           widget.metadata.category == MediaCategory.tvShow
@@ -5915,7 +5915,7 @@ class _TvShowPosterCardState extends State<_TvShowPosterCard> {
   }
 
   Widget _buildPlaceholder() => Container(
-      color: widget.isDark ? Colors.grey[850] : Colors.grey[200],
+      color: widget.isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
       child: Center(
         child: Icon(
           Icons.live_tv_rounded,
@@ -7639,7 +7639,7 @@ class _MovieCollectionCardState extends State<_MovieCollectionCard> {
   }
 
   Widget _buildPlaceholder() => Container(
-      color: widget.isDark ? Colors.grey[850] : Colors.grey[200],
+      color: widget.isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
       child: Center(
         child: Icon(
           Icons.collections_bookmark_rounded,
@@ -7786,7 +7786,7 @@ class _MovieCollectionGridCard extends StatelessWidget {
   }
 
   Widget _buildPlaceholder() => Container(
-        color: isDark ? Colors.grey[850] : Colors.grey[200],
+        color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
         child: Center(
           child: Icon(
             Icons.collections_bookmark_rounded,

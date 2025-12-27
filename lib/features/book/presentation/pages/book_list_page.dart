@@ -1414,7 +1414,7 @@ class _BookListPageState extends ConsumerState<BookListPage> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 4),
           decoration: BoxDecoration(
-            color: isDark ? Colors.grey[850] : Colors.grey[200],
+            color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
             borderRadius: BorderRadius.circular(16),
           ),
           child: Row(

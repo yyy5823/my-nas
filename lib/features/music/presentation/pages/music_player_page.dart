@@ -470,7 +470,7 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
             onPressed: null,
             icon: Icon(
               Icons.favorite_border_rounded,
-              color: isDark ? Colors.grey[600] : Colors.grey[400],
+              color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
             ),
           ),
         ),
@@ -663,7 +663,7 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
       child: Icon(
         Icons.music_note_rounded,
         size: size * 0.4,
-        color: isDark ? Colors.grey[600] : Colors.grey[400],
+        color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
       ),
     );
 
