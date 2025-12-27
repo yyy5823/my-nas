@@ -27,6 +27,7 @@ import 'package:my_nas/features/video/data/services/video_database_service.dart'
 import 'package:my_nas/features/video/data/services/video_scanner_service.dart';
 import 'package:my_nas/features/video/presentation/pages/video_list_page.dart';
 import 'package:my_nas/nas_adapters/local/local_adapter.dart';
+import 'package:my_nas/nas_adapters/mobile/services/file_import_service.dart';
 import 'package:my_nas/nas_adapters/smb/smb_pool_config.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 
@@ -600,7 +601,7 @@ class _MediaTypeTab extends ConsumerWidget {
   /// 根据媒体类型选择正确的路径前缀，并按需请求权限：
   /// - photo/video → /gallery（系统相册）- 需要相册权限
   /// - music → /music（系统音乐库）- 需要音乐库权限
-  /// - book/comic/note → /files（文件App）- 不需要特殊权限
+  /// - book/comic/note → 显示导入选项（从 Files App 导入）
   Future<void> _addLocalSourceToLibrary(
     BuildContext context,
     WidgetRef ref,
@@ -635,12 +636,15 @@ class _MediaTypeTab extends ConsumerWidget {
           case MediaType.book:
           case MediaType.comic:
           case MediaType.note:
-            // 文件系统不需要特殊权限
-            break;
+            // 显示文件导入选项对话框
+            if (context.mounted) {
+              await _showFileImportOptions(context, ref, localSource, connections);
+            }
+            return; // 导入流程在对话框中处理完成
         }
       }
 
-      // 根据媒体类型选择路径前缀
+      // 根据媒体类型选择路径前缀（photo/video/music）
       final (path, displayName) = switch (mediaType) {
         MediaType.photo || MediaType.video => ('/gallery', '本机相册'),
         MediaType.music => ('/music', '本机音乐'),
@@ -663,6 +667,235 @@ class _MediaTypeTab extends ConsumerWidget {
       }
     } on Exception catch (e, st) {
       logger.e('添加本机失败', e, st);
+      if (context.mounted) {
+        context.showErrorToast('添加失败: $e');
+      }
+    }
+  }
+
+  /// 显示文件导入选项对话框（book/comic/note）
+  Future<void> _showFileImportOptions(
+    BuildContext context,
+    WidgetRef ref,
+    SourceEntity localSource,
+    Map<String, SourceConnection> connections,
+  ) async {
+    final importType = switch (mediaType) {
+      MediaType.book => FileImportType.book,
+      MediaType.comic => FileImportType.comic,
+      _ => FileImportType.document,
+    };
+
+    final typeDisplayName = switch (mediaType) {
+      MediaType.book => '书籍',
+      MediaType.comic => '漫画',
+      _ => '文档',
+    };
+
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                '添加本机$typeDisplayName',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+            const Divider(height: 1),
+
+            // 从文件 App 导入
+            ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.folder_open, color: Colors.blue),
+              ),
+              title: const Text('从文件导入'),
+              subtitle: Text('从 iCloud、其他云盘或本地选择$typeDisplayName文件'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () async {
+                Navigator.pop(context);
+                await _importFilesFromFilesApp(context, ref, localSource, connections, importType);
+              },
+            ),
+
+            // 扫描已有文件（如果已有导入的文件）
+            ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.green.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.refresh, color: Colors.green),
+              ),
+              title: const Text('扫描已有文件'),
+              subtitle: const Text('扫描之前导入到应用的文件'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () async {
+                Navigator.pop(context);
+                await _addFilesPathToLibrary(context, ref, localSource, connections, importType);
+              },
+            ),
+
+            const SizedBox(height: 8),
+
+            // 提示信息
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      size: 18,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '导入的文件会保存到应用目录，可在"文件" App 中管理',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 从 Files App 导入文件
+  Future<void> _importFilesFromFilesApp(
+    BuildContext context,
+    WidgetRef ref,
+    SourceEntity localSource,
+    Map<String, SourceConnection> connections,
+    FileImportType importType,
+  ) async {
+    try {
+      // 显示加载指示器
+      if (context.mounted) {
+        unawaited(showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const Center(
+            child: Card(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text('正在导入...'),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ));
+      }
+
+      // 导入文件
+      final importedFiles = await FileImportService.instance.importFiles(
+        type: importType,
+        allowMultiple: true,
+      );
+
+      // 关闭加载对话框
+      if (context.mounted) {
+        Navigator.pop(context);
+      }
+
+      if (importedFiles.isEmpty) {
+        if (context.mounted) {
+          context.showInfoToast('未选择文件');
+        }
+        return;
+      }
+
+      // 添加路径到媒体库并扫描
+      await _addFilesPathToLibrary(context, ref, localSource, connections, importType);
+
+      if (context.mounted) {
+        context.showSuccessToast('已导入 ${importedFiles.length} 个文件');
+      }
+    } on Exception catch (e, st) {
+      // 关闭加载对话框（如果还在显示）
+      if (context.mounted) {
+        Navigator.of(context).popUntil((route) => route.isFirst || route.settings.name != null);
+      }
+
+      logger.e('导入文件失败', e, st);
+      if (context.mounted) {
+        context.showErrorToast('导入失败: $e');
+      }
+    }
+  }
+
+  /// 添加文件路径到媒体库
+  Future<void> _addFilesPathToLibrary(
+    BuildContext context,
+    WidgetRef ref,
+    SourceEntity localSource,
+    Map<String, SourceConnection> connections,
+    FileImportType importType,
+  ) async {
+    try {
+      // 获取虚拟路径前缀
+      final virtualPathPrefix = FileImportService.instance.getVirtualPathPrefix(importType);
+      final displayName = switch (importType) {
+        FileImportType.book => '本机书籍',
+        FileImportType.comic => '本机漫画',
+        FileImportType.document => '本机文档',
+      };
+
+      final newPath = MediaLibraryPath(
+        sourceId: localSource.id,
+        path: virtualPathPrefix,
+        name: displayName,
+      );
+
+      // 检查是否已添加
+      final configAsync = ref.read(mediaLibraryConfigProvider);
+      final existingPaths = configAsync.valueOrNull?.getPathsForType(mediaType) ?? [];
+      final alreadyExists = existingPaths.any(
+        (p) => p.sourceId == localSource.id && p.path == virtualPathPrefix,
+      );
+
+      if (!alreadyExists) {
+        await ref.read(mediaLibraryConfigProvider.notifier).addPath(mediaType, newPath);
+      }
+
+      // 触发扫描
+      _autoScanPath(ref, mediaType, newPath, connections);
+
+      if (context.mounted) {
+        context.showSuccessToast('正在扫描$displayName...');
+      }
+    } on Exception catch (e, st) {
+      logger.e('添加文件路径失败', e, st);
       if (context.mounted) {
         context.showErrorToast('添加失败: $e');
       }

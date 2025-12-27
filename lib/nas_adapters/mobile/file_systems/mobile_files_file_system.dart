@@ -12,8 +12,10 @@ import 'package:path_provider/path_provider.dart';
 /// - Android: 访问 Documents 和 Downloads 目录
 ///
 /// 虚拟目录结构：
-/// - /documents/    - 应用文档目录
-/// - /downloads/    - 下载目录
+/// - /documents/         - 应用文档目录
+/// - /documents/Books/   - 书籍目录（由 FileImportService 创建）
+/// - /documents/Comics/  - 漫画目录（由 FileImportService 创建）
+/// - /downloads/         - 下载目录
 ///
 /// 注意：会自动排除缓存目录（包含 cache 的目录），避免扫描到应用缓存文件
 class MobileFilesFileSystem implements NasFileSystem {

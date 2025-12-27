@@ -66,10 +66,29 @@ class MusicHomeContent extends ConsumerStatefulWidget {
 class _MusicHomeContentState extends ConsumerState<MusicHomeContent> {
   final ScrollController _scrollController = ScrollController();
 
+  // 缓存推荐歌曲，避免每次滚动都重新随机
+  List<MusicFileWithSource>? _cachedRecommendedTracks;
+  int _lastTracksHashCode = 0;
+
   @override
   void dispose() {
     _scrollController.dispose();
     super.dispose();
+  }
+
+  /// 获取缓存的推荐歌曲，只有当源列表变化时才重新生成
+  List<MusicFileWithSource> _getCachedRandomTracks(int count) {
+    final currentHashCode = widget.tracks.length;
+    if (_cachedRecommendedTracks == null || _lastTracksHashCode != currentHashCode) {
+      _lastTracksHashCode = currentHashCode;
+      if (widget.tracks.isEmpty) {
+        _cachedRecommendedTracks = [];
+      } else {
+        final shuffled = List<MusicFileWithSource>.from(widget.tracks)..shuffle();
+        _cachedRecommendedTracks = shuffled.take(count).toList();
+      }
+    }
+    return _cachedRecommendedTracks!;
   }
 
   @override
@@ -141,7 +160,7 @@ class _MusicHomeContentState extends ConsumerState<MusicHomeContent> {
       case HomeSection.recommended:
         if (widget.tracks.isEmpty) return null;
         return PopularTracksSection(
-          tracks: _getRandomTracks(5),
+          tracks: _getCachedRandomTracks(5),
           isDark: isDark,
           title: '为你推荐',
           onTrackTap: (track) => widget.onTrackTap(track, widget.tracks),
@@ -481,7 +500,7 @@ class _MusicHomeContentState extends ConsumerState<MusicHomeContent> {
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
               child: PopularTracksSection(
-                tracks: _getRandomTracks(8),
+                tracks: _getCachedRandomTracks(8),
                 isDark: isDark,
                 isDesktop: true,
                 title: '为你推荐',
@@ -543,12 +562,6 @@ class _MusicHomeContentState extends ConsumerState<MusicHomeContent> {
       MusicBrowseCategory.years: widget.yearCount,
       MusicBrowseCategory.folders: widget.folderCount,
     };
-
-  List<MusicFileWithSource> _getRandomTracks(int count) {
-    if (widget.tracks.isEmpty) return [];
-    final shuffled = List<MusicFileWithSource>.from(widget.tracks)..shuffle();
-    return shuffled.take(count).toList();
-  }
 
   void _onBrowseCategoryTap(MusicBrowseCategory browseCategory) {
     switch (browseCategory) {

@@ -529,119 +529,121 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
     // 桌面端限制封面最大尺寸，移动端使用屏幕宽度的65%
     final maxSize = screenHeight * 0.32;
     final size = (screenWidth * 0.65).clamp(150.0, maxSize);
-    final tonearmLength = size * 0.5; // 唱针臂长度
-    final pivotSize = size * 0.08; // 小的转轴球
+    final tonearmHeight = size * 0.45; // 唱针臂高度
+    final pivotSize = size * 0.07; // 转轴球大小
 
     return Center(
-      child: SizedBox(
-        width: size + pivotSize,
-        height: size + tonearmLength * 0.3,
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            // 唱片（居中显示）
-            Positioned(
-              left: 0,
-              bottom: 0,
-              child: AnimatedBuilder(
-                animation: _rotationController,
-                builder: (context, child) => Transform.rotate(
-                    angle: playerState.isPlaying ? _rotationController.value * 2 * math.pi : 0,
-                    child: child,
-                  ),
-                child: Container(
-                  width: size,
-                  height: size,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.4),
-                        blurRadius: 30,
-                        spreadRadius: 2,
-                        offset: const Offset(0, 8),
-                      ),
-                      BoxShadow(
-                        color: AppColors.primary.withValues(alpha: 0.15),
-                        blurRadius: 50,
-                        spreadRadius: 10,
-                      ),
-                    ],
-                  ),
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      CustomPaint(
-                        size: Size(size, size),
-                        painter: _VinylRecordPainter(isDark: isDark),
-                      ),
-                      Container(
-                        width: size * 0.38,
-                        height: size * 0.38,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [AppColors.primary, AppColors.secondary],
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.3),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        clipBehavior: Clip.antiAlias,
-                        child: _buildCoverImage(currentMusic, size * 0.38, isDark),
-                      ),
-                      Container(
-                        width: size * 0.04,
-                        height: size * 0.04,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.black,
-                          border: Border.all(color: Colors.grey[800]!, width: 1.5),
-                        ),
-                      ),
-                      Container(
-                        width: size,
-                        height: size,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: LinearGradient(
-                            begin: const Alignment(-0.8, -0.8),
-                            end: const Alignment(0.8, 0.8),
-                            colors: [
-                              Colors.white.withValues(alpha: 0.1),
-                              Colors.transparent,
-                              Colors.transparent,
-                              Colors.white.withValues(alpha: 0.03),
-                            ],
-                            stops: const [0.0, 0.3, 0.7, 1.0],
-                          ),
-                        ),
-                      ),
-                    ],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 唱针臂（顶部中央）
+          SizedBox(
+            width: size,
+            height: tonearmHeight,
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.topCenter,
+              children: [
+                // 唱针臂放在中间偏右，向唱片方向伸展
+                Positioned(
+                  top: 0,
+                  right: size * 0.2,
+                  child: _TopTonearmWidget(
+                    isPlaying: playerState.isPlaying,
+                    armLength: tonearmHeight,
+                    pivotSize: pivotSize,
+                    isDark: isDark,
                   ),
                 ),
+              ],
+            ),
+          ),
+          // 唱片（居中显示）
+          AnimatedBuilder(
+            animation: _rotationController,
+            builder: (context, child) => Transform.rotate(
+                angle: playerState.isPlaying ? _rotationController.value * 2 * math.pi : 0,
+                child: child,
+              ),
+            child: Container(
+              width: size,
+              height: size,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.4),
+                    blurRadius: 30,
+                    spreadRadius: 2,
+                    offset: const Offset(0, 8),
+                  ),
+                  BoxShadow(
+                    color: AppColors.primary.withValues(alpha: 0.15),
+                    blurRadius: 50,
+                    spreadRadius: 10,
+                  ),
+                ],
+              ),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  CustomPaint(
+                    size: Size(size, size),
+                    painter: _VinylRecordPainter(isDark: isDark),
+                  ),
+                  Container(
+                    width: size * 0.38,
+                    height: size * 0.38,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [AppColors.primary, AppColors.secondary],
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: _buildCoverImage(currentMusic, size * 0.38, isDark),
+                  ),
+                  Container(
+                    width: size * 0.04,
+                    height: size * 0.04,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.black,
+                      border: Border.all(color: Colors.grey[800]!, width: 1.5),
+                    ),
+                  ),
+                  Container(
+                    width: size,
+                    height: size,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(
+                        begin: const Alignment(-0.8, -0.8),
+                        end: const Alignment(0.8, 0.8),
+                        colors: [
+                          Colors.white.withValues(alpha: 0.1),
+                          Colors.transparent,
+                          Colors.transparent,
+                          Colors.white.withValues(alpha: 0.03),
+                        ],
+                        stops: const [0.0, 0.3, 0.7, 1.0],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-            // 唱针臂（顶部中央偏右，参考网易云设计）
-            Positioned(
-              top: 0,
-              right: 0,
-              child: _NeteaseTonearmWidget(
-                isPlaying: playerState.isPlaying,
-                armLength: tonearmLength,
-                pivotSize: pivotSize,
-                recordRadius: size / 2,
-                isDark: isDark,
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -1738,5 +1740,209 @@ class _NeteaseTonearmPainter extends CustomPainter {
   bool shouldRepaint(covariant _NeteaseTonearmPainter oldDelegate) =>
       pivotSize != oldDelegate.pivotSize ||
       recordRadius != oldDelegate.recordRadius ||
+      isDark != oldDelegate.isDark;
+}
+
+/// 顶部唱针臂组件 - 从顶部向下伸展到唱片
+class _TopTonearmWidget extends StatefulWidget {
+  const _TopTonearmWidget({
+    required this.isPlaying,
+    required this.armLength,
+    required this.pivotSize,
+    required this.isDark,
+  });
+
+  final bool isPlaying;
+  final double armLength;
+  final double pivotSize;
+  final bool isDark;
+
+  @override
+  State<_TopTonearmWidget> createState() => _TopTonearmWidgetState();
+}
+
+class _TopTonearmWidgetState extends State<_TopTonearmWidget>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 400),
+      vsync: this,
+    );
+
+    // 唱针臂角度动画：从抬起（向右旋转）到落下（垂直）
+    // 停止时向右抬起，播放时落下到唱片上
+    _animation = Tween<double>(
+      begin: 0.5, // 停止时向右抬起 ~28度
+      end: 0.0, // 播放时垂直落下
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutBack,
+      reverseCurve: Curves.easeIn,
+    ));
+
+    if (widget.isPlaying) {
+      _controller.forward();
+    }
+  }
+
+  @override
+  void didUpdateWidget(_TopTonearmWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isPlaying != oldWidget.isPlaying) {
+      if (widget.isPlaying) {
+        _controller.forward();
+      } else {
+        _controller.reverse();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+      animation: _animation,
+      builder: (context, child) => Transform(
+          alignment: Alignment.topCenter, // 以顶部中心为轴心旋转
+          transform: Matrix4.identity()..rotateZ(_animation.value),
+          child: child,
+        ),
+      child: CustomPaint(
+        size: Size(widget.armLength * 0.6, widget.armLength),
+        painter: _TopTonearmPainter(
+          pivotSize: widget.pivotSize,
+          isDark: widget.isDark,
+        ),
+      ),
+    );
+}
+
+/// 顶部唱针臂绘制器
+class _TopTonearmPainter extends CustomPainter {
+  _TopTonearmPainter({
+    required this.pivotSize,
+    required this.isDark,
+  });
+
+  final double pivotSize;
+  final bool isDark;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final pivotRadius = pivotSize / 2;
+    // 转轴在顶部中央
+    final pivotCenter = Offset(size.width / 2, pivotRadius);
+
+    // 臂的参数
+    final armWidth = size.width * 0.08;
+    final headWidth = size.width * 0.12;
+    final headHeight = size.height * 0.08;
+
+    // 主臂从转轴向下延伸
+    final armStartY = pivotCenter.dy + pivotRadius * 0.5;
+    final armEndY = size.height - headHeight - 4;
+
+    // 绘制主臂
+    final mainArmPaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          Colors.grey[400]!,
+          Colors.grey[500]!,
+          Colors.grey[600]!,
+        ],
+      ).createShader(Rect.fromLTWH(
+        size.width / 2 - armWidth / 2,
+        armStartY,
+        armWidth,
+        armEndY - armStartY,
+      ))
+      ..strokeWidth = armWidth
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+
+    final armPath = Path()
+      ..moveTo(size.width / 2, armStartY)
+      ..lineTo(size.width / 2, armEndY);
+    canvas.drawPath(armPath, mainArmPaint);
+
+    // 臂高光
+    final highlightPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.3)
+      ..strokeWidth = armWidth * 0.2
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+
+    final highlightPath = Path()
+      ..moveTo(size.width / 2 - armWidth * 0.25, armStartY)
+      ..lineTo(size.width / 2 - armWidth * 0.25, armEndY);
+    canvas.drawPath(highlightPath, highlightPaint);
+
+    // 转轴球 - 金属质感
+    final pivotPaint = Paint()
+      ..shader = RadialGradient(
+        center: const Alignment(-0.3, -0.3),
+        colors: [
+          Colors.grey[300]!,
+          Colors.grey[500]!,
+          Colors.grey[700]!,
+        ],
+        stops: const [0.0, 0.5, 1.0],
+      ).createShader(Rect.fromCircle(center: pivotCenter, radius: pivotRadius));
+    canvas.drawCircle(pivotCenter, pivotRadius, pivotPaint);
+
+    // 转轴球高光
+    final pivotHighlight = Paint()
+      ..shader = RadialGradient(
+        center: const Alignment(-0.5, -0.5),
+        colors: [
+          Colors.white.withValues(alpha: 0.6),
+          Colors.transparent,
+        ],
+      ).createShader(Rect.fromCircle(center: pivotCenter, radius: pivotRadius));
+    canvas.drawCircle(pivotCenter, pivotRadius * 0.5, pivotHighlight);
+
+    // 唱针头（小方块）
+    final headRect = Rect.fromCenter(
+      center: Offset(size.width / 2, armEndY + headHeight / 2),
+      width: headWidth,
+      height: headHeight,
+    );
+    final headPaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [Colors.grey[500]!, Colors.grey[700]!],
+      ).createShader(headRect);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(headRect, const Radius.circular(2)),
+      headPaint,
+    );
+
+    // 唱针尖
+    final needlePaint = Paint()
+      ..color = Colors.grey[400]!
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(
+      Offset(size.width / 2, armEndY + headHeight),
+      Offset(size.width / 2, armEndY + headHeight + 5),
+      needlePaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _TopTonearmPainter oldDelegate) =>
+      pivotSize != oldDelegate.pivotSize ||
       isDark != oldDelegate.isDark;
 }
