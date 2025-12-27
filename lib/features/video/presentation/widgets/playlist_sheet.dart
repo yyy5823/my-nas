@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/video/domain/entities/video_item.dart';
 import 'package:my_nas/features/video/presentation/providers/playlist_provider.dart';
 
@@ -273,7 +274,7 @@ class _PlaylistItem extends StatelessWidget {
         background: Container(
           alignment: Alignment.centerRight,
           padding: const EdgeInsets.only(right: 20),
-          color: Colors.red.withValues(alpha: 0.8),
+          color: AppColors.error.withValues(alpha: 0.8),
           child: const Icon(Icons.delete_rounded, color: Colors.white),
         ),
         child: Material(

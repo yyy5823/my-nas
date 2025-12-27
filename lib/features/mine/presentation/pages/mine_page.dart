@@ -1773,12 +1773,12 @@ class _DownloaderTile extends ConsumerWidget {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: Colors.orange.withValues(alpha: 0.12),
+                  color: AppColors.warning.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(
                   Icons.download_for_offline_rounded,
-                  color: Colors.orange,
+                  color: AppColors.warning,
                   size: 20,
                 ),
               ),
@@ -1812,7 +1812,7 @@ class _DownloaderTile extends ConsumerWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Colors.orange.withValues(alpha: 0.12),
+                    color: AppColors.warning.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
@@ -1820,7 +1820,7 @@ class _DownloaderTile extends ConsumerWidget {
                     style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: Colors.orange,
+                      color: AppColors.warning,
                     ),
                   ),
                 )

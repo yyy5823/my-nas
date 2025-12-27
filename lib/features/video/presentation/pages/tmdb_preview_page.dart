@@ -178,20 +178,20 @@ class _TmdbPreviewPageState extends ConsumerState<TmdbPreviewPage> {
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                     decoration: BoxDecoration(
-                                      color: Colors.orange.withValues(alpha: 0.2),
+                                      color: AppColors.warning.withValues(alpha: 0.2),
                                       borderRadius: BorderRadius.circular(16),
-                                      border: Border.all(color: Colors.orange.withValues(alpha: 0.5)),
+                                      border: Border.all(color: AppColors.warning.withValues(alpha: 0.5)),
                                     ),
                                     child: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        Icon(Icons.cloud_outlined, size: 16, color: Colors.orange[700]),
+                                        Icon(Icons.cloud_outlined, size: 16, color: AppColors.warning),
                                         const SizedBox(width: 6),
                                         Text(
                                           '本地不可用',
                                           style: TextStyle(
                                             fontSize: 12,
-                                            color: Colors.orange[700],
+                                            color: AppColors.warning,
                                             fontWeight: FontWeight.w500,
                                           ),
                                         ),

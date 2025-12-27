@@ -1718,7 +1718,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
             : EdgeInsets.zero,
         decoration: _showScrapeDetails
             ? BoxDecoration(
-                color: Colors.orange.withValues(alpha: 0.15),
+                color: AppColors.warning.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(12),
               )
             : null,
@@ -1732,7 +1732,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
                 value: progress,
                 strokeWidth: 2,
                 backgroundColor: isDark ? AppColors.darkOutline : AppColors.lightOutline,
-                valueColor: const AlwaysStoppedAnimation<Color>(Colors.orange),
+                valueColor: const AlwaysStoppedAnimation<Color>(AppColors.warning),
               ),
             ),
             const SizedBox(width: 4),
@@ -1740,7 +1740,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               _showScrapeDetails ? '${stats.processed}/${stats.total}' : '$percentage%',
               style: TextStyle(
                 fontSize: 12,
-                color: Colors.orange,
+                color: AppColors.warning,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -2039,13 +2039,13 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               width: 100,
               height: 100,
               decoration: BoxDecoration(
-                color: Colors.orange.withValues(alpha: 0.12),
+                color: AppColors.warning.withValues(alpha: 0.12),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
                 Icons.filter_list_off_rounded,
                 size: 50,
-                color: Colors.orange,
+                color: AppColors.warning,
               ),
             ),
             const SizedBox(height: 24),

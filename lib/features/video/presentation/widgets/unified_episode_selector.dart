@@ -799,12 +799,12 @@ class _MissingEpisodeActionSheet extends ConsumerWidget {
                     width: 36,
                     height: 36,
                     decoration: BoxDecoration(
-                      color: Colors.orange.withValues(alpha: 0.12),
+                      color: AppColors.warning.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: const Icon(
                       Icons.cloud_off_rounded,
-                      color: Colors.orange,
+                      color: AppColors.warning,
                       size: 18,
                     ),
                   ),

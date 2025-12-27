@@ -222,7 +222,7 @@ class _NoteTreeItem extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: Colors.orange.withValues(alpha: 0.15),
+                    color: AppColors.warning.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: const Text(
@@ -230,7 +230,7 @@ class _NoteTreeItem extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
-                      color: Colors.orange,
+                      color: AppColors.warning,
                     ),
                   ),
                 ),
@@ -258,7 +258,7 @@ class _NoteTreeItem extends StatelessWidget {
       return Colors.amber.shade700;
     }
     if (node.isTaskFile) {
-      return Colors.orange;
+      return AppColors.warning;
     }
     return AppColors.primary;
   }

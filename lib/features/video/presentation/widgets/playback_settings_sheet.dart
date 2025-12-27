@@ -201,12 +201,12 @@ class PlaybackSettingsSheet extends ConsumerWidget {
                       width: 40,
                       height: 40,
                       decoration: BoxDecoration(
-                        color: Colors.red.withValues(alpha: 0.12),
+                        color: AppColors.error.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: const Icon(
                         Icons.delete_sweep_rounded,
-                        color: Colors.red,
+                        color: AppColors.error,
                         size: 22,
                       ),
                     ),
@@ -277,7 +277,7 @@ class PlaybackSettingsSheet extends ConsumerWidget {
               context.showSuccessToast('播放位置记录已清除');
             },
             style: FilledButton.styleFrom(
-              backgroundColor: Colors.red,
+              backgroundColor: AppColors.error,
             ),
             child: const Text('清除'),
           ),

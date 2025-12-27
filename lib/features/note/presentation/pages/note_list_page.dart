@@ -907,7 +907,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
                   ? Icons.checklist_rounded
                   : Icons.article_outlined,
               size: 20,
-              color: node.isTaskFile ? Colors.orange : AppColors.primary,
+              color: node.isTaskFile ? AppColors.warning : AppColors.primary,
             ),
             const SizedBox(width: 8),
             // 文件名
@@ -1122,7 +1122,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
       decoration: BoxDecoration(
         color: completed == total
             ? AppColors.success.withValues(alpha: 0.1)
-            : Colors.orange.withValues(alpha: 0.1),
+            : AppColors.warning.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -1135,7 +1135,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
               value: progress,
               strokeWidth: 2,
               backgroundColor: Colors.grey.withValues(alpha: 0.2),
-              color: completed == total ? AppColors.success : Colors.orange,
+              color: completed == total ? AppColors.success : AppColors.warning,
             ),
           ),
           const SizedBox(width: 8),
@@ -1144,7 +1144,7 @@ class _NoteListPageState extends ConsumerState<NoteListPage> {
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: completed == total ? AppColors.success : Colors.orange,
+              color: completed == total ? AppColors.success : AppColors.warning,
             ),
           ),
         ],
@@ -1901,7 +1901,7 @@ class _NoteListContentState extends ConsumerState<NoteListContent> {
                 ? Icons.checklist_rounded
                 : Icons.article_outlined,
             size: 18,
-            color: node.isTaskFile ? Colors.orange : AppColors.primary,
+            color: node.isTaskFile ? AppColors.warning : AppColors.primary,
           ),
           const SizedBox(width: 8),
           // 文件名

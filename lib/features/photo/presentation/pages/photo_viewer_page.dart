@@ -1326,7 +1326,7 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
           ),
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
             child: const Text('删除'),
           ),
         ],
@@ -1630,7 +1630,7 @@ class _LivePhotoBadge extends StatelessWidget {
             decoration: BoxDecoration(
               color: isPreparing
                   ? Colors.yellow
-                  : (isPlaying ? Colors.red : Colors.white),
+                  : (isPlaying ? AppColors.error : Colors.white),
               shape: BoxShape.circle,
             ),
           ),

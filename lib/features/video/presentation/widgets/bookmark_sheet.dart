@@ -343,7 +343,7 @@ class _BookmarkItem extends StatelessWidget {
         background: Container(
           alignment: Alignment.centerRight,
           padding: const EdgeInsets.only(right: 20),
-          color: Colors.red,
+          color: AppColors.error,
           child: const Icon(Icons.delete_rounded, color: Colors.white),
         ),
         child: ListTile(

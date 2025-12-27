@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/video/data/services/opensubtitles_service.dart';
 import 'package:my_nas/shared/providers/language_preference_provider.dart';
@@ -169,7 +170,7 @@ class _SubtitleDownloadDialogState extends ConsumerState<SubtitleDownloadDialog>
       if (!mounted) return;
       logger.e('下载字幕失败: $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
+        SnackBar(content: Text(e.toString()), backgroundColor: AppColors.error),
       );
       setState(() {
         _isDownloading = false;
@@ -441,7 +442,7 @@ class _SubtitleDownloadDialogState extends ConsumerState<SubtitleDownloadDialog>
     );
 
   Color _getLanguageColor(String languageCode) => switch (languageCode) {
-      'zh-cn' || 'zh-tw' || 'zh' => Colors.red,
+      'zh-cn' || 'zh-tw' || 'zh' => AppColors.error,
       'en' => Colors.blue,
       'ja' => Colors.pink,
       'ko' => Colors.purple,

@@ -826,7 +826,7 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
                         ? AppColors.success
                         : progress?.status == HashStatus.error
                             ? AppColors.error
-                            : Colors.orange,
+                            : AppColors.warning,
                   ),
                 const SizedBox(width: 12),
                 Expanded(
