@@ -27,6 +27,7 @@ import 'package:my_nas/features/video/data/services/video_database_service.dart'
 import 'package:my_nas/features/video/data/services/video_scanner_service.dart';
 import 'package:my_nas/features/video/presentation/pages/video_list_page.dart';
 import 'package:my_nas/nas_adapters/smb/smb_pool_config.dart';
+import 'package:my_nas/core/extensions/context_extensions.dart';
 
 class MediaLibraryPage extends ConsumerStatefulWidget {
   const MediaLibraryPage({super.key});
@@ -221,36 +222,12 @@ class _MediaLibraryPageState extends ConsumerState<MediaLibraryPage> {
     await PerformanceModeService().setEnabled(newValue);
 
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                newValue
-                    ? '性能模式已开启'
-                    : '性能模式已关闭',
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              Text(
-                newValue
-                    ? '新任务将使用更高的并发数 (${SmbPoolConfig.maxBackgroundTasks} 并发)'
-                    : '新任务将使用默认并发数 (${SmbPoolConfig.maxBackgroundTasks} 并发)',
-                style: const TextStyle(fontSize: 12),
-              ),
-              const Text(
-                '已在运行的任务不受影响',
-                style: TextStyle(fontSize: 11, color: Colors.white70),
-              ),
-            ],
-          ),
-          duration: const Duration(seconds: 4),
-          action: SnackBarAction(
-            label: '详情',
-            onPressed: () => _showConfigDetails(context),
-          ),
-        ),
+      context.showSuccessToast(
+        newValue
+            ? '性能模式已开启 (${SmbPoolConfig.maxBackgroundTasks} 并发)'
+            : '性能模式已关闭 (${SmbPoolConfig.maxBackgroundTasks} 并发)',
+        action: () => _showConfigDetails(context),
+        actionLabel: '详情',
       );
     }
   }
@@ -506,9 +483,7 @@ class _MediaTypeTab extends ConsumerWidget {
     }).toList();
 
     if (connectedSources.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('没有已连接的源，请先连接一个源')),
-      );
+      context.showSuccessToast('没有已连接的源，请先连接一个源');
       return;
     }
 
@@ -651,16 +626,12 @@ class _MediaTypeTab extends ConsumerWidget {
       _autoScanPath(ref, mediaType, newPath, connections);
 
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已添加$displayName，正在扫描...')),
-        );
+        context.showSuccessToast('已添加$displayName，正在扫描...');
       }
     } on Exception catch (e, st) {
       logger.e('添加本机失败', e, st);
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('添加失败: $e')),
-        );
+        context.showErrorToast('添加失败: $e');
       }
     }
   }
@@ -1507,9 +1478,7 @@ class _PathCardState extends ConsumerState<_PathCard> {
           await ref.read(videoListProvider.notifier).reloadFromCache();
           await _loadStats();
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('扫描完成，共 $count 个视频，开始刮削元数据...')),
-            );
+            context.showSuccessToast('扫描完成，共 $count 个视频，开始刮削元数据...');
           }
           // 扫描完成后自动触发后台刮削（使用最新连接状态）
           if (!mounted) return;
@@ -1526,9 +1495,7 @@ class _PathCardState extends ConsumerState<_PathCard> {
           );
           await _loadStats();
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('扫描完成，共 $count 首音乐')),
-            );
+            context.showSuccessToast('扫描完成，共 $count 首音乐');
           }
         case MediaType.photo:
           if (!mounted) return;
@@ -1538,9 +1505,7 @@ class _PathCardState extends ConsumerState<_PathCard> {
           );
           await _loadStats();
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('扫描完成，共 $count 张照片')),
-            );
+            context.showSuccessToast('扫描完成，共 $count 张照片');
           }
         case MediaType.comic:
           if (!mounted) return;
@@ -1550,9 +1515,7 @@ class _PathCardState extends ConsumerState<_PathCard> {
           );
           await _loadStats();
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('扫描完成，共 $count 本漫画')),
-            );
+            context.showSuccessToast('扫描完成，共 $count 本漫画');
           }
         case MediaType.book:
           if (!mounted) return;
@@ -1562,9 +1525,7 @@ class _PathCardState extends ConsumerState<_PathCard> {
           );
           await _loadStats();
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('扫描完成，共 $count 本书')),
-            );
+            context.showSuccessToast('扫描完成，共 $count 本书');
           }
         case MediaType.note:
           break;
@@ -1582,9 +1543,7 @@ class _PathCardState extends ConsumerState<_PathCard> {
   Future<void> _startScraping() async {
     // 检查是否已在刮削中
     if (VideoScannerService().isScraping) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('刮削任务正在进行中...')),
-      );
+      context.showInfoToast('刮削任务正在进行中...');
       return;
     }
 
@@ -1595,9 +1554,7 @@ class _PathCardState extends ConsumerState<_PathCard> {
     final hasConnected = connections.values.any((c) => c.status == SourceStatus.connected);
     if (!hasConnected) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('没有可用连接，请先连接源')),
-        );
+        context.showWarningToast('没有可用连接，请先连接源');
       }
       return;
     }
@@ -1614,16 +1571,12 @@ class _PathCardState extends ConsumerState<_PathCard> {
       await ref.read(videoListProvider.notifier).reloadFromCache();
       if (mounted) {
         setState(() => _isScraping = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('元数据刮削完成')),
-        );
+        context.showSuccessToast('元数据刮削完成');
       }
     } on Exception catch (e) {
       if (mounted) {
         setState(() => _isScraping = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('刮削失败: $e')),
-        );
+        context.showErrorToast('刮削失败: $e');
       }
     }
   }
@@ -1631,18 +1584,14 @@ class _PathCardState extends ConsumerState<_PathCard> {
   void _stopScraping() {
     VideoScannerService().stopScraping();
     setState(() => _isScraping = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('正在停止刮削...')),
-    );
+    context.showInfoToast('正在停止刮削...');
   }
 
   /// 重试刮削失败和无 TMDB 数据的视频
   Future<void> _retryScraping() async {
     // 检查是否已在刮削中
     if (VideoScannerService().isScraping) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('刮削任务正在进行中...')),
-      );
+      context.showInfoToast('刮削任务正在进行中...');
       return;
     }
 
@@ -1653,9 +1602,7 @@ class _PathCardState extends ConsumerState<_PathCard> {
     final hasConnected = connections.values.any((c) => c.status == SourceStatus.connected);
     if (!hasConnected) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('没有可用连接，请先连接源')),
-        );
+        context.showWarningToast('没有可用连接，请先连接源');
       }
       return;
     }
@@ -1663,9 +1610,7 @@ class _PathCardState extends ConsumerState<_PathCard> {
     setState(() => _isScraping = true);
 
     try {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('开始重试刮削 $_retryableCount 个视频...')),
-      );
+      context.showInfoToast('开始重试刮削 $_retryableCount 个视频...');
 
       await VideoScannerService().retryScrapeFailedVideos(
         connections: connections,
@@ -1680,15 +1625,11 @@ class _PathCardState extends ConsumerState<_PathCard> {
       if (!mounted) return;
 
       setState(() => _isScraping = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('重试刮削完成')),
-      );
+      context.showSuccessToast('重试刮削完成');
     } on Exception catch (e) {
       if (mounted) {
         setState(() => _isScraping = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('重试刮削失败: $e')),
-        );
+        context.showErrorToast('重试刮削失败: $e');
       }
     }
   }

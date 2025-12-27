@@ -9,6 +9,7 @@ import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/pages/source_form_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/features/sources/presentation/widgets/two_fa_sheet.dart';
+import 'package:my_nas/core/extensions/context_extensions.dart';
 
 class SourcesPage extends ConsumerStatefulWidget {
   const SourcesPage({super.key});
@@ -272,9 +273,7 @@ class _SourcesPageState extends ConsumerState<SourcesPage> {
         .toList();
 
     if (supportedTypes.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('暂无可用的连接源类型')),
-      );
+      context.showInfoToast('暂无可用的连接源类型');
       return;
     }
 
@@ -760,9 +759,7 @@ class _SourceCardState extends ConsumerState<_SourceCard> {
       try {
         await ref.read(sourcesProvider.notifier).removeSource(widget.source.id);
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('已删除 "${widget.source.displayName}"')),
-          );
+          context.showSuccessToast('已删除 "${widget.source.displayName}"');
         }
       } on Exception catch (e) {
         if (mounted) {

@@ -11,6 +11,7 @@ import 'package:my_nas/features/video/data/services/tmdb_service.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
 import 'package:my_nas/features/video/presentation/providers/video_detail_provider.dart';
 import 'package:my_nas/shared/widgets/adaptive_image.dart';
+import 'package:my_nas/core/extensions/context_extensions.dart';
 
 /// 统一剧集选择器
 ///
@@ -1046,12 +1047,7 @@ class _MissingEpisodeActionSheet extends ConsumerWidget {
     try {
       final connection = ref.read(nastoolConnectionProvider(source.id));
       if (connection == null || connection.status != NasToolConnectionStatus.connected) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${source.name} 未连接'),
-            backgroundColor: Colors.orange,
-          ),
-        );
+        context.showWarningToast('${source.name} 未连接');
         return;
       }
 
@@ -1065,22 +1061,12 @@ class _MissingEpisodeActionSheet extends ConsumerWidget {
       );
 
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('已添加订阅: $showName 第$seasonNumber季'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        context.showSuccessToast('已添加订阅: $showName 第$seasonNumber季');
       }
     } catch (e, st) {
       AppError.handle(e, st, 'addNastoolSubscribeForEpisode');
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('添加订阅失败: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        context.showErrorToast('添加订阅失败: $e');
       }
     }
   }

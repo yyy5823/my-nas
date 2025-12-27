@@ -1001,9 +1001,7 @@ class _TorrentTile extends ConsumerWidget {
                   child: OutlinedButton.icon(
                     onPressed: () {
                       Clipboard.setData(ClipboardData(text: torrent.hash));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('已复制 Hash')),
-                      );
+                      context.showSuccessToast('已复制 Hash');
                     },
                     icon: const Icon(Icons.copy),
                     label: const Text('复制 Hash'),

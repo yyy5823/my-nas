@@ -4,6 +4,7 @@ import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/features/nastool/presentation/providers/nastool_provider.dart';
 import 'package:my_nas/features/nastool/presentation/widgets/common/nt_common_widgets.dart';
 import 'package:my_nas/service_adapters/nastool/models/models.dart';
+import 'package:my_nas/core/extensions/context_extensions.dart';
 
 class NtSettingsPage extends ConsumerStatefulWidget {
   const NtSettingsPage({super.key, required this.sourceId, required this.isDark});
@@ -179,7 +180,7 @@ class _SystemInfoTab extends ConsumerWidget {
             onPressed: () {
               Navigator.pop(context);
               ref.read(nastoolActionsProvider(sourceId)).restartService();
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('服务重启中...')));
+              context.showInfoToast('服务重启中...');
             },
             child: Text('重启', style: TextStyle(color: NtColors.warning)),
           ),
@@ -189,17 +190,15 @@ class _SystemInfoTab extends ConsumerWidget {
   }
 
   Future<void> _checkUpdate(BuildContext context, WidgetRef ref) async {
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('正在检查更新...')));
+    context.showInfoToast('正在检查更新...');
     try {
       final hasUpdate = await ref.read(nastoolActionsProvider(sourceId)).checkUpdate();
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(hasUpdate ? '发现新版本可用' : '已是最新版本')),
-        );
+        context.showInfoToast(hasUpdate ? '发现新版本可用' : '已是最新版本');
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('检查更新失败: $e')));
+        context.showErrorToast('检查更新失败: $e');
       }
     }
   }

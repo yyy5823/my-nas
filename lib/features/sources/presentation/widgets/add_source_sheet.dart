@@ -7,6 +7,7 @@ import 'package:my_nas/features/sources/data/services/source_manager_service.dar
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/features/sources/presentation/widgets/two_fa_sheet.dart';
+import 'package:my_nas/core/extensions/context_extensions.dart';
 
 class AddSourceSheet extends ConsumerStatefulWidget {
   const AddSourceSheet({
@@ -441,9 +442,7 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
 
         if (mounted) {
           Navigator.pop(context);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('源已更新')),
-          );
+          context.showSuccessToast('源已更新');
         }
       } else {
         // 先尝试连接，只有连接成功才保存源
@@ -464,9 +463,7 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
           }
           if (mounted) {
             Navigator.pop(context);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('已连接到 ${source.displayName}')),
-            );
+            context.showSuccessToast('已连接到 ${source.displayName}');
           }
         } else if (connection.status == SourceStatus.requires2FA) {
           // 需要二次验证（本地存储不会触发此分支）
@@ -500,9 +497,7 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
                 }
                 if (mounted) {
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('已连接到 ${source.displayName}')),
-                  );
+                  context.showSuccessToast('已连接到 ${source.displayName}');
                 }
               } else {
                 // 2FA失败，断开临时连接

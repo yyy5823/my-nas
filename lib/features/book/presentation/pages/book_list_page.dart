@@ -1963,9 +1963,7 @@ class _BookListPageState extends ConsumerState<BookListPage> {
 
     notifier.exitSelectMode();
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('已删除 $successCount 本图书')),
-    );
+    context.showSuccessToast('已删除 $successCount 本图书');
   }
 }
 

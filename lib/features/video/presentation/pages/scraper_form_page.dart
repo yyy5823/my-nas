@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/features/video/domain/entities/scraper_form_config.dart';
 import 'package:my_nas/features/video/domain/entities/scraper_source.dart';
 import 'package:my_nas/features/video/presentation/providers/scraper_provider.dart';
+import 'package:my_nas/core/extensions/context_extensions.dart';
 
 /// 刮削源表单页面
 class ScraperFormPage extends ConsumerStatefulWidget {
@@ -463,12 +464,7 @@ class _ScraperFormPageState extends ConsumerState<ScraperFormPage> {
     } on Exception catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('测试失败: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      context.showErrorToast('测试失败: $e');
     } finally {
       if (mounted) {
         setState(() {
@@ -524,12 +520,7 @@ class _ScraperFormPageState extends ConsumerState<ScraperFormPage> {
     } on Exception catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('操作失败: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      context.showErrorToast('操作失败: $e');
     } finally {
       if (mounted) {
         setState(() {

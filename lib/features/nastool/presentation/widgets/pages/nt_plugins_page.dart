@@ -4,6 +4,7 @@ import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/features/nastool/presentation/providers/nastool_provider.dart';
 import 'package:my_nas/features/nastool/presentation/widgets/common/nt_common_widgets.dart';
 import 'package:my_nas/service_adapters/nastool/models/models.dart';
+import 'package:my_nas/core/extensions/context_extensions.dart';
 
 class NtPluginsPage extends ConsumerStatefulWidget {
   const NtPluginsPage({super.key, required this.sourceId, required this.isDark});
@@ -119,7 +120,7 @@ class _InstalledPluginsTab extends ConsumerWidget {
               Navigator.pop(context);
               ref.read(nastoolActionsProvider(sourceId)).uninstallPlugin(plugin.id);
               ref.invalidate(nastoolPluginsProvider(sourceId));
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('插件已卸载')));
+              context.showSuccessToast('插件已卸载');
             },
             child: Text('卸载', style: TextStyle(color: NtColors.error)),
           ),
@@ -185,7 +186,7 @@ class _PluginStoreTab extends ConsumerWidget {
               Navigator.pop(context);
               ref.read(nastoolActionsProvider(sourceId)).installPlugin(app.id);
               ref.invalidate(nastoolPluginsProvider(sourceId));
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('插件安装中...')));
+              context.showInfoToast('插件安装中...');
             },
             child: const Text('安装'),
           ),

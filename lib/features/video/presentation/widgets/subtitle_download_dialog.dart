@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/video/data/services/opensubtitles_service.dart';
 import 'package:my_nas/shared/providers/language_preference_provider.dart';
+import 'package:my_nas/core/extensions/context_extensions.dart';
 
 /// 字幕下载对话框
 ///
@@ -154,15 +155,11 @@ class _SubtitleDownloadDialogState extends ConsumerState<SubtitleDownloadDialog>
       if (!mounted) return;
 
       if (savedPath != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('字幕下载成功'), backgroundColor: Colors.green),
-        );
+        context.showSuccessToast('字幕下载成功');
         widget.onDownloaded?.call(savedPath);
         Navigator.of(context).pop();
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('字幕下载失败'), backgroundColor: Colors.red),
-        );
+        context.showErrorToast('字幕下载失败');
         setState(() {
           _isDownloading = false;
           _downloadingFileId = null;

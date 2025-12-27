@@ -9,6 +9,7 @@ import 'package:my_nas/app/theme/app_theme.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/services/background_task_service.dart';
 import 'package:my_nas/core/services/deep_link_service.dart';
+import 'package:my_nas/core/services/toast_service.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/book/data/services/book_database_service.dart';
 import 'package:my_nas/features/music/data/services/music_database_service.dart';
@@ -18,6 +19,7 @@ import 'package:my_nas/features/video/data/services/video_database_service.dart'
 import 'package:my_nas/features/video/data/services/video_scanner_service.dart';
 import 'package:my_nas/shared/providers/theme_provider.dart';
 import 'package:my_nas/shared/widgets/stream_image.dart';
+import 'package:my_nas/shared/widgets/toast_overlay.dart';
 
 class MyNasApp extends ConsumerStatefulWidget {
   const MyNasApp({super.key});
@@ -29,6 +31,9 @@ class MyNasApp extends ConsumerStatefulWidget {
 class _MyNasAppState extends ConsumerState<MyNasApp> with WidgetsBindingObserver {
   bool _deepLinkInitialized = false;
 
+  /// 全局 Toast 服务实例
+  final ToastService _toastService = ToastService();
+
   @override
   void initState() {
     super.initState();
@@ -38,6 +43,8 @@ class _MyNasAppState extends ConsumerState<MyNasApp> with WidgetsBindingObserver
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    // 释放 ToastService
+    _toastService.dispose();
     // 释放 DeepLinkService
     if (Platform.isIOS) {
       DeepLinkService().dispose();
@@ -217,7 +224,15 @@ class _MyNasAppState extends ConsumerState<MyNasApp> with WidgetsBindingObserver
             ),
           );
         };
-        return child ?? const SizedBox.shrink();
+
+        // 包装 ToastServiceProvider 和 ToastOverlay
+        return ToastServiceProvider(
+          service: _toastService,
+          child: ToastOverlay(
+            toastService: _toastService,
+            child: child ?? const SizedBox.shrink(),
+          ),
+        );
       },
     );
   }

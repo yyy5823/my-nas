@@ -2059,9 +2059,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
     if (connection == null || connection.status != SourceStatus.connected) {
       logger.e('_playTrack: 源未连接 sourceId=${track.sourceId}');
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('源未连接，请先连接到 NAS')),
-        );
+        context.showWarningToast('源未连接，请先连接到 NAS');
       }
       return;
     }
@@ -2103,9 +2101,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
       unawaited(_buildPlayQueue(playQueueNotifier, playerNotifier, connections, track, allTracks, trackIndex));
     } on Exception catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('播放失败: $e')),
-        );
+        context.showErrorToast('播放失败: $e');
       }
     }
   }
@@ -2191,9 +2187,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
       if (firstConnection == null || firstConnection.status != SourceStatus.connected) {
         logger.e('MusicListPage._shufflePlay: 第一首歌曲的源未连接');
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('源未连接，请先连接到 NAS')),
-          );
+          context.showWarningToast('源未连接，请先连接到 NAS');
         }
         return;
       }
@@ -2241,7 +2235,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
     } on Exception catch (e, stackTrace) {
       logger.e('MusicListPage._shufflePlay: 播放失败', e, stackTrace);
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('播放失败: $e')));
+        context.showErrorToast('播放失败: $e');
       }
     }
   }
@@ -2956,9 +2950,7 @@ class _AllSongsPageState extends ConsumerState<AllSongsPage> {
       if (firstConnection == null || firstConnection.status != SourceStatus.connected) {
         logger.e('AllSongsPage._playAll: 第一首歌曲的源未连接');
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('源未连接，请先连接到 NAS')),
-          );
+          context.showWarningToast('源未连接，请先连接到 NAS');
         }
         return;
       }
@@ -3006,7 +2998,7 @@ class _AllSongsPageState extends ConsumerState<AllSongsPage> {
     } on Exception catch (e, stackTrace) {
       logger.e('AllSongsPage._playAll: 播放失败', e, stackTrace);
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('播放失败: $e')));
+        context.showErrorToast('播放失败: $e');
       }
     }
   }
@@ -3028,9 +3020,7 @@ class _AllSongsPageState extends ConsumerState<AllSongsPage> {
       if (firstConnection == null || firstConnection.status != SourceStatus.connected) {
         logger.e('AllSongsPage._shufflePlay: 第一首歌曲的源未连接');
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('源未连接，请先连接到 NAS')),
-          );
+          context.showWarningToast('源未连接，请先连接到 NAS');
         }
         return;
       }
@@ -3078,7 +3068,7 @@ class _AllSongsPageState extends ConsumerState<AllSongsPage> {
     } on Exception catch (e, stackTrace) {
       logger.e('AllSongsPage._shufflePlay: 播放失败', e, stackTrace);
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('播放失败: $e')));
+        context.showErrorToast('播放失败: $e');
       }
     }
   }
@@ -3455,9 +3445,7 @@ class _AllSongsContentState extends ConsumerState<_AllSongsContent> {
       if (firstConnection == null || firstConnection.status != SourceStatus.connected) {
         logger.e('_AllSongsView._playAll: 第一首歌曲的源未连接');
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('源未连接，请先连接到 NAS')),
-          );
+          context.showWarningToast('源未连接，请先连接到 NAS');
         }
         return;
       }
@@ -3505,7 +3493,7 @@ class _AllSongsContentState extends ConsumerState<_AllSongsContent> {
     } on Exception catch (e, stackTrace) {
       logger.e('_AllSongsView._playAll: 播放失败', e, stackTrace);
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('播放失败: $e')));
+        context.showErrorToast('播放失败: $e');
       }
     }
   }
@@ -3527,9 +3515,7 @@ class _AllSongsContentState extends ConsumerState<_AllSongsContent> {
       if (firstConnection == null || firstConnection.status != SourceStatus.connected) {
         logger.e('_AllSongsView._shufflePlay: 第一首歌曲的源未连接');
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('源未连接，请先连接到 NAS')),
-          );
+          context.showWarningToast('源未连接，请先连接到 NAS');
         }
         return;
       }
@@ -3577,7 +3563,7 @@ class _AllSongsContentState extends ConsumerState<_AllSongsContent> {
     } on Exception catch (e, stackTrace) {
       logger.e('_AllSongsView._shufflePlay: 播放失败', e, stackTrace);
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('播放失败: $e')));
+        context.showErrorToast('播放失败: $e');
       }
     }
   }
@@ -3960,9 +3946,7 @@ class _MusicListTile extends ConsumerWidget {
     final connection = connections[track.sourceId];
     if (connection == null || connection.status != SourceStatus.connected) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('源未连接，请先连接到 NAS')),
-        );
+        context.showWarningToast('源未连接，请先连接到 NAS');
       }
       return;
     }
@@ -3996,9 +3980,7 @@ class _MusicListTile extends ConsumerWidget {
     final connection = connections[track.sourceId];
     if (connection == null || connection.status != SourceStatus.connected) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('源未连接，请先连接到 NAS')),
-        );
+        context.showWarningToast('源未连接，请先连接到 NAS');
       }
       return;
     }
@@ -4033,26 +4015,20 @@ class _MusicListTile extends ConsumerWidget {
           ref.read(playQueueProvider.notifier).setQueue(newQueue);
 
           if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('已添加到下一首播放')),
-            );
+            context.showSuccessToast('已添加到下一首播放');
           }
         }
 
       case 'add_to_queue':
         ref.read(playQueueProvider.notifier).addToQueue(musicItem);
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('已添加到播放队列')),
-          );
+          context.showSuccessToast('已添加到播放队列');
         }
 
       case 'add_to_favorites':
         final isFav = await ref.read(musicFavoritesProvider.notifier).toggleFavorite(musicItem);
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(isFav ? '已添加到收藏' : '已取消收藏')),
-          );
+          context.showSuccessToast(isFav ? '已添加到收藏' : '已取消收藏');
         }
 
       case 'add_to_playlist':
@@ -4078,9 +4054,7 @@ class _MusicListTile extends ConsumerWidget {
               track.displayTitle,
             );
             if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(success ? '已从媒体库移除' : '移除失败')),
-              );
+              context.showSuccessToast(success ? '已从媒体库移除' : '移除失败');
             }
           }
         }
@@ -4099,9 +4073,7 @@ class _MusicListTile extends ConsumerWidget {
               track.displayTitle,
             );
             if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(success ? '已删除源文件' : '删除失败，请检查连接状态')),
-              );
+              context.showSuccessToast(success ? '已删除源文件' : '删除失败，请检查连接状态');
             }
           }
         }
@@ -4208,12 +4180,7 @@ class _MusicListTile extends ConsumerWidget {
                     await ref.read(playlistProvider.notifier).addToPlaylist(playlist.id, trackPath);
                     if (context.mounted) {
                       Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('已添加到歌单"${playlist.name}"'),
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
+                      context.showSuccessToast('已添加到歌单"${playlist.name}"');
                     }
                   },
                 )),
@@ -6130,9 +6097,7 @@ class _ModernMusicTile extends ConsumerWidget {
     final connection = connections[track.sourceId];
     if (connection == null || connection.status != SourceStatus.connected) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('源未连接，请先连接到 NAS')),
-        );
+        context.showWarningToast('源未连接，请先连接到 NAS');
       }
       return;
     }
@@ -6182,9 +6147,7 @@ class _ModernMusicTile extends ConsumerWidget {
       }
     } on Exception catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('播放失败: $e')),
-        );
+        context.showErrorToast('播放失败: $e');
       }
     }
   }
@@ -6325,13 +6288,7 @@ class _ModernMusicTile extends ConsumerWidget {
     final currentIndex = ref.read(musicPlayerControllerProvider).currentIndex;
     ref.read(playQueueProvider.notifier).addNext(musicItem, currentIndex);
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('已添加「${track.displayTitle}」到下一首播放'),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 2),
-        ),
-      );
+      context.showSuccessToast('已添加「${track.displayTitle}」到下一首播放');
     }
   }
 
@@ -6340,13 +6297,7 @@ class _ModernMusicTile extends ConsumerWidget {
     final musicItem = track.toMusicItem();
     ref.read(playQueueProvider.notifier).addToQueue(musicItem);
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('已添加「${track.displayTitle}」到播放队列'),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 2),
-        ),
-      );
+      context.showSuccessToast('已添加「${track.displayTitle}」到播放队列');
     }
   }
 
@@ -6552,13 +6503,7 @@ class _ModernMusicTile extends ConsumerWidget {
                   initialTracks: [track.path],
                 );
                 if (context.mounted && playlist != null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('已创建歌单「$name」并添加歌曲'),
-                      behavior: SnackBarBehavior.floating,
-                      duration: const Duration(seconds: 2),
-                    ),
-                  );
+                  context.showSuccessToast('已创建歌单「$name」并添加歌曲');
                 }
               }
             },
@@ -6785,9 +6730,7 @@ class _CompactMusicTile extends ConsumerWidget {
     if (connection == null || connection.status != SourceStatus.connected) {
       logger.e('_CompactMusicTile._playTrack: 源未连接 sourceId=${track.sourceId}');
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('源未连接，请先连接到 NAS')),
-        );
+        context.showWarningToast('源未连接，请先连接到 NAS');
       }
       return;
     }
@@ -6837,9 +6780,7 @@ class _CompactMusicTile extends ConsumerWidget {
     } on Exception catch (e, stackTrace) {
       logger.e('_CompactMusicTile._playTrack: 播放失败', e, stackTrace);
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('播放失败: $e')),
-        );
+        context.showErrorToast('播放失败: $e');
       }
     }
   }
@@ -6912,9 +6853,7 @@ class _CompactMusicTile extends ConsumerWidget {
     if (connection == null || connection.status != SourceStatus.connected) {
       logger.e('_CompactMusicTile._handleAction: 源未连接 sourceId=${track.sourceId}');
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('源未连接，请先连接到 NAS')),
-        );
+        context.showWarningToast('源未连接，请先连接到 NAS');
       }
       return;
     }
@@ -6946,24 +6885,18 @@ class _CompactMusicTile extends ConsumerWidget {
           newQueue.insert(insertIndex.clamp(0, newQueue.length), musicItem);
           ref.read(playQueueProvider.notifier).setQueue(newQueue);
           if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('已添加到下一首播放')),
-            );
+            context.showSuccessToast('已添加到下一首播放');
           }
         }
       case 'add_to_queue':
         ref.read(playQueueProvider.notifier).addToQueue(musicItem);
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('已添加到播放队列')),
-          );
+          context.showSuccessToast('已添加到播放队列');
         }
       case 'add_to_favorites':
         final isFav = await ref.read(musicFavoritesProvider.notifier).toggleFavorite(musicItem);
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(isFav ? '已添加到收藏' : '已取消收藏')),
-          );
+          context.showSuccessToast(isFav ? '已添加到收藏' : '已取消收藏');
         }
       case 'add_to_playlist':
         if (context.mounted) {
@@ -6986,9 +6919,7 @@ class _CompactMusicTile extends ConsumerWidget {
     } on Exception catch (e, stackTrace) {
       logger.e('_CompactMusicTile._handleAction: 操作失败', e, stackTrace);
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('操作失败: $e')),
-        );
+        context.showErrorToast('操作失败: $e');
       }
     }
   }
@@ -7071,12 +7002,7 @@ class _CompactMusicTile extends ConsumerWidget {
                     await ref.read(playlistProvider.notifier).addToPlaylist(playlist.id, trackPath);
                     if (sheetContext.mounted) {
                       Navigator.pop(sheetContext);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('已添加到歌单"${playlist.name}"'),
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
+                      context.showSuccessToast('已添加到歌单"${playlist.name}"');
                     }
                   },
                 )),

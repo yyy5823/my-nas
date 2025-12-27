@@ -14,6 +14,7 @@ import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/shared/widgets/stream_image.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:photo_view/photo_view_gallery.dart';
+import 'package:my_nas/core/extensions/context_extensions.dart';
 
 /// 照片 URL 获取回调
 typedef PhotoUrlGetter = Future<String?> Function(String path, String sourceId);

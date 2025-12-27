@@ -238,12 +238,7 @@ class _MusicScraperSourcesPageState extends ConsumerState<MusicScraperSourcesPag
 
     if (mounted) {
       Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${type.displayName} 配置已保存'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      context.showSuccessToast('${type.displayName} 配置已保存');
     }
   }
 

@@ -4,6 +4,7 @@ import 'package:my_nas/features/music/data/services/music_scraper_factory.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_form_config.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_source.dart';
 import 'package:my_nas/features/music/presentation/providers/music_scraper_provider.dart';
+import 'package:my_nas/core/extensions/context_extensions.dart';
 
 /// 音乐刮削源表单页面
 class MusicScraperFormPage extends ConsumerStatefulWidget {
@@ -507,12 +508,7 @@ class _MusicScraperFormPageState extends ConsumerState<MusicScraperFormPage> {
     } on Exception catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('测试失败: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      context.showErrorToast('测试失败: $e');
     } finally {
       if (mounted) {
         setState(() {
@@ -566,12 +562,7 @@ class _MusicScraperFormPageState extends ConsumerState<MusicScraperFormPage> {
     } on Exception catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('操作失败: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      context.showErrorToast('操作失败: $e');
     } finally {
       if (mounted) {
         setState(() {

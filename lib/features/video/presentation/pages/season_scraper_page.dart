@@ -276,9 +276,7 @@ class _SeasonScraperPageState extends ConsumerState<SeasonScraperPage> {
 
     final totalEpisodes = _totalSelectedEpisodes;
     if (totalEpisodes == 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('没有本地剧集可刮削')),
-      );
+      context.showInfoToast('没有本地剧集可刮削');
       return;
     }
 

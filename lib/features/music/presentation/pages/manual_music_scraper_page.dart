@@ -216,9 +216,7 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
     }
 
     if (fileSystem == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('无法访问文件系统')),
-      );
+      context.showErrorToast('无法访问文件系统');
       return;
     }
 
@@ -271,17 +269,13 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('刮削完成，标签后台写入中...')),
-      );
+      context.showSuccessToast('刮削完成，标签后台写入中...');
 
       Navigator.pop(context, true);
     } on Exception catch (e, st) {
       AppError.handle(e, st, 'ManualMusicScraperPage._confirmAndScrape');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('刮削失败: $e')),
-        );
+        context.showErrorToast('刮削失败: $e');
       }
     } finally {
       if (mounted) {

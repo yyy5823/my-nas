@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/core/services/toast_service.dart';
+import 'package:my_nas/shared/widgets/toast_overlay.dart';
 
 extension BuildContextExtensions on BuildContext {
   // Theme
@@ -58,47 +60,124 @@ extension BuildContextExtensions on BuildContext {
   void pop<T>([T? result]) => navigator.pop(result);
   Future<T?> push<T>(Route<T> route) => navigator.push(route);
 
-  // Snackbar
+  // ============ Toast 消息（新版，推荐使用）============
+
+  /// 获取 ToastService 实例
+  ToastService? get _toastService => ToastServiceProvider.maybeOf(this);
+
+  /// 显示 Toast 消息
+  ///
+  /// [message] 消息内容
+  /// [type] 消息类型，默认为 info
+  /// [duration] 持续时间，不传则使用默认值
+  /// [action] 操作回调
+  /// [actionLabel] 操作按钮标签
+  void showToast(
+    String message, {
+    ToastType type = ToastType.info,
+    Duration? duration,
+    VoidCallback? action,
+    String? actionLabel,
+  }) {
+    _toastService?.show(
+      message,
+      type: type,
+      duration: duration,
+      action: action,
+      actionLabel: actionLabel,
+      isDesktop: isDesktop,
+    );
+  }
+
+  /// 显示成功 Toast
+  void showSuccessToast(String message, {VoidCallback? action, String? actionLabel}) {
+    _toastService?.success(message, action: action, actionLabel: actionLabel, isDesktop: isDesktop);
+  }
+
+  /// 显示信息 Toast
+  void showInfoToast(String message, {VoidCallback? action, String? actionLabel}) {
+    _toastService?.info(message, action: action, actionLabel: actionLabel, isDesktop: isDesktop);
+  }
+
+  /// 显示警告 Toast
+  void showWarningToast(String message, {VoidCallback? action, String? actionLabel}) {
+    _toastService?.warning(message, action: action, actionLabel: actionLabel, isDesktop: isDesktop);
+  }
+
+  /// 显示错误 Toast
+  void showErrorToast(String message, {VoidCallback? action, String? actionLabel}) {
+    _toastService?.error(message, action: action, actionLabel: actionLabel, isDesktop: isDesktop);
+  }
+
+  // ============ SnackBar（旧版，兼容保留，内部使用 Toast）============
+
+  // ignore: deprecated_member_use_from_same_package
   ScaffoldMessengerState get scaffoldMessenger => ScaffoldMessenger.of(this);
 
+  /// 显示普通消息（使用 Toast 系统）
   void showSnackBar(
     String message, {
     Duration duration = const Duration(seconds: 3),
     SnackBarAction? action,
   }) {
-    scaffoldMessenger.showSnackBar(
-      SnackBar(
-        content: Text(message),
-        duration: duration,
-        action: action,
-      ),
-    );
+    // 优先使用 Toast 系统
+    if (_toastService != null) {
+      showInfoToast(
+        message,
+        action: action?.onPressed,
+        actionLabel: action?.label,
+      );
+    } else {
+      // 回退到原生 SnackBar
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text(message),
+          duration: duration,
+          action: action,
+        ),
+      );
+    }
   }
 
+  /// 显示错误消息（使用 Toast 系统）
   void showErrorSnackBar(String message) {
-    scaffoldMessenger.showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: colorScheme.error,
-      ),
-    );
+    if (_toastService != null) {
+      showErrorToast(message);
+    } else {
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: colorScheme.error,
+        ),
+      );
+    }
   }
 
+  /// 显示成功消息（使用 Toast 系统）
   void showSuccessSnackBar(String message) {
-    scaffoldMessenger.showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: successColor,
-      ),
-    );
+    if (_toastService != null) {
+      showSuccessToast(message);
+    } else {
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: successColor,
+        ),
+      );
+    }
   }
 
+  /// 显示警告消息（使用 Toast 系统）
   void showWarningSnackBar(String message) {
-    scaffoldMessenger.showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: warningColor,
-      ),
-    );
+    if (_toastService != null) {
+      showWarningToast(message);
+    } else {
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: warningColor,
+        ),
+      );
+    }
   }
 }

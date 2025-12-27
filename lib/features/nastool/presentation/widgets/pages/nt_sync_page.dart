@@ -4,6 +4,7 @@ import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/features/nastool/presentation/providers/nastool_provider.dart';
 import 'package:my_nas/features/nastool/presentation/widgets/common/nt_common_widgets.dart';
 import 'package:my_nas/service_adapters/nastool/models/models.dart';
+import 'package:my_nas/core/extensions/context_extensions.dart';
 
 class NtSyncPage extends ConsumerWidget {
   const NtSyncPage({super.key, required this.sourceId, required this.isDark});
@@ -59,7 +60,7 @@ class NtSyncPage extends ConsumerWidget {
             onPressed: () {
               Navigator.pop(context);
               ref.read(nastoolActionsProvider(sourceId)).runSyncDir(dir.id ?? 0);
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('同步任务已启动')));
+              context.showSuccessToast('同步任务已启动');
             },
             child: const Text('同步'),
           ),

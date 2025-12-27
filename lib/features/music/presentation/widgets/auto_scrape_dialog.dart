@@ -20,6 +20,7 @@ import 'package:my_nas/features/music/presentation/providers/music_player_provid
 import 'package:my_nas/features/music/presentation/providers/music_scraper_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:path/path.dart' as p;
+import 'package:my_nas/core/extensions/context_extensions.dart';
 
 /// 自动刮削对话框
 ///
@@ -272,9 +273,7 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
   Future<void> _downloadFiles() async {
     if (widget.fileSystem == null) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('无法访问文件系统')),
-        );
+        context.showErrorToast('无法访问文件系统');
       }
       return;
     }

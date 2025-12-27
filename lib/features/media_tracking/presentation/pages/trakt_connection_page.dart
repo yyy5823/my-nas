@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/media_tracking/presentation/providers/trakt_provider.dart';
 import 'package:my_nas/service_adapters/trakt/api/trakt_api.dart';
 import 'package:my_nas/service_adapters/trakt/trakt_config.dart';
@@ -725,9 +726,7 @@ class _TraktConnectionPageState extends ConsumerState<TraktConnectionPage> {
       await ref.read(traktConnectionProvider.notifier).startDeviceCodeFlow();
     } on Exception catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('启动授权失败: $e')),
-        );
+        context.showErrorToast('启动授权失败: $e');
       }
     }
   }
@@ -746,9 +745,7 @@ class _TraktConnectionPageState extends ConsumerState<TraktConnectionPage> {
           );
     } on Exception catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('启动授权失败: $e')),
-        );
+        context.showErrorToast('启动授权失败: $e');
       }
     }
   }

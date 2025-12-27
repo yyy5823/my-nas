@@ -11,6 +11,7 @@ import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/pages/source_form_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/features/transmission/presentation/pages/transmission_detail_page.dart';
+import 'package:my_nas/core/extensions/context_extensions.dart';
 
 /// 通用服务源列表页面
 ///
@@ -209,9 +210,7 @@ class _ServiceSourcesPageState extends ConsumerState<ServiceSourcesPage> {
         .toList();
 
     if (supportedTypes.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('该分类下暂无可用的源类型')),
-      );
+      context.showInfoToast('该分类下暂无可用的源类型');
       return;
     }
 
@@ -591,11 +590,7 @@ class _ServiceSourceCardState extends ConsumerState<_ServiceSourceCard> {
       case SourceType.moviepilot:
         // 其他服务类源暂未实现，显示提示
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('${widget.source.type.displayName} 详情页暂未实现'),
-            ),
-          );
+          context.showInfoToast('${widget.source.type.displayName} 详情页暂未实现');
         }
       default:
         break;
@@ -671,18 +666,11 @@ class _ServiceSourceCardState extends ConsumerState<_ServiceSourceCard> {
             .read(sourcesProvider.notifier)
             .removeSource(widget.source.id);
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('已删除 "${widget.source.displayName}"')),
-          );
+          context.showSuccessToast('已删除 "${widget.source.displayName}"');
         }
       } on Exception catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('删除失败: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
+          context.showErrorToast('删除失败: $e');
         }
       }
     }

@@ -363,9 +363,7 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
               onPressed: () async {
                 final success = await _service.installUpdate();
                 if (!success && mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('请手动安装下载的更新包')),
-                  );
+                  context.showInfoToast('请手动安装下载的更新包');
                 }
               },
               child: const Row(

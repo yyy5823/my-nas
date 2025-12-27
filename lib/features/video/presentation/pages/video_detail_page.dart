@@ -30,6 +30,7 @@ import 'package:my_nas/features/video/presentation/widgets/detail_hero_section.d
 import 'package:my_nas/features/video/presentation/widgets/recommendations_section.dart';
 import 'package:my_nas/features/video/presentation/widgets/subtitle_download_dialog.dart';
 import 'package:my_nas/features/video/presentation/widgets/unified_episode_selector.dart';
+import 'package:my_nas/core/extensions/context_extensions.dart';
 
 /// 视频详情页面
 class VideoDetailPage extends ConsumerStatefulWidget {
@@ -2306,12 +2307,7 @@ class _MissingMovieActionSheet extends ConsumerWidget {
     try {
       final connection = ref.read(nastoolConnectionProvider(source.id));
       if (connection == null || connection.status != NasToolConnectionStatus.connected) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${source.name} 未连接'),
-            backgroundColor: Colors.orange,
-          ),
-        );
+        context.showWarningToast('${source.name} 未连接');
         return;
       }
 
@@ -2323,22 +2319,12 @@ class _MissingMovieActionSheet extends ConsumerWidget {
       );
 
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('已添加订阅: $title'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        context.showSuccessToast('已添加订阅: $title');
       }
     } catch (e, st) {
       AppError.handle(e, st, 'addNastoolSubscribeFromCollection');
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('添加订阅失败: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        context.showErrorToast('添加订阅失败: $e');
       }
     }
   }

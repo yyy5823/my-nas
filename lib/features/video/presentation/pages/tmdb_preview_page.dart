@@ -10,6 +10,7 @@ import 'package:my_nas/features/video/data/services/tmdb_service.dart';
 import 'package:my_nas/features/video/data/services/video_database_service.dart';
 import 'package:my_nas/features/video/presentation/pages/video_detail_page.dart';
 import 'package:my_nas/shared/widgets/adaptive_image.dart';
+import 'package:my_nas/core/extensions/context_extensions.dart';
 
 /// TMDB 预览页面 - 用于展示本地不存在的 TMDB 内容
 class TmdbPreviewPage extends ConsumerStatefulWidget {
@@ -580,12 +581,7 @@ class _TmdbPreviewPageState extends ConsumerState<TmdbPreviewPage> {
       final connection = ref.read(nastoolConnectionProvider(source.id));
       if (connection == null || connection.status != NasToolConnectionStatus.connected) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${source.name} 未连接'),
-            backgroundColor: Colors.orange,
-          ),
-        );
+        context.showWarningToast('${source.name} 未连接');
         return;
       }
 
@@ -598,21 +594,11 @@ class _TmdbPreviewPageState extends ConsumerState<TmdbPreviewPage> {
       );
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('已添加订阅: $title'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      context.showSuccessToast('已添加订阅: $title');
     } catch (e, st) {
       AppError.handle(e, st, 'addNastoolSubscribe');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('添加订阅失败: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      context.showErrorToast('添加订阅失败: $e');
     }
   }
 

@@ -578,7 +578,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     switch (state.playMode) {
       case PlayMode.repeatOne:
         seek(Duration.zero);
-        _player.play();
+        _audioHandler.play(); // 使用 audioHandler 确保正确广播状态
       case PlayMode.loop:
         playNext();
       case PlayMode.shuffle:
@@ -724,13 +724,9 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
         logger.d('MusicPlayer: 音量已重置为 1.0');
       }
 
-      // 开始播放
-      logger.d('MusicPlayer: 调用 play()...');
-      await _player.play();
-      logger.i('MusicPlayer: play() 调用完成');
-
-      // 设置 AudioHandler 的当前音乐信息
-      // 这会更新 iOS/Android 锁屏和控制中心显示的歌曲信息
+      // 重要：在播放前设置 AudioHandler 的当前音乐信息
+      // 这确保 iOS/Android 锁屏和控制中心能正确显示歌曲信息和控制按钮
+      // 如果在 play() 之后设置，Now Playing 可能无法正确初始化
       Uint8List? coverData;
       if (music.coverData != null && music.coverData!.isNotEmpty) {
         coverData = Uint8List.fromList(music.coverData!);
@@ -741,6 +737,25 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
         coverData = await coverCacheService.getCover(uniqueKey);
       }
       await _audioHandler.setCurrentMusic(music, artworkData: coverData);
+
+      // 更新时长信息到 AudioHandler
+      if (effectiveDuration != null && effectiveDuration > Duration.zero) {
+        _audioHandler.updateDuration(effectiveDuration);
+      }
+
+      // 设置队列信息（如果有）
+      final queue = _ref.read(playQueueProvider);
+      if (queue.isNotEmpty) {
+        final currentIndex = queue.indexWhere((m) => m.id == music.id);
+        if (currentIndex >= 0) {
+          _audioHandler.setQueue(queue, startIndex: currentIndex);
+        }
+      }
+
+      // 开始播放
+      logger.d('MusicPlayer: 调用 play()...');
+      await _audioHandler.play(); // 使用 audioHandler.play() 确保正确广播状态
+      logger.i('MusicPlayer: play() 调用完成');
 
       // 添加到播放历史
       await _ref.read(musicHistoryProvider.notifier).addToHistory(music);
@@ -1070,21 +1085,22 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
   /// 播放/暂停切换
   Future<void> playOrPause() async {
+    // 使用 audioHandler 而不是直接操作 player，确保正确广播状态到系统
     if (_player.playing) {
-      await _player.pause();
+      await _audioHandler.pause();
     } else {
-      await _player.play();
+      await _audioHandler.play();
     }
   }
 
   /// 暂停
   Future<void> pause() async {
-    await _player.pause();
+    await _audioHandler.pause();
   }
 
   /// 继续播放
   Future<void> resume() async {
-    await _player.play();
+    await _audioHandler.play();
     // 如果 Live Activity 还没有运行，启动它
     final currentMusic = _ref.read(currentMusicProvider);
     if (currentMusic != null && !_liveActivityService.isActivityRunning) {
@@ -1094,7 +1110,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
   /// 停止
   Future<void> stop() async {
-    await _player.stop();
+    await _audioHandler.stop();
     _cleanupCurrentProxy();
     state = state.copyWith(position: Duration.zero, duration: Duration.zero);
     _ref.read(currentMusicProvider.notifier).state = null;
@@ -1145,7 +1161,8 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     logger.d('MusicPlayer: seek => $position');
 
     try {
-      await _player.seek(position);
+      // 使用 audioHandler.seek 确保 Now Playing 位置正确更新
+      await _audioHandler.seek(position);
       // seek 完成后更新 state 以确保 UI 同步
       state = state.copyWith(position: position);
       logger.d('MusicPlayer: seek 完成');

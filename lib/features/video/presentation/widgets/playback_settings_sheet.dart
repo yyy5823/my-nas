@@ -274,9 +274,7 @@ class PlaybackSettingsSheet extends ConsumerWidget {
             onPressed: () {
               ref.read(playbackSettingsProvider.notifier).clearAllPositions();
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('播放位置记录已清除')),
-              );
+              context.showSuccessToast('播放位置记录已清除');
             },
             style: FilledButton.styleFrom(
               backgroundColor: Colors.red,

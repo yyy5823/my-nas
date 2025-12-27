@@ -124,9 +124,7 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
         .toList();
 
     if (connectedSources.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先连接到 NAS')),
-      );
+      context.showWarningToast('请先连接到 NAS');
       return;
     }
 

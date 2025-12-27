@@ -93,9 +93,7 @@ class _PhotoPeoplePageState extends ConsumerState<PhotoPeoplePage> {
         .toList();
 
     if (connectedSources.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先连接到 NAS')),
-      );
+      context.showWarningToast('请先连接到 NAS');
       return;
     }
 
@@ -527,9 +525,7 @@ class _PhotoPeoplePageState extends ConsumerState<PhotoPeoplePage> {
 
   Future<void> _showPersonPhotos(PersonEntity person) async {
     // TODO: 导航到人物照片列表页面
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('查看 ${person.displayName} 的 ${person.photoCount} 张照片')),
-    );
+    context.showInfoToast('查看 ${person.displayName} 的 ${person.photoCount} 张照片');
   }
 
   void _showPersonOptions(PersonEntity person) {
@@ -572,9 +568,7 @@ class _PhotoPeoplePageState extends ConsumerState<PhotoPeoplePage> {
   Future<void> _mergePerson(PersonEntity person) async {
     final otherPersons = _persons.where((p) => p.id != person.id).toList();
     if (otherPersons.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('没有其他人物可以合并')),
-      );
+      context.showInfoToast('没有其他人物可以合并');
       return;
     }
 
@@ -611,11 +605,7 @@ class _PhotoPeoplePageState extends ConsumerState<PhotoPeoplePage> {
       await _faceDb.mergePersons(targetPerson.id, person.id);
       await _loadData();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('已将 ${person.displayName} 合并到 ${targetPerson.displayName}'),
-          ),
-        );
+        context.showSuccessToast('已将 ${person.displayName} 合并到 ${targetPerson.displayName}');
       }
     }
   }

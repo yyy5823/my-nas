@@ -73,6 +73,10 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
       // 只有在 seek 时才需要手动更新，这里不需要做任何事
     });
 
+    // 重要：广播初始 playbackState，确保系统知道可用的控制按钮
+    // 如果不这样做，iOS/Android 在首次播放前不会显示控制按钮
+    _broadcastState(PlaybackEvent());
+
     logger.i('MusicAudioHandler: 初始化完成');
   }
 

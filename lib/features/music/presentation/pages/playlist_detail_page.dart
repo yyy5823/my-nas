@@ -13,6 +13,7 @@ import 'package:my_nas/features/music/presentation/widgets/mini_player.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
+import 'package:my_nas/core/extensions/context_extensions.dart';
 
 /// 歌单详情页面
 class PlaylistDetailPage extends ConsumerStatefulWidget {
@@ -668,9 +669,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
                 onTap: () {
                   Navigator.pop(context);
                   ref.read(playQueueProvider.notifier).addToQueue(track);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('已添加到播放队列')),
-                  );
+                  context.showSuccessToast('已添加到播放队列');
                 },
               ),
               ListTile(

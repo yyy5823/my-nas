@@ -4,6 +4,7 @@ import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/features/nastool/presentation/providers/nastool_provider.dart';
 import 'package:my_nas/features/nastool/presentation/widgets/common/nt_common_widgets.dart';
 import 'package:my_nas/service_adapters/nastool/models/models.dart';
+import 'package:my_nas/core/extensions/context_extensions.dart';
 
 class NtSitesPage extends ConsumerStatefulWidget {
   const NtSitesPage({super.key, required this.sourceId, required this.isDark});
@@ -92,17 +93,15 @@ class _SiteListTab extends ConsumerWidget {
   }
 
   Future<void> _testSite(BuildContext context, NtSite site, WidgetRef ref) async {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('正在测试站点 ${site.name}...')));
+    context.showInfoToast('正在测试站点 ${site.name}...');
     try {
       final success = await ref.read(nastoolActionsProvider(sourceId)).testSite(site.id);
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(success ? '站点 ${site.name} 测试成功' : '站点 ${site.name} 测试失败')),
-        );
+        context.showSuccessToast(success ? '站点 ${site.name} 测试成功' : '站点 ${site.name} 测试失败');
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('测试失败: $e')));
+        context.showErrorToast('测试失败: $e');
       }
     }
   }

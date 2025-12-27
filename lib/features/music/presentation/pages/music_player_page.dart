@@ -18,6 +18,7 @@ import 'package:my_nas/features/music/presentation/widgets/music_queue_sheet.dar
 import 'package:my_nas/features/music/presentation/widgets/music_settings_sheet.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
+import 'package:my_nas/core/extensions/context_extensions.dart';
 
 class MusicPlayerPage extends ConsumerStatefulWidget {
   const MusicPlayerPage({super.key});

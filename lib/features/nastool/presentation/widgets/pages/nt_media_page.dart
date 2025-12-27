@@ -4,6 +4,7 @@ import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/features/nastool/presentation/providers/nastool_provider.dart';
 import 'package:my_nas/features/nastool/presentation/widgets/common/nt_common_widgets.dart';
 import 'package:my_nas/service_adapters/nastool/models/models.dart';
+import 'package:my_nas/core/extensions/context_extensions.dart';
 
 class NtMediaPage extends ConsumerStatefulWidget {
   const NtMediaPage({super.key, required this.sourceId, required this.isDark});
@@ -122,7 +123,7 @@ class _NtMediaPageState extends ConsumerState<NtMediaPage> {
                     enclosure: result.enclosure ?? '',
                     title: result.title,
                   );
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已添加到下载队列')));
+              context.showSuccessToast('已添加到下载队列');
             },
             child: const Text('下载'),
           ),
@@ -136,7 +137,7 @@ class _NtMediaPageState extends ConsumerState<NtMediaPage> {
           name: result.title,
           type: 'MOV',
         );
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已添加订阅')));
+    context.showSuccessToast('已添加订阅');
   }
 }
 

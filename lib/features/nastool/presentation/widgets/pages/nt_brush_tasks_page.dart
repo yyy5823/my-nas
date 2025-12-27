@@ -4,6 +4,7 @@ import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/features/nastool/presentation/providers/nastool_provider.dart';
 import 'package:my_nas/features/nastool/presentation/widgets/common/nt_common_widgets.dart';
 import 'package:my_nas/service_adapters/nastool/models/models.dart';
+import 'package:my_nas/core/extensions/context_extensions.dart';
 
 class NtBrushTasksPage extends ConsumerWidget {
   const NtBrushTasksPage({super.key, required this.sourceId, required this.isDark});
@@ -59,7 +60,7 @@ class NtBrushTasksPage extends ConsumerWidget {
             onPressed: () {
               Navigator.pop(context);
               ref.read(nastoolActionsProvider(sourceId)).runBrushTask(int.tryParse(task.id) ?? 0);
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('任务已启动')));
+              context.showSuccessToast('任务已启动');
             },
             child: const Text('执行'),
           ),

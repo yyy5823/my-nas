@@ -10,6 +10,7 @@ import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/service_adapters/qbittorrent/api/qbittorrent_api.dart';
 import 'package:my_nas/service_adapters/transmission/api/transmission_api.dart';
+import 'package:my_nas/core/extensions/context_extensions.dart';
 
 /// 发送到下载器的底部弹窗
 class SendToDownloaderSheet extends ConsumerStatefulWidget {
@@ -335,13 +336,7 @@ class _SendToDownloaderSheetState extends ConsumerState<SendToDownloaderSheet> {
 
       if (!mounted) return;
       Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('已发送到 ${downloader.name.isEmpty ? downloader.type.displayName : downloader.name}'),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: Colors.green,
-        ),
-      );
+      context.showSuccessToast('已发送到 ${downloader.name.isEmpty ? downloader.type.displayName : downloader.name}');
     } on Exception catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

@@ -205,9 +205,7 @@ class _ManualScraperPageState extends ConsumerState<ManualScraperPage> {
       );
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('刮削成功')),
-        );
+        context.showSuccessToast('刮削成功');
         Navigator.pop(context, true); // 返回 true 表示已刮削
       }
     // 使用通用 catch 捕获所有类型的异常（包括 SMB 库抛出的 String 异常）
@@ -216,9 +214,7 @@ class _ManualScraperPageState extends ConsumerState<ManualScraperPage> {
       AppError.handle(e, st, 'ManualScraperPage._confirmAndScrape');
       setState(() => _isScraping = false);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('刮削失败: $e')),
-        );
+        context.showErrorToast('刮削失败: $e');
       }
     }
   }
