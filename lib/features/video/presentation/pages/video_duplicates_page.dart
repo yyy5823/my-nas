@@ -111,7 +111,7 @@ class _VideoDuplicatesPageState extends ConsumerState<VideoDuplicatesPage> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
             child: const Text('删除'),
           ),
         ],
@@ -199,7 +199,7 @@ class _VideoDuplicatesPageState extends ConsumerState<VideoDuplicatesPage> {
                       height: 20,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Icon(Icons.delete_rounded, color: Colors.red),
+                  : Icon(Icons.delete_rounded, color: AppColors.error),
               tooltip: '删除选中',
             ),
           ],
@@ -224,9 +224,9 @@ class _VideoDuplicatesPageState extends ConsumerState<VideoDuplicatesPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.error_outline, size: 48, color: Colors.red[300]),
+            Icon(Icons.error_outline, size: 48, color: AppColors.error.withValues(alpha: 0.8)),
             const SizedBox(height: 16),
-            Text(_errorMessage!, style: TextStyle(color: Colors.red[300])),
+            Text(_errorMessage!, style: TextStyle(color: AppColors.error.withValues(alpha: 0.8))),
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _loadDuplicates,
@@ -526,7 +526,7 @@ class _VideoDuplicatesPageState extends ConsumerState<VideoDuplicatesPage> {
           Icon(
             Icons.check_circle_outline_rounded,
             size: 64,
-            color: Colors.green[300],
+            color: AppColors.success.withValues(alpha: 0.8),
           ),
           const SizedBox(height: 16),
           Text(
@@ -653,10 +653,10 @@ class _VideoDuplicatesPageState extends ConsumerState<VideoDuplicatesPage> {
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
                     color: isSelected
-                        ? Colors.red.withValues(alpha: 0.1)
+                        ? AppColors.error.withValues(alpha: 0.1)
                         : (isDark ? Colors.grey[850] : Colors.grey[100]),
                     borderRadius: BorderRadius.circular(8),
-                    border: isSelected ? Border.all(color: Colors.red, width: 2) : null,
+                    border: isSelected ? Border.all(color: AppColors.error, width: 2) : null,
                   ),
                   child: Row(
                     children: [
@@ -720,15 +720,15 @@ class _VideoDuplicatesPageState extends ConsumerState<VideoDuplicatesPage> {
                                       vertical: 2,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: Colors.blue.withValues(alpha: 0.15),
+                                      color: AppColors.downloadColor.withValues(alpha: 0.15),
                                       borderRadius: BorderRadius.circular(4),
                                     ),
                                     child: Text(
                                       video.resolution!,
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontSize: 10,
                                         fontWeight: FontWeight.bold,
-                                        color: Colors.blue,
+                                        color: AppColors.downloadColor,
                                       ),
                                     ),
                                   ),
@@ -761,7 +761,7 @@ class _VideoDuplicatesPageState extends ConsumerState<VideoDuplicatesPage> {
                                 vertical: 2,
                               ),
                               decoration: BoxDecoration(
-                                color: Colors.green,
+                                color: AppColors.success,
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: const Text(
@@ -778,7 +778,7 @@ class _VideoDuplicatesPageState extends ConsumerState<VideoDuplicatesPage> {
                             isSelected
                                 ? Icons.check_circle
                                 : Icons.radio_button_unchecked,
-                            color: isSelected ? Colors.red : Colors.grey,
+                            color: isSelected ? AppColors.error : Colors.grey,
                             size: 24,
                           ),
                         ],

@@ -452,7 +452,7 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
             },
             icon: Icon(
               isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-              color: isFavorite ? Colors.red[400] : (isDark ? Colors.white : Colors.black87),
+              color: isFavorite ? AppColors.error : (isDark ? Colors.white : Colors.black87),
             ),
             tooltip: isFavorite ? '取消收藏' : '收藏',
           ),

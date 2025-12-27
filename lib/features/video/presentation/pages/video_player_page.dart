@@ -755,7 +755,7 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
                     children: [
                       const Icon(
                         Icons.error_outline,
-                        color: Colors.red,
+                        color: AppColors.error,
                         size: 48,
                       ),
                       const SizedBox(height: 16),
@@ -971,7 +971,7 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
           onPressed: isCached ? null : _handleCacheVideo,
           icon: Icon(
             isCached ? Icons.download_done_rounded : Icons.download_rounded,
-            color: isCached ? Colors.green : Colors.white,
+            color: isCached ? AppColors.success : Colors.white,
             size: 24,
           ),
           tooltip: isCached ? '已缓存' : '缓存视频',

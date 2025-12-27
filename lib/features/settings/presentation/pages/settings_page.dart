@@ -365,7 +365,7 @@ class SettingsPage extends ConsumerWidget {
     final statusColor = connectedCount == 0
         ? AppColors.warning
         : connectedCount == totalCount
-            ? Colors.green
+            ? AppColors.success
             : AppColors.accent;
 
     return _buildSettingsTile(
@@ -980,7 +980,7 @@ class _ScraperSourcesTile extends ConsumerWidget {
                           : '未配置 (无法获取影片信息)',
                       style: context.textTheme.bodySmall?.copyWith(
                         color: hasEnabledSource
-                            ? Colors.green
+                            ? AppColors.success
                             : (isDark
                                 ? AppColors.darkOnSurfaceVariant
                                 : AppColors.lightOnSurfaceVariant),
@@ -993,20 +993,20 @@ class _ScraperSourcesTile extends ConsumerWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Colors.green.withValues(alpha: 0.12),
+                    color: AppColors.success.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.check_circle_rounded, size: 14, color: Colors.green),
+                      Icon(Icons.check_circle_rounded, size: 14, color: AppColors.success),
                       const SizedBox(width: 4),
                       Text(
                         '$enabledCount 个',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w500,
-                          color: Colors.green,
+                          color: AppColors.success,
                         ),
                       ),
                     ],
@@ -1090,7 +1090,7 @@ class _MusicScraperSourcesTile extends ConsumerWidget {
                           : '未配置 (无法获取歌词封面)',
                       style: context.textTheme.bodySmall?.copyWith(
                         color: hasEnabledSource
-                            ? Colors.green
+                            ? AppColors.success
                             : (isDark
                                 ? AppColors.darkOnSurfaceVariant
                                 : AppColors.lightOnSurfaceVariant),
@@ -1103,20 +1103,20 @@ class _MusicScraperSourcesTile extends ConsumerWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Colors.green.withValues(alpha: 0.12),
+                    color: AppColors.success.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.check_circle_rounded, size: 14, color: Colors.green),
+                      Icon(Icons.check_circle_rounded, size: 14, color: AppColors.success),
                       const SizedBox(width: 4),
                       Text(
                         '$enabledCount 个',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w500,
-                          color: Colors.green,
+                          color: AppColors.success,
                         ),
                       ),
                     ],

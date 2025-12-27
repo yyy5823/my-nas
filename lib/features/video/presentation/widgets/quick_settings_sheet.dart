@@ -172,7 +172,7 @@ class QuickSettingsSheet extends ConsumerWidget {
                 // 1. 高级功能（第一个选项）
                 _SettingsTile(
                   icon: Icons.tune_rounded,
-                  iconColor: Colors.deepPurple,
+                  iconColor: AppColors.musicColor,
                   title: '高级功能',
                   subtitle: '更多播放设置选项',
                   onTap: () {
@@ -186,7 +186,7 @@ class QuickSettingsSheet extends ConsumerWidget {
                 // 2. 字幕
                 _SettingsTile(
                   icon: hasSubtitles ? Icons.closed_caption : Icons.closed_caption_off,
-                  iconColor: Colors.blue,
+                  iconColor: AppColors.downloadColor,
                   title: '字幕',
                   subtitle: currentSubtitleName,
                   trailing: hasSubtitles
@@ -213,7 +213,7 @@ class QuickSettingsSheet extends ConsumerWidget {
                 if (hasSubtitleConfig && videoPath != null)
                   _SettingsTile(
                     icon: Icons.search_rounded,
-                    iconColor: Colors.teal,
+                    iconColor: AppColors.controlColor,
                     title: '在线搜索字幕',
                     subtitle: '从 OpenSubtitles 搜索',
                     onTap: () {
@@ -224,10 +224,9 @@ class QuickSettingsSheet extends ConsumerWidget {
 
                 const Divider(indent: 56, endIndent: 16),
 
-                // 4. 音轨
                 _SettingsTile(
                   icon: Icons.audiotrack_rounded,
-                  iconColor: Colors.orange,
+                  iconColor: AppColors.warning,
                   title: '音轨',
                   subtitle: currentAudioName,
                   trailing: audioTracks.length > 1
@@ -374,12 +373,12 @@ class _SpeedSelector extends StatelessWidget {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: Colors.green.withValues(alpha: 0.12),
+                  color: AppColors.success.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.speed_rounded,
-                  color: Colors.green,
+                  color: AppColors.success,
                   size: 20,
                 ),
               ),
@@ -469,12 +468,12 @@ class _VolumeBoostSelector extends StatelessWidget {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: Colors.red.withValues(alpha: 0.12),
+                  color: AppColors.error.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
                   currentVolume > 1.0 ? Icons.volume_up_rounded : Icons.volume_up_outlined,
-                  color: Colors.red,
+                  color: AppColors.error,
                   size: 20,
                 ),
               ),

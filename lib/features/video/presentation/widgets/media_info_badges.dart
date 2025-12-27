@@ -100,23 +100,23 @@ class MediaInfoBadges extends StatelessWidget {
 
     final upper = certification.toUpperCase();
     if (upper == 'G' || upper == 'TV-G') {
-      borderColor = Colors.green;
-      textColor = Colors.green;
+      borderColor = AppColors.success;
+      textColor = AppColors.success;
     } else if (upper == 'PG' || upper == 'TV-PG') {
-      borderColor = Colors.blue;
-      textColor = Colors.blue;
+      borderColor = AppColors.info;
+      textColor = AppColors.info;
     } else if (upper == 'PG-13' || upper == 'TV-14') {
-      borderColor = Colors.orange;
-      textColor = Colors.orange;
+      borderColor = AppColors.warning;
+      textColor = AppColors.warning;
     } else if (upper == 'R' || upper == 'TV-MA') {
-      borderColor = Colors.red;
-      textColor = Colors.red;
+      borderColor = AppColors.error;
+      textColor = AppColors.error;
     } else if (upper == 'NC-17') {
-      borderColor = Colors.red.shade900;
-      textColor = Colors.red.shade900;
+      borderColor = AppColors.error;
+      textColor = AppColors.error;
     } else {
-      borderColor = Colors.grey;
-      textColor = Colors.grey;
+      borderColor = AppColors.disabled;
+      textColor = AppColors.disabled;
     }
 
     return Container(

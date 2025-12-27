@@ -70,12 +70,12 @@ class AdvancedSettingsSheet extends ConsumerWidget {
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      color: Colors.deepPurple.withValues(alpha: 0.12),
+                      color: AppColors.musicColor.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.tune_rounded,
-                      color: Colors.deepPurple,
+                      color: AppColors.musicColor,
                       size: 22,
                     ),
                   ),
@@ -106,16 +106,15 @@ class AdvancedSettingsSheet extends ConsumerWidget {
                   vertical: AppSpacing.sm,
                 ),
                 children: [
-                  // === 显示设置分组 ===
                   _SectionHeader(
                     title: '显示设置',
                     icon: Icons.display_settings_rounded,
-                    color: Colors.blue,
+                    color: AppColors.downloadColor,
                   ),
 
                   // 字幕样式
                   ListTile(
-                    leading: _buildIcon(Icons.text_format_rounded, Colors.blue),
+                    leading: _buildIcon(Icons.text_format_rounded, AppColors.downloadColor),
                     title: const Text('字幕样式'),
                     subtitle: const Text('调整字幕字体、颜色、位置等'),
                     trailing: const Icon(Icons.chevron_right),
@@ -128,7 +127,7 @@ class AdvancedSettingsSheet extends ConsumerWidget {
 
                   // 画面比例
                   ListTile(
-                    leading: _buildIcon(Icons.aspect_ratio_rounded, Colors.indigo),
+                    leading: _buildIcon(Icons.aspect_ratio_rounded, AppColors.aiColor),
                     title: const Text('画面比例'),
                     subtitle: const Text('调整视频显示比例'),
                     trailing: const Icon(Icons.chevron_right),
@@ -143,16 +142,15 @@ class AdvancedSettingsSheet extends ConsumerWidget {
                   const Divider(),
                   const SizedBox(height: 8),
 
-                  // === 播放设置分组 ===
                   _SectionHeader(
                     title: '播放设置',
                     icon: Icons.play_circle_outline_rounded,
-                    color: Colors.green,
+                    color: AppColors.success,
                   ),
 
                   // 自动播放下一个
                   SwitchListTile(
-                    secondary: _buildIcon(Icons.skip_next_rounded, Colors.green),
+                    secondary: _buildIcon(Icons.skip_next_rounded, AppColors.success),
                     title: const Text('自动播放下一个'),
                     subtitle: const Text('播放完成后自动播放列表中的下一个视频'),
                     value: settings.autoPlayNext,
@@ -162,9 +160,8 @@ class AdvancedSettingsSheet extends ConsumerWidget {
                     contentPadding: EdgeInsets.zero,
                   ),
 
-                  // 记住播放位置
                   SwitchListTile(
-                    secondary: _buildIcon(Icons.history_rounded, Colors.orange),
+                    secondary: _buildIcon(Icons.history_rounded, AppColors.warning),
                     title: const Text('记住播放位置'),
                     subtitle: const Text('下次打开时从上次位置继续播放'),
                     value: settings.rememberPosition,
@@ -178,18 +175,17 @@ class AdvancedSettingsSheet extends ConsumerWidget {
                   const Divider(),
                   const SizedBox(height: 8),
 
-                  // === 控制设置分组 ===
                   _SectionHeader(
                     title: '控制设置',
                     icon: Icons.touch_app_rounded,
-                    color: Colors.purple,
+                    color: AppColors.musicColor,
                   ),
 
                   // 快进快退秒数
                   _buildSection(
                     context,
                     icon: Icons.fast_forward_rounded,
-                    iconColor: Colors.purple,
+                    iconColor: AppColors.musicColor,
                     title: '快进/快退秒数',
                     subtitle: '双击或点击按钮时跳过的秒数',
                     child: Wrap(
@@ -215,18 +211,17 @@ class AdvancedSettingsSheet extends ConsumerWidget {
                   const Divider(),
                   const SizedBox(height: 8),
 
-                  // === 默认设置分组 ===
                   _SectionHeader(
                     title: '默认设置',
                     icon: Icons.settings_suggest_rounded,
-                    color: Colors.teal,
+                    color: AppColors.controlColor,
                   ),
 
                   // 默认音量
                   _buildSection(
                     context,
                     icon: Icons.volume_up_rounded,
-                    iconColor: Colors.teal,
+                    iconColor: AppColors.controlColor,
                     title: '默认音量',
                     subtitle: '新视频的初始音量',
                     child: Row(
@@ -259,11 +254,10 @@ class AdvancedSettingsSheet extends ConsumerWidget {
                     ),
                   ),
 
-                  // 默认播放速度
                   _buildSection(
                     context,
                     icon: Icons.speed_rounded,
-                    iconColor: Colors.cyan,
+                    iconColor: AppColors.info,
                     title: '默认播放速度',
                     subtitle: '新视频的初始播放速度',
                     child: Wrap(
@@ -289,16 +283,15 @@ class AdvancedSettingsSheet extends ConsumerWidget {
                   const Divider(),
                   const SizedBox(height: 8),
 
-                  // === 数据管理分组 ===
                   _SectionHeader(
                     title: '数据管理',
                     icon: Icons.storage_rounded,
-                    color: Colors.red,
+                    color: AppColors.error,
                   ),
 
                   // 清除播放记录
                   ListTile(
-                    leading: _buildIcon(Icons.delete_sweep_rounded, Colors.red),
+                    leading: _buildIcon(Icons.delete_sweep_rounded, AppColors.error),
                     title: const Text('清除播放位置记录'),
                     subtitle: const Text('删除所有视频的播放进度'),
                     onTap: () => _showClearConfirmation(context, ref),
@@ -400,7 +393,7 @@ class AdvancedSettingsSheet extends ConsumerWidget {
               context.showSuccessToast('播放位置记录已清除');
             },
             style: FilledButton.styleFrom(
-              backgroundColor: Colors.red,
+              backgroundColor: AppColors.error,
             ),
             child: const Text('清除'),
           ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/music/data/services/music_scraper_factory.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_form_config.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_source.dart';
@@ -502,7 +503,7 @@ class _MusicScraperFormPageState extends ConsumerState<MusicScraperFormPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(success ? '连接成功' : '连接失败'),
-          backgroundColor: success ? Colors.green : Colors.red,
+          backgroundColor: success ? AppColors.success : AppColors.error,
         ),
       );
     } on Exception catch (e) {
