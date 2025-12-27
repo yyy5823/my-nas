@@ -236,13 +236,13 @@ class _CategoryBrowseCardsRowState extends State<CategoryBrowseCardsRow> {
   Color _getIconColor() {
     switch (widget.category) {
       case VideoHomeCategory.browseMovieGenres:
-        return Colors.blue;
+        return AppColors.downloadColor;
       case VideoHomeCategory.browseMovieRegions:
-        return Colors.green;
+        return AppColors.photoColor;
       case VideoHomeCategory.browseTvGenres:
-        return Colors.orange;
+        return AppColors.warning;
       case VideoHomeCategory.browseTvRegions:
-        return Colors.purple;
+        return AppColors.musicColor;
       default:
         return AppColors.primary;
     }

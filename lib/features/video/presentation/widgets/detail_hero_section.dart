@@ -179,8 +179,8 @@ class DetailHeroSection extends StatelessWidget {
           border: Border.all(
             color: isCompleted
                 ? (task.status == ScrapingStatus.completed
-                    ? Colors.green.withValues(alpha: 0.5)
-                    : Colors.red.withValues(alpha: 0.5))
+                    ? AppColors.success.withValues(alpha: 0.5)
+                    : AppColors.error.withValues(alpha: 0.5))
                 : AppColors.primary.withValues(alpha: 0.5),
             width: 1.5,
           ),
@@ -201,9 +201,9 @@ class DetailHeroSection extends StatelessWidget {
                 ),
               )
             else if (task.status == ScrapingStatus.completed)
-              const Icon(Icons.check_circle_rounded, color: Colors.green, size: 16)
+              Icon(Icons.check_circle_rounded, color: AppColors.success, size: 16)
             else
-              const Icon(Icons.error_rounded, color: Colors.red, size: 16),
+              Icon(Icons.error_rounded, color: AppColors.error, size: 16),
             const SizedBox(width: 8),
             // 文字
             Text(
@@ -415,11 +415,10 @@ class DetailHeroSection extends StatelessWidget {
   Widget _buildMetadataRow(bool isDark) {
     final items = <Widget>[];
 
-    // 评分
     if (metadata.rating != null && metadata.rating! > 0) {
       items.add(_buildMetadataChip(
         icon: Icons.star_rounded,
-        iconColor: Colors.amber,
+        iconColor: AppColors.tertiary,
         text: metadata.ratingText,
       ));
     }
@@ -643,7 +642,7 @@ class DetailHeroSection extends StatelessWidget {
               ),
               icon: Icon(
                 isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                color: isFavorite ? Colors.red : Colors.white,
+                color: isFavorite ? AppColors.error : Colors.white,
               ),
             ),
           ),

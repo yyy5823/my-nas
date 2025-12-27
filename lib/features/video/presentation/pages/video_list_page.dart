@@ -3720,12 +3720,7 @@ class _PosterCardState extends ConsumerState<_PosterCard> {
       ),
     );
 
-  Color _getRatingColor() {
-    final rating = widget.metadata.rating ?? 0;
-    if (rating >= 8) return Colors.green;
-    if (rating >= 6) return Colors.orange;
-    return Colors.red;
-  }
+  Color _getRatingColor() => AppColors.ratingColor(widget.metadata.rating ?? 0);
 }
 
 /// 骨架屏分类行组件（渐进式加载时显示）
@@ -4674,12 +4669,7 @@ class _VerticalPosterCardState extends ConsumerState<_VerticalPosterCard> {
       ),
     );
 
-  Color _getRatingColor() {
-    final rating = widget.metadata.rating ?? 0;
-    if (rating >= 8) return Colors.green;
-    if (rating >= 6) return Colors.orange;
-    return Colors.red;
-  }
+  Color _getRatingColor() => AppColors.ratingColor(widget.metadata.rating ?? 0);
 }
 
 /// 横向视频卡片（适合视频缩略图 16:9）
@@ -4980,12 +4970,7 @@ class _HorizontalVideoCardState extends ConsumerState<_HorizontalVideoCard> {
       ),
     );
 
-  Color _getRatingColor() {
-    final rating = widget.metadata.rating ?? 0;
-    if (rating >= 8) return Colors.green;
-    if (rating >= 6) return Colors.orange;
-    return Colors.red;
-  }
+  Color _getRatingColor() => AppColors.ratingColor(widget.metadata.rating ?? 0);
 }
 
 /// 排序方式枚举
@@ -5940,12 +5925,7 @@ class _TvShowPosterCardState extends State<_TvShowPosterCard> {
       ),
     );
 
-  Color _getRatingColor() {
-    final rating = widget.group.rating ?? 0;
-    if (rating >= 8) return Colors.green;
-    if (rating >= 6) return Colors.orange;
-    return Colors.red;
-  }
+  Color _getRatingColor() => AppColors.ratingColor(widget.group.rating ?? 0);
 }
 
 /// 剧集列表全页面
@@ -8398,15 +8378,15 @@ class _DynamicCategorySectionState extends State<_DynamicCategorySection> {
   Color _getIconColor() {
     switch (widget.category) {
       case VideoHomeCategory.byMovieGenre:
-        return Colors.blue;
+        return AppColors.downloadColor;
       case VideoHomeCategory.byMovieRegion:
-        return Colors.green;
+        return AppColors.photoColor;
       case VideoHomeCategory.byTvGenre:
-        return Colors.orange;
+        return AppColors.warning;
       case VideoHomeCategory.byTvRegion:
-        return Colors.purple;
+        return AppColors.musicColor;
       default:
-        return Colors.indigo;
+        return AppColors.aiColor;
     }
   }
 }

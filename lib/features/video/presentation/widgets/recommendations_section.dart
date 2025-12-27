@@ -398,11 +398,7 @@ class _RecommendationCardState extends ConsumerState<_RecommendationCard> {
     );
   }
 
-  Color _getRatingColor(double rating) {
-    if (rating >= 8) return Colors.green;
-    if (rating >= 6) return Colors.orange;
-    return Colors.red;
-  }
+  Color _getRatingColor(double rating) => AppColors.ratingColor(rating);
 }
 
 /// 综合推荐区域 (推荐 + 相似)

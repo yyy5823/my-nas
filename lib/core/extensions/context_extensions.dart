@@ -27,6 +27,15 @@ extension BuildContextExtensions on BuildContext {
   /// 评分星星颜色
   Color get starColor => AppColors.warning;
 
+  /// 禁用状态颜色
+  Color get disabledColor => AppColors.disabled;
+
+  /// 根据评分获取对应颜色
+  /// - ≥8 分：绿色（高分）
+  /// - 6-8 分：橙色（中等）
+  /// - <6 分：红色（低分）
+  Color ratingColor(double rating) => AppColors.ratingColor(rating);
+
   /// 占位符/骨架屏背景色（亮暗模式自适应）
   Color get placeholderColor =>
       isDarkMode ? colorScheme.surfaceContainerHighest : const Color(0xFFE0E0E0);

@@ -283,7 +283,7 @@ class _PosterCardState extends State<PosterCard> with SingleTickerProviderStateM
                         backgroundColor: Colors.black.withValues(alpha: 0.5),
                         valueColor: AlwaysStoppedAnimation<Color>(
                           widget.watchProgress! >= 0.9
-                              ? Colors.green
+                              ? AppColors.success
                               : AppColors.primary,
                         ),
                       ),
@@ -370,12 +370,7 @@ class _PosterCardState extends State<PosterCard> with SingleTickerProviderStateM
       ),
     );
 
-  Color _getRatingColor() {
-    final rating = widget.metadata.rating ?? 0;
-    if (rating >= 8) return Colors.green;
-    if (rating >= 6) return Colors.orange;
-    return Colors.red;
-  }
+  Color _getRatingColor() => AppColors.ratingColor(widget.metadata.rating ?? 0);
 }
 
 /// 横向滚动海报行

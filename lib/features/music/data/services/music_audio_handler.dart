@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/widgets.dart';
+import 'package:image/image.dart' as img;
 import 'package:just_audio/just_audio.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
@@ -111,8 +112,13 @@ class MusicAudioHandler extends BaseAudioHandler
     }
   }
 
+  /// iOS Now Playing 的最大封面尺寸
+  /// 太大的图片会导致 iOS 无法正确显示或占用过多内存
+  static const int _maxArtworkSize = 600;
+
   /// 保存封面到文件并返回文件 URI
   /// 使用文件 URI 而不是 data URL，因为 iOS 对大型 data URL 支持不好
+  /// 同时会自动调整图片大小以适配 iOS Now Playing
   Future<Uri?> _saveArtworkToFile(Uint8List artworkData, String musicId) async {
     if (_artworkCacheDir == null) {
       await _initArtworkCacheDir();
@@ -125,32 +131,75 @@ class MusicAudioHandler extends BaseAudioHandler
     try {
       // 清理 musicId 中的特殊字符，确保文件名合法
       final safeId = musicId.replaceAll(RegExp(r'[^\w\-]'), '_');
-
-      // 检测图片格式（PNG 或 JPEG）
-      final isPng = artworkData.length >= 8 &&
-          artworkData[0] == 0x89 &&
-          artworkData[1] == 0x50 &&
-          artworkData[2] == 0x4E &&
-          artworkData[3] == 0x47;
-      final extension = isPng ? 'png' : 'jpg';
-
-      final filePath = '${_artworkCacheDir!.path}/$safeId.$extension';
+      // 使用固定扩展名 jpg，因为调整大小后统一输出 JPEG
+      final filePath = '${_artworkCacheDir!.path}/$safeId.jpg';
       final file = File(filePath);
 
-      // 只有文件不存在或大小不同时才写入
-      if (!await file.exists() || await file.length() != artworkData.length) {
-        await file.writeAsBytes(artworkData);
-        logger.i('MusicAudioHandler: 封面已保存 - path=$filePath, size=${artworkData.length}, format=$extension');
+      // 检查是否需要重新处理（文件不存在或源数据大小变化）
+      // 使用 artworkData 长度的 hash 作为校验
+      final hashPath = '${_artworkCacheDir!.path}/$safeId.hash';
+      final hashFile = File(hashPath);
+      final currentHash = artworkData.length.toString();
+      String? existingHash;
+      if (await hashFile.exists()) {
+        existingHash = await hashFile.readAsString();
+      }
+
+      if (await file.exists() && existingHash == currentHash) {
+        logger.d('MusicAudioHandler: 封面文件已存在且未变化，跳过处理');
+        return Uri.file(filePath);
+      }
+
+      // 解码图片
+      logger.d('MusicAudioHandler: 开始处理封面图片 - 原始大小=${artworkData.length} bytes');
+      final originalImage = img.decodeImage(artworkData);
+      if (originalImage == null) {
+        logger.e('MusicAudioHandler: 无法解码封面图片');
+        return null;
+      }
+
+      logger.d('MusicAudioHandler: 原始尺寸=${originalImage.width}x${originalImage.height}');
+
+      // 如果图片太大，调整大小
+      img.Image processedImage;
+      if (originalImage.width > _maxArtworkSize || originalImage.height > _maxArtworkSize) {
+        // 保持宽高比，将较长边缩放到 _maxArtworkSize
+        if (originalImage.width > originalImage.height) {
+          processedImage = img.copyResize(originalImage, width: _maxArtworkSize);
+        } else {
+          processedImage = img.copyResize(originalImage, height: _maxArtworkSize);
+        }
+        logger.i('MusicAudioHandler: 封面已调整大小 ${originalImage.width}x${originalImage.height} -> ${processedImage.width}x${processedImage.height}');
+      } else {
+        processedImage = originalImage;
+      }
+
+      // 编码为 JPEG（更小的文件大小，更好的兼容性）
+      final jpegData = img.encodeJpg(processedImage, quality: 85);
+      await file.writeAsBytes(jpegData);
+
+      // 保存 hash 以便下次比较
+      await hashFile.writeAsString(currentHash);
+
+      logger.i('MusicAudioHandler: 封面已保存 - path=$filePath, size=${jpegData.length} bytes, dimensions=${processedImage.width}x${processedImage.height}');
+
+      // 验证文件是否存在
+      if (!await file.exists()) {
+        logger.e('MusicAudioHandler: 封面文件保存后不存在！');
+        return null;
       }
 
       final uri = Uri.file(filePath);
-      logger.d('MusicAudioHandler: 封面 URI = $uri');
+      logger.i('MusicAudioHandler: 封面 URI = $uri');
       return uri;
     } on Exception catch (e, st) {
       logger.e('MusicAudioHandler: 保存封面文件失败: $e', e, st);
       return null;
     }
   }
+
+  /// 上次状态广播时间（用于防抖）
+  DateTime? _lastBroadcastTime;
 
   /// 处理 App 生命周期变化
   /// 当 App 从后台返回前台时，需要重新广播状态以刷新灵动岛/锁屏控制
@@ -161,27 +210,37 @@ class MusicAudioHandler extends BaseAudioHandler
     switch (state) {
       case AppLifecycleState.inactive:
         // App 即将进入后台（iOS 会先进入 inactive 再进入 paused）
-        // 在这个时机广播状态，确保 iOS 能正确接收到 Now Playing 信息
-        if (mediaItem.value != null) {
-          logger.i('MusicAudioHandler: App 即将进入后台 (inactive)，刷新 Now Playing');
-          _refreshNowPlaying();
+        // 这是设置 Now Playing 的关键时机
+        if (mediaItem.value != null && _player.playing) {
+          logger.i('MusicAudioHandler: App 即将进入后台 (inactive)，强制刷新 Now Playing');
+          // 强制广播状态，确保 iOS 接收到最新的 Now Playing 信息
+          _forceRefreshNowPlaying();
         }
 
       case AppLifecycleState.paused:
         // App 已进入后台
-        // 再次确保状态已广播（作为保险）
+        // 再次确保状态已广播（作为 inactive 的备份）
         if (_player.playing && mediaItem.value != null) {
-          logger.i('MusicAudioHandler: App 已进入后台 (paused)，确认 Now Playing 状态');
-          _broadcastState(PlaybackEvent());
+          // 使用防抖避免重复广播
+          final now = DateTime.now();
+          if (_lastBroadcastTime == null ||
+              now.difference(_lastBroadcastTime!) > const Duration(milliseconds: 500)) {
+            logger.i('MusicAudioHandler: App 已进入后台 (paused)，补充广播状态');
+            _broadcastState(PlaybackEvent());
+            _lastBroadcastTime = now;
+          }
         }
-
       case AppLifecycleState.resumed:
         // App 返回前台
-        // 重新刷新 Now Playing 以确保下次进入后台时灵动岛能正确显示
-        if (mediaItem.value != null) {
-          logger.i('MusicAudioHandler: App 返回前台 (resumed)，刷新 Now Playing');
-          _refreshNowPlaying();
-        }
+        // 延迟一小段时间后刷新状态，确保系统稳定
+        // 不立即刷新，避免干扰 iOS 的 Now Playing 状态
+        logger.i('MusicAudioHandler: App 返回前台 (resumed)');
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (mediaItem.value != null && _player.playing) {
+            logger.d('MusicAudioHandler: 延迟刷新 Now Playing 状态');
+            _broadcastState(PlaybackEvent());
+          }
+        });
 
       case AppLifecycleState.detached:
       case AppLifecycleState.hidden:
@@ -190,28 +249,16 @@ class MusicAudioHandler extends BaseAudioHandler
     }
   }
 
-  /// 刷新 Now Playing 信息
-  /// 重新设置 mediaItem 和广播 playbackState，确保系统 Now Playing 是最新状态
-  void _refreshNowPlaying() {
-    // 重新设置 mediaItem 以刷新 Now Playing 信息
+  /// 强制刷新 Now Playing 信息
+  /// 用于进入后台时确保 iOS 能正确显示灵动岛
+  void _forceRefreshNowPlaying() {
     if (mediaItem.value != null) {
-      final currentItem = mediaItem.value!;
-      // 创建一个新的 MediaItem 副本，强制系统更新
-      final refreshedItem = MediaItem(
-        id: currentItem.id,
-        title: currentItem.title,
-        artist: currentItem.artist,
-        album: currentItem.album,
-        duration: currentItem.duration,
-        artUri: currentItem.artUri,
-        extras: currentItem.extras,
-      );
-      mediaItem.add(refreshedItem);
+      // 直接广播当前状态，不替换 MediaItem
+      // 替换 MediaItem 可能会导致 iOS 认为内容已变化而清除 Now Playing
+      _broadcastState(PlaybackEvent());
+      _lastBroadcastTime = DateTime.now();
+      logger.i('MusicAudioHandler: Now Playing 状态已强制刷新');
     }
-
-    // 广播最新的播放状态
-    _broadcastState(PlaybackEvent());
-    logger.d('MusicAudioHandler: Now Playing 已刷新');
   }
 
   /// 广播播放状态
@@ -273,7 +320,7 @@ class MusicAudioHandler extends BaseAudioHandler
   /// 准备切换到新歌曲
   /// 在设置新歌曲之前调用，确保旧的播放状态被正确清理
   Future<void> prepareForNewTrack() async {
-    logger.d('MusicAudioHandler: 准备切换歌曲');
+    logger.i('MusicAudioHandler: 准备切换歌曲, 当前歌曲=${_currentMusicItem?.displayTitle}');
 
     // 如果正在播放，先暂停并广播状态
     if (_player.playing) {
@@ -281,12 +328,11 @@ class MusicAudioHandler extends BaseAudioHandler
       _broadcastState(PlaybackEvent());
     }
 
-    // 清理当前音乐信息
+    // 重要：清理当前音乐信息，允许设置新歌曲
     _currentMusicItem = null;
     _currentArtworkData = null;
 
-    // 注意：不清除 mediaItem，等 setCurrentMusic 设置新的
-    // 这样可以保持 Now Playing 的连续性
+    logger.d('MusicAudioHandler: 已清理当前歌曲信息');
   }
 
   /// 设置当前播放的音乐（由 MusicPlayerNotifier 调用）
@@ -294,15 +340,7 @@ class MusicAudioHandler extends BaseAudioHandler
     MusicItem music, {
     Uint8List? artworkData,
   }) async {
-    // 检查是否与当前歌曲相同
-    // 注意：即使歌曲相同，如果有新的封面数据也需要更新
-    final isSameSong = _currentMusicItem?.id == music.id;
-    final hasNewArtwork = artworkData != null && artworkData.isNotEmpty;
-
-    if (isSameSong && !hasNewArtwork) {
-      logger.d('MusicAudioHandler: 歌曲ID相同且无新封面，跳过: ${music.id}');
-      return;
-    }
+    logger.i('MusicAudioHandler: setCurrentMusic 被调用 - ${music.displayTitle}, hasArtwork=${artworkData != null}');
 
     _currentMusicItem = music;
     _currentArtworkData = artworkData;

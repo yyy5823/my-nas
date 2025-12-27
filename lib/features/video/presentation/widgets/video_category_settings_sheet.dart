@@ -193,7 +193,7 @@ class _VideoCategorySettingsSheetState
                     VideoHomeCategory.byMovieGenre,
                     '电影类型',
                     Icons.movie_rounded,
-                    Colors.blue,
+                    AppColors.downloadColor,
                     settings,
                   ),
                   _buildDynamicCategoryExpansion(
@@ -201,7 +201,7 @@ class _VideoCategorySettingsSheetState
                     VideoHomeCategory.byMovieRegion,
                     '电影地区',
                     Icons.public_rounded,
-                    Colors.green,
+                    AppColors.photoColor,
                     settings,
                   ),
                   _buildDynamicCategoryExpansion(
@@ -209,7 +209,7 @@ class _VideoCategorySettingsSheetState
                     VideoHomeCategory.byTvGenre,
                     '剧集类型',
                     Icons.live_tv_rounded,
-                    Colors.orange,
+                    AppColors.warning,
                     settings,
                   ),
                   _buildDynamicCategoryExpansion(
@@ -217,7 +217,7 @@ class _VideoCategorySettingsSheetState
                     VideoHomeCategory.byTvRegion,
                     '剧集地区',
                     Icons.language_rounded,
-                    Colors.purple,
+                    AppColors.musicColor,
                     settings,
                   ),
                 ],
@@ -617,33 +617,33 @@ class _BasicCategoryTile extends StatelessWidget {
   Color _getCategoryColor(VideoHomeCategory category) {
     switch (category) {
       case VideoHomeCategory.heroBanner:
-        return Colors.purple;
+        return AppColors.subscriptionColor;
       case VideoHomeCategory.continueWatching:
-        return Colors.orange;
+        return AppColors.warning;
       case VideoHomeCategory.recentlyAdded:
-        return Colors.blue;
+        return AppColors.downloadColor;
       case VideoHomeCategory.movies:
         return AppColors.primary;
       case VideoHomeCategory.tvShows:
         return AppColors.accent;
       case VideoHomeCategory.movieCollections:
-        return Colors.purple;
+        return AppColors.musicColor;
       case VideoHomeCategory.topRated:
-        return Colors.amber;
+        return AppColors.tertiary;
       case VideoHomeCategory.unwatched:
-        return Colors.teal;
+        return AppColors.controlColor;
       case VideoHomeCategory.others:
-        return Colors.grey;
+        return AppColors.disabled;
       case VideoHomeCategory.browseMovieGenres:
-        return Colors.blue;
+        return AppColors.downloadColor;
       case VideoHomeCategory.browseMovieRegions:
-        return Colors.green;
+        return AppColors.photoColor;
       case VideoHomeCategory.browseTvGenres:
-        return Colors.orange;
+        return AppColors.warning;
       case VideoHomeCategory.browseTvRegions:
-        return Colors.purple;
+        return AppColors.musicColor;
       default:
-        return Colors.grey;
+        return AppColors.disabled;
     }
   }
 }

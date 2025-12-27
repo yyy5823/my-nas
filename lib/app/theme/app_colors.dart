@@ -120,6 +120,22 @@ abstract final class AppColors {
   static const Color infoLight = Color(0xFF93C5FD);
   static const Color infoDark = Color(0xFF2563EB);
 
+  // 禁用状态颜色
+  static const Color disabled = Color(0xFF9CA3AF);
+  static const Color disabledLight = Color(0xFFD1D5DB);
+
+  // 评分颜色（固定）- 用于显示高/中/低评分
+  static const Color ratingHigh = Color(0xFF22C55E);   // ≥8 分 - 绿色
+  static const Color ratingMid = Color(0xFFF59E0B);    // 6-8 分 - 橙色
+  static const Color ratingLow = Color(0xFFEF4444);    // <6 分 - 红色
+
+  /// 根据评分获取对应颜色
+  static Color ratingColor(double rating) {
+    if (rating >= 8) return ratingHigh;
+    if (rating >= 6) return ratingMid;
+    return ratingLow;
+  }
+
   // 玻璃效果颜色（固定）
   static const Color glassLight = Color(0x1AFFFFFF);
   static const Color glassDark = Color(0x1A000000);
