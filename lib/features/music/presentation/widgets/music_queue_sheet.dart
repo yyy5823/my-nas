@@ -28,11 +28,17 @@ class MusicQueueSheet extends ConsumerWidget {
     final playerState = ref.watch(musicPlayerControllerProvider);
     final currentMusic = ref.watch(currentMusicProvider);
 
-    return DraggableScrollableSheet(
-      initialChildSize: 0.7,
-      minChildSize: 0.4,
-      maxChildSize: 0.95,
-      builder: (context, scrollController) => ClipRRect(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => Navigator.of(context).pop(),
+      child: DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.7,
+        minChildSize: 0.4,
+        maxChildSize: 0.95,
+        builder: (context, scrollController) => GestureDetector(
+          onTap: () {}, // 阻止点击穿透到外层关闭弹框
+          child: ClipRRect(
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
@@ -98,6 +104,8 @@ class MusicQueueSheet extends ConsumerWidget {
           ),
         ),
       ),
+      ),
+    ),
     );
   }
 

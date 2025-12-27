@@ -3,13 +3,11 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:audio_session/audio_session.dart';
-import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/services/media_proxy_server.dart';
 import 'package:my_nas/core/utils/logger.dart';
-import 'package:my_nas/features/music/data/services/live_activity_service.dart';
 import 'package:my_nas/features/music/data/services/music_audio_cache_service.dart';
 import 'package:my_nas/features/music/data/services/music_audio_handler.dart';
 import 'package:my_nas/features/music/data/services/music_cover_cache_service.dart';
@@ -158,8 +156,7 @@ class PlayQueueNotifier extends StateNotifier<List<MusicItem>> {
 }
 
 /// 音乐播放器管理
-/// 使用 audio_service 实现后台音频播放和系统媒体控制（锁屏、控制中心、蓝牙耳机、灵动岛）
-/// 注意：不使用 Live Activity，系统的 Now Playing 已提供完整的锁屏和灵动岛支持
+/// 使用 audio_service 实现后台音频播放和系统媒体控制（锁屏、控制中心、蓝牙耳机）
 class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   MusicPlayerNotifier(this._ref) : super(const MusicPlayerState()) {
     _initPlayer();

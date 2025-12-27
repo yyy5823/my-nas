@@ -26,7 +26,7 @@ import 'package:my_nas/features/reading/presentation/providers/reader_settings_p
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
-import 'package:my_nas/shared/widgets/book_flip_loading.dart';
+import 'package:my_nas/shared/widgets/lottie_loading.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
 import 'package:my_nas/shared/widgets/reader_settings_sheet.dart';
 import 'package:path/path.dart' as path;
@@ -700,6 +700,57 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
     }
   }
 
+  /// 获取当前章节索引
+  int _getCurrentChapterIndex() {
+    if (_chapters.isEmpty) return 0;
+    
+    // 根据当前章节标题查找索引
+    if (_currentChapterTitle.isNotEmpty) {
+      for (var i = 0; i < _chapters.length; i++) {
+        if (_chapters[i].title == _currentChapterTitle) {
+          return i;
+        }
+      }
+    }
+    
+    // 如果没有匹配的章节标题，根据当前页面位置估算
+    final state = ref.read(txtReaderProvider(widget.book));
+    final settings = ref.read(bookReaderSettingsProvider);
+    
+    final usePageMode = state is TxtReaderLoaded &&
+        state.hasHtml &&
+        settings.pageTurnMode != BookPageTurnMode.slide;
+    final useWebView = _useWebViewRenderer &&
+        state is TxtReaderLoaded &&
+        state.hasHtml &&
+        usePageMode;
+    
+    double progress = 0;
+    if (useWebView && _totalPages > 0) {
+      progress = _currentPage / _totalPages;
+    } else if (usePageMode && _pages.isNotEmpty) {
+      progress = _currentPage / _pages.length;
+    } else if (_scrollController.hasClients && 
+               _scrollController.position.maxScrollExtent > 0) {
+      progress = _scrollController.position.pixels / 
+                 _scrollController.position.maxScrollExtent;
+    }
+    
+    // 根据进度找到对应的章节
+    if (state is TxtReaderLoaded && state.hasHtml) {
+      final totalLength = state.htmlContent!.length.toDouble();
+      final currentOffset = progress * totalLength;
+      
+      for (var i = _chapters.length - 1; i >= 0; i--) {
+        if (_chapters[i].offset <= currentOffset) {
+          return i;
+        }
+      }
+    }
+    
+    return 0;
+  }
+
   void _showSettingsSheet() {
     showReaderSettingsSheet(
       context,
@@ -804,7 +855,7 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
       child: Scaffold(
         backgroundColor: settings.theme.backgroundColor,
         body: switch (state) {
-          TxtReaderLoading(:final message) => BookFlipLoading(message: message),
+          TxtReaderLoading(:final message) => LottieLoading.book(message: message),
           TxtReaderError(:final message) => AppErrorWidget(
               message: message,
               onRetry: () =>
@@ -833,20 +884,8 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
       );
     });
 
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const CircularProgressIndicator(),
-          const SizedBox(height: 16),
-          Text(
-            '正在打开电子书阅读器...',
-            style: TextStyle(
-              color: Colors.grey.shade600,
-            ),
-          ),
-        ],
-      ),
+    return const LottieLoading.book(
+      message: '正在打开电子书阅读器...',
     );
   }
 
@@ -1115,20 +1154,8 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
 
     // 如果分页尚未完成，显示加载中
     if (!_isPaginationReady || _pages.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(
-              color: theme.textColor.withValues(alpha: 0.5),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '正在分页...',
-              style: TextStyle(color: theme.textColor.withValues(alpha: 0.5)),
-            ),
-          ],
-        ),
+      return LottieLoading.book(
+        message: '正在分页...',
       );
     }
 
@@ -2128,7 +2155,12 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
       gradient: LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
-        colors: [Colors.black.withValues(alpha: 0.7), Colors.transparent],
+        colors: [
+          Colors.black.withValues(alpha: 0.9),
+          Colors.black.withValues(alpha: 0.6),
+          Colors.transparent,
+        ],
+        stops: const [0.0, 0.7, 1.0],
       ),
     ),
     child: SafeArea(
@@ -2188,7 +2220,12 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
         gradient: LinearGradient(
           begin: Alignment.bottomCenter,
           end: Alignment.topCenter,
-          colors: [Colors.black.withValues(alpha: 0.7), Colors.transparent],
+          colors: [
+            Colors.black.withValues(alpha: 0.9),
+            Colors.black.withValues(alpha: 0.6),
+            Colors.transparent,
+          ],
+          stops: const [0.0, 0.7, 1.0],
         ),
       ),
       child: SafeArea(
@@ -2198,59 +2235,71 @@ class _BookReaderPageState extends ConsumerState<BookReaderPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // 进度条
+              // 进度条 - 槽式设计
               Row(
                 children: [
-                  Text(
-                    (usePageMode || useWebView)
-                        ? '${_currentPage + 1}'
-                        : _getProgressText(
-                            state is TxtReaderLoaded ? state : null,
-                          ),
-                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                  // 上一章按钮
+                  IconButton(
+                    icon: const Icon(Icons.skip_previous_rounded, color: Colors.white),
+                    onPressed: _chapters.isNotEmpty ? () => _jumpToChapter(_getCurrentChapterIndex() - 1) : null,
+                    tooltip: '上一章',
+                    iconSize: 28,
                   ),
                   Expanded(
-                    child: Slider(
-                      value: (usePageMode || useWebView)
-                          ? _currentPage.toDouble().clamp(0, maxPageIndex.toDouble())
-                          : (_scrollController.hasClients
-                                ? (_scrollController.position.pixels /
-                                          _scrollController
-                                              .position
-                                              .maxScrollExtent)
-                                      .clamp(0.0, 1.0)
-                                : 0.0),
-                      max: (usePageMode || useWebView)
-                          ? maxPageIndex.toDouble().clamp(1, double.infinity)
-                          : 1.0,
-                      onChanged: (value) {
-                        if (useWebView) {
-                          // WebView 分页模式
-                          final page = value.round().clamp(0, maxPageIndex);
-                          _webViewReaderKey.currentState?.goToPage(page);
-                          setState(() => _currentPage = page);
-                        } else if (usePageMode && _pages.isNotEmpty) {
-                          // 传统分页模式
-                          final page = value.round().clamp(0, _pages.length - 1);
-                          _pageController?.jumpToPage(page);
-                          setState(() => _currentPage = page);
-                        } else if (_scrollController.hasClients) {
-                          // 滚动模式
-                          final target =
-                              value *
-                              _scrollController.position.maxScrollExtent;
-                          _scrollController.jumpTo(target);
-                        }
-                      },
-                      activeColor: AppColors.primary,
-                      inactiveColor: Colors.white30,
+                    child: SliderTheme(
+                      data: SliderThemeData(
+                        trackHeight: 6,
+                        activeTrackColor: AppColors.primary,
+                        inactiveTrackColor: Colors.white.withValues(alpha: 0.3),
+                        thumbColor: AppColors.primary,
+                        thumbShape: const RoundSliderThumbShape(
+                          enabledThumbRadius: 8,
+                          elevation: 2,
+                        ),
+                        overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
+                        trackShape: const RoundedRectSliderTrackShape(),
+                      ),
+                      child: Slider(
+                        value: (usePageMode || useWebView)
+                            ? _currentPage.toDouble().clamp(0, maxPageIndex.toDouble())
+                            : (_scrollController.hasClients
+                                  ? (_scrollController.position.pixels /
+                                            _scrollController
+                                                .position
+                                                .maxScrollExtent)
+                                        .clamp(0.0, 1.0)
+                                  : 0.0),
+                        max: (usePageMode || useWebView)
+                            ? maxPageIndex.toDouble().clamp(1, double.infinity)
+                            : 1.0,
+                        onChanged: (value) {
+                          if (useWebView) {
+                            // WebView 分页模式
+                            final page = value.round().clamp(0, maxPageIndex);
+                            _webViewReaderKey.currentState?.goToPage(page);
+                            setState(() => _currentPage = page);
+                          } else if (usePageMode && _pages.isNotEmpty) {
+                            // 传统分页模式
+                            final page = value.round().clamp(0, _pages.length - 1);
+                            _pageController?.jumpToPage(page);
+                            setState(() => _currentPage = page);
+                          } else if (_scrollController.hasClients) {
+                            // 滚动模式
+                            final target =
+                                value *
+                                _scrollController.position.maxScrollExtent;
+                            _scrollController.jumpTo(target);
+                          }
+                        },
+                      ),
                     ),
                   ),
-                  Text(
-                    (usePageMode || useWebView)
-                        ? '$effectiveTotalPages'
-                        : '100%',
-                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                  // 下一章按钮
+                  IconButton(
+                    icon: const Icon(Icons.skip_next_rounded, color: Colors.white),
+                    onPressed: _chapters.isNotEmpty ? () => _jumpToChapter(_getCurrentChapterIndex() + 1) : null,
+                    tooltip: '下一章',
+                    iconSize: 28,
                   ),
                 ],
               ),

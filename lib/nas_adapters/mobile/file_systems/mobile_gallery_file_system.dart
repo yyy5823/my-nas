@@ -6,6 +6,13 @@ import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart' as fs;
 import 'package:photo_manager/photo_manager.dart' as pm;
 
+/// URL 编码辅助方法（仅编码斜杠和百分号）
+String _encodeId(String id) => id.replaceAll('%', '%25').replaceAll('/', '%2F');
+
+/// URL 解码辅助方法
+String _decodeId(String encoded) =>
+    encoded.replaceAll('%2F', '/').replaceAll('%25', '%');
+
 /// 移动端相册文件系统
 ///
 /// 将系统相册映射为虚拟文件系统结构：
@@ -75,9 +82,12 @@ class MobileGalleryFileSystem implements NasFileSystem {
     }
 
     // 具体相册内容
+    // 路径格式: /albums/{encodedAlbumId} 或 /albums/{encodedAlbumId}/{encodedAssetId}
     if (path.startsWith('/albums/')) {
-      final segments = path.replaceFirst('/albums/', '').split('/');
-      final albumId = segments.first;
+      final remaining = path.replaceFirst('/albums/', '');
+      final segments = remaining.split('/');
+      // 第一段是编码后的 album ID，需要解码
+      final albumId = _decodeId(segments.first);
 
       // 如果路径包含多个段（如 /albums/{albumId}/{assetId}），
       // 说明是访问具体资源，不是目录，返回空列表
@@ -115,9 +125,11 @@ class MobileGalleryFileSystem implements NasFileSystem {
 
     for (final album in albums) {
       final count = await album.assetCountAsync;
+      // 对 album ID 进行编码，避免包含斜杠导致路径解析错误
+      final encodedId = _encodeId(album.id);
       items.add(FileItem(
         name: album.name,
-        path: '/albums/${album.id}',
+        path: '/albums/$encodedId',
         isDirectory: true,
         size: count,
       ));
@@ -150,6 +162,9 @@ class MobileGalleryFileSystem implements NasFileSystem {
     final count = await album.assetCountAsync;
     final assets = await album.getAssetListRange(start: 0, end: count);
 
+    // 对 album ID 进行编码
+    final encodedAlbumId = _encodeId(albumId);
+
     final items = <FileItem>[];
     for (final asset in assets) {
       _assetCache[asset.id] = asset;
@@ -180,9 +195,12 @@ class MobileGalleryFileSystem implements NasFileSystem {
         livePhotoVideoPath = videoFile?.path;
       }
 
+      // 对 asset ID 进行编码
+      final encodedAssetId = _encodeId(asset.id);
+
       items.add(FileItem(
         name: asset.title ?? asset.id,
-        path: '/albums/$albumId/${asset.id}',
+        path: '/albums/$encodedAlbumId/$encodedAssetId',
         isDirectory: false,
         size: file?.lengthSync() ?? 0,
         modifiedTime: asset.modifiedDateTime,
@@ -199,7 +217,8 @@ class MobileGalleryFileSystem implements NasFileSystem {
 
   @override
   Future<FileItem> getFileInfo(String path) async {
-    final assetId = path.split('/').last;
+    // 解码 asset ID（路径最后一段是编码后的 ID）
+    final assetId = _decodeId(path.split('/').last);
     final asset = _assetCache[assetId];
 
     if (asset == null) {
@@ -270,7 +289,8 @@ class MobileGalleryFileSystem implements NasFileSystem {
 
   @override
   Future<Stream<List<int>>> getFileStream(String path, {FileRange? range}) async {
-    final assetId = path.split('/').last;
+    // 解码 asset ID
+    final assetId = _decodeId(path.split('/').last);
     final asset = _assetCache[assetId];
 
     if (asset == null) {
@@ -299,7 +319,8 @@ class MobileGalleryFileSystem implements NasFileSystem {
 
   @override
   Future<String> getFileUrl(String path, {Duration? expiry}) async {
-    final assetId = path.split('/').last;
+    // 解码 asset ID
+    final assetId = _decodeId(path.split('/').last);
     final asset = _assetCache[assetId];
 
     if (asset == null) {
@@ -317,7 +338,8 @@ class MobileGalleryFileSystem implements NasFileSystem {
 
   @override
   Future<String?> getThumbnailUrl(String path, {ThumbnailSize? size}) async {
-    final assetId = path.split('/').last;
+    // 解码 asset ID
+    final assetId = _decodeId(path.split('/').last);
     final asset = _assetCache[assetId];
 
     if (asset == null) return null;
@@ -329,7 +351,8 @@ class MobileGalleryFileSystem implements NasFileSystem {
 
   /// 获取资源的缩略图数据
   Future<Uint8List?> getThumbnailData(String path, {fs.ThumbnailSize? size}) async {
-    final assetId = path.split('/').last;
+    // 解码 asset ID
+    final assetId = _decodeId(path.split('/').last);
     final asset = _assetCache[assetId];
 
     if (asset == null) return null;
@@ -441,9 +464,11 @@ class MobileGalleryFileSystem implements NasFileSystem {
           livePhotoVideoPath = videoFile?.path;
         }
 
+        // 对 asset ID 进行编码
+        final encodedAssetId = _encodeId(asset.id);
         results.add(FileItem(
           name: assetTitle ?? asset.id,
-          path: '/all/${asset.id}',
+          path: '/all/$encodedAssetId',
           isDirectory: false,
           size: file?.lengthSync() ?? 0,
           modifiedTime: asset.modifiedDateTime,

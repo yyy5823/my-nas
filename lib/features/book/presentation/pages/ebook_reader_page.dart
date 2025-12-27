@@ -19,7 +19,7 @@ import 'package:my_nas/features/reading/presentation/widgets/page_flip_effect.da
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
-import 'package:my_nas/shared/widgets/book_flip_loading.dart';
+import 'package:my_nas/shared/widgets/lottie_loading.dart';
 import 'package:my_nas/shared/widgets/reader_settings_sheet.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
@@ -657,10 +657,8 @@ class _EbookReaderPageState extends ConsumerState<EbookReaderPage> {
       // 显示加载提示
       return Scaffold(
         backgroundColor: settings.theme.backgroundColor,
-        body: BookFlipLoading(
+        body: const LottieLoading.book(
           message: '正在打开漫画阅读器...',
-          backgroundColor: settings.theme.backgroundColor,
-          textColor: settings.theme.textColor,
         ),
       );
     }
@@ -673,10 +671,8 @@ class _EbookReaderPageState extends ConsumerState<EbookReaderPage> {
       child: Scaffold(
         backgroundColor: settings.theme.backgroundColor,
         body: switch (state) {
-          EbookReaderLoading(:final message) => BookFlipLoading(
+          EbookReaderLoading(:final message) => LottieLoading.book(
             message: message,
-            backgroundColor: settings.theme.backgroundColor,
-            textColor: settings.theme.textColor,
           ),
           EbookReaderError(:final message) => _buildError(message),
           EbookReaderLoaded(:final filePath) => _buildReader(filePath, settings),
@@ -726,10 +722,8 @@ class _EbookReaderPageState extends ConsumerState<EbookReaderPage> {
                 bookSource: FileBookSource(File(filePath)),
                 initialCfi: _initialCfi,
                 style: style,
-                loadingWidget: BookFlipLoading(
+                loadingWidget: const LottieLoading.book(
                   message: '加载中...',
-                  backgroundColor: settings.theme.backgroundColor,
-                  textColor: settings.theme.textColor,
                 ),
                 onBookLoaded: (info) {
                   setState(() {
@@ -1023,9 +1017,11 @@ class _EbookReaderPageState extends ConsumerState<EbookReaderPage> {
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              (isDark ? Colors.black : Colors.white).withValues(alpha: 0.9),
+              (isDark ? Colors.black : Colors.white).withValues(alpha: 0.95),
+              (isDark ? Colors.black : Colors.white).withValues(alpha: 0.6),
               Colors.transparent,
             ],
+            stops: const [0.0, 0.7, 1.0],
           ),
         ),
         child: SafeArea(
@@ -1061,8 +1057,6 @@ class _EbookReaderPageState extends ConsumerState<EbookReaderPage> {
 
   Widget _buildBottomBar(BookReaderSettings settings) {
     final progress = _currentLocation?.fraction ?? 0.0;
-    final sectionIndex = _currentLocation?.sectionIndex ?? 0;
-    final totalSections = _currentLocation?.totalSections ?? 0;
     final isDark = settings.theme == BookReaderTheme.dark ||
         settings.theme == BookReaderTheme.black;
 
@@ -1076,9 +1070,11 @@ class _EbookReaderPageState extends ConsumerState<EbookReaderPage> {
             begin: Alignment.bottomCenter,
             end: Alignment.topCenter,
             colors: [
-              (isDark ? Colors.black : Colors.white).withValues(alpha: 0.9),
+              (isDark ? Colors.black : Colors.white).withValues(alpha: 0.95),
+              (isDark ? Colors.black : Colors.white).withValues(alpha: 0.6),
               Colors.transparent,
             ],
+            stops: const [0.0, 0.7, 1.0],
           ),
         ),
         child: SafeArea(
@@ -1131,41 +1127,24 @@ class _EbookReaderPageState extends ConsumerState<EbookReaderPage> {
                         children: [
                           SliderTheme(
                             data: SliderThemeData(
-                              trackHeight: 3,
-                              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                              overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                              trackHeight: 6,
+                              activeTrackColor: isDark ? Colors.white : Colors.black87,
+                              inactiveTrackColor: isDark
+                                  ? Colors.white.withValues(alpha: 0.3)
+                                  : Colors.black.withValues(alpha: 0.15),
+                              thumbColor: isDark ? Colors.white : Colors.black87,
+                              thumbShape: const RoundSliderThumbShape(
+                                enabledThumbRadius: 8,
+                                elevation: 2,
+                              ),
+                              overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
+                              trackShape: const RoundedRectSliderTrackShape(),
                             ),
                             child: Slider(
                               value: progress.clamp(0.0, 1.0),
                               onChanged: _controller.goToFraction,
-                              activeColor: isDark ? Colors.white : Colors.black87,
-                              inactiveColor: isDark ? Colors.white30 : Colors.black26,
                             ),
                           ),
-                          if (settings.showProgress)
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    '${(progress * 100).toStringAsFixed(1)}%',
-                                    style: TextStyle(
-                                      color: isDark ? Colors.white70 : Colors.black54,
-                                      fontSize: 11,
-                                    ),
-                                  ),
-                                  if (totalSections > 0)
-                                    Text(
-                                      '${sectionIndex + 1}/$totalSections',
-                                      style: TextStyle(
-                                        color: isDark ? Colors.white70 : Colors.black54,
-                                        fontSize: 11,
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
                         ],
                       ),
                     ),

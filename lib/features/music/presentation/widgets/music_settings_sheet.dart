@@ -25,11 +25,17 @@ class MusicSettingsSheet extends ConsumerWidget {
     final settings = ref.watch(musicSettingsProvider);
     final notifier = ref.read(musicSettingsProvider.notifier);
 
-    return DraggableScrollableSheet(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => Navigator.of(context).pop(),
+      child: DraggableScrollableSheet(
+        expand: false,
       initialChildSize: 0.75,
       minChildSize: 0.4,
       maxChildSize: 0.95,
-      builder: (context, scrollController) => ClipRRect(
+      builder: (context, scrollController) => GestureDetector(
+        onTap: () {}, // 阻止点击穿透到外层关闭弹框
+        child: ClipRRect(
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
@@ -99,6 +105,8 @@ class MusicSettingsSheet extends ConsumerWidget {
           ),
         ),
       ),
+      ),
+    ),
     );
   }
 
@@ -256,7 +264,7 @@ class MusicSettingsSheet extends ConsumerWidget {
                 ),
               ),
               Container(
-                width: 48,
+                constraints: const BoxConstraints(minWidth: 52),
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: AppColors.primary.withValues(alpha: 0.1),
@@ -329,7 +337,7 @@ class MusicSettingsSheet extends ConsumerWidget {
         _SettingsSwitch(
           icon: Icons.play_circle_outline_rounded,
           title: '连接后自动播放',
-          subtitle: '连接到 NAS 后自动继续上次播放',
+          subtitle: '连接到数据源后自动继续上次播放',
           value: settings.autoPlayOnConnect,
           isDark: isDark,
           onChanged: (value) => notifier.setAutoPlayOnConnect(enabled: value),

@@ -685,6 +685,7 @@ class MinePage extends ConsumerWidget {
         initialChildSize: 0.7,
         minChildSize: 0.5,
         maxChildSize: 0.9,
+        expand: false, // 关键：设为 false 使点击外部可关闭
         builder: (context, scrollController) => ClipRRect(
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           child: BackdropFilter(

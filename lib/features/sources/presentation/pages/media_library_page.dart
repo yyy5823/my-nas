@@ -786,6 +786,8 @@ class _MediaTypeTab extends ConsumerWidget {
   }
 
   /// 从 Files App 导入文件
+  ///
+  /// 首次导入时先添加路径，然后在卡片上显示导入进度（非阻塞）
   Future<void> _importFilesFromFilesApp(
     BuildContext context,
     WidgetRef ref,
@@ -793,98 +795,21 @@ class _MediaTypeTab extends ConsumerWidget {
     Map<String, SourceConnection> connections,
     FileImportType importType,
   ) async {
-    // 进度状态
-    var currentFile = 1;
-    var totalFiles = 0;
-    var currentFileName = '';
-    var copiedBytes = 0;
-    var totalBytes = 0;
-    StateSetter? dialogSetState;
-    var dialogShowing = false;
-
-    // 用于关闭对话框的方法
-    void closeDialog() {
-      if (dialogShowing && context.mounted) {
-        dialogShowing = false;
-        Navigator.of(context, rootNavigator: true).pop();
-      }
-    }
+    final typeDisplayName = switch (importType) {
+      FileImportType.book => '书籍',
+      FileImportType.comic => '漫画',
+      FileImportType.document => '文件',
+    };
 
     try {
-      // 导入文件（文件选择器打开时不显示进度对话框）
+      // 首先打开文件选择器（不阻塞，也不显示进度）
+      // 进度将在路径卡片上显示
       final importedFiles = await FileImportService.instance.importFiles(
         type: importType,
         allowMultiple: true,
-        onProgress: (current, total, fileName, copied, fileSize) {
-          // 首次收到进度时显示对话框
-          if (!dialogShowing && context.mounted) {
-            dialogShowing = true;
-            unawaited(showDialog<void>(
-              context: context,
-              barrierDismissible: false,
-              builder: (dialogContext) => StatefulBuilder(
-                builder: (ctx, setState) {
-                  dialogSetState = setState;
-                  return Center(
-                    child: Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // 文件进度
-                            Text(
-                              '正在导入 ($currentFile/$totalFiles)',
-                              style: const TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            const SizedBox(height: 8),
-                            SizedBox(
-                              width: 200,
-                              child: Text(
-                                currentFileName,
-                                style: const TextStyle(fontSize: 12, color: Colors.grey),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            // 字节进度条
-                            if (totalBytes > 0) ...[
-                              SizedBox(
-                                width: 200,
-                                child: LinearProgressIndicator(
-                                  value: copiedBytes / totalBytes,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                '${_formatBytes(copiedBytes)} / ${_formatBytes(totalBytes)}',
-                                style: const TextStyle(fontSize: 12, color: Colors.grey),
-                              ),
-                            ] else
-                              const CircularProgressIndicator(),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ));
-          }
-
-          // 更新进度状态
-          currentFile = current;
-          totalFiles = total;
-          currentFileName = fileName;
-          copiedBytes = copied;
-          totalBytes = fileSize;
-          dialogSetState?.call(() {});
-        },
+        // 首次导入不使用进度回调（因为卡片还不存在）
+        // 文件复制过程在后台进行
       );
-
-      // 关闭加载对话框
-      closeDialog();
 
       if (importedFiles.isEmpty) {
         if (context.mounted) {
@@ -897,27 +822,14 @@ class _MediaTypeTab extends ConsumerWidget {
       await _addFilesPathToLibrary(context, ref, localSource, connections, importType);
 
       if (context.mounted) {
-        context.showSuccessToast('已导入 ${importedFiles.length} 个文件');
+        context.showSuccessToast('已导入 ${importedFiles.length} 个$typeDisplayName，正在扫描...');
       }
     } on Exception catch (e, st) {
-      // 关闭加载对话框（如果还在显示）
-      closeDialog();
-
       logger.e('导入文件失败', e, st);
       if (context.mounted) {
         context.showErrorToast('导入失败: $e');
       }
     }
-  }
-
-  /// 格式化字节数
-  String _formatBytes(int bytes) {
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) {
-      return '${(bytes / 1024 / 1024).toStringAsFixed(1)} MB';
-    }
-    return '${(bytes / 1024 / 1024 / 1024).toStringAsFixed(1)} GB';
   }
 
   /// 添加文件路径到媒体库
@@ -1096,6 +1008,13 @@ class _PathCardState extends ConsumerState<_PathCard> {
   // 视频专用：刮削状态
   bool _isScraping = false;
   double _scrapeProgress = 0;
+
+  // 导入状态（本机书籍/漫画/文档）
+  bool _isImporting = false;
+  double _importProgress = 0;
+  String? _importDescription;
+  int _importedCount = 0;
+  int _importTotalCount = 0;
 
   // 统计信息
   int _itemCount = 0;
@@ -1509,6 +1428,20 @@ class _PathCardState extends ConsumerState<_PathCard> {
               ),
             ],
 
+            // 导入进度（本机书籍/漫画/文档）
+            if (_isImporting) ...[
+              const SizedBox(height: 8),
+              _buildProgressRow(
+                theme: theme,
+                isDark: isDark,
+                progress: _importProgress,
+                description: _importTotalCount > 1
+                    ? '正在导入 ($_importedCount/$_importTotalCount): ${_importDescription ?? ''}'
+                    : '正在导入: ${_importDescription ?? ''}',
+                color: Colors.blue,
+              ),
+            ],
+
             // 视频刮削进度
             if (isVideo && _isScraping) ...[
               const SizedBox(height: 6),
@@ -1734,6 +1667,38 @@ class _PathCardState extends ConsumerState<_PathCard> {
         }
       }
 
+      // 本机书籍/漫画/文档：导入更多文件
+      final isMobile = !kIsWeb && (Platform.isIOS || Platform.isAndroid);
+      final isLocalSource = widget.source.type == SourceType.local;
+      final isImportableType = widget.mediaType == MediaType.book ||
+          widget.mediaType == MediaType.comic ||
+          widget.mediaType == MediaType.note;
+
+      if (isMobile && isLocalSource && isImportableType) {
+        final importLabel = switch (widget.mediaType) {
+          MediaType.book => _isImporting ? '正在导入...' : '导入更多书籍',
+          MediaType.comic => _isImporting ? '正在导入...' : '导入更多漫画',
+          _ => _isImporting ? '正在导入...' : '导入更多文件',
+        };
+        items.add(PopupMenuItem(
+          value: 'import_more',
+          enabled: !_isImporting,
+          child: Row(
+            children: [
+              Icon(
+                _isImporting ? Icons.hourglass_empty : Icons.add_circle_outline,
+                color: _isImporting ? Colors.grey : Colors.blue,
+              ),
+              const SizedBox(width: 12),
+              Text(
+                importLabel,
+                style: TextStyle(color: _isImporting ? Colors.grey : Colors.blue),
+              ),
+            ],
+          ),
+        ));
+      }
+
       items.addAll([
         const PopupMenuDivider(),
         PopupMenuItem(
@@ -1770,6 +1735,8 @@ class _PathCardState extends ConsumerState<_PathCard> {
         await _startScraping();
       case 'stop_scrape':
         _stopScraping();
+      case 'import_more':
+        await _importMoreFiles(context);
       case 'toggle':
         await ref
             .read(mediaLibraryConfigProvider.notifier)
@@ -1968,6 +1935,89 @@ class _PathCardState extends ConsumerState<_PathCard> {
       if (mounted) {
         setState(() => _isScraping = false);
         context.showErrorToast('重试刮削失败: $e');
+      }
+    }
+  }
+
+  /// 导入更多文件（本机书籍/漫画/文档）
+  ///
+  /// 导入进度在卡片上显示，不阻塞用户操作
+  Future<void> _importMoreFiles(BuildContext context) async {
+    // 避免重复导入
+    if (_isImporting) {
+      context.showInfoToast('正在导入中...');
+      return;
+    }
+
+    final importType = switch (widget.mediaType) {
+      MediaType.book => FileImportType.book,
+      MediaType.comic => FileImportType.comic,
+      _ => FileImportType.document,
+    };
+
+    final typeDisplayName = switch (widget.mediaType) {
+      MediaType.book => '书籍',
+      MediaType.comic => '漫画',
+      _ => '文件',
+    };
+
+    try {
+      // 导入文件（文件选择器阶段不显示进度）
+      final importedFiles = await FileImportService.instance.importFiles(
+        type: importType,
+        allowMultiple: true,
+        onProgress: (current, total, fileName, copied, fileSize) {
+          // 首次收到进度时开始显示导入状态
+          if (mounted) {
+            setState(() {
+              _isImporting = true;
+              _importedCount = current;
+              _importTotalCount = total;
+              _importDescription = fileName;
+              // 计算当前文件的进度
+              _importProgress = fileSize > 0 ? copied / fileSize : 0;
+            });
+          }
+        },
+      );
+
+      // 导入完成，重置状态
+      if (mounted) {
+        setState(() {
+          _isImporting = false;
+          _importProgress = 0;
+          _importDescription = null;
+          _importedCount = 0;
+          _importTotalCount = 0;
+        });
+      }
+
+      if (importedFiles.isEmpty) {
+        if (context.mounted) {
+          context.showInfoToast('未选择文件');
+        }
+        return;
+      }
+
+      // 扫描新导入的文件
+      await _scanPath();
+
+      if (context.mounted) {
+        context.showSuccessToast('已导入 ${importedFiles.length} 个$typeDisplayName');
+      }
+    } on Exception catch (e, st) {
+      // 重置导入状态
+      if (mounted) {
+        setState(() {
+          _isImporting = false;
+          _importProgress = 0;
+          _importDescription = null;
+        });
+      }
+
+      logger.e('导入文件失败', e, st);
+      if (context.mounted) {
+        context.showErrorToast('导入失败: $e');
       }
     }
   }
