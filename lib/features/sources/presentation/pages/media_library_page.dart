@@ -26,6 +26,7 @@ import 'package:my_nas/features/sources/presentation/widgets/folder_picker_sheet
 import 'package:my_nas/features/video/data/services/video_database_service.dart';
 import 'package:my_nas/features/video/data/services/video_scanner_service.dart';
 import 'package:my_nas/features/video/presentation/pages/video_list_page.dart';
+import 'package:my_nas/nas_adapters/local/local_adapter.dart';
 import 'package:my_nas/nas_adapters/smb/smb_pool_config.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 
@@ -596,10 +597,10 @@ class _MediaTypeTab extends ConsumerWidget {
 
   /// 添加本机源到媒体库（移动端）
   ///
-  /// 根据媒体类型选择正确的路径前缀：
-  /// - photo/video → /gallery（系统相册）
-  /// - music → /music（系统音乐库）
-  /// - book/comic/note → /files（文件App）
+  /// 根据媒体类型选择正确的路径前缀，并按需请求权限：
+  /// - photo/video → /gallery（系统相册）- 需要相册权限
+  /// - music → /music（系统音乐库）- 需要音乐库权限
+  /// - book/comic/note → /files（文件App）- 不需要特殊权限
   Future<void> _addLocalSourceToLibrary(
     BuildContext context,
     WidgetRef ref,
@@ -607,6 +608,38 @@ class _MediaTypeTab extends ConsumerWidget {
     Map<String, SourceConnection> connections,
   ) async {
     try {
+      // 获取 LocalAdapter 以请求权限
+      final conn = connections[localSource.id];
+      final adapter = conn?.adapter;
+
+      // 根据媒体类型请求对应权限
+      if (adapter is LocalAdapter) {
+        var hasPermission = true;
+
+        switch (mediaType) {
+          case MediaType.photo:
+          case MediaType.video:
+            // 请求相册权限
+            hasPermission = await adapter.requestGalleryPermission();
+            if (!hasPermission && context.mounted) {
+              context.showErrorToast('需要相册访问权限才能添加本机相册');
+              return;
+            }
+          case MediaType.music:
+            // 请求音乐库权限
+            hasPermission = await adapter.requestMusicPermission();
+            if (!hasPermission && context.mounted) {
+              context.showErrorToast('需要音乐库访问权限才能添加本机音乐');
+              return;
+            }
+          case MediaType.book:
+          case MediaType.comic:
+          case MediaType.note:
+            // 文件系统不需要特殊权限
+            break;
+        }
+      }
+
       // 根据媒体类型选择路径前缀
       final (path, displayName) = switch (mediaType) {
         MediaType.photo || MediaType.video => ('/gallery', '本机相册'),

@@ -146,7 +146,30 @@ class MobileGalleryFileSystem implements NasFileSystem {
       _assetCache[asset.id] = asset;
 
       final file = await asset.file;
-      final extension = asset.title?.split('.').last ?? '';
+
+      // 提取扩展名：优先从文件名获取，否则从 mimeType 推断
+      String? extension;
+      final title = asset.title;
+      if (title != null && title.contains('.')) {
+        extension = title.split('.').last.toLowerCase();
+      } else if (asset.mimeType != null) {
+        // 从 mimeType 推断扩展名，如 image/heic → heic
+        final parts = asset.mimeType!.split('/');
+        if (parts.length == 2) {
+          extension = parts[1].toLowerCase();
+        }
+      }
+
+      // 检测是否为 Live Photo（iOS 实况照片）
+      // Live Photo 的 subtype 包含 PHAssetMediaSubtypePhotoLive (1 << 3 = 8)
+      final isLivePhoto = Platform.isIOS && (asset.subtype & 8) != 0;
+
+      // 获取 Live Photo 的视频路径
+      String? livePhotoVideoPath;
+      if (isLivePhoto) {
+        final videoFile = await asset.fileWithSubtype;
+        livePhotoVideoPath = videoFile?.path;
+      }
 
       items.add(FileItem(
         name: asset.title ?? asset.id,
@@ -157,6 +180,8 @@ class MobileGalleryFileSystem implements NasFileSystem {
         createdTime: asset.createDateTime,
         extension: extension,
         mimeType: asset.mimeType,
+        isLivePhoto: isLivePhoto,
+        livePhotoVideoPath: livePhotoVideoPath,
       ));
     }
 
@@ -173,7 +198,28 @@ class MobileGalleryFileSystem implements NasFileSystem {
     }
 
     final file = await asset.file;
-    final extension = asset.title?.split('.').last ?? '';
+
+    // 提取扩展名：优先从文件名获取，否则从 mimeType 推断
+    String? extension;
+    final title = asset.title;
+    if (title != null && title.contains('.')) {
+      extension = title.split('.').last.toLowerCase();
+    } else if (asset.mimeType != null) {
+      final parts = asset.mimeType!.split('/');
+      if (parts.length == 2) {
+        extension = parts[1].toLowerCase();
+      }
+    }
+
+    // 检测是否为 Live Photo
+    final isLivePhoto = Platform.isIOS && (asset.subtype & 8) != 0;
+
+    // 获取 Live Photo 的视频路径
+    String? livePhotoVideoPath;
+    if (isLivePhoto) {
+      final videoFile = await asset.fileWithSubtype;
+      livePhotoVideoPath = videoFile?.path;
+    }
 
     return FileItem(
       name: asset.title ?? asset.id,
@@ -184,7 +230,33 @@ class MobileGalleryFileSystem implements NasFileSystem {
       createdTime: asset.createDateTime,
       extension: extension,
       mimeType: asset.mimeType,
+      isLivePhoto: isLivePhoto,
+      livePhotoVideoPath: livePhotoVideoPath,
     );
+  }
+
+  /// 获取 Live Photo 的视频文件
+  ///
+  /// 返回 Live Photo 关联的视频文件路径，用于播放实况效果
+  Future<File?> getLivePhotoVideoFile(String assetId) async {
+    final asset = _assetCache[assetId];
+    if (asset == null) return null;
+
+    // 检测是否为 Live Photo
+    if (!Platform.isIOS || (asset.subtype & 8) == 0) return null;
+
+    return asset.fileWithSubtype;
+  }
+
+  /// 获取 Live Photo 的视频 URL（用于播放）
+  Future<String?> getLivePhotoVideoUrl(String assetId) async {
+    final asset = _assetCache[assetId];
+    if (asset == null) return null;
+
+    // 检测是否为 Live Photo
+    if (!Platform.isIOS || (asset.subtype & 8) == 0) return null;
+
+    return asset.getMediaUrl();
   }
 
   @override
@@ -333,18 +405,43 @@ class MobileGalleryFileSystem implements NasFileSystem {
     final queryLower = query.toLowerCase();
 
     for (final asset in assets) {
-      final title = asset.title?.toLowerCase() ?? '';
-      if (title.contains(queryLower)) {
+      final assetTitle = asset.title;
+      final titleLower = assetTitle?.toLowerCase() ?? '';
+      if (titleLower.contains(queryLower)) {
         _assetCache[asset.id] = asset;
         final file = await asset.file;
+
+        // 提取扩展名
+        String? extension;
+        if (assetTitle != null && assetTitle.contains('.')) {
+          extension = assetTitle.split('.').last.toLowerCase();
+        } else if (asset.mimeType != null) {
+          final parts = asset.mimeType!.split('/');
+          if (parts.length == 2) {
+            extension = parts[1].toLowerCase();
+          }
+        }
+
+        // 检测是否为 Live Photo
+        final isLivePhoto = Platform.isIOS && (asset.subtype & 8) != 0;
+
+        // 获取 Live Photo 的视频路径
+        String? livePhotoVideoPath;
+        if (isLivePhoto) {
+          final videoFile = await asset.fileWithSubtype;
+          livePhotoVideoPath = videoFile?.path;
+        }
+
         results.add(FileItem(
-          name: asset.title ?? asset.id,
+          name: assetTitle ?? asset.id,
           path: '/all/${asset.id}',
           isDirectory: false,
           size: file?.lengthSync() ?? 0,
           modifiedTime: asset.modifiedDateTime,
-          extension: asset.title?.split('.').last,
+          extension: extension,
           mimeType: asset.mimeType,
+          isLivePhoto: isLivePhoto,
+          livePhotoVideoPath: livePhotoVideoPath,
         ));
       }
     }

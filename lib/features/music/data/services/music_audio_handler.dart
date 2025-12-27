@@ -83,6 +83,10 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
   /// 广播播放状态
   void _broadcastState(PlaybackEvent event) {
     final playing = _player.playing;
+    final processingState = _mapProcessingState(_player.processingState);
+
+    logger.d('MusicAudioHandler: 广播状态 - playing=$playing, processingState=$processingState, position=${_player.position}, hasMediaItem=${mediaItem.value != null}');
+
     playbackState.add(playbackState.value.copyWith(
       // 显示的控制按钮
       controls: [
@@ -102,7 +106,7 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
       // Android 紧凑视图显示的按钮索引
       androidCompactActionIndices: const [0, 1, 3],
       // 处理状态
-      processingState: _mapProcessingState(_player.processingState),
+      processingState: processingState,
       // 是否正在播放
       playing: playing,
       // 当前位置（用于 Now Playing 计算）
@@ -159,7 +163,12 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
     );
 
     mediaItem.add(item);
-    logger.d(
+
+    // 重要：设置 mediaItem 后立即广播 playbackState
+    // 这确保 iOS Now Playing 能正确识别媒体信息和控制按钮
+    _broadcastState(PlaybackEvent());
+
+    logger.i(
         'MusicAudioHandler: 设置当前音乐 - ${music.displayTitle} by ${music.displayArtist}');
   }
 
@@ -214,17 +223,27 @@ class MusicAudioHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> play() async {
+    logger.i('MusicAudioHandler: play() 被调用');
     await _player.play();
+    // 重要：显式广播状态确保 iOS Now Playing 立即更新
+    _broadcastState(PlaybackEvent());
+    logger.i('MusicAudioHandler: play() 完成，已广播状态');
   }
 
   @override
   Future<void> pause() async {
+    logger.i('MusicAudioHandler: pause() 被调用');
     await _player.pause();
+    // 显式广播状态确保 iOS Now Playing 立即更新
+    _broadcastState(PlaybackEvent());
   }
 
   @override
   Future<void> stop() async {
+    logger.i('MusicAudioHandler: stop() 被调用');
     await _player.stop();
+    // 显式广播状态确保 iOS Now Playing 立即更新
+    _broadcastState(PlaybackEvent());
     await super.stop();
   }
 

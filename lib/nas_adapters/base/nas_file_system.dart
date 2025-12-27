@@ -80,6 +80,8 @@ class FileItem {
     this.thumbnailUrl,
     this.isHidden = false,
     this.isReadOnly = false,
+    this.isLivePhoto = false,
+    this.livePhotoVideoPath,
   });
 
   final String name;
@@ -94,11 +96,28 @@ class FileItem {
   final bool isHidden;
   final bool isReadOnly;
 
+  /// 是否为 iOS Live Photo（实况照片）
+  final bool isLivePhoto;
+
+  /// Live Photo 的视频路径（仅当 isLivePhoto 为 true 时有效）
+  final String? livePhotoVideoPath;
+
   bool get isFile => !isDirectory;
 
   FileType get type {
     if (isDirectory) return FileType.folder;
-    return FileType.fromExtension(extension ?? '');
+
+    // 先尝试从扩展名判断
+    final typeFromExt = FileType.fromExtension(extension ?? '');
+    if (typeFromExt != FileType.other) return typeFromExt;
+
+    // 如果扩展名无法判断，尝试从 mimeType 判断
+    if (mimeType != null) {
+      final typeFromMime = FileType.fromMimeType(mimeType!);
+      if (typeFromMime != FileType.other) return typeFromMime;
+    }
+
+    return FileType.other;
   }
 
   String get displaySize {
@@ -132,7 +151,10 @@ enum FileType {
   static FileType fromExtension(String ext) {
     final e = ext.toLowerCase().replaceAll('.', '');
     return switch (e) {
-      'jpg' || 'jpeg' || 'png' || 'gif' || 'webp' || 'bmp' || 'svg' =>
+      'jpg' || 'jpeg' || 'png' || 'gif' || 'webp' || 'bmp' || 'svg' ||
+      'heic' || 'heif' ||  // iOS 默认格式
+      'tiff' || 'tif' ||   // TIFF 格式
+      'raw' || 'cr2' || 'nef' || 'arw' || 'dng' =>  // RAW 格式
         FileType.image,
       'mp4' ||
       'mkv' ||
@@ -190,6 +212,45 @@ enum FileType {
       'epub' || 'mobi' || 'azw3' || 'fb2' => FileType.epub,
       _ => FileType.other,
     };
+  }
+
+  /// 根据 MIME 类型判断文件类型
+  static FileType fromMimeType(String mimeType) {
+    final mime = mimeType.toLowerCase();
+
+    // 图片类型
+    if (mime.startsWith('image/')) return FileType.image;
+
+    // 视频类型
+    if (mime.startsWith('video/')) return FileType.video;
+
+    // 音频类型
+    if (mime.startsWith('audio/')) return FileType.audio;
+
+    // 文档类型
+    if (mime == 'application/pdf') return FileType.pdf;
+    if (mime == 'application/epub+zip') return FileType.epub;
+    if (mime.contains('word') ||
+        mime.contains('excel') ||
+        mime.contains('powerpoint') ||
+        mime.contains('spreadsheet') ||
+        mime.contains('presentation')) {
+      return FileType.document;
+    }
+
+    // 压缩包
+    if (mime == 'application/zip' ||
+        mime == 'application/x-rar-compressed' ||
+        mime == 'application/x-7z-compressed' ||
+        mime == 'application/gzip' ||
+        mime == 'application/x-tar') {
+      return FileType.archive;
+    }
+
+    // 文本类型
+    if (mime.startsWith('text/')) return FileType.text;
+
+    return FileType.other;
   }
 }
 

@@ -5,14 +5,22 @@ import 'package:my_nas/features/music/presentation/pages/music_list_page.dart';
 import 'package:my_nas/features/music/presentation/pages/playlist_detail_page.dart';
 import 'package:my_nas/features/music/presentation/providers/home_layout_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/playlist_provider.dart';
+import 'package:my_nas/features/music/presentation/widgets/animated_components.dart';
 import 'package:my_nas/features/music/presentation/widgets/browse_category_grid.dart';
 import 'package:my_nas/features/music/presentation/widgets/hero_player_card.dart';
 import 'package:my_nas/features/music/presentation/widgets/music_stats_card.dart';
 import 'package:my_nas/features/music/presentation/widgets/recent_tracks_section.dart';
 
 /// 音乐主页内容组件 - 现代化设计
-/// 用于嵌入到 MusicListPage 中
-class MusicHomeContent extends ConsumerWidget {
+///
+/// 特性：
+/// - 沉浸式顶部 Hero 区域
+/// - 毛玻璃快捷访问卡片
+/// - 横向胶囊分类按钮
+/// - 大封面最近播放卡片
+/// - 滚动视差效果
+/// - 布局自定义支持
+class MusicHomeContent extends ConsumerStatefulWidget {
   const MusicHomeContent({
     required this.tracks,
     required this.recentTracks,
@@ -20,6 +28,7 @@ class MusicHomeContent extends ConsumerWidget {
     required this.onTrackTap,
     required this.onCategoryTap,
     this.onShuffleTap,
+    this.onPlayAllTap,
     this.totalCount = 0,
     this.artistCount = 0,
     this.albumCount = 0,
@@ -35,45 +44,52 @@ class MusicHomeContent extends ConsumerWidget {
   final List<MusicFileWithSource> tracks;
   final List<MusicFileWithSource> recentTracks;
   final List<MusicFileWithSource> favoriteTracks;
-  final int totalCount; // 数据库中的歌曲总数
+  final int totalCount;
   final int artistCount;
   final int albumCount;
   final int genreCount;
   final int yearCount;
   final int folderCount;
   final int playlistCount;
-  final int favoritesCount; // 收藏总数（直接从 provider 获取）
-  final int recentCount; // 最近播放总数（直接从 provider 获取）
+  final int favoritesCount;
+  final int recentCount;
 
-  /// 点击播放曲目的回调
   final void Function(MusicFileWithSource track, List<MusicFileWithSource> allTracks) onTrackTap;
-
-  /// 点击分类的回调
   final void Function(MusicCategory category) onCategoryTap;
-
-  /// 随机播放回调
   final VoidCallback? onShuffleTap;
+  final VoidCallback? onPlayAllTap;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MusicHomeContent> createState() => _MusicHomeContentState();
+}
+
+class _MusicHomeContentState extends ConsumerState<MusicHomeContent> {
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final screenWidth = MediaQuery.of(context).size.width;
     final isDesktop = screenWidth >= 900;
-    final isTablet = screenWidth >= 600 && screenWidth < 900;
     final layoutState = ref.watch(homeLayoutProvider);
 
     if (isDesktop) {
       return _buildDesktopLayout(context, isDark);
     }
 
-    return _buildMobileLayout(context, isDark, isTablet, layoutState);
+    return _buildMobileLayout(context, isDark, layoutState);
   }
 
   /// 移动端布局
   Widget _buildMobileLayout(
     BuildContext context,
     bool isDark,
-    bool isTablet,
     HomeLayoutState layoutState,
   ) {
     final sections = <Widget>[];
@@ -85,19 +101,32 @@ class MusicHomeContent extends ConsumerWidget {
       if (sectionWidget != null) {
         sections
           ..add(sectionWidget)
-          ..add(const SizedBox(height: 16));
+          ..add(const SizedBox(height: 20));
       }
     }
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.only(bottom: 100),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 12),
-          ...sections,
-        ],
-      ),
+    return CustomScrollView(
+      controller: _scrollController,
+      slivers: [
+        // Hero 播放卡片 - 不参与布局自定义
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.only(top: 8, bottom: 12),
+            child: HeroPlayerCard(
+              isDark: isDark,
+              onShuffleTap: widget.onShuffleTap,
+              onPlayAllTap: widget.onPlayAllTap,
+            ),
+          ),
+        ),
+        // 可配置的内容区域
+        SliverPadding(
+          padding: const EdgeInsets.only(bottom: 100),
+          sliver: SliverList(
+            delegate: SliverChildListDelegate(sections),
+          ),
+        ),
+      ],
     );
   }
 
@@ -105,69 +134,72 @@ class MusicHomeContent extends ConsumerWidget {
   Widget? _buildSectionByType(BuildContext context, bool isDark, HomeSection section) {
     switch (section) {
       case HomeSection.heroPlayer:
-        return HeroPlayerCard(
-          isDark: isDark,
-          onShuffleTap: onShuffleTap,
-        );
+        // Hero 区域已经在外部单独处理，这里返回 null
+        return null;
       case HomeSection.quickAccess:
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildSectionTitle('快捷访问', isDark),
-            const SizedBox(height: 8),
-            QuickAccessGrid(
-              isDark: isDark,
-              favoritesCount: favoritesCount > 0 ? favoritesCount : favoriteTracks.length,
-              recentCount: recentCount > 0 ? recentCount : recentTracks.length,
-              totalCount: totalCount > 0 ? totalCount : tracks.length,
-              playlistCount: playlistCount,
-              onFavoritesTap: () => onCategoryTap(MusicCategory.favorites),
-              onRecentTap: () => onCategoryTap(MusicCategory.recent),
-              onAllTap: () => onCategoryTap(MusicCategory.all),
-              onPlaylistTap: () => onCategoryTap(MusicCategory.playlists),
-            ),
-          ],
-        );
+        return _buildQuickAccessSection(isDark);
       case HomeSection.recommended:
-        if (tracks.isEmpty) return null;
+        if (widget.tracks.isEmpty) return null;
         return PopularTracksSection(
           tracks: _getRandomTracks(5),
           isDark: isDark,
           title: '为你推荐',
-          onTrackTap: (track) => onTrackTap(track, tracks),
-          onMoreTap: () => onCategoryTap(MusicCategory.all),
+          onTrackTap: (track) => widget.onTrackTap(track, widget.tracks),
+          onMoreTap: () => widget.onCategoryTap(MusicCategory.all),
         );
       case HomeSection.playlists:
-        if (playlistCount <= 0) return null;
+        if (widget.playlistCount <= 0) return null;
         return _PlaylistsSection(
           isDark: isDark,
-          playlistCount: playlistCount,
-          onMoreTap: () => onCategoryTap(MusicCategory.playlists),
+          playlistCount: widget.playlistCount,
+          onMoreTap: () => widget.onCategoryTap(MusicCategory.playlists),
         );
       case HomeSection.recentPlays:
-        if (recentTracks.isEmpty) return null;
+        if (widget.recentTracks.isEmpty) return null;
         return RecentTracksSection(
-          tracks: recentTracks,
+          tracks: widget.recentTracks,
           isDark: isDark,
-          onTrackTap: (track) => onTrackTap(track, tracks),
-          onMoreTap: () => onCategoryTap(MusicCategory.recent),
+          onTrackTap: (track) => widget.onTrackTap(track, widget.tracks),
+          onMoreTap: () => widget.onCategoryTap(MusicCategory.recent),
         );
       case HomeSection.browseLibrary:
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildSectionTitle('浏览音乐库', isDark),
-            const SizedBox(height: 8),
-            BrowseCategoryGrid(
-              isDark: isDark,
-              counts: _getCategoryCounts(),
-              onCategoryTap: _onBrowseCategoryTap,
-            ),
-          ],
-        );
+        return _buildBrowseSection(isDark);
     }
   }
 
+  /// 快捷访问区域
+  Widget _buildQuickAccessSection(bool isDark) => Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionTitle('快捷访问', isDark),
+        const SizedBox(height: 12),
+        QuickAccessGrid(
+          isDark: isDark,
+          favoritesCount: widget.favoritesCount > 0 ? widget.favoritesCount : widget.favoriteTracks.length,
+          recentCount: widget.recentCount > 0 ? widget.recentCount : widget.recentTracks.length,
+          totalCount: widget.totalCount > 0 ? widget.totalCount : widget.tracks.length,
+          playlistCount: widget.playlistCount,
+          onFavoritesTap: () => widget.onCategoryTap(MusicCategory.favorites),
+          onRecentTap: () => widget.onCategoryTap(MusicCategory.recent),
+          onAllTap: () => widget.onCategoryTap(MusicCategory.all),
+          onPlaylistTap: () => widget.onCategoryTap(MusicCategory.playlists),
+        ),
+      ],
+    );
+
+  /// 浏览音乐库区域
+  Widget _buildBrowseSection(bool isDark) => Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionTitle('浏览音乐库', isDark),
+        const SizedBox(height: 12),
+        BrowseCategoryGrid(
+          isDark: isDark,
+          counts: _getCategoryCounts(),
+          onCategoryTap: _onBrowseCategoryTap,
+        ),
+      ],
+    );
 
   /// 桌面端布局
   Widget _buildDesktopLayout(BuildContext context, bool isDark) => Row(
@@ -232,9 +264,9 @@ class MusicHomeContent extends ConsumerWidget {
           Padding(
             padding: const EdgeInsets.all(16),
             child: MusicStatsCard(
-              totalTracks: totalCount > 0 ? totalCount : tracks.length,
-              totalArtists: artistCount,
-              totalAlbums: albumCount,
+              totalTracks: widget.totalCount > 0 ? widget.totalCount : widget.tracks.length,
+              totalArtists: widget.artistCount,
+              totalAlbums: widget.albumCount,
               isDark: isDark,
               isDesktop: true,
             ),
@@ -248,26 +280,26 @@ class MusicHomeContent extends ConsumerWidget {
                 _buildSidebarItem(
                   icon: Icons.favorite_rounded,
                   label: '我喜欢',
-                  count: favoritesCount > 0 ? favoritesCount : favoriteTracks.length,
+                  count: widget.favoritesCount > 0 ? widget.favoritesCount : widget.favoriteTracks.length,
                   color: const Color(0xFFE91E63),
                   isDark: isDark,
-                  onTap: () => onCategoryTap(MusicCategory.favorites),
+                  onTap: () => widget.onCategoryTap(MusicCategory.favorites),
                 ),
                 _buildSidebarItem(
                   icon: Icons.history_rounded,
                   label: '最近播放',
-                  count: recentCount > 0 ? recentCount : recentTracks.length,
+                  count: widget.recentCount > 0 ? widget.recentCount : widget.recentTracks.length,
                   color: const Color(0xFF2196F3),
                   isDark: isDark,
-                  onTap: () => onCategoryTap(MusicCategory.recent),
+                  onTap: () => widget.onCategoryTap(MusicCategory.recent),
                 ),
                 _buildSidebarItem(
                   icon: Icons.queue_music_rounded,
                   label: '全部歌曲',
-                  count: totalCount > 0 ? totalCount : tracks.length,
+                  count: widget.totalCount > 0 ? widget.totalCount : widget.tracks.length,
                   color: AppColors.primary,
                   isDark: isDark,
-                  onTap: () => onCategoryTap(MusicCategory.all),
+                  onTap: () => widget.onCategoryTap(MusicCategory.all),
                 ),
                 const SizedBox(height: 16),
                 Padding(
@@ -285,34 +317,34 @@ class MusicHomeContent extends ConsumerWidget {
                 _buildSidebarItem(
                   icon: Icons.person_rounded,
                   label: '艺术家',
-                  count: artistCount,
+                  count: widget.artistCount,
                   color: const Color(0xFF9C27B0),
                   isDark: isDark,
-                  onTap: () => onCategoryTap(MusicCategory.artists),
+                  onTap: () => widget.onCategoryTap(MusicCategory.artists),
                 ),
                 _buildSidebarItem(
                   icon: Icons.album_rounded,
                   label: '专辑',
-                  count: albumCount,
+                  count: widget.albumCount,
                   color: const Color(0xFFFF9800),
                   isDark: isDark,
-                  onTap: () => onCategoryTap(MusicCategory.albums),
+                  onTap: () => widget.onCategoryTap(MusicCategory.albums),
                 ),
                 _buildSidebarItem(
                   icon: Icons.category_rounded,
                   label: '流派',
-                  count: genreCount,
+                  count: widget.genreCount,
                   color: const Color(0xFFE91E63),
                   isDark: isDark,
-                  onTap: () => onCategoryTap(MusicCategory.genres),
+                  onTap: () => widget.onCategoryTap(MusicCategory.genres),
                 ),
                 _buildSidebarItem(
                   icon: Icons.folder_rounded,
                   label: '文件夹',
-                  count: folderCount,
+                  count: widget.folderCount,
                   color: const Color(0xFF795548),
                   isDark: isDark,
-                  onTap: () => onCategoryTap(MusicCategory.folders),
+                  onTap: () => widget.onCategoryTap(MusicCategory.folders),
                 ),
               ],
             ),
@@ -328,44 +360,40 @@ class MusicHomeContent extends ConsumerWidget {
     required Color color,
     required bool isDark,
     required VoidCallback onTap,
-  }) => Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          child: Row(
-            children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(icon, color: color, size: 18),
+  }) => AnimatedPressable(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: isDark ? Colors.white : Colors.black87,
-                  ),
-                ),
-              ),
-              Text(
-                '$count',
+              child: Icon(icon, color: color, size: 18),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                label,
                 style: TextStyle(
-                  fontSize: 12,
-                  color: isDark ? Colors.white38 : Colors.black38,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: isDark ? Colors.white : Colors.black87,
                 ),
               ),
-            ],
-          ),
+            ),
+            Text(
+              '$count',
+              style: TextStyle(
+                fontSize: 12,
+                color: isDark ? Colors.white38 : Colors.black38,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -394,7 +422,8 @@ class MusicHomeContent extends ConsumerWidget {
                 HeroPlayerCard(
                   isDark: isDark,
                   isDesktop: true,
-                  onShuffleTap: onShuffleTap,
+                  onShuffleTap: widget.onShuffleTap,
+                  onPlayAllTap: widget.onPlayAllTap,
                 ),
               ],
             ),
@@ -419,35 +448,35 @@ class MusicHomeContent extends ConsumerWidget {
                 QuickAccessGrid(
                   isDark: isDark,
                   isDesktop: true,
-                  favoritesCount: favoritesCount > 0 ? favoritesCount : favoriteTracks.length,
-                  recentCount: recentCount > 0 ? recentCount : recentTracks.length,
-                  totalCount: totalCount > 0 ? totalCount : tracks.length,
-                  playlistCount: playlistCount,
-                  onFavoritesTap: () => onCategoryTap(MusicCategory.favorites),
-                  onRecentTap: () => onCategoryTap(MusicCategory.recent),
-                  onAllTap: () => onCategoryTap(MusicCategory.all),
-                  onPlaylistTap: () => onCategoryTap(MusicCategory.playlists),
+                  favoritesCount: widget.favoritesCount > 0 ? widget.favoritesCount : widget.favoriteTracks.length,
+                  recentCount: widget.recentCount > 0 ? widget.recentCount : widget.recentTracks.length,
+                  totalCount: widget.totalCount > 0 ? widget.totalCount : widget.tracks.length,
+                  playlistCount: widget.playlistCount,
+                  onFavoritesTap: () => widget.onCategoryTap(MusicCategory.favorites),
+                  onRecentTap: () => widget.onCategoryTap(MusicCategory.recent),
+                  onAllTap: () => widget.onCategoryTap(MusicCategory.all),
+                  onPlaylistTap: () => widget.onCategoryTap(MusicCategory.playlists),
                 ),
               ],
             ),
           ),
         ),
         // 最近播放
-        if (recentTracks.isNotEmpty)
+        if (widget.recentTracks.isNotEmpty)
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.all(24),
               child: RecentTracksSection(
-                tracks: recentTracks,
+                tracks: widget.recentTracks,
                 isDark: isDark,
                 isDesktop: true,
-                onTrackTap: (track) => onTrackTap(track, tracks),
-                onMoreTap: () => onCategoryTap(MusicCategory.recent),
+                onTrackTap: (track) => widget.onTrackTap(track, widget.tracks),
+                onMoreTap: () => widget.onCategoryTap(MusicCategory.recent),
               ),
             ),
           ),
         // 推荐歌曲
-        if (tracks.isNotEmpty)
+        if (widget.tracks.isNotEmpty)
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -457,8 +486,8 @@ class MusicHomeContent extends ConsumerWidget {
                 isDesktop: true,
                 title: '为你推荐',
                 maxItems: 8,
-                onTrackTap: (track) => onTrackTap(track, tracks),
-                onMoreTap: () => onCategoryTap(MusicCategory.all),
+                onTrackTap: (track) => widget.onTrackTap(track, widget.tracks),
+                onMoreTap: () => widget.onCategoryTap(MusicCategory.all),
               ),
             ),
           ),
@@ -471,13 +500,27 @@ class MusicHomeContent extends ConsumerWidget {
 
   Widget _buildSectionTitle(String title, bool isDark) => Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Text(
-        title,
-        style: TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.bold,
-          color: isDark ? Colors.white : Colors.black87,
-        ),
+      child: Row(
+        children: [
+          Container(
+            width: 4,
+            height: 18,
+            decoration: BoxDecoration(
+              color: AppColors.primary,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.bold,
+              color: isDark ? Colors.white : Colors.black87,
+              letterSpacing: -0.3,
+            ),
+          ),
+        ],
       ),
     );
 
@@ -491,46 +534,45 @@ class MusicHomeContent extends ConsumerWidget {
   }
 
   Map<MusicBrowseCategory, int> _getCategoryCounts() => {
-      MusicBrowseCategory.all: totalCount > 0 ? totalCount : tracks.length,
-      MusicBrowseCategory.favorites: favoritesCount > 0 ? favoritesCount : favoriteTracks.length,
-      MusicBrowseCategory.recent: recentCount > 0 ? recentCount : recentTracks.length,
-      MusicBrowseCategory.artists: artistCount,
-      MusicBrowseCategory.albums: albumCount,
-      MusicBrowseCategory.genres: genreCount,
-      MusicBrowseCategory.years: yearCount,
-      MusicBrowseCategory.folders: folderCount,
+      MusicBrowseCategory.all: widget.totalCount > 0 ? widget.totalCount : widget.tracks.length,
+      MusicBrowseCategory.favorites: widget.favoritesCount > 0 ? widget.favoritesCount : widget.favoriteTracks.length,
+      MusicBrowseCategory.recent: widget.recentCount > 0 ? widget.recentCount : widget.recentTracks.length,
+      MusicBrowseCategory.artists: widget.artistCount,
+      MusicBrowseCategory.albums: widget.albumCount,
+      MusicBrowseCategory.genres: widget.genreCount,
+      MusicBrowseCategory.years: widget.yearCount,
+      MusicBrowseCategory.folders: widget.folderCount,
     };
 
   List<MusicFileWithSource> _getRandomTracks(int count) {
-    if (tracks.isEmpty) return [];
-    final shuffled = List<MusicFileWithSource>.from(tracks)..shuffle();
+    if (widget.tracks.isEmpty) return [];
+    final shuffled = List<MusicFileWithSource>.from(widget.tracks)..shuffle();
     return shuffled.take(count).toList();
   }
 
   void _onBrowseCategoryTap(MusicBrowseCategory browseCategory) {
-    // 将 MusicBrowseCategory 转换为 MusicCategory
     switch (browseCategory) {
       case MusicBrowseCategory.all:
-        onCategoryTap(MusicCategory.all);
+        widget.onCategoryTap(MusicCategory.all);
       case MusicBrowseCategory.favorites:
-        onCategoryTap(MusicCategory.favorites);
+        widget.onCategoryTap(MusicCategory.favorites);
       case MusicBrowseCategory.recent:
-        onCategoryTap(MusicCategory.recent);
+        widget.onCategoryTap(MusicCategory.recent);
       case MusicBrowseCategory.artists:
-        onCategoryTap(MusicCategory.artists);
+        widget.onCategoryTap(MusicCategory.artists);
       case MusicBrowseCategory.albums:
-        onCategoryTap(MusicCategory.albums);
+        widget.onCategoryTap(MusicCategory.albums);
       case MusicBrowseCategory.genres:
-        onCategoryTap(MusicCategory.genres);
+        widget.onCategoryTap(MusicCategory.genres);
       case MusicBrowseCategory.years:
-        onCategoryTap(MusicCategory.years);
+        widget.onCategoryTap(MusicCategory.years);
       case MusicBrowseCategory.folders:
-        onCategoryTap(MusicCategory.folders);
+        widget.onCategoryTap(MusicCategory.folders);
     }
   }
 }
 
-/// 歌单区块 - 展示所有歌单
+/// 歌单区块 - 现代化横向滚动设计
 class _PlaylistsSection extends ConsumerWidget {
   const _PlaylistsSection({
     required this.isDark,
@@ -570,41 +612,76 @@ class _PlaylistsSection extends ConsumerWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                '歌单',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: isDark ? Colors.white : Colors.black87,
-                ),
+              Row(
+                children: [
+                  Container(
+                    width: 4,
+                    height: 18,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF9C27B0),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    '歌单',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : Colors.black87,
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                ],
               ),
               if (playlists.length > 5)
-                GestureDetector(
+                AnimatedPressable(
                   onTap: onMoreTap,
-                  child: Text(
-                    '查看全部',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: isDark ? Colors.white60 : Colors.black45,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.08)
+                          : Colors.black.withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '查看全部',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(
+                          Icons.arrow_forward_rounded,
+                          size: 14,
+                          color: AppColors.primary,
+                        ),
+                      ],
                     ),
                   ),
                 ),
             ],
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
         // 歌单横向滚动列表
         SizedBox(
-          height: 140,
+          height: 160,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
             itemCount: playlists.length > 10 ? 10 : playlists.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 12),
+            separatorBuilder: (_, _) => const SizedBox(width: 14),
             itemBuilder: (context, index) {
               final playlist = playlists[index];
               final colors = _gradientColors[index % _gradientColors.length];
-              return _PlaylistCard(
+              return _ModernPlaylistCard(
                 playlist: playlist,
                 isDark: isDark,
                 gradientColors: colors,
@@ -617,9 +694,9 @@ class _PlaylistsSection extends ConsumerWidget {
   }
 }
 
-/// 歌单卡片 - 现代化设计
-class _PlaylistCard extends StatelessWidget {
-  const _PlaylistCard({
+/// 现代化歌单卡片
+class _ModernPlaylistCard extends StatelessWidget {
+  const _ModernPlaylistCard({
     required this.playlist,
     required this.isDark,
     required this.gradientColors,
@@ -630,88 +707,91 @@ class _PlaylistCard extends StatelessWidget {
   final List<Color> gradientColors;
 
   @override
-  Widget build(BuildContext context) => Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(16),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => PlaylistDetailPage.open(context, playlist),
-        child: Container(
-          width: 120,
-          height: 140,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: gradientColors,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: gradientColors[0].withValues(alpha: 0.3),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ],
+  Widget build(BuildContext context) => AnimatedPressable(
+      onTap: () => PlaylistDetailPage.open(context, playlist),
+      child: Container(
+        width: 130,
+        height: 160,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: gradientColors,
           ),
-          child: Stack(
-            children: [
-              // 装饰性大图标
-              Positioned(
-                right: -20,
-                top: -20,
-                child: Icon(
-                  Icons.playlist_play_rounded,
-                  size: 80,
-                  color: Colors.white.withValues(alpha: 0.15),
-                ),
+          boxShadow: [
+            BoxShadow(
+              color: gradientColors[0].withValues(alpha: 0.35),
+              blurRadius: 14,
+              offset: const Offset(0, 5),
+            ),
+          ],
+        ),
+        child: Stack(
+          children: [
+            // 装饰性大图标
+            Positioned(
+              right: -20,
+              top: -20,
+              child: Icon(
+                Icons.playlist_play_rounded,
+                size: 90,
+                color: Colors.white.withValues(alpha: 0.12),
               ),
-              // 内容
-              Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // 图标
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.25),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(
-                        Icons.playlist_play_rounded,
-                        color: Colors.white,
-                        size: 22,
-                      ),
+            ),
+            // 内容
+            Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 图标
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.25),
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    const Spacer(),
-                    // 歌单名称
-                    Text(
-                      playlist.name,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                    child: const Icon(
+                      Icons.playlist_play_rounded,
+                      color: Colors.white,
+                      size: 26,
                     ),
-                    const SizedBox(height: 4),
-                    // 歌曲数量
-                    Text(
+                  ),
+                  const Spacer(),
+                  // 歌单名称
+                  Text(
+                    playlist.name,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  // 歌曲数量
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
                       '${playlist.trackPaths.length} 首',
                       style: TextStyle(
                         fontSize: 11,
-                        color: Colors.white.withValues(alpha: 0.8),
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white.withValues(alpha: 0.9),
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

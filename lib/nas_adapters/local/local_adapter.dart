@@ -8,6 +8,7 @@ import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/nas_adapters/local/api/local_file_api.dart';
 import 'package:my_nas/nas_adapters/local/local_file_system.dart';
 import 'package:my_nas/nas_adapters/mobile/file_systems/mobile_composite_file_system.dart';
+import 'package:my_nas/nas_adapters/mobile/file_systems/mobile_gallery_file_system.dart';
 
 /// 本地存储适配器
 ///
@@ -50,6 +51,30 @@ class LocalAdapter implements NasAdapter {
 
   LocalFileApi get api => _api;
 
+  /// 获取移动端相册文件系统（用于 Live Photo 等特殊功能）
+  ///
+  /// 仅在移动端（iOS/Android）可用，桌面端返回 null
+  MobileGalleryFileSystem? get galleryFileSystem =>
+      _mobileFileSystem?.galleryFileSystem;
+
+  /// 请求相册权限（照片/视频媒体库需要）
+  ///
+  /// 仅在用户将本机添加到照片或视频媒体库时调用
+  /// 桌面端始终返回 true（不需要权限）
+  Future<bool> requestGalleryPermission() async {
+    if (_mobileFileSystem == null) return true; // 桌面端不需要权限
+    return _mobileFileSystem!.requestGalleryPermission();
+  }
+
+  /// 请求音乐库权限（音乐媒体库需要）
+  ///
+  /// 仅在用户将本机添加到音乐媒体库时调用
+  /// 桌面端始终返回 true（不需要权限）
+  Future<bool> requestMusicPermission() async {
+    if (_mobileFileSystem == null) return true; // 桌面端不需要权限
+    return _mobileFileSystem!.requestMusicPermission();
+  }
+
   @override
   Future<ConnectionResult> connect(ConnectionConfig config) async {
     logger.i('LocalAdapter: 开始连接本地存储');
@@ -61,13 +86,8 @@ class LocalAdapter implements NasAdapter {
       logger.i('LocalAdapter: 移动端 - 使用复合文件系统');
       _mobileFileSystem = MobileCompositeFileSystem();
 
-      // 请求所有必要的权限
-      final hasPermission = await _mobileFileSystem!.requestPermissions();
-      if (!hasPermission) {
-        return const ConnectionFailure(
-          error: '未获得访问本地内容的权限，请在系统设置中授权',
-        );
-      }
+      // 仅初始化，不请求权限（权限会在用户添加媒体库时按需请求）
+      await _mobileFileSystem!.initialize();
 
       _fileSystem = _mobileFileSystem!;
     } else {

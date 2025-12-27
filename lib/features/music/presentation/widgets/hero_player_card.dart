@@ -8,47 +8,70 @@ import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/presentation/pages/music_player_page.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
+import 'package:my_nas/features/music/presentation/widgets/animated_components.dart';
 
-/// Hero 播放卡片 - 展示当前播放或最近播放的歌曲
+/// 播放卡片 - 现代化卡片设计
+///
+/// 特性:
+/// - 卡片式布局（适配有顶栏的页面）
+/// - 模糊背景
+/// - 唱片旋转动画
+/// - 呼吸光晕效果
+/// - 内置进度条
 class HeroPlayerCard extends ConsumerWidget {
   const HeroPlayerCard({
     required this.isDark,
     this.isDesktop = false,
     this.onShuffleTap,
-    this.onQueueTap,
+    this.onPlayAllTap,
+    this.scrollOffset = 0,
     super.key,
   });
 
   final bool isDark;
   final bool isDesktop;
   final VoidCallback? onShuffleTap;
-  final VoidCallback? onQueueTap;
+  final VoidCallback? onPlayAllTap;
+  final double scrollOffset;
+
+  // 卡片参数
+  static const double _cardHeight = 200.0;
+  static const double _coverSize = 100.0;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final currentMusic = ref.watch(currentMusicProvider);
-    // 只监听 isPlaying 状态，避免因 position 高频更新导致卡片闪烁
-    final isPlaying = ref.watch(
-      musicPlayerControllerProvider.select((state) => state.isPlaying),
-    );
+    final playerState = ref.watch(musicPlayerControllerProvider);
 
     // 如果没有当前播放，显示欢迎卡片
     if (currentMusic == null) {
       return _buildWelcomeCard(context);
     }
 
-    return GestureDetector(
-      onTap: () => MusicPlayerPage.open(context),
+    return _buildPlayingCard(context, ref, currentMusic, playerState);
+  }
+
+  /// 欢迎卡片 - 没有播放内容时显示
+  Widget _buildWelcomeCard(BuildContext context) => Padding(
+      padding: EdgeInsets.symmetric(horizontal: isDesktop ? 0 : 16),
       child: Container(
-        margin: EdgeInsets.symmetric(horizontal: isDesktop ? 0 : 16),
-        height: isDesktop ? 200 : 180,
+        height: _cardHeight,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(20),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              AppColors.primary,
+              AppColors.primary.withValues(alpha: 0.8),
+              AppColors.secondary,
+            ],
+          ),
           boxShadow: [
             BoxShadow(
               color: AppColors.primary.withValues(alpha: 0.3),
               blurRadius: 20,
-              offset: const Offset(0, 10),
+              offset: const Offset(0, 8),
             ),
           ],
         ),
@@ -57,144 +80,154 @@ class HeroPlayerCard extends ConsumerWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              // 背景封面（模糊）
-              _buildBlurredBackground(currentMusic),
-              // 渐变遮罩
-              _buildGradientOverlay(),
+              // 装饰性图案
+              Positioned(
+                right: -30,
+                bottom: -30,
+                child: Opacity(
+                  opacity: 0.15,
+                  child: Icon(
+                    Icons.music_note_rounded,
+                    size: 150,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+              Positioned(
+                left: -20,
+                top: -20,
+                child: Opacity(
+                  opacity: 0.1,
+                  child: Icon(
+                    Icons.album_rounded,
+                    size: 100,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
               // 内容
-              _buildContent(context, ref, currentMusic, isPlaying),
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.play_circle_filled_rounded,
+                      color: Colors.white,
+                      size: 40,
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      '开始探索你的音乐',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '选择一首歌曲开始播放',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.8),
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    // 快捷按钮组
+                    _buildActionButtons(isPlaying: false),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
       ),
     );
-  }
 
-  Widget _buildWelcomeCard(BuildContext context) => Container(
-      margin: EdgeInsets.symmetric(horizontal: isDesktop ? 0 : 16),
-      height: isDesktop ? 200 : 180,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppColors.primary,
-            AppColors.primary.withValues(alpha: 0.7),
-            AppColors.secondary,
-          ],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
+  /// 播放中卡片 - 显示当前播放内容
+  Widget _buildPlayingCard(
+    BuildContext context,
+    WidgetRef ref,
+    MusicItem currentMusic,
+    MusicPlayerState playerState,
+  ) => Padding(
+      padding: EdgeInsets.symmetric(horizontal: isDesktop ? 0 : 16),
+      child: GestureDetector(
+        onTap: () => MusicPlayerPage.open(context),
+        child: Container(
+          height: _cardHeight,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.primary.withValues(alpha: isDark ? 0.3 : 0.2),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: Stack(
-        children: [
-          // 装饰性音符图案
-          Positioned(
-            right: -20,
-            bottom: -20,
-            child: Icon(
-              Icons.music_note_rounded,
-              size: 150,
-              color: Colors.white.withValues(alpha: 0.1),
-            ),
-          ),
-          Positioned(
-            left: -30,
-            top: -30,
-            child: Icon(
-              Icons.album_rounded,
-              size: 100,
-              color: Colors.white.withValues(alpha: 0.1),
-            ),
-          ),
-          // 内容
-          Padding(
-            padding: const EdgeInsets.all(24),
-            child: Row(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: Stack(
+              fit: StackFit.expand,
               children: [
-                // 左侧文字内容
-                Expanded(
+                // 模糊背景
+                _buildBlurredBackground(currentMusic),
+                // 渐变遮罩
+                _buildGradientOverlay(),
+                // 主内容
+                Padding(
+                  padding: const EdgeInsets.all(20),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Icon(
-                        Icons.play_circle_filled_rounded,
-                        color: Colors.white,
-                        size: 48,
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        '开始探索你的音乐',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
+                      // 封面和信息
+                      Expanded(
+                        child: Row(
+                          children: [
+                            // 旋转封面 + 光晕
+                            GlowingContainer(
+                              isGlowing: playerState.isPlaying,
+                              glowColor: AppColors.primary,
+                              maxBlurRadius: 20,
+                              minBlurRadius: 10,
+                              maxSpreadRadius: 5,
+                              minSpreadRadius: 2,
+                              child: RotatingCover(
+                                size: _coverSize,
+                                isPlaying: playerState.isPlaying,
+                                coverData: currentMusic.coverData,
+                                coverUrl: currentMusic.coverUrl,
+                                showVinyl: true,
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            // 歌曲信息
+                            Expanded(
+                              child: _buildMusicInfo(currentMusic, playerState),
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '选择一首歌曲开始播放',
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.8),
-                          fontSize: 14,
-                        ),
-                      ),
+                      const SizedBox(height: 12),
+                      // 进度条
+                      _buildProgressBar(ref, playerState),
+                      const SizedBox(height: 12),
+                      // 快捷按钮组
+                      _buildActionButtons(isPlaying: playerState.isPlaying),
                     ],
                   ),
                 ),
-                // 右侧随机播放按钮
-                if (onShuffleTap != null)
-                  GestureDetector(
-                    onTap: onShuffleTap,
-                    child: Container(
-                      width: 64,
-                      height: 64,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.2),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.shuffle_rounded,
-                            color: AppColors.primary,
-                            size: 28,
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            '随机',
-                            style: TextStyle(
-                              color: AppColors.primary,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
               ],
             ),
           ),
-        ],
+        ),
       ),
     );
 
+  /// 模糊背景
   Widget _buildBlurredBackground(MusicItem currentMusic) {
     final coverData = currentMusic.coverData;
     final coverUrl = currentMusic.coverUrl;
@@ -209,9 +242,8 @@ class HeroPlayerCard extends ConsumerWidget {
         errorBuilder: (_, _, _) => _buildDefaultBackground(),
       );
     } else if (coverUrl != null && coverUrl.isNotEmpty) {
-      // 支持 file:// URL 和网络 URL
       if (coverUrl.startsWith('file://')) {
-        final filePath = coverUrl.substring(7); // 移除 'file://' 前缀
+        final filePath = coverUrl.substring(7);
         coverImage = Image.file(
           File(filePath),
           fit: BoxFit.cover,
@@ -231,13 +263,16 @@ class HeroPlayerCard extends ConsumerWidget {
     if (coverImage != null) {
       return ImageFiltered(
         imageFilter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-        child: coverImage,
+        child: Transform.scale(
+          scale: 1.3, // 放大避免边缘露出
+          child: coverImage,
+        ),
       );
     }
     return _buildDefaultBackground();
   }
 
-  Widget _buildDefaultBackground() => DecoratedBox(
+  Widget _buildDefaultBackground() => Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -258,195 +293,254 @@ class HeroPlayerCard extends ConsumerWidget {
           end: Alignment.bottomCenter,
           colors: [
             Colors.black.withValues(alpha: 0.3),
-            Colors.black.withValues(alpha: 0.7),
+            Colors.black.withValues(alpha: 0.5),
           ],
         ),
       ),
     );
 
-  Widget _buildContent(
-    BuildContext context,
-    WidgetRef ref,
-    MusicItem currentMusic,
-    bool isPlaying,
-  ) => Padding(
-      padding: const EdgeInsets.all(20),
+  /// 歌曲信息
+  Widget _buildMusicInfo(MusicItem currentMusic, MusicPlayerState playerState) => Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        // 播放状态标签
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.2),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (playerState.isPlaying)
+                _buildPlayingIndicator()
+              else
+                Icon(
+                  Icons.pause_circle_filled_rounded,
+                  color: Colors.white,
+                  size: 10,
+                ),
+              const SizedBox(width: 4),
+              Text(
+                playerState.isPlaying ? '正在播放' : '已暂停',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        // 歌曲名
+        Text(
+          currentMusic.displayTitle,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            letterSpacing: -0.3,
+          ),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(height: 4),
+        // 艺术家
+        Text(
+          currentMusic.displayArtist,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.8),
+            fontSize: 13,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
+    );
+
+  /// 播放指示器动画
+  Widget _buildPlayingIndicator() => SizedBox(
+      width: 10,
+      height: 10,
       child: Row(
-        children: [
-          // 封面
-          _buildCover(currentMusic),
-          const SizedBox(width: 16),
-          // 信息
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // 标签
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: List.generate(3, (index) => _PlayingBar(delay: index * 100)),
+      ),
+    );
+
+  /// 进度条
+  Widget _buildProgressBar(WidgetRef ref, MusicPlayerState playerState) {
+    final progress = playerState.progress.clamp(0.0, 1.0);
+
+    return Column(
+      children: [
+        // 进度条
+        SizedBox(
+          height: 3,
+          child: Stack(
+            children: [
+              // 背景轨道
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(2),
+                  color: Colors.white.withValues(alpha: 0.2),
+                ),
+              ),
+              // 进度
+              FractionallySizedBox(
+                widthFactor: progress,
+                child: Container(
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    isPlaying ? '正在播放' : '继续播放',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
+                    borderRadius: BorderRadius.circular(2),
+                    gradient: LinearGradient(
+                      colors: [Colors.white, Colors.white.withValues(alpha: 0.8)],
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
-                // 歌曲名
-                Text(
-                  currentMusic.displayTitle,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 4),
-                // 艺术家
-                Text(
-                  currentMusic.displayArtist,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.8),
-                    fontSize: 14,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
-          // 随机播放按钮
-          if (onShuffleTap != null) ...[
-            _buildShuffleButton(),
-            const SizedBox(width: 12),
-          ],
-          // 播放按钮
-          _buildPlayButton(context, ref, isPlaying),
-        ],
-      ),
-    );
-
-  Widget _buildShuffleButton() => GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onShuffleTap,
-      child: Container(
-        width: 44,
-        height: 44,
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.2),
-          shape: BoxShape.circle,
         ),
-        child: const Icon(
-          Icons.shuffle_rounded,
-          color: Colors.white,
-          size: 22,
-        ),
-      ),
-    );
-
-  Widget _buildCover(MusicItem currentMusic) {
-    Widget coverImage;
-    final coverData = currentMusic.coverData;
-    final coverUrl = currentMusic.coverUrl;
-
-    if (coverData != null && coverData.isNotEmpty) {
-      coverImage = Image.memory(
-        Uint8List.fromList(coverData),
-        fit: BoxFit.cover,
-        gaplessPlayback: true,
-        errorBuilder: (_, _, _) => _buildDefaultCover(),
-      );
-    } else if (coverUrl != null && coverUrl.isNotEmpty) {
-      // 支持 file:// URL 和网络 URL
-      if (coverUrl.startsWith('file://')) {
-        final filePath = coverUrl.substring(7); // 移除 'file://' 前缀
-        coverImage = Image.file(
-          File(filePath),
-          fit: BoxFit.cover,
-          gaplessPlayback: true,
-          errorBuilder: (_, _, _) => _buildDefaultCover(),
-        );
-      } else {
-        coverImage = Image.network(
-          coverUrl,
-          fit: BoxFit.cover,
-          gaplessPlayback: true,
-          errorBuilder: (_, _, _) => _buildDefaultCover(),
-        );
-      }
-    } else {
-      coverImage = _buildDefaultCover();
-    }
-
-    return Hero(
-      tag: 'music_cover',
-      child: Container(
-        width: isDesktop ? 140 : 120,
-        height: isDesktop ? 140 : 120,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.3),
-              blurRadius: 15,
-              offset: const Offset(0, 5),
+        const SizedBox(height: 4),
+        // 时间显示
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              _formatDuration(playerState.position),
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.7),
+                fontSize: 10,
+              ),
+            ),
+            Text(
+              _formatDuration(playerState.duration),
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.7),
+                fontSize: 10,
+              ),
             ),
           ],
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: coverImage,
-        ),
-      ),
+      ],
     );
   }
 
-  Widget _buildDefaultCover() => ColoredBox(
-      color: AppColors.primary.withValues(alpha: 0.3),
-      child: const Icon(
-        Icons.music_note_rounded,
-        color: Colors.white,
-        size: 48,
-      ),
+  /// 快捷按钮组
+  Widget _buildActionButtons({required bool isPlaying}) => Row(
+      children: [
+        // 随机播放
+        if (onShuffleTap != null)
+          _buildActionButton(
+            icon: Icons.shuffle_rounded,
+            label: '随机播放',
+            onTap: onShuffleTap!,
+            isPrimary: false,
+          ),
+        const SizedBox(width: 10),
+        // 播放全部
+        if (onPlayAllTap != null)
+          _buildActionButton(
+            icon: Icons.play_arrow_rounded,
+            label: '播放全部',
+            onTap: onPlayAllTap!,
+            isPrimary: true,
+          ),
+      ],
     );
 
-  Widget _buildPlayButton(BuildContext context, WidgetRef ref, bool isPlaying) => GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () {
-        if (isPlaying) {
-          ref.read(musicPlayerControllerProvider.notifier).pause();
-        } else {
-          ref.read(musicPlayerControllerProvider.notifier).resume();
-        }
-      },
+  Widget _buildActionButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    required bool isPrimary,
+  }) => AnimatedPressable(
+      onTap: onTap,
       child: Container(
-        width: 56,
-        height: 56,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: Colors.white,
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.2),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
+          color: isPrimary ? Colors.white : Colors.white.withValues(alpha: 0.2),
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              color: isPrimary ? AppColors.primary : Colors.white,
+              size: 16,
+            ),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: TextStyle(
+                color: isPrimary ? AppColors.primary : Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ],
         ),
-        child: Icon(
-          isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-          color: AppColors.primary,
-          size: 32,
-        ),
       ),
+    );
+
+  String _formatDuration(Duration duration) {
+    final minutes = duration.inMinutes;
+    final seconds = duration.inSeconds % 60;
+    return '$minutes:${seconds.toString().padLeft(2, '0')}';
+  }
+}
+
+/// 播放指示器条动画
+class _PlayingBar extends StatefulWidget {
+  const _PlayingBar({required this.delay});
+  final int delay;
+
+  @override
+  State<_PlayingBar> createState() => _PlayingBarState();
+}
+
+class _PlayingBarState extends State<_PlayingBar>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+    _animation = Tween<double>(begin: 0.3, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+    Future<void>.delayed(Duration(milliseconds: widget.delay), () {
+      if (mounted) {
+        _controller.repeat(reverse: true);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+      animation: _animation,
+      builder: (context, child) => Container(
+          width: 2,
+          height: 10 * _animation.value,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(1),
+          ),
+        ),
     );
 }

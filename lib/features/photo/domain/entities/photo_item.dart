@@ -17,6 +17,8 @@ class PhotoItem {
     this.longitude,
     this.cameraMake,
     this.cameraModel,
+    this.isLivePhoto = false,
+    this.livePhotoVideoPath,
   });
 
   /// 从文件项创建照片项
@@ -34,6 +36,8 @@ class PhotoItem {
         thumbnailUrl: thumbnailUrl ?? file.thumbnailUrl,
         size: file.size,
         modifiedAt: file.modifiedTime,
+        isLivePhoto: file.isLivePhoto,
+        livePhotoVideoPath: file.livePhotoVideoPath,
       );
 
   final String name;
@@ -50,6 +54,12 @@ class PhotoItem {
   final double? longitude;
   final String? cameraMake;
   final String? cameraModel;
+
+  /// 是否为 iOS Live Photo（实况照片）
+  final bool isLivePhoto;
+
+  /// Live Photo 的视频路径
+  final String? livePhotoVideoPath;
 
   /// 显示的文件大小
   String get displaySize {
@@ -94,6 +104,8 @@ class PhotoItem {
     double? longitude,
     String? cameraMake,
     String? cameraModel,
+    bool? isLivePhoto,
+    String? livePhotoVideoPath,
   }) =>
       PhotoItem(
         name: name ?? this.name,
@@ -110,6 +122,8 @@ class PhotoItem {
         longitude: longitude ?? this.longitude,
         cameraMake: cameraMake ?? this.cameraMake,
         cameraModel: cameraModel ?? this.cameraModel,
+        isLivePhoto: isLivePhoto ?? this.isLivePhoto,
+        livePhotoVideoPath: livePhotoVideoPath ?? this.livePhotoVideoPath,
       );
 }
 

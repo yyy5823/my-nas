@@ -1,9 +1,12 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/core/utils/platform_capabilities.dart';
 import 'package:my_nas/core/widgets/keyboard_shortcuts.dart';
@@ -11,16 +14,19 @@ import 'package:my_nas/features/photo/data/services/photo_favorites_service.dart
 import 'package:my_nas/features/photo/data/services/photo_save_service.dart';
 import 'package:my_nas/features/photo/domain/entities/photo_item.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
+import 'package:my_nas/nas_adapters/mobile/file_systems/mobile_gallery_file_system.dart';
 import 'package:my_nas/shared/widgets/stream_image.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:photo_view/photo_view_gallery.dart';
-import 'package:my_nas/core/extensions/context_extensions.dart';
 
 /// 照片 URL 获取回调
 typedef PhotoUrlGetter = Future<String?> Function(String path, String sourceId);
 
 /// 文件系统获取回调
 typedef FileSystemGetter = NasFileSystem? Function(String sourceId);
+
+/// 相册文件系统获取回调（用于 Live Photo）
+typedef GalleryFileSystemGetter = MobileGalleryFileSystem? Function(String sourceId);
 
 /// 照片删除回调
 typedef PhotoDeleteCallback = void Function(PhotoItem photo);
@@ -31,6 +37,7 @@ class PhotoViewerPage extends StatefulWidget {
     required this.photos, required this.initialIndex, super.key,
     this.getPhotoUrl,
     this.getFileSystem,
+    this.getGalleryFileSystem,
     this.onPhotoDeleted,
   });
 
@@ -38,6 +45,8 @@ class PhotoViewerPage extends StatefulWidget {
   final int initialIndex;
   final PhotoUrlGetter? getPhotoUrl;
   final FileSystemGetter? getFileSystem;
+  /// 获取相册文件系统（用于 Live Photo 视频访问）
+  final GalleryFileSystemGetter? getGalleryFileSystem;
   /// 照片删除后的回调（用于通知列表页刷新）
   final PhotoDeleteCallback? onPhotoDeleted;
 
@@ -68,6 +77,18 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
 
   /// 正在切换收藏状态
   bool _isTogglingFavorite = false;
+
+  // ==================== Live Photo 支持 ====================
+
+  /// Live Photo 视频播放器
+  Player? _livePhotoPlayer;
+  VideoController? _livePhotoVideoController;
+
+  /// 是否正在播放 Live Photo
+  bool _isPlayingLivePhoto = false;
+
+  /// 是否正在准备 Live Photo 视频
+  bool _isPreparingLivePhoto = false;
 
   @override
   void initState() {
@@ -150,9 +171,108 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
     _pageController.dispose();
     _overlayController.dispose();
     _autoHideTimer?.cancel();
+    // 释放 Live Photo 播放器
+    _disposeLivePhotoPlayer();
     // 恢复系统 UI
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
+  }
+
+  /// 释放 Live Photo 播放器资源
+  void _disposeLivePhotoPlayer() {
+    _livePhotoPlayer?.dispose();
+    _livePhotoPlayer = null;
+    _livePhotoVideoController = null;
+  }
+
+  /// 开始播放 Live Photo
+  Future<void> _startLivePhotoPlayback(PhotoItem photo) async {
+    // 仅 iOS 支持 Live Photo
+    if (!Platform.isIOS) return;
+
+    // 检查是否有视频路径
+    if (photo.livePhotoVideoPath == null || photo.livePhotoVideoPath!.isEmpty) {
+      // 尝试从文件系统获取
+      final galleryFs = widget.getGalleryFileSystem?.call(photo.sourceId);
+      if (galleryFs == null) {
+        logger.w('PhotoViewerPage: 无法获取相册文件系统');
+        return;
+      }
+
+      // 从 path 中提取 assetId
+      final assetId = photo.path.split('/').last;
+      final videoUrl = await galleryFs.getLivePhotoVideoUrl(assetId);
+      if (videoUrl == null || videoUrl.isEmpty) {
+        logger.w('PhotoViewerPage: 无法获取 Live Photo 视频 URL');
+        return;
+      }
+
+      await _playLivePhotoVideo(videoUrl);
+    } else {
+      await _playLivePhotoVideo(photo.livePhotoVideoPath!);
+    }
+  }
+
+  /// 播放 Live Photo 视频
+  Future<void> _playLivePhotoVideo(String videoPath) async {
+    if (_isPlayingLivePhoto || _isPreparingLivePhoto) return;
+
+    setState(() {
+      _isPreparingLivePhoto = true;
+    });
+
+    try {
+      // 创建播放器
+      _livePhotoPlayer = Player();
+      _livePhotoVideoController = VideoController(_livePhotoPlayer!);
+
+      // 监听播放结束
+      _livePhotoPlayer!.stream.completed.listen((completed) {
+        if (completed && mounted) {
+          _stopLivePhotoPlayback();
+        }
+      });
+
+      // 打开视频并播放
+      final media = videoPath.startsWith('file://')
+          ? Media(videoPath)
+          : Media('file://$videoPath');
+      await _livePhotoPlayer!.open(media, play: true);
+      // 设置音量（Live Photo 通常需要静音或低音量）
+      await _livePhotoPlayer!.setVolume(50);
+
+      if (mounted) {
+        setState(() {
+          _isPlayingLivePhoto = true;
+          _isPreparingLivePhoto = false;
+        });
+      }
+
+      logger.d('PhotoViewerPage: 开始播放 Live Photo 视频');
+    } catch (e) {
+      logger.e('PhotoViewerPage: 播放 Live Photo 失败', e);
+      _disposeLivePhotoPlayer();
+      if (mounted) {
+        setState(() {
+          _isPlayingLivePhoto = false;
+          _isPreparingLivePhoto = false;
+        });
+      }
+    }
+  }
+
+  /// 停止 Live Photo 播放
+  void _stopLivePhotoPlayback() {
+    if (!_isPlayingLivePhoto && !_isPreparingLivePhoto) return;
+
+    _disposeLivePhotoPlayer();
+    if (mounted) {
+      setState(() {
+        _isPlayingLivePhoto = false;
+        _isPreparingLivePhoto = false;
+      });
+    }
+    logger.d('PhotoViewerPage: 停止 Live Photo 播放');
   }
 
   void _startAutoHideTimer() {
@@ -400,6 +520,16 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
         backgroundColor: Colors.black,
         body: GestureDetector(
         onTap: _toggleOverlay,
+        // Live Photo: 长按播放视频
+        onLongPressStart: photo.isLivePhoto
+            ? (_) => _startLivePhotoPlayback(photo)
+            : null,
+        onLongPressEnd: photo.isLivePhoto
+            ? (_) => _stopLivePhotoPlayback()
+            : null,
+        onLongPressCancel: photo.isLivePhoto
+            ? () => _stopLivePhotoPlayback()
+            : null,
         behavior: HitTestBehavior.opaque,
         child: Stack(
           children: [
@@ -409,6 +539,8 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
               pageController: _pageController,
               itemCount: widget.photos.length,
               onPageChanged: (index) {
+                // 切换页面时停止 Live Photo 播放
+                _stopLivePhotoPlayback();
                 setState(() {
                   _currentIndex = index;
                 });
@@ -457,6 +589,41 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
                 ),
               ),
             ),
+
+            // Live Photo 视频播放层
+            if (_isPlayingLivePhoto && _livePhotoVideoController != null)
+              Positioned.fill(
+                child: Video(
+                  controller: _livePhotoVideoController!,
+                  controls: (state) => const SizedBox.shrink(),
+                  fit: BoxFit.contain,
+                ),
+              ),
+
+            // Live Photo 准备中指示器
+            if (_isPreparingLivePhoto)
+              Positioned.fill(
+                child: Container(
+                  color: Colors.black.withValues(alpha: 0.3),
+                  child: const Center(
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2,
+                    ),
+                  ),
+                ),
+              ),
+
+            // Live Photo 徽章
+            if (photo.isLivePhoto && !_isPlayingLivePhoto)
+              Positioned(
+                top: MediaQuery.of(context).padding.top + 60,
+                left: 16,
+                child: _LivePhotoBadge(
+                  isPlaying: _isPlayingLivePhoto,
+                  isPreparing: _isPreparingLivePhoto,
+                ),
+              ),
 
             // 顶部返回按钮（浮动）
             Positioned(
@@ -744,6 +911,8 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
                 _InfoRow(label: '大小', value: photo.displaySize),
               if (photo.displayResolution != null)
                 _InfoRow(label: '分辨率', value: photo.displayResolution!),
+              if (photo.isLivePhoto)
+                _InfoRow(label: '类型', value: 'Live Photo（长按播放）'),
               if (photo.modifiedAt != null)
                 _InfoRow(
                   label: '修改时间',
@@ -1425,6 +1594,57 @@ class _ShareOptionTile extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+}
+
+/// Live Photo 徽章组件
+class _LivePhotoBadge extends StatelessWidget {
+  const _LivePhotoBadge({
+    required this.isPlaying,
+    required this.isPreparing,
+  });
+
+  final bool isPlaying;
+  final bool isPreparing;
+
+  @override
+  Widget build(BuildContext context) => Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.3),
+          width: 0.5,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 圆形指示器
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: isPreparing
+                  ? Colors.yellow
+                  : (isPlaying ? Colors.red : Colors.white),
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 6),
+          // LIVE 文字
+          Text(
+            'LIVE',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.9),
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ],
       ),
     );
 }

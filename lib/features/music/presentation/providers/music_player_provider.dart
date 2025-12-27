@@ -5,11 +5,9 @@ import 'dart:typed_data';
 import 'package:audio_session/audio_session.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
-import 'package:my_nas/app/theme/color_scheme_preset.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/services/media_proxy_server.dart';
 import 'package:my_nas/core/utils/logger.dart';
-import 'package:my_nas/features/music/data/services/live_activity_service.dart';
 import 'package:my_nas/features/music/data/services/music_audio_cache_service.dart';
 import 'package:my_nas/features/music/data/services/music_audio_handler.dart';
 import 'package:my_nas/features/music/data/services/music_cover_cache_service.dart';
@@ -21,7 +19,6 @@ import 'package:my_nas/features/music/presentation/providers/music_settings_prov
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/main.dart' show audioHandler;
-import 'package:my_nas/shared/providers/theme_provider.dart';
 import 'package:path/path.dart' as p;
 
 /// 当前播放的音乐
@@ -159,17 +156,12 @@ class PlayQueueNotifier extends StateNotifier<List<MusicItem>> {
 }
 
 /// 音乐播放器管理
+/// 使用 audio_service 实现后台音频播放和系统媒体控制（锁屏、控制中心、蓝牙耳机、灵动岛）
+/// 注意：不使用 Live Activity，系统的 Now Playing 已提供完整的锁屏和灵动岛支持
 class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   MusicPlayerNotifier(this._ref) : super(const MusicPlayerState()) {
     _initPlayer();
-    // 注意：_initLiveActivity 是异步的，但我们不在构造函数中等待它
-    // 它会在后台初始化，如果首次播放时未初始化完成，会在 _startLiveActivity 中重试
-    AppError.fireAndForget(
-      _initLiveActivity(),
-      action: 'initLiveActivity',
-    );
     _initMediaProxy();
-    _listenToThemeChanges();
   }
 
   final Ref _ref;
@@ -187,22 +179,6 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   // 当前代理的文件 ID（用于清理）
   String? _currentProxyId;
 
-  // Live Activity 服务
-  final LiveActivityService _liveActivityService = LiveActivityService();
-  Timer? _liveActivityUpdateTimer;
-
-  // Live Activity 位置更新订阅（使用播放器的 positionStream，在后台也能工作）
-  StreamSubscription<Duration>? _liveActivityPositionSubscription;
-
-  // 上次 Live Activity 更新的秒数（避免每帧都更新）
-  int _lastLiveActivityUpdateSecond = -1;
-
-  // 是否正在启动 Live Activity（防止重复启动导致竞争条件）
-  bool _isStartingLiveActivity = false;
-
-  // 主题颜色监听订阅
-  ProviderSubscription<ColorSchemePreset>? _themeSubscription;
-
   // 音频缓存服务（用于持久化缓存，避免重复下载）
   final MusicAudioCacheService _audioCacheService = MusicAudioCacheService();
 
@@ -214,26 +190,6 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   /// 初始化媒体代理服务器
   Future<void> _initMediaProxy() async {
     await _mediaProxyServer.start();
-  }
-
-  /// 监听主题变化，自动更新 Live Activity 波形颜色
-  void _listenToThemeChanges() {
-    _themeSubscription = _ref.listen<ColorSchemePreset>(
-      colorSchemePresetProvider,
-      (previous, next) {
-        if (previous != next) {
-          logger.d('MusicPlayer: 检测到主题变化，更新 Live Activity 颜色');
-          _updateLiveActivityThemeColor();
-          // 如果正在运行 Live Activity，立即触发更新
-          if (_liveActivityService.isActivityRunning) {
-            AppError.fireAndForget(
-              _updateLiveActivity(),
-              action: 'updateLiveActivityThemeChange',
-            );
-          }
-        }
-      },
-    );
   }
 
   void _initPlayer() {
@@ -254,40 +210,14 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     // 监听播放状态
     _player.playingStream.listen((playing) {
       state = state.copyWith(isPlaying: playing);
-      // 当开始播放时，确保 Live Activity 已启动（但避免与 play() 方法竞争）
-      // 使用 _isStartingLiveActivity 标志位防止重复启动
-      if (playing && !_liveActivityService.isActivityRunning && !_isStartingLiveActivity) {
-        final currentMusic = _ref.read(currentMusicProvider);
-        if (currentMusic != null) {
-          AppError.fireAndForget(
-            _startLiveActivity(currentMusic),
-            action: 'startLiveActivityOnPlayingStart',
-          );
-        }
-      }
-      // 播放状态变化时始终更新 Live Activity（包括暂停时）
-      // 这确保灵动岛能正确显示暂停/播放状态
-      AppError.fireAndForget(
-        _updateLiveActivity(),
-        action: 'updateLiveActivityOnPlayingChange',
-      );
     });
 
     // 监听缓冲状态
     _player.processingStateStream.listen((processingState) {
-      final wasBuffering = state.isBuffering;
       state = state.copyWith(
         isBuffering: processingState == ProcessingState.buffering ||
             processingState == ProcessingState.loading,
       );
-
-      // 缓冲状态变化时更新 Live Activity，保持灵动岛动效同步
-      if (wasBuffering != state.isBuffering) {
-        AppError.fireAndForget(
-          _updateLiveActivity(),
-          action: 'updateLiveActivityOnBufferingChange',
-        );
-      }
 
       // 播放完成时自动下一曲
       if (processingState == ProcessingState.completed) {
@@ -397,181 +327,6 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       // 激活失败不应阻止播放
       logger.w('MusicPlayer: Audio Session 激活失败: $e');
     }
-  }
-
-  /// 初始化 Live Activity 服务
-  Future<void> _initLiveActivity() async {
-    if (!_liveActivityService.isSupported) return;
-
-    await _liveActivityService.init();
-
-    // 设置初始主题颜色（用于灵动岛波形）
-    _updateLiveActivityThemeColor();
-
-    // 设置控制命令回调（来自灵动岛按钮点击）
-    _liveActivityService.onControlAction = (action) {
-      logger.i('MusicPlayer: 收到 Live Activity 控制命令: $action');
-      switch (action) {
-        case 'play':
-          resume();
-        case 'pause':
-          pause();
-        case 'toggle':
-          // 切换播放/暂停
-          if (state.isPlaying) {
-            pause();
-          } else {
-            resume();
-          }
-        case 'previous':
-          playPrevious();
-        case 'next':
-          playNext();
-        case 'favorite':
-          // 收藏功能需要外部处理，这里只记录日志
-          // 实际收藏功能通过 ref.read(musicFavoritesProvider.notifier) 处理
-          logger.i('MusicPlayer: 收藏命令需要在外部处理');
-        default:
-          logger.w('MusicPlayer: 未知的控制命令: $action');
-      }
-    };
-
-    logger.i('MusicPlayer: Live Activity 服务已初始化');
-  }
-
-  /// 更新 Live Activity 主题颜色
-  /// 当主题切换时调用，会更新灵动岛波形颜色
-  void _updateLiveActivityThemeColor() {
-    if (!_liveActivityService.isSupported) return;
-
-    try {
-      final colorScheme = _ref.read(colorSchemePresetProvider);
-      _liveActivityService.setThemeColor(colorScheme.primary);
-      logger.d('MusicPlayer: Live Activity 主题颜色已更新');
-    } on Exception catch (e) {
-      // 非关键功能，忽略错误
-      logger.w('MusicPlayer: 更新 Live Activity 主题颜色失败: $e');
-    }
-  }
-
-  /// 供外部调用更新主题颜色（当主题切换时）
-  void updateThemeColor() {
-    _updateLiveActivityThemeColor();
-    // 如果正在运行 Live Activity，立即触发更新
-    if (_liveActivityService.isActivityRunning) {
-      AppError.fireAndForget(
-        _updateLiveActivity(),
-        action: 'updateLiveActivityThemeChange',
-      );
-    }
-  }
-
-  /// 启动 Live Activity 并开始定时更新
-  Future<void> _startLiveActivity(MusicItem music) async {
-    if (!_liveActivityService.isSupported) return;
-
-    // 防止重复启动
-    if (_isStartingLiveActivity) {
-      logger.d('LiveActivity: 正在启动中，跳过重复调用');
-      return;
-    }
-    _isStartingLiveActivity = true;
-
-    try {
-      // 获取封面数据
-      Uint8List? coverData;
-      if (music.coverData != null && music.coverData!.isNotEmpty) {
-        coverData = Uint8List.fromList(music.coverData!);
-        logger.d('LiveActivity: 使用音乐自带封面 - size=${coverData.length} bytes');
-      } else {
-        // 尝试从封面缓存中获取
-        // uniqueKey 格式: sourceId_path
-        final uniqueKey = '${music.sourceId ?? ''}_${music.path}';
-        final coverCacheService = MusicCoverCacheService();
-        coverData = await coverCacheService.getCover(uniqueKey);
-        if (coverData != null) {
-          logger.d('LiveActivity: 从缓存获取到封面 - $uniqueKey, size=${coverData.length} bytes');
-        } else {
-          logger.w('LiveActivity: 无法获取封面 - $uniqueKey');
-        }
-      }
-
-      // 当正在缓冲（切换歌曲）时，也显示播放动效
-      final showPlayingAnimation = state.isPlaying || state.isBuffering;
-
-      // 切歌时需要强制更新灵动岛的歌曲信息（标题、艺术家、封面等）
-      // 不能仅依赖定时更新，因为定时更新可能不会立即触发
-      await _liveActivityService.startMusicActivity(
-        music: music,
-        isPlaying: showPlayingAnimation,
-        position: state.position,
-        duration: state.duration,
-        coverData: coverData,
-      );
-
-      logger.i('LiveActivity: 切歌更新完成 - title=${music.displayTitle}, artist=${music.displayArtist}');
-
-      // 启动定时更新
-      _startLiveActivityUpdateTimer();
-    } finally {
-      _isStartingLiveActivity = false;
-    }
-  }
-
-  /// 启动 Live Activity 更新
-  /// 使用播放器的 positionStream 来触发更新，这样在后台也能正常工作
-  /// Timer 在 iOS 后台会被暂停，但 AudioPlayer 的流在后台音频播放时仍然活跃
-  void _startLiveActivityUpdateTimer() {
-    _stopLiveActivityUpdateTimer();
-
-    // 重置上次更新时间
-    _lastLiveActivityUpdateSecond = -1;
-
-    // 订阅播放器的位置流，每秒更新一次 Live Activity
-    _liveActivityPositionSubscription = _player.positionStream.listen((position) {
-      final currentSecond = position.inSeconds;
-      // 只在秒数变化时更新，避免过于频繁的更新
-      if (currentSecond != _lastLiveActivityUpdateSecond) {
-        _lastLiveActivityUpdateSecond = currentSecond;
-        _updateLiveActivity();
-      }
-    });
-
-    logger.d('LiveActivity: 使用 positionStream 启动更新（支持后台）');
-  }
-
-  /// 停止 Live Activity 更新
-  void _stopLiveActivityUpdateTimer() {
-    _liveActivityUpdateTimer?.cancel();
-    _liveActivityUpdateTimer = null;
-    _liveActivityPositionSubscription?.cancel();
-    _liveActivityPositionSubscription = null;
-    _lastLiveActivityUpdateSecond = -1;
-  }
-
-  /// 更新 Live Activity 状态
-  Future<void> _updateLiveActivity() async {
-    if (!_liveActivityService.isActivityRunning) return;
-
-    final currentMusic = _ref.read(currentMusicProvider);
-    if (currentMusic == null) return;
-
-    // 当正在缓冲（切换歌曲）时，也显示播放动效，避免动效停止
-    // isPlaying 为 true 或者 isBuffering 为 true（正在加载新歌曲）时都显示动效
-    final showPlayingAnimation = state.isPlaying || state.isBuffering;
-
-    await _liveActivityService.updateActivity(
-      music: currentMusic,
-      isPlaying: showPlayingAnimation,
-      position: state.position,
-      duration: state.duration,
-    );
-  }
-
-  /// 结束 Live Activity
-  Future<void> _endLiveActivity() async {
-    _stopLiveActivityUpdateTimer();
-    await _liveActivityService.endActivity();
   }
 
   void _onTrackCompleted() {
@@ -765,11 +520,6 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
         _extractMetadataInBackground(music),
         action: 'extractMusicMetadata',
       );
-
-      // 启动 Live Activity（iOS 灵动岛）
-      // 重要：必须 await 确保在 app 进入后台前完成创建
-      // 否则首次播放时如果立即切到后台，Live Activity 可能创建失败
-      await _startLiveActivity(music);
     } on Exception catch (e, stackTrace) {
       logger.e('MusicPlayer: 播放失败', e, stackTrace);
       state = state.copyWith(errorMessage: '播放失败: $e', isBuffering: false);
@@ -1001,28 +751,12 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
             }
           }
 
-          // 更新 Live Activity 封面图片
-          // 使用完整的 updateActivity 方法确保灵动岛正确刷新
+          // 更新 AudioHandler 封面（用于锁屏和控制中心显示专辑封面）
           if (metadata.coverData != null && metadata.coverData!.isNotEmpty) {
             final coverBytes = Uint8List.fromList(metadata.coverData!);
-            final showPlayingAnimation = state.isPlaying || state.isBuffering;
-
-            // 更新 AudioHandler 的封面（用于锁屏和控制中心）
             AppError.fireAndForget(
               _audioHandler.updateArtwork(coverBytes),
               action: 'updateAudioHandlerArtwork',
-            );
-
-            // 更新 Live Activity（用于灵动岛）
-            AppError.fireAndForget(
-              _liveActivityService.updateActivity(
-                music: updatedMusic,
-                isPlaying: showPlayingAnimation,
-                position: state.position,
-                duration: state.duration,
-                coverData: coverBytes,
-              ),
-              action: 'updateLiveActivityWithCover',
             );
           }
         } else {
@@ -1101,11 +835,6 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   /// 继续播放
   Future<void> resume() async {
     await _audioHandler.play();
-    // 如果 Live Activity 还没有运行，启动它
-    final currentMusic = _ref.read(currentMusicProvider);
-    if (currentMusic != null && !_liveActivityService.isActivityRunning) {
-      unawaited(_startLiveActivity(currentMusic));
-    }
   }
 
   /// 停止
@@ -1114,8 +843,6 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     _cleanupCurrentProxy();
     state = state.copyWith(position: Duration.zero, duration: Duration.zero);
     _ref.read(currentMusicProvider.notifier).state = null;
-    // 结束 Live Activity
-    unawaited(_endLiveActivity());
   }
 
   /// 下一曲
@@ -1205,9 +932,6 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   @override
   void dispose() {
     _cleanupCurrentProxy();
-    _stopLiveActivityUpdateTimer();
-    _themeSubscription?.close();
-    _liveActivityService.dispose();
     // 注意：不 dispose _audioHandler，因为它是全局单例
     // 它会在应用退出时自动清理
     super.dispose();

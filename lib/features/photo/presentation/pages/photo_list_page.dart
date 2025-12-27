@@ -25,6 +25,7 @@ import 'package:my_nas/features/transfer/presentation/providers/transfer_provide
 import 'package:my_nas/features/transfer/presentation/widgets/target_picker_sheet.dart';
 import 'package:my_nas/features/transfer/presentation/widgets/transfer_sheet.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
+import 'package:my_nas/nas_adapters/local/local_adapter.dart';
 import 'package:my_nas/shared/widgets/animated_list_item.dart';
 import 'package:my_nas/shared/widgets/context_menu_region.dart';
 import 'package:my_nas/shared/widgets/error_widget.dart';
@@ -2756,6 +2757,14 @@ class _PhotoGridItem extends ConsumerWidget {
                 final conn = connections[sourceId];
                 return conn?.adapter.fileSystem;
               },
+              getGalleryFileSystem: (sourceId) {
+                final conn = connections[sourceId];
+                final adapter = conn?.adapter;
+                if (adapter is LocalAdapter) {
+                  return adapter.galleryFileSystem;
+                }
+                return null;
+              },
             ),
           ),
         );
@@ -2784,6 +2793,14 @@ class _PhotoGridItem extends ConsumerWidget {
           getFileSystem: (sourceId) {
             final conn = connections[sourceId];
             return conn?.adapter.fileSystem;
+          },
+          getGalleryFileSystem: (sourceId) {
+            final conn = connections[sourceId];
+            final adapter = conn?.adapter;
+            if (adapter is LocalAdapter) {
+              return adapter.galleryFileSystem;
+            }
+            return null;
           },
         ),
       ),

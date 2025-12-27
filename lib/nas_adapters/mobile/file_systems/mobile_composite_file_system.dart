@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/nas_adapters/mobile/file_systems/mobile_files_file_system.dart';
@@ -21,34 +19,78 @@ class MobileCompositeFileSystem implements NasFileSystem {
   late final MobileMusicFileSystem _musicFileSystem;
   late final MobileFilesFileSystem _filesFileSystem;
 
-  /// 请求所有必要的权限
-  Future<bool> requestPermissions() async {
+  /// 权限状态跟踪
+  bool _galleryPermissionGranted = false;
+  bool _musicPermissionGranted = false;
+  bool _initialized = false;
+
+  /// 初始化文件系统（不请求权限）
+  ///
+  /// 权限会在用户添加对应媒体库时按需请求：
+  /// - 相册权限：用户将本机添加到照片/视频媒体库时请求
+  /// - 音乐权限：用户将本机添加到音乐媒体库时请求
+  /// - 文件权限：Documents/Downloads 不需要特殊权限
+  Future<bool> initialize() async {
+    if (_initialized) return true;
+
     _galleryFileSystem = MobileGalleryFileSystem();
     _musicFileSystem = MobileMusicFileSystem();
     _filesFileSystem = MobileFilesFileSystem();
 
-    // 请求相册权限
-    final galleryPermission = await _galleryFileSystem.requestPermission();
-    if (!galleryPermission) {
-      logger.w('MobileCompositeFileSystem: 相册权限被拒绝');
-      // 继续，不阻塞其他功能
-    }
-
-    // 请求音乐库权限
-    final musicPermission = await _musicFileSystem.requestPermission();
-    if (!musicPermission) {
-      logger.w('MobileCompositeFileSystem: 音乐库权限被拒绝');
-      // 继续，不阻塞其他功能
-    }
-
-    // 初始化文件系统
+    // 初始化文件系统（不需要权限）
     await _filesFileSystem.initialize();
 
-    logger.i('MobileCompositeFileSystem: 初始化完成');
+    _initialized = true;
+    logger.i('MobileCompositeFileSystem: 初始化完成（权限将按需请求）');
 
-    // 只要有一个权限通过就返回 true
-    return galleryPermission || musicPermission || true;
+    return true;
   }
+
+  /// 请求相册权限（照片/视频媒体库需要）
+  ///
+  /// 仅在用户将本机添加到照片或视频媒体库时调用
+  Future<bool> requestGalleryPermission() async {
+    if (_galleryPermissionGranted) return true;
+
+    final granted = await _galleryFileSystem.requestPermission();
+    _galleryPermissionGranted = granted;
+
+    if (!granted) {
+      logger.w('MobileCompositeFileSystem: 相册权限被拒绝');
+    } else {
+      logger.i('MobileCompositeFileSystem: 相册权限已获取');
+    }
+
+    return granted;
+  }
+
+  /// 请求音乐库权限（音乐媒体库需要）
+  ///
+  /// 仅在用户将本机添加到音乐媒体库时调用
+  Future<bool> requestMusicPermission() async {
+    if (_musicPermissionGranted) return true;
+
+    final granted = await _musicFileSystem.requestPermission();
+    _musicPermissionGranted = granted;
+
+    if (!granted) {
+      logger.w('MobileCompositeFileSystem: 音乐库权限被拒绝');
+    } else {
+      logger.i('MobileCompositeFileSystem: 音乐库权限已获取');
+    }
+
+    return granted;
+  }
+
+  /// 检查相册权限是否已获取
+  bool get hasGalleryPermission => _galleryPermissionGranted;
+
+  /// 检查音乐库权限是否已获取
+  bool get hasMusicPermission => _musicPermissionGranted;
+
+  /// 兼容旧 API（已弃用，请使用 initialize）
+  @Deprecated('Use initialize() instead. Permissions are now requested on-demand.')
+  Future<bool> requestPermissions() => initialize();
 
   /// 获取相册文件系统（用于直接访问）
   MobileGalleryFileSystem get galleryFileSystem => _galleryFileSystem;
@@ -124,6 +166,8 @@ class MobileCompositeFileSystem implements NasFileSystem {
       mimeType: item.mimeType,
       isHidden: item.isHidden,
       thumbnailUrl: item.thumbnailUrl,
+      isLivePhoto: item.isLivePhoto,
+      livePhotoVideoPath: item.livePhotoVideoPath,
     )).toList();
   }
 
@@ -188,6 +232,8 @@ class MobileCompositeFileSystem implements NasFileSystem {
       mimeType: item.mimeType,
       isHidden: item.isHidden,
       thumbnailUrl: item.thumbnailUrl,
+      isLivePhoto: item.isLivePhoto,
+      livePhotoVideoPath: item.livePhotoVideoPath,
     );
   }
 
@@ -297,6 +343,8 @@ class MobileCompositeFileSystem implements NasFileSystem {
         mimeType: item.mimeType,
         isHidden: item.isHidden,
         thumbnailUrl: item.thumbnailUrl,
+        isLivePhoto: item.isLivePhoto,
+        livePhotoVideoPath: item.livePhotoVideoPath,
       )).toList();
     }
 
@@ -313,6 +361,8 @@ class MobileCompositeFileSystem implements NasFileSystem {
       modifiedTime: item.modifiedTime,
       createdTime: item.createdTime,
       extension: item.extension,
+      isLivePhoto: item.isLivePhoto,
+      livePhotoVideoPath: item.livePhotoVideoPath,
     )));
 
     // 搜索音乐（iOS 和 Android 都支持）
