@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
@@ -311,17 +312,17 @@ class _AddSourceSheetState extends ConsumerState<AddSourceSheet> {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: Colors.red.withValues(alpha: 0.1),
+                          color: AppColors.error.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.error_outline, color: Colors.red),
+                            Icon(Icons.error_outline, color: AppColors.error),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
                                 _errorMessage!,
-                                style: const TextStyle(color: Colors.red),
+                                style: TextStyle(color: AppColors.error),
                               ),
                             ),
                           ],

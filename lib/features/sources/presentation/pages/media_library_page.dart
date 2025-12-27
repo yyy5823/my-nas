@@ -1391,7 +1391,7 @@ class _PathCardState extends ConsumerState<_PathCard> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                   decoration: BoxDecoration(
-                    color: (isConnected ? Colors.green : Colors.grey)
+                    color: (isConnected ? AppColors.success : AppColors.disabled)
                         .withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(10),
                   ),
@@ -1401,14 +1401,14 @@ class _PathCardState extends ConsumerState<_PathCard> {
                       Icon(
                         isConnected ? Icons.cloud_done : Icons.cloud_off,
                         size: 10,
-                        color: isConnected ? Colors.green : Colors.grey,
+                        color: isConnected ? AppColors.success : AppColors.disabled,
                       ),
                       const SizedBox(width: 3),
                       Text(
                         widget.source.displayName,
                         style: TextStyle(
                           fontSize: 9,
-                          color: isConnected ? Colors.green : Colors.grey,
+                          color: isConnected ? AppColors.success : AppColors.disabled,
                         ),
                       ),
                     ],
@@ -1445,7 +1445,7 @@ class _PathCardState extends ConsumerState<_PathCard> {
                 isDark: isDark,
                 progress: _scrapeProgress,
                 description: '正在刮削元数据...',
-                color: Colors.orange,
+                color: AppColors.warning,
               ),
             ],
 
@@ -1462,8 +1462,8 @@ class _PathCardState extends ConsumerState<_PathCard> {
                   icon: const Icon(Icons.auto_fix_high_rounded, size: 16),
                   label: Text('刮削元数据 ($_pendingScrapeCount 待处理)', style: const TextStyle(fontSize: 13)),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.orange,
-                    side: const BorderSide(color: Colors.orange),
+                    foregroundColor: AppColors.warning,
+                    side: BorderSide(color: AppColors.warning),
                     padding: const EdgeInsets.symmetric(vertical: 8),
                   ),
                 ),
@@ -1484,8 +1484,8 @@ class _PathCardState extends ConsumerState<_PathCard> {
                   icon: const Icon(Icons.refresh_rounded, size: 16),
                   label: Text('重试刮削 ($_retryableCount 失败/无数据)', style: const TextStyle(fontSize: 13)),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.redAccent,
-                    side: const BorderSide(color: Colors.redAccent),
+                    foregroundColor: AppColors.error,
+                    side: BorderSide(color: AppColors.error),
                     padding: const EdgeInsets.symmetric(vertical: 8),
                   ),
                 ),
@@ -1639,8 +1639,8 @@ class _PathCardState extends ConsumerState<_PathCard> {
                 _isScraping ? '刮削中...' : '刮削元数据',
                 style: TextStyle(
                   color: isConnected && !_isScraping && _itemCount > 0
-                      ? Colors.orange
-                      : Colors.grey,
+                      ? AppColors.warning
+                      : AppColors.disabled,
                 ),
               ),
             ],
@@ -1649,13 +1649,13 @@ class _PathCardState extends ConsumerState<_PathCard> {
 
         // 停止刮削
         if (_isScraping) {
-          items.add(const PopupMenuItem(
+          items.add(PopupMenuItem(
             value: 'stop_scrape',
             child: Row(
               children: [
-                Icon(Icons.stop_rounded, color: Colors.red),
+                Icon(Icons.stop_rounded, color: AppColors.error),
                 SizedBox(width: 12),
-                Text('停止刮削', style: TextStyle(color: Colors.red)),
+                Text('停止刮削', style: TextStyle(color: AppColors.error)),
               ],
             ),
           ));
@@ -1674,13 +1674,13 @@ class _PathCardState extends ConsumerState<_PathCard> {
             ],
           ),
         ),
-        const PopupMenuItem(
+        PopupMenuItem(
           value: 'delete',
           child: Row(
             children: [
-              Icon(Icons.delete, color: Colors.red),
+              Icon(Icons.delete, color: AppColors.error),
               SizedBox(width: 12),
-              Text('删除', style: TextStyle(color: Colors.red)),
+              Text('删除', style: TextStyle(color: AppColors.error)),
             ],
           ),
         ),

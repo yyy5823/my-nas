@@ -541,18 +541,7 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
         child: Stack(
           clipBehavior: Clip.none,
           children: [
-            // 唱针臂（上方中间，斜向唱片右侧）
-            Positioned(
-              left: size * 0.45, // 转轴在中间偏右
-              top: 0,
-              child: _CenterTonearmWidget(
-                isPlaying: playerState.isPlaying,
-                armLength: tonearmLength,
-                pivotSize: pivotSize,
-                isDark: isDark,
-              ),
-            ),
-            // 唱片（居中）
+            // 唱片（居中，先绘制在底层）
             Positioned(
               left: 0,
               top: tonearmHeight, // 唱片在唱针下方
@@ -639,6 +628,17 @@ class _MusicPlayerPageState extends ConsumerState<MusicPlayerPage>
                     ],
                   ),
                 ),
+              ),
+            ),
+            // 唱针臂（后绘制在顶层，显示在唱片上方）
+            Positioned(
+              left: size * 0.35, // 转轴在中间偏左
+              top: 0,
+              child: _CenterTonearmWidget(
+                isPlaying: playerState.isPlaying,
+                armLength: tonearmLength,
+                pivotSize: pivotSize,
+                isDark: isDark,
               ),
             ),
           ],
@@ -1774,10 +1774,10 @@ class _CenterTonearmWidgetState extends State<_CenterTonearmWidget>
     );
 
     // 唱针臂角度动画：
-    // 停止时向右抬起（正角度），播放时落到唱片右侧边缘
+    // 停止时向右上偏移（负角度，逆时针），播放时落到唱片上
     _animation = Tween<double>(
-      begin: 0.25, // 停止时向右抬起约15度
-      end: 0.0, // 播放时落到正常位置
+      begin: -0.30, // 停止时向右上偏移约17度
+      end: 0.0, // 播放时落到唱片上
     ).animate(CurvedAnimation(
       parent: _controller,
       curve: Curves.easeOutBack,
@@ -1825,7 +1825,7 @@ class _CenterTonearmWidgetState extends State<_CenterTonearmWidget>
     );
 }
 
-/// 两段式唱针臂绘制器 - 垂直段 + 斜向段
+/// 弧形唱针臂绘制器 - 优美的弧线造型
 class _CenterTonearmPainter extends CustomPainter {
   _CenterTonearmPainter({
     required this.pivotSize,
@@ -1842,99 +1842,59 @@ class _CenterTonearmPainter extends CustomPainter {
     final pivotCenter = Offset(pivotRadius, pivotRadius);
 
     // 臂的参数
-    final armWidth = size.width * 0.04;
+    final armWidth = size.width * 0.035;
 
-    // 第一段：垂直向下
-    final arm1StartX = pivotCenter.dx;
-    final arm1StartY = pivotCenter.dy + pivotRadius * 0.5;
-    final arm1EndX = pivotCenter.dx;
-    final arm1EndY = size.height * 0.35; // 垂直段结束点
+    // 弧形臂的起点（从转轴出发）
+    final armStartX = pivotCenter.dx;
+    final armStartY = pivotCenter.dy + pivotRadius * 0.5;
 
-    // 第二段：斜向右下（指向唱片）
-    final arm2StartX = arm1EndX;
-    final arm2StartY = arm1EndY;
-    final arm2EndX = size.width * 0.85;
-    final arm2EndY = size.height * 0.9;
+    // 弧形臂的终点（唱片边缘）
+    final armEndX = size.width * 0.75;
+    final armEndY = size.height * 0.92;
 
-    // 绘制第一段臂 - 垂直向下
-    final arm1Paint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [
-          Colors.grey[400]!,
-          Colors.grey[500]!,
-        ],
-      ).createShader(Rect.fromLTRB(arm1StartX - armWidth, arm1StartY, arm1StartX + armWidth, arm1EndY))
+    // 贝塞尔曲线控制点（创建优美的弧线）
+    final controlX = size.width * 0.15;
+    final controlY = size.height * 0.55;
+
+    // 绘制弧形臂 - 使用二次贝塞尔曲线
+    final armPath = Path()
+      ..moveTo(armStartX, armStartY)
+      ..quadraticBezierTo(controlX, controlY, armEndX, armEndY);
+
+    // 臂的主体
+    final armPaint = Paint()
+      ..color = isDark ? Colors.grey[300]! : Colors.grey[400]!
       ..strokeWidth = armWidth
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
 
-    canvas.drawLine(
-      Offset(arm1StartX, arm1StartY),
-      Offset(arm1EndX, arm1EndY),
-      arm1Paint,
-    );
+    canvas.drawPath(armPath, armPaint);
 
-    // 绘制第二段臂 - 斜向右下
-    final arm2Rect = Rect.fromPoints(
-      Offset(arm2StartX, arm2StartY),
-      Offset(arm2EndX, arm2EndY),
-    );
-    final arm2Paint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [
-          Colors.grey[500]!,
-          Colors.grey[600]!,
-        ],
-      ).createShader(arm2Rect)
-      ..strokeWidth = armWidth
-      ..strokeCap = StrokeCap.round
-      ..style = PaintingStyle.stroke;
+    // 臂的高光（稍微偏移的细线）
+    final highlightPath = Path()
+      ..moveTo(armStartX - armWidth * 0.2, armStartY)
+      ..quadraticBezierTo(
+        controlX - armWidth * 0.2,
+        controlY - armWidth * 0.1,
+        armEndX - armWidth * 0.1,
+        armEndY - armWidth * 0.1,
+      );
 
-    canvas.drawLine(
-      Offset(arm2StartX, arm2StartY),
-      Offset(arm2EndX, arm2EndY),
-      arm2Paint,
-    );
-
-    // 关节处 - 小圆点
-    final jointPaint = Paint()
-      ..color = Colors.grey[500]!
-      ..style = PaintingStyle.fill;
-    canvas.drawCircle(Offset(arm1EndX, arm1EndY), armWidth * 0.8, jointPaint);
-
-    // 臂高光 - 第一段
     final highlightPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.25)
-      ..strokeWidth = armWidth * 0.25
+      ..color = Colors.white.withValues(alpha: 0.4)
+      ..strokeWidth = armWidth * 0.2
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
 
-    canvas.drawLine(
-      Offset(arm1StartX - armWidth * 0.3, arm1StartY),
-      Offset(arm1EndX - armWidth * 0.3, arm1EndY),
-      highlightPaint,
-    );
-
-    // 臂高光 - 第二段
-    canvas.drawLine(
-      Offset(arm2StartX - armWidth * 0.15, arm2StartY - armWidth * 0.15),
-      Offset(arm2EndX - armWidth * 0.15, arm2EndY - armWidth * 0.15),
-      highlightPaint,
-    );
+    canvas.drawPath(highlightPath, highlightPaint);
 
     // 转轴球 - 金属质感
     final pivotPaint = Paint()
       ..shader = RadialGradient(
         center: const Alignment(-0.3, -0.3),
-        colors: [
-          Colors.grey[300]!,
-          Colors.grey[500]!,
-          Colors.grey[700]!,
-        ],
+        colors: isDark
+            ? [Colors.grey[200]!, Colors.grey[400]!, Colors.grey[600]!]
+            : [Colors.grey[300]!, Colors.grey[500]!, Colors.grey[700]!],
         stops: const [0.0, 0.5, 1.0],
       ).createShader(Rect.fromCircle(center: pivotCenter, radius: pivotRadius));
     canvas.drawCircle(pivotCenter, pivotRadius, pivotPaint);
@@ -1944,22 +1904,27 @@ class _CenterTonearmPainter extends CustomPainter {
       ..shader = RadialGradient(
         center: const Alignment(-0.5, -0.5),
         colors: [
-          Colors.white.withValues(alpha: 0.6),
+          Colors.white.withValues(alpha: 0.7),
           Colors.transparent,
         ],
       ).createShader(Rect.fromCircle(center: pivotCenter, radius: pivotRadius));
-    canvas.drawCircle(pivotCenter, pivotRadius * 0.5, pivotHighlight);
+    canvas.drawCircle(pivotCenter, pivotRadius * 0.4, pivotHighlight);
 
-    // 唱针头（小方块）- 在第二段臂的末端
-    final headWidth = armWidth * 2.5;
-    final headHeight = armWidth * 4;
-    // 计算头的位置和角度（基于第二段臂的角度）
-    final armAngle = math.atan2(arm2EndY - arm2StartY, arm2EndX - arm2StartX);
+    // 计算曲线末端的切线方向（用于唱针头的角度）
+    // 二次贝塞尔曲线在 t=1 处的切线方向
+    final tangentX = armEndX - controlX;
+    final tangentY = armEndY - controlY;
+    final armAngle = math.atan2(tangentY, tangentX);
+
+    // 唱针头
+    final headWidth = armWidth * 2.2;
+    final headHeight = armWidth * 3.5;
 
     canvas.save();
-    canvas.translate(arm2EndX, arm2EndY);
+    canvas.translate(armEndX, armEndY);
     canvas.rotate(armAngle + math.pi / 2); // 让头垂直于臂
 
+    // 唱针头主体 - 圆角矩形
     final headRect = Rect.fromCenter(
       center: Offset(0, headHeight / 2),
       width: headWidth,
@@ -1969,7 +1934,9 @@ class _CenterTonearmPainter extends CustomPainter {
       ..shader = LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
-        colors: [Colors.grey[500]!, Colors.grey[700]!],
+        colors: isDark
+            ? [Colors.grey[300]!, Colors.grey[500]!]
+            : [Colors.grey[400]!, Colors.grey[600]!],
       ).createShader(headRect);
     canvas.drawRRect(
       RRect.fromRectAndRadius(headRect, const Radius.circular(2)),
@@ -1978,12 +1945,12 @@ class _CenterTonearmPainter extends CustomPainter {
 
     // 唱针尖
     final needlePaint = Paint()
-      ..color = Colors.grey[400]!
+      ..color = isDark ? Colors.grey[300]! : Colors.grey[500]!
       ..strokeWidth = 1.5
       ..strokeCap = StrokeCap.round;
     canvas.drawLine(
       Offset(0, headHeight),
-      Offset(0, headHeight + 4),
+      Offset(0, headHeight + 3),
       needlePaint,
     );
 

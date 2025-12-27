@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/core/utils/platform_capabilities.dart';
 import 'package:my_nas/core/widgets/keyboard_shortcuts.dart';
@@ -159,7 +160,7 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('收藏操作失败: $e'),
-            backgroundColor: Colors.red[700],
+            backgroundColor: AppColors.error,
           ),
         );
       }
@@ -1273,7 +1274,7 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
             Text(message),
           ],
         ),
-        backgroundColor: Colors.green[700],
+        backgroundColor: AppColors.success,
         duration: const Duration(seconds: 2),
       ),
     );
@@ -1289,7 +1290,7 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
             Expanded(child: Text(message)),
           ],
         ),
-        backgroundColor: Colors.red[700],
+        backgroundColor: AppColors.error,
         duration: const Duration(seconds: 3),
       ),
     );

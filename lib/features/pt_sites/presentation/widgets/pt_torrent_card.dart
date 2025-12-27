@@ -115,14 +115,14 @@ class PTTorrentCard extends StatelessWidget {
                   _buildStatChip(
                     Icons.upload,
                     '${torrent.seeders}',
-                    torrent.seeders > 0 ? Colors.green : Colors.grey,
+                    torrent.seeders > 0 ? AppColors.success : AppColors.disabled,
                   ),
                   const SizedBox(width: 16),
                   // 下载人数
                   _buildStatChip(
                     Icons.download,
                     '${torrent.leechers}',
-                    torrent.leechers > 0 ? Colors.orange : Colors.grey,
+                    torrent.leechers > 0 ? AppColors.warning : AppColors.disabled,
                   ),
                   const SizedBox(width: 16),
                   // 完成次数
@@ -189,10 +189,10 @@ class PTTorrentCard extends StatelessWidget {
     if (label == null) return const SizedBox.shrink();
 
     final color = status.isFree || status.isDoubleFree
-        ? Colors.green
+        ? AppColors.success
         : status.isDoubleUp
-            ? Colors.blue
-            : Colors.orange;
+            ? AppColors.primary
+            : AppColors.warning;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),

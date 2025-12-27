@@ -222,7 +222,7 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
             child: const Text('删除'),
           ),
         ],
@@ -299,7 +299,7 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
             ),
             IconButton(
               onPressed: _deleteSelected,
-              icon: const Icon(Icons.delete_rounded, color: Colors.red),
+              icon: Icon(Icons.delete_rounded, color: AppColors.error),
               tooltip: '删除选中',
             ),
           ],
@@ -325,9 +325,9 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.error_outline, size: 48, color: Colors.red[300]),
+            Icon(Icons.error_outline, size: 48, color: AppColors.error),
             const SizedBox(height: 16),
-            Text(_errorMessage!, style: TextStyle(color: Colors.red[300])),
+            Text(_errorMessage!, style: TextStyle(color: AppColors.error)),
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _loadDuplicates,
@@ -529,7 +529,7 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(8),
                           border: isSelected
-                              ? Border.all(color: Colors.red, width: 3)
+                              ? Border.all(color: AppColors.error, width: 3)
                               : null,
                         ),
                         child: ClipRRect(
@@ -561,7 +561,7 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.green,
+                              color: AppColors.success,
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: const Text(
@@ -581,8 +581,8 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
                           right: 4,
                           child: Container(
                             padding: const EdgeInsets.all(2),
-                            decoration: const BoxDecoration(
-                              color: Colors.red,
+                            decoration: BoxDecoration(
+                              color: AppColors.error,
                               shape: BoxShape.circle,
                             ),
                             child: const Icon(
@@ -642,7 +642,7 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
                       Icon(
                         isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
                         size: 16,
-                        color: isSelected ? Colors.red : Colors.grey,
+                        color: isSelected ? AppColors.error : AppColors.disabled,
                       ),
                       const SizedBox(width: 8),
                       Expanded(
@@ -1116,8 +1116,8 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: needsScan
-            ? Colors.orange.withValues(alpha: 0.1)
-            : Colors.green.withValues(alpha: 0.1),
+            ? AppColors.warning.withValues(alpha: 0.1)
+            : AppColors.success.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
@@ -1125,7 +1125,7 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
           Icon(
             needsScan ? Icons.info_outline : Icons.check_circle_outline,
             size: 16,
-            color: needsScan ? Colors.orange : Colors.green,
+            color: needsScan ? AppColors.warning : AppColors.success,
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -1162,10 +1162,10 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
   }
 
   Color _getThresholdColor(int threshold) {
-    if (threshold <= 3) return Colors.green;
-    if (threshold <= 6) return Colors.blue;
-    if (threshold <= 10) return Colors.orange;
-    return Colors.red;
+    if (threshold <= 3) return AppColors.success;
+    if (threshold <= 6) return AppColors.primary;
+    if (threshold <= 10) return AppColors.warning;
+    return AppColors.error;
   }
 
   Widget _buildEmptyState(bool isDark) {
@@ -1183,7 +1183,7 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
           Icon(
             Icons.check_circle_outline_rounded,
             size: 64,
-            color: Colors.green[300],
+            color: AppColors.success,
           ),
           const SizedBox(height: 16),
           Text(
@@ -1313,7 +1313,7 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.green,
+                              color: AppColors.success,
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: const Text(
@@ -1333,8 +1333,8 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
                           right: 4,
                           child: Container(
                             padding: const EdgeInsets.all(2),
-                            decoration: const BoxDecoration(
-                              color: Colors.red,
+                            decoration: BoxDecoration(
+                              color: AppColors.error,
                               shape: BoxShape.circle,
                             ),
                             child: const Icon(

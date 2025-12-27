@@ -689,11 +689,11 @@ class _EbookReaderPageState extends ConsumerState<EbookReaderPage> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.error_outline, size: 64, color: Colors.red),
+          Icon(Icons.error_outline, size: 64, color: AppColors.error),
           const SizedBox(height: 16),
           Text(
             message,
-            style: const TextStyle(color: Colors.red),
+            style: TextStyle(color: AppColors.error),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 24),
@@ -902,9 +902,9 @@ class _EbookReaderPageState extends ConsumerState<EbookReaderPage> {
   /// 构建电池图标
   Widget _buildBatteryIcon(bool isDark, Color textColor) {
     final batteryColor = _isCharging
-        ? Colors.green
+        ? AppColors.success
         : _batteryLevel <= 20
-            ? Colors.red
+            ? AppColors.error
             : textColor;
 
     return Row(
@@ -914,7 +914,7 @@ class _EbookReaderPageState extends ConsumerState<EbookReaderPage> {
           Icon(
             Icons.bolt,
             size: 10,
-            color: Colors.green,
+            color: AppColors.success,
           ),
         Container(
           width: 22,

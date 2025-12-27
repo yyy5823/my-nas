@@ -533,7 +533,7 @@ class _PdfReaderPageState extends ConsumerState<PdfReaderPage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.error_outline, size: 64, color: Colors.red.shade300),
+            Icon(Icons.error_outline, size: 64, color: AppColors.error),
             const SizedBox(height: 16),
             Text(
               message,

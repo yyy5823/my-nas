@@ -38,7 +38,7 @@ class _ScraperSourcesPageState extends ConsumerState<ScraperSourcesPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.error_outline, size: 48, color: Colors.red),
+              const Icon(Icons.error_outline, size: 48, color: AppColors.error),
               const SizedBox(height: 16),
               Text('加载失败: $e'),
               const SizedBox(height: 16),
@@ -229,7 +229,7 @@ class _ScraperSourcesPageState extends ConsumerState<ScraperSourcesPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(success ? '连接成功' : '连接失败'),
-          backgroundColor: success ? Colors.green : Colors.red,
+          backgroundColor: success ? AppColors.success : AppColors.error,
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -238,7 +238,7 @@ class _ScraperSourcesPageState extends ConsumerState<ScraperSourcesPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('连接失败: $e'),
-          backgroundColor: Colors.red,
+          backgroundColor: AppColors.error,
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -336,14 +336,14 @@ class _ScraperTypeCard extends StatelessWidget {
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                                 decoration: BoxDecoration(
-                                  color: Colors.green.withValues(alpha: 0.15),
+                                  color: AppColors.success.withValues(alpha: 0.15),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: const Text(
                                   '已配置',
                                   style: TextStyle(
                                     fontSize: 10,
-                                    color: Colors.green,
+                                    color: AppColors.success,
                                     fontWeight: FontWeight.w500,
                                   ),
                                 ),
@@ -781,7 +781,7 @@ class _VideoScraperConfigSheetState extends State<_VideoScraperConfigSheet> {
               ),
               if (isRequired) ...[
                 const SizedBox(width: 4),
-                const Text('*', style: TextStyle(color: Colors.red, fontSize: 13)),
+                const Text('*', style: TextStyle(color: AppColors.error, fontSize: 13)),
               ],
             ],
           ),

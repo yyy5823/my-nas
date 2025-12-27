@@ -438,7 +438,12 @@ class MusicAudioHandler extends BaseAudioHandler
   @override
   Future<void> play() async {
     logger.i('MusicAudioHandler: play() 被调用');
-    await _player.play();
+    // 注意：不等待 _player.play()，因为在 iOS 上它可能不会立即返回
+    // 这会导致调用者永远等待，进而导致切歌失败
+    // play() 只是触发播放，实际的播放状态通过 playbackEventStream 监听
+    unawaited(_player.play());
+    // 短暂等待确保播放器状态更新
+    await Future<void>.delayed(const Duration(milliseconds: 50));
     // 重要：显式广播状态确保 iOS Now Playing 立即更新
     _broadcastState(PlaybackEvent());
     logger.i('MusicAudioHandler: play() 完成，已广播状态');
@@ -447,7 +452,9 @@ class MusicAudioHandler extends BaseAudioHandler
   @override
   Future<void> pause() async {
     logger.i('MusicAudioHandler: pause() 被调用');
-    await _player.pause();
+    // 同样不等待，避免卡住
+    unawaited(_player.pause());
+    await Future<void>.delayed(const Duration(milliseconds: 50));
     // 显式广播状态确保 iOS Now Playing 立即更新
     _broadcastState(PlaybackEvent());
   }
@@ -455,7 +462,9 @@ class MusicAudioHandler extends BaseAudioHandler
   @override
   Future<void> stop() async {
     logger.i('MusicAudioHandler: stop() 被调用');
-    await _player.stop();
+    // 同样不等待，避免卡住
+    unawaited(_player.stop());
+    await Future<void>.delayed(const Duration(milliseconds: 50));
     // 显式广播状态确保 iOS Now Playing 立即更新
     _broadcastState(PlaybackEvent());
     await super.stop();

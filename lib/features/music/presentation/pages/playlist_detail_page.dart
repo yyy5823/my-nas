@@ -194,7 +194,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
             child: const Text('取消'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
             onPressed: () => Navigator.pop(context, true),
             child: const Text('移除'),
           ),
@@ -243,7 +243,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
                         Icon(
                           Icons.error_outline_rounded,
                           size: 48,
-                          color: Colors.red[300],
+                          color: AppColors.error,
                         ),
                         const SizedBox(height: 16),
                         Text(
@@ -345,9 +345,9 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
                 value: 'delete',
                 child: Row(
                   children: [
-                    Icon(Icons.delete_rounded, size: 20, color: Colors.red),
+                    Icon(Icons.delete_rounded, size: 20, color: AppColors.error),
                     SizedBox(width: 12),
-                    Text('删除歌单', style: TextStyle(color: Colors.red)),
+                    Text('删除歌单', style: TextStyle(color: AppColors.error)),
                   ],
                 ),
               ),
@@ -477,7 +477,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
             fontSize: 12,
             color: isConnected
                 ? (isDark ? Colors.grey[400] : Colors.grey[600])
-                : Colors.red[300],
+                : AppColors.error,
           ),
         ),
         trailing: Row(
@@ -487,7 +487,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
               Icon(
                 Icons.cloud_off_rounded,
                 size: 16,
-                color: Colors.red[300],
+                color: AppColors.error,
               ),
             IconButton(
               icon: Icon(
@@ -674,9 +674,9 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
               ),
               ListTile(
                 leading: Icon(Icons.remove_circle_outline_rounded,
-                    color: Colors.red[400]),
+                    color: AppColors.error),
                 title: Text('从歌单中移除',
-                    style: TextStyle(color: Colors.red[400])),
+                    style: TextStyle(color: AppColors.error)),
                 onTap: () {
                   Navigator.pop(context);
                   _removeTrack(track);
@@ -752,7 +752,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
             child: const Text('取消'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
             onPressed: () async {
               await ref
                   .read(playlistProvider.notifier)
@@ -781,7 +781,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
             child: const Text('取消'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
             onPressed: () async {
               await ref
                   .read(playlistProvider.notifier)

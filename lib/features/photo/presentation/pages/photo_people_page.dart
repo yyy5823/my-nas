@@ -199,9 +199,9 @@ class _PhotoPeoplePageState extends ConsumerState<PhotoPeoplePage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.error_outline, size: 48, color: Colors.red[300]),
+            Icon(Icons.error_outline, size: 48, color: AppColors.error),
             const SizedBox(height: 16),
-            Text(_errorMessage!, style: TextStyle(color: Colors.red[300])),
+            Text(_errorMessage!, style: TextStyle(color: AppColors.error)),
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _loadData,
@@ -278,10 +278,10 @@ class _PhotoPeoplePageState extends ConsumerState<PhotoPeoplePage> {
                             ? Icons.error
                             : Icons.cancel,
                     color: progress?.status == FaceProcessStatus.completed
-                        ? Colors.green
+                        ? AppColors.success
                         : progress?.status == FaceProcessStatus.error
-                            ? Colors.red
-                            : Colors.orange,
+                            ? AppColors.error
+                            : AppColors.warning,
                   ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -552,8 +552,8 @@ class _PhotoPeoplePageState extends ConsumerState<PhotoPeoplePage> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.delete, color: Colors.red),
-              title: const Text('删除人物', style: TextStyle(color: Colors.red)),
+              leading: Icon(Icons.delete, color: AppColors.error),
+              title: Text('删除人物', style: TextStyle(color: AppColors.error)),
               onTap: () {
                 Navigator.pop(context);
                 _deletePerson(person);
@@ -624,7 +624,7 @@ class _PhotoPeoplePageState extends ConsumerState<PhotoPeoplePage> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
             child: const Text('删除'),
           ),
         ],

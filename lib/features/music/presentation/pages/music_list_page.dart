@@ -5591,7 +5591,7 @@ class _FavoriteTrackTile extends ConsumerWidget {
           ),
         ),
         trailing: IconButton(
-          icon: Icon(Icons.favorite_rounded, color: Colors.red[400]),
+          icon: Icon(Icons.favorite_rounded, color: AppColors.error),
           onPressed: () async {
             await ref.read(musicFavoritesProvider.notifier).toggleFavorite(item);
           },
@@ -6032,9 +6032,9 @@ class _PlaylistTile extends ConsumerWidget {
                 value: 'delete',
                 child: Row(
                   children: [
-                    Icon(Icons.delete_rounded, size: 20, color: Colors.red),
+                    Icon(Icons.delete_rounded, size: 20, color: AppColors.error),
                     SizedBox(width: 12),
-                    Text('删除', style: TextStyle(color: Colors.red)),
+                    Text('删除', style: TextStyle(color: AppColors.error)),
                   ],
                 ),
               ),
@@ -6106,7 +6106,7 @@ class _PlaylistTile extends ConsumerWidget {
           ),
           FilledButton(
             style: FilledButton.styleFrom(
-              backgroundColor: Colors.red,
+              backgroundColor: AppColors.error,
             ),
             onPressed: () async {
               await ref.read(playlistProvider.notifier).deletePlaylist(playlist.id);

@@ -171,7 +171,7 @@ class MusicQueueSheet extends ConsumerWidget {
                 Navigator.pop(context);
               },
               style: TextButton.styleFrom(
-                foregroundColor: Colors.red[400],
+                foregroundColor: AppColors.error,
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               ),
               icon: const Icon(Icons.clear_all_rounded, size: 18),
@@ -369,7 +369,7 @@ class _QueueItem extends StatelessWidget {
         padding: const EdgeInsets.only(right: 24),
         margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
         decoration: BoxDecoration(
-          color: Colors.red[400],
+          color: AppColors.error,
           borderRadius: BorderRadius.circular(16),
         ),
         child: const Icon(Icons.delete_rounded, color: Colors.white, size: 24),

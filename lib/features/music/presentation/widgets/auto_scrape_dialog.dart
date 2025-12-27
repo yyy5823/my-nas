@@ -610,14 +610,14 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.red.withValues(alpha: 0.1),
+                  color: AppColors.error.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
                   _errorMessage!,
                   style: TextStyle(
                     fontSize: 12,
-                    color: Colors.red[700],
+                    color: AppColors.error,
                   ),
                 ),
               ),
@@ -738,19 +738,19 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
               Icon(
                 Icons.check_circle_rounded,
                 size: 16,
-                color: Colors.green,
+                color: AppColors.success,
               )
             else if (_status == _ScrapeStatus.notFound)
               Icon(
                 Icons.search_off_rounded,
                 size: 16,
-                color: Colors.orange,
+                color: AppColors.warning,
               )
             else if (_status == _ScrapeStatus.error)
               Icon(
                 Icons.error_rounded,
                 size: 16,
-                color: Colors.red,
+                color: AppColors.error,
               ),
             const SizedBox(width: 8),
             Expanded(

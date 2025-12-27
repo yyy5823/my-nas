@@ -1474,7 +1474,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
                 Text('未连接到 NAS，请先在设置中连接'),
               ],
             ),
-            backgroundColor: Colors.red[600],
+            backgroundColor: AppColors.error,
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 3),
           ),
@@ -1502,7 +1502,7 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
                 Expanded(child: Text('获取视频信息失败: $e')),
               ],
             ),
-            backgroundColor: Colors.red[600],
+            backgroundColor: AppColors.error,
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 3),
           ),
@@ -1815,7 +1815,7 @@ class _CollectionMovieGridItem extends ConsumerWidget {
                         child: Container(
                           padding: const EdgeInsets.all(4),
                           decoration: BoxDecoration(
-                            color: Colors.green,
+                            color: AppColors.success,
                             shape: BoxShape.circle,
                           ),
                           child: const Icon(
@@ -2016,12 +2016,12 @@ class _MissingMovieActionSheet extends ConsumerWidget {
                     width: 36,
                     height: 36,
                     decoration: BoxDecoration(
-                      color: Colors.orange.withValues(alpha: 0.12),
+                      color: AppColors.warning.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.cloud_off_rounded,
-                      color: Colors.orange,
+                      color: AppColors.warning,
                       size: 18,
                     ),
                   ),

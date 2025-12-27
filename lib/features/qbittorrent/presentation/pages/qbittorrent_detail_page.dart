@@ -247,7 +247,7 @@ class _QBittorrentDetailPageState extends ConsumerState<QBittorrentDetailPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.error_outline, size: 64, color: Colors.red),
+            Icon(Icons.error_outline, size: 64, color: AppColors.error),
             const SizedBox(height: 16),
             Text('连接失败', style: context.textTheme.titleLarge),
             const SizedBox(height: 8),
@@ -256,7 +256,7 @@ class _QBittorrentDetailPageState extends ConsumerState<QBittorrentDetailPage> {
               child: Text(
                 connection.errorMessage ?? '未知错误',
                 textAlign: TextAlign.center,
-                style: context.textTheme.bodyMedium?.copyWith(color: Colors.red),
+                style: context.textTheme.bodyMedium?.copyWith(color: AppColors.error),
               ),
             ),
             const SizedBox(height: 24),
@@ -1086,8 +1086,8 @@ class _TorrentTile extends ConsumerWidget {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.delete_forever, color: Colors.red),
-              title: const Text('删除任务和文件', style: TextStyle(color: Colors.red)),
+              leading: Icon(Icons.delete_forever, color: AppColors.error),
+              title: Text('删除任务和文件', style: TextStyle(color: AppColors.error)),
               onTap: () {
                 Navigator.pop(context);
                 _confirmDelete(context, ref, deleteFiles: true);
@@ -1354,7 +1354,7 @@ class _TorrentTile extends ConsumerWidget {
                 deleteFiles: deleteFiles,
               );
             },
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
             child: const Text('删除'),
           ),
         ],

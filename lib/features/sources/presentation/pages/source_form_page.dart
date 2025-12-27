@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/pt_sites/data/services/pt_site_api.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
@@ -873,7 +874,7 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
             Text(message),
           ],
         ),
-        backgroundColor: Colors.green,
+        backgroundColor: AppColors.success,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(8),
@@ -892,7 +893,7 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
             Expanded(child: Text(message)),
           ],
         ),
-        backgroundColor: Colors.orange,
+        backgroundColor: AppColors.warning,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(8),
@@ -911,7 +912,7 @@ class _SourceFormPageState extends ConsumerState<SourceFormPage> {
             Expanded(child: Text(message)),
           ],
         ),
-        backgroundColor: Colors.red,
+        backgroundColor: AppColors.error,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(8),

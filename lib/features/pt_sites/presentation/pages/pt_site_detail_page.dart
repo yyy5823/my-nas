@@ -826,7 +826,7 @@ class _PTSiteDetailPageState extends ConsumerState<PTSiteDetailPage> {
                                 _buildUserInfoTile(
                                   context,
                                   icon: Icons.swap_horiz,
-                                  iconColor: Colors.orange,
+                                  iconColor: AppColors.warning,
                                   label: '分享率',
                                   value: userInfo.formattedRatio,
                                   isDark: isDark,
@@ -1052,9 +1052,9 @@ class _PTSiteDetailPageState extends ConsumerState<PTSiteDetailPage> {
                                 label: Text(
                                   '剩余 ${torrent.status.formattedRemainingTime}',
                                 ),
-                                backgroundColor: Colors.orange.withValues(alpha: 0.2),
-                                labelStyle: const TextStyle(
-                                  color: Colors.orange,
+                                backgroundColor: AppColors.warning.withValues(alpha: 0.2),
+                                labelStyle: TextStyle(
+                                  color: AppColors.warning,
                                   fontSize: 12,
                                 ),
                               ),
@@ -1180,10 +1180,10 @@ class _PTSiteDetailPageState extends ConsumerState<PTSiteDetailPage> {
     if (label == null) return const SizedBox.shrink();
 
     final color = status.isFree || status.isDoubleFree
-        ? Colors.green
+        ? AppColors.success
         : status.isDoubleUp
-            ? Colors.blue
-            : Colors.orange;
+            ? AppColors.primary
+            : AppColors.warning;
 
     return Chip(
       label: Text(label),
@@ -1257,7 +1257,7 @@ class _PTSiteDetailPageState extends ConsumerState<PTSiteDetailPage> {
         SnackBar(
           content: Text('获取下载链接失败: $e'),
           behavior: SnackBarBehavior.floating,
-          backgroundColor: Colors.red,
+          backgroundColor: AppColors.error,
         ),
       );
     }
@@ -1532,7 +1532,7 @@ class _TransferStatsSheetState extends ConsumerState<_TransferStatsSheet> {
                 Expanded(
                   child: _buildStatItem(
                     icon: Icons.swap_horiz,
-                    iconColor: Colors.orange,
+                    iconColor: AppColors.warning,
                     label: '分享率',
                     value: stats.formattedTotalRatio,
                     isDark: isDark,
@@ -1631,7 +1631,7 @@ class _TransferStatsSheetState extends ConsumerState<_TransferStatsSheet> {
               const SizedBox(width: 16),
               _buildMiniStat('↓', log.formattedDownloaded, AppColors.primary),
               const SizedBox(width: 16),
-              _buildMiniStat('R', log.formattedRatio, Colors.orange),
+              _buildMiniStat('R', log.formattedRatio, AppColors.warning),
               const SizedBox(width: 16),
               _buildMiniStat('T', log.formattedSeedTime, Colors.purple),
             ],

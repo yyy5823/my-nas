@@ -1782,7 +1782,7 @@ class _BookListPageState extends ConsumerState<BookListPage> {
                 icon: Icons.upload_rounded,
                 label: '上传 (${state.selectedLocalCount})',
                 onTap: () => _handleUploadSelected(context, ref, state),
-                color: Colors.blue,
+                color: AppColors.downloadColor,
               ),
             // 下载按钮（远程图书）
             if (state.selectedRemoteCount > 0)
@@ -1790,14 +1790,14 @@ class _BookListPageState extends ConsumerState<BookListPage> {
                 icon: Icons.download_rounded,
                 label: '下载 (${state.selectedRemoteCount})',
                 onTap: () => _handleDownloadSelected(context, ref, state),
-                color: Colors.green,
+                color: AppColors.success,
               ),
             // 删除按钮
             _buildActionButton(
               icon: Icons.delete_outline_rounded,
               label: '删除 (${state.selectedPaths.length})',
               onTap: () => _handleDeleteSelected(context, ref, state),
-              color: Colors.red,
+              color: AppColors.error,
             ),
           ],
         ),
@@ -1938,7 +1938,7 @@ class _BookListPageState extends ConsumerState<BookListPage> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
             child: const Text('删除'),
           ),
         ],

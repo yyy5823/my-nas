@@ -211,7 +211,7 @@ class _NasToolDetailPageState extends ConsumerState<NasToolDetailPage>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.error_outline, size: 64, color: Colors.red),
+            Icon(Icons.error_outline, size: 64, color: AppColors.error),
             const SizedBox(height: 16),
             Text('连接失败', style: context.textTheme.titleLarge),
             const SizedBox(height: 8),
@@ -220,7 +220,7 @@ class _NasToolDetailPageState extends ConsumerState<NasToolDetailPage>
               child: Text(
                 connection.errorMessage ?? '未知错误',
                 textAlign: TextAlign.center,
-                style: context.textTheme.bodyMedium?.copyWith(color: Colors.red),
+                style: context.textTheme.bodyMedium?.copyWith(color: AppColors.error),
               ),
             ),
             const SizedBox(height: 24),

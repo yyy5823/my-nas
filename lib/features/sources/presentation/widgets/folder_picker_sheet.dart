@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
@@ -226,7 +227,7 @@ class _FolderPickerSheetState extends State<FolderPickerSheet> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.error_outline, size: 48, color: Colors.red),
+            Icon(Icons.error_outline, size: 48, color: AppColors.error),
             const SizedBox(height: 16),
             Text(_errorMessage!),
             const SizedBox(height: 16),

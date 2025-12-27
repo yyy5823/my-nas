@@ -74,7 +74,7 @@ class _ServiceSourcesPageState extends ConsumerState<ServiceSourcesPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.error_outline, size: 48, color: Colors.red),
+              Icon(Icons.error_outline, size: 48, color: AppColors.error),
               const SizedBox(height: 16),
               Text('加载失败: $e'),
               const SizedBox(height: 16),
@@ -474,8 +474,8 @@ class _ServiceSourceCardState extends ConsumerState<_ServiceSourceCard> {
             },
           ),
           ListTile(
-            leading: const Icon(Icons.delete, color: Colors.red),
-            title: const Text('删除', style: TextStyle(color: Colors.red)),
+            leading: Icon(Icons.delete, color: AppColors.error),
+            title: Text('删除', style: TextStyle(color: AppColors.error)),
             onTap: () {
               Navigator.pop(context);
               _deleteSource();
@@ -652,7 +652,7 @@ class _ServiceSourceCardState extends ConsumerState<_ServiceSourceCard> {
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
             style: FilledButton.styleFrom(
-              backgroundColor: Colors.red,
+              backgroundColor: AppColors.error,
             ),
             child: const Text('删除'),
           ),
