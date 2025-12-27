@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
@@ -547,4 +548,7 @@ class SmbFileSystem implements NasFileSystem {
 
   @override
   Future<String?> getThumbnailUrl(String path, {ThumbnailSize? size}) async => null;
+
+  @override
+  Future<Uint8List?> getThumbnailData(String path, {ThumbnailSize? size}) async => null;
 }

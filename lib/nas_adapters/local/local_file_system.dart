@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/nas_adapters/local/api/local_file_api.dart';
@@ -156,4 +157,7 @@ class LocalFileSystem implements NasFileSystem {
 
   @override
   Future<String?> getThumbnailUrl(String path, {ThumbnailSize? size}) async => _api.getFileUri(path);
+
+  @override
+  Future<Uint8List?> getThumbnailData(String path, {ThumbnailSize? size}) async => null;
 }

@@ -1,10 +1,6 @@
-import 'dart:async' show unawaited;
-import 'dart:ui' as ui;
-
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
-import 'package:my_nas/core/utils/logger.dart';
 
 /// 翻页效果模式
 enum PageFlipMode {
@@ -26,8 +22,7 @@ enum FlipDirection {
 
 /// 页面翻转效果 Widget
 ///
-/// 使用 Flutter Shader 实现真实的书页翻转效果
-/// 支持仿真翻页和覆盖翻页两种模式
+/// 使用简单的滑动动画实现翻页效果，无延迟响应
 class PageFlipEffect extends StatefulWidget {
   const PageFlipEffect({
     required this.child,
@@ -35,12 +30,10 @@ class PageFlipEffect extends StatefulWidget {
     required this.onPrevPage,
     this.mode = PageFlipMode.simulation,
     this.enabled = true,
-    this.animationDuration = const Duration(milliseconds: 350),
-    this.dragThreshold = 0.25,
+    this.animationDuration = const Duration(milliseconds: 300),
+    this.dragThreshold = 0.2,
     this.onTap,
     this.backgroundColor = Colors.white,
-    this.nextPageBuilder,
-    this.prevPageBuilder,
     super.key,
   });
 
@@ -71,12 +64,6 @@ class PageFlipEffect extends StatefulWidget {
   /// 背景颜色
   final Color backgroundColor;
 
-  /// 下一页内容构建器（用于预渲染下一页）
-  final Widget Function()? nextPageBuilder;
-
-  /// 上一页内容构建器（用于预渲染上一页）
-  final Widget Function()? prevPageBuilder;
-
   @override
   State<PageFlipEffect> createState() => _PageFlipEffectState();
 }
@@ -89,9 +76,6 @@ class _PageFlipEffectState extends State<PageFlipEffect>
   /// 翻页方向
   FlipDirection? _direction;
 
-  /// 原始翻页意图（用于确定最终调用哪个回调）
-  FlipDirection? _originalDirection;
-
   /// 是否正在动画中
   bool _isAnimating = false;
 
@@ -101,35 +85,11 @@ class _PageFlipEffectState extends State<PageFlipEffect>
   /// 当前拖动进度 (0.0 - 1.0)
   double _dragProgress = 0.0;
 
-  /// 拖动起始Y位置比例 (0=顶部, 1=底部)
-  double _dragStartY = 0.5;
-
   /// 动画开始时的进度
   double _animationStartProgress = 0.0;
 
-  /// 是否应该完成翻页（而不是取消）
+  /// 是否应该完成翻页
   bool _shouldComplete = false;
-
-  /// 捕获的当前页面图像
-  ui.Image? _currentPageImage;
-
-  /// 捕获的目标页面图像（下一页或上一页）
-  ui.Image? _targetPageImage;
-
-  /// 用于捕获当前页面的 GlobalKey
-  final GlobalKey _currentPageKey = GlobalKey();
-
-  /// 用于捕获目标页面的 GlobalKey
-  final GlobalKey _targetPageKey = GlobalKey();
-
-  /// 是否正在捕获
-  bool _isCapturing = false;
-
-  /// Shader 是否加载完成
-  bool _shaderLoaded = false;
-
-  /// Shader 程序
-  ui.FragmentProgram? _shaderProgram;
 
   // 点击检测
   Offset? _tapDownPosition;
@@ -141,26 +101,7 @@ class _PageFlipEffectState extends State<PageFlipEffect>
     _controller = AnimationController(
       vsync: this,
       duration: widget.animationDuration,
-    )
-      ..addListener(_onAnimationUpdate)
-      ..addStatusListener(_onAnimationStatus);
-
-    // 预加载 shader
-    if (widget.mode == PageFlipMode.simulation) {
-      _loadShader();
-    }
-  }
-
-  Future<void> _loadShader() async {
-    try {
-      _shaderProgram = await ui.FragmentProgram.fromAsset('shaders/page_curl.frag');
-      if (mounted) {
-        setState(() => _shaderLoaded = true);
-      }
-    } on Exception catch (e) {
-      logger.w('PageFlipEffect: 加载 shader 失败 - $e');
-      // 如果 shader 加载失败，回退到覆盖翻页模式
-    }
+    )..addListener(_onAnimationUpdate);
   }
 
   void _onAnimationUpdate() {
@@ -169,99 +110,63 @@ class _PageFlipEffectState extends State<PageFlipEffect>
     final t = Curves.easeOutCubic.transform(_controller.value);
 
     if (_shouldComplete) {
-      // 完成翻页：从起始进度动画到 1.0
       _dragProgress = _animationStartProgress + (1.0 - _animationStartProgress) * t;
     } else {
-      // 取消翻页：从起始进度动画回 0.0
       _dragProgress = _animationStartProgress * (1.0 - t);
     }
 
-    setState(() {});
-  }
-
-  void _onAnimationStatus(AnimationStatus status) {
-    if (status == AnimationStatus.completed) {
-      _onFlipComplete();
+    // 动画完成
+    if (_controller.value >= 1.0) {
+      _onAnimationComplete();
+    } else {
+      setState(() {});
     }
   }
 
-  Future<void> _onFlipComplete() async {
-    final originalDirection = _originalDirection;
+  Future<void> _onAnimationComplete() async {
+    final direction = _direction;
     final shouldComplete = _shouldComplete;
 
     _isAnimating = false;
 
-    // 只有当应该完成翻页时才触发回调
-    if (shouldComplete && originalDirection != null) {
-      if (originalDirection == FlipDirection.forward) {
-        logger.d('PageFlipEffect: 翻到下一页');
+    if (shouldComplete && direction != null) {
+      if (kDebugMode) {
+        debugPrint('[PageFlip] Animation complete, triggering ${direction == FlipDirection.forward ? 'nextPage' : 'prevPage'}');
+      }
+      // 先重置状态
+      _reset();
+      // 然后触发回调
+      if (direction == FlipDirection.forward) {
         await widget.onNextPage();
       } else {
-        logger.d('PageFlipEffect: 翻到上一页');
         await widget.onPrevPage();
       }
+    } else {
+      if (kDebugMode) {
+        debugPrint('[PageFlip] Animation complete, cancelled');
+      }
+      _reset();
     }
-
-    _reset();
   }
 
   void _reset() {
     _direction = null;
-    _originalDirection = null;
     _dragStart = null;
     _dragProgress = 0.0;
     _shouldComplete = false;
-    _currentPageImage?.dispose();
-    _currentPageImage = null;
-    _targetPageImage?.dispose();
-    _targetPageImage = null;
     _controller.reset();
     if (mounted) setState(() {});
   }
 
-  /// 捕获指定 key 对应的页面
-  Future<ui.Image?> _captureWidget(GlobalKey key) async {
-    if (_isCapturing) return null;
-    _isCapturing = true;
-
-    try {
-      await Future<void>.delayed(const Duration(milliseconds: 16));
-
-      if (!mounted) return null;
-
-      final renderObject = key.currentContext?.findRenderObject();
-      if (renderObject == null || renderObject is! RenderRepaintBoundary) {
-        return null;
-      }
-
-      final boundary = renderObject;
-
-      if (boundary.debugNeedsPaint) {
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-        if (!mounted) return null;
-      }
-
-      final pixelRatio = MediaQuery.of(context).devicePixelRatio;
-      final image = await boundary.toImage(pixelRatio: pixelRatio.clamp(1.0, 2.0));
-      return image;
-    } on Exception catch (e) {
-      logger.w('PageFlipEffect: 捕获页面失败 - $e');
-      return null;
-    } finally {
-      _isCapturing = false;
+  void _onDragStart(DragStartDetails details) {
+    if (!widget.enabled || _isAnimating) return;
+    _dragStart = details.localPosition;
+    if (kDebugMode) {
+      debugPrint('[PageFlip] onDragStart: ${details.localPosition}');
     }
   }
 
-  void _onDragStart(DragStartDetails details) {
-    logger.d('PageFlipEffect: onDragStart - enabled=${widget.enabled}, isAnimating=$_isAnimating, pos=${details.localPosition}');
-    if (!widget.enabled || _isAnimating) return;
-
-    final size = MediaQuery.of(context).size;
-    _dragStart = details.localPosition;
-    _dragStartY = (details.localPosition.dy / size.height).clamp(0.0, 1.0);
-  }
-
-  Future<void> _onDragUpdate(DragUpdateDetails details) async {
+  void _onDragUpdate(DragUpdateDetails details) {
     if (!widget.enabled || _isAnimating || _dragStart == null) return;
 
     final size = MediaQuery.of(context).size;
@@ -270,28 +175,10 @@ class _PageFlipEffectState extends State<PageFlipEffect>
 
     // 确定翻页方向
     if (_direction == null && dragRatio > 0.02) {
-      final newDirection = dragDelta < 0 ? FlipDirection.forward : FlipDirection.backward;
-
-      // 先捕获当前页面（在设置 direction 之前）
-      _currentPageImage = await _captureWidget(_currentPageKey);
-      if (_currentPageImage == null) {
-        return;
-      }
-
-      // 设置方向并触发重建
-      _direction = newDirection;
-      _originalDirection = newDirection;
-      setState(() {});
-
-      // 等待一帧让目标页面完成渲染
-      await Future<void>.delayed(const Duration(milliseconds: 50));
-      if (!mounted) return;
-
-      // 捕获目标页面
-      _targetPageImage = await _captureWidget(_targetPageKey);
+      _direction = dragDelta < 0 ? FlipDirection.forward : FlipDirection.backward;
     }
 
-    if (_direction != null && mounted) {
+    if (_direction != null) {
       setState(() {
         _dragProgress = dragRatio.clamp(0.0, 1.0);
       });
@@ -307,6 +194,10 @@ class _PageFlipEffectState extends State<PageFlipEffect>
     _shouldComplete = _dragProgress > widget.dragThreshold;
     _isAnimating = true;
     _animationStartProgress = _dragProgress;
+
+    if (kDebugMode) {
+      debugPrint('[PageFlip] onDragEnd: direction=$_direction, progress=$_dragProgress, shouldComplete=$_shouldComplete');
+    }
 
     _controller.forward(from: 0);
 
@@ -326,53 +217,27 @@ class _PageFlipEffectState extends State<PageFlipEffect>
     }
   }
 
-  /// 触发点击翻页（平行翻页，从中间位置）
-  Future<void> _triggerTapFlip(FlipDirection direction) async {
-    logger.d('PageFlipEffect: _triggerTapFlip - direction=$direction, isAnimating=$_isAnimating, currentDirection=$_direction');
+  /// 触发点击翻页
+  void _triggerTapFlip(FlipDirection direction) {
     if (_isAnimating || _direction != null) return;
 
-    _dragStartY = 0.5; // 点击翻页使用中间位置，产生平行效果
-
-    // 捕获当前页面（在设置 direction 之前，因为当前页面已经在 widget 树中）
-    logger.d('PageFlipEffect: capturing current page...');
-    _currentPageImage = await _captureWidget(_currentPageKey);
-    logger.d('PageFlipEffect: current page captured: ${_currentPageImage != null}');
-    if (_currentPageImage == null) {
-      logger.w('PageFlipEffect: failed to capture current page, resetting');
-      _reset();
-      return;
+    if (kDebugMode) {
+      debugPrint('[PageFlip] triggerTapFlip: $direction');
     }
 
-    // 设置方向并触发重建，让目标页面被添加到 widget 树
     _direction = direction;
-    _originalDirection = direction;
-    setState(() {});
-
-    // 等待一帧让目标页面完成渲染
-    await Future<void>.delayed(const Duration(milliseconds: 50));
-    if (!mounted) return;
-
-    // 捕获目标页面
-    logger.d('PageFlipEffect: capturing target page...');
-    _targetPageImage = await _captureWidget(_targetPageKey);
-    logger.d('PageFlipEffect: target page captured: ${_targetPageImage != null}');
-
     _shouldComplete = true;
     _isAnimating = true;
     _animationStartProgress = 0.0;
+    _dragProgress = 0.0;
 
-    // 立即触发触觉反馈，不等待
-    unawaited(HapticFeedback.lightImpact());
-
-    // 启动动画（不需要 await，动画完成由 listener 处理）
-    unawaited(_controller.forward(from: 0));
+    HapticFeedback.lightImpact();
+    _controller.forward(from: 0);
   }
 
   @override
   void dispose() {
     _controller.dispose();
-    _currentPageImage?.dispose();
-    _targetPageImage?.dispose();
     super.dispose();
   }
 
@@ -392,7 +257,6 @@ class _PageFlipEffectState extends State<PageFlipEffect>
         _tapDownTime = DateTime.now();
       },
       onPointerUp: (event) {
-        logger.d('PageFlipEffect: onPointerUp - direction=$_direction, isAnimating=$_isAnimating, tapDownPos=$_tapDownPosition');
         if (_direction != null || _isAnimating) {
           _tapDownPosition = null;
           _tapDownTime = null;
@@ -404,22 +268,15 @@ class _PageFlipEffectState extends State<PageFlipEffect>
           final duration = DateTime.now().difference(_tapDownTime!);
 
           if (distance < 20 && duration.inMilliseconds < 300) {
-            // 检测点击位置，决定是翻页还是其他操作
             final screenWidth = MediaQuery.of(context).size.width;
             final tapX = event.localPosition.dx;
             final ratio = tapX / screenWidth;
 
-            logger.d('PageFlipEffect: tap detected at ratio=$ratio');
             if (ratio < 0.25) {
-              // 左侧 25%: 上一页（点击触发平行翻页）
-              logger.d('PageFlipEffect: triggering backward flip');
               _triggerTapFlip(FlipDirection.backward);
             } else if (ratio > 0.75) {
-              // 右侧 25%: 下一页（点击触发平行翻页）
-              logger.d('PageFlipEffect: triggering forward flip');
               _triggerTapFlip(FlipDirection.forward);
             } else {
-              // 中间 50%: 触发 onTap 回调
               widget.onTap?.call(TapUpDetails(
                 kind: event.kind,
                 localPosition: event.localPosition,
@@ -436,37 +293,20 @@ class _PageFlipEffectState extends State<PageFlipEffect>
         _tapDownTime = null;
       },
       child: GestureDetector(
-        behavior: HitTestBehavior.opaque, // 确保能接收到手势
+        behavior: HitTestBehavior.opaque,
         onHorizontalDragStart: _onDragStart,
         onHorizontalDragUpdate: _onDragUpdate,
         onHorizontalDragEnd: _onDragEnd,
         onHorizontalDragCancel: _onDragCancel,
         child: Stack(
           children: [
-            // 目标页面（预渲染，用于捕获）
-            if (_direction != null)
-              Positioned.fill(
-                child: Offstage(
-                  offstage: true,
-                  child: RepaintBoundary(
-                    key: _targetPageKey,
-                    child: _originalDirection == FlipDirection.forward
-                        ? (widget.nextPageBuilder?.call() ?? widget.child)
-                        : (widget.prevPageBuilder?.call() ?? widget.child),
-                  ),
-                ),
-              ),
-
-            // 当前页面
-            RepaintBoundary(
-              key: _currentPageKey,
-              child: widget.child,
-            ),
+            // 当前页面内容
+            widget.child,
 
             // 翻页动画层
-            if (_direction != null && _currentPageImage != null)
+            if (_direction != null && _dragProgress > 0)
               Positioned.fill(
-                child: _buildFlipEffect(),
+                child: _buildFlipOverlay(),
               ),
           ],
         ),
@@ -474,184 +314,99 @@ class _PageFlipEffectState extends State<PageFlipEffect>
     );
   }
 
-  Widget _buildFlipEffect() {
-    if (widget.mode == PageFlipMode.simulation && _shaderLoaded && _shaderProgram != null) {
-      return _buildShaderSimulationEffect();
+  Widget _buildFlipOverlay() {
+    final size = MediaQuery.of(context).size;
+    final isForward = _direction == FlipDirection.forward;
+
+    if (widget.mode == PageFlipMode.simulation) {
+      return _buildSimulationOverlay(size, isForward);
     }
-    return _buildCoverEffect();
+    return _buildCoverOverlay(size, isForward);
   }
 
-  /// 使用 Shader 的仿真翻页效果
-  Widget _buildShaderSimulationEffect() => CustomPaint(
-    painter: _ShaderPageCurlPainter(
-      shaderProgram: _shaderProgram!,
-      currentPage: _currentPageImage!,
-      nextPage: _targetPageImage ?? _currentPageImage!,
-      progress: _dragProgress,
-      direction: _originalDirection == FlipDirection.forward ? 1.0 : -1.0,
-      dragStartY: _dragStartY,
-      backgroundColor: widget.backgroundColor,
-    ),
-    size: Size.infinite,
-  );
-
-  /// 覆盖翻页效果
-  Widget _buildCoverEffect() {
-    final size = MediaQuery.of(context).size;
-
-    // 计算页面偏移
-    double slideOffset;
-    if (_originalDirection == FlipDirection.forward) {
-      // 向左翻：当前页从右向左滑出
-      slideOffset = -size.width * _dragProgress;
-    } else {
-      // 向右翻：当前页从左向右滑出
-      slideOffset = size.width * _dragProgress;
-    }
+  /// 仿真翻页效果 - 使用渐变模拟页面翻起的阴影
+  Widget _buildSimulationOverlay(Size size, bool isForward) {
+    // 计算翻页边缘位置
+    final edgePosition = isForward
+        ? size.width * (1.0 - _dragProgress)
+        : size.width * _dragProgress;
 
     return Stack(
       children: [
-        // 背景（目标页面）
-        if (_targetPageImage != null)
-          Positioned.fill(
-            child: RawImage(
-              image: _targetPageImage,
-              fit: BoxFit.cover,
+        // 翻起页面的阴影（模拟页面翻起效果）
+        Positioned(
+          left: isForward ? edgePosition - 60 : null,
+          right: isForward ? null : size.width - edgePosition - 60,
+          top: 0,
+          bottom: 0,
+          width: 120,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: isForward ? Alignment.centerRight : Alignment.centerLeft,
+                end: isForward ? Alignment.centerLeft : Alignment.centerRight,
+                colors: [
+                  Colors.transparent,
+                  Colors.black.withValues(alpha: 0.15 * _dragProgress),
+                  Colors.black.withValues(alpha: 0.3 * _dragProgress),
+                  Colors.black.withValues(alpha: 0.15 * _dragProgress),
+                  Colors.transparent,
+                ],
+                stops: const [0.0, 0.3, 0.5, 0.7, 1.0],
+              ),
             ),
-          )
-        else
-          ColoredBox(
-            color: widget.backgroundColor,
-            child: const SizedBox.expand(),
-          ),
-
-        // 滑动的当前页面
-        Transform.translate(
-          offset: Offset(slideOffset, 0),
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: RawImage(
-                  image: _currentPageImage,
-                  fit: BoxFit.cover,
-                ),
-              ),
-              // 边缘阴影
-              Positioned(
-                left: _originalDirection == FlipDirection.forward ? null : 0,
-                right: _originalDirection == FlipDirection.forward ? 0 : null,
-                top: 0,
-                bottom: 0,
-                width: 30,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: _originalDirection == FlipDirection.forward
-                          ? Alignment.centerRight
-                          : Alignment.centerLeft,
-                      end: _originalDirection == FlipDirection.forward
-                          ? Alignment.centerLeft
-                          : Alignment.centerRight,
-                      colors: [
-                        Colors.black.withValues(alpha: 0.15 * _dragProgress),
-                        Colors.transparent,
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
           ),
         ),
 
-        // 页面边缘的阴影（在背景上）
-        if (_dragProgress > 0)
-          Positioned(
-            left: _originalDirection == FlipDirection.forward
-                ? size.width * (1.0 - _dragProgress) - 20
-                : null,
-            right: _originalDirection == FlipDirection.backward
-                ? size.width * (1.0 - _dragProgress) - 20
-                : null,
-            top: 0,
-            bottom: 0,
-            width: 40,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Colors.transparent,
-                    Colors.black.withValues(alpha: 0.1 * _dragProgress),
-                    Colors.transparent,
-                  ],
-                ),
-              ),
-            ),
+        // 翻过区域的遮罩（模拟下一页露出）
+        Positioned(
+          left: isForward ? edgePosition : 0,
+          right: isForward ? 0 : size.width - edgePosition,
+          top: 0,
+          bottom: 0,
+          child: ColoredBox(
+            color: widget.backgroundColor.withValues(alpha: 0.95),
           ),
+        ),
       ],
     );
   }
-}
 
-/// Shader 翻页绘制器
-class _ShaderPageCurlPainter extends CustomPainter {
-  _ShaderPageCurlPainter({
-    required this.shaderProgram,
-    required this.currentPage,
-    required this.nextPage,
-    required this.progress,
-    required this.direction,
-    required this.dragStartY,
-    required this.backgroundColor,
-  });
+  /// 覆盖翻页效果 - 简单的滑动遮罩
+  Widget _buildCoverOverlay(Size size, bool isForward) {
+    final offset = isForward
+        ? size.width * (1.0 - _dragProgress)
+        : -size.width * (1.0 - _dragProgress);
 
-  final ui.FragmentProgram shaderProgram;
-  final ui.Image currentPage;
-  final ui.Image nextPage;
-  final double progress;
-  final double direction;
-  final double dragStartY;
-  final Color backgroundColor;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (progress <= 0) {
-      // 无进度时直接绘制当前页
-      canvas.drawImageRect(
-        currentPage,
-        Rect.fromLTWH(0, 0, currentPage.width.toDouble(), currentPage.height.toDouble()),
-        Rect.fromLTWH(0, 0, size.width, size.height),
-        Paint(),
-      );
-      return;
-    }
-
-    final shader = shaderProgram.fragmentShader()
-      // 设置 uniform 变量
-      ..setFloat(0, size.width)   // resolution.x
-      ..setFloat(1, size.height)  // resolution.y
-      ..setFloat(2, progress)      // progress
-      ..setFloat(3, direction)     // direction
-      ..setFloat(4, dragStartY)    // dragStartY
-      // Color 的 .r, .g, .b, .a 属性已经是 0.0-1.0 范围
-      ..setFloat(5, backgroundColor.r) // backgroundColor.r
-      ..setFloat(6, backgroundColor.g) // backgroundColor.g
-      ..setFloat(7, backgroundColor.b) // backgroundColor.b
-      ..setFloat(8, backgroundColor.a) // backgroundColor.a
-      ..setImageSampler(0, currentPage) // currentPage
-      ..setImageSampler(1, nextPage);   // nextPage
-
-    canvas.drawRect(
-      Rect.fromLTWH(0, 0, size.width, size.height),
-      Paint()..shader = shader,
+    return Transform.translate(
+      offset: Offset(offset, 0),
+      child: ColoredBox(
+        color: widget.backgroundColor,
+        child: Stack(
+          children: [
+            // 边缘阴影
+            Positioned(
+              left: isForward ? 0 : null,
+              right: isForward ? null : 0,
+              top: 0,
+              bottom: 0,
+              width: 20,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: isForward ? Alignment.centerLeft : Alignment.centerRight,
+                    end: isForward ? Alignment.centerRight : Alignment.centerLeft,
+                    colors: [
+                      Colors.black.withValues(alpha: 0.2),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
-
-  @override
-  bool shouldRepaint(_ShaderPageCurlPainter oldDelegate) =>
-      progress != oldDelegate.progress ||
-      direction != oldDelegate.direction ||
-      currentPage != oldDelegate.currentPage ||
-      nextPage != oldDelegate.nextPage ||
-      dragStartY != oldDelegate.dragStartY;
 }

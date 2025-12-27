@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/video/data/services/cast/adapters/airplay_adapter.dart';
 import 'package:my_nas/features/video/data/services/cast/adapters/dlna_adapter.dart';
 import 'package:my_nas/features/video/data/services/cast/cast_media_proxy_server.dart';
 import 'package:my_nas/features/video/domain/entities/cast_device.dart';
@@ -13,11 +14,16 @@ class CastService {
   CastService({
     CastMediaProxyServer? proxyServer,
     DlnaAdapter? dlnaAdapter,
+    AirPlayAdapter? airplayAdapter,
   })  : _proxyServer = proxyServer ?? CastMediaProxyServer(),
-        _dlnaAdapter = dlnaAdapter ?? DlnaAdapter();
+        _dlnaAdapter = dlnaAdapter ?? DlnaAdapter(),
+        _airplayAdapter = airplayAdapter ?? AirPlayAdapter() {
+    _initDeviceStreams();
+  }
 
   final CastMediaProxyServer _proxyServer;
   final DlnaAdapter _dlnaAdapter;
+  final AirPlayAdapter _airplayAdapter;
 
   /// 当前投屏会话
   CastSession? _currentSession;
@@ -27,6 +33,17 @@ class CastService {
 
   /// 会话状态控制器
   final _sessionController = StreamController<CastSession?>.broadcast();
+
+  /// 合并的设备流控制器
+  final _deviceController = StreamController<List<CastDevice>>.broadcast();
+
+  /// 设备流订阅
+  StreamSubscription<List<CastDevice>>? _dlnaSubscription;
+  StreamSubscription<List<CastDevice>>? _airplaySubscription;
+
+  /// 当前设备缓存
+  List<CastDevice> _dlnaDevices = [];
+  List<CastDevice> _airplayDevices = [];
 
   /// 会话状态流
   Stream<CastSession?> get sessionStream => _sessionController.stream;
@@ -38,7 +55,28 @@ class CastService {
   bool get isCasting => _currentSession != null;
 
   /// 设备发现流（合并 DLNA 和 AirPlay）
-  Stream<List<CastDevice>> get deviceStream => _dlnaAdapter.deviceStream;
+  Stream<List<CastDevice>> get deviceStream => _deviceController.stream;
+
+  /// 初始化设备流合并
+  void _initDeviceStreams() {
+    // 监听 DLNA 设备
+    _dlnaSubscription = _dlnaAdapter.deviceStream.listen((devices) {
+      _dlnaDevices = devices;
+      _emitCombinedDevices();
+    });
+
+    // 监听 AirPlay 设备
+    _airplaySubscription = _airplayAdapter.deviceStream.listen((devices) {
+      _airplayDevices = devices;
+      _emitCombinedDevices();
+    });
+  }
+
+  /// 发送合并后的设备列表
+  void _emitCombinedDevices() {
+    final combined = <CastDevice>[..._dlnaDevices, ..._airplayDevices];
+    _deviceController.add(combined);
+  }
 
   /// 开始设备发现
   Future<void> startDiscovery({Duration timeout = const Duration(seconds: 10)}) async {
@@ -47,21 +85,21 @@ class CastService {
     // 并行启动 DLNA 和 AirPlay 搜索
     await Future.wait([
       _dlnaAdapter.startDiscovery(timeout: timeout),
-      // TODO: AirPlay 搜索（Phase 3 实现）
+      _airplayAdapter.startDiscovery(timeout: timeout),
     ]);
   }
 
   /// 停止设备发现
   void stopDiscovery() {
     _dlnaAdapter.stopDiscovery();
-    // TODO: 停止 AirPlay 搜索
+    _airplayAdapter.stopDiscovery();
   }
 
   /// 获取当前发现的设备列表
   List<CastDevice> getDiscoveredDevices() {
     final devices = <CastDevice>[];
     devices.addAll(_dlnaAdapter.getDiscoveredDevices());
-    // TODO: 添加 AirPlay 设备
+    devices.addAll(_airplayAdapter.getDiscoveredDevices());
     return devices;
   }
 
@@ -111,8 +149,13 @@ class CastService {
             subtitleUrl: subtitleUrl,
           );
         case CastProtocol.airplay:
-          // TODO: AirPlay 投屏（Phase 3 实现）
-          throw Exception('AirPlay 暂未实现');
+          success = await _airplayAdapter.castVideo(
+            deviceId: device.id,
+            videoUrl: videoUrl,
+            title: videoTitle,
+            subtitleUrl: subtitleUrl,
+            startPosition: startPosition,
+          );
       }
 
       if (!success) {
@@ -133,8 +176,10 @@ class CastService {
       // 6. 启动状态轮询
       _startStatusPolling();
 
-      // 7. 跳转到起始位置
-      if (startPosition != null && startPosition > Duration.zero) {
+      // 7. 跳转到起始位置（DLNA 需要单独处理）
+      if (device.protocol == CastProtocol.dlna &&
+          startPosition != null &&
+          startPosition > Duration.zero) {
         await Future<void>.delayed(const Duration(seconds: 1));
         await seek(startPosition);
       }
@@ -158,8 +203,7 @@ class CastService {
         case CastProtocol.dlna:
           await _dlnaAdapter.play();
         case CastProtocol.airplay:
-          // TODO: AirPlay
-          break;
+          await _airplayAdapter.play();
       }
     } catch (e, st) {
       AppError.handle(e, st, 'castPlay');
@@ -175,8 +219,7 @@ class CastService {
         case CastProtocol.dlna:
           await _dlnaAdapter.pause();
         case CastProtocol.airplay:
-          // TODO: AirPlay
-          break;
+          await _airplayAdapter.pause();
       }
     } catch (e, st) {
       AppError.handle(e, st, 'castPause');
@@ -194,8 +237,7 @@ class CastService {
         case CastProtocol.dlna:
           await _dlnaAdapter.stop();
         case CastProtocol.airplay:
-          // TODO: AirPlay
-          break;
+          await _airplayAdapter.stop();
       }
 
       _currentSession = null;
@@ -216,8 +258,7 @@ class CastService {
         case CastProtocol.dlna:
           await _dlnaAdapter.seek(position);
         case CastProtocol.airplay:
-          // TODO: AirPlay
-          break;
+          await _airplayAdapter.seek(position);
       }
     } catch (e, st) {
       AppError.handle(e, st, 'castSeek');
@@ -234,8 +275,7 @@ class CastService {
         case CastProtocol.dlna:
           await _dlnaAdapter.setVolume(intVolume);
         case CastProtocol.airplay:
-          // TODO: AirPlay
-          break;
+          await _airplayAdapter.setVolume(intVolume);
       }
 
       _currentSession = _currentSession!.copyWith(volume: volume);
@@ -272,18 +312,17 @@ class CastService {
           duration = await _dlnaAdapter.getDuration();
           state = await _dlnaAdapter.getPlaybackState();
         case CastProtocol.airplay:
-          // TODO: AirPlay
-          break;
+          position = await _airplayAdapter.getPosition();
+          duration = await _airplayAdapter.getDuration();
+          state = await _airplayAdapter.getPlaybackState();
       }
 
-      if (position != null || duration != null || state != null) {
-        _currentSession = _currentSession!.copyWith(
-          position: position,
-          duration: duration,
-          playbackState: state,
-        );
-        _sessionController.add(_currentSession);
-      }
+      _currentSession = _currentSession!.copyWith(
+        position: position,
+        duration: duration,
+        playbackState: state,
+      );
+      _sessionController.add(_currentSession);
     } catch (e) {
       // 忽略轮询错误
     }
@@ -295,6 +334,10 @@ class CastService {
     await stop();
     await _proxyServer.stop();
     _dlnaAdapter.dispose();
+    await _airplayAdapter.dispose();
+    await _dlnaSubscription?.cancel();
+    await _airplaySubscription?.cancel();
     await _sessionController.close();
+    await _deviceController.close();
   }
 }

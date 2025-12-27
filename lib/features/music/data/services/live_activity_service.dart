@@ -364,6 +364,27 @@ class LiveActivityService {
     }
   }
 
+  /// 强制刷新 Now Playing / 灵动岛
+  ///
+  /// 此方法通过原生代码直接操作 MPNowPlayingInfoCenter
+  /// 绕过 iOS MediaRemote 框架的去重机制，强制刷新灵动岛显示
+  ///
+  /// 使用场景：
+  /// - App 从后台返回前台再次进入后台时
+  /// - iOS 系统可能因为 "Setting identical nowPlayingInfo" 跳过更新
+  Future<void> forceRefreshNowPlaying() async {
+    if (!isSupported) return;
+
+    try {
+      await _channel.invokeMethod('forceRefreshNowPlaying');
+      logger.i('LiveActivityService: 强制刷新 Now Playing 完成');
+    } on PlatformException catch (e, stackTrace) {
+      logger.e('LiveActivityService: 强制刷新失败 (PlatformException)', e, stackTrace);
+    } on Exception catch (e, stackTrace) {
+      logger.e('LiveActivityService: 强制刷新失败', e, stackTrace);
+    }
+  }
+
   /// 释放资源
   Future<void> dispose() async {
     await endAllActivities();

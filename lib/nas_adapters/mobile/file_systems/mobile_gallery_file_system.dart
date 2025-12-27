@@ -166,6 +166,9 @@ class MobileGalleryFileSystem implements NasFileSystem {
   }
 
   /// 列出根目录
+  ///
+  /// 只返回 /albums，不返回 /all，避免同一批照片被扫描两次
+  /// （/albums 中的 isAll=true 相册已经包含所有照片）
   Future<List<FileItem>> _listRoot() async => [
     const FileItem(
       name: 'albums',
@@ -173,15 +176,12 @@ class MobileGalleryFileSystem implements NasFileSystem {
       isDirectory: true,
       size: 0,
     ),
-    const FileItem(
-      name: 'all',
-      path: '/all',
-      isDirectory: true,
-      size: 0,
-    ),
   ];
 
   /// 列出所有相册
+  ///
+  /// 注意：只返回 isAll=true 的相册（"所有照片"），避免重复扫描。
+  /// iOS 的智能相册（Screenshots、Favorites 等）中的照片都已包含在 isAll 相册中。
   Future<List<FileItem>> _listAlbums() async {
     // ignore: avoid_print
     print('🔵 MobileGalleryFileSystem: _listAlbums() 开始');
@@ -194,11 +194,17 @@ class MobileGalleryFileSystem implements NasFileSystem {
     final items = <FileItem>[];
 
     for (final album in albums) {
+      // 只返回 isAll=true 的相册（"所有照片/Recents"），避免重复
+      // 智能相册（Screenshots、Favorites 等）中的照片都已包含在 isAll 相册中
+      if (!album.isAll) {
+        continue;
+      }
+
       final count = await album.assetCountAsync;
       // 对 album ID 进行编码，避免包含斜杠导致路径解析错误
       final encodedId = _encodeId(album.id);
       // ignore: avoid_print
-      print('🔵 MobileGalleryFileSystem: 相册 "${album.name}" (id: ${album.id}) 有 $count 个资源');
+      print('🔵 MobileGalleryFileSystem: 相册 "${album.name}" (id: ${album.id}, isAll: ${album.isAll}) 有 $count 个资源');
       logger.d('MobileGalleryFileSystem: 相册 "${album.name}" (id: ${album.id}) 有 $count 个资源');
       items.add(FileItem(
         name: album.name,
@@ -209,7 +215,7 @@ class MobileGalleryFileSystem implements NasFileSystem {
     }
 
     // ignore: avoid_print
-    print('🔵 MobileGalleryFileSystem: _listAlbums() 返回 ${items.length} 个相册');
+    print('🔵 MobileGalleryFileSystem: _listAlbums() 返回 ${items.length} 个相册（仅 isAll=true）');
     logger.i('MobileGalleryFileSystem: _listAlbums 返回 ${items.length} 个相册');
     return items;
   }
@@ -283,15 +289,30 @@ class MobileGalleryFileSystem implements NasFileSystem {
       for (final asset in assets) {
         _assetCache[asset.id] = asset;
 
-        // 提取扩展名：优先从文件名获取，否则从 mimeType 推断
-        // 不再调用 await asset.file，避免主线程阻塞
+        // 从 asset.type 推断 mimeType（photo_manager 的 mimeType 属性经常为 null）
+        // AssetType: image=1, video=2, audio=3, other=0
+        String? mimeType = asset.mimeType;
         String? extension;
+
+        // 优先从文件名获取扩展名
         final title = asset.title;
         if (title != null && title.contains('.')) {
           extension = title.split('.').last.toLowerCase();
-        } else if (asset.mimeType != null) {
+        }
+
+        // 如果 mimeType 为 null，根据 asset.type 推断
+        if (mimeType == null) {
+          if (asset.type == pm.AssetType.image) {
+            // iOS 默认使用 HEIC 格式
+            mimeType = extension != null ? 'image/$extension' : 'image/heic';
+            extension ??= 'heic';
+          } else if (asset.type == pm.AssetType.video) {
+            mimeType = extension != null ? 'video/$extension' : 'video/mp4';
+            extension ??= 'mp4';
+          }
+        } else if (extension == null) {
           // 从 mimeType 推断扩展名，如 image/heic → heic
-          final parts = asset.mimeType!.split('/');
+          final parts = mimeType.split('/');
           if (parts.length == 2) {
             extension = parts[1].toLowerCase();
           }
@@ -317,7 +338,7 @@ class MobileGalleryFileSystem implements NasFileSystem {
           modifiedTime: asset.modifiedDateTime,
           createdTime: asset.createDateTime,
           extension: extension,
-          mimeType: asset.mimeType,
+          mimeType: mimeType,
           isLivePhoto: isLivePhoto,
           // Live Photo 视频路径延迟加载，不在列表时获取
           livePhotoVideoPath: null,
@@ -483,6 +504,7 @@ class MobileGalleryFileSystem implements NasFileSystem {
   }
 
   /// 获取资源的缩略图数据
+  @override
   Future<Uint8List?> getThumbnailData(String path, {fs.ThumbnailSize? size}) async {
     // 解码 asset ID
     final assetId = _decodeId(path.split('/').last);

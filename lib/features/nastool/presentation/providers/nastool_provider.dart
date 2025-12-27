@@ -457,6 +457,14 @@ class NasToolActions {
     return adapter.searchResources(keyword);
   }
 
+  /// 搜索资源（返回分组结果）
+  Future<List<NtMediaSearchResult>> searchMediaResources(String keyword) async {
+    final adapter = _adapter;
+    if (adapter == null) return [];
+
+    return adapter.searchMediaResources(keyword);
+  }
+
   // === 下载操作 ===
 
   /// 下载资源

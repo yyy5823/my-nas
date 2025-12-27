@@ -938,7 +938,12 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
         print('📷 PhotoScan:   - ${file.name} (isDir=${file.isDirectory}, type=${file.type}, ext=${file.extension})');
 
         if (file.type == FileType.image) {
+          // 优先使用已有的缩略图 URL
           var thumbnailUrl = file.thumbnailUrl;
+
+          // 如果没有缩略图 URL，尝试通过文件系统获取
+          // 注意：不调用 getFileUrl() 因为这会触发 I/O 操作（如 asset.file）
+          // StreamImage 支持 null thumbnailUrl，会使用 getFileStream 按需加载
           if (thumbnailUrl == null || thumbnailUrl.isEmpty) {
             try {
               thumbnailUrl = await fileSystem.getThumbnailUrl(
@@ -946,15 +951,7 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
                 size: ThumbnailSize.medium,
               );
             } on Exception {
-              // ignore
-            }
-          }
-
-          if (thumbnailUrl == null || thumbnailUrl.isEmpty) {
-            try {
-              thumbnailUrl = await fileSystem.getFileUrl(file.path);
-            } on Exception {
-              // ignore
+              // ignore - thumbnailUrl 保持为 null，StreamImage 会使用流式加载
             }
           }
 
@@ -1012,32 +1009,20 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
 
       for (final file in files) {
         if (file.type == FileType.image) {
-          // 尝试获取缩略图 URL（使用 medium 尺寸以提高清晰度）
+          // 优先使用已有的缩略图 URL
           var thumbnailUrl = file.thumbnailUrl;
+
+          // 如果没有缩略图 URL，尝试通过文件系统获取
+          // 注意：不调用 getFileUrl() 因为这会触发 I/O 操作（如 asset.file）
+          // StreamImage 支持 null thumbnailUrl，会使用 getFileStream 按需加载
           if (thumbnailUrl == null || thumbnailUrl.isEmpty) {
             try {
               thumbnailUrl = await fileSystem.getThumbnailUrl(
                 file.path,
                 size: ThumbnailSize.medium,
               );
-              if (thumbnailUrl != null) {
-                logger.d('PhotoScan: Got thumbnail URL for ${file.name}: $thumbnailUrl');
-              }
-            } on Exception catch (e) {
-              logger.d('PhotoScan: Failed to get thumbnail for ${file.name}: $e');
-            }
-          }
-
-          // 如果没有缩略图，尝试获取原图 URL（作为备用）
-          // 注意：对于 SMB/WebDAV 等不支持 HTTP URL 的源，这可能返回 null 或非 HTTP URL
-          if (thumbnailUrl == null || thumbnailUrl.isEmpty) {
-            try {
-              thumbnailUrl = await fileSystem.getFileUrl(file.path);
-              logger.d('PhotoScan: Got file URL for ${file.name}: $thumbnailUrl');
-            } on Exception catch (e) {
-              // getFileUrl 可能抛出 UnimplementedError（如 WebDAV）
-              // 这种情况下 thumbnailUrl 保持为 null，让 StreamImage 使用流式加载
-              logger.d('PhotoScan: No URL available for ${file.name}, will use stream: $e');
+            } on Exception {
+              // ignore - thumbnailUrl 保持为 null，StreamImage 会使用流式加载
             }
           }
 

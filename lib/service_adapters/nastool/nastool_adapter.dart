@@ -189,6 +189,21 @@ class NasToolAdapter implements ServiceAdapter {
     return _api!.getSearchResult();
   }
 
+  /// 搜索资源（返回分组结果）
+  Future<List<NtMediaSearchResult>> searchMediaResources(String keyword) async {
+    _ensureConnected();
+    await _api!.searchKeyword(searchWord: keyword);
+    // 等待搜索完成
+    await Future<void>.delayed(const Duration(seconds: 2));
+    return _api!.getMediaSearchResults();
+  }
+
+  /// 获取当前搜索结果（分组格式）
+  Future<List<NtMediaSearchResult>> getMediaSearchResults() async {
+    _ensureConnected();
+    return _api!.getMediaSearchResults();
+  }
+
   // === 下载方法 ===
 
   /// 下载资源

@@ -5,6 +5,7 @@ import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/video/domain/entities/video_item.dart';
 import 'package:my_nas/features/video/presentation/providers/video_player_provider.dart';
 import 'package:my_nas/features/video/presentation/widgets/aspect_ratio_selector.dart';
+import 'package:my_nas/features/video/presentation/widgets/cast/cast_button.dart';
 import 'package:my_nas/features/video/presentation/widgets/infuse_settings_panel.dart';
 import 'package:my_nas/features/video/presentation/widgets/playlist_sheet.dart';
 import 'package:my_nas/features/video/presentation/widgets/quality/quality_button.dart';
@@ -277,6 +278,8 @@ class VideoControls extends ConsumerWidget {
                     ),
                     tooltip: state.isPictureInPicture ? '退出画中画' : '画中画',
                   ),
+                // 投屏按钮
+                const CastButton(),
                 // 清晰度按钮
                 const QualityButton(),
                 // 画面比例快捷按钮

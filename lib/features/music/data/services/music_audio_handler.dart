@@ -267,11 +267,11 @@ class MusicAudioHandler extends BaseAudioHandler
   ///
   /// 关键发现：iOS MediaRemote 框架在系统级别有去重机制
   /// 日志显示: "[NowPlayingInfo] Setting identical nowPlayingInfo, skipping update."
-  /// 即使调用 center.nowPlayingInfo = nowPlayingInfo，iOS 也会检测内容是否相同
+  /// 分析发现：iOS 只比较关键字段（title, artist, album, artwork）
+  /// duration 和 position 的变化会被忽略
   ///
-  /// 解决方案：在 title 末尾添加不可见的零宽空格字符 (\u200B)
-  /// 每次刷新时增加/减少零宽空格的数量，iOS 会认为 title 变化了
-  /// 但用户完全看不出区别
+  /// 解决方案：每次刷新时重新保存 artwork 到新文件路径
+  /// 这样 artUri 会变化，iOS 会认为是新的 artwork
   ///
   /// 参考：
   /// - https://developer.apple.com/forums/thread/32475
@@ -282,32 +282,37 @@ class MusicAudioHandler extends BaseAudioHandler
 
     _refreshCounter++;
 
-    // 使用零宽空格修改 title，让 iOS 认为内容变化了
-    // 零宽空格 \u200B 是不可见字符，用户看不出区别
-    // 根据计数器奇偶交替添加 1 个或 2 个零宽空格
-    final invisibleSuffix = _refreshCounter.isEven ? '\u200B' : '\u200B\u200B';
-
-    // 移除之前可能添加的零宽空格，然后添加新的
     final cleanTitle = currentItem.title.replaceAll('\u200B', '');
-    final modifiedTitle = '$cleanTitle$invisibleSuffix';
-
     logger.i('MusicAudioHandler: 刷新灵动岛 (counter=$_refreshCounter) - $cleanTitle');
 
-    // 创建新的 MediaItem
+    // 关键：重新保存 artwork 到新文件路径
+    // iOS MediaRemote 只有在 artwork 变化时才会真正更新
+    var newArtUri = currentItem.artUri;
+    if (_currentArtworkData != null && _currentArtworkData!.isNotEmpty) {
+      // 使用带时间戳的文件名，确保每次都是新路径
+      final timestampedId = '${currentItem.id}_refresh_$_refreshCounter';
+      newArtUri = await _saveArtworkToFile(_currentArtworkData!, timestampedId);
+      logger.d('MusicAudioHandler: 重新保存 artwork 到新路径: $newArtUri');
+    }
+
+    // 创建修改后的 MediaItem
     final refreshedItem = MediaItem(
       id: currentItem.id,
-      title: modifiedTitle,
+      title: cleanTitle,
       artist: currentItem.artist,
       album: currentItem.album,
       duration: _player.duration ?? currentItem.duration ?? Duration.zero,
-      artUri: currentItem.artUri,
+      artUri: newArtUri, // 使用新的 artwork 路径
       extras: currentItem.extras,
     );
 
+    // 更新 mediaItem（这会触发 audio_service 更新 nowPlayingInfo）
     mediaItem.add(refreshedItem);
 
-    // 广播播放状态
+    // 广播当前播放状态
     _broadcastStateWithPlaying(_player.playing);
+
+    logger.i('MusicAudioHandler: 灵动岛刷新完成 - artwork refreshed');
   }
 
   /// 广播指定的播放状态
@@ -455,15 +460,16 @@ class MusicAudioHandler extends BaseAudioHandler
     logger.i(
         'MusicAudioHandler: 设置当前音乐 - ${music.displayTitle} by ${music.displayArtist}, hasArtwork=${artUri != null}');
 
-    // 延迟刷新：解决首次播放不触发灵动岛的问题
-    // 根据 Apple 论坛讨论，iOS 系统可能需要一定时间来准备接收 Now Playing 信息
-    // 特别是首次扫描进音乐库的歌曲，audio_service 和 iOS 系统可能存在初始化竞态条件
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (mediaItem.value?.id == music.id) {
-        logger.i('MusicAudioHandler: 延迟刷新 Now Playing - ${music.displayTitle}');
-        _resetMediaItemForNowPlaying();
-      }
-    });
+    // 延迟刷新：等待 audio_service 初始化完成后刷新一次
+    // 只需要一次刷新，不需要多次
+    if (Platform.isIOS) {
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mediaItem.value?.id == music.id) {
+          logger.i('MusicAudioHandler: 延迟刷新 Now Playing - ${music.displayTitle}');
+          _resetMediaItemForNowPlaying();
+        }
+      });
+    }
   }
 
   /// 更新封面图片（用于元数据加载完成后）

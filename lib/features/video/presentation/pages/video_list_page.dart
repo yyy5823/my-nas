@@ -30,6 +30,7 @@ import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
 import 'package:my_nas/features/video/presentation/pages/video_detail_page.dart';
 import 'package:my_nas/features/video/presentation/pages/video_duplicates_page.dart';
 import 'package:my_nas/features/video/presentation/pages/video_player_page.dart';
+import 'package:my_nas/features/video/presentation/providers/playlist_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/video_category_settings_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/video_detail_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/video_history_provider.dart';
@@ -44,10 +45,7 @@ import 'package:my_nas/shared/widgets/error_widget.dart';
 
 /// 视频文件及其来源
 class VideoFileWithSource {
-  VideoFileWithSource({
-    required this.file,
-    required this.sourceId,
-  });
+  VideoFileWithSource({required this.file, required this.sourceId});
 
   final FileItem file;
   final String sourceId;
@@ -60,18 +58,20 @@ class VideoFileWithSource {
   String get displaySize => file.displaySize;
 
   VideoLibraryCacheEntry toCacheEntry() => VideoLibraryCacheEntry(
-        sourceId: sourceId,
-        filePath: path,
-        fileName: name,
-        thumbnailUrl: thumbnailUrl,
-        size: size,
-        modifiedTime: modifiedTime,
-      );
+    sourceId: sourceId,
+    filePath: path,
+    fileName: name,
+    thumbnailUrl: thumbnailUrl,
+    size: size,
+    modifiedTime: modifiedTime,
+  );
 }
 
 /// 视频列表状态
 final videoListProvider =
-    StateNotifierProvider<VideoListNotifier, VideoListState>(VideoListNotifier.new);
+    StateNotifierProvider<VideoListNotifier, VideoListState>(
+      VideoListNotifier.new,
+    );
 
 /// 视频分类标签
 enum VideoTab { all, movies, tvShows, other, recent }
@@ -135,14 +135,18 @@ class VideoListLoaded extends VideoListState {
   });
 
   final int totalCount;
+
   /// 数据库中的总数量（不经过路径过滤）
   /// 用于判断是否有数据但被路径过滤掉了
   final int databaseTotalCount;
   final int movieCount;
+
   /// 剧集集数（单集数量）
   final int tvShowCount;
+
   /// 剧集分组数量（不同电视剧数量）
   final int tvShowGroupCount;
+
   /// 其他视频数量（未识别为电影或剧集的视频）
   final int otherCount;
   final VideoTab currentTab;
@@ -160,10 +164,13 @@ class VideoListLoaded extends VideoListState {
   final List<VideoMetadata> topRatedMovies;
   final List<VideoMetadata> recentVideos;
   final List<VideoMetadata> movies;
+
   /// 剧集分组（使用 TvShowGroup 按季组织）
   final Map<String, TvShowGroup> tvShowGroups;
+
   /// 其他视频（未识别为电影或剧集）
   final List<VideoMetadata> others;
+
   /// 电影系列
   final List<MovieCollection> movieCollections;
 
@@ -221,28 +228,27 @@ class VideoListLoaded extends VideoListState {
     List<MovieCollection>? movieCollections,
     List<VideoMetadata>? searchResults,
     Map<String, VideoMetadata>? videoByKey,
-  }) =>
-      VideoListLoaded(
-        totalCount: totalCount ?? this.totalCount,
-        databaseTotalCount: databaseTotalCount ?? this.databaseTotalCount,
-        movieCount: movieCount ?? this.movieCount,
-        tvShowCount: tvShowCount ?? this.tvShowCount,
-        tvShowGroupCount: tvShowGroupCount ?? this.tvShowGroupCount,
-        otherCount: otherCount ?? this.otherCount,
-        currentTab: currentTab ?? this.currentTab,
-        searchQuery: searchQuery ?? this.searchQuery,
-        isLoadingMetadata: isLoadingMetadata ?? this.isLoadingMetadata,
-        fromCache: fromCache ?? this.fromCache,
-        loadingPhase: loadingPhase ?? this.loadingPhase,
-        topRatedMovies: topRatedMovies ?? this.topRatedMovies,
-        recentVideos: recentVideos ?? this.recentVideos,
-        movies: movies ?? this.movies,
-        tvShowGroups: tvShowGroups ?? this.tvShowGroups,
-        others: others ?? this.others,
-        movieCollections: movieCollections ?? this.movieCollections,
-        searchResults: searchResults ?? this.searchResults,
-        videoByKey: videoByKey ?? this.videoByKey,
-      );
+  }) => VideoListLoaded(
+    totalCount: totalCount ?? this.totalCount,
+    databaseTotalCount: databaseTotalCount ?? this.databaseTotalCount,
+    movieCount: movieCount ?? this.movieCount,
+    tvShowCount: tvShowCount ?? this.tvShowCount,
+    tvShowGroupCount: tvShowGroupCount ?? this.tvShowGroupCount,
+    otherCount: otherCount ?? this.otherCount,
+    currentTab: currentTab ?? this.currentTab,
+    searchQuery: searchQuery ?? this.searchQuery,
+    isLoadingMetadata: isLoadingMetadata ?? this.isLoadingMetadata,
+    fromCache: fromCache ?? this.fromCache,
+    loadingPhase: loadingPhase ?? this.loadingPhase,
+    topRatedMovies: topRatedMovies ?? this.topRatedMovies,
+    recentVideos: recentVideos ?? this.recentVideos,
+    movies: movies ?? this.movies,
+    tvShowGroups: tvShowGroups ?? this.tvShowGroups,
+    others: others ?? this.others,
+    movieCollections: movieCollections ?? this.movieCollections,
+    searchResults: searchResults ?? this.searchResults,
+    videoByKey: videoByKey ?? this.videoByKey,
+  );
 }
 
 class VideoListError extends VideoListState {
@@ -352,7 +358,9 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
         .map((p) => (sourceId: p.sourceId, path: p.path))
         .toList();
 
-    logger.d('VideoListNotifier: 启用的视频路径: ${result.map((p) => '${p.sourceId}:${p.path}').join(', ')}');
+    logger.d(
+      'VideoListNotifier: 启用的视频路径: ${result.map((p) => '${p.sourceId}:${p.path}').join(', ')}',
+    );
 
     return result;
   }
@@ -401,7 +409,9 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     // 只在首次有连接成功时检查恢复刮削
     if (_hasCheckedResume) return;
 
-    final hasConnected = next.values.any((c) => c.status == SourceStatus.connected);
+    final hasConnected = next.values.any(
+      (c) => c.status == SourceStatus.connected,
+    );
     if (hasConnected) {
       _hasCheckedResume = true;
       logger.d('VideoListNotifier: 检测到连接成功，检查是否有待恢复的刮削任务');
@@ -418,15 +428,19 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
   /// - 刮削全部完成时立即刷新
   /// - 当总数变化时也触发刷新（说明扫描完成有新视频加入）
   void _onScrapeStatsChanged(ScrapeStats stats) {
-    logger.d('VideoListNotifier: 收到统计更新 - total: ${stats.total}, completed: ${stats.completed}, '
-        'pending: ${stats.pending}, isAllDone: ${stats.isAllDone}, '
-        'lastTotal: $_lastTotalCount, lastCompleted: $_lastCompletedCount');
+    logger.d(
+      'VideoListNotifier: 收到统计更新 - total: ${stats.total}, completed: ${stats.completed}, '
+      'pending: ${stats.pending}, isAllDone: ${stats.isAllDone}, '
+      'lastTotal: $_lastTotalCount, lastCompleted: $_lastCompletedCount',
+    );
 
     // 检查当前 UI 状态 - 如果数据库有数据但 UI 显示为空，强制刷新
     final currentState = state;
     if (currentState is VideoListLoaded) {
-      logger.d('VideoListNotifier: 当前 UI 状态 - totalCount: ${currentState.totalCount}, '
-          'databaseTotalCount: ${currentState.databaseTotalCount}');
+      logger.d(
+        'VideoListNotifier: 当前 UI 状态 - totalCount: ${currentState.totalCount}, '
+        'databaseTotalCount: ${currentState.databaseTotalCount}',
+      );
     }
     if (currentState is VideoListLoaded &&
         currentState.totalCount == 0 &&
@@ -544,8 +558,14 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
         databaseTotalCount: newVideos.length,
         videoByKey: videoByKey,
         recentVideos: newVideos.take(20).toList(),
-        movies: newVideos.where((v) => v.category == MediaCategory.movie).take(30).toList(),
-        others: newVideos.where((v) => v.category == MediaCategory.unknown).take(30).toList(),
+        movies: newVideos
+            .where((v) => v.category == MediaCategory.movie)
+            .take(30)
+            .toList(),
+        others: newVideos
+            .where((v) => v.category == MediaCategory.unknown)
+            .take(30)
+            .toList(),
         fromCache: true,
       );
       logger.d('VideoListNotifier: 边扫边显示 - 初始化 ${newVideos.length} 个视频');
@@ -553,7 +573,9 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     }
 
     // 追加到现有状态
-    final newVideoByKey = Map<String, VideoMetadata>.from(currentState.videoByKey);
+    final newVideoByKey = Map<String, VideoMetadata>.from(
+      currentState.videoByKey,
+    );
     for (final v in newVideos) {
       newVideoByKey[v.uniqueKey] = v;
     }
@@ -585,7 +607,9 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       otherCount: newOthers.length,
     );
 
-    logger.d('VideoListNotifier: 边扫边显示 - 追加 ${newVideos.length} 个视频，总计 ${newVideoByKey.length}');
+    logger.d(
+      'VideoListNotifier: 边扫边显示 - 追加 ${newVideos.length} 个视频，总计 ${newVideoByKey.length}',
+    );
   }
 
   /// 单视频更新（Infuse 风格）：处理单个视频元数据更新
@@ -606,14 +630,24 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     if (!_hasMetadataChanged(existing, updated)) return;
 
     // 更新 videoByKey
-    final newVideoByKey = Map<String, VideoMetadata>.from(currentState.videoByKey);
+    final newVideoByKey = Map<String, VideoMetadata>.from(
+      currentState.videoByKey,
+    );
     newVideoByKey[key] = updated;
 
     // 更新各分类列表中的视频
     final newMovies = _updateSingleInList(currentState.movies, key, updated);
     final newOthers = _updateSingleInList(currentState.others, key, updated);
-    final newRecent = _updateSingleInList(currentState.recentVideos, key, updated);
-    final newTopRated = _updateSingleInList(currentState.topRatedMovies, key, updated);
+    final newRecent = _updateSingleInList(
+      currentState.recentVideos,
+      key,
+      updated,
+    );
+    final newTopRated = _updateSingleInList(
+      currentState.topRatedMovies,
+      key,
+      updated,
+    );
 
     state = currentState.copyWith(
       videoByKey: newVideoByKey,
@@ -669,11 +703,13 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     // Infuse 风格的两阶段加载：
     // 阶段1：快速加载所有视频（毫秒级）
     // 阶段2：后台加载分类数据（可以较慢）
-    _initAndLoadInBackground().then((_) {
-      logger.i('VideoListNotifier: 后台初始化完成');
-    }).catchError((Object e, StackTrace st) {
-      logger.e('VideoListNotifier: 后台初始化异常', e, st);
-    });
+    _initAndLoadInBackground()
+        .then((_) {
+          logger.i('VideoListNotifier: 后台初始化完成');
+        })
+        .catchError((Object e, StackTrace st) {
+          logger.e('VideoListNotifier: 后台初始化异常', e, st);
+        });
   }
 
   /// Infuse 风格的两阶段加载
@@ -715,7 +751,9 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       final tvShowGroupCount = phase1Results[2] as int;
 
       stopwatch.stop();
-      logger.i('VideoListNotifier: 阶段1完成 - 快速加载 ${allVideos.length} 个视频，耗时 ${stopwatch.elapsedMilliseconds}ms');
+      logger.i(
+        'VideoListNotifier: 阶段1完成 - 快速加载 ${allVideos.length} 个视频，耗时 ${stopwatch.elapsedMilliseconds}ms',
+      );
 
       // 同步统计值
       try {
@@ -740,9 +778,17 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
 
       // 立即更新 UI（阶段1完成）
       // 临时分类：简单过滤，后续会被完整分类数据替换
-      final tempMovies = allVideos.where((v) => v.category == MediaCategory.movie).take(30).toList();
-      final tempTvShows = allVideos.where((v) => v.category == MediaCategory.tvShow).toList();
-      final tempOthers = allVideos.where((v) => v.category == MediaCategory.unknown).take(30).toList();
+      final tempMovies = allVideos
+          .where((v) => v.category == MediaCategory.movie)
+          .take(30)
+          .toList();
+      final tempTvShows = allVideos
+          .where((v) => v.category == MediaCategory.tvShow)
+          .toList();
+      final tempOthers = allVideos
+          .where((v) => v.category == MediaCategory.unknown)
+          .take(30)
+          .toList();
 
       // 快速构建临时剧集分组（遍历所有剧集，按分组去重后取前30个分组）
       final tempTvShowGroups = <String, TvShowGroup>{};
@@ -753,8 +799,8 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
         final groupKey = ep.tmdbId != null
             ? 'tmdb_${ep.tmdbId}'
             : (ep.showDirectory != null
-                ? 'dir_${ep.showDirectory}'
-                : 'title_${ep.title?.toLowerCase() ?? ep.fileName.toLowerCase()}');
+                  ? 'dir_${ep.showDirectory}'
+                  : 'title_${ep.title?.toLowerCase() ?? ep.fileName.toLowerCase()}');
         if (!tempTvShowGroups.containsKey(groupKey)) {
           tempTvShowGroups[groupKey] = TvShowGroup(
             groupKey: groupKey,
@@ -766,13 +812,19 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
             overview: ep.overview,
             year: ep.year,
             genres: ep.genres,
-            seasonEpisodes: {ep.seasonNumber ?? 1: [ep]},
+            seasonEpisodes: {
+              ep.seasonNumber ?? 1: [ep],
+            },
           );
         }
       }
 
       // 构建最近添加列表（应用剧集分组去重）
-      final tempRecent = _buildRecentWithGroups(allVideos, tempTvShowGroups, limit: 20);
+      final tempRecent = _buildRecentWithGroups(
+        allVideos,
+        tempTvShowGroups,
+        limit: 20,
+      );
 
       // 使用真实统计数量，而非临时列表长度
       state = VideoListLoaded(
@@ -794,7 +846,6 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       // 延迟执行，不阻塞阶段1的显示
       await Future<void>.delayed(const Duration(milliseconds: 100));
       await _loadCategorizedData(silent: true);
-
     } on Exception catch (e) {
       logger.e('VideoListNotifier: 后台初始化失败', e);
       // 保持空列表状态，让用户可以正常使用界面
@@ -805,7 +856,10 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
   ///
   /// [silent] 为 true 时不显示加载状态，避免页面闪烁（用于刮削进度更新）
   /// [forceSync] 为 true 时强制同步聚合表（用于刮削完成后更新海报等数据）
-  Future<void> _loadCategorizedData({bool silent = false, bool forceSync = false}) async {
+  Future<void> _loadCategorizedData({
+    bool silent = false,
+    bool forceSync = false,
+  }) async {
     // 非静默模式才显示加载状态
     if (!silent) {
       state = VideoListLoading(fromCache: true);
@@ -818,7 +872,9 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       // 检查聚合表是否需要同步（首次运行、数据库升级后、或刮削完成后）
       final tvGroupCount = await _db.getTvShowGroupListCount();
       if (tvGroupCount == 0 || forceSync) {
-        logger.i('VideoListNotifier: 触发聚合表同步 (tvGroupCount=$tvGroupCount, forceSync=$forceSync)');
+        logger.i(
+          'VideoListNotifier: 触发聚合表同步 (tvGroupCount=$tvGroupCount, forceSync=$forceSync)',
+        );
         // 使用 fireAndForget 确保同步在后台进行，不阻塞 UI
         await Future.wait([
           _db.syncTvShowGroups(),
@@ -845,33 +901,41 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     // ============ 第一阶段：统计信息（快速响应） ============
     List<Object?> phase1Results;
     try {
-      phase1Results = await Future.wait([
-        _db.getStats(enabledPaths: enabledPaths),
-        _db.getTvShowGroupCount(enabledPaths: enabledPaths),
-        _db.getCount(), // 总数用于判断路径过滤
-      ]).timeout(
-        const Duration(seconds: 3),
-        onTimeout: () {
-          logger.w('VideoListNotifier: 统计查询超时（3秒）');
-          return [
-            <String, dynamic>{'total': 0, 'movies': 0, 'tvShows': 0, 'others': 0},
-            0,
-            0,
-          ];
-        },
-      );
+      phase1Results =
+          await Future.wait([
+            _db.getStats(enabledPaths: enabledPaths),
+            _db.getTvShowGroupCount(enabledPaths: enabledPaths),
+            _db.getCount(), // 总数用于判断路径过滤
+          ]).timeout(
+            const Duration(seconds: 3),
+            onTimeout: () {
+              logger.w('VideoListNotifier: 统计查询超时（3秒）');
+              return [
+                <String, dynamic>{
+                  'total': 0,
+                  'movies': 0,
+                  'tvShows': 0,
+                  'others': 0,
+                },
+                0,
+                0,
+              ];
+            },
+          );
     } on Exception catch (e) {
       logger.e('VideoListNotifier: 统计查询失败', e);
       return;
     }
 
-    final stats = (phase1Results[0] as Map<String, dynamic>?) ?? <String, dynamic>{};
+    final stats =
+        (phase1Results[0] as Map<String, dynamic>?) ?? <String, dynamic>{};
     final tvShowGroupCount = (phase1Results[1] as int?) ?? 0;
     final databaseTotalCount = (phase1Results[2] as int?) ?? 0;
 
     // 检查路径过滤是否需要回退
     final filteredTotal = stats['total'] as int? ?? 0;
-    final needFallback = filteredTotal == 0 && databaseTotalCount > 0 && enabledPaths != null;
+    final needFallback =
+        filteredTotal == 0 && databaseTotalCount > 0 && enabledPaths != null;
     final effectiveEnabledPaths = needFallback ? null : enabledPaths;
 
     if (needFallback) {
@@ -912,20 +976,34 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
 
     try {
       final batch1Stopwatch = Stopwatch()..start();
-      final batch1 = await Future.wait([
-        // 每日推荐使用 includeUnrated=true，包含所有已刮削视频，扩大推荐池
-        _db.getTopRated(limit: 100, enabledPaths: effectiveEnabledPaths, includeUnrated: true),
-        _db.getRecentlyUpdated(limit: 20, enabledPaths: effectiveEnabledPaths),
-        _db.getByCategory(MediaCategory.movie, limit: 30, enabledPaths: effectiveEnabledPaths),
-      ]).timeout(
-        const Duration(seconds: 5),
-        onTimeout: () {
-          logger.w('VideoListNotifier: 批次1查询超时（5秒）');
-          return [<VideoMetadata>[], <VideoMetadata>[], <VideoMetadata>[]];
-        },
-      );
+      final batch1 =
+          await Future.wait([
+            // 每日推荐使用 includeUnrated=true，包含所有已刮削视频，扩大推荐池
+            _db.getTopRated(
+              limit: 100,
+              enabledPaths: effectiveEnabledPaths,
+              includeUnrated: true,
+            ),
+            _db.getRecentlyUpdated(
+              limit: 20,
+              enabledPaths: effectiveEnabledPaths,
+            ),
+            _db.getByCategory(
+              MediaCategory.movie,
+              limit: 30,
+              enabledPaths: effectiveEnabledPaths,
+            ),
+          ]).timeout(
+            const Duration(seconds: 5),
+            onTimeout: () {
+              logger.w('VideoListNotifier: 批次1查询超时（5秒）');
+              return [<VideoMetadata>[], <VideoMetadata>[], <VideoMetadata>[]];
+            },
+          );
       batch1Stopwatch.stop();
-      logger.d('VideoListNotifier: 批次1完成，耗时 ${batch1Stopwatch.elapsedMilliseconds}ms');
+      logger.d(
+        'VideoListNotifier: 批次1完成，耗时 ${batch1Stopwatch.elapsedMilliseconds}ms',
+      );
 
       topRatedRaw = (batch1[0] as List<VideoMetadata>?) ?? [];
       recentRaw = (batch1[1] as List<VideoMetadata>?) ?? [];
@@ -941,7 +1019,11 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     }
 
     // 临时的每日推荐（仅基于电影，剧集稍后补充）
-    final tempDailyRecommendation = _buildDailyRecommendation(topRatedRaw, {}, limit: 50);
+    final tempDailyRecommendation = _buildDailyRecommendation(
+      topRatedRaw,
+      {},
+      limit: 50,
+    );
     // 临时的最近添加（仅基于原始数据，剧集去重稍后补充）
     final tempRecent = _buildRecentWithGroups(recentRaw, {}, limit: 20);
 
@@ -971,21 +1053,35 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
 
     try {
       final batch2Stopwatch = Stopwatch()..start();
-      final batch2 = await Future.wait([
-        _db.getTvShowGroupRepresentatives(limit: 30, enabledPaths: effectiveEnabledPaths),
-        _db.getMovieCollections(minCount: 1),
-        _db.getByCategory(MediaCategory.unknown, limit: 30, enabledPaths: effectiveEnabledPaths),
-      ]).timeout(
-        const Duration(seconds: 5),
-        onTimeout: () {
-          logger.w('VideoListNotifier: 批次2查询超时（5秒）');
-          return [<VideoMetadata>[], <MovieCollection>[], <VideoMetadata>[]];
-        },
-      );
+      final batch2 =
+          await Future.wait([
+            _db.getTvShowGroupRepresentatives(
+              limit: 30,
+              enabledPaths: effectiveEnabledPaths,
+            ),
+            _db.getMovieCollections(minCount: 1),
+            _db.getByCategory(
+              MediaCategory.unknown,
+              limit: 30,
+              enabledPaths: effectiveEnabledPaths,
+            ),
+          ]).timeout(
+            const Duration(seconds: 5),
+            onTimeout: () {
+              logger.w('VideoListNotifier: 批次2查询超时（5秒）');
+              return [
+                <VideoMetadata>[],
+                <MovieCollection>[],
+                <VideoMetadata>[],
+              ];
+            },
+          );
       batch2Stopwatch.stop();
-      logger.d('VideoListNotifier: 批次2完成，耗时 ${batch2Stopwatch.elapsedMilliseconds}ms, '
-          'tvShows=${(batch2[0] as List).length}, collections=${(batch2[1] as List).length}, '
-          'others=${(batch2[2] as List).length}');
+      logger.d(
+        'VideoListNotifier: 批次2完成，耗时 ${batch2Stopwatch.elapsedMilliseconds}ms, '
+        'tvShows=${(batch2[0] as List).length}, collections=${(batch2[1] as List).length}, '
+        'others=${(batch2[2] as List).length}',
+      );
 
       tvShowRepresentatives = (batch2[0] as List<VideoMetadata>?) ?? [];
       movieCollections = (batch2[1] as List<MovieCollection>?) ?? [];
@@ -995,10 +1091,12 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     }
 
     // 记录查询结果统计
-    logger.d('VideoListNotifier: 查询结果 - stats=$stats, '
-        'topRated=${topRatedRaw.length}, recent=${recentRaw.length}, '
-        'movies=${moviesList.length}, tvShows=${tvShowRepresentatives.length}, '
-        'others=${othersList.length}, databaseTotal=$databaseTotalCount');
+    logger.d(
+      'VideoListNotifier: 查询结果 - stats=$stats, '
+      'topRated=${topRatedRaw.length}, recent=${recentRaw.length}, '
+      'movies=${moviesList.length}, tvShows=${tvShowRepresentatives.length}, '
+      'others=${othersList.length}, databaseTotal=$databaseTotalCount',
+    );
 
     // 构建剧集分组
     final tmdbIds = tvShowRepresentatives
@@ -1010,7 +1108,9 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
         .map((r) => r.showDirectory!)
         .toList();
     final titles = tvShowRepresentatives
-        .where((r) => r.tmdbId == null && r.showDirectory == null && r.title != null)
+        .where(
+          (r) => r.tmdbId == null && r.showDirectory == null && r.title != null,
+        )
         .map((r) => r.title!)
         .toList();
 
@@ -1026,8 +1126,8 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       final groupKey = rep.tmdbId != null
           ? 'tmdb_${rep.tmdbId}'
           : (rep.showDirectory != null
-              ? 'dir_${rep.showDirectory}'
-              : 'title_${rep.title?.toLowerCase()}');
+                ? 'dir_${rep.showDirectory}'
+                : 'title_${rep.title?.toLowerCase()}');
       final groupStat = groupStats[groupKey];
       tvShowGroups[groupKey] = TvShowGroup(
         groupKey: groupKey,
@@ -1039,14 +1139,20 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
         overview: rep.overview,
         year: rep.year,
         genres: rep.genres,
-        seasonEpisodes: {rep.seasonNumber ?? 1: [rep]},
+        seasonEpisodes: {
+          rep.seasonNumber ?? 1: [rep],
+        },
         precomputedSeasonCount: groupStat?.seasonCount ?? 1,
         precomputedEpisodeCount: groupStat?.episodeCount ?? 1,
       );
     }
 
     // 现在有了完整的剧集分组，重新计算每日推荐和最近添加（包含剧集去重）
-    final dailyRecommendation = _buildDailyRecommendation(topRatedRaw, tvShowGroups, limit: 50);
+    final dailyRecommendation = _buildDailyRecommendation(
+      topRatedRaw,
+      tvShowGroups,
+      limit: 50,
+    );
     final recent = _buildRecentWithGroups(recentRaw, tvShowGroups, limit: 20);
 
     // 更新快速查找 Map
@@ -1066,7 +1172,9 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       if (currentState is VideoListLoaded &&
           currentState.totalCount > 0 &&
           newTotalCount == 0) {
-        logger.w('VideoListNotifier: silent 模式下查询结果为空，但当前状态有 ${currentState.totalCount} 个视频，保留当前状态');
+        logger.w(
+          'VideoListNotifier: silent 模式下查询结果为空，但当前状态有 ${currentState.totalCount} 个视频，保留当前状态',
+        );
         return;
       }
     }
@@ -1099,8 +1207,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       电影系列 ${movieCollections.length} 个，
       每日推荐 ${dailyRecommendation.length} 个，
       最近添加 ${recent.length} 个'
-      '''
-    );
+      ''');
   }
 
   /// 重新加载数据（扫描完成后调用）
@@ -1151,9 +1258,9 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
   /// - 同一电影的多个版本会合并，选择最高清晰度版本
   List<VideoMetadata> _buildDailyRecommendation(
     List<VideoMetadata> videos,
-    Map<String, TvShowGroup> tvShowGroups,
-    {int limit = 20}
-  ) {
+    Map<String, TvShowGroup> tvShowGroups, {
+    int limit = 20,
+  }) {
     final seenTvShows = <String>{};
     // 电影按 key 存储最佳版本（最高清晰度）
     final movieBestVersions = <String, VideoMetadata>{};
@@ -1211,9 +1318,9 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
   /// 剧集保留最新添加那集的时间信息用于排序
   List<VideoMetadata> _buildRecentWithGroups(
     List<VideoMetadata> videos,
-    Map<String, TvShowGroup> tvShowGroups,
-    {int limit = 20}
-  ) {
+    Map<String, TvShowGroup> tvShowGroups, {
+    int limit = 20,
+  }) {
     // 电影按 key 存储最佳版本（最高清晰度）
     final movieBestVersions = <String, VideoMetadata>{};
     // 剧集按 groupKey 存储：TvShowGroup 信息 + 最新添加那集的时间
@@ -1268,14 +1375,15 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     }
 
     // 合并电影和剧集，按文件修改时间排序（最近添加）
-    final allResults = <VideoMetadata>[
-      ...movieBestVersions.values,
-      ...tvShowBestVersions.values,
-    ]..sort((a, b) {
-      final timeA = a.fileModifiedTime ?? DateTime(1970);
-      final timeB = b.fileModifiedTime ?? DateTime(1970);
-      return timeB.compareTo(timeA);
-    });
+    final allResults =
+        <VideoMetadata>[
+          ...movieBestVersions.values,
+          ...tvShowBestVersions.values,
+        ]..sort((a, b) {
+          final timeA = a.fileModifiedTime ?? DateTime(1970);
+          final timeB = b.fileModifiedTime ?? DateTime(1970);
+          return timeB.compareTo(timeA);
+        });
 
     return allResults.take(limit).toList();
   }
@@ -1462,15 +1570,20 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
   }
 
   /// 随机选择精选推荐项目（优先选择有背景图的）
-  List<VideoMetadata> _selectRandomHeroItems(List<VideoMetadata> candidates, int count) {
+  List<VideoMetadata> _selectRandomHeroItems(
+    List<VideoMetadata> candidates,
+    int count,
+  ) {
     if (candidates.isEmpty) return [];
     if (candidates.length <= count) return candidates;
 
     // 优先选择有背景图的视频
-    final withBackdrop = candidates.where((v) =>
-        v.backdropUrl != null && v.backdropUrl!.isNotEmpty).toList();
-    final withoutBackdrop = candidates.where((v) =>
-        v.backdropUrl == null || v.backdropUrl!.isEmpty).toList();
+    final withBackdrop = candidates
+        .where((v) => v.backdropUrl != null && v.backdropUrl!.isNotEmpty)
+        .toList();
+    final withoutBackdrop = candidates
+        .where((v) => v.backdropUrl == null || v.backdropUrl!.isEmpty)
+        .toList();
 
     // 使用固定 seed 的随机数生成器，确保同一会话内一致
     final random = Random(_heroBannerSeed);
@@ -1485,7 +1598,8 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
 
     // 如果不够，从没有背景图的中补充
     if (result.length < count && withoutBackdrop.isNotEmpty) {
-      final shuffled = List<VideoMetadata>.from(withoutBackdrop)..shuffle(random);
+      final shuffled = List<VideoMetadata>.from(withoutBackdrop)
+        ..shuffle(random);
       result.addAll(shuffled.take(count - result.length));
     }
 
@@ -1493,7 +1607,9 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
   }
 
   void _initScrapeListener() {
-    _scrapeSubscription = VideoScannerService().scrapeStatsStream.listen((stats) {
+    _scrapeSubscription = VideoScannerService().scrapeStatsStream.listen((
+      stats,
+    ) {
       if (mounted) {
         setState(() => _scrapeStats = stats);
       }
@@ -1559,12 +1675,14 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
                   isDark,
                 ),
               VideoListError(:final message) => AppErrorWidget(
-                  message: message,
-                  onRetry: () => ref.read(videoListProvider.notifier).reloadFromCache(),
-                ),
-              final VideoListLoaded loaded => loaded.totalCount == 0
-                  ? _buildEmptyOrFilteredState(context, ref, loaded, isDark)
-                  : _buildVideoContent(context, ref, loaded, isDark),
+                message: message,
+                onRetry: () =>
+                    ref.read(videoListProvider.notifier).reloadFromCache(),
+              ),
+              final VideoListLoaded loaded =>
+                loaded.totalCount == 0
+                    ? _buildEmptyOrFilteredState(context, ref, loaded, isDark)
+                    : _buildVideoContent(context, ref, loaded, isDark),
             },
           ),
         ],
@@ -1579,30 +1697,30 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     bool isDark,
     VideoListState state,
   ) => DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: isDark
-              ? [const Color(0xFF1A1A2E), const Color(0xFF0D0D0D)]
-              : [AppColors.primary.withValues(alpha: 0.08), Colors.grey[50]!],
-        ),
+    decoration: BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: isDark
+            ? [const Color(0xFF1A1A2E), const Color(0xFF0D0D0D)]
+            : [AppColors.primary.withValues(alpha: 0.08), Colors.grey[50]!],
       ),
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(
-            AppSpacing.appBarHorizontalPadding,
-            AppSpacing.appBarVerticalPadding,
-            AppSpacing.appBarHorizontalPadding,
-            AppSpacing.lg,
-          ),
-          child: _showSearch
-              ? _buildSearchBar(context, ref, isDark)
-              : _buildGreetingHeader(context, ref, isDark, state),
+    ),
+    child: SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          AppSpacing.appBarHorizontalPadding,
+          AppSpacing.appBarVerticalPadding,
+          AppSpacing.appBarHorizontalPadding,
+          AppSpacing.lg,
         ),
+        child: _showSearch
+            ? _buildSearchBar(context, ref, isDark)
+            : _buildGreetingHeader(context, ref, isDark, state),
       ),
-    );
+    ),
+  );
 
   /// 问候语头部
   Widget _buildGreetingHeader(
@@ -1617,7 +1735,10 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     final otherCount = state is VideoListLoaded ? state.otherCount : 0;
 
     // 判断是否正在刮削
-    final isScraping = _scrapeStats != null && !_scrapeStats!.isAllDone && _scrapeStats!.total > 0;
+    final isScraping =
+        _scrapeStats != null &&
+        !_scrapeStats!.isAllDone &&
+        _scrapeStats!.total > 0;
 
     return Row(
       children: [
@@ -1731,13 +1852,19 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               child: CircularProgressIndicator(
                 value: progress,
                 strokeWidth: 2,
-                backgroundColor: isDark ? AppColors.darkOutline : AppColors.lightOutline,
-                valueColor: const AlwaysStoppedAnimation<Color>(AppColors.warning),
+                backgroundColor: isDark
+                    ? AppColors.darkOutline
+                    : AppColors.lightOutline,
+                valueColor: const AlwaysStoppedAnimation<Color>(
+                  AppColors.warning,
+                ),
               ),
             ),
             const SizedBox(width: 4),
             Text(
-              _showScrapeDetails ? '${stats.processed}/${stats.total}' : '$percentage%',
+              _showScrapeDetails
+                  ? '${stats.processed}/${stats.total}'
+                  : '$percentage%',
               style: TextStyle(
                 fontSize: 12,
                 color: AppColors.warning,
@@ -1751,41 +1878,52 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
   }
 
   /// 搜索栏
-  Widget _buildSearchBar(BuildContext context, WidgetRef ref, bool isDark) => Row(
-      children: [
-        IconButton(
-          onPressed: () {
-            setState(() => _showSearch = false);
-            _searchController.clear();
-            ref.read(videoListProvider.notifier).setSearchQuery('');
-          },
-          icon: Icon(Icons.arrow_back, color: isDark ? Colors.white : Colors.black87),
-        ),
-        Expanded(
-          child: TextField(
-            controller: _searchController,
-            autofocus: true,
-            style: TextStyle(color: isDark ? Colors.white : Colors.black87),
-            decoration: InputDecoration(
-              hintText: '搜索电影、剧集...',
-              hintStyle: TextStyle(color: isDark ? Colors.grey[500] : Colors.grey[400]),
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-            ),
-            onChanged: (v) =>
-                ref.read(videoListProvider.notifier).setSearchQuery(v),
-          ),
-        ),
-        if (_searchController.text.isNotEmpty)
+  Widget _buildSearchBar(BuildContext context, WidgetRef ref, bool isDark) =>
+      Row(
+        children: [
           IconButton(
             onPressed: () {
+              setState(() => _showSearch = false);
               _searchController.clear();
               ref.read(videoListProvider.notifier).setSearchQuery('');
             },
-            icon: Icon(Icons.close, color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant),
+            icon: Icon(
+              Icons.arrow_back,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
           ),
-      ],
-    );
+          Expanded(
+            child: TextField(
+              controller: _searchController,
+              autofocus: true,
+              style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+              decoration: InputDecoration(
+                hintText: '搜索电影、剧集...',
+                hintStyle: TextStyle(
+                  color: isDark ? Colors.grey[500] : Colors.grey[400],
+                ),
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+              ),
+              onChanged: (v) =>
+                  ref.read(videoListProvider.notifier).setSearchQuery(v),
+            ),
+          ),
+          if (_searchController.text.isNotEmpty)
+            IconButton(
+              onPressed: () {
+                _searchController.clear();
+                ref.read(videoListProvider.notifier).setSearchQuery('');
+              },
+              icon: Icon(
+                Icons.close,
+                color: isDark
+                    ? AppColors.darkOnSurfaceVariant
+                    : AppColors.lightOnSurfaceVariant,
+              ),
+            ),
+        ],
+      );
 
   /// 统计标签
   Widget _buildStatChip({
@@ -1794,19 +1932,21 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     required Color color,
     required bool isDark,
   }) => Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 14, color: color),
-        const SizedBox(width: 4),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
-          ),
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Icon(icon, size: 14, color: color),
+      const SizedBox(width: 4),
+      Text(
+        label,
+        style: TextStyle(
+          fontSize: 12,
+          color: isDark
+              ? AppColors.darkOnSurfaceVariant
+              : AppColors.lightOnSurfaceVariant,
         ),
-      ],
-    );
+      ),
+    ],
+  );
 
   /// 设置菜单
   void _showSettingsMenu(BuildContext context) {
@@ -1880,7 +2020,9 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               color: isDark ? AppColors.darkBackground : AppColors.lightSurface,
               border: Border(
                 bottom: BorderSide(
-                  color: isDark ? AppColors.darkOutline : AppColors.lightOutline,
+                  color: isDark
+                      ? AppColors.darkOutline
+                      : AppColors.lightOutline,
                 ),
               ),
             ),
@@ -1935,7 +2077,12 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
           ),
           // 部分结果网格
           Expanded(
-            child: _buildPartialResultsGrid(context, ref, partialVideos, isDark),
+            child: _buildPartialResultsGrid(
+              context,
+              ref,
+              partialVideos,
+              isDark,
+            ),
           ),
         ],
       );
@@ -1987,7 +2134,13 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
   ) {
     final width = MediaQuery.of(context).size.width;
     // 横向视频卡片需要更少的列数
-    final crossAxisCount = width > 1200 ? 5 : width > 900 ? 4 : width > 600 ? 3 : 2;
+    final crossAxisCount = width > 1200
+        ? 5
+        : width > 900
+        ? 4
+        : width > 600
+        ? 3
+        : 2;
 
     // 使用横向比例，适合视频缩略图 (16:9 = 1.78，加上标题区域约 1.4)
     return GridView.builder(
@@ -2001,10 +2154,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
       itemCount: videos.length,
       itemBuilder: (context, index) {
         final video = videos[index];
-        return _PartialVideoCard(
-          video: video,
-          isDark: isDark,
-        );
+        return _PartialVideoCard(video: video, isDark: isDark);
       },
     );
   }
@@ -2030,66 +2180,66 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     VideoListLoaded state,
     bool isDark,
   ) => Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 100,
-              height: 100,
-              decoration: BoxDecoration(
-                color: AppColors.warning.withValues(alpha: 0.12),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.filter_list_off_rounded,
-                size: 50,
-                color: AppColors.warning,
-              ),
+    child: Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 100,
+            height: 100,
+            decoration: BoxDecoration(
+              color: AppColors.warning.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
             ),
-            const SizedBox(height: 24),
-            Text(
-              '媒体库路径未匹配',
-              style: context.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: isDark ? Colors.white : null,
-              ),
+            child: const Icon(
+              Icons.filter_list_off_rounded,
+              size: 50,
+              color: AppColors.warning,
             ),
-            const SizedBox(height: 12),
-            Text(
-              '数据库中有 ${state.databaseTotalCount} 个影视，但当前媒体库配置的路径没有匹配到这些数据。',
-              style: context.textTheme.bodyMedium?.copyWith(
-                color: isDark ? Colors.grey[400] : Colors.grey,
-              ),
-              textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 24),
+          Text(
+            '媒体库路径未匹配',
+            style: context.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: isDark ? Colors.white : null,
             ),
-            const SizedBox(height: 8),
-            Text(
-              '请检查媒体库设置中的目录配置是否正确。',
-              style: context.textTheme.bodySmall?.copyWith(
-                color: isDark ? Colors.grey[500] : Colors.grey[600],
-              ),
-              textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            '数据库中有 ${state.databaseTotalCount} 个影视，但当前媒体库配置的路径没有匹配到这些数据。',
+            style: context.textTheme.bodyMedium?.copyWith(
+              color: isDark ? Colors.grey[400] : Colors.grey,
             ),
-            const SizedBox(height: 32),
-            ElevatedButton.icon(
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute<void>(builder: (_) => const MediaLibraryPage()),
-              ),
-              icon: const Icon(Icons.folder_open_rounded),
-              label: const Text('媒体库设置'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
-              ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '请检查媒体库设置中的目录配置是否正确。',
+            style: context.textTheme.bodySmall?.copyWith(
+              color: isDark ? Colors.grey[500] : Colors.grey[600],
             ),
-          ],
-        ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 32),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(builder: (_) => const MediaLibraryPage()),
+            ),
+            icon: const Icon(Icons.folder_open_rounded),
+            label: const Text('媒体库设置'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+            ),
+          ),
+        ],
       ),
-    );
+    ),
+  );
 
   Widget _buildEmptyState(
     BuildContext context,
@@ -2097,14 +2247,14 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     VideoListLoaded state,
     bool isDark,
   ) =>
-    // 使用 FutureBuilder 异步获取数据库统计信息
-    FutureBuilder<String>(
-      future: VideoDatabaseService().getStatsInfo(),
-      builder: (context, snapshot) {
-        final cacheInfo = snapshot.data ?? '加载中...';
-        return _buildEmptyStateContent(context, ref, isDark, cacheInfo);
-      },
-    );
+      // 使用 FutureBuilder 异步获取数据库统计信息
+      FutureBuilder<String>(
+        future: VideoDatabaseService().getStatsInfo(),
+        builder: (context, snapshot) {
+          final cacheInfo = snapshot.data ?? '加载中...';
+          return _buildEmptyStateContent(context, ref, isDark, cacheInfo);
+        },
+      );
 
   Widget _buildEmptyStateContent(
     BuildContext context,
@@ -2112,97 +2262,101 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
     bool isDark,
     String cacheInfo,
   ) => Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 100,
-              height: 100,
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.12),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.video_library_rounded,
-                size: 50,
-                color: AppColors.primary,
-              ),
+    child: Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 100,
+            height: 100,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
             ),
-            const SizedBox(height: 24),
-            Text(
-              '视频库为空',
-              style: context.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: isDark ? Colors.white : null,
-              ),
+            child: Icon(
+              Icons.video_library_rounded,
+              size: 50,
+              color: AppColors.primary,
             ),
-            const SizedBox(height: 12),
-            Text(
-              '请在媒体库设置中配置视频目录并扫描',
-              style: context.textTheme.bodyMedium?.copyWith(
-                color: isDark ? Colors.grey[400] : Colors.grey,
-              ),
-              textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 24),
+          Text(
+            '视频库为空',
+            style: context.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: isDark ? Colors.white : null,
             ),
-            const SizedBox(height: 8),
-            // 缓存信息
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.storage_rounded,
-                    size: 14,
-                    color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            '请在媒体库设置中配置视频目录并扫描',
+            style: context.textTheme.bodyMedium?.copyWith(
+              color: isDark ? Colors.grey[400] : Colors.grey,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          // 缓存信息
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: isDark
+                  ? AppColors.darkSurfaceVariant
+                  : AppColors.lightSurfaceVariant,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.storage_rounded,
+                  size: 14,
+                  color: isDark
+                      ? AppColors.darkOnSurfaceVariant
+                      : AppColors.lightOnSurfaceVariant,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  cacheInfo,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark
+                        ? AppColors.darkOnSurfaceVariant
+                        : AppColors.lightOnSurfaceVariant,
                   ),
-                  const SizedBox(width: 6),
-                  Text(
-                    cacheInfo,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-            const SizedBox(height: 32),
-            ElevatedButton.icon(
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute<void>(builder: (_) => const MediaLibraryPage()),
-              ),
-              icon: const Icon(Icons.folder_open_rounded),
-              label: const Text('媒体库设置'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
-              ),
+          ),
+          const SizedBox(height: 32),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(builder: (_) => const MediaLibraryPage()),
             ),
-            const SizedBox(height: 16),
-            TextButton.icon(
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute<void>(builder: (_) => const SourcesPage()),
-              ),
-              icon: const Icon(Icons.cloud_rounded),
-              label: const Text('连接管理'),
-              style: TextButton.styleFrom(
-                foregroundColor: AppColors.primary,
-              ),
+            icon: const Icon(Icons.folder_open_rounded),
+            label: const Text('媒体库设置'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
             ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 16),
+          TextButton.icon(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(builder: (_) => const SourcesPage()),
+            ),
+            icon: const Icon(Icons.cloud_rounded),
+            label: const Text('连接管理'),
+            style: TextButton.styleFrom(foregroundColor: AppColors.primary),
+          ),
+        ],
       ),
-    );
+    ),
+  );
 
   Widget _buildVideoContent(
     BuildContext context,
@@ -2284,21 +2438,23 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
       }
 
       // 构建该分类的 sliver
-      slivers.addAll(_buildCategorySliver(
-        context: context,
-        ref: ref,
-        section: section,
-        state: state,
-        isDark: isDark,
-        isDesktop: isDesktop,
-        recentVideos: recentVideos,
-        allRecentVideos: allRecentVideos,
-        movies: movies,
-        tvShowGroups: tvShowGroups,
-        movieCollections: movieCollections,
-        topRated: topRated,
-        categorySettings: categorySettings,
-      ));
+      slivers.addAll(
+        _buildCategorySliver(
+          context: context,
+          ref: ref,
+          section: section,
+          state: state,
+          isDark: isDark,
+          isDesktop: isDesktop,
+          recentVideos: recentVideos,
+          allRecentVideos: allRecentVideos,
+          movies: movies,
+          tvShowGroups: tvShowGroups,
+          movieCollections: movieCollections,
+          topRated: topRated,
+          categorySettings: categorySettings,
+        ),
+      );
     }
 
     return slivers;
@@ -2328,7 +2484,9 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
       if (config != null) {
         final paths = config.getEnabledPathsForType(MediaType.video);
         if (paths.isNotEmpty) {
-          enabledPaths = paths.map((p) => (sourceId: p.sourceId, path: p.path)).toList();
+          enabledPaths = paths
+              .map((p) => (sourceId: p.sourceId, path: p.path))
+              .toList();
         }
       }
     }
@@ -2348,7 +2506,9 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
                 height: isDesktop ? 450 : 200,
                 margin: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
+                  color: isDark
+                      ? AppColors.darkSurfaceVariant
+                      : AppColors.lightSurfaceVariant,
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Center(
@@ -2501,9 +2661,14 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
             child: _MovieCollectionRow(
               title: '电影系列',
               collections: movieCollections,
-              onCollectionTap: (collection) => _showCollectionPage(context, ref, collection),
+              onCollectionTap: (collection) =>
+                  _showCollectionPage(context, ref, collection),
               onSeeAllTap: movieCollections.length > 10
-                  ? () => _showMovieCollectionsFullPage(context, ref, movieCollections)
+                  ? () => _showMovieCollectionsFullPage(
+                      context,
+                      ref,
+                      movieCollections,
+                    )
                   : null,
               isDark: isDark,
               icon: Icons.video_library_rounded,
@@ -2756,13 +2921,14 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
   }
 
   /// 显示分类页面（旧版，用于最近添加等）
-  void _showCategoryPage(BuildContext context, String title, List<VideoMetadata> items) {
+  void _showCategoryPage(
+    BuildContext context,
+    String title,
+    List<VideoMetadata> items,
+  ) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (context) => _CategoryFullPage(
-          title: title,
-          items: items,
-        ),
+        builder: (context) => _CategoryFullPage(title: title, items: items),
       ),
     );
   }
@@ -2771,9 +2937,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
   void _showMoviesPage(BuildContext context, WidgetRef ref, String title) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (context) => _MoviesPaginatedPage(
-          title: title,
-        ),
+        builder: (context) => _MoviesPaginatedPage(title: title),
       ),
     );
   }
@@ -2782,9 +2946,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
   void _showTvShowsFullPage(BuildContext context, WidgetRef ref, String title) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (context) => _TvShowsPaginatedPage(
-          title: title,
-        ),
+        builder: (context) => _TvShowsPaginatedPage(title: title),
       ),
     );
   }
@@ -2793,9 +2955,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
   void _showOthersPage(BuildContext context, WidgetRef ref, String title) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (context) => _OthersPaginatedPage(
-          title: title,
-        ),
+        builder: (context) => _OthersPaginatedPage(title: title),
       ),
     );
   }
@@ -2821,7 +2981,11 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
   }
 
   /// 显示电影系列详情页面
-  void _showCollectionPage(BuildContext context, WidgetRef ref, MovieCollection collection) {
+  void _showCollectionPage(
+    BuildContext context,
+    WidgetRef ref,
+    MovieCollection collection,
+  ) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (context) => _MovieCollectionPage(
@@ -2842,7 +3006,8 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
       MaterialPageRoute<void>(
         builder: (context) => _MovieCollectionsFullPage(
           collections: collections,
-          onCollectionTap: (collection) => _showCollectionPage(context, ref, collection),
+          onCollectionTap: (collection) =>
+              _showCollectionPage(context, ref, collection),
         ),
       ),
     );
@@ -2872,7 +3037,9 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               '未找到 "${state.searchQuery}" 的相关结果',
               style: TextStyle(
                 fontSize: 16,
-                color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+                color: isDark
+                    ? AppColors.darkOnSurfaceVariant
+                    : AppColors.lightOnSurfaceVariant,
               ),
             ),
           ],
@@ -2889,7 +3056,9 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
               '找到 ${results.length} 个结果',
               style: TextStyle(
                 fontSize: 14,
-                color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+                color: isDark
+                    ? AppColors.darkOnSurfaceVariant
+                    : AppColors.lightOnSurfaceVariant,
               ),
             ),
           ),
@@ -2923,7 +3092,9 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
 
     try {
       // 获取视频URL
-      final url = await connection.adapter.fileSystem.getFileUrl(metadata.filePath);
+      final url = await connection.adapter.fileSystem.getFileUrl(
+        metadata.filePath,
+      );
 
       if (!context.mounted) return;
 
@@ -2954,10 +3125,8 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
   ) async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (context) => VideoDetailPage(
-          metadata: metadata,
-          sourceId: metadata.sourceId,
-        ),
+        builder: (context) =>
+            VideoDetailPage(metadata: metadata, sourceId: metadata.sourceId),
       ),
     );
     ref.invalidate(continueWatchingProvider);
@@ -3002,12 +3171,15 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
         final confirmed = await showDeleteConfirmDialog(
           context: context,
           title: '从媒体库移除',
-          content: '确定要从媒体库移除「${metadata.displayTitle}」吗？\n\n这只会移除索引记录，源文件不会被删除。',
+          content:
+              '确定要从媒体库移除「${metadata.displayTitle}」吗？\n\n这只会移除索引记录，源文件不会被删除。',
           confirmText: '移除',
           isDestructive: false,
         );
         if (confirmed && context.mounted) {
-          final success = await ref.read(videoListProvider.notifier).removeFromLibrary(metadata);
+          final success = await ref
+              .read(videoListProvider.notifier)
+              .removeFromLibrary(metadata);
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -3021,10 +3193,13 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
         final confirmed = await showDeleteConfirmDialog(
           context: context,
           title: '删除源文件',
-          content: '确定要删除「${metadata.displayTitle}」的源文件吗？\n\n⚠️ 此操作不可恢复！文件将从 NAS 中永久删除。',
+          content:
+              '确定要删除「${metadata.displayTitle}」的源文件吗？\n\n⚠️ 此操作不可恢复！文件将从 NAS 中永久删除。',
         );
         if (confirmed && context.mounted) {
-          final success = await ref.read(videoListProvider.notifier).deleteFromSource(metadata);
+          final success = await ref
+              .read(videoListProvider.notifier)
+              .deleteFromSource(metadata);
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -3057,7 +3232,8 @@ class _ContinueWatchingSection extends ConsumerWidget {
 
     return continueWatchingAsync.when(
       data: (items) {
-        if (items.isEmpty) return const SliverToBoxAdapter(child: SizedBox.shrink());
+        if (items.isEmpty)
+          return const SliverToBoxAdapter(child: SizedBox.shrink());
 
         return SliverToBoxAdapter(
           child: Column(
@@ -3096,10 +3272,8 @@ class _ContinueWatchingSection extends ConsumerWidget {
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   itemCount: items.length,
-                  itemBuilder: (context, index) => _ContinueWatchingCard(
-                    item: items[index],
-                    isDark: isDark,
-                  ),
+                  itemBuilder: (context, index) =>
+                      _ContinueWatchingCard(item: items[index], isDark: isDark),
                 ),
               ),
             ],
@@ -3114,10 +3288,7 @@ class _ContinueWatchingSection extends ConsumerWidget {
 
 /// 继续观看卡片
 class _ContinueWatchingCard extends ConsumerWidget {
-  _ContinueWatchingCard({
-    required this.item,
-    required this.isDark,
-  });
+  _ContinueWatchingCard({required this.item, required this.isDark});
 
   final VideoHistoryItem item;
   final bool isDark;
@@ -3126,7 +3297,9 @@ class _ContinueWatchingCard extends ConsumerWidget {
   /// 获取可用的海报 URL - 优先使用进度截图，其次是历史记录中的 thumbnailUrl
   String? _getDisplayPosterUrl() {
     // 优先使用进度截图（停止帧）
-    final progressThumbnail = _thumbnailService.getProgressThumbnailUrl(item.videoPath);
+    final progressThumbnail = _thumbnailService.getProgressThumbnailUrl(
+      item.videoPath,
+    );
     if (progressThumbnail != null) {
       return progressThumbnail;
     }
@@ -3172,8 +3345,10 @@ class _ContinueWatchingCard extends ConsumerWidget {
                         child: posterUrl != null
                             ? AdaptiveImage(
                                 imageUrl: posterUrl,
-                                placeholder: (_) => _buildThumbnailPlaceholder(),
-                                errorWidget: (_, _) => _buildThumbnailPlaceholder(),
+                                placeholder: (_) =>
+                                    _buildThumbnailPlaceholder(),
+                                errorWidget: (_, _) =>
+                                    _buildThumbnailPlaceholder(),
                               )
                             : _buildThumbnailPlaceholder(),
                       ),
@@ -3216,7 +3391,9 @@ class _ContinueWatchingCard extends ConsumerWidget {
                           '${_formatDuration(item.lastPosition!)} / ${_formatDuration(item.duration!)}',
                           style: TextStyle(
                             fontSize: 10,
-                            color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant,
+                            color: isDark
+                                ? AppColors.darkOnSurfaceVariant
+                                : AppColors.lightOnSurfaceVariant,
                           ),
                         ),
                     ],
@@ -3231,15 +3408,11 @@ class _ContinueWatchingCard extends ConsumerWidget {
   }
 
   Widget _buildThumbnailPlaceholder() => Container(
-        color: isDark ? Colors.grey[800] : Colors.grey[200],
-        child: const Center(
-          child: Icon(
-            Icons.play_circle_rounded,
-            size: 40,
-            color: Colors.white54,
-          ),
-        ),
-      );
+    color: isDark ? Colors.grey[800] : Colors.grey[200],
+    child: const Center(
+      child: Icon(Icons.play_circle_rounded, size: 40, color: Colors.white54),
+    ),
+  );
 
   String _formatDuration(Duration d) {
     final hours = d.inHours;
@@ -3265,6 +3438,9 @@ class _ContinueWatchingCard extends ConsumerWidget {
 
     if (!context.mounted) return;
 
+    // 尝试获取视频元数据，如果是剧集则设置播放列表
+    await _trySetPlaylistForTvEpisode(ref);
+
     await Navigator.of(context, rootNavigator: true).push(
       MaterialPageRoute<void>(
         builder: (context) => VideoPlayerPage(video: videoItem),
@@ -3275,113 +3451,202 @@ class _ContinueWatchingCard extends ConsumerWidget {
     if (!context.mounted) return;
     ref.invalidate(continueWatchingProvider);
   }
+
+  /// 尝试为电视剧集设置播放列表
+  ///
+  /// 从 VideoMetadataService 获取视频元数据，如果是剧集则获取同季所有剧集并设置播放列表
+  Future<void> _trySetPlaylistForTvEpisode(WidgetRef ref) async {
+    try {
+      // 获取视频元数据
+      final metadataService = ref.read(videoMetadataServiceProvider);
+      await metadataService.init();
+
+      final sourceId = item.sourceId;
+      if (sourceId == null) return;
+
+      final metadata = await metadataService.getCachedAsync(
+        sourceId,
+        item.videoPath,
+      );
+      if (metadata == null) return;
+
+      // 检查是否为电视剧集
+      if (metadata.category != MediaCategory.tvShow) return;
+      if (metadata.seasonNumber == null) return;
+
+      // 获取同系列剧集
+      var localEpisodes = <int, Map<int, VideoMetadata>>{};
+
+      if (metadata.tmdbId != null) {
+        // 使用 TMDB ID 查询
+        localEpisodes = await metadataService.getEpisodesByTmdbId(
+          metadata.tmdbId!,
+        );
+      } else {
+        // 使用 showDirectory 查询
+        var showDirectory = metadata.showDirectory;
+        if (showDirectory == null || showDirectory.isEmpty) {
+          showDirectory = VideoDatabaseService.extractShowDirectory(
+            metadata.filePath,
+          );
+        }
+        if (showDirectory != null && showDirectory.isNotEmpty) {
+          localEpisodes = await metadataService.getEpisodesByShowDirectory(
+            showDirectory,
+          );
+        }
+      }
+
+      // 获取当前季的剧集
+      final seasonEpisodes = localEpisodes[metadata.seasonNumber] ?? {};
+      if (seasonEpisodes.isEmpty) {
+        logger.d('ContinueWatchingCard: 无法构建播放列表，当前季无其他剧集');
+        return;
+      }
+
+      // 按集号排序并构建 VideoItem 列表
+      final episodeNumbers = seasonEpisodes.keys.toList()..sort();
+      final playlistItems = <VideoItem>[];
+      var startIndex = 0;
+
+      for (var i = 0; i < episodeNumbers.length; i++) {
+        final epNum = episodeNumbers[i];
+        final episode = seasonEpisodes[epNum]!;
+
+        playlistItems.add(
+          VideoItem(
+            name: episode.episodeTitle ?? episode.displayTitle,
+            path: episode.filePath,
+            // URL 留空，播放时会自动获取
+            sourceId: sourceId,
+            size: episode.fileSize ?? 0,
+            thumbnailUrl: episode.displayPosterUrl,
+          ),
+        );
+
+        // 记录当前播放集的索引
+        if (episode.filePath == item.videoPath) {
+          startIndex = i;
+        }
+      }
+
+      // 设置播放列表
+      if (playlistItems.isNotEmpty) {
+        ref
+            .read(playlistProvider.notifier)
+            .setPlaylist(playlistItems, startIndex: startIndex);
+        logger.i(
+          'ContinueWatchingCard: 播放列表已设置，共 ${playlistItems.length} 集，从第 ${startIndex + 1} 集开始',
+        );
+      }
+    } catch (e, st) {
+      // 设置播放列表失败不影响正常播放
+      AppError.ignore(e, st, 'ContinueWatchingCard: 设置播放列表失败');
+    }
+  }
 }
 
 /// 扫描中的简化视频卡片（横向布局）
 class _PartialVideoCard extends StatelessWidget {
-  const _PartialVideoCard({
-    required this.video,
-    required this.isDark,
-  });
+  const _PartialVideoCard({required this.video, required this.isDark});
 
   final VideoFileWithSource video;
   final bool isDark;
 
   @override
   Widget build(BuildContext context) => Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // 横向视频缩略图
-        Expanded(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
-              borderRadius: BorderRadius.circular(10),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.15),
-                  blurRadius: 6,
-                  offset: const Offset(0, 3),
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      // 横向视频缩略图
+      Expanded(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: isDark
+                ? AppColors.darkSurfaceVariant
+                : AppColors.lightSurfaceVariant,
+            borderRadius: BorderRadius.circular(10),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.15),
+                blurRadius: 6,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // 缩略图或占位符
+                if (video.thumbnailUrl != null &&
+                    AdaptiveImage.isSupportedUrl(video.thumbnailUrl!))
+                  AdaptiveImage(
+                    imageUrl: video.thumbnailUrl!,
+                    placeholder: (_) => _buildPlaceholder(),
+                    errorWidget: (_, _) => _buildPlaceholder(),
+                  )
+                else
+                  _buildPlaceholder(),
+                // 扫描中标记
+                Positioned(
+                  top: 6,
+                  right: 6,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 5,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: 8,
+                          height: 8,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 1.5,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Text(
+                          '扫描中',
+                          style: TextStyle(color: Colors.white, fontSize: 9),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  // 缩略图或占位符
-                  if (video.thumbnailUrl != null &&
-                      AdaptiveImage.isSupportedUrl(video.thumbnailUrl!))
-                    AdaptiveImage(
-                      imageUrl: video.thumbnailUrl!,
-                      placeholder: (_) => _buildPlaceholder(),
-                      errorWidget: (_, _) => _buildPlaceholder(),
-                    )
-                  else
-                    _buildPlaceholder(),
-                  // 扫描中标记
-                  Positioned(
-                    top: 6,
-                    right: 6,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 5,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.black54,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          SizedBox(
-                            width: 8,
-                            height: 8,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 1.5,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          const Text(
-                            '扫描中',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 9,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
           ),
         ),
-        const SizedBox(height: 6),
-        Text(
-          video.name,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w500,
-            color: isDark ? Colors.white : null,
-          ),
+      ),
+      const SizedBox(height: 6),
+      Text(
+        video.name,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w500,
+          color: isDark ? Colors.white : null,
         ),
-      ],
-    );
+      ),
+    ],
+  );
 
   Widget _buildPlaceholder() => Center(
-      child: Icon(
-        Icons.movie_rounded,
-        size: 32,
-        color: isDark ? Colors.grey[600] : Colors.grey[400],
-      ),
-    );
+    child: Icon(
+      Icons.movie_rounded,
+      size: 32,
+      color: isDark ? Colors.grey[600] : Colors.grey[400],
+    ),
+  );
 }
 
 /// 海报卡片（带播放进度）
@@ -3414,7 +3679,10 @@ class _PosterCardState extends ConsumerState<_PosterCard> {
     // 获取播放进度
     final progressAsync = ref.watch(allVideoProgressProvider);
     final progress = progressAsync.valueOrNull?[widget.metadata.filePath];
-    final hasProgress = progress != null && progress.progressPercent > 0.02 && progress.progressPercent < 0.98;
+    final hasProgress =
+        progress != null &&
+        progress.progressPercent > 0.02 &&
+        progress.progressPercent < 0.98;
 
     return Container(
       width: widget.width,
@@ -3426,7 +3694,13 @@ class _PosterCardState extends ConsumerState<_PosterCard> {
           onTap: widget.onTap,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
-            transform: Matrix4.identity()..scaleByDouble(_isHovered ? 1.05 : 1.0, _isHovered ? 1.05 : 1.0, 1, 1),
+            transform: Matrix4.identity()
+              ..scaleByDouble(
+                _isHovered ? 1.05 : 1.0,
+                _isHovered ? 1.05 : 1.0,
+                1,
+                1,
+              ),
             transformAlignment: Alignment.center,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -3438,7 +3712,9 @@ class _PosterCardState extends ConsumerState<_PosterCard> {
                       borderRadius: BorderRadius.circular(12),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: _isHovered ? 0.4 : 0.25),
+                          color: Colors.black.withValues(
+                            alpha: _isHovered ? 0.4 : 0.25,
+                          ),
                           blurRadius: _isHovered ? 20 : 10,
                           offset: Offset(0, _isHovered ? 10 : 5),
                         ),
@@ -3497,13 +3773,17 @@ class _PosterCardState extends ConsumerState<_PosterCard> {
                                 ),
                                 child: FractionallySizedBox(
                                   alignment: Alignment.centerLeft,
-                                  widthFactor: progress.progressPercent.clamp(0.0, 1.0),
+                                  widthFactor: progress.progressPercent.clamp(
+                                    0.0,
+                                    1.0,
+                                  ),
                                   child: Container(
                                     decoration: BoxDecoration(
                                       color: AppColors.primary,
                                       borderRadius: BorderRadius.only(
                                         bottomLeft: const Radius.circular(12),
-                                        bottomRight: progress.progressPercent > 0.95
+                                        bottomRight:
+                                            progress.progressPercent > 0.95
                                             ? const Radius.circular(12)
                                             : Radius.zero,
                                       ),
@@ -3582,7 +3862,8 @@ class _PosterCardState extends ConsumerState<_PosterCard> {
                               widget.metadata.isScraping)
                             Positioned(
                               top: 8,
-                              left: widget.metadata.category ==
+                              left:
+                                  widget.metadata.category ==
                                       MediaCategory.tvShow
                                   ? 50
                                   : 8,
@@ -3592,7 +3873,9 @@ class _PosterCardState extends ConsumerState<_PosterCard> {
                                   vertical: 2,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: Colors.grey[800]!.withValues(alpha: 0.9),
+                                  color: Colors.grey[800]!.withValues(
+                                    alpha: 0.9,
+                                  ),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: Row(
@@ -3614,7 +3897,9 @@ class _PosterCardState extends ConsumerState<_PosterCard> {
                                     ),
                                     const SizedBox(width: 3),
                                     Text(
-                                      widget.metadata.isScraping ? '刮削中' : '待刮削',
+                                      widget.metadata.isScraping
+                                          ? '刮削中'
+                                          : '待刮削',
                                       style: TextStyle(
                                         color: Colors.grey[300],
                                         fontSize: 8,
@@ -3696,7 +3981,9 @@ class _PosterCardState extends ConsumerState<_PosterCard> {
                     '${widget.metadata.year}',
                     style: TextStyle(
                       fontSize: 10,
-                      color: widget.isDark ? Colors.grey[500] : Colors.grey[600],
+                      color: widget.isDark
+                          ? Colors.grey[500]
+                          : Colors.grey[600],
                     ),
                   ),
               ],
@@ -3708,17 +3995,19 @@ class _PosterCardState extends ConsumerState<_PosterCard> {
   }
 
   Widget _buildPlaceholder() => Container(
-      color: widget.isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
-      child: Center(
-        child: Icon(
-          widget.metadata.category == MediaCategory.tvShow
-              ? Icons.live_tv_rounded
-              : Icons.movie_rounded,
-          size: 40,
-          color: widget.isDark ? Colors.grey[600] : Colors.grey[400],
-        ),
+    color: widget.isDark
+        ? AppColors.darkSurfaceVariant
+        : AppColors.lightSurfaceVariant,
+    child: Center(
+      child: Icon(
+        widget.metadata.category == MediaCategory.tvShow
+            ? Icons.live_tv_rounded
+            : Icons.movie_rounded,
+        size: 40,
+        color: widget.isDark ? Colors.grey[600] : Colors.grey[400],
       ),
-    );
+    ),
+  );
 
   Color _getRatingColor() => AppColors.ratingColor(widget.metadata.rating ?? 0);
 }
@@ -3745,8 +4034,12 @@ class _SkeletonCategoryRow extends StatelessWidget {
     final effectiveIconColor = iconColor ?? AppColors.primary;
     const cardWidth = 130.0;
     const cardHeight = 195.0;
-    final shimmerBaseColor = isDark ? AppColors.darkOutline : AppColors.lightOutline;
-    final shimmerHighlightColor = isDark ? Colors.grey[700]! : Colors.grey[100]!;
+    final shimmerBaseColor = isDark
+        ? AppColors.darkOutline
+        : AppColors.lightOutline;
+    final shimmerHighlightColor = isDark
+        ? Colors.grey[700]!
+        : Colors.grey[100]!;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -3799,40 +4092,40 @@ class _SkeletonCategoryRow extends StatelessWidget {
             physics: const NeverScrollableScrollPhysics(),
             itemCount: itemCount,
             itemBuilder: (context, index) => Container(
-                width: cardWidth,
-                margin: const EdgeInsets.only(right: 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // 海报骨架
-                    _ShimmerBox(
-                      width: cardWidth,
-                      height: cardHeight,
-                      borderRadius: 8,
-                      baseColor: shimmerBaseColor,
-                      highlightColor: shimmerHighlightColor,
-                    ),
-                    const SizedBox(height: 8),
-                    // 标题骨架
-                    _ShimmerBox(
-                      width: cardWidth * 0.8,
-                      height: 14,
-                      borderRadius: 4,
-                      baseColor: shimmerBaseColor,
-                      highlightColor: shimmerHighlightColor,
-                    ),
-                    const SizedBox(height: 4),
-                    // 副标题骨架
-                    _ShimmerBox(
-                      width: cardWidth * 0.5,
-                      height: 12,
-                      borderRadius: 4,
-                      baseColor: shimmerBaseColor,
-                      highlightColor: shimmerHighlightColor,
-                    ),
-                  ],
-                ),
+              width: cardWidth,
+              margin: const EdgeInsets.only(right: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 海报骨架
+                  _ShimmerBox(
+                    width: cardWidth,
+                    height: cardHeight,
+                    borderRadius: 8,
+                    baseColor: shimmerBaseColor,
+                    highlightColor: shimmerHighlightColor,
+                  ),
+                  const SizedBox(height: 8),
+                  // 标题骨架
+                  _ShimmerBox(
+                    width: cardWidth * 0.8,
+                    height: 14,
+                    borderRadius: 4,
+                    baseColor: shimmerBaseColor,
+                    highlightColor: shimmerHighlightColor,
+                  ),
+                  const SizedBox(height: 4),
+                  // 副标题骨架
+                  _ShimmerBox(
+                    width: cardWidth * 0.5,
+                    height: 12,
+                    borderRadius: 4,
+                    baseColor: shimmerBaseColor,
+                    highlightColor: shimmerHighlightColor,
+                  ),
+                ],
               ),
+            ),
           ),
         ),
       ],
@@ -3885,29 +4178,25 @@ class _ShimmerBoxState extends State<_ShimmerBox>
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
-      animation: _animation,
-      builder: (context, child) => Container(
-          width: widget.width,
-          height: widget.height,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(widget.borderRadius),
-            gradient: LinearGradient(
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight,
-              colors: [
-                widget.baseColor,
-                widget.highlightColor,
-                widget.baseColor,
-              ],
-              stops: [
-                (_animation.value - 0.3).clamp(0.0, 1.0),
-                _animation.value.clamp(0.0, 1.0),
-                (_animation.value + 0.3).clamp(0.0, 1.0),
-              ],
-            ),
-          ),
+    animation: _animation,
+    builder: (context, child) => Container(
+      width: widget.width,
+      height: widget.height,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(widget.borderRadius),
+        gradient: LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [widget.baseColor, widget.highlightColor, widget.baseColor],
+          stops: [
+            (_animation.value - 0.3).clamp(0.0, 1.0),
+            _animation.value.clamp(0.0, 1.0),
+            (_animation.value + 0.3).clamp(0.0, 1.0),
+          ],
         ),
-    );
+      ),
+    ),
+  );
 }
 
 /// 分类行组件（Netflix 风格，带查看更多）
@@ -3936,8 +4225,10 @@ class _CategoryRow extends StatelessWidget {
   final int maxCount;
   final VoidCallback? onViewAll;
   final bool useVerticalPosters;
+
   /// 实际总数量（用于显示在"查看全部"按钮上，如果不传则使用 items.length）
   final int? totalCount;
+
   /// 长按/右键点击时的上下文菜单回调
   final void Function(VideoMetadata)? onItemContextMenu;
 
@@ -3950,7 +4241,9 @@ class _CategoryRow extends StatelessWidget {
     final showViewMore = onViewAll != null;
     // 使用真实总数（如果提供），否则使用 items.length
     final actualTotalCount = totalCount ?? items.length;
-    final remainingCount = actualTotalCount > maxCount ? actualTotalCount - maxCount : 0;
+    final remainingCount = actualTotalCount > maxCount
+        ? actualTotalCount - maxCount
+        : 0;
     final effectiveIconColor = iconColor ?? AppColors.primary;
 
     // 根据海报类型计算高度
@@ -3992,7 +4285,10 @@ class _CategoryRow extends StatelessWidget {
                 TextButton(
                   onPressed: onViewAll,
                   style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -4093,7 +4389,9 @@ class _ViewMoreCardState extends State<_ViewMoreCard> {
     const horizontalHeight = 124.0;
 
     final width = widget.useVerticalStyle ? verticalWidth : horizontalWidth;
-    final posterHeight = widget.useVerticalStyle ? verticalPosterHeight : horizontalHeight;
+    final posterHeight = widget.useVerticalStyle
+        ? verticalPosterHeight
+        : horizontalHeight;
 
     if (widget.useVerticalStyle) {
       // 纵向样式：与 _VerticalPosterCard 结构完全一致
@@ -4126,20 +4424,30 @@ class _ViewMoreCardState extends State<_ViewMoreCard> {
                                 AppColors.primary.withValues(alpha: 0.1),
                               ]
                             : [
-                                if (widget.isDark) Colors.grey[850]! else Colors.grey[200]!,
-                                if (widget.isDark) Colors.grey[900]! else Colors.grey[100]!,
+                                if (widget.isDark)
+                                  Colors.grey[850]!
+                                else
+                                  Colors.grey[200]!,
+                                if (widget.isDark)
+                                  Colors.grey[900]!
+                                else
+                                  Colors.grey[100]!,
                               ],
                       ),
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
                         color: _isHovered
                             ? AppColors.primary
-                            : (widget.isDark ? Colors.grey[700]! : Colors.grey[300]!),
+                            : (widget.isDark
+                                  ? Colors.grey[700]!
+                                  : Colors.grey[300]!),
                         width: _isHovered ? 2 : 1,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: _isHovered ? 0.4 : 0.2),
+                          color: Colors.black.withValues(
+                            alpha: _isHovered ? 0.4 : 0.2,
+                          ),
                           blurRadius: _isHovered ? 16 : 8,
                           offset: Offset(0, _isHovered ? 8 : 4),
                         ),
@@ -4156,14 +4464,18 @@ class _ViewMoreCardState extends State<_ViewMoreCard> {
                           decoration: BoxDecoration(
                             color: _isHovered
                                 ? AppColors.primary.withValues(alpha: 0.2)
-                                : (widget.isDark ? Colors.grey[800] : Colors.grey[300]),
+                                : (widget.isDark
+                                      ? Colors.grey[800]
+                                      : Colors.grey[300]),
                             shape: BoxShape.circle,
                           ),
                           child: Icon(
                             Icons.grid_view_rounded,
                             color: _isHovered
                                 ? AppColors.primary
-                                : (widget.isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant),
+                                : (widget.isDark
+                                      ? AppColors.darkOnSurfaceVariant
+                                      : AppColors.lightOnSurfaceVariant),
                             size: 28,
                           ),
                         ),
@@ -4176,7 +4488,9 @@ class _ViewMoreCardState extends State<_ViewMoreCard> {
                             fontWeight: FontWeight.w600,
                             color: _isHovered
                                 ? AppColors.primary
-                                : (widget.isDark ? Colors.white : Colors.black87),
+                                : (widget.isDark
+                                      ? Colors.white
+                                      : Colors.black87),
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -4187,7 +4501,9 @@ class _ViewMoreCardState extends State<_ViewMoreCard> {
                               : '共 ${widget.totalCount} 部',
                           style: TextStyle(
                             fontSize: 11,
-                            color: widget.isDark ? Colors.grey[500] : Colors.grey[600],
+                            color: widget.isDark
+                                ? Colors.grey[500]
+                                : Colors.grey[600],
                           ),
                         ),
                       ],
@@ -4210,7 +4526,9 @@ class _ViewMoreCardState extends State<_ViewMoreCard> {
                     '共 ${widget.totalCount} 部',
                     style: TextStyle(
                       fontSize: 10,
-                      color: widget.isDark ? Colors.grey[500] : Colors.grey[600],
+                      color: widget.isDark
+                          ? Colors.grey[500]
+                          : Colors.grey[600],
                     ),
                   ),
                 ],
@@ -4245,8 +4563,14 @@ class _ViewMoreCardState extends State<_ViewMoreCard> {
                           AppColors.primary.withValues(alpha: 0.1),
                         ]
                       : [
-                          if (widget.isDark) Colors.grey[850]! else Colors.grey[200]!,
-                          if (widget.isDark) Colors.grey[900]! else Colors.grey[100]!,
+                          if (widget.isDark)
+                            Colors.grey[850]!
+                          else
+                            Colors.grey[200]!,
+                          if (widget.isDark)
+                            Colors.grey[900]!
+                          else
+                            Colors.grey[100]!,
                         ],
                 ),
                 borderRadius: BorderRadius.circular(8),
@@ -4277,14 +4601,18 @@ class _ViewMoreCardState extends State<_ViewMoreCard> {
                     decoration: BoxDecoration(
                       color: _isHovered
                           ? AppColors.primary.withValues(alpha: 0.2)
-                          : (widget.isDark ? Colors.grey[800] : Colors.grey[300]),
+                          : (widget.isDark
+                                ? Colors.grey[800]
+                                : Colors.grey[300]),
                       shape: BoxShape.circle,
                     ),
                     child: Icon(
                       Icons.grid_view_rounded,
                       color: _isHovered
                           ? AppColors.primary
-                          : (widget.isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant),
+                          : (widget.isDark
+                                ? AppColors.darkOnSurfaceVariant
+                                : AppColors.lightOnSurfaceVariant),
                       size: 20,
                     ),
                   ),
@@ -4311,7 +4639,9 @@ class _ViewMoreCardState extends State<_ViewMoreCard> {
                             : '共 ${widget.totalCount} 部',
                         style: TextStyle(
                           fontSize: 11,
-                          color: widget.isDark ? Colors.grey[500] : Colors.grey[600],
+                          color: widget.isDark
+                              ? Colors.grey[500]
+                              : Colors.grey[600],
                         ),
                       ),
                     ],
@@ -4332,7 +4662,10 @@ class _ViewMoreCardState extends State<_ViewMoreCard> {
 /// StreamImage 有内存缓存，所以重新创建时可以快速从缓存获取图片数据。
 class _LazyPosterCard extends ConsumerWidget {
   const _LazyPosterCard({
-    required this.metadata, required this.onTap, required this.isDark, super.key,
+    required this.metadata,
+    required this.onTap,
+    required this.isDark,
+    super.key,
     this.width = 130,
     this.showMargin = true,
   });
@@ -4345,12 +4678,12 @@ class _LazyPosterCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => _VerticalPosterCard(
-      metadata: metadata,
-      onTap: onTap,
-      isDark: isDark,
-      width: width,
-      showMargin: showMargin,
-    );
+    metadata: metadata,
+    onTap: onTap,
+    isDark: isDark,
+    width: width,
+    showMargin: showMargin,
+  );
 }
 
 /// 纵向海报卡片（2:3 比例，Netflix 风格）
@@ -4369,11 +4702,13 @@ class _VerticalPosterCard extends ConsumerStatefulWidget {
   final bool isDark;
   final double width;
   final void Function(VideoMetadata metadata)? onContextMenu;
+
   /// 是否显示右边距（用于水平滚动列表，GridView 不需要）
   final bool showMargin;
 
   @override
-  ConsumerState<_VerticalPosterCard> createState() => _VerticalPosterCardState();
+  ConsumerState<_VerticalPosterCard> createState() =>
+      _VerticalPosterCardState();
 }
 
 class _VerticalPosterCardState extends ConsumerState<_VerticalPosterCard> {
@@ -4393,7 +4728,8 @@ class _VerticalPosterCardState extends ConsumerState<_VerticalPosterCard> {
   void didUpdateWidget(covariant _VerticalPosterCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     // 当 metadata 变化时更新海报 URL
-    if (oldWidget.metadata.displayPosterUrl != widget.metadata.displayPosterUrl) {
+    if (oldWidget.metadata.displayPosterUrl !=
+        widget.metadata.displayPosterUrl) {
       _updatePosterUrl();
     }
   }
@@ -4408,7 +4744,10 @@ class _VerticalPosterCardState extends ConsumerState<_VerticalPosterCard> {
     // 获取播放进度
     final progressAsync = ref.watch(allVideoProgressProvider);
     final progress = progressAsync.valueOrNull?[widget.metadata.filePath];
-    final hasProgress = progress != null && progress.progressPercent > 0.02 && progress.progressPercent < 0.98;
+    final hasProgress =
+        progress != null &&
+        progress.progressPercent > 0.02 &&
+        progress.progressPercent < 0.98;
 
     // 2:3 海报比例
     final posterHeight = widget.width * 1.5;
@@ -4442,7 +4781,9 @@ class _VerticalPosterCardState extends ConsumerState<_VerticalPosterCard> {
                     borderRadius: BorderRadius.circular(8),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: _isHovered ? 0.4 : 0.2),
+                        color: Colors.black.withValues(
+                          alpha: _isHovered ? 0.4 : 0.2,
+                        ),
                         blurRadius: _isHovered ? 16 : 8,
                         offset: Offset(0, _isHovered ? 8 : 4),
                       ),
@@ -4506,13 +4847,17 @@ class _VerticalPosterCardState extends ConsumerState<_VerticalPosterCard> {
                                 ),
                                 child: FractionallySizedBox(
                                   alignment: Alignment.centerLeft,
-                                  widthFactor: progress.progressPercent.clamp(0.0, 1.0),
+                                  widthFactor: progress.progressPercent.clamp(
+                                    0.0,
+                                    1.0,
+                                  ),
                                   child: Container(
                                     decoration: BoxDecoration(
                                       color: AppColors.primary,
                                       borderRadius: BorderRadius.only(
                                         bottomLeft: const Radius.circular(8),
-                                        bottomRight: progress.progressPercent > 0.95
+                                        bottomRight:
+                                            progress.progressPercent > 0.95
                                             ? const Radius.circular(8)
                                             : Radius.zero,
                                       ),
@@ -4524,12 +4869,16 @@ class _VerticalPosterCardState extends ConsumerState<_VerticalPosterCard> {
                           ),
 
                         // 评分徽章
-                        if (widget.metadata.rating != null && widget.metadata.rating! > 0)
+                        if (widget.metadata.rating != null &&
+                            widget.metadata.rating! > 0)
                           Positioned(
                             top: 6,
                             right: 6,
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 5,
+                                vertical: 2,
+                              ),
                               decoration: BoxDecoration(
                                 color: _getRatingColor(),
                                 borderRadius: BorderRadius.circular(4),
@@ -4537,7 +4886,11 @@ class _VerticalPosterCardState extends ConsumerState<_VerticalPosterCard> {
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  const Icon(Icons.star_rounded, size: 10, color: Colors.white),
+                                  const Icon(
+                                    Icons.star_rounded,
+                                    size: 10,
+                                    color: Colors.white,
+                                  ),
                                   const SizedBox(width: 2),
                                   Text(
                                     widget.metadata.ratingText,
@@ -4558,7 +4911,10 @@ class _VerticalPosterCardState extends ConsumerState<_VerticalPosterCard> {
                             top: 6,
                             left: 6,
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 5,
+                                vertical: 2,
+                              ),
                               decoration: BoxDecoration(
                                 color: AppColors.accent.withValues(alpha: 0.9),
                                 borderRadius: BorderRadius.circular(4),
@@ -4582,7 +4938,10 @@ class _VerticalPosterCardState extends ConsumerState<_VerticalPosterCard> {
                             bottom: 8,
                             left: 6,
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 5,
+                                vertical: 2,
+                              ),
                               decoration: BoxDecoration(
                                 color: Colors.black.withValues(alpha: 0.7),
                                 borderRadius: BorderRadius.circular(4),
@@ -4590,7 +4949,11 @@ class _VerticalPosterCardState extends ConsumerState<_VerticalPosterCard> {
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  const Icon(Icons.play_arrow_rounded, size: 10, color: Colors.white),
+                                  const Icon(
+                                    Icons.play_arrow_rounded,
+                                    size: 10,
+                                    color: Colors.white,
+                                  ),
                                   const SizedBox(width: 2),
                                   Text(
                                     '${(progress.progressPercent * 100).toInt()}%',
@@ -4645,7 +5008,9 @@ class _VerticalPosterCardState extends ConsumerState<_VerticalPosterCard> {
                     '${widget.metadata.year}',
                     style: TextStyle(
                       fontSize: 10,
-                      color: widget.isDark ? Colors.grey[500] : Colors.grey[600],
+                      color: widget.isDark
+                          ? Colors.grey[500]
+                          : Colors.grey[600],
                     ),
                   ),
               ],
@@ -4657,17 +5022,19 @@ class _VerticalPosterCardState extends ConsumerState<_VerticalPosterCard> {
   }
 
   Widget _buildPlaceholder() => Container(
-      color: widget.isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
-      child: Center(
-        child: Icon(
-          widget.metadata.category == MediaCategory.tvShow
-              ? Icons.live_tv_rounded
-              : Icons.movie_rounded,
-          size: 40,
-          color: widget.isDark ? Colors.grey[600] : Colors.grey[400],
-        ),
+    color: widget.isDark
+        ? AppColors.darkSurfaceVariant
+        : AppColors.lightSurfaceVariant,
+    child: Center(
+      child: Icon(
+        widget.metadata.category == MediaCategory.tvShow
+            ? Icons.live_tv_rounded
+            : Icons.movie_rounded,
+        size: 40,
+        color: widget.isDark ? Colors.grey[600] : Colors.grey[400],
       ),
-    );
+    ),
+  );
 
   Color _getRatingColor() => AppColors.ratingColor(widget.metadata.rating ?? 0);
 }
@@ -4687,7 +5054,8 @@ class _HorizontalVideoCard extends ConsumerStatefulWidget {
   final void Function(VideoMetadata metadata)? onContextMenu;
 
   @override
-  ConsumerState<_HorizontalVideoCard> createState() => _HorizontalVideoCardState();
+  ConsumerState<_HorizontalVideoCard> createState() =>
+      _HorizontalVideoCardState();
 }
 
 class _HorizontalVideoCardState extends ConsumerState<_HorizontalVideoCard> {
@@ -4706,7 +5074,8 @@ class _HorizontalVideoCardState extends ConsumerState<_HorizontalVideoCard> {
   @override
   void didUpdateWidget(covariant _HorizontalVideoCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.metadata.displayPosterUrl != widget.metadata.displayPosterUrl) {
+    if (oldWidget.metadata.displayPosterUrl !=
+        widget.metadata.displayPosterUrl) {
       _updatePosterUrl();
     }
   }
@@ -4718,11 +5087,13 @@ class _HorizontalVideoCardState extends ConsumerState<_HorizontalVideoCard> {
 
   @override
   Widget build(BuildContext context) {
-
     // 获取播放进度
     final progressAsync = ref.watch(allVideoProgressProvider);
     final progress = progressAsync.valueOrNull?[widget.metadata.filePath];
-    final hasProgress = progress != null && progress.progressPercent > 0.02 && progress.progressPercent < 0.98;
+    final hasProgress =
+        progress != null &&
+        progress.progressPercent > 0.02 &&
+        progress.progressPercent < 0.98;
 
     return Container(
       width: 220,
@@ -4740,7 +5111,13 @@ class _HorizontalVideoCardState extends ConsumerState<_HorizontalVideoCard> {
               : null,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
-            transform: Matrix4.identity()..scaleByDouble(_isHovered ? 1.03 : 1.0, _isHovered ? 1.03 : 1.0, 1, 1),
+            transform: Matrix4.identity()
+              ..scaleByDouble(
+                _isHovered ? 1.03 : 1.0,
+                _isHovered ? 1.03 : 1.0,
+                1,
+                1,
+              ),
             transformAlignment: Alignment.center,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -4752,7 +5129,9 @@ class _HorizontalVideoCardState extends ConsumerState<_HorizontalVideoCard> {
                       borderRadius: BorderRadius.circular(10),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: _isHovered ? 0.35 : 0.2),
+                          color: Colors.black.withValues(
+                            alpha: _isHovered ? 0.35 : 0.2,
+                          ),
                           blurRadius: _isHovered ? 12 : 6,
                           offset: Offset(0, _isHovered ? 6 : 3),
                         ),
@@ -4815,13 +5194,17 @@ class _HorizontalVideoCardState extends ConsumerState<_HorizontalVideoCard> {
                                 ),
                                 child: FractionallySizedBox(
                                   alignment: Alignment.centerLeft,
-                                  widthFactor: progress.progressPercent.clamp(0.0, 1.0),
+                                  widthFactor: progress.progressPercent.clamp(
+                                    0.0,
+                                    1.0,
+                                  ),
                                   child: Container(
                                     decoration: BoxDecoration(
                                       color: AppColors.primary,
                                       borderRadius: BorderRadius.only(
                                         bottomLeft: const Radius.circular(10),
-                                        bottomRight: progress.progressPercent > 0.95
+                                        bottomRight:
+                                            progress.progressPercent > 0.95
                                             ? const Radius.circular(10)
                                             : Radius.zero,
                                       ),
@@ -4836,7 +5219,10 @@ class _HorizontalVideoCardState extends ConsumerState<_HorizontalVideoCard> {
                             bottom: 6,
                             right: 6,
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 5,
+                                vertical: 2,
+                              ),
                               decoration: BoxDecoration(
                                 color: Colors.black.withValues(alpha: 0.7),
                                 borderRadius: BorderRadius.circular(4),
@@ -4845,8 +5231,8 @@ class _HorizontalVideoCardState extends ConsumerState<_HorizontalVideoCard> {
                                 hasProgress
                                     ? '${(progress.progressPercent * 100).toInt()}%'
                                     : (widget.metadata.runtime != null
-                                        ? '${widget.metadata.runtime}分钟'
-                                        : ''),
+                                          ? '${widget.metadata.runtime}分钟'
+                                          : ''),
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 10,
@@ -4857,12 +5243,16 @@ class _HorizontalVideoCardState extends ConsumerState<_HorizontalVideoCard> {
                           ),
 
                           // 评分徽章
-                          if (widget.metadata.rating != null && widget.metadata.rating! > 0)
+                          if (widget.metadata.rating != null &&
+                              widget.metadata.rating! > 0)
                             Positioned(
                               top: 6,
                               left: 6,
                               child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 5,
+                                  vertical: 2,
+                                ),
                                 decoration: BoxDecoration(
                                   color: _getRatingColor(),
                                   borderRadius: BorderRadius.circular(4),
@@ -4870,7 +5260,11 @@ class _HorizontalVideoCardState extends ConsumerState<_HorizontalVideoCard> {
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    const Icon(Icons.star_rounded, size: 10, color: Colors.white),
+                                    const Icon(
+                                      Icons.star_rounded,
+                                      size: 10,
+                                      color: Colors.white,
+                                    ),
                                     const SizedBox(width: 2),
                                     Text(
                                       widget.metadata.ratingText,
@@ -4891,7 +5285,10 @@ class _HorizontalVideoCardState extends ConsumerState<_HorizontalVideoCard> {
                               top: 6,
                               right: 6,
                               child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 5,
+                                  vertical: 2,
+                                ),
                                 decoration: BoxDecoration(
                                   color: AppColors.accent,
                                   borderRadius: BorderRadius.circular(4),
@@ -4917,7 +5314,10 @@ class _HorizontalVideoCardState extends ConsumerState<_HorizontalVideoCard> {
                                 duration: const Duration(milliseconds: 150),
                                 child: Container(
                                   decoration: BoxDecoration(
-                                    border: Border.all(color: AppColors.primary, width: 2),
+                                    border: Border.all(
+                                      color: AppColors.primary,
+                                      width: 2,
+                                    ),
                                     borderRadius: BorderRadius.circular(10),
                                   ),
                                 ),
@@ -4946,7 +5346,9 @@ class _HorizontalVideoCardState extends ConsumerState<_HorizontalVideoCard> {
                     '${widget.metadata.year}',
                     style: TextStyle(
                       fontSize: 10,
-                      color: widget.isDark ? Colors.grey[500] : Colors.grey[600],
+                      color: widget.isDark
+                          ? Colors.grey[500]
+                          : Colors.grey[600],
                     ),
                   ),
               ],
@@ -4958,17 +5360,19 @@ class _HorizontalVideoCardState extends ConsumerState<_HorizontalVideoCard> {
   }
 
   Widget _buildPlaceholder() => Container(
-      color: widget.isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
-      child: Center(
-        child: Icon(
-          widget.metadata.category == MediaCategory.tvShow
-              ? Icons.live_tv_rounded
-              : Icons.movie_rounded,
-          size: 36,
-          color: widget.isDark ? Colors.grey[600] : Colors.grey[400],
-        ),
+    color: widget.isDark
+        ? AppColors.darkSurfaceVariant
+        : AppColors.lightSurfaceVariant,
+    child: Center(
+      child: Icon(
+        widget.metadata.category == MediaCategory.tvShow
+            ? Icons.live_tv_rounded
+            : Icons.movie_rounded,
+        size: 36,
+        color: widget.isDark ? Colors.grey[600] : Colors.grey[400],
       ),
-    );
+    ),
+  );
 
   Color _getRatingColor() => AppColors.ratingColor(widget.metadata.rating ?? 0);
 }
@@ -4983,10 +5387,7 @@ enum _SortType {
 
 /// 分类全部页面（带排序筛选）
 class _CategoryFullPage extends ConsumerStatefulWidget {
-  const _CategoryFullPage({
-    required this.title,
-    required this.items,
-  });
+  const _CategoryFullPage({required this.title, required this.items});
 
   final String title;
   final List<VideoMetadata> items;
@@ -5013,7 +5414,8 @@ class _CategoryFullPageState extends ConsumerState<_CategoryFullPage> {
     for (final item in widget.items) {
       if (item.genres != null && item.genres!.isNotEmpty) {
         // 分割类型字符串（可能是 "动作 / 科幻" 格式）
-        final genres = item.genres!.split(RegExp('[/,、]'))
+        final genres = item.genres!
+            .split(RegExp('[/,、]'))
             .map((g) => g.trim())
             .where((g) => g.isNotEmpty);
         genreSet.addAll(genres);
@@ -5146,7 +5548,9 @@ class _CategoryFullPageState extends ConsumerState<_CategoryFullPage> {
                         metadata: metadata,
                         onTap: () => _openVideoDetail(context, metadata),
                         isDark: isDark,
-                        width: (width - 32 - (crossAxisCount - 1) * 12) / crossAxisCount,
+                        width:
+                            (width - 32 - (crossAxisCount - 1) * 12) /
+                            crossAxisCount,
                         showMargin: false,
                       );
                     },
@@ -5207,83 +5611,83 @@ class _CategoryFullPageState extends ConsumerState<_CategoryFullPage> {
     VoidCallback? onTap,
     VoidCallback? onClose,
   }) => GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: isActive
+            ? AppColors.primary.withValues(alpha: 0.2)
+            : (isDark ? Colors.grey[800] : Colors.white),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
           color: isActive
-              ? AppColors.primary.withValues(alpha: 0.2)
-              : (isDark ? Colors.grey[800] : Colors.white),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isActive
-                ? AppColors.primary
-                : (isDark ? Colors.grey[700]! : Colors.grey[300]!),
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 14,
-              color: isActive
-                  ? AppColors.primary
-                  : (isDark ? Colors.grey[400] : Colors.grey[600]),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                color: isActive
-                    ? AppColors.primary
-                    : (isDark ? Colors.grey[300] : Colors.grey[700]),
-                fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
-              ),
-            ),
-            if (onClose != null) ...[
-              const SizedBox(width: 4),
-              GestureDetector(
-                onTap: onClose,
-                child: Icon(
-                  Icons.close_rounded,
-                  size: 14,
-                  color: AppColors.primary,
-                ),
-              ),
-            ],
-          ],
+              ? AppColors.primary
+              : (isDark ? Colors.grey[700]! : Colors.grey[300]!),
         ),
       ),
-    );
-
-  /// 空状态
-  Widget _buildEmptyState(bool isDark) => Center(
-      child: Column(
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            Icons.filter_list_off_rounded,
-            size: 64,
-            color: isDark ? Colors.grey[600] : Colors.grey[400],
+            icon,
+            size: 14,
+            color: isActive
+                ? AppColors.primary
+                : (isDark ? Colors.grey[400] : Colors.grey[600]),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(width: 6),
           Text(
-            '没有符合筛选条件的内容',
+            label,
             style: TextStyle(
-              fontSize: 16,
-              color: isDark ? Colors.grey[400] : Colors.grey[600],
+              fontSize: 12,
+              color: isActive
+                  ? AppColors.primary
+                  : (isDark ? Colors.grey[300] : Colors.grey[700]),
+              fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
             ),
           ),
-          const SizedBox(height: 8),
-          TextButton(
-            onPressed: () => setState(() => _selectedGenre = null),
-            child: const Text('清除筛选'),
-          ),
+          if (onClose != null) ...[
+            const SizedBox(width: 4),
+            GestureDetector(
+              onTap: onClose,
+              child: Icon(
+                Icons.close_rounded,
+                size: 14,
+                color: AppColors.primary,
+              ),
+            ),
+          ],
         ],
       ),
-    );
+    ),
+  );
+
+  /// 空状态
+  Widget _buildEmptyState(bool isDark) => Center(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          Icons.filter_list_off_rounded,
+          size: 64,
+          color: isDark ? Colors.grey[600] : Colors.grey[400],
+        ),
+        const SizedBox(height: 16),
+        Text(
+          '没有符合筛选条件的内容',
+          style: TextStyle(
+            fontSize: 16,
+            color: isDark ? Colors.grey[400] : Colors.grey[600],
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextButton(
+          onPressed: () => setState(() => _selectedGenre = null),
+          child: const Text('清除筛选'),
+        ),
+      ],
+    ),
+  );
 
   /// 显示排序选项
   void _showSortOptions(BuildContext context, bool isDark) {
@@ -5367,12 +5771,16 @@ class _CategoryFullPageState extends ConsumerState<_CategoryFullPage> {
     return ListTile(
       leading: Icon(
         icon,
-        color: isSelected ? AppColors.primary : (isDark ? Colors.grey[400] : Colors.grey[600]),
+        color: isSelected
+            ? AppColors.primary
+            : (isDark ? Colors.grey[400] : Colors.grey[600]),
       ),
       title: Text(
         label,
         style: TextStyle(
-          color: isSelected ? AppColors.primary : (isDark ? Colors.white : Colors.black87),
+          color: isSelected
+              ? AppColors.primary
+              : (isDark ? Colors.white : Colors.black87),
           fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
         ),
       ),
@@ -5383,7 +5791,9 @@ class _CategoryFullPageState extends ConsumerState<_CategoryFullPage> {
                 // 升序/降序切换
                 IconButton(
                   icon: Icon(
-                    _sortDescending ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
+                    _sortDescending
+                        ? Icons.arrow_downward_rounded
+                        : Icons.arrow_upward_rounded,
                     color: AppColors.primary,
                   ),
                   onPressed: () {
@@ -5467,8 +5877,9 @@ class _CategoryFullPageState extends ConsumerState<_CategoryFullPage> {
                   itemBuilder: (context, index) {
                     final genre = _availableGenres[index];
                     final isSelected = _selectedGenre == genre;
-                    final count = widget.items.where((item) =>
-                        item.genres?.contains(genre) ?? false).length;
+                    final count = widget.items
+                        .where((item) => item.genres?.contains(genre) ?? false)
+                        .length;
 
                     return ListTile(
                       leading: Icon(
@@ -5483,23 +5894,32 @@ class _CategoryFullPageState extends ConsumerState<_CategoryFullPage> {
                           color: isSelected
                               ? AppColors.primary
                               : (isDark ? Colors.white : Colors.black87),
-                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                          fontWeight: isSelected
+                              ? FontWeight.w600
+                              : FontWeight.normal,
                         ),
                       ),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
                             decoration: BoxDecoration(
-                              color: isDark ? Colors.grey[800] : Colors.grey[200],
+                              color: isDark
+                                  ? Colors.grey[800]
+                                  : Colors.grey[200],
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: Text(
                               '$count',
                               style: TextStyle(
                                 fontSize: 12,
-                                color: isDark ? Colors.grey[400] : Colors.grey[600],
+                                color: isDark
+                                    ? Colors.grey[400]
+                                    : Colors.grey[600],
                               ),
                             ),
                           ),
@@ -5526,13 +5946,14 @@ class _CategoryFullPageState extends ConsumerState<_CategoryFullPage> {
     );
   }
 
-  Future<void> _openVideoDetail(BuildContext context, VideoMetadata metadata) async {
+  Future<void> _openVideoDetail(
+    BuildContext context,
+    VideoMetadata metadata,
+  ) async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (context) => VideoDetailPage(
-          metadata: metadata,
-          sourceId: metadata.sourceId,
-        ),
+        builder: (context) =>
+            VideoDetailPage(metadata: metadata, sourceId: metadata.sourceId),
       ),
     );
     ref.invalidate(continueWatchingProvider);
@@ -5562,6 +5983,7 @@ class _TvShowRow extends StatelessWidget {
   final Color? iconColor;
   final int maxCount;
   final VoidCallback? onViewAll;
+
   /// 实际总数量（用于显示在"查看全部"按钮上，如果不传则使用 groups.length）
   final int? totalCount;
 
@@ -5573,7 +5995,9 @@ class _TvShowRow extends StatelessWidget {
     final showViewMore = onViewAll != null;
     // 使用真实总数（如果提供），否则使用 groups.length
     final actualTotalCount = totalCount ?? groups.length;
-    final remainingCount = actualTotalCount > maxCount ? actualTotalCount - maxCount : 0;
+    final remainingCount = actualTotalCount > maxCount
+        ? actualTotalCount - maxCount
+        : 0;
     final effectiveIconColor = iconColor ?? AppColors.primary;
 
     return Column(
@@ -5609,7 +6033,10 @@ class _TvShowRow extends StatelessWidget {
                 TextButton(
                   onPressed: onViewAll,
                   style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -5680,6 +6107,7 @@ class _TvShowPosterCard extends StatefulWidget {
   final VoidCallback onTap;
   final bool isDark;
   final double width;
+
   /// 是否显示右边距（用于水平滚动列表，GridView 不需要）
   final bool showMargin;
 
@@ -5739,7 +6167,9 @@ class _TvShowPosterCardState extends State<_TvShowPosterCard> {
                     borderRadius: BorderRadius.circular(8),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: _isHovered ? 0.4 : 0.2),
+                        color: Colors.black.withValues(
+                          alpha: _isHovered ? 0.4 : 0.2,
+                        ),
                         blurRadius: _isHovered ? 16 : 8,
                         offset: Offset(0, _isHovered ? 8 : 4),
                       ),
@@ -5756,7 +6186,8 @@ class _TvShowPosterCardState extends State<_TvShowPosterCard> {
                               ? VideoPoster(
                                   key: ValueKey(_posterUrl),
                                   posterUrl: _posterUrl,
-                                  sourceId: widget.group.representative.sourceId,
+                                  sourceId:
+                                      widget.group.representative.sourceId,
                                   placeholder: _buildPlaceholder(),
                                   errorWidget: _buildPlaceholder(),
                                 )
@@ -5786,12 +6217,16 @@ class _TvShowPosterCardState extends State<_TvShowPosterCard> {
                         ),
 
                         // 评分徽章
-                        if (widget.group.rating != null && widget.group.rating! > 0)
+                        if (widget.group.rating != null &&
+                            widget.group.rating! > 0)
                           Positioned(
                             top: 6,
                             right: 6,
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 5,
+                                vertical: 2,
+                              ),
                               decoration: BoxDecoration(
                                 color: _getRatingColor(),
                                 borderRadius: BorderRadius.circular(4),
@@ -5799,7 +6234,11 @@ class _TvShowPosterCardState extends State<_TvShowPosterCard> {
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  const Icon(Icons.star_rounded, size: 10, color: Colors.white),
+                                  const Icon(
+                                    Icons.star_rounded,
+                                    size: 10,
+                                    color: Colors.white,
+                                  ),
                                   const SizedBox(width: 2),
                                   Text(
                                     widget.group.rating!.toStringAsFixed(1),
@@ -5819,7 +6258,10 @@ class _TvShowPosterCardState extends State<_TvShowPosterCard> {
                           top: 6,
                           left: 6,
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 3,
+                            ),
                             decoration: BoxDecoration(
                               color: AppColors.accent.withValues(alpha: 0.9),
                               borderRadius: BorderRadius.circular(4),
@@ -5915,25 +6357,24 @@ class _TvShowPosterCardState extends State<_TvShowPosterCard> {
   }
 
   Widget _buildPlaceholder() => Container(
-      color: widget.isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
-      child: Center(
-        child: Icon(
-          Icons.live_tv_rounded,
-          size: 40,
-          color: widget.isDark ? Colors.grey[600] : Colors.grey[400],
-        ),
+    color: widget.isDark
+        ? AppColors.darkSurfaceVariant
+        : AppColors.lightSurfaceVariant,
+    child: Center(
+      child: Icon(
+        Icons.live_tv_rounded,
+        size: 40,
+        color: widget.isDark ? Colors.grey[600] : Colors.grey[400],
       ),
-    );
+    ),
+  );
 
   Color _getRatingColor() => AppColors.ratingColor(widget.group.rating ?? 0);
 }
 
 /// 剧集列表全页面
 class _TvShowsFullPage extends ConsumerStatefulWidget {
-  const _TvShowsFullPage({
-    required this.title,
-    required this.groups,
-  });
+  const _TvShowsFullPage({required this.title, required this.groups});
 
   final String title;
   final List<TvShowGroup> groups;
@@ -5976,13 +6417,14 @@ class _TvShowsFullPageState extends ConsumerState<_TvShowsFullPage> {
     );
   }
 
-  Future<void> _openVideoDetail(BuildContext context, VideoMetadata metadata) async {
+  Future<void> _openVideoDetail(
+    BuildContext context,
+    VideoMetadata metadata,
+  ) async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (context) => VideoDetailPage(
-          metadata: metadata,
-          sourceId: metadata.sourceId,
-        ),
+        builder: (context) =>
+            VideoDetailPage(metadata: metadata, sourceId: metadata.sourceId),
       ),
     );
   }
@@ -5990,14 +6432,13 @@ class _TvShowsFullPageState extends ConsumerState<_TvShowsFullPage> {
 
 /// 电影分页页面（支持懒加载和筛选）
 class _MoviesPaginatedPage extends ConsumerStatefulWidget {
-  const _MoviesPaginatedPage({
-    required this.title,
-  });
+  const _MoviesPaginatedPage({required this.title});
 
   final String title;
 
   @override
-  ConsumerState<_MoviesPaginatedPage> createState() => _MoviesPaginatedPageState();
+  ConsumerState<_MoviesPaginatedPage> createState() =>
+      _MoviesPaginatedPageState();
 }
 
 class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
@@ -6189,7 +6630,9 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
                   Icons.filter_alt_rounded,
                   color: isDark ? Colors.white : Colors.black87,
                 ),
-                onPressed: _isLoadingFilters ? null : () => _showFilterSheet(context, isDark),
+                onPressed: _isLoadingFilters
+                    ? null
+                    : () => _showFilterSheet(context, isDark),
               ),
               if (_hasFilters)
                 Positioned(
@@ -6247,10 +6690,7 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
                     },
                     child: Text(
                       '清除全部',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.blue,
-                      ),
+                      style: TextStyle(fontSize: 12, color: Colors.blue),
                     ),
                   ),
                 ],
@@ -6284,54 +6724,55 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
             child: _movies.isEmpty && _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : _movies.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.movie_filter_outlined,
-                              size: 64,
-                              color: isDark ? Colors.white30 : Colors.black26,
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              '没有找到匹配的电影',
-                              style: TextStyle(
-                                color: isDark ? Colors.white54 : Colors.black45,
-                              ),
-                            ),
-                          ],
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.movie_filter_outlined,
+                          size: 64,
+                          color: isDark ? Colors.white30 : Colors.black26,
                         ),
-                      )
-                    : GridView.builder(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.all(16),
-                        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                        const SizedBox(height: 16),
+                        Text(
+                          '没有找到匹配的电影',
+                          style: TextStyle(
+                            color: isDark ? Colors.white54 : Colors.black45,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : GridView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.all(16),
+                    gridDelegate:
+                        const SliverGridDelegateWithMaxCrossAxisExtent(
                           maxCrossAxisExtent: 150,
                           childAspectRatio: 0.55,
                           crossAxisSpacing: 12,
                           mainAxisSpacing: 16,
                         ),
-                        itemCount: _movies.length + (_hasMore ? 1 : 0),
-                        itemBuilder: (context, index) {
-                          if (index >= _movies.length) {
-                            return const Center(
-                              child: Padding(
-                                padding: EdgeInsets.all(16),
-                                child: CircularProgressIndicator(),
-                              ),
-                            );
-                          }
+                    itemCount: _movies.length + (_hasMore ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      if (index >= _movies.length) {
+                        return const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(16),
+                            child: CircularProgressIndicator(),
+                          ),
+                        );
+                      }
 
-                          final movie = _movies[index];
-                          return _VerticalPosterCard(
-                            metadata: movie,
-                            onTap: () => _openVideoDetail(context, movie),
-                            isDark: isDark,
-                            showMargin: false,
-                          );
-                        },
-                      ),
+                      final movie = _movies[index];
+                      return _VerticalPosterCard(
+                        metadata: movie,
+                        onTap: () => _openVideoDetail(context, movie),
+                        isDark: isDark,
+                        showMargin: false,
+                      );
+                    },
+                  ),
           ),
         ],
       ),
@@ -6376,16 +6817,22 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
               return ListTile(
                 leading: Icon(
                   option.icon,
-                  color: isSelected ? Colors.blue : (isDark ? Colors.white70 : Colors.black54),
+                  color: isSelected
+                      ? Colors.blue
+                      : (isDark ? Colors.white70 : Colors.black54),
                 ),
                 title: Text(
                   option.displayName,
                   style: TextStyle(
-                    color: isSelected ? Colors.blue : (isDark ? Colors.white : Colors.black87),
+                    color: isSelected
+                        ? Colors.blue
+                        : (isDark ? Colors.white : Colors.black87),
                     fontWeight: isSelected ? FontWeight.bold : null,
                   ),
                 ),
-                trailing: isSelected ? const Icon(Icons.check, color: Colors.blue) : null,
+                trailing: isSelected
+                    ? const Icon(Icons.check, color: Colors.blue)
+                    : null,
                 onTap: () {
                   Navigator.of(context).pop();
                   if (option != _sortOption) {
@@ -6402,13 +6849,14 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
     );
   }
 
-  Future<void> _openVideoDetail(BuildContext context, VideoMetadata metadata) async {
+  Future<void> _openVideoDetail(
+    BuildContext context,
+    VideoMetadata metadata,
+  ) async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (context) => VideoDetailPage(
-          metadata: metadata,
-          sourceId: metadata.sourceId,
-        ),
+        builder: (context) =>
+            VideoDetailPage(metadata: metadata, sourceId: metadata.sourceId),
       ),
     );
   }
@@ -6428,36 +6876,36 @@ class _FilterChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isDark ? Colors.white24 : Colors.black12,
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+    decoration: BoxDecoration(
+      color: isDark
+          ? Colors.white.withValues(alpha: 0.1)
+          : Colors.black.withValues(alpha: 0.05),
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: isDark ? Colors.white24 : Colors.black12),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            color: isDark ? Colors.white : Colors.black87,
+          ),
         ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              color: isDark ? Colors.white : Colors.black87,
-            ),
+        const SizedBox(width: 4),
+        GestureDetector(
+          onTap: onRemove,
+          child: Icon(
+            Icons.close,
+            size: 16,
+            color: isDark ? Colors.white54 : Colors.black45,
           ),
-          const SizedBox(width: 4),
-          GestureDetector(
-            onTap: onRemove,
-            child: Icon(
-              Icons.close,
-              size: 16,
-              color: isDark ? Colors.white54 : Colors.black45,
-            ),
-          ),
-        ],
-      ),
-    );
+        ),
+      ],
+    ),
+  );
 }
 
 /// 筛选底部弹窗
@@ -6495,219 +6943,226 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
 
   @override
   Widget build(BuildContext context) => Container(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.7,
-      ),
-      decoration: BoxDecoration(
-        color: widget.isDark ? const Color(0xFF1A1A2E) : Colors.white,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // 拖动条
-          Container(
-            margin: const EdgeInsets.only(top: 12),
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: widget.isDark ? Colors.white24 : Colors.black12,
-              borderRadius: BorderRadius.circular(2),
-            ),
+    constraints: BoxConstraints(
+      maxHeight: MediaQuery.of(context).size.height * 0.7,
+    ),
+    decoration: BoxDecoration(
+      color: widget.isDark ? const Color(0xFF1A1A2E) : Colors.white,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // 拖动条
+        Container(
+          margin: const EdgeInsets.only(top: 12),
+          width: 40,
+          height: 4,
+          decoration: BoxDecoration(
+            color: widget.isDark ? Colors.white24 : Colors.black12,
+            borderRadius: BorderRadius.circular(2),
           ),
-          // 标题栏
-          Padding(
+        ),
+        // 标题栏
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '筛选',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: widget.isDark ? Colors.white : Colors.black87,
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                  setState(() {
+                    _genre = null;
+                    _year = null;
+                  });
+                },
+                child: const Text('重置'),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        // 筛选内容
+        Flexible(
+          child: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // 类型筛选
                 Text(
-                  '筛选',
+                  '类型',
                   style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: widget.isDark ? Colors.white : Colors.black87,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: widget.isDark ? Colors.white70 : Colors.black54,
                   ),
                 ),
-                TextButton(
-                  onPressed: () {
-                    setState(() {
-                      _genre = null;
-                      _year = null;
-                    });
-                  },
-                  child: const Text('重置'),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: widget.availableGenres.map((genre) {
+                    final isSelected = _genre == genre;
+                    return GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _genre = isSelected ? null : genre;
+                        });
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? Colors.blue
+                              : widget.isDark
+                              ? Colors.white.withValues(alpha: 0.1)
+                              : Colors.black.withValues(alpha: 0.05),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: isSelected
+                                ? Colors.blue
+                                : widget.isDark
+                                ? Colors.white24
+                                : Colors.black12,
+                          ),
+                        ),
+                        child: Text(
+                          genre,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: isSelected
+                                ? Colors.white
+                                : widget.isDark
+                                ? Colors.white
+                                : Colors.black87,
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 24),
+                // 年份筛选
+                Text(
+                  '年份',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: widget.isDark ? Colors.white70 : Colors.black54,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: widget.availableYears.map((year) {
+                    final isSelected = _year == year;
+                    return GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _year = isSelected ? null : year;
+                        });
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? Colors.blue
+                              : widget.isDark
+                              ? Colors.white.withValues(alpha: 0.1)
+                              : Colors.black.withValues(alpha: 0.05),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: isSelected
+                                ? Colors.blue
+                                : widget.isDark
+                                ? Colors.white24
+                                : Colors.black12,
+                          ),
+                        ),
+                        child: Text(
+                          '$year',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: isSelected
+                                ? Colors.white
+                                : widget.isDark
+                                ? Colors.white
+                                : Colors.black87,
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
                 ),
               ],
             ),
           ),
-          const Divider(height: 1),
-          // 筛选内容
-          Flexible(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // 类型筛选
-                  Text(
-                    '类型',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: widget.isDark ? Colors.white70 : Colors.black54,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: widget.availableGenres.map((genre) {
-                      final isSelected = _genre == genre;
-                      return GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _genre = isSelected ? null : genre;
-                          });
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? Colors.blue
-                                : widget.isDark
-                                    ? Colors.white.withValues(alpha: 0.1)
-                                    : Colors.black.withValues(alpha: 0.05),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: isSelected
-                                  ? Colors.blue
-                                  : widget.isDark
-                                      ? Colors.white24
-                                      : Colors.black12,
-                            ),
-                          ),
-                          child: Text(
-                            genre,
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: isSelected
-                                  ? Colors.white
-                                  : widget.isDark
-                                      ? Colors.white
-                                      : Colors.black87,
-                            ),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 24),
-                  // 年份筛选
-                  Text(
-                    '年份',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: widget.isDark ? Colors.white70 : Colors.black54,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: widget.availableYears.map((year) {
-                      final isSelected = _year == year;
-                      return GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _year = isSelected ? null : year;
-                          });
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? Colors.blue
-                                : widget.isDark
-                                    ? Colors.white.withValues(alpha: 0.1)
-                                    : Colors.black.withValues(alpha: 0.05),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: isSelected
-                                  ? Colors.blue
-                                  : widget.isDark
-                                      ? Colors.white24
-                                      : Colors.black12,
-                            ),
-                          ),
-                          child: Text(
-                            '$year',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: isSelected
-                                  ? Colors.white
-                                  : widget.isDark
-                                      ? Colors.white
-                                      : Colors.black87,
-                            ),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ],
+        ),
+        // 底部按钮
+        Container(
+          padding: EdgeInsets.fromLTRB(
+            16,
+            16,
+            16,
+            16 + MediaQuery.of(context).padding.bottom,
+          ),
+          decoration: BoxDecoration(
+            color: widget.isDark ? const Color(0xFF1A1A2E) : Colors.white,
+            border: Border(
+              top: BorderSide(
+                color: widget.isDark ? Colors.white12 : Colors.black12,
               ),
             ),
           ),
-          // 底部按钮
-          Container(
-            padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + MediaQuery.of(context).padding.bottom),
-            decoration: BoxDecoration(
-              color: widget.isDark ? const Color(0xFF1A1A2E) : Colors.white,
-              border: Border(
-                top: BorderSide(
-                  color: widget.isDark ? Colors.white12 : Colors.black12,
+          child: SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () => widget.onApply(_genre, _year),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
               ),
-            ),
-            child: SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () => widget.onApply(_genre, _year),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: const Text(
-                  '应用筛选',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+              child: const Text(
+                '应用筛选',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),
             ),
           ),
-        ],
-      ),
-    );
+        ),
+      ],
+    ),
+  );
 }
 
 /// 剧集分页页面（支持懒加载和筛选）
 class _TvShowsPaginatedPage extends ConsumerStatefulWidget {
-  const _TvShowsPaginatedPage({
-    required this.title,
-  });
+  const _TvShowsPaginatedPage({required this.title});
 
   final String title;
 
   @override
-  ConsumerState<_TvShowsPaginatedPage> createState() => _TvShowsPaginatedPageState();
+  ConsumerState<_TvShowsPaginatedPage> createState() =>
+      _TvShowsPaginatedPageState();
 }
 
 class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
@@ -6746,7 +7201,9 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
   Future<void> _loadFilters() async {
     try {
       final db = VideoDatabaseService();
-      final genres = await db.getAvailableGenres(category: MediaCategory.tvShow);
+      final genres = await db.getAvailableGenres(
+        category: MediaCategory.tvShow,
+      );
       final years = await db.getAvailableYears(category: MediaCategory.tvShow);
       final count = await db.getTvShowGroupCount();
 
@@ -6892,16 +7349,22 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
               return ListTile(
                 leading: Icon(
                   option.icon,
-                  color: isSelected ? Colors.blue : (isDark ? Colors.white70 : Colors.black54),
+                  color: isSelected
+                      ? Colors.blue
+                      : (isDark ? Colors.white70 : Colors.black54),
                 ),
                 title: Text(
                   option.displayName,
                   style: TextStyle(
-                    color: isSelected ? Colors.blue : (isDark ? Colors.white : Colors.black87),
+                    color: isSelected
+                        ? Colors.blue
+                        : (isDark ? Colors.white : Colors.black87),
                     fontWeight: isSelected ? FontWeight.bold : null,
                   ),
                 ),
-                trailing: isSelected ? const Icon(Icons.check, color: Colors.blue) : null,
+                trailing: isSelected
+                    ? const Icon(Icons.check, color: Colors.blue)
+                    : null,
                 onTap: () {
                   Navigator.of(context).pop();
                   if (option != _sortOption) {
@@ -6961,7 +7424,9 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
                   Icons.filter_alt_rounded,
                   color: isDark ? Colors.white : Colors.black87,
                 ),
-                onPressed: _isLoadingFilters ? null : () => _showFilterSheet(context, isDark),
+                onPressed: _isLoadingFilters
+                    ? null
+                    : () => _showFilterSheet(context, isDark),
               ),
               if (_hasFilters)
                 Positioned(
@@ -7019,10 +7484,7 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
                     },
                     child: Text(
                       '清除全部',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.blue,
-                      ),
+                      style: TextStyle(fontSize: 12, color: Colors.blue),
                     ),
                   ),
                 ],
@@ -7033,67 +7495,69 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
             child: _tvShows.isEmpty && _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : _tvShows.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.live_tv_outlined,
-                              size: 64,
-                              color: isDark ? Colors.white30 : Colors.black26,
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              '没有找到匹配的剧集',
-                              style: TextStyle(
-                                color: isDark ? Colors.white54 : Colors.black45,
-                              ),
-                            ),
-                          ],
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.live_tv_outlined,
+                          size: 64,
+                          color: isDark ? Colors.white30 : Colors.black26,
                         ),
-                      )
-                    : GridView.builder(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.all(16),
-                        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                        const SizedBox(height: 16),
+                        Text(
+                          '没有找到匹配的剧集',
+                          style: TextStyle(
+                            color: isDark ? Colors.white54 : Colors.black45,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : GridView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.all(16),
+                    gridDelegate:
+                        const SliverGridDelegateWithMaxCrossAxisExtent(
                           maxCrossAxisExtent: 150,
                           childAspectRatio: 0.55,
                           crossAxisSpacing: 12,
                           mainAxisSpacing: 16,
                         ),
-                        itemCount: _tvShows.length + (_hasMore ? 1 : 0),
-                        itemBuilder: (context, index) {
-                          if (index >= _tvShows.length) {
-                            return const Center(
-                              child: Padding(
-                                padding: EdgeInsets.all(16),
-                                child: CircularProgressIndicator(),
-                              ),
-                            );
-                          }
+                    itemCount: _tvShows.length + (_hasMore ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      if (index >= _tvShows.length) {
+                        return const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(16),
+                            child: CircularProgressIndicator(),
+                          ),
+                        );
+                      }
 
-                          final tvShow = _tvShows[index];
-                          return _VerticalPosterCard(
-                            metadata: tvShow,
-                            onTap: () => _openVideoDetail(context, tvShow),
-                            isDark: isDark,
-                            showMargin: false,
-                          );
-                        },
-                      ),
+                      final tvShow = _tvShows[index];
+                      return _VerticalPosterCard(
+                        metadata: tvShow,
+                        onTap: () => _openVideoDetail(context, tvShow),
+                        isDark: isDark,
+                        showMargin: false,
+                      );
+                    },
+                  ),
           ),
         ],
       ),
     );
   }
 
-  Future<void> _openVideoDetail(BuildContext context, VideoMetadata metadata) async {
+  Future<void> _openVideoDetail(
+    BuildContext context,
+    VideoMetadata metadata,
+  ) async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (context) => VideoDetailPage(
-          metadata: metadata,
-          sourceId: metadata.sourceId,
-        ),
+        builder: (context) =>
+            VideoDetailPage(metadata: metadata, sourceId: metadata.sourceId),
       ),
     );
   }
@@ -7101,14 +7565,13 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
 
 /// 其他视频分页页面（支持懒加载，无筛选）
 class _OthersPaginatedPage extends ConsumerStatefulWidget {
-  const _OthersPaginatedPage({
-    required this.title,
-  });
+  const _OthersPaginatedPage({required this.title});
 
   final String title;
 
   @override
-  ConsumerState<_OthersPaginatedPage> createState() => _OthersPaginatedPageState();
+  ConsumerState<_OthersPaginatedPage> createState() =>
+      _OthersPaginatedPageState();
 }
 
 class _OthersPaginatedPageState extends ConsumerState<_OthersPaginatedPage> {
@@ -7241,7 +7704,9 @@ class _OthersPaginatedPageState extends ConsumerState<_OthersPaginatedPage> {
                     color: _sortOption == option
                         ? AppColors.primary
                         : (isDark ? Colors.white : Colors.black87),
-                    fontWeight: _sortOption == option ? FontWeight.bold : FontWeight.normal,
+                    fontWeight: _sortOption == option
+                        ? FontWeight.bold
+                        : FontWeight.normal,
                   ),
                 ),
                 trailing: _sortOption == option
@@ -7270,10 +7735,10 @@ class _OthersPaginatedPageState extends ConsumerState<_OthersPaginatedPage> {
     final crossAxisCount = screenWidth > 1200
         ? 8
         : screenWidth > 800
-            ? 6
-            : screenWidth > 600
-                ? 4
-                : 3;
+        ? 6
+        : screenWidth > 600
+        ? 4
+        : 3;
     final spacing = screenWidth > 600 ? 16.0 : 8.0;
 
     return Scaffold(
@@ -7302,60 +7767,61 @@ class _OthersPaginatedPageState extends ConsumerState<_OthersPaginatedPage> {
       body: _videos.isEmpty && _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _videos.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.video_file_rounded,
-                        size: 64,
-                        color: isDark ? Colors.grey[600] : Colors.grey[400],
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        '没有其他视频',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: isDark ? Colors.grey[400] : Colors.grey[600],
-                        ),
-                      ),
-                    ],
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.video_file_rounded,
+                    size: 64,
+                    color: isDark ? Colors.grey[600] : Colors.grey[400],
                   ),
-                )
-              : GridView.builder(
-                  controller: _scrollController,
-                  padding: EdgeInsets.all(spacing),
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: crossAxisCount,
-                    // 海报比例 2:3 + 标题区域，需要足够高度避免溢出
-                    childAspectRatio: 0.55,
-                    crossAxisSpacing: spacing,
-                    mainAxisSpacing: spacing,
+                  const SizedBox(height: 16),
+                  Text(
+                    '没有其他视频',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    ),
                   ),
-                  itemCount: _videos.length + (_hasMore ? 1 : 0),
-                  itemBuilder: (context, index) {
-                    if (index >= _videos.length) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    final video = _videos[index];
-                    return _VerticalPosterCard(
-                      metadata: video,
-                      onTap: () => _openVideoDetail(context, video),
-                      isDark: isDark,
-                      showMargin: false,
-                    );
-                  },
-                ),
+                ],
+              ),
+            )
+          : GridView.builder(
+              controller: _scrollController,
+              padding: EdgeInsets.all(spacing),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: crossAxisCount,
+                // 海报比例 2:3 + 标题区域，需要足够高度避免溢出
+                childAspectRatio: 0.55,
+                crossAxisSpacing: spacing,
+                mainAxisSpacing: spacing,
+              ),
+              itemCount: _videos.length + (_hasMore ? 1 : 0),
+              itemBuilder: (context, index) {
+                if (index >= _videos.length) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final video = _videos[index];
+                return _VerticalPosterCard(
+                  metadata: video,
+                  onTap: () => _openVideoDetail(context, video),
+                  isDark: isDark,
+                  showMargin: false,
+                );
+              },
+            ),
     );
   }
 
-  Future<void> _openVideoDetail(BuildContext context, VideoMetadata metadata) async {
+  Future<void> _openVideoDetail(
+    BuildContext context,
+    VideoMetadata metadata,
+  ) async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (context) => VideoDetailPage(
-          metadata: metadata,
-          sourceId: metadata.sourceId,
-        ),
+        builder: (context) =>
+            VideoDetailPage(metadata: metadata, sourceId: metadata.sourceId),
       ),
     );
   }
@@ -7440,10 +7906,7 @@ class _MovieCollectionRow extends StatelessWidget {
                   onPressed: onSeeAllTap,
                   child: Text(
                     '查看全部 (${collections.length})',
-                    style: TextStyle(
-                      color: AppColors.primary,
-                      fontSize: 13,
-                    ),
+                    style: TextStyle(color: AppColors.primary, fontSize: 13),
                   ),
                 ),
             ],
@@ -7522,7 +7985,9 @@ class _MovieCollectionCardState extends State<_MovieCollectionCard> {
                     borderRadius: BorderRadius.circular(8),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: _isHovered ? 0.4 : 0.2),
+                        color: Colors.black.withValues(
+                          alpha: _isHovered ? 0.4 : 0.2,
+                        ),
                         blurRadius: _isHovered ? 16 : 8,
                         offset: Offset(0, _isHovered ? 8 : 4),
                       ),
@@ -7566,7 +8031,10 @@ class _MovieCollectionCardState extends State<_MovieCollectionCard> {
                           top: 6,
                           right: 6,
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
                             decoration: BoxDecoration(
                               color: AppColors.primary.withValues(alpha: 0.9),
                               borderRadius: BorderRadius.circular(4),
@@ -7616,7 +8084,9 @@ class _MovieCollectionCardState extends State<_MovieCollectionCard> {
                     _getYearRange(),
                     style: TextStyle(
                       fontSize: 10,
-                      color: widget.isDark ? Colors.grey[500] : Colors.grey[600],
+                      color: widget.isDark
+                          ? Colors.grey[500]
+                          : Colors.grey[600],
                     ),
                   ),
               ],
@@ -7639,15 +8109,17 @@ class _MovieCollectionCardState extends State<_MovieCollectionCard> {
   }
 
   Widget _buildPlaceholder() => Container(
-      color: widget.isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
-      child: Center(
-        child: Icon(
-          Icons.collections_bookmark_rounded,
-          size: 40,
-          color: widget.isDark ? Colors.grey[600] : Colors.grey[400],
-        ),
+    color: widget.isDark
+        ? AppColors.darkSurfaceVariant
+        : AppColors.lightSurfaceVariant,
+    child: Center(
+      child: Icon(
+        Icons.collections_bookmark_rounded,
+        size: 40,
+        color: widget.isDark ? Colors.grey[600] : Colors.grey[400],
       ),
-    );
+    ),
+  );
 }
 
 /// 电影系列全部页面
@@ -7748,7 +8220,10 @@ class _MovieCollectionGridCard extends StatelessWidget {
                       top: 8,
                       right: 8,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.black.withValues(alpha: 0.7),
                           borderRadius: BorderRadius.circular(12),
@@ -7786,15 +8261,17 @@ class _MovieCollectionGridCard extends StatelessWidget {
   }
 
   Widget _buildPlaceholder() => Container(
-        color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
-        child: Center(
-          child: Icon(
-            Icons.collections_bookmark_rounded,
-            size: 40,
-            color: isDark ? Colors.grey[600] : Colors.grey[400],
-          ),
-        ),
-      );
+    color: isDark
+        ? AppColors.darkSurfaceVariant
+        : AppColors.lightSurfaceVariant,
+    child: Center(
+      child: Icon(
+        Icons.collections_bookmark_rounded,
+        size: 40,
+        color: isDark ? Colors.grey[600] : Colors.grey[400],
+      ),
+    ),
+  );
 }
 
 /// 电影系列详情页面
@@ -7839,7 +8316,8 @@ class _MovieCollectionPage extends ConsumerWidget {
 
   Widget _buildAppBar(bool isDark, AsyncValue<TmdbCollection?> tmdbAsync) {
     // 优先使用 TMDB 的背景图，其次本地背景图，最后使用海报作为回退
-    final backdropUrl = tmdbAsync.valueOrNull?.backdropUrl ??
+    final backdropUrl =
+        tmdbAsync.valueOrNull?.backdropUrl ??
         collection.backdropUrl ??
         collection.posterUrl;
     final hasBackground = backdropUrl != null && backdropUrl.isNotEmpty;
@@ -7851,10 +8329,7 @@ class _MovieCollectionPage extends ConsumerWidget {
       flexibleSpace: FlexibleSpaceBar(
         title: Text(
           collection.name,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-          ),
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
         background: hasBackground
             ? Stack(
@@ -7868,7 +8343,8 @@ class _MovieCollectionPage extends ConsumerWidget {
                         end: Alignment.bottomCenter,
                         colors: [
                           Colors.transparent,
-                          (isDark ? const Color(0xFF0D0D1A) : Colors.white).withValues(alpha: 0.8),
+                          (isDark ? const Color(0xFF0D0D1A) : Colors.white)
+                              .withValues(alpha: 0.8),
                           if (isDark) const Color(0xFF0D0D1A) else Colors.white,
                         ],
                       ),
@@ -7899,7 +8375,10 @@ class _MovieCollectionPage extends ConsumerWidget {
     );
   }
 
-  Widget _buildMovieCountLabel(bool isDark, AsyncValue<TmdbCollection?> tmdbAsync) {
+  Widget _buildMovieCountLabel(
+    bool isDark,
+    AsyncValue<TmdbCollection?> tmdbAsync,
+  ) {
     final localCount = collection.movies.length;
     final tmdbCollection = tmdbAsync.valueOrNull;
     final tmdbCount = tmdbCollection?.parts.length;
@@ -7971,22 +8450,21 @@ class _MovieCollectionPage extends ConsumerWidget {
             crossAxisSpacing: 12,
             childAspectRatio: 0.55,
           ),
-          delegate: SliverChildBuilderDelegate(
-            (context, index) {
-              final part = sortedParts[index];
-              final localMovie = localMovies.firstWhereOrNull((m) => m.tmdbId == part.id);
-              final hasLocal = localMovie != null;
+          delegate: SliverChildBuilderDelegate((context, index) {
+            final part = sortedParts[index];
+            final localMovie = localMovies.firstWhereOrNull(
+              (m) => m.tmdbId == part.id,
+            );
+            final hasLocal = localMovie != null;
 
-              return _CollectionMovieCard(
-                part: part,
-                localMovie: localMovie,
-                hasLocal: hasLocal,
-                onTap: hasLocal ? () => onMovieTap(localMovie) : null,
-                isDark: isDark,
-              );
-            },
-            childCount: sortedParts.length,
-          ),
+            return _CollectionMovieCard(
+              part: part,
+              localMovie: localMovie,
+              hasLocal: hasLocal,
+              onTap: hasLocal ? () => onMovieTap(localMovie) : null,
+              isDark: isDark,
+            );
+          }, childCount: sortedParts.length),
         ),
       );
     }
@@ -8001,18 +8479,15 @@ class _MovieCollectionPage extends ConsumerWidget {
           crossAxisSpacing: 12,
           childAspectRatio: 0.55,
         ),
-        delegate: SliverChildBuilderDelegate(
-          (context, index) {
-            final movie = localMovies[index];
-            return _VerticalPosterCard(
-              metadata: movie,
-              onTap: () => onMovieTap(movie),
-              isDark: isDark,
-              showMargin: false,
-            );
-          },
-          childCount: localMovies.length,
-        ),
+        delegate: SliverChildBuilderDelegate((context, index) {
+          final movie = localMovies[index];
+          return _VerticalPosterCard(
+            metadata: movie,
+            onTap: () => onMovieTap(movie),
+            isDark: isDark,
+            showMargin: false,
+          );
+        }, childCount: localMovies.length),
       ),
     );
   }
@@ -8037,7 +8512,9 @@ class _CollectionMovieCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // posterUrl 可能是空字符串，需要检查
-    final posterUrl = part.posterUrl.isNotEmpty ? part.posterUrl : localMovie?.posterUrl;
+    final posterUrl = part.posterUrl.isNotEmpty
+        ? part.posterUrl
+        : localMovie?.posterUrl;
     final year = part.releaseDate.isNotEmpty
         ? part.releaseDate.substring(0, 4)
         : localMovie?.year?.toString();
@@ -8070,12 +8547,16 @@ class _CollectionMovieCard extends StatelessWidget {
                       child: posterUrl != null
                           ? AdaptiveImage(imageUrl: posterUrl)
                           : Container(
-                              color: isDark ? Colors.grey[800] : Colors.grey[300],
+                              color: isDark
+                                  ? Colors.grey[800]
+                                  : Colors.grey[300],
                               child: Center(
                                 child: Icon(
                                   Icons.movie_rounded,
                                   size: 48,
-                                  color: isDark ? Colors.grey[600] : Colors.grey[500],
+                                  color: isDark
+                                      ? Colors.grey[600]
+                                      : Colors.grey[500],
                                 ),
                               ),
                             ),
@@ -8087,17 +8568,17 @@ class _CollectionMovieCard extends StatelessWidget {
                       top: 6,
                       left: 6,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.black.withValues(alpha: 0.7),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: const Text(
                           '未收藏',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 10,
-                          ),
+                          style: TextStyle(color: Colors.white70, fontSize: 10),
                         ),
                       ),
                     ),
@@ -8107,7 +8588,10 @@ class _CollectionMovieCard extends StatelessWidget {
                       bottom: 6,
                       right: 6,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.black.withValues(alpha: 0.7),
                           borderRadius: BorderRadius.circular(4),
@@ -8115,7 +8599,11 @@ class _CollectionMovieCard extends StatelessWidget {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.star_rounded, color: Colors.amber, size: 12),
+                            const Icon(
+                              Icons.star_rounded,
+                              color: Colors.amber,
+                              size: 12,
+                            ),
                             const SizedBox(width: 2),
                             Text(
                               part.voteAverage.toStringAsFixed(1),
@@ -8261,7 +8749,8 @@ class _DynamicCategorySection extends StatefulWidget {
   final List<({String sourceId, String path})>? enabledPaths;
 
   @override
-  State<_DynamicCategorySection> createState() => _DynamicCategorySectionState();
+  State<_DynamicCategorySection> createState() =>
+      _DynamicCategorySectionState();
 }
 
 class _DynamicCategorySectionState extends State<_DynamicCategorySection> {
@@ -8327,7 +8816,10 @@ class _DynamicCategorySectionState extends State<_DynamicCategorySection> {
         });
       }
     } on Exception catch (e) {
-      logger.w('_DynamicCategorySection: 加载${widget.category.displayName}视频失败', e);
+      logger.w(
+        '_DynamicCategorySection: 加载${widget.category.displayName}视频失败',
+        e,
+      );
       if (mounted) {
         setState(() {
           _videos = [];
@@ -8554,13 +9046,17 @@ class _FilteredVideosPaginatedPageState
               return ListTile(
                 leading: Icon(
                   option.icon,
-                  color: isSelected ? Colors.blue : (isDark ? Colors.white70 : Colors.black54),
+                  color: isSelected
+                      ? Colors.blue
+                      : (isDark ? Colors.white70 : Colors.black54),
                 ),
                 title: Text(
                   option.displayName,
                   style: TextStyle(
                     color: isDark ? Colors.white : Colors.black87,
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    fontWeight: isSelected
+                        ? FontWeight.bold
+                        : FontWeight.normal,
                   ),
                 ),
                 trailing: isSelected
@@ -8610,57 +9106,57 @@ class _FilteredVideosPaginatedPageState
       body: _videos.isEmpty && _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _videos.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.movie_outlined,
-                        size: 64,
-                        color: isDark ? Colors.grey[600] : Colors.grey[400],
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        '暂无视频',
-                        style: TextStyle(
-                          color: isDark ? Colors.grey[400] : Colors.grey[600],
-                          fontSize: 16,
-                        ),
-                      ),
-                    ],
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.movie_outlined,
+                    size: 64,
+                    color: isDark ? Colors.grey[600] : Colors.grey[400],
                   ),
-                )
-              : GridView.builder(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.all(12),
-                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: 150,
-                    // 海报比例 2:3 (高度=宽度*1.5) + 标题区域约 40px
-                    // 150*1.5=225 + 40 = 265, 150/265 ≈ 0.566
-                    childAspectRatio: 0.55,
-                    crossAxisSpacing: 10,
-                    mainAxisSpacing: 12,
+                  const SizedBox(height: 16),
+                  Text(
+                    '暂无视频',
+                    style: TextStyle(
+                      color: isDark ? Colors.grey[400] : Colors.grey[600],
+                      fontSize: 16,
+                    ),
                   ),
-                  itemCount: _videos.length + (_hasMore ? 1 : 0),
-                  itemBuilder: (context, index) {
-                    if (index >= _videos.length) {
-                      return const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(16),
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      );
-                    }
+                ],
+              ),
+            )
+          : GridView.builder(
+              controller: _scrollController,
+              padding: const EdgeInsets.all(12),
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 150,
+                // 海报比例 2:3 (高度=宽度*1.5) + 标题区域约 40px
+                // 150*1.5=225 + 40 = 265, 150/265 ≈ 0.566
+                childAspectRatio: 0.55,
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 12,
+              ),
+              itemCount: _videos.length + (_hasMore ? 1 : 0),
+              itemBuilder: (context, index) {
+                if (index >= _videos.length) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(16),
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  );
+                }
 
-                    final video = _videos[index];
-                    return _VerticalPosterCard(
-                      metadata: video,
-                      isDark: isDark,
-                      onTap: () => widget.onVideoTap(video),
-                      showMargin: false,
-                    );
-                  },
-                ),
+                final video = _videos[index];
+                return _VerticalPosterCard(
+                  metadata: video,
+                  isDark: isDark,
+                  onTap: () => widget.onVideoTap(video),
+                  showMargin: false,
+                );
+              },
+            ),
     );
   }
 }

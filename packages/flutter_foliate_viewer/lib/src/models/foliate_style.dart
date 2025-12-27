@@ -214,8 +214,19 @@ enum FoliateWritingMode {
 
 /// 翻页风格
 enum FoliatePageTurnStyle {
+  /// 水平滑动翻页（默认）
   slide('slide'),
+
+  /// 连续滚动模式
   scroll('scroll'),
+
+  /// 仿真翻页（带阴影卷曲效果）
+  simulation('simulation'),
+
+  /// 覆盖翻页（新页面从边缘滑入覆盖当前页面）
+  cover('cover'),
+
+  /// 无动画
   noAnimation('noAnimation');
 
   const FoliatePageTurnStyle(this.value);
@@ -227,6 +238,12 @@ enum FoliatePageTurnStyle {
     switch (modeIndex) {
       case 0:
         return FoliatePageTurnStyle.scroll;
+      case 1:
+        return FoliatePageTurnStyle.slide;
+      case 2:
+        return FoliatePageTurnStyle.simulation;
+      case 3:
+        return FoliatePageTurnStyle.cover;
       case 4:
         return FoliatePageTurnStyle.noAnimation;
       default:

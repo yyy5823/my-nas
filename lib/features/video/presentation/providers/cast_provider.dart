@@ -227,52 +227,50 @@ class CastNotifier extends StateNotifier<CastState> {
 }
 
 /// 投屏状态 Provider
-final castProvider = StateNotifierProvider<CastNotifier, CastState>((ref) {
-  return CastNotifier();
-});
+final castProvider = StateNotifierProvider<CastNotifier, CastState>((ref) => CastNotifier());
 
 /// 是否正在投屏
-final isCastingProvider = Provider<bool>((ref) {
-  return ref.watch(castProvider.select((state) => state.isCasting));
-});
+final isCastingProvider = Provider<bool>(
+  (ref) => ref.watch(castProvider.select((state) => state.isCasting)),
+);
 
 /// 当前投屏设备
-final castDeviceProvider = Provider<CastDevice?>((ref) {
-  return ref.watch(castProvider.select((state) => state.session?.device));
-});
+final castDeviceProvider = Provider<CastDevice?>(
+  (ref) => ref.watch(castProvider.select((state) => state.session?.device)),
+);
 
 /// 投屏播放状态
-final castPlaybackStateProvider = Provider<CastPlaybackState>((ref) {
-  return ref.watch(
+final castPlaybackStateProvider = Provider<CastPlaybackState>(
+  (ref) => ref.watch(
     castProvider.select((state) => state.session?.playbackState ?? CastPlaybackState.idle),
-  );
-});
+  ),
+);
 
 /// 投屏播放进度
-final castPositionProvider = Provider<Duration>((ref) {
-  return ref.watch(
+final castPositionProvider = Provider<Duration>(
+  (ref) => ref.watch(
     castProvider.select((state) => state.session?.position ?? Duration.zero),
-  );
-});
+  ),
+);
 
 /// 投屏视频时长
-final castDurationProvider = Provider<Duration>((ref) {
-  return ref.watch(
+final castDurationProvider = Provider<Duration>(
+  (ref) => ref.watch(
     castProvider.select((state) => state.session?.duration ?? Duration.zero),
-  );
-});
+  ),
+);
 
 /// 投屏音量
-final castVolumeProvider = Provider<double>((ref) {
-  return ref.watch(castProvider.select((state) => state.session?.volume ?? 1.0));
-});
+final castVolumeProvider = Provider<double>(
+  (ref) => ref.watch(castProvider.select((state) => state.session?.volume ?? 1.0)),
+);
 
 /// 发现的设备列表
-final castDevicesProvider = Provider<List<CastDevice>>((ref) {
-  return ref.watch(castProvider.select((state) => state.devices));
-});
+final castDevicesProvider = Provider<List<CastDevice>>(
+  (ref) => ref.watch(castProvider.select((state) => state.devices)),
+);
 
 /// 是否正在搜索设备
-final isDiscoveringDevicesProvider = Provider<bool>((ref) {
-  return ref.watch(castProvider.select((state) => state.isDiscovering));
-});
+final isDiscoveringDevicesProvider = Provider<bool>(
+  (ref) => ref.watch(castProvider.select((state) => state.isDiscovering)),
+);

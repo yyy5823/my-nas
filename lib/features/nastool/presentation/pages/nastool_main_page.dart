@@ -786,7 +786,7 @@ class _SearchContent extends ConsumerStatefulWidget {
 
 class _SearchContentState extends ConsumerState<_SearchContent> {
   final _searchController = TextEditingController();
-  List<NtSearchResult> _results = [];
+  List<NtMediaSearchResult> _results = [];
   bool _isSearching = false;
   String? _error;
 
@@ -802,11 +802,29 @@ class _SearchContentState extends ConsumerState<_SearchContent> {
 
     setState(() { _isSearching = true; _error = null; });
     try {
-      final results = await ref.read(nastoolActionsProvider(widget.sourceId)).searchResources(keyword);
+      final results = await ref.read(nastoolActionsProvider(widget.sourceId)).searchMediaResources(keyword);
       setState(() { _results = results; _isSearching = false; });
     } on Exception catch (e) {
       setState(() { _error = e.toString(); _isSearching = false; });
     }
+  }
+
+  void _showTorrentDetail(NtMediaSearchResult media) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        minChildSize: 0.4,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (context, scrollController) => _TorrentDetailSheet(
+          media: media,
+          sourceId: widget.sourceId,
+          scrollController: scrollController,
+        ),
+      ),
+    );
   }
 
   @override
@@ -838,15 +856,21 @@ class _SearchContentState extends ConsumerState<_SearchContent> {
                               itemCount: _results.length,
                               itemBuilder: (context, index) {
                                 final r = _results[index];
+                                final torrentCount = r.torrents.fold<int>(0, (sum, g) => sum + g.items.length);
                                 return Card(
                                   margin: const EdgeInsets.only(bottom: AppSpacing.sm),
                                   child: ListTile(
+                                    leading: r.coverImage != null
+                                        ? ClipRRect(
+                                            borderRadius: BorderRadius.circular(4),
+                                            child: Image.network(r.coverImage!, width: 48, height: 64, fit: BoxFit.cover,
+                                              errorBuilder: (_, __, ___) => Container(width: 48, height: 64, color: AppColors.lightOnSurfaceVariant.withValues(alpha: 0.2), child: const Icon(Icons.movie_rounded))),
+                                          )
+                                        : null,
                                     title: Text(r.title, maxLines: 2, overflow: TextOverflow.ellipsis),
-                                    subtitle: Text('${r.site ?? ""} • ${r.formattedSize} • 种子: ${r.seeders ?? 0}'),
-                                    trailing: IconButton(
-                                      icon: Icon(Icons.download_rounded, color: AppColors.primary),
-                                      onPressed: r.enclosure != null ? () => ref.read(nastoolActionsProvider(widget.sourceId)).downloadResource(enclosure: r.enclosure!, title: r.title) : null,
-                                    ),
+                                    subtitle: Text('${r.year ?? ""} • ${r.torrents.length}个分组 • $torrentCount个资源'),
+                                    trailing: const Icon(Icons.chevron_right_rounded),
+                                    onTap: () => _showTorrentDetail(r),
                                   ),
                                 );
                               },
@@ -855,6 +879,146 @@ class _SearchContentState extends ConsumerState<_SearchContent> {
           ],
         ),
       );
+}
+
+/// 种子详情底部弹窗
+class _TorrentDetailSheet extends ConsumerWidget {
+  const _TorrentDetailSheet({
+    required this.media,
+    required this.sourceId,
+    required this.scrollController,
+  });
+
+  final NtMediaSearchResult media;
+  final String sourceId;
+  final ScrollController scrollController;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      child: Column(
+        children: [
+          // 拖动指示器
+          Container(
+            margin: const EdgeInsets.symmetric(vertical: 8),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)),
+          ),
+          // 标题栏
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+            child: Row(
+              children: [
+                if (media.coverImage != null)
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(media.coverImage!, width: 60, height: 80, fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(width: 60, height: 80, color: AppColors.lightOnSurfaceVariant.withValues(alpha: 0.2), child: const Icon(Icons.movie_rounded))),
+                  ),
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(media.title, style: context.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold), maxLines: 2, overflow: TextOverflow.ellipsis),
+                      if (media.year != null) Text(media.year!, style: context.textTheme.bodySmall),
+                      Text('${media.torrents.length}个分组', style: context.textTheme.bodySmall?.copyWith(color: AppColors.primary)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          const Divider(height: 1),
+          // 种子列表
+          Expanded(
+            child: media.torrents.isEmpty
+                ? const Center(child: Text('暂无可用资源'))
+                : ListView.builder(
+                    controller: scrollController,
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    itemCount: media.torrents.length,
+                    itemBuilder: (context, groupIndex) {
+                      final group = media.torrents[groupIndex];
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // 分组标题
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(4)),
+                                  child: Text(group.displayTitle, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                                ),
+                                const SizedBox(width: 8),
+                                Text('${group.items.length}个资源', style: context.textTheme.bodySmall),
+                              ],
+                            ),
+                          ),
+                          // 种子项
+                          ...group.items.map((torrent) => Card(
+                            margin: const EdgeInsets.only(bottom: AppSpacing.xs),
+                            child: ListTile(
+                              dense: true,
+                              title: Text(torrent.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: context.textTheme.bodySmall),
+                              subtitle: Row(
+                                children: [
+                                  Text(torrent.displaySite, style: context.textTheme.labelSmall?.copyWith(color: AppColors.primary)),
+                                  const SizedBox(width: 8),
+                                  Text(torrent.formattedSize, style: context.textTheme.labelSmall),
+                                  if (torrent.seeders != null) ...[
+                                    const SizedBox(width: 8),
+                                    Icon(Icons.arrow_upward_rounded, size: 12, color: AppColors.success),
+                                    Text('${torrent.seeders}', style: context.textTheme.labelSmall),
+                                  ],
+                                  if (torrent.isFree) ...[
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                      decoration: BoxDecoration(color: AppColors.success, borderRadius: BorderRadius.circular(2)),
+                                      child: const Text('免费', style: TextStyle(color: Colors.white, fontSize: 10)),
+                                    ),
+                                  ],
+                                  if (torrent.is2xUpload) ...[
+                                    const SizedBox(width: 4),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                      decoration: BoxDecoration(color: AppColors.warning, borderRadius: BorderRadius.circular(2)),
+                                      child: const Text('2x', style: TextStyle(color: Colors.white, fontSize: 10)),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              trailing: IconButton(
+                                icon: Icon(Icons.download_rounded, color: AppColors.primary),
+                                onPressed: torrent.enclosure != null ? () async {
+                                  await ref.read(nastoolActionsProvider(sourceId)).downloadResource(enclosure: torrent.enclosure!, title: torrent.title);
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已添加下载任务')));
+                                  }
+                                } : null,
+                              ),
+                            ),
+                          )),
+                          const SizedBox(height: AppSpacing.sm),
+                        ],
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 // ============================================================
@@ -1053,7 +1217,21 @@ class _SitesContent extends ConsumerWidget {
                       : Text(site.signUrl ?? '', maxLines: 1, overflow: TextOverflow.ellipsis),
                   trailing: IconButton(
                     icon: const Icon(Icons.speed_rounded),
-                    onPressed: () => ref.read(nastoolActionsProvider(sourceId)).testSite(site.id),
+                    onPressed: () async {
+                      // 显示测试中状态
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('正在测试连接...'), duration: Duration(seconds: 1)),
+                      );
+                      final success = await ref.read(nastoolActionsProvider(sourceId)).testSite(site.id);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(success ? '连接成功' : '连接失败'),
+                            backgroundColor: success ? AppColors.success : AppColors.error,
+                          ),
+                        );
+                      }
+                    },
                     tooltip: '测试连接',
                   ),
                 ),
@@ -1283,10 +1461,32 @@ class _SettingsContent extends ConsumerWidget {
                     ? const Padding(padding: EdgeInsets.all(AppSpacing.md), child: Text('暂无同步目录'))
                     : Column(
                         children: dirs.map((d) => ListTile(
-                          leading: Icon(Icons.folder_rounded, color: d.state == 'Y' ? AppColors.success : AppColors.lightOnSurfaceVariant),
+                          leading: Icon(Icons.folder_rounded, color: d.isEnabled ? AppColors.success : AppColors.lightOnSurfaceVariant),
                           title: Text(d.name ?? d.from ?? '', maxLines: 1, overflow: TextOverflow.ellipsis),
                           subtitle: Text('${d.from ?? ''} → ${d.to ?? "媒体库"}', maxLines: 1, overflow: TextOverflow.ellipsis),
-                          trailing: IconButton(icon: const Icon(Icons.sync_rounded), onPressed: d.id != null ? () => actions.runSyncDir(d.id!) : null, tooltip: '同步'),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.sync_rounded), 
+                            onPressed: d.id != null ? () async {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('正在同步...'), duration: Duration(seconds: 1)),
+                              );
+                              try {
+                                await actions.runSyncDir(d.id!);
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('同步已启动'), backgroundColor: AppColors.success),
+                                  );
+                                }
+                              } catch (e) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('同步失败: $e'), backgroundColor: AppColors.error),
+                                  );
+                                }
+                              }
+                            } : null, 
+                            tooltip: '同步',
+                          ),
                         )).toList(),
                       ),
                 loading: () => const Padding(padding: EdgeInsets.all(AppSpacing.md), child: Center(child: CircularProgressIndicator())),

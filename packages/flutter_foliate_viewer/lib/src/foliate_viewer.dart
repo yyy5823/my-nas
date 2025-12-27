@@ -220,6 +220,9 @@ class _FoliateViewerState extends State<FoliateViewer> {
     window.__foliateInitialCfi = null;
     window.__foliateStyle = null;
 
+    // 禁用触摸导航的标志（用于 Flutter 处理手势时）
+    window.__foliateDisableTouchNav = false;
+
     // 覆盖 URLSearchParams 以返回空值，防止自动初始化
     const OriginalURLSearchParams = URLSearchParams;
     window.URLSearchParams = function(search) {
@@ -234,6 +237,32 @@ class _FoliateViewerState extends State<FoliateViewer> {
       };
       return params;
     };
+
+    // 设置是否禁用触摸导航（Flutter 调用）
+    window.setDisableTouchNav = function(disable) {
+      window.__foliateDisableTouchNav = disable;
+      console.log('setDisableTouchNav:', disable);
+    };
+
+    // 拦截触摸事件（在最高优先级捕获阶段阻止）
+    document.addEventListener('touchstart', function(e) {
+      if (window.__foliateDisableTouchNav) {
+        e.stopPropagation();
+      }
+    }, { capture: true, passive: false });
+
+    document.addEventListener('touchmove', function(e) {
+      if (window.__foliateDisableTouchNav) {
+        e.stopPropagation();
+        e.preventDefault();
+      }
+    }, { capture: true, passive: false });
+
+    document.addEventListener('touchend', function(e) {
+      if (window.__foliateDisableTouchNav) {
+        e.stopPropagation();
+      }
+    }, { capture: true, passive: false });
   </script>
 
   <script type="module">
@@ -493,6 +522,13 @@ $bundleJs
       ''';
 
       await _webViewController?.evaluateJavascript(source: jsCode);
+
+      // 如果禁用原生手势，阻止 WebView JavaScript 处理触摸导航
+      if (widget.disableNativeGestures) {
+        await _webViewController?.evaluateJavascript(
+          source: 'window.setDisableTouchNav(true);',
+        );
+      }
     } on Exception catch (e) {
       widget.onError?.call('加载书籍失败: $e');
       setState(() {

@@ -201,22 +201,55 @@ class SubtitleStyleSheet extends ConsumerWidget {
                     ),
                   ),
 
-                  // 背景颜色
+                  // 字幕背景开关
                   _buildSection(
-                    title: '背景颜色',
-                    child: Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: subtitleBackgrounds.map((color) {
-                        final isSelected = color.toARGB32() ==
-                            style.backgroundColor.toARGB32();
-                        return _ColorButton(
-                          color: color,
-                          isSelected: isSelected,
-                          onTap: () => notifier.setBackgroundColor(color),
-                          showTransparent: color == Colors.transparent,
-                        );
-                      }).toList(),
+                    title: '字幕背景',
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            const Text(
+                              '显示背景',
+                              style: TextStyle(color: Colors.white70, fontSize: 14),
+                            ),
+                            const Spacer(),
+                            Switch(
+                              value: style.showBackground,
+                              onChanged: (value) {
+                                notifier.setShowBackground(show: value);
+                              },
+                              activeThumbColor: Colors.white,
+                              activeTrackColor: Colors.white38,
+                            ),
+                          ],
+                        ),
+                        // 只有开启背景时才显示背景颜色选择
+                        if (style.showBackground) ...[
+                          const SizedBox(height: 8),
+                          const Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              '背景颜色',
+                              style: TextStyle(color: Colors.white54, fontSize: 12),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: subtitleBackgrounds.map((color) {
+                              final isSelected = color.toARGB32() ==
+                                  style.backgroundColor.toARGB32();
+                              return _ColorButton(
+                                color: color,
+                                isSelected: isSelected,
+                                onTap: () => notifier.setBackgroundColor(color),
+                                showTransparent: color == Colors.transparent,
+                              );
+                            }).toList(),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
 
@@ -485,7 +518,8 @@ class SubtitleStyleSheet extends ConsumerWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           decoration: BoxDecoration(
-            color: style.backgroundColor,
+            // 只有开启背景时才显示背景颜色
+            color: style.showBackground ? style.backgroundColor : Colors.transparent,
             borderRadius: BorderRadius.circular(4),
           ),
           child: Text(

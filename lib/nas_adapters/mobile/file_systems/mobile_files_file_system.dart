@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
@@ -259,6 +260,9 @@ class MobileFilesFileSystem implements NasFileSystem {
   Future<String?> getThumbnailUrl(String path, {ThumbnailSize? size}) async =>
       // 本地文件不支持缩略图 URL
       null;
+
+  @override
+  Future<Uint8List?> getThumbnailData(String path, {ThumbnailSize? size}) async => null;
 
   @override
   Future<Stream<List<int>>> getUrlStream(String url) {

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/nas_adapters/mobile/file_systems/mobile_files_file_system.dart';
@@ -270,6 +272,13 @@ class MobileCompositeFileSystem implements NasFileSystem {
     final fs = _getFileSystem(path);
     final transformedPath = _transformPath(path);
     return fs.getThumbnailUrl(transformedPath, size: size);
+  }
+
+  @override
+  Future<Uint8List?> getThumbnailData(String path, {ThumbnailSize? size}) async {
+    final fs = _getFileSystem(path);
+    final transformedPath = _transformPath(path);
+    return fs.getThumbnailData(transformedPath, size: size);
   }
 
   @override

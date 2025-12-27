@@ -14,6 +14,7 @@ export 'organization_models.dart';
 export 'plugin_models.dart';
 export 'rss_models.dart';
 export 'search_models.dart';
+export 'search_result_models.dart';
 export 'service_models.dart';
 export 'site_models.dart';
 export 'subscribe_models.dart';

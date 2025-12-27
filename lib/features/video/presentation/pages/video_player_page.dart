@@ -39,10 +39,14 @@ class VideoPlayerPage extends ConsumerStatefulWidget {
   ConsumerState<VideoPlayerPage> createState() => _VideoPlayerPageState();
 }
 
-class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsBindingObserver {
+class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage>
+    with WidgetsBindingObserver {
   bool _showControls = true;
   bool _isLocked = false;
   Timer? _hideControlsTimer;
+
+  // 桌面端：鼠标是否在视频区域内
+  bool _isMouseInVideoArea = false;
 
   // 双击动画
   bool _showDoubleTapLeft = false;
@@ -68,6 +72,10 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
 
   // 是否为移动设备（支持手势控制亮度/音量）
   bool get _isMobile => Platform.isIOS || Platform.isAndroid;
+
+  // 是否为桌面设备（支持鼠标悬停显示控制栏）
+  bool get _isDesktop =>
+      Platform.isMacOS || Platform.isWindows || Platform.isLinux;
 
   // 初始亮度，用于退出时恢复
   double? _initialBrightness;
@@ -104,9 +112,9 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
       _playerNotifier?.initPipStatusListener();
       // 开始播放
       await _playerNotifier?.play(
-            widget.video,
-            startPosition: widget.video.lastPosition,
-          );
+        widget.video,
+        startPosition: widget.video.lastPosition,
+      );
       if (!mounted) return;
       // 应用保存的字幕延时设置
       final subtitleStyle = ref.read(subtitleStyleProvider);
@@ -139,8 +147,11 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
   void _checkOrientationAndSetFullscreen() {
     if (!mounted) return;
 
-    final size = WidgetsBinding.instance.platformDispatcher.views.first.physicalSize;
-    final orientation = size.width > size.height ? Orientation.landscape : Orientation.portrait;
+    final size =
+        WidgetsBinding.instance.platformDispatcher.views.first.physicalSize;
+    final orientation = size.width > size.height
+        ? Orientation.landscape
+        : Orientation.portrait;
 
     // 避免重复记录
     if (orientation == _lastOrientation) return;
@@ -148,7 +159,9 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
 
     // 仅记录方向变化，不自动切换全屏
     // 全屏状态由用户手动控制
-    logger.d('VideoPlayerPage: 屏幕方向变化 => ${orientation == Orientation.landscape ? "横屏" : "竖屏"}');
+    logger.d(
+      'VideoPlayerPage: 屏幕方向变化 => ${orientation == Orientation.landscape ? "横屏" : "竖屏"}',
+    );
   }
 
   /// 缓存源信息，用于 dispose 时更新缩略图
@@ -254,7 +267,9 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
     // 使用 Future.microtask 在后台执行，不阻塞 dispose
     Future.microtask(() async {
       try {
-        await ScreenBrightness.instance.setApplicationScreenBrightness(_initialBrightness!);
+        await ScreenBrightness.instance.setApplicationScreenBrightness(
+          _initialBrightness!,
+        );
       } on Exception catch (e) {
         logger.w('VideoPlayerPage: 恢复亮度失败', e);
       }
@@ -265,7 +280,9 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
   Future<void> _setBrightness(double brightness) async {
     if (!_isMobile) return;
     try {
-      await ScreenBrightness.instance.setApplicationScreenBrightness(brightness);
+      await ScreenBrightness.instance.setApplicationScreenBrightness(
+        brightness,
+      );
     } on Exception catch (e) {
       logger.w('VideoPlayerPage: 设置亮度失败', e);
     }
@@ -314,6 +331,38 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
       return;
     }
     setState(() => _showControls = !_showControls);
+    _startHideControlsTimer();
+  }
+
+  /// 桌面端：鼠标进入视频区域
+  void _onMouseEnter() {
+    if (!_isDesktop) return;
+    _isMouseInVideoArea = true;
+    if (!_showControls && !_isLocked) {
+      setState(() => _showControls = true);
+    }
+    _startHideControlsTimer();
+  }
+
+  /// 桌面端：鼠标离开视频区域
+  void _onMouseExit() {
+    if (!_isDesktop) return;
+    _isMouseInVideoArea = false;
+    // 鼠标离开时立即隐藏控制栏
+    _hideControlsTimer?.cancel();
+    if (_showControls && !_isLocked) {
+      setState(() => _showControls = false);
+    }
+  }
+
+  /// 桌面端：鼠标移动时重置隐藏计时器
+  void _onMouseMove() {
+    if (!_isDesktop || !_isMouseInVideoArea) return;
+    // 如果控制栏未显示，则显示
+    if (!_showControls && !_isLocked) {
+      setState(() => _showControls = true);
+    }
+    // 重置隐藏计时器
     _startHideControlsTimer();
   }
 
@@ -377,7 +426,8 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
       stream: controller.player.stream.subtitle,
       builder: (context, snapshot) {
         final subtitleLines = snapshot.data ?? [];
-        if (subtitleLines.isEmpty || subtitleLines.every((s) => s.trim().isEmpty)) {
+        if (subtitleLines.isEmpty ||
+            subtitleLines.every((s) => s.trim().isEmpty)) {
           return const SizedBox.shrink();
         }
 
@@ -389,17 +439,25 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
         // 根据位置设置对齐方式和边距
         final (alignment, padding) = switch (subtitleStyle.position) {
           SubtitlePosition.top => (
-              Alignment.topCenter,
-              EdgeInsets.only(top: subtitleStyle.bottomPadding, left: 16, right: 16),
+            Alignment.topCenter,
+            EdgeInsets.only(
+              top: subtitleStyle.bottomPadding,
+              left: 16,
+              right: 16,
             ),
+          ),
           SubtitlePosition.center => (
-              Alignment.center,
-              const EdgeInsets.symmetric(horizontal: 16),
-            ),
+            Alignment.center,
+            const EdgeInsets.symmetric(horizontal: 16),
+          ),
           SubtitlePosition.bottom => (
-              Alignment.bottomCenter,
-              EdgeInsets.only(bottom: subtitleStyle.bottomPadding, left: 16, right: 16),
+            Alignment.bottomCenter,
+            EdgeInsets.only(
+              bottom: subtitleStyle.bottomPadding,
+              left: 16,
+              right: 16,
             ),
+          ),
         };
 
         return Align(
@@ -412,7 +470,10 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
                 fontSize: subtitleStyle.fontSize,
                 color: subtitleStyle.fontColor,
                 fontWeight: subtitleStyle.fontWeight,
-                backgroundColor: subtitleStyle.backgroundColor,
+                // 只有开启背景时才显示背景颜色
+                backgroundColor: subtitleStyle.showBackground
+                    ? subtitleStyle.backgroundColor
+                    : null,
                 shadows: subtitleStyle.hasOutline
                     ? [
                         Shadow(
@@ -455,10 +516,7 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
 
     // 如果是固定比例模式，用 AspectRatio 包裹
     if (mode.ratio != null) {
-      return AspectRatio(
-        aspectRatio: mode.ratio!,
-        child: videoWithSubtitle,
-      );
+      return AspectRatio(aspectRatio: mode.ratio!, child: videoWithSubtitle);
     }
 
     return videoWithSubtitle;
@@ -493,300 +551,325 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
         shortcuts: _buildKeyboardShortcuts(playerNotifier, playerState),
         child: Scaffold(
           backgroundColor: Colors.black,
-          body: VideoGestureController(
-        playerState: playerState,
-        onTap: _toggleControls,
-        onDoubleTap: _handleDoubleTap,
-        onVolumeChange: _isMobile
-            ? (volume) {
-                playerNotifier.setVolume(volume);
-                _startHideControlsTimer();
-              }
-            : (_) {}, // 桌面端禁用手势音量控制
-        onBrightnessChange: _isMobile ? _setBrightness : null,
-        onSeek: (position) {
-          playerNotifier.seek(position);
-          _startHideControlsTimer();
-        },
-        child: Stack(
-          children: [
-            // 视频画面
-            Center(
-              child: Consumer(
-                builder: (context, ref, _) {
-                  final aspectMode = ref.watch(aspectRatioModeProvider);
-                  final subtitleStyle = ref.watch(subtitleStyleProvider);
-
-                  // 监听字幕延时变化并应用到播放器
-                  ref.listen<SubtitleStyle>(
-                    subtitleStyleProvider,
-                    (previous, next) {
-                      if (previous?.delay != next.delay) {
-                        playerNotifier.setSubtitleDelay(next.delay);
+          body: MouseRegion(
+            onEnter: (_) => _onMouseEnter(),
+            onExit: (_) => _onMouseExit(),
+            child: Listener(
+              onPointerHover: (_) => _onMouseMove(),
+              child: VideoGestureController(
+                playerState: playerState,
+                onTap: _toggleControls,
+                onDoubleTap: _handleDoubleTap,
+                onVolumeChange: _isMobile
+                    ? (volume) {
+                        playerNotifier.setVolume(volume);
+                        _startHideControlsTimer();
                       }
-                    },
-                  );
-
-                  return _buildVideoWidget(
-                    playerNotifier.videoController,
-                    aspectMode,
-                    subtitleStyle,
-                  );
+                    : (_) {}, // 桌面端禁用手势音量控制
+                onBrightnessChange: _isMobile ? _setBrightness : null,
+                onSeek: (position) {
+                  playerNotifier.seek(position);
+                  _startHideControlsTimer();
                 },
-              ),
-            ),
-
-            // 缓冲指示器
-            if (playerState.isBuffering)
-              const Center(
-                child: CircularProgressIndicator(color: Colors.white),
-              ),
-
-            // 双击快退动画
-            if (_showDoubleTapLeft)
-              Positioned(
-                left: 48,
-                top: 0,
-                bottom: 0,
-                child: Center(
-                  child: DoubleTapSeekOverlay(
-                    isForward: false,
-                    seekInterval: ref.read(playbackSettingsProvider).seekInterval,
-                    onComplete: () {
-                      if (mounted) {
-                        setState(() => _showDoubleTapLeft = false);
-                      }
-                    },
-                  ),
-                ),
-              ),
-
-            // 双击快进动画
-            if (_showDoubleTapRight)
-              Positioned(
-                right: 48,
-                top: 0,
-                bottom: 0,
-                child: Center(
-                  child: DoubleTapSeekOverlay(
-                    isForward: true,
-                    seekInterval: ref.read(playbackSettingsProvider).seekInterval,
-                    onComplete: () {
-                      if (mounted) {
-                        setState(() => _showDoubleTapRight = false);
-                      }
-                    },
-                  ),
-                ),
-              ),
-
-            // 控制层
-            if (_showControls && !_isLocked)
-              Consumer(
-                builder: (context, ref, _) {
-                  final subtitles = ref.watch(availableSubtitlesProvider);
-                  final currentSubtitle = ref.watch(currentSubtitleProvider);
-                  final playlist = ref.watch(playlistProvider);
-                  final hasPlaylist = playlist.items.length > 1;
-                  final playbackSettings = ref.watch(playbackSettingsProvider);
-
-                  return VideoControls(
-                    video: widget.video,
-                    state: playerState,
-                    seekInterval: playbackSettings.seekInterval,
-                    hasSubtitles: subtitles.isNotEmpty || currentSubtitle != null,
-                    hasPlaylist: hasPlaylist,
-                    hasPrevious: playlist.hasPrevious,
-                    hasNext: playlist.hasNext,
-                    onPlayPause: () {
-                      playerNotifier.playOrPause();
-                      _startHideControlsTimer();
-                    },
-                    onSeek: (position) {
-                      playerNotifier.seek(position);
-                      _startHideControlsTimer();
-                    },
-                    onSeekForward: () {
-                      playerNotifier.seekForward();
-                      _startHideControlsTimer();
-                    },
-                    onSeekBackward: () {
-                      playerNotifier.seekBackward();
-                      _startHideControlsTimer();
-                    },
-                    onVolumeChange: (volume) {
-                      playerNotifier.setVolume(volume);
-                      _startHideControlsTimer();
-                    },
-                    onSpeedChange: (speed) {
-                      playerNotifier.setSpeed(speed);
-                      _startHideControlsTimer();
-                    },
-                    onToggleFullscreen: playerNotifier.toggleFullscreen,
-                    onBack: _handleBack,
-                    onPlayPrevious: () {
-                      playerNotifier.playPrevious();
-                      _startHideControlsTimer();
-                    },
-                    onPlayNext: () {
-                      playerNotifier.playNext();
-                      _startHideControlsTimer();
-                    },
-                    onShowBookmarks: () {
-                      showBookmarkSheet(
-                        context,
-                        videoPath: widget.video.path,
-                        videoName: widget.video.name,
-                        currentPosition: playerState.position,
-                        onSeek: (position) {
-                          playerNotifier.seek(position);
-                          _startHideControlsTimer();
-                        },
-                      );
-                    },
-                    isPipSupported: _isPipSupported,
-                    onTogglePip: () {
-                      playerNotifier.togglePictureInPicture();
-                      _startHideControlsTimer();
-                    },
-                  );
-                },
-              ),
-
-            // 右下角悬浮按钮区域（画中画 + 锁定）
-            if (_showControls)
-              Positioned(
-                right: 16,
-                bottom: 100,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
+                child: Stack(
                   children: [
-                    // 画中画按钮（仅在支持时显示）
-                    if (_isPipSupported)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.5),
-                            borderRadius: BorderRadius.circular(24),
+                    // 视频画面
+                    Center(
+                      child: Consumer(
+                        builder: (context, ref, _) {
+                          final aspectMode = ref.watch(aspectRatioModeProvider);
+                          final subtitleStyle = ref.watch(
+                            subtitleStyleProvider,
+                          );
+
+                          // 监听字幕延时变化并应用到播放器
+                          ref.listen<SubtitleStyle>(subtitleStyleProvider, (
+                            previous,
+                            next,
+                          ) {
+                            if (previous?.delay != next.delay) {
+                              playerNotifier.setSubtitleDelay(next.delay);
+                            }
+                          });
+
+                          return _buildVideoWidget(
+                            playerNotifier.videoController,
+                            aspectMode,
+                            subtitleStyle,
+                          );
+                        },
+                      ),
+                    ),
+
+                    // 缓冲指示器
+                    if (playerState.isBuffering)
+                      const Center(
+                        child: CircularProgressIndicator(color: Colors.white),
+                      ),
+
+                    // 双击快退动画
+                    if (_showDoubleTapLeft)
+                      Positioned(
+                        left: 48,
+                        top: 0,
+                        bottom: 0,
+                        child: Center(
+                          child: DoubleTapSeekOverlay(
+                            isForward: false,
+                            seekInterval: ref
+                                .read(playbackSettingsProvider)
+                                .seekInterval,
+                            onComplete: () {
+                              if (mounted) {
+                                setState(() => _showDoubleTapLeft = false);
+                              }
+                            },
                           ),
-                          child: IconButton(
-                            onPressed: () {
+                        ),
+                      ),
+
+                    // 双击快进动画
+                    if (_showDoubleTapRight)
+                      Positioned(
+                        right: 48,
+                        top: 0,
+                        bottom: 0,
+                        child: Center(
+                          child: DoubleTapSeekOverlay(
+                            isForward: true,
+                            seekInterval: ref
+                                .read(playbackSettingsProvider)
+                                .seekInterval,
+                            onComplete: () {
+                              if (mounted) {
+                                setState(() => _showDoubleTapRight = false);
+                              }
+                            },
+                          ),
+                        ),
+                      ),
+
+                    // 控制层
+                    if (_showControls && !_isLocked)
+                      Consumer(
+                        builder: (context, ref, _) {
+                          final subtitles = ref.watch(
+                            availableSubtitlesProvider,
+                          );
+                          final currentSubtitle = ref.watch(
+                            currentSubtitleProvider,
+                          );
+                          final playlist = ref.watch(playlistProvider);
+                          final hasPlaylist = playlist.items.length > 1;
+                          final playbackSettings = ref.watch(
+                            playbackSettingsProvider,
+                          );
+
+                          return VideoControls(
+                            video: widget.video,
+                            state: playerState,
+                            seekInterval: playbackSettings.seekInterval,
+                            hasSubtitles:
+                                subtitles.isNotEmpty || currentSubtitle != null,
+                            hasPlaylist: hasPlaylist,
+                            hasPrevious: playlist.hasPrevious,
+                            hasNext: playlist.hasNext,
+                            onPlayPause: () {
+                              playerNotifier.playOrPause();
+                              _startHideControlsTimer();
+                            },
+                            onSeek: (position) {
+                              playerNotifier.seek(position);
+                              _startHideControlsTimer();
+                            },
+                            onSeekForward: () {
+                              playerNotifier.seekForward();
+                              _startHideControlsTimer();
+                            },
+                            onSeekBackward: () {
+                              playerNotifier.seekBackward();
+                              _startHideControlsTimer();
+                            },
+                            onVolumeChange: (volume) {
+                              playerNotifier.setVolume(volume);
+                              _startHideControlsTimer();
+                            },
+                            onSpeedChange: (speed) {
+                              playerNotifier.setSpeed(speed);
+                              _startHideControlsTimer();
+                            },
+                            onToggleFullscreen: playerNotifier.toggleFullscreen,
+                            onBack: _handleBack,
+                            onPlayPrevious: () {
+                              playerNotifier.playPrevious();
+                              _startHideControlsTimer();
+                            },
+                            onPlayNext: () {
+                              playerNotifier.playNext();
+                              _startHideControlsTimer();
+                            },
+                            onShowBookmarks: () {
+                              showBookmarkSheet(
+                                context,
+                                videoPath: widget.video.path,
+                                videoName: widget.video.name,
+                                currentPosition: playerState.position,
+                                onSeek: (position) {
+                                  playerNotifier.seek(position);
+                                  _startHideControlsTimer();
+                                },
+                              );
+                            },
+                            isPipSupported: _isPipSupported,
+                            onTogglePip: () {
                               playerNotifier.togglePictureInPicture();
                               _startHideControlsTimer();
                             },
-                            icon: Icon(
-                              playerState.isPictureInPicture
-                                  ? Icons.picture_in_picture_alt
-                                  : Icons.picture_in_picture,
-                              color: Colors.white,
-                              size: 24,
+                          );
+                        },
+                      ),
+
+                    // 右下角悬浮按钮区域（画中画 + 锁定）
+                    if (_showControls)
+                      Positioned(
+                        right: 16,
+                        bottom: 100,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // 画中画按钮（仅在支持时显示）
+                            if (_isPipSupported)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.5),
+                                    borderRadius: BorderRadius.circular(24),
+                                  ),
+                                  child: IconButton(
+                                    onPressed: () {
+                                      playerNotifier.togglePictureInPicture();
+                                      _startHideControlsTimer();
+                                    },
+                                    icon: Icon(
+                                      playerState.isPictureInPicture
+                                          ? Icons.picture_in_picture_alt
+                                          : Icons.picture_in_picture,
+                                      color: Colors.white,
+                                      size: 24,
+                                    ),
+                                    tooltip: playerState.isPictureInPicture
+                                        ? '退出画中画'
+                                        : '画中画',
+                                  ),
+                                ),
+                              ),
+                            // 缓存按钮
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: _buildCacheButton(),
                             ),
-                            tooltip: playerState.isPictureInPicture ? '退出画中画' : '画中画',
+                            // 锁定按钮
+                            DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.5),
+                                borderRadius: BorderRadius.circular(24),
+                              ),
+                              child: IconButton(
+                                onPressed: () {
+                                  setState(() => _isLocked = !_isLocked);
+                                  _startHideControlsTimer();
+                                },
+                                icon: Icon(
+                                  _isLocked
+                                      ? Icons.lock_rounded
+                                      : Icons.lock_open_rounded,
+                                  color: Colors.white,
+                                  size: 24,
+                                ),
+                                tooltip: _isLocked ? '解锁屏幕' : '锁定屏幕',
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                    // 锁定状态提示
+                    if (_isLocked && _showControls)
+                      Positioned(
+                        bottom: 100,
+                        left: 0,
+                        right: 0,
+                        child: Center(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.6),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: const Text(
+                              '屏幕已锁定，点击锁图标解锁',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                              ),
+                            ),
                           ),
                         ),
                       ),
-                    // 缓存按钮
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: _buildCacheButton(),
-                    ),
-                    // 锁定按钮
-                    DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.5),
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      child: IconButton(
-                        onPressed: () {
-                          setState(() => _isLocked = !_isLocked);
-                          _startHideControlsTimer();
-                        },
-                        icon: Icon(
-                          _isLocked ? Icons.lock_rounded : Icons.lock_open_rounded,
-                          color: Colors.white,
-                          size: 24,
+
+                    // 错误提示
+                    if (playerState.errorMessage != null)
+                      Center(
+                        child: Container(
+                          padding: AppSpacing.paddingLg,
+                          margin: AppSpacing.paddingLg,
+                          decoration: BoxDecoration(
+                            color: Colors.black54,
+                            borderRadius: AppRadius.borderRadiusMd,
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.error_outline,
+                                color: AppColors.error,
+                                size: 48,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                '播放失败',
+                                style: context.textTheme.titleMedium?.copyWith(
+                                  color: Colors.white,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                playerState.errorMessage!,
+                                style: context.textTheme.bodySmall?.copyWith(
+                                  color: Colors.white70,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 16),
+                              FilledButton(
+                                onPressed: () =>
+                                    playerNotifier.play(widget.video),
+                                child: const Text('重试'),
+                              ),
+                            ],
+                          ),
                         ),
-                        tooltip: _isLocked ? '解锁屏幕' : '锁定屏幕',
                       ),
-                    ),
                   ],
                 ),
               ),
-
-            // 锁定状态提示
-            if (_isLocked && _showControls)
-              Positioned(
-                bottom: 100,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.6),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Text(
-                      '屏幕已锁定，点击锁图标解锁',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-
-            // 错误提示
-            if (playerState.errorMessage != null)
-              Center(
-                child: Container(
-                  padding: AppSpacing.paddingLg,
-                  margin: AppSpacing.paddingLg,
-                  decoration: BoxDecoration(
-                    color: Colors.black54,
-                    borderRadius: AppRadius.borderRadiusMd,
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.error_outline,
-                        color: AppColors.error,
-                        size: 48,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        '播放失败',
-                        style: context.textTheme.titleMedium?.copyWith(
-                          color: Colors.white,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        playerState.errorMessage!,
-                        style: context.textTheme.bodySmall?.copyWith(
-                          color: Colors.white70,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 16),
-                      FilledButton(
-                        onPressed: () => playerNotifier.play(widget.video),
-                        child: const Text('重试'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-          ],
+            ),
+          ),
         ),
-      ),
-    ),
       ),
     );
   }
@@ -798,9 +881,7 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
   ) {
     if (_isLocked) {
       // 锁定状态下只允许解锁
-      return {
-        CommonShortcuts.escape: () => setState(() => _isLocked = false),
-      };
+      return {CommonShortcuts.escape: () => setState(() => _isLocked = false)};
     }
 
     return {
@@ -893,16 +974,26 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
       },
 
       // 数字键跳转 (0-9 跳转到 0%-90%)
-      CommonShortcuts.jumpTo0: () => _seekToPercent(playerNotifier, playerState, 0),
-      CommonShortcuts.jumpTo10: () => _seekToPercent(playerNotifier, playerState, 10),
-      CommonShortcuts.jumpTo20: () => _seekToPercent(playerNotifier, playerState, 20),
-      CommonShortcuts.jumpTo30: () => _seekToPercent(playerNotifier, playerState, 30),
-      CommonShortcuts.jumpTo40: () => _seekToPercent(playerNotifier, playerState, 40),
-      CommonShortcuts.jumpTo50: () => _seekToPercent(playerNotifier, playerState, 50),
-      CommonShortcuts.jumpTo60: () => _seekToPercent(playerNotifier, playerState, 60),
-      CommonShortcuts.jumpTo70: () => _seekToPercent(playerNotifier, playerState, 70),
-      CommonShortcuts.jumpTo80: () => _seekToPercent(playerNotifier, playerState, 80),
-      CommonShortcuts.jumpTo90: () => _seekToPercent(playerNotifier, playerState, 90),
+      CommonShortcuts.jumpTo0: () =>
+          _seekToPercent(playerNotifier, playerState, 0),
+      CommonShortcuts.jumpTo10: () =>
+          _seekToPercent(playerNotifier, playerState, 10),
+      CommonShortcuts.jumpTo20: () =>
+          _seekToPercent(playerNotifier, playerState, 20),
+      CommonShortcuts.jumpTo30: () =>
+          _seekToPercent(playerNotifier, playerState, 30),
+      CommonShortcuts.jumpTo40: () =>
+          _seekToPercent(playerNotifier, playerState, 40),
+      CommonShortcuts.jumpTo50: () =>
+          _seekToPercent(playerNotifier, playerState, 50),
+      CommonShortcuts.jumpTo60: () =>
+          _seekToPercent(playerNotifier, playerState, 60),
+      CommonShortcuts.jumpTo70: () =>
+          _seekToPercent(playerNotifier, playerState, 70),
+      CommonShortcuts.jumpTo80: () =>
+          _seekToPercent(playerNotifier, playerState, 80),
+      CommonShortcuts.jumpTo90: () =>
+          _seekToPercent(playerNotifier, playerState, 90),
 
       // 帮助
       CommonShortcuts.help: _showKeyboardHelp,
@@ -916,7 +1007,8 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
     int percent,
   ) {
     final position = Duration(
-      milliseconds: (playerState.duration.inMilliseconds * percent / 100).toInt(),
+      milliseconds: (playerState.duration.inMilliseconds * percent / 100)
+          .toInt(),
     );
     playerNotifier.seek(position);
     _startHideControlsTimer();
@@ -956,10 +1048,7 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> with WidgetsB
     }
 
     final isCachedAsync = ref.watch(
-      isCachedProvider((
-        sourceId: sourceId,
-        sourcePath: widget.video.path,
-      )),
+      isCachedProvider((sourceId: sourceId, sourcePath: widget.video.path)),
     );
 
     return isCachedAsync.when(

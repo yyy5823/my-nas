@@ -259,8 +259,9 @@ class _StreamImageState extends State<StreamImage> {
   /// 通过流式加载图片
   ///
   /// 加载策略：
-  /// 1. 如果有 URL，优先通过 getUrlStream 加载（可以加载缩略图）
-  /// 2. 如果 URL 加载失败或没有 URL，通过 getFileStream 加载原文件
+  /// 1. 优先使用 getThumbnailData（本地相册缩略图，最快）
+  /// 2. 如果有 URL，通过 getUrlStream 加载
+  /// 3. 最后通过 getFileStream 加载原文件（最慢）
   Future<void> _loadImageViaStream() async {
     // 检查内存缓存
     if (_cacheKey.isNotEmpty && StreamImage._memoryCache.containsKey(_cacheKey)) {
@@ -288,37 +289,49 @@ class _StreamImageState extends State<StreamImage> {
     // 使用队列控制并发加载
     Future<void> doLoad() async {
       try {
-        Stream<List<int>>? stream;
+        Uint8List? imageData;
 
-        // 优先使用 URL 加载（可以加载缩略图）
-        if (_hasValidHttpUrl) {
+        // 1. 优先使用 getThumbnailData（本地相册缩略图，最快）
+        if (widget.path != null) {
           try {
-            stream = await widget.fileSystem!.getUrlStream(widget.url!);
-          } on Exception catch (e, st) {
-            AppError.ignore(e, st, 'URL stream 失败，降级到 file stream');
-            // URL 加载失败，继续尝试文件流
+            imageData = await widget.fileSystem!.getThumbnailData(widget.path!);
+          } on Exception {
+            // ignore - 继续尝试其他方式
           }
         }
 
-        // 如果 URL 加载失败或没有 URL，使用文件流
-        if (stream == null) {
+        // 2. 如果 getThumbnailData 返回 null，尝试 URL 流
+        if (imageData == null && _hasValidHttpUrl) {
+          try {
+            final stream = await widget.fileSystem!.getUrlStream(widget.url!);
+            final bytes = <int>[];
+            await for (final chunk in stream) {
+              bytes.addAll(chunk);
+              if (bytes.length > 50 * 1024 * 1024) {
+                throw Exception('图片文件过大');
+              }
+            }
+            imageData = Uint8List.fromList(bytes);
+          } on Exception catch (e, st) {
+            AppError.ignore(e, st, 'URL stream 失败，降级到 file stream');
+          }
+        }
+
+        // 3. 最后使用文件流（最慢，加载完整文件）
+        if (imageData == null) {
           if (widget.path == null) {
             throw Exception('无法加载图片：没有可用的 URL 或路径');
           }
-          stream = await widget.fileSystem!.getFileStream(widget.path!);
-        }
-
-        final bytes = <int>[];
-        await for (final chunk in stream) {
-          bytes.addAll(chunk);
-          // 限制图片大小，防止内存溢出
-          if (bytes.length > 50 * 1024 * 1024) {
-            // 50MB 限制
-            throw Exception('图片文件过大');
+          final stream = await widget.fileSystem!.getFileStream(widget.path!);
+          final bytes = <int>[];
+          await for (final chunk in stream) {
+            bytes.addAll(chunk);
+            if (bytes.length > 50 * 1024 * 1024) {
+              throw Exception('图片文件过大');
+            }
           }
+          imageData = Uint8List.fromList(bytes);
         }
-
-        final imageData = Uint8List.fromList(bytes);
 
         // 添加到缓存
         if (_cacheKey.isNotEmpty) {

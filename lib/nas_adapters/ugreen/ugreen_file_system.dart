@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/nas_adapters/ugreen/api/ugreen_api.dart';
@@ -158,4 +160,7 @@ class UGreenFileSystem implements NasFileSystem {
   @override
   Future<String?> getThumbnailUrl(String path, {ThumbnailSize? size}) async =>
       api.getThumbnailUrl(path, size: size);
+
+  @override
+  Future<Uint8List?> getThumbnailData(String path, {ThumbnailSize? size}) async => null;
 }

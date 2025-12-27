@@ -344,14 +344,15 @@ class _EbookReaderPageState extends ConsumerState<EbookReaderPage> {
   /// 将 BookPageTurnMode 映射到 FoliatePageTurnStyle
   /// - scroll: 水平翻页（分页模式，左右滑动切换页面）
   /// - slide: 连续滚动（无页面边界，上下拖动查看更多内容）
-  /// - simulation/cover: Flutter 层实现，禁用 WebView 内置翻页
+  /// - simulation: 仿真翻页（JS 层实现，带阴影卷曲效果）
+  /// - cover: 覆盖翻页（JS 层实现，新页面滑入覆盖）
   /// - none: 无动画，点击翻页
   FoliatePageTurnStyle _mapPageTurnMode(BookPageTurnMode mode) => switch (mode) {
         BookPageTurnMode.scroll => FoliatePageTurnStyle.slide, // 水平翻页
         BookPageTurnMode.slide => FoliatePageTurnStyle.scroll, // 连续滚动
-        // 仿真和覆盖由 Flutter 处理，禁用 WebView 自带的翻页动画
-        BookPageTurnMode.simulation => FoliatePageTurnStyle.noAnimation,
-        BookPageTurnMode.cover => FoliatePageTurnStyle.noAnimation,
+        // 仿真和覆盖由 foliate-js 的 paginator.js 处理
+        BookPageTurnMode.simulation => FoliatePageTurnStyle.simulation,
+        BookPageTurnMode.cover => FoliatePageTurnStyle.cover,
         BookPageTurnMode.none => FoliatePageTurnStyle.noAnimation,
       };
 
@@ -373,8 +374,9 @@ class _EbookReaderPageState extends ConsumerState<EbookReaderPage> {
       };
 
   /// 判断是否使用 Flutter 层面的翻页效果
-  bool _useFlutterPageFlip(BookPageTurnMode mode) =>
-      mode == BookPageTurnMode.simulation || mode == BookPageTurnMode.cover;
+  /// 现在 simulation 和 cover 由 foliate-js 的 paginator.js 处理，所以返回 false
+  // ignore: unused_element
+  bool _useFlutterPageFlip(BookPageTurnMode mode) => false;
 
   Widget _buildSettingsContent(BookReaderSettings settings) {
     final settingsNotifier = ref.read(bookReaderSettingsProvider.notifier);

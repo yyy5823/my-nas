@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:dlna_dart/dlna.dart';
+import 'package:dlna_dart/xmlParser.dart';
 import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/video/domain/entities/cast_device.dart';
@@ -10,20 +11,26 @@ import 'package:my_nas/features/video/domain/entities/cast_device.dart';
 class DlnaAdapter {
   DlnaAdapter();
 
-  /// DLNA 搜索器
+  /// DLNA 管理器
   DLNAManager? _manager;
+
+  /// 设备管理器
+  DeviceManager? _deviceManager;
 
   /// 是否正在搜索
   bool _isSearching = false;
 
   /// 当前设备缓存
-  final List<DLNADevice> _dlnaDevices = [];
+  final Map<String, DLNADevice> _dlnaDevices = {};
 
   /// 当前播放的设备
   DLNADevice? _currentDevice;
 
   /// 设备发现控制器
   final _deviceController = StreamController<List<CastDevice>>.broadcast();
+
+  /// 设备流订阅
+  StreamSubscription<Map<String, DLNADevice>>? _deviceSubscription;
 
   /// 设备发现流
   Stream<List<CastDevice>> get deviceStream => _deviceController.stream;
@@ -46,8 +53,25 @@ class DlnaAdapter {
 
       logger.i('开始搜索 DLNA 设备...');
 
-      // 搜索设备
-      final searcher = _manager!.search();
+      // 启动设备管理器
+      _deviceManager = await _manager!.start();
+
+      // 监听设备发现
+      _deviceSubscription = _deviceManager!.devices.stream.listen((deviceMap) {
+        _dlnaDevices.clear();
+
+        for (final entry in deviceMap.entries) {
+          final device = entry.value;
+          // 只关注渲染器（可以接收视频的设备）
+          if (device.info.deviceType.contains('MediaRenderer')) {
+            logger.i('发现 DLNA 设备: ${device.info.friendlyName}');
+            _dlnaDevices[entry.key] = device;
+          }
+        }
+
+        // 发送更新
+        _deviceController.add(_convertToCastDevices());
+      });
 
       // 设置超时
       Timer(timeout, () {
@@ -55,22 +79,8 @@ class DlnaAdapter {
           stopDiscovery();
         }
       });
-
-      await for (final device in searcher) {
-        if (!_isSearching) break;
-
-        // 只关注渲染器（可以接收视频的设备）
-        if (device.info.deviceType.contains('MediaRenderer')) {
-          logger.i('发现 DLNA 设备: ${device.info.friendlyName}');
-          _dlnaDevices.add(device);
-
-          // 发送更新
-          _deviceController.add(_convertToCastDevices());
-        }
-      }
     } catch (e, st) {
       AppError.handle(e, st, 'dlnaStartDiscovery');
-    } finally {
       _isSearching = false;
     }
   }
@@ -78,6 +88,11 @@ class DlnaAdapter {
   /// 停止设备发现
   void stopDiscovery() {
     _isSearching = false;
+    _deviceSubscription?.cancel();
+    _deviceSubscription = null;
+    _manager?.stop();
+    _manager = null;
+    _deviceManager = null;
     logger.i('停止 DLNA 设备搜索');
   }
 
@@ -85,17 +100,14 @@ class DlnaAdapter {
   List<CastDevice> getDiscoveredDevices() => _convertToCastDevices();
 
   /// 转换为 CastDevice 列表
-  List<CastDevice> _convertToCastDevices() => _dlnaDevices.map((device) {
+  List<CastDevice> _convertToCastDevices() => _dlnaDevices.values.map((device) {
         final info = device.info;
         return CastDevice(
-          id: info.usn ?? info.urlBase ?? info.friendlyName,
+          id: info.URLBase,
           name: info.friendlyName,
           protocol: CastProtocol.dlna,
-          address: _extractAddress(info.urlBase ?? ''),
-          port: _extractPort(info.urlBase ?? ''),
-          modelName: info.modelName,
-          manufacturer: info.manufacturer,
-          iconUrl: info.iconList.isNotEmpty ? info.iconList.first.url : null,
+          address: _extractAddress(info.URLBase),
+          port: _extractPort(info.URLBase),
         );
       }).toList();
 
@@ -127,10 +139,10 @@ class DlnaAdapter {
     String? subtitleUrl,
   }) async {
     // 找到对应的 DLNA 设备
-    final device = _dlnaDevices.firstWhere(
-      (d) => (d.info.usn ?? d.info.urlBase ?? d.info.friendlyName) == deviceId,
-      orElse: () => throw Exception('设备未找到: $deviceId'),
-    );
+    final device = _dlnaDevices[deviceId];
+    if (device == null) {
+      throw Exception('设备未找到: $deviceId');
+    }
 
     try {
       _currentDevice = device;
@@ -139,7 +151,7 @@ class DlnaAdapter {
       logger.i('视频URL: $videoUrl');
 
       // 设置媒体 URL
-      await device.setUrl(videoUrl);
+      await device.setUrl(videoUrl, title: title, type: PlayType.Video);
 
       // 播放
       await device.play();
@@ -192,7 +204,9 @@ class DlnaAdapter {
     if (_currentDevice == null) return;
 
     try {
-      await _currentDevice!.seekTo(position);
+      // 转换为 HH:MM:SS 格式
+      final timeStr = _formatDurationToString(position);
+      await _currentDevice!.seek(timeStr);
     } catch (e, st) {
       AppError.handle(e, st, 'dlnaSeek');
     }
@@ -203,7 +217,7 @@ class DlnaAdapter {
     if (_currentDevice == null) return;
 
     try {
-      await _currentDevice!.setVolume(volume);
+      await _currentDevice!.volume(volume.clamp(0, 100));
     } catch (e, st) {
       AppError.handle(e, st, 'dlnaSetVolume');
     }
@@ -214,8 +228,9 @@ class DlnaAdapter {
     if (_currentDevice == null) return null;
 
     try {
-      final positionInfo = await _currentDevice!.position();
-      return _parseDuration(positionInfo.relTime);
+      final positionXml = await _currentDevice!.position();
+      final parser = PositionParser(positionXml);
+      return Duration(seconds: parser.RelTimeInt);
     } catch (e, st) {
       AppError.ignore(e, st, '获取播放位置失败（正常情况下可能未开始播放）');
       return null;
@@ -227,8 +242,9 @@ class DlnaAdapter {
     if (_currentDevice == null) return null;
 
     try {
-      final positionInfo = await _currentDevice!.position();
-      return _parseDuration(positionInfo.trackDuration);
+      final positionXml = await _currentDevice!.position();
+      final parser = PositionParser(positionXml);
+      return Duration(seconds: parser.TrackDurationInt);
     } catch (e, st) {
       AppError.ignore(e, st, '获取播放时长失败');
       return null;
@@ -240,8 +256,9 @@ class DlnaAdapter {
     if (_currentDevice == null) return CastPlaybackState.idle;
 
     try {
-      final transportInfo = await _currentDevice!.transportInfo();
-      return _convertTransportState(transportInfo.currentTransportState);
+      final transportXml = await _currentDevice!.getTransportInfo();
+      final parser = TransportInfoParser(transportXml);
+      return _convertTransportState(parser.CurrentTransportState);
     } catch (e, st) {
       AppError.ignore(e, st, '获取播放状态失败');
       return CastPlaybackState.idle;
@@ -258,32 +275,12 @@ class DlnaAdapter {
         _ => CastPlaybackState.idle,
       };
 
-  /// 解析时间字符串为 Duration
-  Duration? _parseDuration(String? timeStr) {
-    if (timeStr == null || timeStr.isEmpty) return null;
-
-    try {
-      // 格式: HH:MM:SS 或 HH:MM:SS.mmm
-      final parts = timeStr.split(':');
-      if (parts.length != 3) return null;
-
-      final hours = int.parse(parts[0]);
-      final minutes = int.parse(parts[1]);
-
-      // 处理秒和毫秒
-      final secondsParts = parts[2].split('.');
-      final seconds = int.parse(secondsParts[0]);
-      final milliseconds = secondsParts.length > 1 ? int.parse(secondsParts[1].padRight(3, '0').substring(0, 3)) : 0;
-
-      return Duration(
-        hours: hours,
-        minutes: minutes,
-        seconds: seconds,
-        milliseconds: milliseconds,
-      );
-    } catch (e) {
-      return null;
-    }
+  /// 将 Duration 转换为 HH:MM:SS 格式字符串
+  String _formatDurationToString(Duration duration) {
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes.remainder(60);
+    final seconds = duration.inSeconds.remainder(60);
+    return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
 
   /// 释放资源

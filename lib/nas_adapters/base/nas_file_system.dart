@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 /// 文件系统抽象接口
 abstract class NasFileSystem {
   /// 列出目录内容
@@ -64,6 +66,17 @@ abstract class NasFileSystem {
 
   /// 获取缩略图 URL
   Future<String?> getThumbnailUrl(String path, {ThumbnailSize? size});
+
+  /// 获取缩略图数据
+  ///
+  /// 直接返回缩略图的字节数据，用于本地相册等不支持 HTTP URL 的场景。
+  /// 默认实现返回 null，子类可按需实现。
+  ///
+  /// [path] 文件路径
+  /// [size] 缩略图尺寸（可选，默认 medium）
+  Future<Uint8List?> getThumbnailData(String path, {ThumbnailSize? size}) {
+    return Future.value();
+  }
 }
 
 /// 文件项

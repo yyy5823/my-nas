@@ -316,6 +316,24 @@ class NasToolApi {
     return items.map((e) => NtSearchResult.fromJson(e as Map<String, dynamic>)).toList();
   }
 
+  /// 获取媒体搜索结果（包含分组种子）
+  Future<List<NtMediaSearchResult>> getMediaSearchResults() async {
+    final data = await _post('/search/result');
+    final result = data['result'];
+    if (result == null) return [];
+    
+    // result 可能是 List 或 Map（对象格式，key 是搜索关键词）
+    final List<dynamic> items;
+    if (result is List) {
+      items = result;
+    } else if (result is Map<String, dynamic>) {
+      items = result.values.toList();
+    } else {
+      return [];
+    }
+    return items.map((e) => NtMediaSearchResult.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
   // ============================================================
   // 下载相关
   // ============================================================

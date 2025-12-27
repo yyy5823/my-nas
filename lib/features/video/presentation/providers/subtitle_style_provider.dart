@@ -8,6 +8,7 @@ class SubtitleStyle {
     this.fontSize = 24.0,
     this.fontColor = Colors.white,
     this.backgroundColor = Colors.black54,
+    this.showBackground = false,
     this.position = SubtitlePosition.bottom,
     this.fontWeight = FontWeight.normal,
     this.hasOutline = true,
@@ -22,6 +23,7 @@ class SubtitleStyle {
         fontSize: (map['fontSize'] as num?)?.toDouble() ?? 24.0,
         fontColor: Color(map['fontColor'] as int? ?? 0xFFFFFFFF),
         backgroundColor: Color(map['backgroundColor'] as int? ?? 0x8A000000),
+        showBackground: map['showBackground'] as bool? ?? false,
         position: SubtitlePosition.values[map['position'] as int? ?? 0],
         fontWeight: FontWeight.values[map['fontWeight'] as int? ?? 3],
         hasOutline: map['hasOutline'] as bool? ?? true,
@@ -34,6 +36,9 @@ class SubtitleStyle {
   final double fontSize;
   final Color fontColor;
   final Color backgroundColor;
+
+  /// 是否显示字幕背景（默认关闭，关闭时只显示文字无背景）
+  final bool showBackground;
   final SubtitlePosition position;
   final FontWeight fontWeight;
   final bool hasOutline;
@@ -57,6 +62,7 @@ class SubtitleStyle {
     double? fontSize,
     Color? fontColor,
     Color? backgroundColor,
+    bool? showBackground,
     SubtitlePosition? position,
     FontWeight? fontWeight,
     bool? hasOutline,
@@ -69,6 +75,7 @@ class SubtitleStyle {
         fontSize: fontSize ?? this.fontSize,
         fontColor: fontColor ?? this.fontColor,
         backgroundColor: backgroundColor ?? this.backgroundColor,
+        showBackground: showBackground ?? this.showBackground,
         position: position ?? this.position,
         fontWeight: fontWeight ?? this.fontWeight,
         hasOutline: hasOutline ?? this.hasOutline,
@@ -83,6 +90,7 @@ class SubtitleStyle {
         'fontSize': fontSize,
         'fontColor': fontColor.toARGB32(),
         'backgroundColor': backgroundColor.toARGB32(),
+        'showBackground': showBackground,
         'position': position.index,
         'fontWeight': FontWeight.values.indexOf(fontWeight),
         'hasOutline': hasOutline,
@@ -145,6 +153,12 @@ class SubtitleStyleNotifier extends StateNotifier<SubtitleStyle> {
   /// 设置背景颜色
   void setBackgroundColor(Color color) {
     state = state.copyWith(backgroundColor: color);
+    _saveToStorage();
+  }
+
+  /// 设置是否显示背景
+  void setShowBackground({required bool show}) {
+    state = state.copyWith(showBackground: show);
     _saveToStorage();
   }
 

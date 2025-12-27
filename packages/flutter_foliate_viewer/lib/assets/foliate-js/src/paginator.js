@@ -383,8 +383,11 @@ class View {
 export class Paginator extends HTMLElement {
   static observedAttributes = [
     'flow', 'gap', 'top-margin', 'bottom-margin', 'background-color',
-    'max-inline-size', 'max-block-size', 'max-column-count',
+    'max-inline-size', 'max-block-size', 'max-column-count', 'page-turn-style',
   ]
+  // Page turn style: 'slide' (default), 'simulation', 'cover'
+  #pageTurnStyle = 'slide'
+  #flipOverlay = null
   #root = this.attachShadow({ mode: 'open' })
   #observer = new ResizeObserver(() => this.render())
   #top
@@ -545,16 +548,47 @@ export class Paginator extends HTMLElement {
             font-size: .75em;
             opacity: .6;
         }
+        #flip-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+            z-index: 100;
+            display: none;
+        }
+        #flip-overlay.active {
+            display: block;
+        }
+        #flip-shadow {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 80px;
+            pointer-events: none;
+        }
+        #flip-page {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            pointer-events: none;
+        }
         </style>
         <div id="top">
             <div id="background" part="filter"></div>
             <div id="container"></div>
+            <div id="flip-overlay">
+                <div id="flip-shadow"></div>
+                <div id="flip-page"></div>
+            </div>
         </div>
         `
 
     this.#top = this.#root.getElementById('top')
     this.#background = this.#root.getElementById('background')
     this.#container = this.#root.getElementById('container')
+    this.#flipOverlay = this.#root.getElementById('flip-overlay')
     // this.#header = this.#root.getElementById('header')
     // this.#footer = this.#root.getElementById('footer')
 
@@ -608,7 +642,17 @@ export class Paginator extends HTMLElement {
         this.#top.style.setProperty('--_' + name, value)
         this.render()
         break
+      case 'page-turn-style':
+        this.#pageTurnStyle = value || 'slide'
+        break
     }
+  }
+  get pageTurnStyle() {
+    return this.#pageTurnStyle
+  }
+  set pageTurnStyle(value) {
+    this.#pageTurnStyle = value || 'slide'
+    this.setAttribute('page-turn-style', this.#pageTurnStyle)
   }
   open(book) {
     this.bookDir = book.dir
@@ -768,6 +812,127 @@ export class Paginator extends HTMLElement {
     if (horizontal) element.scrollBy({ left: delta, top: 0, behavior: 'auto' })
     else element.scrollBy({ left: 0, top: delta, behavior: 'auto' })
   }
+  // Show flip animation for simulation and cover modes
+  async #showFlipAnimation(direction, duration) {
+    const overlay = this.#flipOverlay
+    if (!overlay) return
+
+    const shadow = overlay.querySelector('#flip-shadow')
+    const page = overlay.querySelector('#flip-page')
+    const isForward = direction > 0
+    const bgColor = this.getAttribute('background-color') || '#ffffff'
+
+    // Setup initial state
+    overlay.classList.add('active')
+
+    if (this.#pageTurnStyle === 'simulation') {
+      // Simulation mode: page curl with shadow
+      shadow.style.background = `linear-gradient(${isForward ? 'to left' : 'to right'},
+        transparent 0%,
+        rgba(0,0,0,0.15) 30%,
+        rgba(0,0,0,0.3) 50%,
+        rgba(0,0,0,0.15) 70%,
+        transparent 100%)`
+      page.style.background = bgColor
+      page.style.opacity = '0.95'
+
+      // Initial positions
+      if (isForward) {
+        shadow.style.right = '0'
+        shadow.style.left = 'auto'
+        page.style.right = '0'
+        page.style.left = 'auto'
+        page.style.width = '0'
+      } else {
+        shadow.style.left = '0'
+        shadow.style.right = 'auto'
+        page.style.left = '0'
+        page.style.right = 'auto'
+        page.style.width = '0'
+      }
+    } else if (this.#pageTurnStyle === 'cover') {
+      // Cover mode: slide in with edge shadow
+      shadow.style.background = `linear-gradient(${isForward ? 'to right' : 'to left'},
+        rgba(0,0,0,0.3) 0%,
+        transparent 100%)`
+      shadow.style.width = '30px'
+      page.style.background = bgColor
+      page.style.opacity = '1'
+      page.style.width = '100%'
+      page.style.boxShadow = `${isForward ? '-' : ''}8px 0 20px rgba(0,0,0,0.3)`
+
+      // Initial positions - page starts off-screen
+      if (isForward) {
+        shadow.style.left = 'auto'
+        shadow.style.right = '100%'
+        page.style.left = 'auto'
+        page.style.right = '-100%'
+        page.style.transform = 'translateX(100%)'
+      } else {
+        shadow.style.right = 'auto'
+        shadow.style.left = '100%'
+        page.style.right = 'auto'
+        page.style.left = '-100%'
+        page.style.transform = 'translateX(-100%)'
+      }
+    }
+
+    // Animate using requestAnimationFrame
+    return new Promise(resolve => {
+      let start
+      const step = now => {
+        start ??= now
+        const elapsed = now - start
+        const progress = Math.min(1, elapsed / duration)
+        const eased = easeOutSine(progress)
+
+        if (this.#pageTurnStyle === 'simulation') {
+          // Simulation: expand the page area
+          const width = eased * 100
+          page.style.width = `${width}%`
+
+          // Move shadow with the edge
+          const edgePos = (1 - eased) * 100
+          if (isForward) {
+            shadow.style.right = `${width}%`
+            shadow.style.transform = `translateX(50%)`
+          } else {
+            shadow.style.left = `${width}%`
+            shadow.style.transform = `translateX(-50%)`
+          }
+
+          // Fade out shadow near end
+          const shadowOpacity = progress > 0.8 ? (1 - progress) * 5 : 1
+          shadow.style.opacity = shadowOpacity
+        } else if (this.#pageTurnStyle === 'cover') {
+          // Cover: slide page in
+          const translateX = (1 - eased) * 100
+          page.style.transform = `translateX(${isForward ? '' : '-'}${translateX}%)`
+
+          // Move shadow with page edge
+          if (isForward) {
+            shadow.style.right = `${eased * 100}%`
+          } else {
+            shadow.style.left = `${eased * 100}%`
+          }
+
+          // Fade out shadow
+          shadow.style.opacity = 1 - eased
+        }
+
+        if (progress < 1) {
+          requestAnimationFrame(step)
+        } else {
+          // Clean up
+          overlay.classList.remove('active')
+          shadow.style = ''
+          page.style = ''
+          resolve()
+        }
+      }
+      requestAnimationFrame(step)
+    })
+  }
   snap(vx, vy, touchState) {
     const state = touchState ?? this.#touchState
     const velocity = this.#vertical ? vy : vx
@@ -797,6 +962,29 @@ export class Paginator extends HTMLElement {
 
     const pageArg = this.#rtl ? -page : page
     this.#disableMomentum()
+
+    // For simulation and cover modes, show flip animation
+    const useFlipAnimation = (this.#pageTurnStyle === 'simulation' || this.#pageTurnStyle === 'cover')
+      && !this.scrolled && page !== originPage
+
+    if (useFlipAnimation) {
+      const direction = page > originPage ? 1 : -1
+      // Show animation while scrolling
+      const animationPromise = this.#showFlipAnimation(direction, duration)
+      const scrollPromise = this.#scrollToPage(pageArg, 'snap', {
+        animate: false, // Don't animate scroll - animation handles visuals
+        restoreMomentum: true,
+        momentumDelay: 20
+      })
+      return Promise.all([animationPromise, scrollPromise]).then(() => {
+        const dir = page <= 0 ? -1 : page >= pages - 1 ? 1 : null
+        if (dir) return this.#goTo({
+          index: this.#adjacentIndex(dir),
+          anchor: dir < 0 ? () => 1 : () => 0,
+        })
+      })
+    }
+
     return this.#scrollToPage(pageArg, 'snap', { animate: true, duration, restoreMomentum: true, momentumDelay: 20, initialVelocity: velocity }).then(() => {
       const dir = page <= 0 ? -1 : page >= pages - 1 ? 1 : null
       if (dir) return this.#goTo({
@@ -1178,48 +1366,48 @@ export class Paginator extends HTMLElement {
     this.dispatchEvent(new CustomEvent('relocate', { detail }))
   }
   #handleScrollBoundaries() {
-    // if (!this.scrolled || this.#locked) return
-    
-    // // Only trigger transitions when very close to boundaries (95% through)
-    // const threshold = Math.min(50, this.size * 0.05) // Small threshold or 5% of size
-    // const atEnd = this.viewSize - this.end <= threshold
-    // const atStart = this.start <= threshold
-    
-    // // Only auto-load if we're actually at the boundary, not just approaching
-    // if (atEnd && !this.#loadingNext) {
-    //   const nextIndex = this.#adjacentIndex(1)
-    //   if (nextIndex != null) {
-    //     this.#loadingNext = true
-    //     // Small delay to ensure scroll has finished
-    //     setTimeout(() => {
-    //       this.#goTo({
-    //         index: nextIndex,
-    //         anchor: () => 0,
-    //       }).then(() => {
-    //         this.#loadingNext = false
-    //       }).catch(() => {
-    //         this.#loadingNext = false
-    //       })
-    //     }, 200)
-    //   }
-    // }
-    
-    // if (atStart && !this.#loadingPrev) {
-    //   const prevIndex = this.#adjacentIndex(-1)
-    //   if (prevIndex != null) {
-    //     this.#loadingPrev = true
-    //     setTimeout(() => {
-    //       this.#goTo({
-    //         index: prevIndex,
-    //         anchor: () => 1,
-    //       }).then(() => {
-    //         this.#loadingPrev = false
-    //       }).catch(() => {
-    //         this.#loadingPrev = false
-    //       })
-    //     }, 200)
-    //   }
-    // }
+    if (!this.scrolled || this.#locked) return
+
+    // Only trigger transitions when very close to boundaries (95% through)
+    const threshold = Math.min(50, this.size * 0.05) // Small threshold or 5% of size
+    const atEnd = this.viewSize - this.end <= threshold
+    const atStart = this.start <= threshold
+
+    // Only auto-load if we're actually at the boundary, not just approaching
+    if (atEnd && !this.#loadingNext) {
+      const nextIndex = this.#adjacentIndex(1)
+      if (nextIndex != null) {
+        this.#loadingNext = true
+        // Small delay to ensure scroll has finished
+        setTimeout(() => {
+          this.#goTo({
+            index: nextIndex,
+            anchor: () => 0,
+          }).then(() => {
+            this.#loadingNext = false
+          }).catch(() => {
+            this.#loadingNext = false
+          })
+        }, 200)
+      }
+    }
+
+    if (atStart && !this.#loadingPrev) {
+      const prevIndex = this.#adjacentIndex(-1)
+      if (prevIndex != null) {
+        this.#loadingPrev = true
+        setTimeout(() => {
+          this.#goTo({
+            index: prevIndex,
+            anchor: () => 1,
+          }).then(() => {
+            this.#loadingPrev = false
+          }).catch(() => {
+            this.#loadingPrev = false
+          })
+        }, 200)
+      }
+    }
   }
   async #display(promise) {
     const { index, src, anchor, onLoad, select } = await promise

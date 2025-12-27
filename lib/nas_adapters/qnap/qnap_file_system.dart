@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:my_nas/nas_adapters/qnap/api/qnap_api.dart';
 import 'package:path/path.dart' as p;
@@ -178,4 +180,7 @@ class QnapFileSystem implements NasFileSystem {
     };
     return _api.getThumbnailUrl(path, size: sizeStr);
   }
+
+  @override
+  Future<Uint8List?> getThumbnailData(String path, {ThumbnailSize? size}) async => null;
 }

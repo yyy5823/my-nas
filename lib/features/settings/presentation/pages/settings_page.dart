@@ -13,6 +13,7 @@ import 'package:my_nas/features/sources/presentation/pages/media_library_page.da
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/features/video/presentation/pages/scraper_sources_page.dart';
+import 'package:my_nas/features/video/presentation/pages/video_player_settings_page.dart';
 import 'package:my_nas/features/video/presentation/providers/scraper_provider.dart';
 import 'package:my_nas/shared/providers/language_preference_provider.dart';
 import 'package:my_nas/shared/providers/theme_provider.dart';
@@ -125,6 +126,19 @@ class SettingsPage extends ConsumerWidget {
                   context,
                   isDark,
                   children: [
+                    _buildSettingsTile(
+                      context,
+                      isDark,
+                      icon: Icons.play_circle_rounded,
+                      iconColor: AppColors.primary,
+                      title: '播放器设置',
+                      subtitle: '清晰度、投屏、转码等',
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(builder: (_) => const VideoPlayerSettingsPage()),
+                      ),
+                    ),
+                    _buildDivider(isDark),
                     _ScraperSourcesTile(isDark: isDark),
                     _buildDivider(isDark),
                     _LanguagePreferenceTile(isDark: isDark),

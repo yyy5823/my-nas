@@ -191,4 +191,7 @@ class WebDavFileSystem implements NasFileSystem {
 
   @override
   Future<String?> getThumbnailUrl(String path, {ThumbnailSize? size}) async => null;
+
+  @override
+  Future<Uint8List?> getThumbnailData(String path, {ThumbnailSize? size}) async => null;
 }
