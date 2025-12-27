@@ -11,6 +11,7 @@ import 'package:my_nas/features/video/data/services/video_database_service.dart'
 import 'package:my_nas/features/video/presentation/pages/video_detail_page.dart';
 import 'package:my_nas/shared/widgets/adaptive_image.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/app/theme/app_colors.dart';
 
 /// TMDB 预览页面 - 用于展示本地不存在的 TMDB 内容
 class TmdbPreviewPage extends ConsumerStatefulWidget {

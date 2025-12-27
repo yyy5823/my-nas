@@ -793,7 +793,7 @@ class _ComicListContentState extends ConsumerState<ComicListContent> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: isDark ? Colors.grey[850] : Colors.grey[100],
+                color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
@@ -940,7 +940,7 @@ class _ComicCard extends ConsumerWidget {
                 child: ClipRRect(
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
                   child: Container(
-                    color: isDark ? Colors.grey[800] : Colors.grey[200],
+                    color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
                     child: comic.coverPath != null
                         ? _buildCover(ref)
                         : _buildPlaceholder(),

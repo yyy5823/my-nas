@@ -460,7 +460,7 @@ class _PhotoPeoplePageState extends ConsumerState<PhotoPeoplePage> {
                 child: face != null
                     ? _buildFaceImage(face, connections, isDark)
                     : Container(
-                        color: isDark ? Colors.grey[800] : Colors.grey[200],
+                        color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
                         child: Center(
                           child: Icon(
                             Icons.person,
@@ -512,11 +512,11 @@ class _PhotoPeoplePageState extends ConsumerState<PhotoPeoplePage> {
       path: face.photoPath,
       fileSystem: fileSystem,
       placeholder: Container(
-        color: isDark ? Colors.grey[800] : Colors.grey[200],
+        color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
         child: const Icon(Icons.person),
       ),
       errorWidget: Container(
-        color: isDark ? Colors.grey[800] : Colors.grey[200],
+        color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
         child: const Icon(Icons.person),
       ),
       cacheKey: '${face.photoPath}_face_${face.id}',

@@ -2151,7 +2151,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: isDark ? Colors.grey[850] : Colors.grey[100],
+                color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(

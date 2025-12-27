@@ -1676,14 +1676,14 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
                       path: photo.path,
                       fileSystem: fileSystem,
                       placeholder: Container(
-                        color: isDark ? Colors.grey[800] : Colors.grey[200],
+                        color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
                         child: Icon(
                           Icons.photo_rounded,
                           color: isDark ? Colors.grey[600] : Colors.grey[400],
                         ),
                       ),
                       errorWidget: Container(
-                        color: isDark ? Colors.grey[800] : Colors.grey[200],
+                        color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
                         child: Icon(
                           Icons.photo_rounded,
                           color: isDark ? Colors.grey[600] : Colors.grey[400],
@@ -1814,7 +1814,7 @@ class _PhotoListPageState extends ConsumerState<PhotoListPage> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: isDark ? Colors.grey[850] : Colors.grey[100],
+                color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(

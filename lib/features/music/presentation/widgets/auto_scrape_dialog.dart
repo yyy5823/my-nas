@@ -772,7 +772,7 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
           const SizedBox(height: 8),
           LinearProgressIndicator(
             value: _progress,
-            backgroundColor: isDark ? Colors.grey[800] : Colors.grey[200],
+            backgroundColor: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
             color: AppColors.primary,
           ),
         ],

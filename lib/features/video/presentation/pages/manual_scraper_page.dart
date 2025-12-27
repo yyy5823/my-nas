@@ -523,7 +523,7 @@ class _ManualScraperPageState extends ConsumerState<ManualScraperPage> {
                             fit: BoxFit.cover,
                           )
                         : Container(
-                            color: isDark ? Colors.grey[800] : Colors.grey[200],
+                            color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
                             child: const Icon(Icons.movie),
                           ),
                   ),
@@ -634,7 +634,7 @@ class _ManualScraperPageState extends ConsumerState<ManualScraperPage> {
                           fit: BoxFit.cover,
                         )
                       : Container(
-                          color: isDark ? Colors.grey[800] : Colors.grey[200],
+                          color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
                           child: const Icon(Icons.movie, size: 48),
                         ),
                 ),

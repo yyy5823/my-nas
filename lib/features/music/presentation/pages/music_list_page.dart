@@ -2324,7 +2324,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
                     width: 48,
                     height: 48,
                     decoration: BoxDecoration(
-                      color: isDark ? Colors.grey[800] : Colors.grey[200],
+                      color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Stack(
@@ -2459,7 +2459,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: isDark ? Colors.grey[850] : Colors.grey[100],
+                color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
@@ -6509,7 +6509,7 @@ class _ModernMusicTile extends ConsumerWidget {
       height: size,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(8),
-        color: isDark ? Colors.grey[800] : Colors.grey[200],
+        color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
         boxShadow: isPlaying
             ? [
                 BoxShadow(
@@ -6674,7 +6674,7 @@ class _ModernMusicTile extends ConsumerWidget {
                     height: 48,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(8),
-                      color: isDark ? Colors.grey[800] : Colors.grey[200],
+                      color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
                     ),
                     clipBehavior: Clip.antiAlias,
                     child: track.coverFile != null
@@ -7125,7 +7125,7 @@ class _CompactMusicTile extends ConsumerWidget {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: isDark ? Colors.grey[800] : Colors.grey[200],
+              color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
               borderRadius: BorderRadius.circular(8),
             ),
             clipBehavior: Clip.antiAlias,

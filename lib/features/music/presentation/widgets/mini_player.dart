@@ -159,7 +159,7 @@ class MiniPlayer extends ConsumerWidget {
   }
 
   Widget _buildCoverPlaceholder(bool isDark) => Container(
-      color: isDark ? Colors.grey[800] : Colors.grey[200],
+      color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
       child: Icon(
         Icons.music_note_rounded,
         color: isDark ? Colors.grey[600] : Colors.grey[400],

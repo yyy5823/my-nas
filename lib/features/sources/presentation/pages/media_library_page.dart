@@ -1651,7 +1651,7 @@ class _PathCardState extends ConsumerState<_PathCard> {
         const SizedBox(height: 6),
         LinearProgressIndicator(
           value: progress,
-          backgroundColor: isDark ? Colors.grey[800] : Colors.grey[200],
+          backgroundColor: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
           color: color,
         ),
       ],

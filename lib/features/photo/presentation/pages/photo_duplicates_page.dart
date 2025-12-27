@@ -539,11 +539,11 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
                             path: photo.filePath,
                             fileSystem: fileSystem,
                             placeholder: Container(
-                              color: isDark ? Colors.grey[800] : Colors.grey[200],
+                              color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
                               child: const Icon(Icons.photo),
                             ),
                             errorWidget: Container(
-                              color: isDark ? Colors.grey[800] : Colors.grey[200],
+                              color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
                               child: const Icon(Icons.broken_image),
                             ),
                             cacheKey: photo.filePath,
@@ -1291,11 +1291,11 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
                             path: photo.filePath,
                             fileSystem: fileSystem,
                             placeholder: Container(
-                              color: isDark ? Colors.grey[800] : Colors.grey[200],
+                              color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
                               child: const Icon(Icons.photo),
                             ),
                             errorWidget: Container(
-                              color: isDark ? Colors.grey[800] : Colors.grey[200],
+                              color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
                               child: const Icon(Icons.broken_image),
                             ),
                             cacheKey: photo.filePath,
