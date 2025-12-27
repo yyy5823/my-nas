@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -26,7 +25,7 @@ enum FlipDirection {
 
 /// 页面翻转效果 Widget
 ///
-/// 使用纯 Flutter 实现书页翻转效果
+/// 使用 Flutter Shader 实现真实的书页翻转效果
 /// 支持仿真翻页和覆盖翻页两种模式
 class PageFlipEffect extends StatefulWidget {
   const PageFlipEffect({
@@ -35,10 +34,12 @@ class PageFlipEffect extends StatefulWidget {
     required this.onPrevPage,
     this.mode = PageFlipMode.simulation,
     this.enabled = true,
-    this.animationDuration = const Duration(milliseconds: 400),
+    this.animationDuration = const Duration(milliseconds: 350),
     this.dragThreshold = 0.25,
     this.onTap,
     this.backgroundColor = Colors.white,
+    this.nextPageBuilder,
+    this.prevPageBuilder,
     super.key,
   });
 
@@ -69,6 +70,12 @@ class PageFlipEffect extends StatefulWidget {
   /// 背景颜色
   final Color backgroundColor;
 
+  /// 下一页内容构建器（用于预渲染下一页）
+  final Widget Function()? nextPageBuilder;
+
+  /// 上一页内容构建器（用于预渲染上一页）
+  final Widget Function()? prevPageBuilder;
+
   @override
   State<PageFlipEffect> createState() => _PageFlipEffectState();
 }
@@ -97,13 +104,29 @@ class _PageFlipEffectState extends State<PageFlipEffect>
   double _animationStartProgress = 0.0;
 
   /// 捕获的当前页面图像
-  ui.Image? _capturedImage;
+  ui.Image? _currentPageImage;
 
-  /// 用于捕获的 GlobalKey
-  final GlobalKey _captureKey = GlobalKey();
+  /// 捕获的目标页面图像（下一页或上一页）
+  ui.Image? _targetPageImage;
+
+  /// 用于捕获当前页面的 GlobalKey
+  final GlobalKey _currentPageKey = GlobalKey();
+
+  /// 用于捕获目标页面的 GlobalKey
+  final GlobalKey _targetPageKey = GlobalKey();
 
   /// 是否正在捕获
   bool _isCapturing = false;
+
+  /// Shader 是否加载完成
+  bool _shaderLoaded = false;
+
+  /// Shader 程序
+  ui.FragmentProgram? _shaderProgram;
+
+  // 点击检测
+  Offset? _tapDownPosition;
+  DateTime? _tapDownTime;
 
   @override
   void initState() {
@@ -114,6 +137,23 @@ class _PageFlipEffectState extends State<PageFlipEffect>
     )
       ..addListener(_onAnimationUpdate)
       ..addStatusListener(_onAnimationStatus);
+
+    // 预加载 shader
+    if (widget.mode == PageFlipMode.simulation) {
+      _loadShader();
+    }
+  }
+
+  Future<void> _loadShader() async {
+    try {
+      _shaderProgram = await ui.FragmentProgram.fromAsset('shaders/page_curl.frag');
+      if (mounted) {
+        setState(() => _shaderLoaded = true);
+      }
+    } on Exception catch (e) {
+      logger.w('PageFlipEffect: 加载 shader 失败 - $e');
+      // 如果 shader 加载失败，回退到覆盖翻页模式
+    }
   }
 
   void _onAnimationUpdate() {
@@ -160,14 +200,16 @@ class _PageFlipEffectState extends State<PageFlipEffect>
     _direction = null;
     _dragStart = null;
     _dragProgress = 0.0;
-    _capturedImage?.dispose();
-    _capturedImage = null;
+    _currentPageImage?.dispose();
+    _currentPageImage = null;
+    _targetPageImage?.dispose();
+    _targetPageImage = null;
     _controller.reset();
     if (mounted) setState(() {});
   }
 
-  /// 捕获当前页面
-  Future<ui.Image?> _capturePage() async {
+  /// 捕获指定 key 对应的页面
+  Future<ui.Image?> _captureWidget(GlobalKey key) async {
     if (_isCapturing) return null;
     _isCapturing = true;
 
@@ -176,9 +218,8 @@ class _PageFlipEffectState extends State<PageFlipEffect>
 
       if (!mounted) return null;
 
-      final renderObject = _captureKey.currentContext?.findRenderObject();
+      final renderObject = key.currentContext?.findRenderObject();
       if (renderObject == null || renderObject is! RenderRepaintBoundary) {
-        logger.w('PageFlipEffect: RenderRepaintBoundary 未找到');
         return null;
       }
 
@@ -220,11 +261,14 @@ class _PageFlipEffectState extends State<PageFlipEffect>
       _direction = dragDelta < 0 ? FlipDirection.forward : FlipDirection.backward;
 
       // 开始拖动时捕获页面
-      _capturedImage = await _capturePage();
-      if (_capturedImage == null) {
+      _currentPageImage = await _captureWidget(_currentPageKey);
+      if (_currentPageImage == null) {
         _direction = null;
         return;
       }
+
+      // 捕获目标页面
+      _targetPageImage = await _captureWidget(_targetPageKey);
     }
 
     if (_direction != null && mounted) {
@@ -276,13 +320,10 @@ class _PageFlipEffectState extends State<PageFlipEffect>
   @override
   void dispose() {
     _controller.dispose();
-    _capturedImage?.dispose();
+    _currentPageImage?.dispose();
+    _targetPageImage?.dispose();
     super.dispose();
   }
-
-  // 点击检测
-  Offset? _tapDownPosition;
-  DateTime? _tapDownTime;
 
   @override
   Widget build(BuildContext context) {
@@ -332,18 +373,30 @@ class _PageFlipEffectState extends State<PageFlipEffect>
         onHorizontalDragCancel: _onDragCancel,
         child: Stack(
           children: [
-            // 原始内容
+            // 目标页面（预渲染，用于捕获）
+            if (_direction != null)
+              Positioned.fill(
+                child: Offstage(
+                  offstage: true,
+                  child: RepaintBoundary(
+                    key: _targetPageKey,
+                    child: _direction == FlipDirection.forward
+                        ? (widget.nextPageBuilder?.call() ?? widget.child)
+                        : (widget.prevPageBuilder?.call() ?? widget.child),
+                  ),
+                ),
+              ),
+
+            // 当前页面
             RepaintBoundary(
-              key: _captureKey,
+              key: _currentPageKey,
               child: widget.child,
             ),
 
             // 翻页动画层
-            if (_direction != null && _capturedImage != null)
+            if (_direction != null && _currentPageImage != null)
               Positioned.fill(
-                child: widget.mode == PageFlipMode.simulation
-                    ? _buildSimulationEffect()
-                    : _buildCoverEffect(),
+                child: _buildFlipEffect(),
               ),
           ],
         ),
@@ -351,14 +404,23 @@ class _PageFlipEffectState extends State<PageFlipEffect>
     );
   }
 
-  /// 仿真翻页效果
-  Widget _buildSimulationEffect() => CustomPaint(
-    painter: _SimulationPagePainter(
-      image: _capturedImage!,
+  Widget _buildFlipEffect() {
+    if (widget.mode == PageFlipMode.simulation && _shaderLoaded && _shaderProgram != null) {
+      return _buildShaderSimulationEffect();
+    }
+    return _buildCoverEffect();
+  }
+
+  /// 使用 Shader 的仿真翻页效果
+  Widget _buildShaderSimulationEffect() => CustomPaint(
+    painter: _ShaderPageCurlPainter(
+      shaderProgram: _shaderProgram!,
+      currentPage: _currentPageImage!,
+      nextPage: _targetPageImage ?? _currentPageImage!,
       progress: _dragProgress,
+      direction: _direction == FlipDirection.forward ? 1.0 : -1.0,
       dragStartY: _dragStartY,
       backgroundColor: widget.backgroundColor,
-      isForward: _direction == FlipDirection.forward,
     ),
     size: Size.infinite,
   );
@@ -374,20 +436,28 @@ class _PageFlipEffectState extends State<PageFlipEffect>
 
     return Stack(
       children: [
-        // 背景
-        ColoredBox(
-          color: widget.backgroundColor,
-          child: const SizedBox.expand(),
-        ),
+        // 背景（目标页面）
+        if (_targetPageImage != null)
+          Positioned.fill(
+            child: RawImage(
+              image: _targetPageImage,
+              fit: BoxFit.cover,
+            ),
+          )
+        else
+          ColoredBox(
+            color: widget.backgroundColor,
+            child: const SizedBox.expand(),
+          ),
 
-        // 滑动的页面
+        // 滑动的当前页面
         Transform.translate(
           offset: Offset(slideOffset, 0),
           child: Stack(
             children: [
               Positioned.fill(
                 child: RawImage(
-                  image: _capturedImage,
+                  image: _currentPageImage,
                   fit: BoxFit.cover,
                 ),
               ),
@@ -448,196 +518,65 @@ class _PageFlipEffectState extends State<PageFlipEffect>
   }
 }
 
-/// 仿真翻页绘制器
-class _SimulationPagePainter extends CustomPainter {
-  _SimulationPagePainter({
-    required this.image,
+/// Shader 翻页绘制器
+class _ShaderPageCurlPainter extends CustomPainter {
+  _ShaderPageCurlPainter({
+    required this.shaderProgram,
+    required this.currentPage,
+    required this.nextPage,
     required this.progress,
+    required this.direction,
     required this.dragStartY,
     required this.backgroundColor,
-    required this.isForward,
   });
 
-  final ui.Image image;
+  final ui.FragmentProgram shaderProgram;
+  final ui.Image currentPage;
+  final ui.Image nextPage;
   final double progress;
+  final double direction;
   final double dragStartY;
   final Color backgroundColor;
-  final bool isForward;
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (progress <= 0) return;
-
-    final imageRect = Rect.fromLTWH(
-      0,
-      0,
-      image.width.toDouble(),
-      image.height.toDouble(),
-    );
-    final destRect = Rect.fromLTWH(0, 0, size.width, size.height);
-
-    // 计算翻页的关键点
-    // 翻页线从右侧向左移动，同时有一定的角度
-    final foldX = size.width * (1.0 - progress);
-
-    // 根据拖动起始位置计算角度
-    // 如果从顶部开始拖动，底部移动更多；反之亦然
-    final angleIntensity = 0.15; // 角度强度
-    final topOffset = dragStartY * angleIntensity * size.width * progress;
-    final bottomOffset = (1.0 - dragStartY) * angleIntensity * size.width * progress;
-
-    final foldTopX = foldX + topOffset;
-    final foldBottomX = foldX - bottomOffset;
-
-    // 绘制背景
-    canvas.drawRect(destRect, Paint()..color = backgroundColor);
-
-    // 1. 绘制未翻起的部分（左侧）
-    final leftPath = Path()
-      ..moveTo(0, 0)
-      ..lineTo(foldTopX, 0)
-      ..lineTo(foldBottomX, size.height)
-      ..lineTo(0, size.height)
-      ..close();
-
-    canvas
-      ..save()
-      ..clipPath(leftPath)
-      ..drawImageRect(image, imageRect, destRect, Paint())
-      ..restore();
-
-    // 2. 绘制翻起页面的背面
-    if (progress > 0.01) {
-      _drawPageBack(canvas, size, foldTopX, foldBottomX, imageRect, destRect);
+    if (progress <= 0) {
+      // 无进度时直接绘制当前页
+      canvas.drawImageRect(
+        currentPage,
+        Rect.fromLTWH(0, 0, currentPage.width.toDouble(), currentPage.height.toDouble()),
+        Rect.fromLTWH(0, 0, size.width, size.height),
+        Paint(),
+      );
+      return;
     }
 
-    // 3. 绘制阴影
-    _drawShadows(canvas, size, foldTopX, foldBottomX);
-  }
+    final shader = shaderProgram.fragmentShader()
+      // 设置 uniform 变量
+      ..setFloat(0, size.width)   // resolution.x
+      ..setFloat(1, size.height)  // resolution.y
+      ..setFloat(2, progress)      // progress
+      ..setFloat(3, direction)     // direction
+      ..setFloat(4, dragStartY)    // dragStartY
+      // Color 的 .r, .g, .b, .a 属性已经是 0.0-1.0 范围
+      ..setFloat(5, backgroundColor.r) // backgroundColor.r
+      ..setFloat(6, backgroundColor.g) // backgroundColor.g
+      ..setFloat(7, backgroundColor.b) // backgroundColor.b
+      ..setFloat(8, backgroundColor.a) // backgroundColor.a
+      ..setImageSampler(0, currentPage) // currentPage
+      ..setImageSampler(1, nextPage);   // nextPage
 
-  void _drawPageBack(
-    Canvas canvas,
-    Size size,
-    double foldTopX,
-    double foldBottomX,
-    Rect imageRect,
-    Rect destRect,
-  ) {
-    // 计算翻起部分的路径
-    // 翻起的页面是从折线到右边缘的镜像
-
-    final backPath = Path()
-      ..moveTo(foldTopX, 0)
-      ..lineTo(size.width, 0)
-      ..lineTo(size.width, size.height)
-      ..lineTo(foldBottomX, size.height)
-      ..close();
-
-    canvas
-      ..save()
-      ..clipPath(backPath);
-
-    // 计算镜像变换
-    // 以折线为轴进行镜像
-    final foldCenterX = (foldTopX + foldBottomX) / 2;
-    final foldAngle = math.atan2(foldTopX - foldBottomX, size.height);
-
-    // 创建变换矩阵实现镜像效果
-    // ignore: deprecated_member_use
-    final matrix = Matrix4.identity()
-      // ignore: deprecated_member_use
-      ..translate(foldCenterX, size.height / 2)
-      ..rotateZ(-foldAngle)
-      // ignore: deprecated_member_use
-      ..scale(-1.0, 1.0)  // 水平镜像
-      ..rotateZ(foldAngle)
-      // ignore: deprecated_member_use
-      ..translate(-foldCenterX, -size.height / 2);
-
-    canvas
-      ..transform(matrix.storage)
-      ..drawImageRect(image, imageRect, destRect, Paint())
-      ..restore();
-
-    // 绘制页面背面的覆盖层（模拟纸张背面）
-    // 纸张背面颜色（略暗的米色）
-    final backColor = Color.lerp(
-      backgroundColor,
-      const Color(0xFFE8E4DC),
-      0.5,
-    )!.withValues(alpha: 0.85);
-
-    // 添加渐变效果模拟光照
-    final gradient = ui.Gradient.linear(
-      Offset(foldTopX, 0),
-      Offset(size.width, size.height / 2),
-      [
-        Colors.black.withValues(alpha: 0.1),
-        Colors.transparent,
-        Colors.white.withValues(alpha: 0.05),
-      ],
-      [0.0, 0.5, 1.0],
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, size.width, size.height),
+      Paint()..shader = shader,
     );
-
-    canvas
-      ..save()
-      ..clipPath(backPath)
-      ..drawRect(destRect, Paint()..color = backColor)
-      ..drawRect(destRect, Paint()..shader = gradient)
-      ..restore();
-  }
-
-  void _drawShadows(
-    Canvas canvas,
-    Size size,
-    double foldTopX,
-    double foldBottomX,
-  ) {
-    // 折痕阴影
-    final shadowWidth = 25.0 * progress.clamp(0.0, 1.0);
-
-    // 左侧阴影（在未翻起部分上）
-    final leftShadowPath = Path()
-      ..moveTo(foldTopX - shadowWidth, 0)
-      ..lineTo(foldTopX, 0)
-      ..lineTo(foldBottomX, size.height)
-      ..lineTo(foldBottomX - shadowWidth, size.height)
-      ..close();
-
-    final leftShadowGradient = ui.Gradient.linear(
-      Offset(foldTopX - shadowWidth, size.height / 2),
-      Offset(foldTopX, size.height / 2),
-      [
-        Colors.transparent,
-        Colors.black.withValues(alpha: 0.15 * progress),
-      ],
-    );
-
-    canvas.drawPath(leftShadowPath, Paint()..shader = leftShadowGradient);
-
-    // 翻起部分的内阴影
-    final innerShadowPath = Path()
-      ..moveTo(foldTopX, 0)
-      ..lineTo(foldTopX + shadowWidth * 0.5, 0)
-      ..lineTo(foldBottomX + shadowWidth * 0.5, size.height)
-      ..lineTo(foldBottomX, size.height)
-      ..close();
-
-    final innerShadowGradient = ui.Gradient.linear(
-      Offset(foldTopX, size.height / 2),
-      Offset(foldTopX + shadowWidth * 0.5, size.height / 2),
-      [
-        Colors.black.withValues(alpha: 0.2 * progress),
-        Colors.transparent,
-      ],
-    );
-
-    canvas.drawPath(innerShadowPath, Paint()..shader = innerShadowGradient);
   }
 
   @override
-  bool shouldRepaint(_SimulationPagePainter oldDelegate) =>
+  bool shouldRepaint(_ShaderPageCurlPainter oldDelegate) =>
       progress != oldDelegate.progress ||
-      image != oldDelegate.image ||
+      direction != oldDelegate.direction ||
+      currentPage != oldDelegate.currentPage ||
+      nextPage != oldDelegate.nextPage ||
       dragStartY != oldDelegate.dragStartY;
 }
