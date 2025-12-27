@@ -136,7 +136,7 @@ class _SendToDownloaderSheetState extends ConsumerState<SendToDownloaderSheet> {
                             vertical: 2,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.green,
+                            color: AppColors.success,
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
@@ -343,7 +343,7 @@ class _SendToDownloaderSheetState extends ConsumerState<SendToDownloaderSheet> {
         SnackBar(
           content: Text('发送失败: $e'),
           behavior: SnackBarBehavior.floating,
-          backgroundColor: Colors.red,
+          backgroundColor: AppColors.error,
         ),
       );
     } finally {

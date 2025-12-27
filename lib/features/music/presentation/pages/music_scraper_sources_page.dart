@@ -938,7 +938,7 @@ class _MusicScraperConfigSheetState extends State<_MusicScraperConfigSheet> {
               ),
               if (isRequired) ...[
                 const SizedBox(width: 4),
-                const Text('*', style: TextStyle(color: Colors.red, fontSize: 13)),
+                const Text('*', style: TextStyle(color: AppColors.error, fontSize: 13)),
               ],
             ],
           ),

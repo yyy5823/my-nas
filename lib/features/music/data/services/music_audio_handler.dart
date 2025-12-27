@@ -213,8 +213,10 @@ class MusicAudioHandler extends BaseAudioHandler
         // 这是设置 Now Playing 的关键时机
         if (mediaItem.value != null && _player.playing) {
           logger.i('MusicAudioHandler: App 即将进入后台 (inactive)，强制刷新 Now Playing');
-          // 强制广播状态，确保 iOS 接收到最新的 Now Playing 信息
-          _forceRefreshNowPlaying();
+          // 重要：重新设置 mediaItem 而不只是广播状态
+          // iOS 的 MPNowPlayingInfoCenter 可能在 app 返回前台后丢失信息
+          // 参考：https://github.com/ryanheise/audio_service/issues/684
+          _resetMediaItemForNowPlaying();
         }
 
       case AppLifecycleState.paused:
@@ -230,17 +232,21 @@ class MusicAudioHandler extends BaseAudioHandler
             _lastBroadcastTime = now;
           }
         }
+
       case AppLifecycleState.resumed:
         // App 返回前台
-        // 延迟一小段时间后刷新状态，确保系统稳定
-        // 不立即刷新，避免干扰 iOS 的 Now Playing 状态
+        // 关键：iOS 返回前台后 MPNowPlayingInfoCenter 可能丢失状态
+        // 需要重新设置 mediaItem 以确保下次进入后台时能正确显示
         logger.i('MusicAudioHandler: App 返回前台 (resumed)');
-        Future.delayed(const Duration(milliseconds: 300), () {
-          if (mediaItem.value != null && _player.playing) {
-            logger.d('MusicAudioHandler: 延迟刷新 Now Playing 状态');
-            _broadcastState(PlaybackEvent());
-          }
-        });
+        if (mediaItem.value != null && _player.playing) {
+          // 延迟后重新设置 mediaItem
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (mediaItem.value != null && _player.playing) {
+              logger.i('MusicAudioHandler: 返回前台后重新设置 mediaItem');
+              _resetMediaItemForNowPlaying();
+            }
+          });
+        }
 
       case AppLifecycleState.detached:
       case AppLifecycleState.hidden:
@@ -249,16 +255,33 @@ class MusicAudioHandler extends BaseAudioHandler
     }
   }
 
-  /// 强制刷新 Now Playing 信息
-  /// 用于进入后台时确保 iOS 能正确显示灵动岛
-  void _forceRefreshNowPlaying() {
-    if (mediaItem.value != null) {
-      // 直接广播当前状态，不替换 MediaItem
-      // 替换 MediaItem 可能会导致 iOS 认为内容已变化而清除 Now Playing
-      _broadcastState(PlaybackEvent());
-      _lastBroadcastTime = DateTime.now();
-      logger.i('MusicAudioHandler: Now Playing 状态已强制刷新');
-    }
+  /// 重新设置 mediaItem 以刷新 iOS Now Playing 信息
+  /// 这是解决 MPNowPlayingInfoCenter 竞态条件的关键
+  /// 只广播 playbackState 不够，需要重新设置完整的 mediaItem
+  void _resetMediaItemForNowPlaying() {
+    final currentItem = mediaItem.value;
+    if (currentItem == null) return;
+
+    // 创建新的 MediaItem 实例（包含所有属性）
+    // 这会强制 audio_service 重新设置 iOS 的 Now Playing 信息
+    final refreshedItem = MediaItem(
+      id: currentItem.id,
+      title: currentItem.title,
+      artist: currentItem.artist,
+      album: currentItem.album,
+      duration: _player.duration ?? currentItem.duration,
+      artUri: currentItem.artUri,
+      extras: currentItem.extras,
+    );
+
+    // 先添加刷新的 mediaItem
+    mediaItem.add(refreshedItem);
+
+    // 然后广播最新的播放状态
+    _broadcastState(PlaybackEvent());
+    _lastBroadcastTime = DateTime.now();
+
+    logger.i('MusicAudioHandler: mediaItem 已重新设置 - ${currentItem.title}');
   }
 
   /// 广播播放状态

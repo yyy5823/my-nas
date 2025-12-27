@@ -6436,14 +6436,14 @@ class _ModernMusicTile extends ConsumerWidget {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                               decoration: BoxDecoration(
-                                color: Colors.orange.withValues(alpha: 0.15),
+                                color: AppColors.warning.withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(4),
                               ),
-                              child: const Text(
+                              child: Text(
                                 '离线',
                                 style: TextStyle(
                                   fontSize: 10,
-                                  color: Colors.orange,
+                                  color: AppColors.warning,
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),
@@ -7155,7 +7155,7 @@ class _CompactMusicTile extends ConsumerWidget {
                 width: 14,
                 height: 14,
                 decoration: BoxDecoration(
-                  color: Colors.orange,
+                  color: AppColors.warning,
                   shape: BoxShape.circle,
                   border: Border.all(
                     color: isDark ? Colors.grey[800]! : Colors.grey[200]!,
@@ -7190,7 +7190,7 @@ class _CompactMusicTile extends ConsumerWidget {
           fontSize: 11,
           color: isConnected
               ? (isDark ? Colors.grey[500] : Colors.grey[600])
-              : Colors.orange,
+              : AppColors.warning,
         ),
       ),
       trailing: PopupMenuButton<String>(
