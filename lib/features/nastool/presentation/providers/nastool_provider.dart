@@ -66,7 +66,9 @@ class NasToolConnectionNotifier extends StateNotifier<NasToolConnection?> {
       status: NasToolConnectionStatus.connecting,
     );
 
-    final config = ServiceConnectionConfig.fromSource(source);
+    // 从 extraConfig 中获取密码（添加源时存储在 extraConfig['password'] 中）
+    final password = source.extraConfig?['password'] as String?;
+    final config = ServiceConnectionConfig.fromSource(source, password: password);
     logger.d('NasToolProvider: 连接配置 - username: ${config.username}, password: ${config.password != null ? '***' : 'null'}, extraConfig: ${config.extraConfig?.keys}');
 
     try {

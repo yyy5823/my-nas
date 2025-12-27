@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/features/aria2/presentation/pages/aria2_detail_page.dart';
-import 'package:my_nas/features/nastool/presentation/pages/nastool_detail_page.dart';
+import 'package:my_nas/features/nastool/presentation/pages/nastool_main_page.dart';
 import 'package:my_nas/features/pt_sites/presentation/pages/pt_site_detail_page.dart';
 import 'package:my_nas/features/qbittorrent/presentation/pages/qbittorrent_detail_page.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
@@ -542,9 +542,9 @@ class _ServiceSourceCardState extends ConsumerState<_ServiceSourceCard> {
           );
         }
       case SourceType.nastool:
-        // NASTool 详情页 - 需要传递密码
+        // NASTool 主页面 - 直接进入，无需登录页（账号密码在添加源时已保存）
         if (context.mounted) {
-          // 将密码添加到 extraConfig 中传递给详情页
+          // 将密码添加到 extraConfig 中传递给主页面
           final sourceWithPassword = widget.source.copyWith(
             extraConfig: {
               ...?widget.source.extraConfig,
@@ -554,7 +554,7 @@ class _ServiceSourceCardState extends ConsumerState<_ServiceSourceCard> {
           await Navigator.push<void>(
             context,
             MaterialPageRoute<void>(
-              builder: (_) => NasToolDetailPage(source: sourceWithPassword),
+              builder: (_) => NasToolMainPage(source: sourceWithPassword),
             ),
           );
         }

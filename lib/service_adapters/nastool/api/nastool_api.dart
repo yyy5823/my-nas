@@ -87,7 +87,8 @@ class NasToolApi {
   /// 获取站点列表
   Future<List<NtSite>> listSites() async {
     final data = await _post('/site/list');
-    final items = data['result'] as List? ?? [];
+    // API 返回格式: {"data": {"sites": [...]}}
+    final items = data['sites'] as List? ?? data['result'] as List? ?? [];
     return items.map((e) => NtSite.fromJson(e as Map<String, dynamic>)).toList();
   }
 
@@ -135,8 +136,11 @@ class NasToolApi {
   /// 获取站点统计
   Future<List<NtSiteStatistics>> getSiteStatistics() async {
     final response = await _get('/site/statistics');
-    if (response == null || (response is List && response.isEmpty)) return [];
-    final items = response as List? ?? [];
+    if (response == null) return [];
+    // API 返回格式: {"data": {"user_statistics": [...]}}
+    final List<dynamic> items = response is Map<String, dynamic>
+        ? (response['user_statistics'] as List? ?? response['result'] as List? ?? <dynamic>[])
+        : (response is List ? response : <dynamic>[]);
     return items.map((e) => NtSiteStatistics.fromJson(e as Map<String, dynamic>)).toList();
   }
 
@@ -342,7 +346,8 @@ class NasToolApi {
   /// 获取下载历史
   Future<List<NtDownloadHistory>> getDownloadHistory(int page) async {
     final data = await _post('/download/history', {'page': page});
-    final items = data['result'] as List? ?? [];
+    // API 返回格式可能是 {"data": {"Items": [...]}} 或 {"data": {"result": [...]}}
+    final items = data['Items'] as List? ?? data['result'] as List? ?? [];
     return items.map((e) => NtDownloadHistory.fromJson(e as Map<String, dynamic>)).toList();
   }
 
@@ -883,7 +888,8 @@ class NasToolApi {
   /// 获取自定义 RSS 任务列表
   Future<List<NtRssTask>> listRssTasks() async {
     final data = await _post('/rss/list');
-    final items = data['result'] as List? ?? [];
+    // API 返回格式: {"data": {"tasks": [...], "parsers": [...]}}
+    final items = data['tasks'] as List? ?? data['result'] as List? ?? [];
     return items.map((e) => NtRssTask.fromJson(e as Map<String, dynamic>)).toList();
   }
 
@@ -1053,7 +1059,18 @@ class NasToolApi {
   /// 获取同步目录列表
   Future<List<NtSyncDirectory>> listSyncDirectories() async {
     final data = await _post('/sync/directory/list');
-    final items = data['result'] as List? ?? [];
+    // API 返回格式: {"data": {"result": {"17": {...}, "18": {...}}}} - 对象格式
+    final result = data['result'];
+    if (result == null) return [];
+    // 支持对象格式和数组格式
+    final List<dynamic> items;
+    if (result is Map<String, dynamic>) {
+      items = result.values.toList();
+    } else if (result is List) {
+      items = result;
+    } else {
+      return [];
+    }
     return items.map((e) => NtSyncDirectory.fromJson(e as Map<String, dynamic>)).toList();
   }
 
@@ -1607,6 +1624,11 @@ class NasToolApi {
       // 调试日志：响应信息
       if (kDebugMode) {
         logger.d('[NasToolApi] Response ${response.statusCode}');
+        // 打印响应体前500字符用于调试
+        final bodyPreview = response.body.length > 500 
+            ? '${response.body.substring(0, 500)}...(truncated)'
+            : response.body;
+        logger.d('[NasToolApi] Body: $bodyPreview');
       }
 
       if (response.statusCode == 401) {
@@ -1670,6 +1692,11 @@ class NasToolApi {
       // 调试日志：响应信息
       if (kDebugMode) {
         logger.d('[NasToolApi] Response ${response.statusCode}');
+        // 打印响应体前500字符用于调试
+        final bodyPreview = response.body.length > 500 
+            ? '${response.body.substring(0, 500)}...(truncated)'
+            : response.body;
+        logger.d('[NasToolApi] Body: $bodyPreview');
       }
 
       if (response.statusCode == 401) {

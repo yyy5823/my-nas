@@ -33,6 +33,26 @@ class _NasToolMainPageState extends ConsumerState<NasToolMainPage> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    // 自动连接到 NASTool
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _connectToNasTool();
+    });
+  }
+
+  Future<void> _connectToNasTool() async {
+    final notifier = ref.read(nastoolConnectionProvider(widget.source.id).notifier);
+    final connection = ref.read(nastoolConnectionProvider(widget.source.id));
+    
+    // 如果未连接，则自动连接
+    if (connection == null || connection.status == NasToolConnectionStatus.disconnected || 
+        connection.status == NasToolConnectionStatus.error) {
+      await notifier.connect(widget.source);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final connection = ref.watch(nastoolConnectionProvider(widget.source.id));

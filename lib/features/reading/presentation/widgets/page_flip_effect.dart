@@ -253,6 +253,7 @@ class _PageFlipEffectState extends State<PageFlipEffect>
   }
 
   void _onDragStart(DragStartDetails details) {
+    logger.d('PageFlipEffect: onDragStart - enabled=${widget.enabled}, isAnimating=$_isAnimating, pos=${details.localPosition}');
     if (!widget.enabled || _isAnimating) return;
 
     final size = MediaQuery.of(context).size;
@@ -269,16 +270,22 @@ class _PageFlipEffectState extends State<PageFlipEffect>
 
     // 确定翻页方向
     if (_direction == null && dragRatio > 0.02) {
-      _direction = dragDelta < 0 ? FlipDirection.forward : FlipDirection.backward;
-      _originalDirection = _direction;
+      final newDirection = dragDelta < 0 ? FlipDirection.forward : FlipDirection.backward;
 
-      // 开始拖动时捕获页面
+      // 先捕获当前页面（在设置 direction 之前）
       _currentPageImage = await _captureWidget(_currentPageKey);
       if (_currentPageImage == null) {
-        _direction = null;
-        _originalDirection = null;
         return;
       }
+
+      // 设置方向并触发重建
+      _direction = newDirection;
+      _originalDirection = newDirection;
+      setState(() {});
+
+      // 等待一帧让目标页面完成渲染
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      if (!mounted) return;
 
       // 捕获目标页面
       _targetPageImage = await _captureWidget(_targetPageKey);
@@ -321,21 +328,34 @@ class _PageFlipEffectState extends State<PageFlipEffect>
 
   /// 触发点击翻页（平行翻页，从中间位置）
   Future<void> _triggerTapFlip(FlipDirection direction) async {
+    logger.d('PageFlipEffect: _triggerTapFlip - direction=$direction, isAnimating=$_isAnimating, currentDirection=$_direction');
     if (_isAnimating || _direction != null) return;
 
-    _direction = direction;
-    _originalDirection = direction;
     _dragStartY = 0.5; // 点击翻页使用中间位置，产生平行效果
 
-    // 捕获当前页面
+    // 捕获当前页面（在设置 direction 之前，因为当前页面已经在 widget 树中）
+    logger.d('PageFlipEffect: capturing current page...');
     _currentPageImage = await _captureWidget(_currentPageKey);
+    logger.d('PageFlipEffect: current page captured: ${_currentPageImage != null}');
     if (_currentPageImage == null) {
+      logger.w('PageFlipEffect: failed to capture current page, resetting');
       _reset();
       return;
     }
 
+    // 设置方向并触发重建，让目标页面被添加到 widget 树
+    _direction = direction;
+    _originalDirection = direction;
+    setState(() {});
+
+    // 等待一帧让目标页面完成渲染
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    if (!mounted) return;
+
     // 捕获目标页面
+    logger.d('PageFlipEffect: capturing target page...');
     _targetPageImage = await _captureWidget(_targetPageKey);
+    logger.d('PageFlipEffect: target page captured: ${_targetPageImage != null}');
 
     _shouldComplete = true;
     _isAnimating = true;
@@ -372,6 +392,7 @@ class _PageFlipEffectState extends State<PageFlipEffect>
         _tapDownTime = DateTime.now();
       },
       onPointerUp: (event) {
+        logger.d('PageFlipEffect: onPointerUp - direction=$_direction, isAnimating=$_isAnimating, tapDownPos=$_tapDownPosition');
         if (_direction != null || _isAnimating) {
           _tapDownPosition = null;
           _tapDownTime = null;
@@ -388,11 +409,14 @@ class _PageFlipEffectState extends State<PageFlipEffect>
             final tapX = event.localPosition.dx;
             final ratio = tapX / screenWidth;
 
+            logger.d('PageFlipEffect: tap detected at ratio=$ratio');
             if (ratio < 0.25) {
               // 左侧 25%: 上一页（点击触发平行翻页）
+              logger.d('PageFlipEffect: triggering backward flip');
               _triggerTapFlip(FlipDirection.backward);
             } else if (ratio > 0.75) {
               // 右侧 25%: 下一页（点击触发平行翻页）
+              logger.d('PageFlipEffect: triggering forward flip');
               _triggerTapFlip(FlipDirection.forward);
             } else {
               // 中间 50%: 触发 onTap 回调
@@ -412,6 +436,7 @@ class _PageFlipEffectState extends State<PageFlipEffect>
         _tapDownTime = null;
       },
       child: GestureDetector(
+        behavior: HitTestBehavior.opaque, // 确保能接收到手势
         onHorizontalDragStart: _onDragStart,
         onHorizontalDragUpdate: _onDragUpdate,
         onHorizontalDragEnd: _onDragEnd,

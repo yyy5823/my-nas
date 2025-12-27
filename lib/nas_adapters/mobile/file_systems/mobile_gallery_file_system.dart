@@ -31,12 +31,21 @@ class MobileGalleryFileSystem implements NasFileSystem {
 
   /// 请求相册访问权限
   Future<bool> requestPermission() async {
+    logger.i('MobileGalleryFileSystem: 请求相册权限...');
+
     final permission = await pm.PhotoManager.requestPermissionExtend();
+    logger.i('MobileGalleryFileSystem: 权限请求结果 - $permission');
+
     if (permission.isAuth) {
+      // 权限获取成功，清除缓存以便重新加载相册
+      _cachedAlbums = null;
+      logger.i('MobileGalleryFileSystem: 完全访问权限已获取');
       return true;
     }
     if (permission == pm.PermissionState.limited) {
-      // iOS 14+ 限制访问
+      // iOS 14+ 限制访问（用户选择了部分照片）
+      _cachedAlbums = null;
+      logger.i('MobileGalleryFileSystem: 限制访问权限已获取（iOS 14+ 选择部分照片）');
       return true;
     }
     logger.w('MobileGalleryFileSystem: 权限被拒绝 - $permission');
@@ -45,15 +54,38 @@ class MobileGalleryFileSystem implements NasFileSystem {
 
   /// 获取所有相册
   Future<List<pm.AssetPathEntity>> _getAlbums() async {
-    if (_cachedAlbums != null) return _cachedAlbums!;
+    if (_cachedAlbums != null) {
+      logger.d('MobileGalleryFileSystem: 使用缓存相册列表，数量: ${_cachedAlbums!.length}');
+      return _cachedAlbums!;
+    }
 
-    _cachedAlbums = await pm.PhotoManager.getAssetPathList(
-      type: pm.RequestType.common, // 照片和视频
-      hasAll: true,
-      onlyAll: false,
-    );
+    logger.i('MobileGalleryFileSystem: 开始获取相册列表...');
 
-    return _cachedAlbums!;
+    try {
+      _cachedAlbums = await pm.PhotoManager.getAssetPathList(
+        type: pm.RequestType.common, // 照片和视频
+        hasAll: true,
+        onlyAll: false,
+      );
+
+      logger.i('MobileGalleryFileSystem: 获取到 ${_cachedAlbums!.length} 个相册');
+
+      // 打印每个相册的详细信息用于调试
+      for (final album in _cachedAlbums!) {
+        final count = await album.assetCountAsync;
+        logger.d('  - ${album.name} (id: ${album.id}, isAll: ${album.isAll}): $count 个资源');
+      }
+
+      if (_cachedAlbums!.isEmpty) {
+        logger.w('MobileGalleryFileSystem: 相册列表为空，可能没有权限或没有媒体文件');
+      }
+
+      return _cachedAlbums!;
+    } on Exception catch (e, st) {
+      logger.e('MobileGalleryFileSystem: 获取相册列表失败', e, st);
+      _cachedAlbums = [];
+      return _cachedAlbums!;
+    }
   }
 
   /// 刷新相册缓存
@@ -152,64 +184,91 @@ class MobileGalleryFileSystem implements NasFileSystem {
   }
 
   /// 列出相册内资源
+  ///
+  /// 优化策略：
+  /// 1. 分批加载资源，避免一次性加载导致内存问题
+  /// 2. 不在列表时获取文件信息，延迟到需要时再获取
+  /// 3. Live Photo 视频路径延迟加载
   Future<List<FileItem>> _listAlbumAssets(String albumId) async {
+    logger.d('MobileGalleryFileSystem: _listAlbumAssets - albumId: $albumId');
+
     final albums = await _getAlbums();
+    logger.d('MobileGalleryFileSystem: 可用相册数量: ${albums.length}');
+
+    if (albums.isEmpty) {
+      logger.w('MobileGalleryFileSystem: 相册列表为空，可能没有权限或没有照片');
+      return [];
+    }
+
     final album = albums.firstWhere(
       (a) => a.id == albumId,
-      orElse: () => throw Exception('Album not found: $albumId'),
+      orElse: () {
+        logger.w('MobileGalleryFileSystem: 找不到相册 $albumId');
+        logger.d('可用相册 ID: ${albums.map((a) => a.id).join(', ')}');
+        throw Exception('Album not found: $albumId');
+      },
     );
 
     final count = await album.assetCountAsync;
-    final assets = await album.getAssetListRange(start: 0, end: count);
+    logger.i('MobileGalleryFileSystem: 相册 "${album.name}" 共有 $count 个资源');
 
     // 对 album ID 进行编码
     final encodedAlbumId = _encodeId(albumId);
 
     final items = <FileItem>[];
-    for (final asset in assets) {
-      _assetCache[asset.id] = asset;
 
-      final file = await asset.file;
+    // 分批加载资源，每批 100 个，避免一次性加载导致内存问题
+    const batchSize = 100;
+    for (int start = 0; start < count; start += batchSize) {
+      final end = (start + batchSize > count) ? count : start + batchSize;
+      final assets = await album.getAssetListRange(start: start, end: end);
 
-      // 提取扩展名：优先从文件名获取，否则从 mimeType 推断
-      String? extension;
-      final title = asset.title;
-      if (title != null && title.contains('.')) {
-        extension = title.split('.').last.toLowerCase();
-      } else if (asset.mimeType != null) {
-        // 从 mimeType 推断扩展名，如 image/heic → heic
-        final parts = asset.mimeType!.split('/');
-        if (parts.length == 2) {
-          extension = parts[1].toLowerCase();
+      for (final asset in assets) {
+        _assetCache[asset.id] = asset;
+
+        // 提取扩展名：优先从文件名获取，否则从 mimeType 推断
+        // 不再调用 await asset.file，避免主线程阻塞
+        String? extension;
+        final title = asset.title;
+        if (title != null && title.contains('.')) {
+          extension = title.split('.').last.toLowerCase();
+        } else if (asset.mimeType != null) {
+          // 从 mimeType 推断扩展名，如 image/heic → heic
+          final parts = asset.mimeType!.split('/');
+          if (parts.length == 2) {
+            extension = parts[1].toLowerCase();
+          }
         }
+
+        // 检测是否为 Live Photo（iOS 实况照片）
+        // Live Photo 的 subtype 包含 PHAssetMediaSubtypePhotoLive (1 << 3 = 8)
+        final isLivePhoto = Platform.isIOS && (asset.subtype & 8) != 0;
+
+        // 对 asset ID 进行编码
+        final encodedAssetId = _encodeId(asset.id);
+
+        // 使用 asset 的元数据估算文件大小，不调用 file.lengthSync()
+        // width * height * 4 bytes (RGBA) / 10 作为粗略估计
+        // 实际大小会在需要时通过 getFileInfo 获取
+        final estimatedSize = asset.width * asset.height * 4 ~/ 10;
+
+        items.add(FileItem(
+          name: title ?? asset.id,
+          path: '/albums/$encodedAlbumId/$encodedAssetId',
+          isDirectory: false,
+          size: estimatedSize,
+          modifiedTime: asset.modifiedDateTime,
+          createdTime: asset.createDateTime,
+          extension: extension,
+          mimeType: asset.mimeType,
+          isLivePhoto: isLivePhoto,
+          // Live Photo 视频路径延迟加载，不在列表时获取
+          livePhotoVideoPath: null,
+        ));
       }
 
-      // 检测是否为 Live Photo（iOS 实况照片）
-      // Live Photo 的 subtype 包含 PHAssetMediaSubtypePhotoLive (1 << 3 = 8)
-      final isLivePhoto = Platform.isIOS && (asset.subtype & 8) != 0;
-
-      // 获取 Live Photo 的视频路径
-      String? livePhotoVideoPath;
-      if (isLivePhoto) {
-        final videoFile = await asset.fileWithSubtype;
-        livePhotoVideoPath = videoFile?.path;
-      }
-
-      // 对 asset ID 进行编码
-      final encodedAssetId = _encodeId(asset.id);
-
-      items.add(FileItem(
-        name: asset.title ?? asset.id,
-        path: '/albums/$encodedAlbumId/$encodedAssetId',
-        isDirectory: false,
-        size: file?.lengthSync() ?? 0,
-        modifiedTime: asset.modifiedDateTime,
-        createdTime: asset.createDateTime,
-        extension: extension,
-        mimeType: asset.mimeType,
-        isLivePhoto: isLivePhoto,
-        livePhotoVideoPath: livePhotoVideoPath,
-      ));
+      // 每批处理后让出主线程，避免 UI 卡顿
+      await Future<void>.delayed(Duration.zero);
     }
 
     return items;
@@ -219,10 +278,15 @@ class MobileGalleryFileSystem implements NasFileSystem {
   Future<FileItem> getFileInfo(String path) async {
     // 解码 asset ID（路径最后一段是编码后的 ID）
     final assetId = _decodeId(path.split('/').last);
-    final asset = _assetCache[assetId];
+    var asset = _assetCache[assetId];
 
+    // 如果缓存中没有，尝试从系统获取
     if (asset == null) {
-      throw Exception('Asset not found: $assetId');
+      asset = await pm.AssetEntity.fromId(assetId);
+      if (asset == null) {
+        throw Exception('Asset not found: $assetId');
+      }
+      _assetCache[assetId] = asset;
     }
 
     final file = await asset.file;
@@ -291,10 +355,15 @@ class MobileGalleryFileSystem implements NasFileSystem {
   Future<Stream<List<int>>> getFileStream(String path, {FileRange? range}) async {
     // 解码 asset ID
     final assetId = _decodeId(path.split('/').last);
-    final asset = _assetCache[assetId];
+    var asset = _assetCache[assetId];
 
+    // 如果缓存中没有，尝试从系统获取
     if (asset == null) {
-      throw Exception('Asset not found: $assetId');
+      asset = await pm.AssetEntity.fromId(assetId);
+      if (asset == null) {
+        throw Exception('Asset not found: $assetId');
+      }
+      _assetCache[assetId] = asset;
     }
 
     final file = await asset.file;
@@ -321,10 +390,15 @@ class MobileGalleryFileSystem implements NasFileSystem {
   Future<String> getFileUrl(String path, {Duration? expiry}) async {
     // 解码 asset ID
     final assetId = _decodeId(path.split('/').last);
-    final asset = _assetCache[assetId];
+    var asset = _assetCache[assetId];
 
+    // 如果缓存中没有，尝试从系统获取
     if (asset == null) {
-      throw Exception('Asset not found: $assetId');
+      asset = await pm.AssetEntity.fromId(assetId);
+      if (asset == null) {
+        throw Exception('Asset not found: $assetId');
+      }
+      _assetCache[assetId] = asset;
     }
 
     final file = await asset.file;
@@ -353,9 +427,14 @@ class MobileGalleryFileSystem implements NasFileSystem {
   Future<Uint8List?> getThumbnailData(String path, {fs.ThumbnailSize? size}) async {
     // 解码 asset ID
     final assetId = _decodeId(path.split('/').last);
-    final asset = _assetCache[assetId];
+    var asset = _assetCache[assetId];
 
-    if (asset == null) return null;
+    // 如果缓存中没有，尝试从系统获取
+    if (asset == null) {
+      asset = await pm.AssetEntity.fromId(assetId);
+      if (asset == null) return null;
+      _assetCache[assetId] = asset;
+    }
 
     final thumbnailSize = size ?? fs.ThumbnailSize.medium;
     final pixelSize = thumbnailSize.pixels;
@@ -427,57 +506,62 @@ class MobileGalleryFileSystem implements NasFileSystem {
 
   @override
   Future<List<FileItem>> search(String query, {String? path}) async {
-    // 简单实现：遍历所有资源搜索
+    // 分批搜索，避免一次性加载所有资源
     final albums = await _getAlbums();
     final allAlbum = albums.firstWhere((a) => a.isAll, orElse: () => albums.first);
     final count = await allAlbum.assetCountAsync;
-    final assets = await allAlbum.getAssetListRange(start: 0, end: count);
 
     final results = <FileItem>[];
     final queryLower = query.toLowerCase();
 
-    for (final asset in assets) {
-      final assetTitle = asset.title;
-      final titleLower = assetTitle?.toLowerCase() ?? '';
-      if (titleLower.contains(queryLower)) {
-        _assetCache[asset.id] = asset;
-        final file = await asset.file;
+    // 分批加载资源
+    const batchSize = 100;
+    for (int start = 0; start < count; start += batchSize) {
+      final end = (start + batchSize > count) ? count : start + batchSize;
+      final assets = await allAlbum.getAssetListRange(start: start, end: end);
 
-        // 提取扩展名
-        String? extension;
-        if (assetTitle != null && assetTitle.contains('.')) {
-          extension = assetTitle.split('.').last.toLowerCase();
-        } else if (asset.mimeType != null) {
-          final parts = asset.mimeType!.split('/');
-          if (parts.length == 2) {
-            extension = parts[1].toLowerCase();
+      for (final asset in assets) {
+        final assetTitle = asset.title;
+        final titleLower = assetTitle?.toLowerCase() ?? '';
+        if (titleLower.contains(queryLower)) {
+          _assetCache[asset.id] = asset;
+
+          // 提取扩展名（不调用 asset.file 避免阻塞）
+          String? extension;
+          if (assetTitle != null && assetTitle.contains('.')) {
+            extension = assetTitle.split('.').last.toLowerCase();
+          } else if (asset.mimeType != null) {
+            final parts = asset.mimeType!.split('/');
+            if (parts.length == 2) {
+              extension = parts[1].toLowerCase();
+            }
           }
+
+          // 检测是否为 Live Photo
+          final isLivePhoto = Platform.isIOS && (asset.subtype & 8) != 0;
+
+          // 对 asset ID 进行编码
+          final encodedAssetId = _encodeId(asset.id);
+
+          // 使用估算的文件大小
+          final estimatedSize = asset.width * asset.height * 4 ~/ 10;
+
+          results.add(FileItem(
+            name: assetTitle ?? asset.id,
+            path: '/all/$encodedAssetId',
+            isDirectory: false,
+            size: estimatedSize,
+            modifiedTime: asset.modifiedDateTime,
+            extension: extension,
+            mimeType: asset.mimeType,
+            isLivePhoto: isLivePhoto,
+            livePhotoVideoPath: null, // 延迟加载
+          ));
         }
-
-        // 检测是否为 Live Photo
-        final isLivePhoto = Platform.isIOS && (asset.subtype & 8) != 0;
-
-        // 获取 Live Photo 的视频路径
-        String? livePhotoVideoPath;
-        if (isLivePhoto) {
-          final videoFile = await asset.fileWithSubtype;
-          livePhotoVideoPath = videoFile?.path;
-        }
-
-        // 对 asset ID 进行编码
-        final encodedAssetId = _encodeId(asset.id);
-        results.add(FileItem(
-          name: assetTitle ?? asset.id,
-          path: '/all/$encodedAssetId',
-          isDirectory: false,
-          size: file?.lengthSync() ?? 0,
-          modifiedTime: asset.modifiedDateTime,
-          extension: extension,
-          mimeType: asset.mimeType,
-          isLivePhoto: isLivePhoto,
-          livePhotoVideoPath: livePhotoVideoPath,
-        ));
       }
+
+      // 让出主线程
+      await Future<void>.delayed(Duration.zero);
     }
 
     return results;

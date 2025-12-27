@@ -198,18 +198,13 @@ class MusicAudioHandler extends BaseAudioHandler
     }
   }
 
-  /// 上次状态广播时间（用于防抖）
-  DateTime? _lastBroadcastTime;
-
-  /// 标记是否刚从后台返回（用于处理 后台->前台->后台 的场景）
-  bool _justResumedFromBackground = false;
-
   /// 处理 App 生命周期变化
   /// 当 App 从后台返回前台时，需要重新广播状态以刷新灵动岛/锁屏控制
   ///
-  /// 关键问题：后台 -> 前台 -> 后台 时灵动岛可能消失
-  /// 原因：iOS 的 MPNowPlayingInfoCenter 在 app 返回前台后可能被系统清除
-  /// 解决：在每次生命周期变化时都强制刷新完整的媒体信息
+  /// 关键发现：iOS 只在 paused 状态时才真正读取 MPNowPlayingInfoCenter 的信息
+  /// 所以必须在 paused 时调用 _resetMediaItemForNowPlaying()，而不只是 inactive/hidden
+  ///
+  /// 简化逻辑：每次进入后台都强制刷新，不再使用复杂的标记判断
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     logger.i('MusicAudioHandler: App 生命周期变化 - $state, playing=${_player.playing}, hasMediaItem=${mediaItem.value != null}');
@@ -217,20 +212,15 @@ class MusicAudioHandler extends BaseAudioHandler
     switch (state) {
       case AppLifecycleState.inactive:
         // App 即将进入后台（iOS 会先进入 inactive 再进入 paused）
-        // 这是设置 Now Playing 的关键时机
-        // 注意：即使是暂停状态也需要刷新，否则灵动岛不会显示
+        // 提前刷新，为 paused 做准备
         if (mediaItem.value != null) {
-          logger.i('MusicAudioHandler: App 即将进入后台 (inactive)，强制刷新 Now Playing');
-          // 重要：重新设置 mediaItem 而不只是广播状态
-          // iOS 的 MPNowPlayingInfoCenter 可能在 app 返回前台后丢失信息
-          // 参考：https://github.com/ryanheise/audio_service/issues/684
+          logger.i('MusicAudioHandler: App 即将进入后台 (inactive)，刷新 Now Playing');
           // ignore: discarded_futures
           _resetMediaItemForNowPlaying();
         }
 
       case AppLifecycleState.hidden:
         // Flutter 3.13+ 新增的状态，在 inactive 和 paused 之间
-        // 在某些平台上会触发，需要同样处理
         if (mediaItem.value != null) {
           logger.i('MusicAudioHandler: App 进入 hidden 状态，刷新 Now Playing');
           // ignore: discarded_futures
@@ -238,34 +228,19 @@ class MusicAudioHandler extends BaseAudioHandler
         }
 
       case AppLifecycleState.paused:
-        // App 已进入后台
-        // 再次确保状态已广播（作为 inactive 的备份）
-        // 关键：如果是从前台刚返回后台，需要强制完整刷新
+        // App 已进入后台 - 这是最关键的时机！
+        // iOS 系统在此时读取 MPNowPlayingInfoCenter 的信息来显示灵动岛
+        // 必须在这里强制刷新，确保信息是最新的
         if (mediaItem.value != null) {
-          if (_justResumedFromBackground) {
-            // 刚从后台返回又进入后台，需要强制完整刷新
-            logger.i('MusicAudioHandler: 后台->前台->后台 场景，强制完整刷新 Now Playing');
-            _justResumedFromBackground = false;
-            // ignore: discarded_futures
-            _resetMediaItemForNowPlaying();
-          } else {
-            // 普通的进入后台，使用防抖避免重复广播
-            final now = DateTime.now();
-            if (_lastBroadcastTime == null ||
-                now.difference(_lastBroadcastTime!) > const Duration(milliseconds: 500)) {
-              logger.i('MusicAudioHandler: App 已进入后台 (paused)，补充广播状态');
-              _broadcastState(PlaybackEvent());
-              _lastBroadcastTime = now;
-            }
-          }
+          logger.i('MusicAudioHandler: App 已进入后台 (paused)，强制刷新 Now Playing');
+          // ignore: discarded_futures
+          _resetMediaItemForNowPlaying();
         }
 
       case AppLifecycleState.resumed:
         // App 返回前台
-        // 关键：iOS 返回前台后 MPNowPlayingInfoCenter 可能丢失状态
-        // 需要重新设置 mediaItem 以确保下次进入后台时能正确显示
+        // 刷新 mediaItem 以确保下次进入后台时能正确显示
         logger.i('MusicAudioHandler: App 返回前台 (resumed)');
-        _justResumedFromBackground = true;
         if (mediaItem.value != null) {
           // 立即刷新一次
           // ignore: discarded_futures
@@ -285,62 +260,81 @@ class MusicAudioHandler extends BaseAudioHandler
     }
   }
 
-  /// 刷新计数器，用于强制 audio_service 更新
-  /// 通过微调 duration 来触发 iOS 原生代码的更新检测
-  int _refreshCounter = 0;
-
-  /// 重新设置 mediaItem 以刷新 iOS Now Playing 信息
-  /// 这是解决 MPNowPlayingInfoCenter 竞态条件的关键
-  /// 只广播 playbackState 不够，需要重新设置完整的 mediaItem
+  /// 通过"清空-重设"策略强制刷新 iOS Now Playing / 灵动岛
   ///
-  /// 关键问题：audio_service 的 iOS 原生代码只在特定字段变化时才更新 nowPlayingInfo
-  /// 比较的字段包括：title, album, artist, duration, artwork, playbackRate, elapsedPlaybackTime
-  /// extras 字段不会触发更新！
+  /// 关键发现：iOS MediaRemote 框架在系统级别有去重机制
+  /// 日志显示: "[NowPlayingInfo] Setting identical nowPlayingInfo, skipping update."
   ///
-  /// 解决方案：每次刷新时给 duration 加 1ms
-  /// 这个微小变化用户完全感知不到（1ms vs 280000ms = 0.0004%）
-  /// 但会触发 audio_service 重新设置完整的 nowPlayingInfo
+  /// 根据 Apple Developer Forums 和 audio_service issue #684 的讨论：
+  /// 解决方案是**先清空 nowPlayingInfo 再重新设置**
+  /// 这样 iOS 会认为发生了变化，强制触发更新
+  ///
+  /// 参考：
+  /// - https://developer.apple.com/forums/thread/32475
+  /// - https://github.com/ryanheise/audio_service/issues/684
   Future<void> _resetMediaItemForNowPlaying() async {
     final currentItem = mediaItem.value;
     if (currentItem == null) return;
 
-    // 如果有缓存的封面数据但 artUri 为 null，尝试重新保存封面
-    var artUri = currentItem.artUri;
-    if (artUri == null && _currentArtworkData != null && _currentArtworkData!.isNotEmpty) {
-      logger.i('MusicAudioHandler: artUri 为空但有缓存封面，重新保存');
-      artUri = await _saveArtworkToFile(_currentArtworkData!, currentItem.id);
-    }
+    logger.i('MusicAudioHandler: 开始清空-重设策略刷新灵动岛');
 
-    // 递增刷新计数器
-    _refreshCounter++;
+    // 保存当前状态
+    final wasPlaying = _player.playing;
+    final savedArtUri = currentItem.artUri;
 
-    // 获取当前 duration，并加上微小偏移量来触发更新
-    // 使用 isEven 来交替加减，避免 duration 无限增长
-    final baseDuration = _player.duration ?? currentItem.duration ?? Duration.zero;
-    final durationOffset = _refreshCounter.isEven
-        ? const Duration(milliseconds: 1)
-        : Duration.zero;
-    final adjustedDuration = baseDuration + durationOffset;
+    // 步骤 1：清空 mediaItem（触发 iOS 清空 nowPlayingInfo）
+    mediaItem.add(null);
+    _broadcastState(PlaybackEvent());
 
-    // 创建新的 MediaItem 实例
+    // 步骤 2：等待 iOS 处理清空操作
+    // 根据 Apple 论坛讨论，需要一定延迟让 iOS 完成处理
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+
+    // 步骤 3：重新设置 mediaItem
     final refreshedItem = MediaItem(
       id: currentItem.id,
       title: currentItem.title,
       artist: currentItem.artist,
       album: currentItem.album,
-      duration: adjustedDuration,
-      artUri: artUri,
+      duration: _player.duration ?? currentItem.duration ?? Duration.zero,
+      artUri: savedArtUri,
       extras: currentItem.extras,
     );
 
-    // 设置 mediaItem
     mediaItem.add(refreshedItem);
 
-    // 然后广播最新的播放状态
-    _broadcastState(PlaybackEvent());
-    _lastBroadcastTime = DateTime.now();
+    // 步骤 4：广播正确的播放状态
+    _broadcastStateWithPlaying(wasPlaying);
 
-    logger.i('MusicAudioHandler: mediaItem 已刷新 (counter=$_refreshCounter, duration=${adjustedDuration.inMilliseconds}ms) - ${currentItem.title}');
+    logger.i('MusicAudioHandler: 清空-重设完成 - ${currentItem.title}');
+  }
+
+  /// 广播指定的播放状态
+  void _broadcastStateWithPlaying(bool playing) {
+    final processingState = _mapProcessingState(_player.processingState);
+
+    playbackState.add(playbackState.value.copyWith(
+      controls: [
+        MediaControl.skipToPrevious,
+        if (playing) MediaControl.pause else MediaControl.play,
+        MediaControl.stop,
+        MediaControl.skipToNext,
+      ],
+      systemActions: const {
+        MediaAction.seek,
+        MediaAction.seekForward,
+        MediaAction.seekBackward,
+        MediaAction.skipToNext,
+        MediaAction.skipToPrevious,
+      },
+      androidCompactActionIndices: const [0, 1, 3],
+      processingState: processingState,
+      playing: playing,
+      updatePosition: _player.position,
+      bufferedPosition: _player.bufferedPosition,
+      speed: _player.speed,
+      queueIndex: _currentIndex,
+    ));
   }
 
   /// 广播播放状态
@@ -459,6 +453,16 @@ class MusicAudioHandler extends BaseAudioHandler
 
     logger.i(
         'MusicAudioHandler: 设置当前音乐 - ${music.displayTitle} by ${music.displayArtist}, hasArtwork=${artUri != null}');
+
+    // 延迟刷新：解决首次播放不触发灵动岛的问题
+    // 根据 Apple 论坛讨论，iOS 系统可能需要一定时间来准备接收 Now Playing 信息
+    // 特别是首次扫描进音乐库的歌曲，audio_service 和 iOS 系统可能存在初始化竞态条件
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mediaItem.value?.id == music.id) {
+        logger.i('MusicAudioHandler: 延迟刷新 Now Playing - ${music.displayTitle}');
+        _resetMediaItemForNowPlaying();
+      }
+    });
   }
 
   /// 更新封面图片（用于元数据加载完成后）
