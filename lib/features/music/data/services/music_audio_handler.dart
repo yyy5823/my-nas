@@ -286,19 +286,20 @@ class MusicAudioHandler extends BaseAudioHandler
   }
 
   /// 刷新计数器，用于强制 audio_service 更新
+  /// 通过微调 duration 来触发 iOS 原生代码的更新检测
   int _refreshCounter = 0;
 
   /// 重新设置 mediaItem 以刷新 iOS Now Playing 信息
   /// 这是解决 MPNowPlayingInfoCenter 竞态条件的关键
   /// 只广播 playbackState 不够，需要重新设置完整的 mediaItem
   ///
-  /// 关键问题：audio_service 的 iOS 原生代码只在值变化时才更新 nowPlayingInfo
-  /// 如果我们设置相同的 mediaItem，iOS 原生层会认为不需要更新
-  /// 但 iOS 系统可能在 app 返回前台后清除了 MPNowPlayingInfoCenter 的信息
+  /// 关键问题：audio_service 的 iOS 原生代码只在特定字段变化时才更新 nowPlayingInfo
+  /// 比较的字段包括：title, album, artist, duration, artwork, playbackRate, elapsedPlaybackTime
+  /// extras 字段不会触发更新！
   ///
-  /// 解决方案：在 extras 中添加一个递增的刷新计数器
-  /// 这样每次调用都会让 audio_service 认为 mediaItem 有变化
-  /// 同时不会影响用户可见的内容，也不会导致 UI 闪烁
+  /// 解决方案：每次刷新时给 duration 加 1ms
+  /// 这个微小变化用户完全感知不到（1ms vs 280000ms = 0.0004%）
+  /// 但会触发 audio_service 重新设置完整的 nowPlayingInfo
   Future<void> _resetMediaItemForNowPlaying() async {
     final currentItem = mediaItem.value;
     if (currentItem == null) return;
@@ -313,13 +314,13 @@ class MusicAudioHandler extends BaseAudioHandler
     // 递增刷新计数器
     _refreshCounter++;
 
-    // 在 extras 中添加刷新计数器，强制 audio_service 认为有变化
-    // 这样可以触发完整的 MPNowPlayingInfoCenter 更新
-    // 同时不会影响用户可见的内容，不会导致 UI 闪烁
-    final updatedExtras = <String, dynamic>{
-      ...?currentItem.extras,
-      '_refreshCounter': _refreshCounter,
-    };
+    // 获取当前 duration，并加上微小偏移量来触发更新
+    // 使用 isEven 来交替加减，避免 duration 无限增长
+    final baseDuration = _player.duration ?? currentItem.duration ?? Duration.zero;
+    final durationOffset = _refreshCounter.isEven
+        ? const Duration(milliseconds: 1)
+        : Duration.zero;
+    final adjustedDuration = baseDuration + durationOffset;
 
     // 创建新的 MediaItem 实例
     final refreshedItem = MediaItem(
@@ -327,9 +328,9 @@ class MusicAudioHandler extends BaseAudioHandler
       title: currentItem.title,
       artist: currentItem.artist,
       album: currentItem.album,
-      duration: _player.duration ?? currentItem.duration,
+      duration: adjustedDuration,
       artUri: artUri,
-      extras: updatedExtras,
+      extras: currentItem.extras,
     );
 
     // 设置 mediaItem
@@ -339,7 +340,7 @@ class MusicAudioHandler extends BaseAudioHandler
     _broadcastState(PlaybackEvent());
     _lastBroadcastTime = DateTime.now();
 
-    logger.i('MusicAudioHandler: mediaItem 已刷新 (counter=$_refreshCounter) - ${currentItem.title}');
+    logger.i('MusicAudioHandler: mediaItem 已刷新 (counter=$_refreshCounter, duration=${adjustedDuration.inMilliseconds}ms) - ${currentItem.title}');
   }
 
   /// 广播播放状态
