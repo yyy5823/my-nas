@@ -453,7 +453,7 @@ class _HeroBannerItem extends StatelessWidget {
   }
 
   Widget _buildPlaceholder() => Container(
-      color: isDark ? Colors.grey[900] : Colors.grey[300],
+      color: isDark ? AppColors.darkBackground : AppColors.lightOutline,
       child: Center(
         child: Icon(
           Icons.movie_rounded,

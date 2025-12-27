@@ -715,7 +715,7 @@ class _VideoScraperConfigSheetState extends State<_VideoScraperConfigSheet> {
         const SizedBox(height: 8),
         DecoratedBox(
           decoration: BoxDecoration(
-            color: isDark ? Colors.grey[900] : Colors.white,
+            color: isDark ? AppColors.darkBackground : AppColors.lightSurface,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(color: isDark ? Colors.grey[700]! : Colors.grey[300]!),
           ),
@@ -796,7 +796,7 @@ class _VideoScraperConfigSheetState extends State<_VideoScraperConfigSheet> {
               hintText: hint,
               hintStyle: TextStyle(fontSize: 13, color: isDark ? Colors.grey[600] : Colors.grey[400]),
               filled: true,
-              fillColor: isDark ? Colors.grey[900] : Colors.white,
+              fillColor: isDark ? AppColors.darkBackground : AppColors.lightSurface,
               contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),

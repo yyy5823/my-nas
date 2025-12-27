@@ -877,7 +877,7 @@ class _MusicScraperConfigSheetState extends State<_MusicScraperConfigSheet> {
         const SizedBox(height: 8),
         DecoratedBox(
           decoration: BoxDecoration(
-            color: isDark ? Colors.grey[900] : Colors.white,
+            color: isDark ? AppColors.darkBackground : AppColors.lightSurface,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(color: isDark ? Colors.grey[700]! : Colors.grey[300]!),
           ),
@@ -953,7 +953,7 @@ class _MusicScraperConfigSheetState extends State<_MusicScraperConfigSheet> {
               hintText: hint,
               hintStyle: TextStyle(fontSize: 13, color: isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant),
               filled: true,
-              fillColor: isDark ? Colors.grey[900] : Colors.white,
+              fillColor: isDark ? AppColors.darkBackground : AppColors.lightSurface,
               contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),

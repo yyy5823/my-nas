@@ -2000,7 +2000,7 @@ class _BookCacheInfoBar extends ConsumerWidget {
         margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: isDark ? Colors.grey[900] : Colors.grey[100],
+          color: isDark ? AppColors.darkBackground : AppColors.lightSurface,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: isDark ? AppColors.darkOutline : AppColors.lightOutline,

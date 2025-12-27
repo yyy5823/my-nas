@@ -242,7 +242,7 @@ class _GlowingSegmentControlState extends State<GlowingSegmentControl>
     return Container(
       height: 48,
       decoration: BoxDecoration(
-        color: isDark ? Colors.grey[900] : Colors.grey[100],
+        color: isDark ? AppColors.darkBackground : AppColors.lightSurface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: isDark ? Colors.grey[800]! : Colors.grey[300]!,

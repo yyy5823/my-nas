@@ -1877,7 +1877,7 @@ class _VideoListPageState extends ConsumerState<VideoListPage> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color: isDark ? Colors.grey[900] : Colors.grey[100],
+              color: isDark ? AppColors.darkBackground : AppColors.lightSurface,
               border: Border(
                 bottom: BorderSide(
                   color: isDark ? AppColors.darkOutline : AppColors.lightOutline,
@@ -3154,7 +3154,7 @@ class _ContinueWatchingCard extends ConsumerWidget {
           borderRadius: BorderRadius.circular(12),
           child: DecoratedBox(
             decoration: BoxDecoration(
-              color: isDark ? Colors.grey[900] : Colors.grey[100],
+              color: isDark ? AppColors.darkBackground : AppColors.lightSurface,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Column(

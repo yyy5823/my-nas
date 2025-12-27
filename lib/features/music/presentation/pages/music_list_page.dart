@@ -2257,7 +2257,7 @@ class _MusicListPageState extends ConsumerState<MusicListPage> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color: isDark ? Colors.grey[900] : Colors.grey[100],
+              color: isDark ? AppColors.darkBackground : AppColors.lightSurface,
               border: Border(
                 bottom: BorderSide(
                   color: isDark ? AppColors.darkOutline : AppColors.lightOutline,
