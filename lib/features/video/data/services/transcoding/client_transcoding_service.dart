@@ -1,4 +1,4 @@
-import 'dart:async';
+import 'dart:async' show StreamController, TimeoutException, unawaited;
 import 'dart:io';
 
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
@@ -99,16 +99,28 @@ class ClientTranscodingService implements NasTranscodingService {
     // macOS: 优先使用打包在应用内的 FFmpeg
     if (Platform.isMacOS) {
       final bundledPath = await _getBundledFfmpegPath();
+      logger.d('ClientTranscoding: 检查打包的 FFmpeg 路径: $bundledPath');
       if (bundledPath != null && await File(bundledPath).exists()) {
-        // 验证可执行
+        logger.d('ClientTranscoding: 打包的 FFmpeg 文件存在');
+        // 验证可执行（添加超时防止卡住）
         try {
-          final result = await Process.run(bundledPath, ['-version']);
+          final result = await Process.run(bundledPath, ['-version'])
+              .timeout(const Duration(seconds: 5));
+          logger.d('ClientTranscoding: FFmpeg 执行测试退出码: ${result.exitCode}');
           if (result.exitCode == 0) {
             return bundledPath;
+          } else {
+            logger.w('ClientTranscoding: FFmpeg 执行失败: ${result.stderr}');
           }
-        } catch (_) {
+        } on TimeoutException {
+          logger.w('ClientTranscoding: FFmpeg 执行超时');
+          // 继续尝试系统 FFmpeg
+        } catch (e) {
+          logger.w('ClientTranscoding: FFmpeg 执行异常: $e');
           // 继续尝试系统 FFmpeg
         }
+      } else {
+        logger.w('ClientTranscoding: 打包的 FFmpeg 文件不存在');
       }
     }
 
@@ -310,10 +322,22 @@ class ClientTranscodingService implements NasTranscodingService {
   }
 
   /// 启动转码任务
-  Future<void> _startTranscoding(_TranscodingTask task) async {
+  ///
+  /// [waitForComplete] 如果为 true，等待转码完成；否则等待输出文件有数据就返回
+  Future<void> _startTranscoding(_TranscodingTask task, {bool waitForComplete = false}) async {
     task.isRunning = true;
 
     try {
+      // 如果输入是 HTTP URL，先验证可访问性
+      if (task.inputPath.startsWith('http://') || task.inputPath.startsWith('https://')) {
+        final isAccessible = await _checkUrlAccessible(task.inputPath);
+        if (!isAccessible) {
+          task.isRunning = false;
+          task.error = '无法访问输入 URL';
+          return;
+        }
+      }
+
       // 构建 FFmpeg 命令参数
       final args = _buildFfmpegArgs(task);
       final command = args.join(' ');
@@ -326,12 +350,40 @@ class ClientTranscodingService implements NasTranscodingService {
         await _runMobileTranscoding(task, command);
       } else {
         // 桌面端使用 Process
-        await _runDesktopTranscoding(task, args);
+        await _runDesktopTranscoding(task, args, waitForComplete: waitForComplete);
       }
     } catch (e, st) {
       task.isRunning = false;
       task.error = e.toString();
       AppError.handle(e, st, 'clientStartTranscoding');
+    }
+  }
+
+  /// 检查 URL 是否可访问
+  Future<bool> _checkUrlAccessible(String url) async {
+    try {
+      final client = HttpClient();
+      client.connectionTimeout = const Duration(seconds: 5);
+
+      final request = await client.headUrl(Uri.parse(url));
+      final response = await request.close();
+
+      final statusCode = response.statusCode;
+      final contentLength = response.contentLength;
+
+      logger.d('ClientTranscoding: URL 检查 - 状态码=$statusCode, 内容长度=$contentLength');
+
+      client.close();
+
+      if (statusCode >= 200 && statusCode < 400) {
+        return true;
+      } else {
+        logger.e('ClientTranscoding: URL 不可访问，状态码=$statusCode');
+        return false;
+      }
+    } catch (e) {
+      logger.e('ClientTranscoding: URL 检查失败: $e');
+      return false;
     }
   }
 
@@ -379,7 +431,13 @@ class ClientTranscodingService implements NasTranscodingService {
   }
 
   /// 桌面端转码（使用 Process）
-  Future<void> _runDesktopTranscoding(_TranscodingTask task, List<String> args) async {
+  ///
+  /// [waitForComplete] 如果为 true，等待转码完成；否则等待输出文件有数据就返回
+  Future<void> _runDesktopTranscoding(
+    _TranscodingTask task,
+    List<String> args, {
+    bool waitForComplete = false,
+  }) async {
     if (_ffmpegPath == null) {
       task.isRunning = false;
       task.error = 'FFmpeg 不可用';
@@ -391,27 +449,109 @@ class ClientTranscodingService implements NasTranscodingService {
       final process = await Process.start(_ffmpegPath!, args);
       task.process = process;
 
+      // 收集 stderr 输出用于错误诊断
+      final stderrBuffer = StringBuffer();
+      var hasStartedOutput = false;
+
       // 解析进度输出
       process.stderr.transform(const SystemEncoding().decoder).listen((line) {
+        stderrBuffer.write(line);
         _parseProgress(task, line);
+
+        // 检查是否开始输出视频数据
+        if (line.contains('frame=') && !hasStartedOutput) {
+          hasStartedOutput = true;
+          logger.d('ClientTranscoding: 开始输出视频帧');
+        }
       });
 
-      // 等待完成
-      final exitCode = await process.exitCode;
-
-      if (exitCode == 0) {
-        task.isRunning = false;
-        task.isCompleted = true;
-        logger.i('ClientTranscoding: 转码完成 ${task.outputPath}');
+      if (waitForComplete) {
+        // 等待完整转码完成
+        final exitCode = await process.exitCode;
+        _handleExitCode(task, exitCode, stderrBuffer);
       } else {
-        task.isRunning = false;
-        task.error = '转码失败，退出码: $exitCode';
-        logger.e('ClientTranscoding: 转码失败 $exitCode');
+        // 流式转码：等待输出文件有足够数据就返回
+        final outputFile = File(task.outputPath);
+        const minFileSize = 512 * 1024; // 至少 512KB
+        const maxWaitTime = Duration(seconds: 30);
+        const checkInterval = Duration(milliseconds: 500);
+
+        final startTime = DateTime.now();
+        var fileReady = false;
+
+        while (DateTime.now().difference(startTime) < maxWaitTime) {
+          await Future<void>.delayed(checkInterval);
+
+          // 检查进程是否已退出（表示转码失败）
+          final exitCode = await process.exitCode.timeout(
+            Duration.zero,
+            onTimeout: () => -1, // 仍在运行
+          );
+
+          if (exitCode != -1) {
+            // 进程已退出
+            _handleExitCode(task, exitCode, stderrBuffer);
+            return;
+          }
+
+          // 检查输出文件大小
+          if (await outputFile.exists()) {
+            final size = await outputFile.length();
+            if (size >= minFileSize) {
+              logger.i('ClientTranscoding: 流式输出就绪，文件大小: ${size ~/ 1024}KB');
+              fileReady = true;
+              break;
+            }
+          }
+        }
+
+        if (fileReady) {
+          // 文件已有足够数据，可以开始播放
+          // 注意：转码仍在后台继续
+          task.isCompleted = true; // 标记为"可播放"状态
+          logger.i('ClientTranscoding: 流式转码已就绪 ${task.outputPath}');
+
+          // 后台监控转码进程
+          unawaited(process.exitCode.then((exitCode) {
+            if (exitCode == 0) {
+              logger.i('ClientTranscoding: 后台转码完成 ${task.outputPath}');
+            } else {
+              logger.w('ClientTranscoding: 后台转码异常退出 $exitCode');
+            }
+            task.isRunning = false;
+          }));
+        } else {
+          // 等待超时，检查当前状态
+          task.isRunning = false;
+          task.error = '等待转码输出超时';
+          logger.e('ClientTranscoding: 等待转码输出超时');
+          logger.e('ClientTranscoding: FFmpeg 输出:\n${stderrBuffer.toString().length > 1000 ? stderrBuffer.toString().substring(stderrBuffer.toString().length - 1000) : stderrBuffer.toString()}');
+          process.kill();
+        }
       }
     } catch (e, st) {
       task.isRunning = false;
       task.error = e.toString();
       AppError.handle(e, st, 'desktopTranscoding');
+    }
+  }
+
+  /// 处理 FFmpeg 退出码
+  void _handleExitCode(_TranscodingTask task, int exitCode, StringBuffer stderrBuffer) {
+    if (exitCode == 0) {
+      task.isRunning = false;
+      task.isCompleted = true;
+      logger.i('ClientTranscoding: 转码完成 ${task.outputPath}');
+    } else {
+      task.isRunning = false;
+      // 获取最后 500 字符的错误输出
+      final stderrOutput = stderrBuffer.toString();
+      final errorSnippet = stderrOutput.length > 500
+          ? stderrOutput.substring(stderrOutput.length - 500)
+          : stderrOutput;
+      task.error = '转码失败，退出码: $exitCode';
+      logger.e('ClientTranscoding: 转码失败 $exitCode');
+      logger.e('ClientTranscoding: FFmpeg 错误输出:\n$errorSnippet');
     }
   }
 
@@ -461,9 +601,9 @@ class ClientTranscodingService implements NasTranscodingService {
       args.addAll(['-sn']); // 不包含字幕
     }
 
-    // 输出格式
-    args.addAll(['-f', 'mp4']); // MP4 容器
-    args.addAll(['-movflags', '+faststart']); // 支持流式播放
+    // 输出格式 - 使用 fragmented MP4 支持流式播放（边转边播）
+    args.addAll(['-f', 'mp4']);
+    args.addAll(['-movflags', 'frag_keyframe+empty_moov+default_base_moof']);
 
     // 输出文件
     args.add(task.outputPath);

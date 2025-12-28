@@ -301,9 +301,10 @@ class MediaInfoBadges extends StatelessWidget {
       );
 }
 
-/// 评分标签组件
+/// 评分标签组件（紧凑横向风格）
 ///
-/// 显示多个评分来源：TMDB、IMDb、Metacritic、Trakt、豆瓣
+/// 横向紧凑排列，图标+评分数字
+/// 支持：TMDB、IMDb、Trakt、豆瓣、Metacritic
 class RatingBadges extends StatelessWidget {
   const RatingBadges({
     this.tmdbRating,
@@ -326,7 +327,7 @@ class RatingBadges extends StatelessWidget {
   final int? voteCount;
   final double spacing;
   final double runSpacing;
-  final bool showAll; // 是否显示所有评分，否则只显示有数据的
+  final bool showAll;
 
   @override
   Widget build(BuildContext context) {
@@ -334,45 +335,27 @@ class RatingBadges extends StatelessWidget {
 
     // TMDB 评分
     if (tmdbRating != null && tmdbRating! > 0) {
-      badges.add(_buildRatingBadge(
-        label: 'TMDB',
-        rating: tmdbRating!.toStringAsFixed(1),
-        color: const Color(0xFF01D277), // TMDB 绿色
-        voteCount: voteCount,
-      ));
+      badges.add(_buildTmdbBadge(tmdbRating!));
     }
 
-    // IMDb 评分
-    if (imdbRating != null && imdbRating! > 0) {
-      badges.add(_buildRatingBadge(
-        label: 'IMDb',
-        rating: imdbRating!.toStringAsFixed(1),
-        color: const Color(0xFFF5C518), // IMDb 黄色
-        textColor: Colors.black,
-      ));
-    }
-
-    // Metacritic 评分
+    // Metacritic 评分（百分制）
     if (metacriticRating != null && metacriticRating! > 0) {
       badges.add(_buildMetacriticBadge(metacriticRating!));
     }
 
     // Trakt 评分
     if (traktRating != null && traktRating! > 0) {
-      badges.add(_buildRatingBadge(
-        label: 'Trakt',
-        rating: traktRating!.toStringAsFixed(1),
-        color: const Color(0xFFED1C24), // Trakt 红色
-      ));
+      badges.add(_buildTraktBadge(traktRating!));
     }
 
     // 豆瓣评分
     if (doubanRating != null && doubanRating! > 0) {
-      badges.add(_buildRatingBadge(
-        label: '豆瓣',
-        rating: doubanRating!.toStringAsFixed(1),
-        color: const Color(0xFF2BC16B), // 豆瓣绿色
-      ));
+      badges.add(_buildDoubanBadge(doubanRating!));
+    }
+
+    // IMDb 评分
+    if (imdbRating != null && imdbRating! > 0) {
+      badges.add(_buildImdbBadge(imdbRating!));
     }
 
     if (badges.isEmpty) return const SizedBox.shrink();
@@ -380,129 +363,176 @@ class RatingBadges extends StatelessWidget {
     return Wrap(
       spacing: spacing,
       runSpacing: runSpacing,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: badges,
     );
   }
 
-  Widget _buildRatingBadge({
-    required String label,
-    required String rating,
-    required Color color,
-    Color textColor = Colors.white,
-    int? voteCount,
-  }) =>
-      Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.6),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: color.withValues(alpha: 0.5)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // 平台标识
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: color,
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                label,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                  color: textColor,
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            // 评分数值
-            Icon(Icons.star_rounded, size: 16, color: color),
-            const SizedBox(width: 4),
-            Text(
-              rating,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-            // 投票数
-            if (voteCount != null && voteCount > 0) ...[
-              const SizedBox(width: 6),
-              Text(
-                '(${_formatVoteCount(voteCount)})',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Colors.white.withValues(alpha: 0.6),
-                ),
-              ),
-            ],
-          ],
-        ),
-      );
-
-  /// Metacritic 专用标签（使用百分制颜色）
-  Widget _buildMetacriticBadge(int score) {
-    Color bgColor;
-    if (score >= 75) {
-      bgColor = const Color(0xFF66CC33); // 绿色 - 好评
-    } else if (score >= 50) {
-      bgColor = const Color(0xFFFFCC33); // 黄色 - 中评
-    } else {
-      bgColor = const Color(0xFFFF0000); // 红色 - 差评
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: bgColor.withValues(alpha: 0.5)),
-      ),
-      child: Row(
+  /// TMDB 评分徽章
+  Widget _buildTmdbBadge(double rating) => Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Metacritic 方形分数
+          // TMDB 图标
           Container(
             width: 28,
-            height: 28,
+            height: 20,
             decoration: BoxDecoration(
-              color: bgColor,
+              color: const Color(0xFF0D253F),
               borderRadius: BorderRadius.circular(4),
             ),
             alignment: Alignment.center,
-            child: Text(
-              score.toString(),
-              style: const TextStyle(
-                fontSize: 12,
+            child: const Text(
+              'TMDB',
+              style: TextStyle(
+                fontSize: 7,
                 fontWeight: FontWeight.bold,
-                color: Colors.white,
+                color: Color(0xFF01D277),
+                letterSpacing: -0.3,
               ),
             ),
           ),
-          const SizedBox(width: 8),
-          const Text(
-            'Metacritic',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
+          const SizedBox(width: 4),
+          Text(
+            rating.toStringAsFixed(1),
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
               color: Colors.white,
             ),
           ),
         ],
+      );
+
+  /// Metacritic 评分徽章（方形）
+  Widget _buildMetacriticBadge(int score) {
+    Color bgColor;
+    if (score >= 75) {
+      bgColor = const Color(0xFF66CC33);
+    } else if (score >= 50) {
+      bgColor = const Color(0xFFFFCC33);
+    } else {
+      bgColor = const Color(0xFFFF0000);
+    }
+
+    return Container(
+      width: 24,
+      height: 24,
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        score.toString(),
+        style: const TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          color: Colors.white,
+        ),
       ),
     );
   }
 
-  String _formatVoteCount(int count) {
-    if (count >= 1000000) {
-      return '${(count / 1000000).toStringAsFixed(1)}M';
-    } else if (count >= 1000) {
-      return '${(count / 1000).toStringAsFixed(1)}K';
-    }
-    return count.toString();
+  /// Trakt 评分徽章
+  Widget _buildTraktBadge(double rating) {
+    // Trakt 评分可能是百分制或 10 分制
+    final displayRating = rating > 10 ? '${rating.toInt()}%' : rating.toStringAsFixed(1);
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Trakt 图标（使用勾选样式）
+        Container(
+          width: 20,
+          height: 20,
+          decoration: BoxDecoration(
+            color: const Color(0xFFED1C24),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          alignment: Alignment.center,
+          child: const Icon(
+            Icons.check_rounded,
+            size: 14,
+            color: Colors.white,
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          displayRating,
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+      ],
+    );
   }
+
+  /// 豆瓣评分徽章
+  Widget _buildDoubanBadge(double rating) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 豆瓣图标
+          Container(
+            width: 20,
+            height: 20,
+            decoration: BoxDecoration(
+              color: const Color(0xFF2BC16B),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            alignment: Alignment.center,
+            child: const Text(
+              '豆',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            rating.toStringAsFixed(1),
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      );
+
+  /// IMDb 评分徽章
+  Widget _buildImdbBadge(double rating) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // IMDb 图标
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF5C518),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: const Text(
+              'IMDb',
+              style: TextStyle(
+                fontSize: 9,
+                fontWeight: FontWeight.bold,
+                color: Colors.black,
+                letterSpacing: -0.3,
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            rating.toStringAsFixed(1),
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      );
 }

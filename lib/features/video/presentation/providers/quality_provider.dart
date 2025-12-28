@@ -296,12 +296,15 @@ class QualityNotifier extends StateNotifier<QualityState> {
 
     // 检测转码能力
     var capability = _capabilityService.getCapability(sourceType);
+    logger.d('清晰度: 源类型=$sourceType, 初始能力=$capability');
 
     // 对于客户端转码，需要检查 FFmpeg 是否可用
     if (capability == TranscodingCapability.clientSide) {
       // 如果没有传入客户端转码服务，创建一个
       _clientTranscodingService ??= ClientTranscodingService();
+      logger.d('清晰度: 开始初始化客户端转码服务...');
       await _clientTranscodingService!.init();
+      logger.d('清晰度: 客户端转码服务初始化完成, isAvailable=${_clientTranscodingService!.isAvailable}');
 
       // 异步操作后再次检查是否已销毁
       if (!mounted) {
@@ -380,6 +383,12 @@ class QualityNotifier extends StateNotifier<QualityState> {
       return;
     }
 
+    // 检查是否已销毁
+    if (!mounted) {
+      logger.w('清晰度: switchQuality 被调用但 Notifier 已销毁');
+      return;
+    }
+
     state = state.copyWith(isLoading: true);
 
     try {
@@ -394,9 +403,21 @@ class QualityNotifier extends StateNotifier<QualityState> {
         newStreamUrl = await _handleClientSideTranscoding(quality);
       }
 
+      // 异步操作后检查是否已销毁
+      if (!mounted) {
+        logger.w('清晰度: 转码完成后 Notifier 已销毁');
+        return;
+      }
+
       // 停止之前的转码会话
       if (state.activeSession != null) {
         await _transcodingService?.stopSession(state.activeSession!.sessionId);
+      }
+
+      // 再次检查是否已销毁
+      if (!mounted) {
+        logger.w('清晰度: 停止会话后 Notifier 已销毁');
+        return;
       }
 
       // 更新状态
@@ -418,6 +439,11 @@ class QualityNotifier extends StateNotifier<QualityState> {
 
       logger.i('清晰度已切换到 ${quality.label}');
     } catch (e) {
+      // 更新错误状态前检查是否已销毁
+      if (!mounted) {
+        logger.w('清晰度: 错误处理时 Notifier 已销毁: $e');
+        return;
+      }
       state = state.copyWith(
         isLoading: false,
         errorMessage: '切换清晰度失败: $e',

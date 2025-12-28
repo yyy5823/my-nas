@@ -123,6 +123,13 @@
 			);
 			target = 653E4EFC2EE3AF770080E2C6 /* MusicActivityWidgetExtension */;
 		};
+		65CD6C352F00EB89003CEDC7 /* Exceptions for "MyNasWidgets" folder in "MyNasWidgetsExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 65CD6C002F00EA95003CEDC6 /* MyNasWidgetsExtension */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -141,6 +148,7 @@
 		65CD6C342F00EB89003CEDC6 /* MyNasWidgets */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
+				65CD6C352F00EB89003CEDC7 /* Exceptions for "MyNasWidgets" folder in "MyNasWidgetsExtension" target */,
 			);
 			explicitFileTypes = {
 			};
@@ -331,6 +339,9 @@
 			buildRules = (
 			);
 			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				65CD6C342F00EB89003CEDC6 /* MyNasWidgets */,
 			);
 			name = MyNasWidgetsExtension;
 			productName = MyNasWidgetsExtension;

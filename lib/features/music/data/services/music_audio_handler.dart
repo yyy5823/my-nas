@@ -197,10 +197,21 @@ class MusicAudioHandler extends BaseAudioHandler
   /// 处理 App 生命周期变化
   /// 当 App 从后台返回前台时，需要重新广播状态以刷新灵动岛/锁屏控制
   ///
-  /// 关键发现：iOS 只在 paused 状态时才真正读取 MPNowPlayingInfoCenter 的信息
-  /// 所以必须在 paused 时调用 _resetMediaItemForNowPlaying()，而不只是 inactive/hidden
+  /// 重要修复（2024-12-28）：
+  /// 之前在 inactive/hidden 状态调用 _resetMediaItemForNowPlaying() 会与原生层的
+  /// forceRefreshNowPlayingInfo() 冲突，导致灵动岛闪烁。
   ///
-  /// 简化逻辑：每次进入后台都强制刷新，不再使用复杂的标记判断
+  /// 日志证据：
+  /// audio_service: forceRefreshNowPlayingInfo completed
+  /// [NowPlayingInfo] Setting nowPlayingInfo with mergePolicy Replace: NULL
+  /// [NowPlayingInfo] Clearing nowPlayingInfo
+  ///
+  /// 原因：Dart 层的 mediaItem.add() 触发 audio_service 更新 nowPlayingInfo，
+  /// 覆盖了原生层刚设置的值。
+  ///
+  /// 解决方案：
+  /// - 原生层通过 UIApplicationWillResignActiveNotification 处理灵动岛刷新
+  /// - Dart 层只在 paused 状态广播播放状态，不调用 _resetMediaItemForNowPlaying()
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     logger.i('MusicAudioHandler: App 生命周期变化 - $state, playing=${_player.playing}, hasMediaItem=${mediaItem.value != null}');
@@ -208,35 +219,27 @@ class MusicAudioHandler extends BaseAudioHandler
     switch (state) {
       case AppLifecycleState.inactive:
         // App 即将进入后台（iOS 会先进入 inactive 再进入 paused）
-        // 提前刷新，为 paused 做准备
-        if (mediaItem.value != null) {
-          logger.i('MusicAudioHandler: App 即将进入后台 (inactive)，刷新 Now Playing');
-          // ignore: discarded_futures
-          _resetMediaItemForNowPlaying();
-        }
+        // 不在这里刷新！原生层会通过 UIApplicationWillResignActiveNotification 处理
+        logger.d('MusicAudioHandler: App 进入 inactive 状态，等待原生层处理');
 
       case AppLifecycleState.hidden:
         // Flutter 3.13+ 新增的状态，在 inactive 和 paused 之间
-        if (mediaItem.value != null) {
-          logger.i('MusicAudioHandler: App 进入 hidden 状态，刷新 Now Playing');
-          // ignore: discarded_futures
-          _resetMediaItemForNowPlaying();
-        }
+        // 不在这里刷新！避免与原生层冲突
+        logger.d('MusicAudioHandler: App 进入 hidden 状态，等待原生层处理');
 
       case AppLifecycleState.paused:
         // App 已进入后台 - iOS 在此时读取 MPNowPlayingInfoCenter 信息显示灵动岛
         //
-        // 注意：灵动岛刷新现在由原生层自动处理（通过 UIApplicationDidEnterBackgroundNotification）
-        // 原生层会在 app 进入后台时自动调用 forceRefreshNowPlayingInfo，
-        // 通过微调 elapsedPlaybackTime 绕过 iOS 去重机制
+        // 重要：灵动岛刷新现在 *完全* 由原生层处理：
+        // - UIApplicationWillResignActiveNotification 触发 forceRefreshNowPlayingInfo
+        // - UIApplicationDidEnterBackgroundNotification 作为备份再次刷新
         //
-        // Dart 层只需要广播当前状态，确保 nowPlayingInfo 是最新的
-        if (mediaItem.value != null) {
-          logger.i('MusicAudioHandler: App 已进入后台 (paused)');
-          // 广播当前播放状态，确保 nowPlayingInfo 是最新的
-          // 原生层会在收到 UIApplicationDidEnterBackgroundNotification 时自动刷新灵动岛
-          _broadcastStateWithPlaying(_player.playing);
-        }
+        // Dart 层在 paused 状态下 *不做任何操作*：
+        // - 不调用 _resetMediaItemForNowPlaying()（避免 mediaItem 冲突）
+        // - 不调用 _broadcastStateWithPlaying()（避免 playbackState 冲突）
+        // 原因：任何 Dart 层的状态更新都可能触发 audio_service 原生层
+        // 更新 nowPlayingInfo，与我们的 forceRefreshNowPlayingInfo 冲突，导致闪烁
+        logger.d('MusicAudioHandler: App 已进入后台 (paused)，等待原生层处理灵动岛');
 
       case AppLifecycleState.resumed:
         // App 返回前台
@@ -453,16 +456,10 @@ class MusicAudioHandler extends BaseAudioHandler
     logger.i(
         'MusicAudioHandler: 设置当前音乐 - ${music.displayTitle} by ${music.displayArtist}, hasArtwork=${artUri != null}');
 
-    // 延迟刷新：等待 audio_service 初始化完成后刷新一次
-    // 只需要一次刷新，不需要多次
-    if (Platform.isIOS) {
-      Future.delayed(const Duration(milliseconds: 500), () {
-        if (mediaItem.value?.id == music.id) {
-          logger.i('MusicAudioHandler: 延迟刷新 Now Playing - ${music.displayTitle}');
-          _resetMediaItemForNowPlaying();
-        }
-      });
-    }
+    // 注意：移除了 iOS 延迟刷新代码（2024-12-28）
+    // 原因：这个 500ms 延迟刷新会在歌曲开始播放后触发第二次 mediaItem.add()，
+    // 导致灵动岛闪烁（在 13ms 内发生两次 invalidate + create 循环）
+    // 灵动岛刷新现在完全由原生层在进入后台时处理（通过 UIApplicationWillResignActiveNotification）
   }
 
   /// 更新封面图片（用于元数据加载完成后）

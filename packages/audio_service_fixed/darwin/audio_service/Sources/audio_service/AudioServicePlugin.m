@@ -107,12 +107,10 @@ static int forceUpdateCounter = 0;  // 用于强制刷新的计数器
                 if (!strongInstance) return;
 
                 NSLog(@"audio_service: [Block] applicationDidBecomeActive - playing=%d", playing);
-                // 当 app 从后台回到前台时，刷新 nowPlayingInfo
-                // 这对于下一次进入后台时能正确触发灵动岛很重要
-                if (playing && nowPlayingInfo != nil && nowPlayingInfo.count > 0) {
-                    // 刷新一次 nowPlayingInfo，确保 iOS 系统知道我们仍在播放
-                    [strongInstance forceRefreshNowPlayingInfo];
-                }
+                // 重要：返回前台时 *不* 刷新 nowPlayingInfo
+                // 原因：如果在返回前台时刷新，iOS 可能认为下一次进入后台时
+                // nowPlayingInfo 没有变化（刚刚更新过），从而跳过灵动岛的显示
+                // 只在进入后台时（WillResignActive/DidEnterBackground）刷新
             }];
 
             NSLog(@"audio_service: 已注册 app 生命周期监听 (block-based observers)");
@@ -655,6 +653,11 @@ static int forceUpdateCounter = 0;  // 用于强制刷新的计数器
 #if TARGET_OS_IPHONE
 /// 强制刷新 nowPlayingInfo，绕过 iOS 去重机制
 /// 使用多种策略确保 iOS 正确显示灵动岛
+///
+/// 重要修复（2024-12-28）：
+/// 之前错误地使用 Unix 时间戳作为 elapsedPlaybackTime，导致 iOS 认为
+/// 播放位置超出歌曲时长，从而拒绝显示灵动岛。
+/// 正确做法是使用当前播放位置（position 变量），加上微小偏移量绕过去重。
 - (void)forceRefreshNowPlayingInfo {
     if (nowPlayingInfo == nil || nowPlayingInfo.count == 0) {
         NSLog(@"audio_service: forceRefreshNowPlayingInfo - no nowPlayingInfo to refresh");
@@ -662,16 +665,22 @@ static int forceUpdateCounter = 0;  // 用于强制刷新的计数器
     }
 
     forceUpdateCounter++;
-    NSLog(@"audio_service: forceRefreshNowPlayingInfo starting (counter=%d)", forceUpdateCounter);
+    NSLog(@"audio_service: forceRefreshNowPlayingInfo starting (counter=%d, position=%@)",
+          forceUpdateCounter, position);
 
     MPNowPlayingInfoCenter *center = [MPNowPlayingInfoCenter defaultCenter];
 
     // 重要：不要清空 nowPlayingInfo，否则会导致灵动岛闪烁
     // 重要：不要使用 Interrupted 状态，否则也会导致灵动岛闪烁
 
-    // 策略1: 保存当前 updateTime，用于强制更新
-    long long msSinceEpoch = (long long)([[NSDate date] timeIntervalSince1970] * 1000.0);
-    nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = @(msSinceEpoch / 1000.0);  // 用当前时间作为 elapsed
+    // 策略1: 使用正确的播放位置 + 明显偏移量绕过 iOS 去重机制
+    // position 是毫秒，需要转换为秒
+    // 添加基于 counter 的偏移量（0.1 秒的倍数），确保每次调用都是唯一值
+    // 使用 0.1 秒而不是 0.001 秒，因为 iOS 可能会忽略太小的变化
+    double positionInSeconds = position ? [position doubleValue] / 1000.0 : 0.0;
+    double offsetInSeconds = forceUpdateCounter * 0.1;  // 每次增加 100 毫秒偏移
+    double elapsedTime = positionInSeconds + offsetInSeconds;
+    nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = @(elapsedTime);
 
     // 策略2: 确保 playbackRate 正确
     nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = @(playing ? 1.0 : 0.0);
@@ -694,8 +703,8 @@ static int forceUpdateCounter = 0;  // 用于强制刷新的计数器
         center.playbackState = playing ? MPNowPlayingPlaybackStatePlaying : MPNowPlayingPlaybackStatePaused;
     }
 
-    NSLog(@"audio_service: forceRefreshNowPlayingInfo completed (playing=%d, counter=%d)",
-          playing, forceUpdateCounter);
+    NSLog(@"audio_service: forceRefreshNowPlayingInfo completed (playing=%d, elapsed=%.3f, counter=%d)",
+          playing, elapsedTime, forceUpdateCounter);
 }
 
 // 注意：生命周期监听现在使用 block-based observers，

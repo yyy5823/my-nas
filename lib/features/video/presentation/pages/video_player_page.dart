@@ -48,6 +48,9 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage>
   // 桌面端：鼠标是否在视频区域内
   bool _isMouseInVideoArea = false;
 
+  // 桌面端：鼠标退出防抖计时器
+  Timer? _mouseExitDebounceTimer;
+
   // 双击动画
   bool _showDoubleTapLeft = false;
   bool _showDoubleTapRight = false;
@@ -249,6 +252,7 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage>
     // 移除生命周期观察者
     WidgetsBinding.instance.removeObserver(this);
     _hideControlsTimer?.cancel();
+    _mouseExitDebounceTimer?.cancel();
     // 同步停止播放 - 使用缓存的 notifier 引用，避免在 dispose 后使用 ref
     _playerNotifier?.stopSync();
     // 后台更新缩略图（仅对没有刮削封面的视频有效）
@@ -330,6 +334,10 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage>
       setState(() => _showControls = !_showControls);
       return;
     }
+    // 点击时重置鼠标状态（解决底部弹窗关闭后状态异常的问题）
+    if (_isDesktop) {
+      _isMouseInVideoArea = true;
+    }
     setState(() => _showControls = !_showControls);
     _startHideControlsTimer();
   }
@@ -337,6 +345,8 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage>
   /// 桌面端：鼠标进入视频区域
   void _onMouseEnter() {
     if (!_isDesktop) return;
+    // 取消退出防抖计时器（避免快速进出时的误触发）
+    _mouseExitDebounceTimer?.cancel();
     _isMouseInVideoArea = true;
     if (!_showControls && !_isLocked) {
       setState(() => _showControls = true);
@@ -347,12 +357,18 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage>
   /// 桌面端：鼠标离开视频区域
   void _onMouseExit() {
     if (!_isDesktop) return;
-    _isMouseInVideoArea = false;
-    // 鼠标离开时立即隐藏控制栏
-    _hideControlsTimer?.cancel();
-    if (_showControls && !_isLocked) {
-      setState(() => _showControls = false);
-    }
+
+    // 使用防抖避免快速进出导致的闪烁问题（如底部弹窗关闭后的误触发）
+    _mouseExitDebounceTimer?.cancel();
+    _mouseExitDebounceTimer = Timer(const Duration(milliseconds: 100), () {
+      if (!mounted) return;
+      _isMouseInVideoArea = false;
+      // 鼠标离开时隐藏控制栏
+      _hideControlsTimer?.cancel();
+      if (_showControls && !_isLocked) {
+        setState(() => _showControls = false);
+      }
+    });
   }
 
   /// 桌面端：鼠标移动时重置隐藏计时器

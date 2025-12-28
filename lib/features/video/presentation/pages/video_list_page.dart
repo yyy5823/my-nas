@@ -191,7 +191,8 @@ class VideoListLoaded extends VideoListState {
         for (final group in tvShowGroups.values) {
           allVideos.add(group.representative);
         }
-        allVideos.sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
+        // 按上映年份降序排序（晚上映的排在前面）
+        allVideos.sort((a, b) => (b.year ?? 0).compareTo(a.year ?? 0));
         return allVideos;
       case VideoTab.movies:
         return movies;
@@ -6482,8 +6483,8 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
   int _filteredCount = 0;
   bool _isLoadingFilters = true;
 
-  // 排序相关
-  VideoSortOption _sortOption = VideoSortOption.ratingDesc;
+  // 排序相关（默认按上映年份降序排序）
+  VideoSortOption _sortOption = VideoSortOption.yearDesc;
 
   @override
   void initState() {
@@ -6722,7 +6723,7 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
               ),
             ),
           // 排序标签（当前排序不是默认时显示）
-          if (_sortOption != VideoSortOption.ratingDesc)
+          if (_sortOption != VideoSortOption.yearDesc)
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -7206,8 +7207,8 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
   int _filteredCount = 0;
   bool _isLoadingFilters = true;
 
-  // 排序相关
-  VideoSortOption _sortOption = VideoSortOption.ratingDesc;
+  // 排序相关（默认按上映年份降序排序）
+  VideoSortOption _sortOption = VideoSortOption.yearDesc;
 
   @override
   void initState() {
@@ -8936,8 +8937,8 @@ class _FilteredVideosPaginatedPageState
   int _offset = 0;
   static const int _pageSize = 50;
 
-  // 排序相关
-  VideoSortOption _sortOption = VideoSortOption.ratingDesc;
+  // 排序相关（默认按上映年份降序排序）
+  VideoSortOption _sortOption = VideoSortOption.yearDesc;
 
   @override
   void initState() {
@@ -9118,7 +9119,7 @@ class _FilteredVideosPaginatedPageState
           IconButton(
             icon: Icon(
               _sortOption.icon,
-              color: _sortOption != VideoSortOption.ratingDesc
+              color: _sortOption != VideoSortOption.yearDesc
                   ? Colors.blue
                   : null,
             ),

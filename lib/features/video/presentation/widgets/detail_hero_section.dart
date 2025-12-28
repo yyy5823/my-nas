@@ -415,14 +415,6 @@ class DetailHeroSection extends StatelessWidget {
   Widget _buildMetadataRow(bool isDark) {
     final items = <Widget>[];
 
-    if (metadata.rating != null && metadata.rating! > 0) {
-      items.add(_buildMetadataChip(
-        icon: Icons.star_rounded,
-        iconColor: AppColors.tertiary,
-        text: metadata.ratingText,
-      ));
-    }
-
     // 年份
     if (metadata.year != null) {
       items.add(_buildMetadataChip(text: '${metadata.year}'));
@@ -431,6 +423,44 @@ class DetailHeroSection extends StatelessWidget {
     // 时长
     if (metadata.runtime != null && metadata.runtime! > 0) {
       items.add(_buildMetadataChip(text: _formatRuntime(metadata.runtime!)));
+    }
+
+    // 内容分级（PG-13, R 等）
+    if (metadata.certification != null) {
+      items.add(_buildCertificationChip(metadata.certification!));
+    }
+
+    // 分辨率（4K, 1080p 等）
+    if (metadata.resolution != null) {
+      items.add(_buildResolutionChip(metadata.resolution!));
+    }
+
+    // HDR 格式
+    if (metadata.hdrFormat != null) {
+      items.add(_buildHdrChip(metadata.hdrFormat!));
+    }
+
+    // 3D 标识
+    if (metadata.is3D) {
+      items.add(_buildMetadataChip(
+        text: '3D',
+        backgroundColor: const Color(0xFF00BCD4).withValues(alpha: 0.3),
+      ));
+    }
+
+    // 音频格式（Atmos, DTS:X 等）
+    if (metadata.audioFormat != null) {
+      items.add(_buildAudioChip(metadata.audioFormat!));
+    }
+
+    // 来源（BluRay, Remux 等）
+    if (metadata.isRemux) {
+      items.add(_buildMetadataChip(
+        text: 'Remux',
+        backgroundColor: const Color(0xFF4A148C).withValues(alpha: 0.3),
+      ));
+    } else if (metadata.videoSource != null) {
+      items.add(_buildSourceChip(metadata.videoSource!));
     }
 
     // 类型
@@ -453,6 +483,99 @@ class DetailHeroSection extends StatelessWidget {
       runSpacing: 6,
       children: items,
     );
+  }
+
+  /// 内容分级标签
+  Widget _buildCertificationChip(String certification) {
+    Color borderColor;
+    final upper = certification.toUpperCase();
+    if (upper == 'G' || upper == 'TV-G') {
+      borderColor = AppColors.success;
+    } else if (upper == 'PG' || upper == 'TV-PG') {
+      borderColor = AppColors.info;
+    } else if (upper == 'PG-13' || upper == 'TV-14') {
+      borderColor = AppColors.warning;
+    } else if (upper == 'R' || upper == 'TV-MA' || upper == 'NC-17') {
+      borderColor = AppColors.error;
+    } else {
+      borderColor = Colors.white54;
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        border: Border.all(color: borderColor, width: 1.5),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        certification,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          color: borderColor,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+
+  /// 分辨率标签
+  Widget _buildResolutionChip(String resolution) {
+    final upper = resolution.toUpperCase();
+    final is4K = upper == '4K' || upper == '2160P';
+    final isHD = upper == '1080P';
+    return _buildMetadataChip(
+      text: is4K ? '4K' : resolution.replaceAll('p', 'P'),
+      backgroundColor: is4K
+          ? const Color(0xFFE50914).withValues(alpha: 0.4)
+          : isHD
+              ? AppColors.primary.withValues(alpha: 0.3)
+              : Colors.white.withValues(alpha: 0.15),
+    );
+  }
+
+  /// HDR 标签
+  Widget _buildHdrChip(String hdrFormat) {
+    final isDolbyVision = hdrFormat.toUpperCase().contains('DOLBY') || hdrFormat == 'DV';
+    return _buildMetadataChip(
+      text: isDolbyVision ? 'Dolby Vision' : hdrFormat,
+      backgroundColor: isDolbyVision
+          ? Colors.black.withValues(alpha: 0.5)
+          : const Color(0xFFFFD700).withValues(alpha: 0.3),
+    );
+  }
+
+  /// 音频格式标签
+  Widget _buildAudioChip(String audioFormat) {
+    final upper = audioFormat.toUpperCase();
+    final isAtmos = upper.contains('ATMOS');
+    final isDtsX = upper.contains('DTS') && upper.contains('X');
+    Color bgColor;
+    if (isAtmos || isDtsX) {
+      bgColor = Colors.black.withValues(alpha: 0.5);
+    } else {
+      bgColor = Colors.white.withValues(alpha: 0.15);
+    }
+    return _buildMetadataChip(text: audioFormat, backgroundColor: bgColor);
+  }
+
+  /// 来源标签
+  Widget _buildSourceChip(String source) {
+    final upper = source.toUpperCase();
+    final isBluRay = upper.contains('BLU') || upper.contains('BD');
+    final isWeb = upper.contains('WEB');
+    String displayText;
+    Color bgColor;
+    if (isBluRay) {
+      displayText = 'BluRay';
+      bgColor = const Color(0xFF0D47A1).withValues(alpha: 0.3);
+    } else if (isWeb) {
+      displayText = upper.contains('DL') ? 'WEB-DL' : 'WEB';
+      bgColor = const Color(0xFF2E7D32).withValues(alpha: 0.3);
+    } else {
+      displayText = source;
+      bgColor = Colors.white.withValues(alpha: 0.15);
+    }
+    return _buildMetadataChip(text: displayText, backgroundColor: bgColor);
   }
 
   Widget _buildMetadataChip({
@@ -495,40 +618,15 @@ class DetailHeroSection extends StatelessWidget {
       ),
     );
 
-  /// 评分和媒体信息标识区域
-  Widget _buildRatingBadges() => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 评分标签
-          RatingBadges(
-            tmdbRating: tmdbRating,
-            imdbRating: imdbRating,
-            metacriticRating: metacriticRating,
-            traktRating: traktRating,
-            doubanRating: doubanRating ?? (tmdbRating == null ? metadata.rating : null),
-            voteCount: voteCount,
-          ),
-          // 媒体信息标签（4K, HDR, Atmos 等）
-          if (showMediaInfoBadges && _hasMediaInfo()) ...[
-            const SizedBox(height: 8),
-            MediaInfoBadges(
-              metadata: metadata,
-              showCodec: false, // 不显示编码信息，太技术化
-              compact: false,
-            ),
-          ],
-        ],
+  /// 评分标识区域
+  Widget _buildRatingBadges() => RatingBadges(
+        tmdbRating: tmdbRating,
+        imdbRating: imdbRating,
+        metacriticRating: metacriticRating,
+        traktRating: traktRating,
+        doubanRating: doubanRating ?? (tmdbRating == null ? metadata.rating : null),
+        voteCount: voteCount,
       );
-
-  /// 检查是否有媒体信息可显示
-  bool _hasMediaInfo() =>
-      metadata.certification != null ||
-      metadata.resolution != null ||
-      metadata.hdrFormat != null ||
-      metadata.audioFormat != null ||
-      metadata.videoSource != null ||
-      metadata.isRemux ||
-      metadata.is3D;
 
   /// 简介区域 (浮动在 Banner 上)
   Widget _buildOverviewSection(String overview, {bool large = false}) {
