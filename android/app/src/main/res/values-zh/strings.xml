@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MyNAS</string>
+
+    <!-- Widget Names -->
+    <string name="widget_quick_access_name">快捷操作</string>
+    <string name="widget_storage_name">存储状态</string>
+    <string name="widget_download_name">下载进度</string>
+    <string name="widget_media_name">正在播放</string>
+
+    <!-- Widget Descriptions -->
+    <string name="widget_quick_access_description">快速访问音乐、视频和图书</string>
+    <string name="widget_storage_description">查看 NAS 存储使用情况</string>
+    <string name="widget_download_description">查看下载任务进度</string>
+    <string name="widget_media_description">控制当前播放的媒体</string>
+
+    <!-- Quick Access Labels -->
+    <string name="quick_access_music">音乐</string>
+    <string name="quick_access_video">视频</string>
+    <string name="quick_access_books">图书</string>
+
+    <!-- Storage Widget -->
+    <string name="storage_used">已用</string>
+    <string name="storage_free">可用</string>
+    <string name="storage_not_connected">未连接</string>
+
+    <!-- Download Widget -->
+    <string name="download_no_tasks">暂无下载任务</string>
+    <string name="download_tasks_count">%d 个下载任务</string>
+
+    <!-- Media Widget -->
+    <string name="media_not_playing">未在播放</string>
+</resources>

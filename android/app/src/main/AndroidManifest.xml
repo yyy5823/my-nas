@@ -78,6 +78,58 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <!-- 快捷操作小组件 -->
+        <receiver
+            android:name=".widgets.QuickAccessWidget"
+            android:exported="true"
+            android:label="@string/widget_quick_access_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_quick_access_info" />
+        </receiver>
+
+        <!-- 存储状态小组件 -->
+        <receiver
+            android:name=".widgets.StorageWidget"
+            android:exported="true"
+            android:label="@string/widget_storage_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_storage_info" />
+        </receiver>
+
+        <!-- 下载进度小组件 -->
+        <receiver
+            android:name=".widgets.DownloadWidget"
+            android:exported="true"
+            android:label="@string/widget_download_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_download_info" />
+        </receiver>
+
+        <!-- 媒体播放小组件 -->
+        <receiver
+            android:name=".widgets.MediaWidget"
+            android:exported="true"
+            android:label="@string/widget_media_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_media_info" />
+        </receiver>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

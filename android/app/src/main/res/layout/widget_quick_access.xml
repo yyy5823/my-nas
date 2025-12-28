@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_container"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background"
+    android:gravity="center"
+    android:orientation="horizontal"
+    android:padding="12dp">
+
+    <!-- 音乐按钮 -->
+    <LinearLayout
+        android:id="@+id/btn_music"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="8dp">
+
+        <ImageView
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:background="@drawable/widget_button_music"
+            android:padding="8dp"
+            android:src="@drawable/ic_music_note"
+            android:contentDescription="音乐" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="音乐"
+            android:textColor="#AAAAAA"
+            android:textSize="10sp" />
+    </LinearLayout>
+
+    <!-- 视频按钮 -->
+    <LinearLayout
+        android:id="@+id/btn_video"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="8dp">
+
+        <ImageView
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:background="@drawable/widget_button_video"
+            android:padding="8dp"
+            android:src="@drawable/ic_video"
+            android:contentDescription="视频" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="视频"
+            android:textColor="#AAAAAA"
+            android:textSize="10sp" />
+    </LinearLayout>
+
+    <!-- 图书按钮 -->
+    <LinearLayout
+        android:id="@+id/btn_book"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="8dp">
+
+        <ImageView
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:background="@drawable/widget_button_book"
+            android:padding="8dp"
+            android:src="@drawable/ic_book"
+            android:contentDescription="图书" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="图书"
+            android:textColor="#AAAAAA"
+            android:textSize="10sp" />
+    </LinearLayout>
+
+    <!-- 相册按钮 -->
+    <LinearLayout
+        android:id="@+id/btn_photo"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="8dp">
+
+        <ImageView
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:background="@drawable/widget_button_photo"
+            android:padding="8dp"
+            android:src="@drawable/ic_photo"
+            android:contentDescription="相册" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="相册"
+            android:textColor="#AAAAAA"
+            android:textSize="10sp" />
+    </LinearLayout>
+
+</LinearLayout>

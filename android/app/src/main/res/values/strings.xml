@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MyNAS</string>
+
+    <!-- Widget Names -->
+    <string name="widget_quick_access_name">Quick Access</string>
+    <string name="widget_storage_name">Storage Status</string>
+    <string name="widget_download_name">Downloads</string>
+    <string name="widget_media_name">Now Playing</string>
+
+    <!-- Widget Descriptions -->
+    <string name="widget_quick_access_description">Quick access to music, videos, and books</string>
+    <string name="widget_storage_description">View NAS storage usage</string>
+    <string name="widget_download_description">Monitor download progress</string>
+    <string name="widget_media_description">Control currently playing media</string>
+
+    <!-- Quick Access Labels -->
+    <string name="quick_access_music">Music</string>
+    <string name="quick_access_video">Video</string>
+    <string name="quick_access_books">Books</string>
+
+    <!-- Storage Widget -->
+    <string name="storage_used">Used</string>
+    <string name="storage_free">Free</string>
+    <string name="storage_not_connected">Not Connected</string>
+
+    <!-- Download Widget -->
+    <string name="download_no_tasks">No active downloads</string>
+    <string name="download_tasks_count">%d active downloads</string>
+
+    <!-- Media Widget -->
+    <string name="media_not_playing">Not playing</string>
+</resources>

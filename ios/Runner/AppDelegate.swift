@@ -31,6 +31,12 @@ import UIKit
       ChromaprintChannel.register(with: registrar)
     }
 
+    // 注册 Widget 数据通道
+    // 用于将 Flutter 数据同步到 Home Screen Widgets
+    if let registrar = self.registrar(forPlugin: "WidgetDataChannel") {
+      WidgetDataChannel.register(with: registrar)
+    }
+
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 

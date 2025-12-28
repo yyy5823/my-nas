@@ -20,8 +20,9 @@ import 'package:uuid/uuid.dart';
 /// 例如: SMB, FTP, WebDAV 等
 ///
 /// 注意: 此服务需要设备支持 FFmpeg
-/// - iOS/Android: 需要添加 ffmpeg_kit_flutter 依赖
-/// - macOS/Linux/Windows: 需要本地安装 FFmpeg
+/// - iOS/Android: 使用 ffmpeg_kit_flutter 依赖
+/// - macOS: 使用打包在应用内的 FFmpeg
+/// - Linux/Windows: 需要本地安装 FFmpeg
 class ClientTranscodingService implements NasTranscodingService {
   ClientTranscodingService();
 
@@ -30,6 +31,9 @@ class ClientTranscodingService implements NasTranscodingService {
 
   /// 临时文件目录
   Directory? _tempDir;
+
+  /// 桌面端 FFmpeg 可执行文件路径
+  String? _ffmpegPath;
 
   /// 活跃的转码任务
   final Map<String, _TranscodingTask> _tasks = {};
@@ -79,15 +83,63 @@ class ClientTranscodingService implements NasTranscodingService {
         return false;
       }
     } else if (Platform.isMacOS || Platform.isLinux || Platform.isWindows) {
-      // 桌面端检查本地 FFmpeg 安装
-      try {
-        final result = await Process.run('ffmpeg', ['-version']);
-        return result.exitCode == 0;
-      } catch (e) {
-        return false;
+      // 桌面端检查 FFmpeg
+      _ffmpegPath = await _findDesktopFfmpeg();
+      if (_ffmpegPath != null) {
+        logger.i('ClientTranscoding: 找到 FFmpeg: $_ffmpegPath');
+        return true;
       }
+      return false;
     }
     return false;
+  }
+
+  /// 查找桌面端 FFmpeg 可执行文件
+  Future<String?> _findDesktopFfmpeg() async {
+    // macOS: 优先使用打包在应用内的 FFmpeg
+    if (Platform.isMacOS) {
+      final bundledPath = await _getBundledFfmpegPath();
+      if (bundledPath != null && await File(bundledPath).exists()) {
+        // 验证可执行
+        try {
+          final result = await Process.run(bundledPath, ['-version']);
+          if (result.exitCode == 0) {
+            return bundledPath;
+          }
+        } catch (_) {
+          // 继续尝试系统 FFmpeg
+        }
+      }
+    }
+
+    // 尝试系统 PATH 中的 FFmpeg
+    try {
+      final result = await Process.run('ffmpeg', ['-version']);
+      if (result.exitCode == 0) {
+        return 'ffmpeg';
+      }
+    } catch (_) {
+      // FFmpeg 不在 PATH 中
+    }
+
+    return null;
+  }
+
+  /// 获取打包在 macOS 应用内的 FFmpeg 路径
+  Future<String?> _getBundledFfmpegPath() async {
+    if (!Platform.isMacOS) return null;
+
+    try {
+      // 获取应用可执行文件路径
+      final executable = Platform.resolvedExecutable;
+      // 应用结构: MyApp.app/Contents/MacOS/my_nas
+      // FFmpeg 位置: MyApp.app/Contents/MacOS/ffmpeg
+      final macosDir = File(executable).parent.path;
+      final ffmpegPath = '$macosDir/ffmpeg';
+      return ffmpegPath;
+    } catch (e) {
+      return null;
+    }
   }
 
   @override
@@ -320,9 +372,15 @@ class ClientTranscodingService implements NasTranscodingService {
 
   /// 桌面端转码（使用 Process）
   Future<void> _runDesktopTranscoding(_TranscodingTask task, List<String> args) async {
+    if (_ffmpegPath == null) {
+      task.isRunning = false;
+      task.error = 'FFmpeg 不可用';
+      return;
+    }
+
     try {
-      // 执行 FFmpeg
-      final process = await Process.start('ffmpeg', args);
+      // 执行 FFmpeg（使用已检测到的路径）
+      final process = await Process.start(_ffmpegPath!, args);
       task.process = process;
 
       // 解析进度输出

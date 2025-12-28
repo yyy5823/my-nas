@@ -2,6 +2,8 @@ import Cocoa
 import FlutterMacOS
 
 class MainFlutterWindow: NSWindow {
+  private var widgetDataChannel: WidgetDataChannel?
+
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
     let windowFrame = self.frame
@@ -9,6 +11,9 @@ class MainFlutterWindow: NSWindow {
     self.setFrame(windowFrame, display: true)
 
     RegisterGeneratedPlugins(registry: flutterViewController)
+
+    // 注册小组件数据通道
+    widgetDataChannel = WidgetDataChannel(messenger: flutterViewController.engine.binaryMessenger)
 
     super.awakeFromNib()
   }
