@@ -354,79 +354,86 @@ class BookListNotifier extends StateNotifier<BookListState> {
       });
     } on Exception catch (e, st) {
       AppError.handle(e, st, 'BookListNotifier.initAndLoad');
-      // 保持空列表状态，让用户可以正常使用界面
+      // 恢复到空列表状态，避免一直 loading
+      state = BookListLoaded(totalCount: 0);
     }
   }
 
   /// 从 SQLite 加载数据
   Future<void> _loadFromSqlite() async {
-    final count = await _db.getCount();
-    if (count == 0) {
-      // SQLite 为空，尝试从旧缓存迁移
-      await _migrateFromOldCache();
-      return;
-    }
+    try {
+      final count = await _db.getCount();
+      if (count == 0) {
+        // SQLite 为空，尝试从旧缓存迁移
+        await _migrateFromOldCache();
+        return;
+      }
 
-    state = BookListLoading(fromCache: true, currentFolder: '加载数据...');
+      state = BookListLoading(fromCache: true, currentFolder: '加载数据...');
 
-    // 并行加载统计和数据
-    final results = await Future.wait([
-      _db.getStats(),
-      _db.getAll(),
-    ]);
+      // 并行加载统计和数据
+      final results = await Future.wait([
+        _db.getStats(),
+        _db.getAll(),
+      ]);
 
-    final stats = results[0] as Map<String, dynamic>;
-    final allBooks = results[1] as List<BookEntity>;
+      final stats = results[0] as Map<String, dynamic>;
+      final allBooks = results[1] as List<BookEntity>;
 
-    // 转换格式统计
-    final rawFormatStats = stats['formatStats'] as Map<String, int>? ?? {};
-    final formatStats = <BookFormat, int>{};
-    for (final entry in rawFormatStats.entries) {
-      final format = BookFormat.values.firstWhere(
-        (f) => f.name == entry.key,
-        orElse: () => BookFormat.unknown,
-      );
-      formatStats[format] = entry.value;
-    }
+      // 转换格式统计
+      final rawFormatStats = stats['formatStats'] as Map<String, int>? ?? {};
+      final formatStats = <BookFormat, int>{};
+      for (final entry in rawFormatStats.entries) {
+        final format = BookFormat.values.firstWhere(
+          (f) => f.name == entry.key,
+          orElse: () => BookFormat.unknown,
+        );
+        formatStats[format] = entry.value;
+      }
 
-    // 构建快速查找 Map
-    final bookByPath = <String, BookEntity>{};
-    for (final b in allBooks) {
-      bookByPath[b.uniqueKey] = b;
-    }
+      // 构建快速查找 Map
+      final bookByPath = <String, BookEntity>{};
+      for (final b in allBooks) {
+        bookByPath[b.uniqueKey] = b;
+      }
 
-    // 构建来源类型缓存
-    final connections = _ref.read(activeConnectionsProvider);
-    final sourceTypeCache = <String, SourceType>{};
-    for (final book in allBooks) {
-      if (!sourceTypeCache.containsKey(book.sourceId)) {
-        final conn = connections[book.sourceId];
-        if (conn != null) {
-          sourceTypeCache[book.sourceId] = conn.source.type;
+      // 构建来源类型缓存
+      final connections = _ref.read(activeConnectionsProvider);
+      final sourceTypeCache = <String, SourceType>{};
+      for (final book in allBooks) {
+        if (!sourceTypeCache.containsKey(book.sourceId)) {
+          final conn = connections[book.sourceId];
+          if (conn != null) {
+            sourceTypeCache[book.sourceId] = conn.source.type;
+          }
         }
       }
+
+      state = BookListLoaded(
+        totalCount: stats['total'] as int? ?? 0,
+        totalSize: stats['totalSize'] as int? ?? 0,
+        formatStats: formatStats,
+        allBooks: allBooks,
+        bookByPath: bookByPath,
+        sourceTypeCache: sourceTypeCache,
+        fromCache: true,
+      );
+
+      logger.i('BookListNotifier: 从 SQLite 加载了 ${allBooks.length} 本图书');
+
+      // 启动后台元数据提取（不阻塞 UI）
+      AppError.fireAndForget(
+        _extractMetadataInBackground(),
+        action: 'BookListNotifier.extractMetadataInBackground',
+      );
+
+      // 启动后台预加载（只预加载前 20 本）
+      _startPreloading(allBooks.take(20).toList());
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'BookListNotifier.loadFromSqlite');
+      // 加载失败时恢复到空状态，避免一直 loading
+      state = BookListLoaded(totalCount: 0);
     }
-
-    state = BookListLoaded(
-      totalCount: stats['total'] as int? ?? 0,
-      totalSize: stats['totalSize'] as int? ?? 0,
-      formatStats: formatStats,
-      allBooks: allBooks,
-      bookByPath: bookByPath,
-      sourceTypeCache: sourceTypeCache,
-      fromCache: true,
-    );
-
-    logger.i('BookListNotifier: 从 SQLite 加载了 ${allBooks.length} 本图书');
-
-    // 启动后台元数据提取（不阻塞 UI）
-    AppError.fireAndForget(
-      _extractMetadataInBackground(),
-      action: 'BookListNotifier.extractMetadataInBackground',
-    );
-
-    // 启动后台预加载（只预加载前 20 本）
-    _startPreloading(allBooks.take(20).toList());
   }
 
   /// 启动后台预加载

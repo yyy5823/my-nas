@@ -277,8 +277,9 @@ class BookDatabaseService {
 
     final order = descending ? 'DESC' : 'ASC';
     // 对于 last_read_time, NULL值排在最后
+    // 使用兼容写法，避免老版本 SQLite 不支持 NULLS LAST 语法
     final orderByClause = orderBy == 'last_read_time'
-        ? '$orderBy $order NULLS LAST'
+        ? 'CASE WHEN $orderBy IS NULL THEN 1 ELSE 0 END, $orderBy $order'
         : '$orderBy $order';
 
     final results = await _db!.query(

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -401,6 +402,103 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     _debounceTimer?.cancel();
     _incrementalSyncTimer?.cancel();
     super.dispose();
+  }
+
+  /// 预缓存首页封面图片
+  ///
+  /// 在数据加载完成后立即触发图片预加载，避免用户看到空白封面
+  /// 只预缓存前几个分类的图片，避免过度消耗内存和带宽
+  void _precacheHomeImages(VideoListLoaded loadedState) {
+    // 收集需要预缓存的网络图片 URL
+    final urlsToPrecache = <String>{};
+
+    // 1. 每日推荐/Hero Banner（最重要，优先加载）
+    for (final video in loadedState.topRatedMovies.take(6)) {
+      final posterUrl = video.displayPosterUrl;
+      if (posterUrl != null && VideoPoster.isNetworkUrl(posterUrl)) {
+        urlsToPrecache.add(posterUrl);
+      }
+      // 也预缓存背景图（用于 Hero Banner）
+      final backdropUrl = video.backdropUrl;
+      if (backdropUrl != null && VideoPoster.isNetworkUrl(backdropUrl)) {
+        urlsToPrecache.add(backdropUrl);
+      }
+    }
+
+    // 2. 最近添加（第二重要）
+    for (final video in loadedState.recentVideos.take(8)) {
+      final posterUrl = video.displayPosterUrl;
+      if (posterUrl != null && VideoPoster.isNetworkUrl(posterUrl)) {
+        urlsToPrecache.add(posterUrl);
+      }
+    }
+
+    // 3. 电影列表前几个
+    for (final video in loadedState.movies.take(6)) {
+      final posterUrl = video.displayPosterUrl;
+      if (posterUrl != null && VideoPoster.isNetworkUrl(posterUrl)) {
+        urlsToPrecache.add(posterUrl);
+      }
+    }
+
+    // 4. 剧集列表前几个
+    for (final group in loadedState.tvShowGroups.values.take(6)) {
+      final posterUrl = group.displayPosterUrl;
+      if (posterUrl != null && VideoPoster.isNetworkUrl(posterUrl)) {
+        urlsToPrecache.add(posterUrl);
+      }
+    }
+
+    // 5. 电影系列前几个
+    for (final collection in loadedState.movieCollections.take(4)) {
+      final posterUrl = collection.posterUrl;
+      if (posterUrl != null && VideoPoster.isNetworkUrl(posterUrl)) {
+        urlsToPrecache.add(posterUrl);
+      }
+    }
+
+    if (urlsToPrecache.isEmpty) return;
+
+    logger.d('VideoListNotifier: 开始预缓存 ${urlsToPrecache.length} 张首页封面图片');
+
+    // 异步预缓存，不阻塞主线程
+    // 使用 SchedulerBinding 确保在帧回调后执行，避免影响 UI 渲染
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      AppError.fireAndForget(
+        Future(() async {
+          for (final url in urlsToPrecache) {
+            try {
+              // 使用 CachedNetworkImageProvider 预缓存
+              final provider = CachedNetworkImageProvider(url);
+              final completer = Completer<void>();
+              final stream = provider.resolve(ImageConfiguration.empty);
+
+              late ImageStreamListener listener;
+              listener = ImageStreamListener(
+                (imageInfo, synchronousCall) {
+                  if (!completer.isCompleted) {
+                    completer.complete();
+                    stream.removeListener(listener);
+                  }
+                },
+                onError: (error, stackTrace) {
+                  if (!completer.isCompleted) {
+                    completer.complete(); // 错误时也完成，继续下一张
+                    stream.removeListener(listener);
+                  }
+                },
+              );
+              stream.addListener(listener);
+              await completer.future;
+            } on Exception catch (_) {
+              // 单张图片加载失败不影响其他图片
+            }
+          }
+          logger.d('VideoListNotifier: 首页封面图片预缓存完成');
+        }),
+        action: 'precacheHomeImages',
+      );
+    });
   }
 
   /// 扫描进度变化时的处理
@@ -1061,7 +1159,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
 
     // 🚀 渐进式更新：Batch 1 完成，显示每日推荐、最近添加、电影
     if (!silent) {
-      state = VideoListLoaded(
+      final batch1State = VideoListLoaded(
         totalCount: newTotalCount,
         databaseTotalCount: databaseTotalCount,
         movieCount: stats['movies'] as int? ?? 0,
@@ -1075,6 +1173,9 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
         videoByKey: videoByKey,
         fromCache: true,
       );
+      state = batch1State;
+      // 首屏数据就绪，开始预缓存封面图片
+      _precacheHomeImages(batch1State);
       logger.d('VideoListNotifier: Batch 1 完成，显示每日推荐/最近添加/电影');
     }
 
@@ -1212,7 +1313,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     }
 
     // 🚀 渐进式更新：全部完成，显示完整内容
-    state = VideoListLoaded(
+    final completeState = VideoListLoaded(
       totalCount: newTotalCount,
       databaseTotalCount: databaseTotalCount,
       movieCount: stats['movies'] as int? ?? 0,
@@ -1229,6 +1330,9 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       videoByKey: videoByKey,
       fromCache: true,
     );
+    state = completeState;
+    // 完整数据就绪，预缓存剧集和系列封面
+    _precacheHomeImages(completeState);
 
     logger.i('''
       VideoListNotifier: 数据加载完成（渐进式），
@@ -3303,6 +3407,8 @@ class _ContinueWatchingSection extends ConsumerWidget {
                 child: ListView.builder(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
+                  // 预构建更多屏幕外的 item，让图片提前开始加载
+                  cacheExtent: 500,
                   itemCount: items.length,
                   itemBuilder: (context, index) =>
                       _ContinueWatchingCard(item: items[index], isDark: isDark),
@@ -4351,6 +4457,8 @@ class _CategoryRow extends StatelessWidget {
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
+            // 预构建更多屏幕外的 item，让图片提前开始加载
+            cacheExtent: 500,
             itemCount: displayItems.length + (showViewMore ? 1 : 0),
             itemBuilder: (context, index) {
               // 最后一个是"查看更多"卡片
@@ -6100,6 +6208,8 @@ class _TvShowRow extends StatelessWidget {
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
+            // 预构建更多屏幕外的 item，让图片提前开始加载
+            cacheExtent: 500,
             itemCount: displayGroups.length + (showViewMore ? 1 : 0),
             itemBuilder: (context, index) {
               if (showViewMore && index == displayGroups.length) {
@@ -7951,6 +8061,8 @@ class _MovieCollectionRow extends StatelessWidget {
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
+            // 预构建更多屏幕外的 item，让图片提前开始加载
+            cacheExtent: 500,
             itemCount: displayItems.length,
             itemBuilder: (context, index) {
               final collection = displayItems[index];
