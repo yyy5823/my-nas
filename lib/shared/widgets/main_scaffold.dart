@@ -1,24 +1,28 @@
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:my_nas/app/router/routes.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/app/theme/ui_style.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/shared/providers/ui_style_provider.dart';
 import 'package:my_nas/shared/services/update_service.dart';
 import 'package:my_nas/shared/widgets/update_dialog.dart';
 
-class MainScaffold extends StatefulWidget {
+class MainScaffold extends ConsumerStatefulWidget {
   const MainScaffold({required this.child, super.key});
 
   final Widget child;
 
   @override
-  State<MainScaffold> createState() => _MainScaffoldState();
+  ConsumerState<MainScaffold> createState() => _MainScaffoldState();
 }
 
-class _MainScaffoldState extends State<MainScaffold> {
+class _MainScaffoldState extends ConsumerState<MainScaffold> {
   static bool _hasCheckedForUpdates = false;
 
   @override
@@ -103,6 +107,10 @@ class _MainScaffoldState extends State<MainScaffold> {
   Widget build(BuildContext context) {
     final currentIndex = _getCurrentIndex(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final uiStyle = ref.watch(uiStyleProvider);
+    final glassStyle = GlassTheme.getNavBarStyle(uiStyle, isDark: isDark);
+    final optimizedStyle = PlatformGlassConfig.getOptimizedStyle(glassStyle, isDark: isDark);
+    final enableGlass = PlatformGlassConfig.shouldEnableGlass(uiStyle);
 
     // Use NavigationRail for desktop, NavigationBar for mobile
     if (context.isDesktop) {
@@ -110,7 +118,7 @@ class _MainScaffoldState extends State<MainScaffold> {
         backgroundColor: isDark ? AppColors.darkBackground : null,
         body: Row(
           children: [
-            _buildDesktopNav(context, currentIndex, isDark),
+            _buildDesktopNav(context, currentIndex, isDark, optimizedStyle, enableGlass),
             Expanded(child: widget.child),
           ],
         ),
@@ -119,24 +127,39 @@ class _MainScaffoldState extends State<MainScaffold> {
 
     return Scaffold(
       backgroundColor: isDark ? AppColors.darkBackground : null,
+      // 玻璃模式下让内容延伸到导航栏下方
+      extendBody: enableGlass,
       body: widget.child,
-      bottomNavigationBar: _buildMobileNav(context, currentIndex, isDark),
+      bottomNavigationBar: _buildMobileNav(context, currentIndex, isDark, optimizedStyle, enableGlass),
     );
   }
 
-  Widget _buildDesktopNav(BuildContext context, int currentIndex, bool isDark) {
+  Widget _buildDesktopNav(
+    BuildContext context,
+    int currentIndex,
+    bool isDark,
+    GlassStyle glassStyle,
+    bool enableGlass,
+  ) {
     final isExtended = context.screenWidth > 1400;
 
-    return Container(
+    // 计算背景色
+    final bgColor = enableGlass
+        ? GlassTheme.getBackgroundColor(glassStyle, isDark: isDark)
+        : (isDark ? AppColors.darkSurface : context.colorScheme.surface);
+
+    final borderColor = enableGlass
+        ? GlassTheme.getBorderColor(glassStyle, isDark: isDark)
+        : (isDark
+            ? AppColors.darkOutline.withValues(alpha: 0.3)
+            : context.colorScheme.outlineVariant);
+
+    Widget navContent = Container(
       width: isExtended ? 220 : 72,
       decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
+        color: bgColor,
         border: Border(
-          right: BorderSide(
-            color: isDark
-                ? AppColors.darkOutline.withValues(alpha: 0.3)
-                : context.colorScheme.outlineVariant,
-          ),
+          right: BorderSide(color: borderColor),
         ),
       ),
       child: Column(
@@ -244,17 +267,46 @@ class _MainScaffoldState extends State<MainScaffold> {
         ],
       ),
     );
+
+    // 玻璃效果：添加模糊背景
+    if (enableGlass && glassStyle.needsBlur) {
+      navContent = ClipRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(
+            sigmaX: glassStyle.blurIntensity,
+            sigmaY: glassStyle.blurIntensity,
+          ),
+          child: navContent,
+        ),
+      );
+    }
+
+    return navContent;
   }
 
-  Widget _buildMobileNav(BuildContext context, int currentIndex, bool isDark) => DecoratedBox(
+  Widget _buildMobileNav(
+    BuildContext context,
+    int currentIndex,
+    bool isDark,
+    GlassStyle glassStyle,
+    bool enableGlass,
+  ) {
+    // 计算背景色
+    final bgColor = enableGlass
+        ? GlassTheme.getBackgroundColor(glassStyle, isDark: isDark)
+        : (isDark ? AppColors.darkSurface : context.colorScheme.surface);
+
+    final borderColor = enableGlass
+        ? GlassTheme.getBorderColor(glassStyle, isDark: isDark)
+        : (isDark
+            ? AppColors.darkOutline.withValues(alpha: 0.3)
+            : context.colorScheme.outlineVariant);
+
+    Widget navContent = DecoratedBox(
       decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : context.colorScheme.surface,
+        color: bgColor,
         border: Border(
-          top: BorderSide(
-            color: isDark
-                ? AppColors.darkOutline.withValues(alpha: 0.3)
-                : context.colorScheme.outlineVariant,
-          ),
+          top: BorderSide(color: borderColor),
         ),
       ),
       child: SafeArea(
@@ -323,6 +375,22 @@ class _MainScaffoldState extends State<MainScaffold> {
         ),
       ),
     );
+
+    // 玻璃效果：添加模糊背景
+    if (enableGlass && glassStyle.needsBlur) {
+      navContent = ClipRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(
+            sigmaX: glassStyle.blurIntensity,
+            sigmaY: glassStyle.blurIntensity,
+          ),
+          child: navContent,
+        ),
+      );
+    }
+
+    return navContent;
+  }
 }
 
 class _Destination {

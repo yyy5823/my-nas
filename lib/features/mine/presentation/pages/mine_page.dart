@@ -64,6 +64,7 @@ class MinePage extends ConsumerWidget {
                 _buildSettingsCard(
                   context,
                   isDark,
+                  uiStyle,
                   children: [
                     _buildSourcesTile(context, ref, isDark),
                     _buildDivider(isDark),
@@ -90,6 +91,7 @@ class MinePage extends ConsumerWidget {
                 _buildSettingsCard(
                   context,
                   isDark,
+                  uiStyle,
                   children: [
                     _buildSettingsTile(
                       context,
@@ -126,6 +128,7 @@ class MinePage extends ConsumerWidget {
                 _buildSettingsCard(
                   context,
                   isDark,
+                  uiStyle,
                   children: [
                     _MusicScraperSourcesTile(isDark: isDark),
                   ],
@@ -139,6 +142,7 @@ class MinePage extends ConsumerWidget {
                 _buildSettingsCard(
                   context,
                   isDark,
+                  uiStyle,
                   children: [
                     _PTSitesTile(isDark: isDark),
                   ],
@@ -159,6 +163,7 @@ class MinePage extends ConsumerWidget {
                 _buildSettingsCard(
                   context,
                   isDark,
+                  uiStyle,
                   children: [
                     _buildSettingsTile(
                       context,
@@ -200,6 +205,7 @@ class MinePage extends ConsumerWidget {
                 _buildSettingsCard(
                   context,
                   isDark,
+                  uiStyle,
                   children: [
                     _VersionTile(isDark: isDark),
                     _buildDivider(isDark),
@@ -336,28 +342,43 @@ class MinePage extends ConsumerWidget {
 
   Widget _buildSettingsCard(
     BuildContext context,
-    bool isDark, {
+    bool isDark,
+    UIStyle uiStyle, {
     required List<Widget> children,
-  }) => DecoratedBox(
-      decoration: BoxDecoration(
-        color: isDark
+  }) {
+    final glassStyle = GlassTheme.getStyle(uiStyle, isDark: isDark);
+    final optimizedStyle = PlatformGlassConfig.getOptimizedStyle(glassStyle, isDark: isDark);
+    final enableGlass = PlatformGlassConfig.shouldEnableGlass(uiStyle);
+
+    // 计算背景色
+    final bgColor = enableGlass
+        ? GlassTheme.getBackgroundColor(optimizedStyle, isDark: isDark)
+        : (isDark
             ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
-            : AppColors.lightSurface,
+            : AppColors.lightSurface);
+
+    final borderColor = enableGlass
+        ? GlassTheme.getBorderColor(optimizedStyle, isDark: isDark)
+        : (isDark
+            ? AppColors.darkOutline.withValues(alpha: 0.2)
+            : AppColors.lightOutline.withValues(alpha: 0.3));
+
+    Widget card = DecoratedBox(
+      decoration: BoxDecoration(
+        color: bgColor,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isDark
-              ? AppColors.darkOutline.withValues(alpha: 0.2)
-              : AppColors.lightOutline.withValues(alpha: 0.3),
-        ),
-        boxShadow: isDark
-            ? null
-            : [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.03),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
+        border: Border.all(color: borderColor),
+        boxShadow: enableGlass
+            ? GlassTheme.getGlowShadows(optimizedStyle, isDark: isDark)
+            : (isDark
+                ? null
+                : [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ]),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(20),
@@ -366,6 +387,23 @@ class MinePage extends ConsumerWidget {
         ),
       ),
     );
+
+    // 玻璃效果：添加模糊背景
+    if (enableGlass && optimizedStyle.needsBlur) {
+      card = ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(
+            sigmaX: optimizedStyle.blurIntensity,
+            sigmaY: optimizedStyle.blurIntensity,
+          ),
+          child: card,
+        ),
+      );
+    }
+
+    return card;
+  }
 
   Widget _buildSettingsTile(
     BuildContext context,

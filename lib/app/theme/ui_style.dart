@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 
@@ -160,5 +162,91 @@ abstract final class GlassTheme {
         spreadRadius: -5,
       ),
     ];
+  }
+
+  /// 获取导航栏专用的玻璃样式（更高不透明度确保可读性）
+  static GlassStyle getNavBarStyle(UIStyle style, {required bool isDark}) {
+    final baseStyle = getStyle(style, isDark: isDark);
+    if (!baseStyle.needsBlur) return baseStyle;
+
+    // 导航栏使用更高的不透明度
+    return GlassStyle(
+      blurIntensity: baseStyle.blurIntensity,
+      backgroundOpacity: (baseStyle.backgroundOpacity + 0.15).clamp(0.0, 0.95),
+      tintOpacity: baseStyle.tintOpacity,
+      borderOpacity: baseStyle.borderOpacity,
+      enableBorderGlow: baseStyle.enableBorderGlow,
+    );
+  }
+}
+
+/// 跨平台玻璃效果配置
+/// 根据不同平台调整模糊效果以获得最佳性能和视觉效果
+abstract final class PlatformGlassConfig {
+  /// 当前平台是否支持高性能模糊
+  static bool get supportsHighQualityBlur {
+    if (kIsWeb) return false;
+    // iOS 和 macOS 原生支持高质量模糊
+    if (Platform.isIOS || Platform.isMacOS) return true;
+    // Android 12+ 和 Windows 11 也有较好支持
+    // 这里简单地假设现代设备都支持
+    return true;
+  }
+
+  /// 获取平台优化后的模糊强度
+  static double getOptimizedBlurIntensity(double baseIntensity) {
+    if (kIsWeb) return 0; // Web 不支持模糊
+
+    if (Platform.isIOS || Platform.isMacOS) {
+      // Apple 平台性能好，可以使用完整模糊
+      return baseIntensity;
+    }
+
+    if (Platform.isAndroid) {
+      // Android 降低一点模糊强度以保证性能
+      return baseIntensity * 0.8;
+    }
+
+    if (Platform.isWindows || Platform.isLinux) {
+      // 桌面平台可以使用完整模糊
+      return baseIntensity;
+    }
+
+    return baseIntensity;
+  }
+
+  /// 获取平台特定的背景不透明度调整
+  /// 某些平台可能需要更高的不透明度以确保可读性
+  static double getAdjustedOpacity(double baseOpacity, {required bool isDark}) {
+    if (kIsWeb) return 1.0; // Web 使用完全不透明
+
+    if (Platform.isAndroid) {
+      // Android 上稍微提高不透明度以补偿较低的模糊
+      return (baseOpacity + 0.1).clamp(0.0, 1.0);
+    }
+
+    return baseOpacity;
+  }
+
+  /// 是否应该在此平台启用玻璃效果
+  static bool shouldEnableGlass(UIStyle style) {
+    if (kIsWeb) return false;
+    return style.isGlass;
+  }
+
+  /// 获取平台优化后的 GlassStyle
+  static GlassStyle getOptimizedStyle(
+    GlassStyle style, {
+    required bool isDark,
+  }) {
+    if (!style.needsBlur) return style;
+
+    return GlassStyle(
+      blurIntensity: getOptimizedBlurIntensity(style.blurIntensity),
+      backgroundOpacity: getAdjustedOpacity(style.backgroundOpacity, isDark: isDark),
+      tintOpacity: style.tintOpacity,
+      borderOpacity: style.borderOpacity,
+      enableBorderGlow: style.enableBorderGlow,
+    );
   }
 }
