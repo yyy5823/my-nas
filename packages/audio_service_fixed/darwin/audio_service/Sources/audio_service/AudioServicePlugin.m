@@ -28,6 +28,7 @@ static NSNumber *fastForwardInterval = nil;
 static NSNumber *rewindInterval = nil;
 static MPMediaItemArtwork* artwork = nil;
 static NSMutableDictionary *nowPlayingInfo = nil;
+static int forceUpdateCounter = 0;  // 用于强制刷新的计数器
 
 @implementation AudioServicePlugin {
     FlutterMethodChannel *_channel;
@@ -55,6 +56,63 @@ static NSMutableDictionary *nowPlayingInfo = nil;
                 methodChannelWithName:@"com.ryanheise.audio_service.handler.methods"
                       binaryMessenger:[registrar messenger]];
             [registrar addMethodCallDelegate:instance channel:handlerChannel];
+
+#if TARGET_OS_IPHONE
+            // 监听 app 生命周期事件，自动刷新 nowPlayingInfo
+            // 这是解决"第二次进入后台灵动岛不显示"问题的关键
+            // 由于 Dart 层的 MethodChannel 调用可能在 app 被挂起前未完成，
+            // 所以我们直接在原生层监听生命周期事件
+
+            // 使用 __weak 避免循环引用
+            __weak AudioServicePlugin *weakInstance = instance;
+
+            // 注意：使用 NSOperationQueue.mainQueue 确保在主线程处理
+            [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationWillResignActiveNotification
+                                                              object:nil
+                                                               queue:[NSOperationQueue mainQueue]
+                                                          usingBlock:^(NSNotification * _Nonnull note) {
+                AudioServicePlugin *strongInstance = weakInstance;
+                if (!strongInstance) return;
+
+                NSLog(@"audio_service: [Block] applicationWillResignActive - playing=%d, hasNowPlayingInfo=%d",
+                      playing, (nowPlayingInfo != nil && nowPlayingInfo.count > 0));
+                if (playing && nowPlayingInfo != nil && nowPlayingInfo.count > 0) {
+                    [strongInstance forceRefreshNowPlayingInfo];
+                }
+            }];
+
+            [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidEnterBackgroundNotification
+                                                              object:nil
+                                                               queue:[NSOperationQueue mainQueue]
+                                                          usingBlock:^(NSNotification * _Nonnull note) {
+                AudioServicePlugin *strongInstance = weakInstance;
+                if (!strongInstance) return;
+
+                NSLog(@"audio_service: [Block] applicationDidEnterBackground - playing=%d, hasNowPlayingInfo=%d",
+                      playing, (nowPlayingInfo != nil && nowPlayingInfo.count > 0));
+                if (playing && nowPlayingInfo != nil && nowPlayingInfo.count > 0) {
+                    [strongInstance forceRefreshNowPlayingInfo];
+                }
+            }];
+
+            [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidBecomeActiveNotification
+                                                              object:nil
+                                                               queue:[NSOperationQueue mainQueue]
+                                                          usingBlock:^(NSNotification * _Nonnull note) {
+                AudioServicePlugin *strongInstance = weakInstance;
+                if (!strongInstance) return;
+
+                NSLog(@"audio_service: [Block] applicationDidBecomeActive - playing=%d", playing);
+                // 当 app 从后台回到前台时，刷新 nowPlayingInfo
+                // 这对于下一次进入后台时能正确触发灵动岛很重要
+                if (playing && nowPlayingInfo != nil && nowPlayingInfo.count > 0) {
+                    // 刷新一次 nowPlayingInfo，确保 iOS 系统知道我们仍在播放
+                    [strongInstance forceRefreshNowPlayingInfo];
+                }
+            }];
+
+            NSLog(@"audio_service: 已注册 app 生命周期监听 (block-based observers)");
+#endif
         }
     }
 }
@@ -240,45 +298,12 @@ static NSMutableDictionary *nowPlayingInfo = nil;
         commandCenter = nil;
         result(@{});
     } else if ([@"forceUpdateNowPlayingInfo" isEqualToString:call.method]) {
-        // 强制刷新 nowPlayingInfo，绕过去重逻辑
-        // 用于解决 app 第二次进入后台时灵动岛不显示的问题
-        // iOS MediaRemote 框架有系统级去重机制，当 nowPlayingInfo 相同时会跳过更新
-        // 解决方案：清空 → 延迟 → 重设
-
-        MPNowPlayingInfoCenter *center = [MPNowPlayingInfoCenter defaultCenter];
-
-        // 保存当前状态
-        NSDictionary *savedInfo = [nowPlayingInfo copy];
-        BOOL wasPlaying = playing;
-
-        // 步骤1: 清空 nowPlayingInfo，强制 iOS 重置状态
-        center.nowPlayingInfo = nil;
-        if (@available(iOS 13.0, macOS 10.12.2, *)) {
-            center.playbackState = MPNowPlayingPlaybackStateStopped;
-        }
-
-        // 步骤2: 延迟 150ms 后重新设置
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.15 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            // 重新设置 nowPlayingInfo
-            center.nowPlayingInfo = savedInfo;
-
-            // 恢复播放状态
-            if (@available(iOS 13.0, macOS 10.12.2, *)) {
-                center.playbackState = wasPlaying ? MPNowPlayingPlaybackStatePlaying : MPNowPlayingPlaybackStatePaused;
-            }
-
-            // 确保 Remote Commands 处于激活状态
-            if (commandCenter) {
-                [commandCenter.playCommand setEnabled:YES];
-                [commandCenter.pauseCommand setEnabled:YES];
-                [commandCenter.togglePlayPauseCommand setEnabled:YES];
-                [commandCenter.nextTrackCommand setEnabled:YES];
-                [commandCenter.previousTrackCommand setEnabled:YES];
-            }
-
-            NSLog(@"audio_service: forceUpdateNowPlayingInfo completed (playing=%d)", wasPlaying);
-        });
-
+        // 强制刷新 nowPlayingInfo，绕过 iOS 去重机制
+        // 注意：现在主要依赖原生层的生命周期监听来触发刷新
+        // 这个方法作为备用，仍可从 Dart 层调用
+#if TARGET_OS_IPHONE
+        [self forceRefreshNowPlayingInfo];
+#endif
         result(@{});
     }
 }
@@ -622,6 +647,61 @@ static NSMutableDictionary *nowPlayingInfo = nil;
     }];
     return MPRemoteCommandHandlerStatusSuccess;
 }
+
+#if TARGET_OS_IPHONE
+/// 强制刷新 nowPlayingInfo，绕过 iOS 去重机制
+/// 使用多种策略确保 iOS 正确显示灵动岛
+- (void)forceRefreshNowPlayingInfo {
+    if (nowPlayingInfo == nil || nowPlayingInfo.count == 0) {
+        NSLog(@"audio_service: forceRefreshNowPlayingInfo - no nowPlayingInfo to refresh");
+        return;
+    }
+
+    forceUpdateCounter++;
+    NSLog(@"audio_service: forceRefreshNowPlayingInfo starting (counter=%d)", forceUpdateCounter);
+
+    MPNowPlayingInfoCenter *center = [MPNowPlayingInfoCenter defaultCenter];
+
+    // 策略1: 先清空 nowPlayingInfo，强制 iOS 认为这是新的会话
+    // 这是解决"第二次进入后台灵动岛不显示"的关键
+    center.nowPlayingInfo = nil;
+
+    // 策略2: 重置播放状态
+    if (@available(iOS 13.0, *)) {
+        center.playbackState = MPNowPlayingPlaybackStateUnknown;
+    }
+
+    // 策略3: 微调 elapsedPlaybackTime，确保值有变化
+    NSNumber *currentElapsed = nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime];
+    double elapsedSeconds = currentElapsed ? [currentElapsed doubleValue] : 0.0;
+    double adjustedElapsed = elapsedSeconds + (0.001 * (forceUpdateCounter % 1000));
+    nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = @(adjustedElapsed);
+
+    // 策略4: 确保 Remote Commands 处于激活状态
+    if (commandCenter) {
+        [commandCenter.playCommand setEnabled:YES];
+        [commandCenter.pauseCommand setEnabled:YES];
+        [commandCenter.togglePlayPauseCommand setEnabled:YES];
+        [commandCenter.nextTrackCommand setEnabled:YES];
+        [commandCenter.previousTrackCommand setEnabled:YES];
+    }
+
+    // 策略5: 重新设置 nowPlayingInfo
+    // 注意：必须在主线程同步执行，不能使用 dispatch_async
+    center.nowPlayingInfo = nowPlayingInfo;
+
+    // 策略6: 设置正确的播放状态
+    if (@available(iOS 13.0, *)) {
+        center.playbackState = playing ? MPNowPlayingPlaybackStatePlaying : MPNowPlayingPlaybackStatePaused;
+    }
+
+    NSLog(@"audio_service: forceRefreshNowPlayingInfo completed (playing=%d, elapsed=%.3f, counter=%d)",
+          playing, adjustedElapsed, forceUpdateCounter);
+}
+
+// 注意：生命周期监听现在使用 block-based observers，
+// 在 registerWithRegistrar 中注册，不再需要 selector-based 方法
+#endif
 
 - (void) dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];

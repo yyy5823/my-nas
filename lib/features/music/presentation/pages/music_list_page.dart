@@ -1428,25 +1428,24 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
 
       processedCount++;
 
+      // 实时发送进度（UI 端做节流处理）
+      progressService.emitProgress(MediaScanProgress(
+        mediaType: MediaType.music,
+        phase: MediaScanPhase.processing,
+        sourceId: sourceId,
+        pathPrefix: pathPrefix,
+        scannedCount: processedCount,
+        totalCount: totalTracks,
+        currentFile: '提取元数据',
+      ));
+
+      // 批量保存数据库（保持 10 条一批以优化 I/O）
       if (processedCount % 10 == 0 || processedCount == totalTracks) {
         await _db.upsertBatch(metadataList);
         metadataList.clear();
 
-        progressService.emitProgress(MediaScanProgress(
-          mediaType: MediaType.music,
-          phase: MediaScanPhase.processing,
-          sourceId: sourceId,
-          pathPrefix: pathPrefix,
-          scannedCount: processedCount,
-          totalCount: totalTracks,
-          currentFile: '提取元数据',
-        ));
-
-        // 边扫边显示：每批保存后刷新 UI
-        if (processedCount % 30 == 0) {
-          logger.d('MusicListNotifier: 边扫边显示 - 已处理 $processedCount 首');
-          await _loadCategorizedData();
-        }
+        // 边扫边显示：使用防抖刷新 UI（300ms 节流）
+        _scheduleRefresh();
       }
     }
 

@@ -17,6 +17,10 @@ class GlobalScrapeIndicator extends StatefulWidget {
 
 class _GlobalScrapeIndicatorState extends State<GlobalScrapeIndicator>
     with SingleTickerProviderStateMixin {
+  // 进度更新节流：最小间隔 200ms
+  static const _throttleMs = 200;
+  DateTime _lastUpdate = DateTime.now();
+
   StreamSubscription<ScrapeStats>? _subscription;
   ScrapeStats? _stats;
   bool _isVisible = false;
@@ -39,23 +43,31 @@ class _GlobalScrapeIndicatorState extends State<GlobalScrapeIndicator>
     );
 
     _subscription = VideoScannerService().scrapeStatsStream.listen((stats) {
-      if (mounted) {
-        setState(() {
-          _stats = stats;
-          final shouldShow = !stats.isAllDone && stats.total > 0;
+      if (!mounted) return;
 
-          if (shouldShow && !_isVisible) {
-            _isVisible = true;
-            _animationController.forward();
-          } else if (!shouldShow && _isVisible) {
-            _animationController.reverse().then((_) {
-              if (mounted) {
-                setState(() => _isVisible = false);
-              }
-            });
-          }
-        });
+      // 完成状态强制更新，进行中状态节流
+      final isTerminal = stats.isAllDone;
+      final now = DateTime.now();
+      if (!isTerminal && now.difference(_lastUpdate).inMilliseconds < _throttleMs) {
+        return;
       }
+      _lastUpdate = now;
+
+      setState(() {
+        _stats = stats;
+        final shouldShow = !stats.isAllDone && stats.total > 0;
+
+        if (shouldShow && !_isVisible) {
+          _isVisible = true;
+          _animationController.forward();
+        } else if (!shouldShow && _isVisible) {
+          _animationController.reverse().then((_) {
+            if (mounted) {
+              setState(() => _isVisible = false);
+            }
+          });
+        }
+      });
     });
 
     // 初始检查刮削状态
@@ -178,6 +190,10 @@ class CompactScrapeIndicator extends StatefulWidget {
 }
 
 class _CompactScrapeIndicatorState extends State<CompactScrapeIndicator> {
+  // 进度更新节流：最小间隔 200ms
+  static const _throttleMs = 200;
+  DateTime _lastUpdate = DateTime.now();
+
   StreamSubscription<ScrapeStats>? _subscription;
   ScrapeStats? _stats;
   bool _showDetails = false;
@@ -187,9 +203,17 @@ class _CompactScrapeIndicatorState extends State<CompactScrapeIndicator> {
     super.initState();
 
     _subscription = VideoScannerService().scrapeStatsStream.listen((stats) {
-      if (mounted) {
-        setState(() => _stats = stats);
+      if (!mounted) return;
+
+      // 完成状态强制更新，进行中状态节流
+      final isTerminal = stats.isAllDone;
+      final now = DateTime.now();
+      if (!isTerminal && now.difference(_lastUpdate).inMilliseconds < _throttleMs) {
+        return;
       }
+      _lastUpdate = now;
+
+      setState(() => _stats = stats);
     });
 
     _checkInitialState();

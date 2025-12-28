@@ -28,8 +28,17 @@ class CastService {
   /// 当前投屏会话
   CastSession? _currentSession;
 
+  /// 当前流 token（用于停止时清理）
+  String? _currentStreamToken;
+
   /// 状态更新定时器
   Timer? _statusTimer;
+
+  /// 连续轮询错误计数
+  int _pollErrorCount = 0;
+
+  /// 最大连续错误次数（超过后认为连接断开）
+  static const _maxPollErrors = 5;
 
   /// 会话状态控制器
   final _sessionController = StreamController<CastSession?>.broadcast();
@@ -114,6 +123,11 @@ class CastService {
     int? fileSize,
   }) async {
     try {
+      // 0. 如果有正在进行的投屏，先停止并清理
+      if (_currentSession != null) {
+        await stop();
+      }
+
       // 1. 确保代理服务器运行
       await _proxyServer.ensureRunning();
 
@@ -125,9 +139,14 @@ class CastService {
         subtitlePath: subtitlePath,
       );
 
+      // 保存 token 以便停止时清理
+      _currentStreamToken = token;
+
       // 3. 获取流 URL
       final videoUrl = await _proxyServer.getStreamUrl(token);
       if (videoUrl == null) {
+        _proxyServer.unregisterStream(token);
+        _currentStreamToken = null;
         throw Exception('无法获取本机IP地址');
       }
 
@@ -160,6 +179,7 @@ class CastService {
 
       if (!success) {
         _proxyServer.unregisterStream(token);
+        _currentStreamToken = null;
         return null;
       }
 
@@ -170,6 +190,9 @@ class CastService {
         videoPath: videoPath,
         playbackState: CastPlaybackState.loading,
       );
+
+      // 重置错误计数
+      _pollErrorCount = 0;
 
       _sessionController.add(_currentSession);
 
@@ -230,6 +253,12 @@ class CastService {
   Future<void> stop() async {
     _stopStatusPolling();
 
+    // 清理流注册
+    if (_currentStreamToken != null) {
+      _proxyServer.unregisterStream(_currentStreamToken!);
+      _currentStreamToken = null;
+    }
+
     if (_currentSession == null) return;
 
     try {
@@ -239,13 +268,13 @@ class CastService {
         case CastProtocol.airplay:
           await _airplayAdapter.stop();
       }
-
-      _currentSession = null;
-      _sessionController.add(null);
-
-      logger.i('投屏已停止');
     } catch (e, st) {
       AppError.handle(e, st, 'castStop');
+    } finally {
+      _currentSession = null;
+      _pollErrorCount = 0;
+      _sessionController.add(null);
+      logger.i('投屏已停止');
     }
   }
 
@@ -297,6 +326,33 @@ class CastService {
     _statusTimer = null;
   }
 
+  /// 尝试恢复投屏连接
+  ///
+  /// 当状态轮询检测到连接断开后，可以调用此方法尝试恢复
+  Future<bool> tryReconnect() async {
+    if (_currentSession == null) return false;
+
+    logger.i('尝试恢复投屏连接...');
+
+    // 重置错误计数
+    _pollErrorCount = 0;
+
+    // 重新启动状态轮询
+    _startStatusPolling();
+
+    // 等待一次轮询完成
+    await Future<void>.delayed(const Duration(seconds: 2));
+
+    // 检查是否恢复成功
+    if (_currentSession?.playbackState == CastPlaybackState.error) {
+      logger.w('投屏连接恢复失败');
+      return false;
+    }
+
+    logger.i('投屏连接已恢复');
+    return true;
+  }
+
   /// 轮询状态
   Future<void> _pollStatus() async {
     if (_currentSession == null) return;
@@ -317,14 +373,38 @@ class CastService {
           state = await _airplayAdapter.getPlaybackState();
       }
 
+      // 重置错误计数（成功获取状态）
+      _pollErrorCount = 0;
+
       _currentSession = _currentSession!.copyWith(
         position: position,
         duration: duration,
         playbackState: state,
       );
       _sessionController.add(_currentSession);
-    } catch (e) {
-      // 忽略轮询错误
+    } catch (e, st) {
+      _pollErrorCount++;
+
+      if (_pollErrorCount >= _maxPollErrors) {
+        // 连续多次失败，认为连接断开
+        logger.e('投屏连接可能已断开，连续 $_pollErrorCount 次轮询失败');
+        AppError.handle(e, st, 'castPollStatusDisconnected', {
+          'errorCount': _pollErrorCount,
+        });
+
+        // 更新会话状态为错误
+        _currentSession = _currentSession?.copyWith(
+          playbackState: CastPlaybackState.error,
+          errorMessage: '连接已断开',
+        );
+        _sessionController.add(_currentSession);
+
+        // 停止轮询但不完全停止投屏（允许用户重试或手动停止）
+        _stopStatusPolling();
+      } else {
+        // 只是偶发错误，记录但不上报
+        AppError.ignore(e, st, '投屏状态轮询失败 ($_pollErrorCount/$_maxPollErrors)');
+      }
     }
   }
 

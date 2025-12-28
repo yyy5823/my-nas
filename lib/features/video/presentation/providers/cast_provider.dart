@@ -217,11 +217,35 @@ class CastNotifier extends StateNotifier<CastState> {
     state = state.copyWith(clearError: true);
   }
 
+  /// 尝试恢复投屏连接
+  ///
+  /// 当投屏连接断开时调用此方法尝试恢复
+  Future<bool> tryReconnect() async {
+    if (!state.isCasting) return false;
+
+    try {
+      final success = await _castService.tryReconnect();
+      if (!success) {
+        state = state.copyWith(error: '连接恢复失败');
+      }
+      return success;
+    } catch (e, st) {
+      AppError.handle(e, st, 'castTryReconnect');
+      state = state.copyWith(error: '连接恢复失败: $e');
+      return false;
+    }
+  }
+
+  /// 检查是否连接断开
+  bool get isDisconnected =>
+      state.session?.playbackState == CastPlaybackState.error;
+
   @override
   void dispose() {
     _deviceSubscription?.cancel();
     _sessionSubscription?.cancel();
-    _castService.dispose();
+    // 使用 fireAndForget 处理异步 dispose，确保异常被捕获
+    AppError.fireAndForget(_castService.dispose(), action: 'castServiceDispose');
     super.dispose();
   }
 }
@@ -273,4 +297,16 @@ final castDevicesProvider = Provider<List<CastDevice>>(
 /// 是否正在搜索设备
 final isDiscoveringDevicesProvider = Provider<bool>(
   (ref) => ref.watch(castProvider.select((state) => state.isDiscovering)),
+);
+
+/// 投屏是否断开连接
+final isCastDisconnectedProvider = Provider<bool>(
+  (ref) => ref.watch(
+    castProvider.select((state) => state.session?.playbackState == CastPlaybackState.error),
+  ),
+);
+
+/// 投屏错误信息
+final castErrorProvider = Provider<String?>(
+  (ref) => ref.watch(castProvider.select((state) => state.error ?? state.session?.errorMessage)),
 );

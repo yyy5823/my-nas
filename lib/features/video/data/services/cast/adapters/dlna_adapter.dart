@@ -65,7 +65,8 @@ class DlnaAdapter {
           // 只关注渲染器（可以接收视频的设备）
           if (device.info.deviceType.contains('MediaRenderer')) {
             logger.i('发现 DLNA 设备: ${device.info.friendlyName}');
-            _dlnaDevices[entry.key] = device;
+            // 使用 URLBase 作为 key，与 CastDevice.id 保持一致
+            _dlnaDevices[device.info.URLBase] = device;
           }
         }
 
@@ -132,6 +133,10 @@ class DlnaAdapter {
   }
 
   /// 投屏视频
+  ///
+  /// [subtitleUrl] 目前 dlna_dart 库不支持直接传递字幕 URL。
+  /// 字幕需要通过 DIDL-Lite metadata 传递，或者使用内嵌字幕的视频格式。
+  /// 部分高端 DLNA 设备支持通过单独的字幕 URL 加载字幕。
   Future<bool> castVideo({
     required String deviceId,
     required String videoUrl,
@@ -141,20 +146,29 @@ class DlnaAdapter {
     // 找到对应的 DLNA 设备
     final device = _dlnaDevices[deviceId];
     if (device == null) {
-      throw Exception('设备未找到: $deviceId');
+      // 尝试通过遍历查找（兼容旧版本数据）
+      final foundDevice = _dlnaDevices.values.firstWhere(
+        (d) => d.info.URLBase == deviceId || d.info.friendlyName == deviceId,
+        orElse: () => throw Exception('设备未找到: $deviceId'),
+      );
+      _currentDevice = foundDevice;
+    } else {
+      _currentDevice = device;
     }
 
     try {
-      _currentDevice = device;
-
-      logger.i('开始投屏到 ${device.info.friendlyName}');
+      logger.i('开始投屏到 ${_currentDevice!.info.friendlyName}');
       logger.i('视频URL: $videoUrl');
+      if (subtitleUrl != null) {
+        // TODO: dlna_dart 0.0.6 不支持字幕 URL，记录日志供调试
+        logger.w('DLNA 字幕URL已提供但当前库版本不支持: $subtitleUrl');
+      }
 
       // 设置媒体 URL
-      await device.setUrl(videoUrl, title: title, type: PlayType.Video);
+      await _currentDevice!.setUrl(videoUrl, title: title, type: PlayType.Video);
 
       // 播放
-      await device.play();
+      await _currentDevice!.play();
 
       logger.i('投屏成功');
       return true;

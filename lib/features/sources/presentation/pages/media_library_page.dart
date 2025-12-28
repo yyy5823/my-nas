@@ -1028,6 +1028,10 @@ class _PathCard extends ConsumerStatefulWidget {
 }
 
 class _PathCardState extends ConsumerState<_PathCard> {
+  // 进度更新节流：最小间隔 150ms，避免 UI 卡顿
+  static const _progressThrottleMs = 150;
+  DateTime _lastProgressUpdate = DateTime.now();
+
   // 扫描状态（所有媒体类型统一使用）
   bool _isScanning = false;
   double _scanProgress = 0;
@@ -1055,6 +1059,23 @@ class _PathCardState extends ConsumerState<_PathCard> {
   StreamSubscription<ScrapeStats>? _scrapeStatsSub;
   StreamSubscription<MediaScanProgress>? _mediaScanProgressSub;
 
+  /// 检查是否应该更新进度 UI（节流）
+  ///
+  /// 对于完成/错误等状态变化总是立即更新，
+  /// 对于进行中的进度更新则节流处理
+  bool _shouldUpdateProgress({bool forceUpdate = false}) {
+    if (forceUpdate) {
+      _lastProgressUpdate = DateTime.now();
+      return true;
+    }
+    final now = DateTime.now();
+    if (now.difference(_lastProgressUpdate).inMilliseconds >= _progressThrottleMs) {
+      _lastProgressUpdate = now;
+      return true;
+    }
+    return false;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1078,6 +1099,11 @@ class _PathCardState extends ConsumerState<_PathCard> {
               progress.pathPrefix == widget.path.path;
 
           if (isMyProgress) {
+            // 完成/错误状态强制更新，进行中状态节流更新
+            final isTerminalPhase = progress.phase == VideoScanPhase.completed ||
+                progress.phase == VideoScanPhase.error;
+            if (!_shouldUpdateProgress(forceUpdate: isTerminalPhase)) return;
+
             setState(() {
               _isScanning = progress.phase == VideoScanPhase.scanning ||
                   progress.phase == VideoScanPhase.savingToDb;
@@ -1085,8 +1111,7 @@ class _PathCardState extends ConsumerState<_PathCard> {
               _scanDescription = progress.description;
               _scannedCount = progress.scannedCount;
 
-              if (progress.phase == VideoScanPhase.completed ||
-                  progress.phase == VideoScanPhase.error) {
+              if (isTerminalPhase) {
                 _isScanning = false;
               }
             });
@@ -1094,35 +1119,37 @@ class _PathCardState extends ConsumerState<_PathCard> {
         }
       });
       _scrapeStatsSub = VideoScannerService().scrapeStatsStream.listen((globalStats) async {
-        if (mounted) {
-          final sourceId = widget.path.sourceId;
-          final pathPrefix = widget.path.path;
-          // 获取当前目录的刮削统计（而不是使用全局统计）
-          final pathStats = await VideoScannerService().getScrapeStats(
-            sourceId: sourceId,
-            pathPrefix: pathPrefix,
-          );
-          final retryable = await VideoScannerService().getRetryableCount(
-            sourceId: sourceId,
-            pathPrefix: pathPrefix,
-          );
+        if (!mounted) return;
+        // 节流：避免过于频繁的数据库查询和 UI 更新
+        if (!_shouldUpdateProgress()) return;
 
-          if (mounted) {
-            setState(() {
-              // 关键修复：当前目录的刮削状态应基于：
-              // 1. 全局正在刮削 AND 当前目录有待刮削内容
-              // 2. 或者当前目录正在被刮削中（scraping > 0）
-              final isGlobalScraping = VideoScannerService().isScraping;
-              _isScraping = isGlobalScraping && 
-                  (pathStats.pending > 0 || pathStats.scraping > 0);
-              _itemCount = pathStats.total;
-              _scrapedCount = pathStats.completed;
-              _pendingScrapeCount = pathStats.pending;
-              _retryableCount = retryable;
-              // 使用当前目录的进度
-              _scrapeProgress = pathStats.progress;
-            });
-          }
+        final sourceId = widget.path.sourceId;
+        final pathPrefix = widget.path.path;
+        // 获取当前目录的刮削统计（而不是使用全局统计）
+        final pathStats = await VideoScannerService().getScrapeStats(
+          sourceId: sourceId,
+          pathPrefix: pathPrefix,
+        );
+        final retryable = await VideoScannerService().getRetryableCount(
+          sourceId: sourceId,
+          pathPrefix: pathPrefix,
+        );
+
+        if (mounted) {
+          setState(() {
+            // 关键修复：当前目录的刮削状态应基于：
+            // 1. 全局正在刮削 AND 当前目录有待刮削内容
+            // 2. 或者当前目录正在被刮削中（scraping > 0）
+            final isGlobalScraping = VideoScannerService().isScraping;
+            _isScraping = isGlobalScraping &&
+                (pathStats.pending > 0 || pathStats.scraping > 0);
+            _itemCount = pathStats.total;
+            _scrapedCount = pathStats.completed;
+            _pendingScrapeCount = pathStats.pending;
+            _retryableCount = retryable;
+            // 使用当前目录的进度
+            _scrapeProgress = pathStats.progress;
+          });
         }
       });
     } else {
@@ -1142,6 +1169,11 @@ class _PathCardState extends ConsumerState<_PathCard> {
               progress.pathPrefix == widget.path.path;
 
           if (isMyProgress) {
+            // 完成/错误状态强制更新，进行中状态节流更新
+            final isTerminalPhase = progress.phase == MediaScanPhase.completed ||
+                progress.phase == MediaScanPhase.error;
+            if (!_shouldUpdateProgress(forceUpdate: isTerminalPhase)) return;
+
             setState(() {
               _isScanning = progress.phase == MediaScanPhase.scanning ||
                   progress.phase == MediaScanPhase.processing ||
@@ -1150,8 +1182,7 @@ class _PathCardState extends ConsumerState<_PathCard> {
               _scanDescription = progress.description;
               _scannedCount = progress.scannedCount;
 
-              if (progress.phase == MediaScanPhase.completed ||
-                  progress.phase == MediaScanPhase.error) {
+              if (isTerminalPhase) {
                 _isScanning = false;
                 // 完成后重新加载统计
                 _loadStats();

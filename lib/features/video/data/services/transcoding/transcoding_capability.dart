@@ -20,19 +20,33 @@ class TranscodingCapabilityService {
         // NAS 设备支持服务端转码
         SourceType.synology => TranscodingCapability.serverSide,
         SourceType.qnap => TranscodingCapability.serverSide,
+        // 绿联和飞牛 NAS - 需要检查是否有转码 API
+        // TODO: 实现 ugreen/fnos 转码服务后改为 serverSide
+        SourceType.ugreen => TranscodingCapability.clientSide,
+        SourceType.fnos => TranscodingCapability.clientSide,
         // 媒体服务器支持服务端转码
         SourceType.jellyfin => TranscodingCapability.serverSide,
         SourceType.emby => TranscodingCapability.serverSide,
         SourceType.plex => TranscodingCapability.serverSide,
-        // 其他源使用客户端转码
+        // 通用协议使用客户端转码
         SourceType.smb => TranscodingCapability.clientSide,
         SourceType.ftp => TranscodingCapability.clientSide,
         SourceType.sftp => TranscodingCapability.clientSide,
         SourceType.webdav => TranscodingCapability.clientSide,
         SourceType.nfs => TranscodingCapability.clientSide,
         SourceType.local => TranscodingCapability.clientSide,
-        // 其他类型不支持
-        _ => TranscodingCapability.none,
+        // UPnP/DLNA 设备通常自己处理转码，客户端不需要
+        SourceType.upnp => TranscodingCapability.none,
+        // 下载工具和媒体管理服务不涉及视频转码
+        SourceType.qbittorrent => TranscodingCapability.none,
+        SourceType.transmission => TranscodingCapability.none,
+        SourceType.aria2 => TranscodingCapability.none,
+        SourceType.trakt => TranscodingCapability.none,
+        SourceType.nastool => TranscodingCapability.none,
+        SourceType.moviepilot => TranscodingCapability.none,
+        // PT 站点和字幕站点不涉及视频转码
+        SourceType.ptSite => TranscodingCapability.none,
+        SourceType.opensubtitles => TranscodingCapability.none,
       };
 
   /// 检测是否支持清晰度切换

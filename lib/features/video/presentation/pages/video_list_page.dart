@@ -414,8 +414,8 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
         _debounceTimer?.cancel();
         _loadCategorizedData(silent: true);
       case VideoScanPhase.savingToDb:
-        // 正在保存到数据库，使用防抖刷新以显示部分数据
-        if (progress.scannedCount > 0 && progress.scannedCount % 50 == 0) {
+        // 正在保存到数据库，实时触发刷新（依赖 500ms 防抖控制频率）
+        if (progress.scannedCount > 0) {
           _scheduleRefresh();
         }
       case VideoScanPhase.scanning:

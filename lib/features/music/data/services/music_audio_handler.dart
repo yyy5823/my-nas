@@ -226,17 +226,15 @@ class MusicAudioHandler extends BaseAudioHandler
       case AppLifecycleState.paused:
         // App 已进入后台 - iOS 在此时读取 MPNowPlayingInfoCenter 信息显示灵动岛
         //
-        // 修复说明：audio_service 原生层已修改为始终调用 center.nowPlayingInfo = nowPlayingInfo
-        // 参考 Apple 推荐做法: https://developer.apple.com/forums/thread/32475
-        // "maintain a dictionary with the current info and always set the entire dictionary"
+        // 注意：灵动岛刷新现在由原生层自动处理（通过 UIApplicationDidEnterBackgroundNotification）
+        // 原生层会在 app 进入后台时自动调用 forceRefreshNowPlayingInfo，
+        // 通过微调 elapsedPlaybackTime 绕过 iOS 去重机制
         //
-        // 这样 iOS 系统会重新评估是否需要显示灵动岛，即使内容相同
+        // Dart 层只需要广播当前状态，确保 nowPlayingInfo 是最新的
         if (mediaItem.value != null) {
-          logger.i('MusicAudioHandler: App 已进入后台 (paused)，广播当前状态');
-
-          // 广播当前播放状态 - 这会触发 audio_service 调用 updateNowPlayingInfo
-          // 由于 audio_service 原生层已修改为始终设置 nowPlayingInfo，
-          // iOS 会重新评估是否显示灵动岛
+          logger.i('MusicAudioHandler: App 已进入后台 (paused)');
+          // 广播当前播放状态，确保 nowPlayingInfo 是最新的
+          // 原生层会在收到 UIApplicationDidEnterBackgroundNotification 时自动刷新灵动岛
           _broadcastStateWithPlaying(_player.playing);
         }
 

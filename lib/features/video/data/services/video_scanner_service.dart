@@ -715,15 +715,13 @@ class VideoScannerService {
               await _scrapeOneVideo(video, connections);
               batchCompletedCount++;
 
-              // 每完成几个视频更新一次进度显示（不查询数据库）
-              if (batchCompletedCount % 3 == 0) {
-                _emitProgress(VideoScanProgress(
-                  phase: VideoScanPhase.scraping,
-                  scannedCount: batchStats.processed + batchCompletedCount,
-                  totalCount: batchStats.total,
-                  currentFile: video.fileName,
-                ));
-              }
+              // 实时发送进度（UI 端做节流处理）
+              _emitProgress(VideoScanProgress(
+                phase: VideoScanPhase.scraping,
+                scannedCount: batchStats.processed + batchCompletedCount,
+                totalCount: batchStats.total,
+                currentFile: video.fileName,
+              ));
             },
             taskName: 'scrape:${video.fileName}',
           );

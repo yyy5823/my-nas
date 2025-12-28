@@ -1,6 +1,11 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit_config.dart';
+import 'package:ffmpeg_kit_flutter_new/ffmpeg_session.dart';
+import 'package:ffmpeg_kit_flutter_new/return_code.dart';
+import 'package:ffmpeg_kit_flutter_new/statistics.dart';
 import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/video/data/services/transcoding/nas_transcoding_service.dart';
@@ -63,9 +68,16 @@ class ClientTranscodingService implements NasTranscodingService {
   Future<bool> _checkFfmpegAvailable() async {
     // 在不同平台上检查 FFmpeg
     if (Platform.isIOS || Platform.isAndroid) {
-      // 移动端需要 ffmpeg_kit_flutter 包
-      // 目前返回 false，需要添加依赖后实现
-      return false;
+      // 移动端使用 ffmpeg_kit_flutter
+      try {
+        // 执行简单命令验证 FFmpeg 可用
+        final session = await FFmpegKit.execute('-version');
+        final returnCode = await session.getReturnCode();
+        return ReturnCode.isSuccess(returnCode);
+      } catch (e, st) {
+        AppError.ignore(e, st, '检查移动端 FFmpeg 可用性失败');
+        return false;
+      }
     } else if (Platform.isMacOS || Platform.isLinux || Platform.isWindows) {
       // 桌面端检查本地 FFmpeg 安装
       try {
@@ -242,12 +254,73 @@ class ClientTranscodingService implements NasTranscodingService {
     task.isRunning = true;
 
     try {
-      // 构建 FFmpeg 命令
+      // 构建 FFmpeg 命令参数
       final args = _buildFfmpegArgs(task);
+      final command = args.join(' ');
 
       logger.i('ClientTranscoding: 开始转码 ${task.inputPath}');
-      logger.d('ClientTranscoding: FFmpeg 参数 => ${args.join(" ")}');
+      logger.d('ClientTranscoding: FFmpeg 命令 => $command');
 
+      if (Platform.isIOS || Platform.isAndroid) {
+        // 移动端使用 FFmpegKit
+        await _runMobileTranscoding(task, command);
+      } else {
+        // 桌面端使用 Process
+        await _runDesktopTranscoding(task, args);
+      }
+    } catch (e, st) {
+      task.isRunning = false;
+      task.error = e.toString();
+      AppError.handle(e, st, 'clientStartTranscoding');
+    }
+  }
+
+  /// 移动端转码（使用 FFmpegKit）
+  Future<void> _runMobileTranscoding(_TranscodingTask task, String command) async {
+    try {
+      // 设置进度回调
+      FFmpegKitConfig.enableStatisticsCallback((Statistics statistics) {
+        final timeInMs = statistics.getTime().toDouble();
+        if (timeInMs > 0) {
+          task.currentTime = Duration(milliseconds: timeInMs.round());
+          // 如果知道总时长，计算进度
+          if (task.totalDuration != null && task.totalDuration! > Duration.zero) {
+            task.progress = timeInMs / task.totalDuration!.inMilliseconds;
+          }
+        }
+        task.speed = '${(statistics.getSpeed()).toStringAsFixed(1)}x';
+      });
+
+      // 执行转码
+      final session = await FFmpegKit.execute(command);
+      task.ffmpegSession = session;
+
+      final returnCode = await session.getReturnCode();
+
+      if (ReturnCode.isSuccess(returnCode)) {
+        task.isRunning = false;
+        task.isCompleted = true;
+        logger.i('ClientTranscoding: 转码完成 ${task.outputPath}');
+      } else if (ReturnCode.isCancel(returnCode)) {
+        task.isRunning = false;
+        task.error = '转码已取消';
+        logger.i('ClientTranscoding: 转码已取消');
+      } else {
+        task.isRunning = false;
+        final logs = await session.getAllLogsAsString();
+        task.error = '转码失败: $logs';
+        logger.e('ClientTranscoding: 转码失败 $returnCode');
+      }
+    } catch (e, st) {
+      task.isRunning = false;
+      task.error = e.toString();
+      AppError.handle(e, st, 'mobileTranscoding');
+    }
+  }
+
+  /// 桌面端转码（使用 Process）
+  Future<void> _runDesktopTranscoding(_TranscodingTask task, List<String> args) async {
+    try {
       // 执行 FFmpeg
       final process = await Process.start('ffmpeg', args);
       task.process = process;
@@ -272,7 +345,7 @@ class ClientTranscodingService implements NasTranscodingService {
     } catch (e, st) {
       task.isRunning = false;
       task.error = e.toString();
-      AppError.handle(e, st, 'clientStartTranscoding');
+      AppError.handle(e, st, 'desktopTranscoding');
     }
   }
 
@@ -405,7 +478,12 @@ class _TranscodingTask {
   final int? audioStreamIndex;
   final int? subtitleStreamIndex;
 
+  /// 桌面端 Process
   Process? process;
+
+  /// 移动端 FFmpegSession
+  FFmpegSession? ffmpegSession;
+
   bool isRunning = false;
   bool isCompleted = false;
   String? error;
@@ -418,7 +496,15 @@ class _TranscodingTask {
 
   void cancel() {
     isRunning = false;
+
+    // 取消桌面端 Process
     process?.kill();
     process = null;
+
+    // 取消移动端 FFmpegSession
+    if (ffmpegSession != null) {
+      FFmpegKit.cancel(ffmpegSession!.getSessionId());
+      ffmpegSession = null;
+    }
   }
 }

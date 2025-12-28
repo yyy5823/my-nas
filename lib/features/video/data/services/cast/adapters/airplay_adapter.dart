@@ -27,6 +27,15 @@ class AirPlayAdapter {
   /// HTTP 客户端
   HttpClient? _httpClient;
 
+  /// 播放信息缓存
+  _PlaybackInfo? _cachedPlaybackInfo;
+
+  /// 缓存时间
+  DateTime? _playbackInfoCachedAt;
+
+  /// 缓存有效期（800ms，确保在1秒轮询周期内有效）
+  static const _playbackInfoCacheDuration = Duration(milliseconds: 800);
+
   /// 设备发现控制器
   final _deviceController = StreamController<List<CastDevice>>.broadcast();
 
@@ -234,9 +243,11 @@ class AirPlayAdapter {
         Uri.parse('http://${_currentDevice!.host}:${_currentDevice!.port}/stop'),
       );
       await request.close();
-      _currentDevice = null;
     } catch (e, st) {
       AppError.handle(e, st, 'airplayStop');
+    } finally {
+      _currentDevice = null;
+      _clearPlaybackInfoCache();
     }
   }
 
@@ -271,9 +282,21 @@ class AirPlayAdapter {
     }
   }
 
-  /// 获取播放信息
-  Future<_PlaybackInfo?> _getPlaybackInfo() async {
+  /// 获取播放信息（带缓存）
+  ///
+  /// 使用缓存避免在同一轮询周期内多次请求
+  Future<_PlaybackInfo?> _getPlaybackInfo({bool forceRefresh = false}) async {
     if (_currentDevice == null || _httpClient == null) return null;
+
+    // 检查缓存是否有效
+    final isCacheValid = !forceRefresh &&
+        _cachedPlaybackInfo != null &&
+        _playbackInfoCachedAt != null &&
+        DateTime.now().difference(_playbackInfoCachedAt!) < _playbackInfoCacheDuration;
+
+    if (isCacheValid) {
+      return _cachedPlaybackInfo;
+    }
 
     try {
       final request = await _httpClient!.getUrl(
@@ -283,12 +306,22 @@ class AirPlayAdapter {
 
       if (response.statusCode == 200) {
         final body = await response.transform(utf8.decoder).join();
-        return _parsePlaybackInfo(body);
+        final info = _parsePlaybackInfo(body);
+        // 更新缓存
+        _cachedPlaybackInfo = info;
+        _playbackInfoCachedAt = DateTime.now();
+        return info;
       }
     } catch (e, st) {
       AppError.ignore(e, st, '获取 AirPlay 播放信息失败');
     }
     return null;
+  }
+
+  /// 清除播放信息缓存
+  void _clearPlaybackInfoCache() {
+    _cachedPlaybackInfo = null;
+    _playbackInfoCachedAt = null;
   }
 
   /// 解析播放信息（plist 格式简化解析）
@@ -350,8 +383,9 @@ class AirPlayAdapter {
   Future<void> dispose() async {
     await stopDiscovery();
     await stop();
-    _httpClient?.close();
+    _httpClient?.close(force: true);
     _httpClient = null;
+    _clearPlaybackInfoCache();
     await _deviceController.close();
     _devices.clear();
   }
