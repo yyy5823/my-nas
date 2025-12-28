@@ -577,23 +577,18 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
 
     // 初始化清晰度 Provider
     // 注意: VideoItem 目前没有视频尺寸信息，传递 null 让 QualityNotifier 使用默认清晰度列表
-    try {
-      final qualityNotifier = _ref.read(qualityStateProvider.notifier);
-      await qualityNotifier.init(
-        sourceType: sourceType,
-        player: _player,
-        videoPath: video.path,
-        videoUrl: playUrl, // 传递可访问的 URL（代理 URL 或本地路径）给 FFmpeg
-      );
+    final qualityNotifier = _ref.read(qualityStateProvider.notifier);
+    await qualityNotifier.init(
+      sourceType: sourceType,
+      player: _player,
+      videoPath: video.path,
+      videoUrl: playUrl, // 传递可访问的 URL（代理 URL 或本地路径）给 FFmpeg
+    );
 
-      // 设置清晰度切换回调
-      qualityNotifier.onQualitySwitched = _onQualitySwitched;
+    // 设置清晰度切换回调
+    qualityNotifier.onQualitySwitched = _onQualitySwitched;
 
-      logger.d('VideoPlayer: 清晰度控制器已初始化, sourceType=$sourceType, playUrl=$playUrl');
-    } on StateError catch (e) {
-      // qualityStateProvider 可能已被 autoDispose，忽略此错误
-      logger.w('VideoPlayer: 清晰度控制器初始化跳过 (Provider 已销毁): $e');
-    }
+    logger.i('VideoPlayer: 清晰度控制器已初始化, sourceType=$sourceType');
   }
 
   /// 清晰度切换回调 - 切换到新的转码流
@@ -943,6 +938,14 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
       subscription.cancel();
     }
     _subscriptions.clear();
+
+    // 停止转码并清理画质状态
+    try {
+      final qualityNotifier = _ref.read(qualityStateProvider.notifier);
+      qualityNotifier.stopTranscoding();
+    } catch (e) {
+      // 忽略错误，可能 provider 已被销毁
+    }
 
     // 退出画中画模式
     if (_pipService.isPipMode) {

@@ -16,7 +16,9 @@ final qualitySettingsProvider =
 );
 
 /// 清晰度状态 Provider
-final qualityStateProvider = StateNotifierProvider.autoDispose<QualityNotifier, QualityState>(
+/// 注意：不使用 autoDispose，因为视频控制栏会隐藏/显示，
+/// 隐藏时如果使用 autoDispose 会导致 provider 被销毁，丢失初始化的画质状态
+final qualityStateProvider = StateNotifierProvider<QualityNotifier, QualityState>(
   QualityNotifier.new,
 );
 

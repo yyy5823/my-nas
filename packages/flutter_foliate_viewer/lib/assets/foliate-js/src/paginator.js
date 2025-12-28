@@ -262,6 +262,7 @@ class View {
     this.#size = vertical ? height : width
 
     const doc = this.document
+    if (!doc) return
 
     const verticlePadding = `${gap / 2}px ${topMargin}px ${gap / 2}px ${bottomMargin}px`
     const horizontalPadding = `${topMargin}px ${gap / 2}px ${bottomMargin}px ${gap / 2}px`
@@ -297,6 +298,7 @@ class View {
     const { width, height, margin } = this.#layout
     const vertical = this.#vertical
     const doc = this.document
+    if (!doc) return
     for (const el of doc.body.querySelectorAll('img, svg, video')) {
       // preserve max size if they are already set
       const { maxHeight, maxWidth } = doc.defaultView.getComputedStyle(el)
@@ -315,11 +317,13 @@ class View {
     }
   }
   expand() {
-    const { documentElement } = this.document
+    const doc = this.document
+    if (!doc) return
+    const { documentElement } = doc
     if (this.#column) {
       const side = this.#vertical ? 'height' : 'width'
       const otherSide = this.#vertical ? 'width' : 'height'
-      this.#contentRange.selectNodeContents(this.document.body)
+      this.#contentRange.selectNodeContents(doc.body)
       const contentRect = this.#contentRange.getBoundingClientRect()
       const rootRect = documentElement.getBoundingClientRect()
       // offset caused by column break at the start of the page

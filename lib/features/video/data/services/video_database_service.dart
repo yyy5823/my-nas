@@ -1209,7 +1209,8 @@ class VideoDatabaseService {
       _tableMetadata,
       where: where,
       whereArgs: whereArgs,
-      orderBy: '$_colRating DESC, $_colTitle',
+      // 按上映年份降序排序（最近上映的排在前面）
+      orderBy: '$_colYear DESC NULLS LAST, $_colTitle',
       limit: limit,
       offset: offset,
     );
@@ -1229,7 +1230,8 @@ class VideoDatabaseService {
       _tableMetadata,
       where: '$_colYear = ?',
       whereArgs: [year],
-      orderBy: '$_colRating DESC',
+      // 同年份内按标题排序
+      orderBy: '$_colTitle',
       limit: limit,
       offset: offset,
     );
@@ -1249,7 +1251,8 @@ class VideoDatabaseService {
       _tableMetadata,
       where: '$_colGenres LIKE ?',
       whereArgs: ['%$genre%'],
-      orderBy: '$_colRating DESC',
+      // 按上映年份降序排序
+      orderBy: '$_colYear DESC NULLS LAST, $_colTitle',
       limit: limit,
       offset: offset,
     );
@@ -1822,11 +1825,12 @@ class VideoDatabaseService {
 
     // 阶段2：根据 rowid 列表获取完整记录，应用排序和分页
     // 注意：需要在获取完整数据后再排序
+    // 按上映年份降序排序（最近上映的排在前面）
     final placeholders = List.filled(representativeRowIds.length, '?').join(', ');
     final fullDataSql = '''
       SELECT * FROM $_tableMetadata
       WHERE rowid IN ($placeholders)
-      ORDER BY $_colRating DESC NULLS LAST, $_colTitle
+      ORDER BY $_colYear DESC NULLS LAST, $_colTitle
       LIMIT ? OFFSET ?
     ''';
 
@@ -2049,9 +2053,9 @@ class VideoDatabaseService {
     final movies = futures[0];
     final tvShows = futures[1];
 
-    // 合并并按评分排序
+    // 合并并按上映年份降序排序
     final combined = [...movies, ...tvShows]
-      ..sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
+      ..sort((a, b) => (b.year ?? 0).compareTo(a.year ?? 0));
 
     return combined.take(limit).toList();
   }
@@ -2155,9 +2159,9 @@ class VideoDatabaseService {
       enabledPaths: enabledPaths,
     );
 
-    // 合并并按评分排序
+    // 合并并按上映年份降序排序
     final combined = [...movies, ...tvShows]
-    ..sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
+      ..sort((a, b) => (b.year ?? 0).compareTo(a.year ?? 0));
 
     return combined.take(limit).toList();
   }

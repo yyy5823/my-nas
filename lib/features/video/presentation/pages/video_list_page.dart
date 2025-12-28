@@ -5423,7 +5423,8 @@ class _CategoryFullPage extends ConsumerStatefulWidget {
 }
 
 class _CategoryFullPageState extends ConsumerState<_CategoryFullPage> {
-  _SortType _sortType = _SortType.rating;
+  // 默认按年份降序排序（最近上映的排在前面）
+  _SortType _sortType = _SortType.year;
   bool _sortDescending = true;
   String? _selectedGenre;
   List<String> _availableGenres = [];

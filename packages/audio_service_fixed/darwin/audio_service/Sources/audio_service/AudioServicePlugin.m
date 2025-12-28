@@ -760,13 +760,29 @@ static int forceUpdateCounter = 0;  // 用于强制刷新的计数器
     // 策略2: 确保 playbackRate 正确
     nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = @(playing ? 1.0 : 0.0);
 
-    // 策略3: 确保 Remote Commands 处于激活状态
+    // 策略3: 确保 Remote Commands 处于激活状态并注册处理程序
+    // 重要修复（2024-12-28）：
+    // 之前只调用 setEnabled:YES，但没有添加处理程序（addTarget:action:）
+    // 这导致 updateControl: 方法的优化条件（enable == command.enabled）会跳过添加处理程序
+    // 结果是 iOS 显示 enabled=YES handlers=[] - 命令启用但没有处理程序
+    // 必须同时设置 enabled 和添加处理程序
     if (commandCenter) {
         [commandCenter.playCommand setEnabled:YES];
+        [commandCenter.playCommand addTarget:self action:@selector(play:)];
+
         [commandCenter.pauseCommand setEnabled:YES];
+        [commandCenter.pauseCommand addTarget:self action:@selector(pause:)];
+
         [commandCenter.togglePlayPauseCommand setEnabled:YES];
+        [commandCenter.togglePlayPauseCommand addTarget:self action:@selector(togglePlayPause:)];
+
         [commandCenter.nextTrackCommand setEnabled:YES];
+        [commandCenter.nextTrackCommand addTarget:self action:@selector(nextTrack:)];
+
         [commandCenter.previousTrackCommand setEnabled:YES];
+        [commandCenter.previousTrackCommand addTarget:self action:@selector(previousTrack:)];
+
+        NSLog(@"audio_service: forceRefreshNowPlayingInfo - Remote Commands re-registered");
     }
 
     // 策略4: 设置 nowPlayingInfo
