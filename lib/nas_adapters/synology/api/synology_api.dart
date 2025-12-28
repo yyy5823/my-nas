@@ -185,6 +185,24 @@ class SynologyApi {
     );
   }
 
+  /// 获取存储卷信息
+  ///
+  /// 返回所有存储卷的信息，包括总容量和已使用容量
+  Future<List<SynoVolumeInfo>> getVolumeInfo() async {
+    final response = await _request(
+      'SYNO.Core.Storage.Volume',
+      'list',
+      version: 1,
+    );
+
+    final data = response['data'] as Map<String, dynamic>;
+    final volumes = data['volumes'] as List<dynamic>? ?? [];
+
+    return volumes
+        .map((v) => SynoVolumeInfo.fromJson(v as Map<String, dynamic>))
+        .toList();
+  }
+
   /// 列出目录
   /// 返回 [FileListResult] 包含文件列表和总数，用于分页
   Future<FileListResult> listFiles({
@@ -910,6 +928,64 @@ class DsmInfo {
   final String? model;
   final String? version;
   final String? serial;
+}
+
+/// Synology 存储卷信息
+class SynoVolumeInfo {
+  const SynoVolumeInfo({
+    required this.id,
+    required this.volumePath,
+    required this.totalSize,
+    required this.usedSize,
+    this.status,
+    this.fsType,
+    this.description,
+  });
+
+  factory SynoVolumeInfo.fromJson(Map<String, dynamic> json) {
+    // Synology API 返回的 size 单位可能是字节或其他格式
+    // total_size 和 used_size 通常是字符串，表示字节数
+    final sizeMap = json['size'] as Map<String, dynamic>?;
+    final totalSizeStr = sizeMap?['total'] as String? ?? '0';
+    final usedSizeStr = sizeMap?['used'] as String? ?? '0';
+
+    return SynoVolumeInfo(
+      id: json['id'] as String? ?? json['volume_id'] as String? ?? '',
+      volumePath: json['volume_path'] as String? ?? json['deploy_path'] as String? ?? '',
+      totalSize: int.tryParse(totalSizeStr) ?? 0,
+      usedSize: int.tryParse(usedSizeStr) ?? 0,
+      status: json['status'] as String?,
+      fsType: json['fs_type'] as String?,
+      description: json['desc'] as String?,
+    );
+  }
+
+  /// 卷 ID（如 volume_1）
+  final String id;
+
+  /// 卷路径（如 /volume1）
+  final String volumePath;
+
+  /// 总容量（字节）
+  final int totalSize;
+
+  /// 已使用容量（字节）
+  final int usedSize;
+
+  /// 状态（如 normal, degraded）
+  final String? status;
+
+  /// 文件系统类型（如 btrfs, ext4）
+  final String? fsType;
+
+  /// 描述
+  final String? description;
+
+  /// 可用容量（字节）
+  int get freeSize => totalSize - usedSize;
+
+  /// 使用百分比 (0.0 - 1.0)
+  double get usagePercent => totalSize > 0 ? usedSize / totalSize : 0.0;
 }
 
 /// 共享文件夹

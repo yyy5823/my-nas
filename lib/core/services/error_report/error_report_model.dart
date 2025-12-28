@@ -3,6 +3,8 @@
 /// @date 2025-12-08
 library;
 
+import 'package:my_nas/core/services/error_report/error_report_settings.dart';
+
 /// 错误级别枚举
 enum ErrorLevel {
   debug('DEBUG'),
@@ -94,6 +96,75 @@ class ErrorReportModel {
         'errorTime': errorTime.toIso8601String(),
         'extraData': extraData,
       };
+
+  /// 根据设置过滤字段后转换为 JSON
+  /// 必传字段（errorType, errorMessage, errorLevel, errorTime）始终包含
+  Map<String, dynamic> toFilteredJson(ErrorReportSettings settings) {
+    final json = <String, dynamic>{
+      // 必传字段 - 始终包含
+      'appId': appId,
+      'appName': appName,
+      'platform': platform,
+      'errorType': errorType,
+      'errorCode': errorCode,
+      'errorMessage': errorMessage,
+      'errorLevel': errorLevel.value,
+      'errorTime': errorTime.toIso8601String(),
+    };
+
+    // 可选字段 - 根据设置决定是否包含
+    if (settings.includeAppVersion) {
+      json['appVersion'] = appVersion ?? '1.0.0';
+    }
+
+    if (settings.includeDeviceId) {
+      json['deviceId'] = deviceId;
+    }
+
+    if (settings.includeDeviceModel) {
+      json['deviceModel'] = deviceModel;
+    }
+
+    if (settings.includeDeviceBrand) {
+      json['deviceBrand'] = deviceBrand;
+    }
+
+    if (settings.includeOsInfo) {
+      json['osName'] = osName;
+      json['osVersion'] = osVersion;
+    }
+
+    if (settings.includeScreenResolution) {
+      json['screenResolution'] = screenResolution;
+    }
+
+    if (settings.includeUserId) {
+      json['userId'] = userId;
+      json['userName'] = userName;
+    }
+
+    if (settings.includeNetworkType) {
+      json['networkType'] = networkType;
+    }
+
+    if (settings.includePageRoute) {
+      json['pageRoute'] = pageRoute;
+    }
+
+    if (settings.includeAction) {
+      json['action'] = action;
+    }
+
+    if (settings.includeStackTrace) {
+      json['stackTrace'] = stackTrace;
+    }
+
+    if (settings.includeExtraData) {
+      json['extraData'] = extraData;
+    }
+
+    return json;
+  }
 
   /// 生成错误签名用于去重
   String get signature => '$errorType:$errorMessage:${stackTrace?.hashCode}';

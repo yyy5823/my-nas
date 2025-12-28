@@ -524,6 +524,8 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       return;
     }
 
+    logger.i('MusicPlayer: 歌曲播放完成，准备切换到下一首');
+
     // 重置状态
     _isFadingOut = false;
     _isFadingIn = false;
@@ -531,12 +533,54 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
     switch (state.playMode) {
       case PlayMode.repeatOne:
-        seek(Duration.zero);
-        _audioHandler.play(); // 使用 audioHandler 确保正确广播状态
+        logger.d('MusicPlayer: 单曲循环模式，重新播放');
+        AppError.fireAndForget(
+          _repeatCurrentTrack(),
+          action: 'repeatCurrentTrack',
+        );
       case PlayMode.loop:
-        playNext();
+        logger.d('MusicPlayer: 列表循环模式，播放下一首');
+        AppError.fireAndForget(
+          _playNextWithRetry(),
+          action: 'playNextOnComplete',
+        );
       case PlayMode.shuffle:
-        playNext();
+        logger.d('MusicPlayer: 随机播放模式，播放下一首');
+        AppError.fireAndForget(
+          _playNextWithRetry(),
+          action: 'playNextOnComplete',
+        );
+    }
+  }
+
+  /// 重复播放当前歌曲
+  Future<void> _repeatCurrentTrack() async {
+    try {
+      await seek(Duration.zero);
+      await _audioHandler.play();
+    } on Exception catch (e, st) {
+      logger.e('MusicPlayer: 重复播放失败', e, st);
+      // 尝试重新播放当前歌曲
+      final currentMusic = _ref.read(currentMusicProvider);
+      if (currentMusic != null) {
+        await play(currentMusic);
+      }
+    }
+  }
+
+  /// 播放下一首（带重试机制）
+  Future<void> _playNextWithRetry() async {
+    try {
+      await playNext();
+    } on Exception catch (e, st) {
+      logger.e('MusicPlayer: 播放下一首失败，尝试重试', e, st);
+      // 等待一小段时间后重试
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      try {
+        await playNext();
+      } on Exception catch (e2, st2) {
+        logger.e('MusicPlayer: 播放下一首重试失败', e2, st2);
+      }
     }
   }
 
@@ -712,33 +756,44 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
 
     logger.i('MusicPlayer: 开始交叉淡化到 ${_preloadedMusic!.name}，时长 ${fadeMs}ms');
 
-    // 启动辅助播放器
-    await _crossfadePlayer!.play();
+    try {
+      // 启动辅助播放器
+      await _crossfadePlayer!.play();
 
-    // 同时调整两个播放器的音量
-    for (var i = 0; i <= steps && _isCrossfading; i++) {
-      final t = i / steps;
+      // 同时调整两个播放器的音量
+      for (var i = 0; i <= steps && _isCrossfading; i++) {
+        final t = i / steps;
 
-      // 等功率交叉淡化曲线
-      // 当前歌曲：cos(t * π/2) - 从1降到0
-      // 下一首：sin(t * π/2) - 从0升到1
-      // 保证 sin²(t) + cos²(t) = 1，总功率恒定
-      final fadeOutGain = math.cos(t * math.pi / 2);
-      final fadeInGain = math.sin(t * math.pi / 2);
+        // 等功率交叉淡化曲线
+        // 当前歌曲：cos(t * π/2) - 从1降到0
+        // 下一首：sin(t * π/2) - 从0升到1
+        // 保证 sin²(t) + cos²(t) = 1，总功率恒定
+        final fadeOutGain = math.cos(t * math.pi / 2);
+        final fadeInGain = math.sin(t * math.pi / 2);
 
-      await Future.wait([
-        _player.setVolume((_targetVolume * fadeOutGain).clamp(0.0, 1.0)),
-        _crossfadePlayer!.setVolume((_targetVolume * fadeInGain).clamp(0.0, 1.0)),
-      ]);
+        await Future.wait([
+          _player.setVolume((_targetVolume * fadeOutGain).clamp(0.0, 1.0)),
+          _crossfadePlayer!.setVolume((_targetVolume * fadeInGain).clamp(0.0, 1.0)),
+        ]);
 
-      if (i < steps) {
-        await Future<void>.delayed(Duration(milliseconds: stepMs));
+        if (i < steps) {
+          await Future<void>.delayed(Duration(milliseconds: stepMs));
+        }
       }
-    }
 
-    if (_isCrossfading) {
-      // 交叉淡化完成，切换到新歌曲
-      await _completeCrossfade();
+      if (_isCrossfading) {
+        // 交叉淡化完成，切换到新歌曲
+        await _completeCrossfade();
+      }
+    } on Exception catch (e, st) {
+      logger.e('MusicPlayer: 交叉淡化失败，回退到普通播放', e, st);
+      // 重置状态
+      _isCrossfading = false;
+      await _player.setVolume(_targetVolume);
+      // 清理预加载
+      await _cleanupPreload();
+      // 尝试直接播放下一首
+      await _playNextWithRetry();
     }
   }
 

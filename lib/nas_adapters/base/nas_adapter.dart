@@ -62,6 +62,12 @@ abstract class NasAdapter {
   /// 下载工具服务 (可选实现)
   ToolsService? get toolsService => null;
 
+  /// 获取存储信息 (可选实现)
+  ///
+  /// 返回 NAS 的存储容量信息，包括总容量、已使用容量等。
+  /// 不支持的适配器返回 null。
+  Future<StorageInfo?> getStorageInfo() async => null;
+
   /// 资源释放
   Future<void> dispose();
 }
@@ -88,6 +94,55 @@ abstract class ToolsService {
 
   /// 检查工具是否可用
   Future<bool> isToolAvailable(ToolType type);
+}
+
+/// 存储信息
+class StorageInfo {
+  const StorageInfo({
+    required this.totalBytes,
+    required this.usedBytes,
+    this.volumes = const [],
+  });
+
+  /// 总容量（字节）
+  final int totalBytes;
+
+  /// 已使用容量（字节）
+  final int usedBytes;
+
+  /// 卷列表（如果支持多卷）
+  final List<VolumeInfo> volumes;
+
+  /// 可用容量（字节）
+  int get freeBytes => totalBytes - usedBytes;
+
+  /// 使用百分比 (0.0 - 1.0)
+  double get usagePercent =>
+      totalBytes > 0 ? usedBytes / totalBytes : 0.0;
+}
+
+/// 卷信息
+class VolumeInfo {
+  const VolumeInfo({
+    required this.id,
+    required this.name,
+    required this.totalBytes,
+    required this.usedBytes,
+    this.status,
+    this.fileSystem,
+  });
+
+  final String id;
+  final String name;
+  final int totalBytes;
+  final int usedBytes;
+  final String? status;
+  final String? fileSystem;
+
+  int get freeBytes => totalBytes - usedBytes;
+
+  double get usagePercent =>
+      totalBytes > 0 ? usedBytes / totalBytes : 0.0;
 }
 
 /// 媒体库

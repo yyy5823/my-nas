@@ -126,6 +126,9 @@ class WebDavAdapter implements NasAdapter {
   ToolsService? get toolsService => null;
 
   @override
+  Future<StorageInfo?> getStorageInfo() async => null;
+
+  @override
   Future<void> dispose() async {
     await disconnect();
   }

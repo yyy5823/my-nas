@@ -9,6 +9,7 @@ import 'package:my_nas/app/theme/ui_style.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/music/presentation/pages/music_scraper_sources_page.dart';
 import 'package:my_nas/features/music/presentation/providers/music_scraper_provider.dart';
+import 'package:my_nas/features/settings/presentation/pages/error_report_settings_page.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/pages/media_library_page.dart';
 import 'package:my_nas/features/sources/presentation/pages/sources_page.dart';
@@ -207,6 +208,30 @@ class SettingsPage extends ConsumerWidget {
                     ),
                     _buildDivider(isDark),
                     _buildConnectionStatusTile(context, ref, isDark),
+                  ],
+                ),
+
+                const SizedBox(height: AppSpacing.xl),
+
+                // 高级设置
+                _buildSectionHeader(context, '高级', Icons.settings_applications_rounded, isDark),
+                const SizedBox(height: AppSpacing.sm),
+                _buildSettingsCard(
+                  context,
+                  isDark,
+                  children: [
+                    _buildSettingsTile(
+                      context,
+                      isDark,
+                      icon: Icons.bug_report_rounded,
+                      iconColor: AppColors.warning,
+                      title: '日志上报',
+                      subtitle: '帮助我们改进应用',
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(builder: (_) => const ErrorReportSettingsPage()),
+                      ),
+                    ),
                   ],
                 ),
 

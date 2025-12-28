@@ -240,6 +240,45 @@ class SynologyAdapter implements NasAdapter {
   ToolsService? get toolsService => null;
 
   @override
+  Future<StorageInfo?> getStorageInfo() async {
+    if (!_connected) return null;
+
+    try {
+      final volumes = await _api.getVolumeInfo();
+      if (volumes.isEmpty) return null;
+
+      // 计算所有卷的总容量和已使用容量
+      var totalBytes = 0;
+      var usedBytes = 0;
+      final volumeInfoList = <VolumeInfo>[];
+
+      for (final vol in volumes) {
+        totalBytes += vol.totalSize;
+        usedBytes += vol.usedSize;
+        volumeInfoList.add(
+          VolumeInfo(
+            id: vol.id,
+            name: vol.volumePath.isNotEmpty ? vol.volumePath : vol.id,
+            totalBytes: vol.totalSize,
+            usedBytes: vol.usedSize,
+            status: vol.status,
+            fileSystem: vol.fsType,
+          ),
+        );
+      }
+
+      return StorageInfo(
+        totalBytes: totalBytes,
+        usedBytes: usedBytes,
+        volumes: volumeInfoList,
+      );
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '获取存储信息失败');
+      return null;
+    }
+  }
+
+  @override
   Future<void> dispose() async {
     await disconnect();
     _dioClient.dio.close();

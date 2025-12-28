@@ -32,6 +32,8 @@
 		65CD6C642F00ED4B003CEDC6 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 65CD6C632F00ED4B003CEDC6 /* SwiftUI.framework */; };
 		65CD6C732F00ED4D003CEDC6 /* MyNasWidgetsExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 65CD6C602F00ED4A003CEDC6 /* MyNasWidgetsExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		65WDCH002F00F000003CEDC6 /* WidgetDataChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65WDCH012F00F000003CEDC6 /* WidgetDataChannel.swift */; };
+		65DSPC012F00F100003CEDC6 /* DisplayCapabilityChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65DSPC022F00F100003CEDC6 /* DisplayCapabilityChannel.swift */; };
+		65AUDC012F00F200003CEDC6 /* AudioCapabilityChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65AUDC022F00F200003CEDC6 /* AudioCapabilityChannel.swift */; };
 		D95812FFD559C104CBE77DF6 /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4519CB014C561650C67C4318 /* Pods_Runner.framework */; };
 /* End PBXBuildFile section */
 
@@ -111,6 +113,8 @@
 		65CD6C612F00ED4A003CEDC6 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		65CD6C632F00ED4B003CEDC6 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		65WDCH012F00F000003CEDC6 /* WidgetDataChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetDataChannel.swift; sourceTree = "<group>"; };
+		65DSPC022F00F100003CEDC6 /* DisplayCapabilityChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayCapabilityChannel.swift; sourceTree = "<group>"; };
+		65AUDC022F00F200003CEDC6 /* AudioCapabilityChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCapabilityChannel.swift; sourceTree = "<group>"; };
 		7AFA3C8E1D35360C0083082E /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
 		925AA0E82455F19AE3521366 /* Pods-Runner.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.debug.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"; sourceTree = "<group>"; };
 		9740EEB21CF90195004384FC /* Debug.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
@@ -255,6 +259,8 @@
 				33CC10F02044A3C60003C045 /* AppDelegate.swift */,
 				33CC11122044BFA00003C045 /* MainFlutterWindow.swift */,
 				65WDCH012F00F000003CEDC6 /* WidgetDataChannel.swift */,
+				65DSPC022F00F100003CEDC6 /* DisplayCapabilityChannel.swift */,
+				65AUDC022F00F200003CEDC6 /* AudioCapabilityChannel.swift */,
 				33E51913231747F40026EE4D /* DebugProfile.entitlements */,
 				33E51914231749380026EE4D /* Release.entitlements */,
 				33CC11242044D66E0003C045 /* Resources */,
@@ -558,6 +564,8 @@
 			files = (
 				33CC11132044BFA00003C045 /* MainFlutterWindow.swift in Sources */,
 				65WDCH002F00F000003CEDC6 /* WidgetDataChannel.swift in Sources */,
+				65DSPC012F00F100003CEDC6 /* DisplayCapabilityChannel.swift in Sources */,
+				65AUDC012F00F200003CEDC6 /* AudioCapabilityChannel.swift in Sources */,
 				33CC10F12044A3C60003C045 /* AppDelegate.swift in Sources */,
 				335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */,
 			);

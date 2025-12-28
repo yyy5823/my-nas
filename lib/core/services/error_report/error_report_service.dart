@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/services/error_report/device_info_helper.dart';
 import 'package:my_nas/core/services/error_report/error_report_model.dart';
+import 'package:my_nas/core/services/error_report/error_report_settings_service.dart';
 import 'package:my_nas/core/services/error_report/route_tracker.dart';
 import 'package:my_nas/core/utils/logger.dart';
 
@@ -21,18 +22,15 @@ class ErrorReportService {
 
   /// 是否启用错误上报
   ///
-  /// 设置为 false 可以完全禁用错误上报功能。
-  /// 在 debug 模式下默认禁用，release 模式下默认启用。
+  /// 现在由 ErrorReportSettingsService 管理，默认关闭。
+  /// 用户可以在设置页面中开启并选择要上报的字段。
   ///
   /// 使用方式：
   /// ```dart
-  /// // 禁用错误上报
-  /// ErrorReportService.instance.enabled = false;
-  ///
-  /// // 启用错误上报
-  /// ErrorReportService.instance.enabled = true;
+  /// // 通过设置服务控制
+  /// ErrorReportSettingsService.instance.setEnabled(true);
   /// ```
-  bool enabled = !kDebugMode;
+  bool get enabled => ErrorReportSettingsService.instance.isEnabled;
 
   // RabbitMQ 配置
   static const String _host = '192.168.0.120';
@@ -68,6 +66,8 @@ class ErrorReportService {
 
   /// 初始化服务（非阻塞）
   Future<void> initialize() async {
+    // 初始化设置服务
+    await ErrorReportSettingsService.instance.initialize();
     await DeviceInfoHelper.instance.initialize();
     // 异步连接，不阻塞应用启动
     AppError.fireAndForget(
@@ -235,7 +235,9 @@ class ErrorReportService {
     }
 
     try {
-      final jsonStr = jsonEncode(report.toJson());
+      // 根据设置过滤字段
+      final settings = ErrorReportSettingsService.instance.settings;
+      final jsonStr = jsonEncode(report.toFilteredJson(settings));
       _exchange!.publish(jsonStr, _routingKey);
 
       if (kDebugMode) {

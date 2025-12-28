@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/shared/models/widget_data_models.dart';
 import 'package:my_nas/shared/services/download_service.dart';
 
@@ -115,16 +116,51 @@ class WidgetDataService {
   }
 
   /// 获取存储数据
-  /// TODO: 实现从 NAS 适配器获取存储信息
+  ///
+  /// 从当前连接的 NAS 适配器获取存储信息
   Future<StorageWidgetData> _fetchStorageData() async {
-    // 暂时返回占位数据，后续实现从 NAS 适配器获取
+    final sourceManager = SourceManagerService();
+
+    // 获取所有已连接的源
+    final connections = sourceManager.getActiveConnections();
+    if (connections.isEmpty) {
+      return StorageWidgetData(
+        totalBytes: 0,
+        usedBytes: 0,
+        nasName: '',
+        adapterType: 'unknown',
+        lastUpdated: DateTime.now(),
+        isConnected: false,
+      );
+    }
+
+    // 使用第一个已连接的源（通常是主要的 NAS）
+    final firstConnection = connections.first;
+    final adapter = firstConnection.adapter;
+    final source = firstConnection.source;
+
+    // 尝试获取存储信息
+    final storageInfo = await adapter.getStorageInfo();
+
+    if (storageInfo == null) {
+      // 适配器不支持获取存储信息，但仍显示已连接状态
+      return StorageWidgetData(
+        totalBytes: 0,
+        usedBytes: 0,
+        nasName: source.name,
+        adapterType: adapter.info.type.name,
+        lastUpdated: DateTime.now(),
+        isConnected: true,
+      );
+    }
+
     return StorageWidgetData(
-      totalBytes: 0,
-      usedBytes: 0,
-      nasName: '',
-      adapterType: 'unknown',
+      totalBytes: storageInfo.totalBytes,
+      usedBytes: storageInfo.usedBytes,
+      nasName: source.name,
+      adapterType: adapter.info.type.name,
       lastUpdated: DateTime.now(),
-      isConnected: false,
+      isConnected: true,
     );
   }
 

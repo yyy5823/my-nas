@@ -229,17 +229,33 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage>
       if (!mounted) return;
 
       // 使用缓存的 notifier，避免使用 ref
-      _subtitlesNotifier?.state = subtitles;
+      // 需要 try-catch 因为 autoDispose provider 可能在异步期间被销毁
+      try {
+        _subtitlesNotifier?.state = subtitles;
+      }
+      // ignore: avoid_catching_errors
+      on StateError {
+        // Provider 已被销毁，这是预期的边缘情况
+        return;
+      }
 
       // 如果找到字幕，且用户尚未手动选择过字幕，自动加载第一个
       // 避免异步加载完成后覆盖用户已选择的字幕
       if (subtitles.isNotEmpty) {
-        final currentSubtitle = ref.read(currentSubtitleProvider);
-        if (currentSubtitle == null) {
-          await _playerNotifier?.setSubtitle(subtitles.first);
-          logger.i('VideoPlayerPage: 自动加载字幕 ${subtitles.first.name}');
-        } else {
-          logger.d('VideoPlayerPage: 用户已选择字幕，跳过自动加载');
+        // 再次检查 mounted，因为上面的操作可能已触发 dispose
+        if (!mounted) return;
+        try {
+          final currentSubtitle = ref.read(currentSubtitleProvider);
+          if (currentSubtitle == null) {
+            await _playerNotifier?.setSubtitle(subtitles.first);
+            logger.i('VideoPlayerPage: 自动加载字幕 ${subtitles.first.name}');
+          } else {
+            logger.d('VideoPlayerPage: 用户已选择字幕，跳过自动加载');
+          }
+        }
+        // ignore: avoid_catching_errors
+        on StateError {
+          // Provider 已被销毁，这是预期的边缘情况
         }
       }
     } on Exception catch (e) {
