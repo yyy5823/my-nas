@@ -163,6 +163,7 @@ class QualityState {
     this.suggestedQuality,
     this.errorMessage,
     this.videoPath,
+    this.videoUrl,
     this.transcodedStreamUrl,
     this.activeSession,
   });
@@ -188,8 +189,11 @@ class QualityState {
   /// 错误信息
   final String? errorMessage;
 
-  /// 当前视频路径
+  /// 当前视频路径（原始路径，用于标识视频）
   final String? videoPath;
+
+  /// 可访问的视频 URL（用于转码）
+  final String? videoUrl;
 
   /// 转码后的流 URL（用于服务端转码）
   final String? transcodedStreamUrl;
@@ -219,6 +223,7 @@ class QualityState {
     VideoQuality? suggestedQuality,
     String? errorMessage,
     String? videoPath,
+    String? videoUrl,
     String? transcodedStreamUrl,
     TranscodingSession? activeSession,
   }) =>
@@ -231,6 +236,7 @@ class QualityState {
         suggestedQuality: suggestedQuality ?? this.suggestedQuality,
         errorMessage: errorMessage,
         videoPath: videoPath ?? this.videoPath,
+        videoUrl: videoUrl ?? this.videoUrl,
         transcodedStreamUrl: transcodedStreamUrl,
         activeSession: activeSession,
       );
@@ -266,15 +272,25 @@ class QualityNotifier extends StateNotifier<QualityState> {
   QualitySwitchCallback? onQualitySwitched;
 
   /// 初始化（设置源类型和播放器）
+  ///
+  /// [videoPath] 原始文件路径（用于标识视频）
+  /// [videoUrl] 可访问的视频 URL（用于转码，如代理 URL）
   Future<void> init({
     required SourceType sourceType,
     required Player player,
     required String videoPath,
+    String? videoUrl,
     int? videoWidth,
     int? videoHeight,
     NasTranscodingService? transcodingService,
     ClientTranscodingService? clientTranscodingService,
   }) async {
+    // 检查是否已被销毁
+    if (!mounted) {
+      logger.w('清晰度: init 被调用但 Notifier 已销毁，跳过');
+      return;
+    }
+
     _transcodingService = transcodingService;
     _clientTranscodingService = clientTranscodingService;
 
@@ -287,6 +303,12 @@ class QualityNotifier extends StateNotifier<QualityState> {
       _clientTranscodingService ??= ClientTranscodingService();
       await _clientTranscodingService!.init();
 
+      // 异步操作后再次检查是否已销毁
+      if (!mounted) {
+        logger.w('清晰度: FFmpeg 初始化后 Notifier 已销毁，跳过');
+        return;
+      }
+
       // 如果客户端转码不可用，降级为不支持转码
       if (!_clientTranscodingService!.isAvailable) {
         capability = TranscodingCapability.none;
@@ -294,6 +316,12 @@ class QualityNotifier extends StateNotifier<QualityState> {
       } else {
         logger.i('清晰度: 客户端转码可用');
       }
+    }
+
+    // 再次检查是否已销毁（在更新 state 之前）
+    if (!mounted) {
+      logger.w('清晰度: 更新状态前 Notifier 已销毁，跳过');
+      return;
     }
 
     // 计算可用清晰度
@@ -324,6 +352,7 @@ class QualityNotifier extends StateNotifier<QualityState> {
       availableQualities: availableQualities,
       capability: capability,
       videoPath: videoPath,
+      videoUrl: videoUrl ?? videoPath, // 如果没有提供 videoUrl，使用 videoPath
     );
 
     // 初始化质量监控（仅在启用自适应建议时）
@@ -428,7 +457,7 @@ class QualityNotifier extends StateNotifier<QualityState> {
 
   /// 处理客户端转码
   Future<String?> _handleClientSideTranscoding(VideoQuality quality) async {
-    if (_clientTranscodingService == null || state.videoPath == null) {
+    if (_clientTranscodingService == null || state.videoUrl == null) {
       return null;
     }
 
@@ -437,23 +466,24 @@ class QualityNotifier extends StateNotifier<QualityState> {
       return null;
     }
 
-    // 请求转码会话
+    logger.i('客户端转码: 开始转码到 ${quality.label}，请稍候...');
+    logger.d('客户端转码: 输入 URL = ${state.videoUrl}');
+
+    // 请求转码会话（内部会等待转码完成）
     final session = await _clientTranscodingService!.startSession(
-      videoPath: state.videoPath!,
+      videoPath: state.videoUrl!, // 使用可访问的 URL
       quality: quality,
     );
 
     if (session != null) {
       state = state.copyWith(activeSession: session);
-      logger.i('客户端转码会话已创建: ${session.sessionId}');
+      logger.i('客户端转码: 转码完成，流 URL: ${session.streamUrl}');
       return session.streamUrl;
     }
 
-    // 如果会话创建失败，尝试直接获取流 URL
-    return _clientTranscodingService!.getTranscodedStreamUrl(
-      videoPath: state.videoPath!,
-      quality: quality,
-    );
+    // 转码失败
+    logger.e('客户端转码: 转码失败');
+    return null;
   }
 
   /// 处理质量建议回调

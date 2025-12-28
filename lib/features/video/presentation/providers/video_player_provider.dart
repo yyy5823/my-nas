@@ -551,12 +551,20 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
       ),
     );
 
-    // 初始化清晰度控制器
-    await _initQualityController(video);
+    // 初始化清晰度控制器（传递代理 URL 用于转码）
+    await _initQualityController(video, playUrl: playUrl);
   }
 
   /// 初始化清晰度控制器
-  Future<void> _initQualityController(VideoItem video) async {
+  ///
+  /// [playUrl] 可播放的 URL（可能是代理 URL 或本地文件路径），用于 FFmpeg 转码
+  Future<void> _initQualityController(VideoItem video, {String? playUrl}) async {
+    // 如果播放器已停止，跳过清晰度初始化
+    if (_isDisposed) {
+      logger.d('VideoPlayer: 播放器已停止，跳过清晰度初始化');
+      return;
+    }
+
     // 获取源类型
     SourceType sourceType = SourceType.local;
     if (video.sourceId != null) {
@@ -569,13 +577,48 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
 
     // 初始化清晰度 Provider
     // 注意: VideoItem 目前没有视频尺寸信息，传递 null 让 QualityNotifier 使用默认清晰度列表
-    await _ref.read(qualityStateProvider.notifier).init(
-          sourceType: sourceType,
-          player: _player,
-          videoPath: video.path,
-        );
+    try {
+      final qualityNotifier = _ref.read(qualityStateProvider.notifier);
+      await qualityNotifier.init(
+        sourceType: sourceType,
+        player: _player,
+        videoPath: video.path,
+        videoUrl: playUrl, // 传递可访问的 URL（代理 URL 或本地路径）给 FFmpeg
+      );
 
-    logger.d('VideoPlayer: 清晰度控制器已初始化, sourceType=$sourceType');
+      // 设置清晰度切换回调
+      qualityNotifier.onQualitySwitched = _onQualitySwitched;
+
+      logger.d('VideoPlayer: 清晰度控制器已初始化, sourceType=$sourceType, playUrl=$playUrl');
+    } on StateError catch (e) {
+      // qualityStateProvider 可能已被 autoDispose，忽略此错误
+      logger.w('VideoPlayer: 清晰度控制器初始化跳过 (Provider 已销毁): $e');
+    }
+  }
+
+  /// 清晰度切换回调 - 切换到新的转码流
+  Future<void> _onQualitySwitched(String newStreamUrl) async {
+    logger.i('VideoPlayer: 切换到转码流 => $newStreamUrl');
+
+    // 保存当前播放位置
+    final currentPosition = state.position;
+
+    // 打开新的流
+    try {
+      await _player.open(Media(newStreamUrl));
+
+      // 恢复到之前的位置
+      if (currentPosition > Duration.zero) {
+        // 等待视频加载
+        await Future.delayed(const Duration(milliseconds: 500));
+        await _player.seek(currentPosition);
+      }
+
+      logger.i('VideoPlayer: 转码流切换成功');
+    } catch (e, st) {
+      AppError.handle(e, st, 'switchToTranscodedStream');
+      state = state.copyWith(errorMessage: '切换清晰度失败: $e');
+    }
   }
 
   /// 播放/暂停切换

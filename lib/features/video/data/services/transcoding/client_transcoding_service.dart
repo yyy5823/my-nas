@@ -178,15 +178,23 @@ class ClientTranscodingService implements NasTranscodingService {
 
       _tasks[taskId] = task;
 
-      // 启动转码（异步）- 使用 fireAndForget 确保异常被捕获
-      AppError.fireAndForget(
-        _startTranscoding(task),
-        action: 'clientStartTranscoding',
-      );
+      // 同步执行转码并等待完成
+      await _startTranscoding(task);
 
-      // 返回本地文件 URL
-      // 注意：这个 URL 在转码完成后才可用
-      return 'file://$outputPath';
+      // 检查转码结果
+      if (task.isCompleted && task.error == null) {
+        // 验证输出文件存在
+        final outputFile = File(outputPath);
+        if (await outputFile.exists()) {
+          return 'file://$outputPath';
+        } else {
+          logger.e('ClientTranscoding: 输出文件不存在 $outputPath');
+          return null;
+        }
+      } else {
+        logger.e('ClientTranscoding: 转码失败 ${task.error}');
+        return null;
+      }
     } catch (e, st) {
       AppError.handle(e, st, 'clientGetTranscodedStreamUrl');
       return null;

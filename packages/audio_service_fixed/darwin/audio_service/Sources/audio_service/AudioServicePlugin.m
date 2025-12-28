@@ -667,23 +667,14 @@ static int forceUpdateCounter = 0;  // 用于强制刷新的计数器
     MPNowPlayingInfoCenter *center = [MPNowPlayingInfoCenter defaultCenter];
 
     // 重要：不要清空 nowPlayingInfo，否则会导致灵动岛闪烁
-    // 之前的策略 center.nowPlayingInfo = nil 会导致灵动岛先消失再出现
+    // 重要：不要使用 Interrupted 状态，否则也会导致灵动岛闪烁
 
-    // 策略1: 强制改变 elapsedPlaybackTime（使用更大的变化量）
-    // iOS 可能会忽略太小的变化，所以使用 0.1 秒级别的变化
-    NSNumber *currentElapsed = nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime];
-    double elapsedSeconds = currentElapsed ? [currentElapsed doubleValue] : 0.0;
-    // 使用当前时间戳确保每次都不同
-    double timestamp = [[NSDate date] timeIntervalSince1970];
-    double adjustedElapsed = elapsedSeconds + fmod(timestamp, 1.0);  // 添加毫秒部分
-    nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = @(adjustedElapsed);
+    // 策略1: 保存当前 updateTime，用于强制更新
+    long long msSinceEpoch = (long long)([[NSDate date] timeIntervalSince1970] * 1000.0);
+    nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = @(msSinceEpoch / 1000.0);  // 用当前时间作为 elapsed
 
-    // 策略2: 强制改变 playbackRate（微调后再恢复）
-    // 这会触发 iOS 重新评估播放状态
-    NSNumber *currentRate = nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate];
-    double rate = currentRate ? [currentRate doubleValue] : 1.0;
-    // 先设置一个略微不同的速率
-    nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = @(rate + 0.0001 * (forceUpdateCounter % 10));
+    // 策略2: 确保 playbackRate 正确
+    nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = @(playing ? 1.0 : 0.0);
 
     // 策略3: 确保 Remote Commands 处于激活状态
     if (commandCenter) {
@@ -694,26 +685,17 @@ static int forceUpdateCounter = 0;  // 用于强制刷新的计数器
         [commandCenter.previousTrackCommand setEnabled:YES];
     }
 
-    // 策略4: 先设置播放状态为 Interrupted，然后恢复
-    // 这会强制 iOS 重新评估并显示灵动岛
-    if (@available(iOS 13.0, *)) {
-        center.playbackState = MPNowPlayingPlaybackStateInterrupted;
-    }
-
-    // 策略5: 设置 nowPlayingInfo
+    // 策略4: 设置 nowPlayingInfo
+    // 注意：直接设置，不要先清空或使用 Interrupted 状态
     center.nowPlayingInfo = nowPlayingInfo;
 
-    // 策略6: 恢复正确的播放速率
-    nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = @(playing ? rate : 0.0);
-    center.nowPlayingInfo = nowPlayingInfo;
-
-    // 策略7: 恢复正确的播放状态
+    // 策略5: 设置播放状态（不使用 Interrupted）
     if (@available(iOS 13.0, *)) {
         center.playbackState = playing ? MPNowPlayingPlaybackStatePlaying : MPNowPlayingPlaybackStatePaused;
     }
 
-    NSLog(@"audio_service: forceRefreshNowPlayingInfo completed (playing=%d, elapsed=%.3f, rate=%.4f, counter=%d)",
-          playing, adjustedElapsed, rate, forceUpdateCounter);
+    NSLog(@"audio_service: forceRefreshNowPlayingInfo completed (playing=%d, counter=%d)",
+          playing, forceUpdateCounter);
 }
 
 // 注意：生命周期监听现在使用 block-based observers，
