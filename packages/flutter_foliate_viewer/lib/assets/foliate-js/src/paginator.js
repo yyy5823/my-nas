@@ -795,6 +795,7 @@ export class Paginator extends HTMLElement {
     return this.#container.getBoundingClientRect()[this.sideProp]
   }
   get viewSize() {
+    if (!this.#view) return 0
     return this.#view.element.getBoundingClientRect()[this.sideProp]
   }
   get start() {
@@ -1661,6 +1662,11 @@ export class Paginator extends HTMLElement {
       if (this.sections[index]?.linear !== 'no') return index
   }
   async #turnPage(dir, distance) {
+    // Skip if view not ready
+    if (!this.#view) {
+      console.log('[Paginator] turnPage: view not ready, skipping')
+      return
+    }
     // Skip if already processing
     if (this.#locked) {
       console.log('[Paginator] turnPage: locked, skipping')

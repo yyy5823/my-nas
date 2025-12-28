@@ -288,8 +288,12 @@ class SmbFileSystem implements NasFileSystem {
       streamClient = client;
     }
 
-    /// 清理连接资源
+    /// 清理连接资源（确保只执行一次）
+    var cleanupCalled = false;
     Future<void> cleanup() async {
+      if (cleanupCalled) return; // 防止重复调用
+      cleanupCalled = true;
+
       if (releaseCallback != null) {
         if (shouldCloseOnCleanup) {
           // 专用连接：先关闭再释放槽位

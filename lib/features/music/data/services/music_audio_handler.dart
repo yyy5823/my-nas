@@ -612,39 +612,56 @@ class MusicAudioHandler extends BaseAudioHandler
 
   @override
   Future<void> skipToNext() async {
-    if (_musicQueue.isEmpty) return;
+    logger.i('MusicAudioHandler: skipToNext() 被调用 (来自灵动岛/锁屏/控制中心), queueLength=${_musicQueue.length}, currentIndex=$_currentIndex');
+    if (_musicQueue.isEmpty) {
+      logger.w('MusicAudioHandler: skipToNext() 队列为空，忽略');
+      return;
+    }
 
     final nextIndex = (_currentIndex + 1) % _musicQueue.length;
+    logger.d('MusicAudioHandler: skipToNext() 切换到索引 $nextIndex');
     await _skipToIndex(nextIndex);
   }
 
   @override
   Future<void> skipToPrevious() async {
-    if (_musicQueue.isEmpty) return;
+    logger.i('MusicAudioHandler: skipToPrevious() 被调用 (来自灵动岛/锁屏/控制中心), queueLength=${_musicQueue.length}, currentIndex=$_currentIndex, position=${_player.position}');
+    if (_musicQueue.isEmpty) {
+      logger.w('MusicAudioHandler: skipToPrevious() 队列为空，忽略');
+      return;
+    }
 
     // 如果播放超过3秒，回到开头
     if (_player.position.inSeconds > 3) {
+      logger.d('MusicAudioHandler: skipToPrevious() 播放超过3秒，回到开头');
       await seek(Duration.zero);
       return;
     }
 
     final prevIndex = (_currentIndex - 1 + _musicQueue.length) % _musicQueue.length;
+    logger.d('MusicAudioHandler: skipToPrevious() 切换到索引 $prevIndex');
     await _skipToIndex(prevIndex);
   }
 
   @override
   Future<void> skipToQueueItem(int index) async {
+    logger.d('MusicAudioHandler: skipToQueueItem($index) 被调用');
     await _skipToIndex(index);
   }
 
   Future<void> _skipToIndex(int index) async {
-    if (index < 0 || index >= _musicQueue.length) return;
+    if (index < 0 || index >= _musicQueue.length) {
+      logger.w('MusicAudioHandler: _skipToIndex($index) 索引超出范围 [0, ${_musicQueue.length})');
+      return;
+    }
 
     _currentIndex = index;
+    logger.i('MusicAudioHandler: _skipToIndex($index) 开始切换歌曲, hasCallback=${onSkipToIndex != null}');
 
     // 调用外部回调处理音频源加载（因为涉及复杂的 NAS 文件处理）
     if (onSkipToIndex != null) {
       await onSkipToIndex!(index);
+      logger.d('MusicAudioHandler: _skipToIndex($index) 回调执行完成');
     }
   }
 

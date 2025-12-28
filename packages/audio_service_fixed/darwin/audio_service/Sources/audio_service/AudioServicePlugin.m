@@ -171,7 +171,7 @@ static int forceUpdateCounter = 0;  // 用于强制刷新的计数器
 }
 
 - (void)activateCommandCenter {
-    //NSLog(@"### activateCommandCenter");
+    NSLog(@"audio_service: ===== activateCommandCenter called =====");
     commandCenter = [MPRemoteCommandCenter sharedCommandCenter];
     commands = [NSMutableArray new];
     [commands addObjectsFromArray:@[
@@ -268,6 +268,15 @@ static int forceUpdateCounter = 0;  // 用于强制刷新的计数器
 #endif
             [self activateCommandCenter];
         }
+
+        // 尝试十八：添加日志追踪 actionBits
+        // ASkipToPrevious = 4, ASkipToNext = 5
+        // 所以 actionBits 应该包含 (1<<4)=16 和 (1<<5)=32
+        BOOL hasSkipToPrevious = (actionBits >> 4) & 1;
+        BOOL hasSkipToNext = (actionBits >> 5) & 1;
+        NSLog(@"audio_service: setState actionBits=%ld hasSkipToPrevious=%d hasSkipToNext=%d playing=%d commandCenter=%@",
+              actionBits, hasSkipToPrevious, hasSkipToNext, playing, commandCenter ? @"YES" : @"NO");
+
         [self updateControls];
         if (playing != oldPlaying ||
             speed.doubleValue != oldSpeed.doubleValue ||
@@ -440,6 +449,13 @@ static int forceUpdateCounter = 0;  // 用于强制刷新的计数器
     // Shift the actionBits right until the least significant bit is the tested action bit, and AND that with a 1 at the same position.
     // All bytes become 0, other than the tested action bit, which will be 0 or 1 according to its status in the actionBits long.
     BOOL enable = ((actionBits >> action) & 1);
+
+    // 尝试十八：在条件检查前添加日志，用于调试 Remote Command 注册
+    if (action == ASkipToNext || action == ASkipToPrevious) {
+        NSLog(@"audio_service: updateControl action=%ld enable=%d command.enabled=%d _controlsUpdated=%d",
+              (long)action, enable, command.enabled, _controlsUpdated);
+    }
+
     if (_controlsUpdated && enable == command.enabled) return;
     //NSLog(@"## updateControl %@ enable=%@", @(action), @(enable));
     [command setEnabled:enable];
@@ -478,17 +494,23 @@ static int forceUpdateCounter = 0;  // 用于强制刷新的计数器
             }
             break;
         case ASkipToPrevious:
+            NSLog(@"audio_service: updateControl ASkipToPrevious enable=%d", enable);
             if (enable) {
                 [commandCenter.previousTrackCommand addTarget:self action:@selector(previousTrack:)];
+                NSLog(@"audio_service: previousTrackCommand registered with handler");
             } else {
                 [commandCenter.previousTrackCommand removeTarget:nil];
+                NSLog(@"audio_service: previousTrackCommand handler removed");
             }
             break;
         case ASkipToNext:
+            NSLog(@"audio_service: updateControl ASkipToNext enable=%d", enable);
             if (enable) {
                 [commandCenter.nextTrackCommand addTarget:self action:@selector(nextTrack:)];
+                NSLog(@"audio_service: nextTrackCommand registered with handler");
             } else {
                 [commandCenter.nextTrackCommand removeTarget:nil];
+                NSLog(@"audio_service: nextTrackCommand handler removed");
             }
             break;
         case AFastForward:
@@ -577,14 +599,18 @@ static int forceUpdateCounter = 0;  // 用于强制刷新的计数器
 }
 
 - (MPRemoteCommandHandlerStatus) nextTrack: (MPRemoteCommandEvent *) event {
-    //NSLog(@"nextTrack");
+    NSLog(@"audio_service: ===== nextTrack command received from Dynamic Island/Lock Screen/Control Center =====");
+    NSLog(@"audio_service: nextTrack - invoking skipToNext on handlerChannel (channel exists: %@)", handlerChannel ? @"YES" : @"NO");
     [handlerChannel invokeMethod:@"skipToNext" arguments:@{}];
+    NSLog(@"audio_service: nextTrack - skipToNext invoked successfully");
     return MPRemoteCommandHandlerStatusSuccess;
 }
 
 - (MPRemoteCommandHandlerStatus) previousTrack: (MPRemoteCommandEvent *) event {
-    //NSLog(@"previousTrack");
+    NSLog(@"audio_service: ===== previousTrack command received from Dynamic Island/Lock Screen/Control Center =====");
+    NSLog(@"audio_service: previousTrack - invoking skipToPrevious on handlerChannel (channel exists: %@)", handlerChannel ? @"YES" : @"NO");
     [handlerChannel invokeMethod:@"skipToPrevious" arguments:@{}];
+    NSLog(@"audio_service: previousTrack - skipToPrevious invoked successfully");
     return MPRemoteCommandHandlerStatusSuccess;
 }
 

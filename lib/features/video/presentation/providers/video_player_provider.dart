@@ -595,20 +595,40 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
   Future<void> _onQualitySwitched(String newStreamUrl) async {
     logger.i('VideoPlayer: 切换到转码流 => $newStreamUrl');
 
-    // 保存当前播放位置
+    // 保存当前播放位置（转码已从此位置开始，所以不需要 seek）
     final currentPosition = state.position;
+    logger.d('VideoPlayer: 切换前位置 ${currentPosition.inSeconds}s');
 
     // 打开新的流
     try {
       await _player.open(Media(newStreamUrl));
 
-      // 恢复到之前的位置
-      if (currentPosition > Duration.zero) {
-        // 等待视频加载
-        await Future.delayed(const Duration(milliseconds: 500));
-        await _player.seek(currentPosition);
-      }
+      // 转码已从 currentPosition 开始，播放器会从头播放转码后的文件
+      // 这等同于从 currentPosition 开始播放
+      // 但我们仍需等待视频就绪后通知 UI 更新进度显示
 
+      // 等待播放器准备好
+      final completer = Completer<void>();
+      StreamSubscription<Duration>? subscription;
+
+      subscription = _player.stream.duration.listen((duration) {
+        if (duration > Duration.zero && !completer.isCompleted) {
+          logger.i('VideoPlayer: 转码流已就绪，时长: ${duration.inSeconds}s');
+          subscription?.cancel();
+          completer.complete();
+        }
+      });
+
+      // 设置超时
+      Future.delayed(const Duration(seconds: 5), () {
+        if (!completer.isCompleted) {
+          subscription?.cancel();
+          completer.complete();
+          logger.w('VideoPlayer: 等待转码流就绪超时');
+        }
+      });
+
+      await completer.future;
       logger.i('VideoPlayer: 转码流切换成功');
     } catch (e, st) {
       AppError.handle(e, st, 'switchToTranscodedStream');

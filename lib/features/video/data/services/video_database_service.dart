@@ -1187,6 +1187,7 @@ class VideoDatabaseService {
   /// 根据分类获取元数据（分页）
   ///
   /// [enabledPaths] 启用的路径列表，如果提供则只返回这些路径下的视频
+  /// 注意：对于电影类别，会自动去重（同一电影不同清晰度只返回最高清版本）
   Future<List<VideoMetadata>> getByCategory(
     MediaCategory category, {
     int limit = 50,
@@ -1196,7 +1197,24 @@ class VideoDatabaseService {
     if (!_initialized) await init();
 
     final pathFilter = _buildPathFilter(enabledPaths);
+    final orderBy = '$_colYear DESC NULLS LAST, $_colTitle';
 
+    // 电影类别使用去重逻辑（同一电影不同清晰度只返回最高清版本）
+    if (category == MediaCategory.movie) {
+      final sql = _buildMovieDeduplicationQuery(
+        baseWhere: '$_colCategory = ${category.index}',
+        pathFilter: pathFilter,
+        orderBy: orderBy,
+        limit: limit,
+        offset: offset,
+      );
+      // 路径过滤参数需要出现两次（外层和子查询各一次）
+      final args = [...pathFilter.args, ...pathFilter.args];
+      final results = await _db!.rawQuery(sql, args);
+      return results.map(_fromRow).toList();
+    }
+
+    // 其他类别使用普通查询
     var where = '$_colCategory = ?';
     final whereArgs = <Object>[category.index];
 
@@ -1209,8 +1227,7 @@ class VideoDatabaseService {
       _tableMetadata,
       where: where,
       whereArgs: whereArgs,
-      // 按上映年份降序排序（最近上映的排在前面）
-      orderBy: '$_colYear DESC NULLS LAST, $_colTitle',
+      orderBy: orderBy,
       limit: limit,
       offset: offset,
     );
@@ -1533,6 +1550,56 @@ class VideoDatabaseService {
       andWhere: ' AND ($conditions)',
       args: args,
     );
+  }
+
+  /// 构建电影去重子查询
+  ///
+  /// 对于同一部电影的多个版本（不同清晰度），只返回最高清晰度版本
+  /// 分组依据：TMDB ID（如果存在）或 标题+年份
+  /// 排序优先级：分辨率（4K > 1080p > 720p）> 文件大小 > 评分
+  ///
+  /// [baseWhere] 基础过滤条件，如 'category = 0'
+  /// [pathFilter] 路径过滤条件
+  /// [orderBy] 最终结果排序
+  String _buildMovieDeduplicationQuery({
+    required String baseWhere,
+    required ({String where, String andWhere, List<Object> args}) pathFilter,
+    required String orderBy,
+    required int limit,
+    required int offset,
+  }) {
+    // 分辨率优先级排序：数字越大优先级越高
+    // 4K/2160p = 4, 1080p = 3, 720p = 2, 480p = 1, 其他 = 0
+    const resolutionOrder = '''
+      CASE
+        WHEN $_colResolution IN ('4K', '2160p', 'UHD') THEN 4
+        WHEN $_colResolution = '1080p' THEN 3
+        WHEN $_colResolution = '720p' THEN 2
+        WHEN $_colResolution = '480p' THEN 1
+        ELSE 0
+      END
+    ''';
+
+    return '''
+      SELECT * FROM $_tableMetadata m1
+      WHERE $baseWhere${pathFilter.andWhere}
+        AND m1.rowid = (
+          SELECT m2.rowid FROM $_tableMetadata m2
+          WHERE m2.$baseWhere${pathFilter.andWhere}
+            AND (
+              (m1.$_colTmdbId IS NOT NULL AND m2.$_colTmdbId = m1.$_colTmdbId)
+              OR (m1.$_colTmdbId IS NULL AND m2.$_colTmdbId IS NULL
+                  AND LOWER(COALESCE(m2.$_colTitle, '')) = LOWER(COALESCE(m1.$_colTitle, ''))
+                  AND COALESCE(m2.$_colYear, 0) = COALESCE(m1.$_colYear, 0))
+            )
+          ORDER BY $resolutionOrder DESC,
+                   COALESCE(m2.$_colFileSize, 0) DESC,
+                   m2.$_colRating DESC NULLS LAST
+          LIMIT 1
+        )
+      ORDER BY $orderBy
+      LIMIT $limit OFFSET $offset
+    ''';
   }
 
   /// 获取统计信息文本（用于空状态显示）

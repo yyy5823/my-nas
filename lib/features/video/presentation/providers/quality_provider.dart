@@ -264,6 +264,9 @@ class QualityNotifier extends StateNotifier<QualityState> {
   late final TranscodingCapabilityService _capabilityService;
   late final QualityMonitorService _monitorService;
 
+  /// 播放器引用（用于获取当前播放位置）
+  Player? _player;
+
   /// NAS 转码服务（用于服务端转码）
   NasTranscodingService? _transcodingService;
 
@@ -293,6 +296,7 @@ class QualityNotifier extends StateNotifier<QualityState> {
       return;
     }
 
+    _player = player; // 保存播放器引用，用于获取当前位置
     _transcodingService = transcodingService;
     _clientTranscodingService = clientTranscodingService;
 
@@ -494,19 +498,29 @@ class QualityNotifier extends StateNotifier<QualityState> {
       return null;
     }
 
-    logger.i('客户端转码: 开始转码到 ${quality.label}，请稍候...');
+    // 获取当前播放位置（从这个位置开始转码，加速切换）
+    final currentPosition = _player?.state.position ?? Duration.zero;
+
+    logger.i('客户端转码: 开始转码到 ${quality.label}，从 ${currentPosition.inSeconds}s 开始');
     logger.d('客户端转码: 输入 URL = ${state.videoUrl}');
 
-    // 请求转码会话（内部会等待转码完成）
-    final session = await _clientTranscodingService!.startSession(
+    // 请求转码（传入起始位置）
+    final streamUrl = await _clientTranscodingService!.getTranscodedStreamUrl(
       videoPath: state.videoUrl!, // 使用可访问的 URL
       quality: quality,
+      startPosition: currentPosition, // 从当前位置开始转码
     );
 
-    if (session != null) {
+    if (streamUrl != null) {
+      // 创建会话记录
+      final session = TranscodingSession(
+        sessionId: DateTime.now().millisecondsSinceEpoch.toString(),
+        streamUrl: streamUrl,
+        quality: quality,
+      );
       state = state.copyWith(activeSession: session);
-      logger.i('客户端转码: 转码完成，流 URL: ${session.streamUrl}');
-      return session.streamUrl;
+      logger.i('客户端转码: 转码完成，流 URL: $streamUrl');
+      return streamUrl;
     }
 
     // 转码失败

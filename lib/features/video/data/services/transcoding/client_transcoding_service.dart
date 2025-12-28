@@ -34,6 +34,12 @@ class ClientTranscodingService implements NasTranscodingService {
   /// 桌面端 FFmpeg 可执行文件路径
   String? _ffmpegPath;
 
+  /// 检测到的硬件编码器（null 表示未检测，空字符串表示无硬件加速）
+  String? _detectedHwEncoder;
+
+  /// 是否已尝试过硬件编码（用于失败时回退）
+  bool _hwEncoderFailed = false;
+
   /// 活跃的转码任务
   final Map<String, _TranscodingTask> _tasks = {};
 
@@ -137,7 +143,7 @@ class ClientTranscodingService implements NasTranscodingService {
     try {
       // 创建转码任务
       final taskId = const Uuid().v4();
-      final outputPath = '${_tempDir!.path}/transcoded_$taskId.mp4';
+      final outputPath = '${_tempDir!.path}/transcoded_$taskId.mkv';
 
       // 开始后台转码
       final task = _TranscodingTask(
@@ -350,9 +356,12 @@ class ClientTranscodingService implements NasTranscodingService {
   }
 
   /// 使用 FFmpegKit 转码（iOS/Android/macOS）
+  ///
+  /// 采用流式转码：等待输出文件有足够数据就返回，转码在后台继续
   Future<void> _runFFmpegKitTranscoding(_TranscodingTask task, String command) async {
-    final completer = Completer<void>();
+    final readyCompleter = Completer<void>();
     var lastLogTime = DateTime.now();
+    var hasError = false;
     const readTimeout = Duration(seconds: 60); // 60秒无输出则超时
 
     try {
@@ -367,10 +376,12 @@ class ClientTranscodingService implements NasTranscodingService {
           if (ReturnCode.isSuccess(returnCode)) {
             task.isRunning = false;
             task.isCompleted = true;
-            logger.i('ClientTranscoding: 转码完成 ${task.outputPath}');
+            logger.i('ClientTranscoding: 后台转码完成 ${task.outputPath}');
           } else if (ReturnCode.isCancel(returnCode)) {
             task.isRunning = false;
-            task.error = '转码已取消';
+            if (!hasError) {
+              task.error = '转码已取消';
+            }
             logger.i('ClientTranscoding: 转码已取消');
           } else {
             task.isRunning = false;
@@ -378,13 +389,20 @@ class ClientTranscodingService implements NasTranscodingService {
             final errorSnippet = logs != null && logs.length > 500
                 ? logs.substring(logs.length - 500)
                 : logs ?? '';
+            hasError = true;
             task.error = '转码失败';
             logger.e('ClientTranscoding: 转码失败 returnCode=$returnCode');
             logger.e('ClientTranscoding: FFmpeg 输出:\n$errorSnippet');
+
+            // 检测是否是编码器相关错误，标记硬件编码失败以便回退
+            if (_isEncoderError(logs ?? '')) {
+              _markHwEncoderFailed();
+            }
           }
 
-          if (!completer.isCompleted) {
-            completer.complete();
+          // 如果还没返回就完成了（可能是错误），通知等待方
+          if (!readyCompleter.isCompleted) {
+            readyCompleter.complete();
           }
         },
         // 日志回调
@@ -423,9 +441,19 @@ class ClientTranscodingService implements NasTranscodingService {
 
       task.ffmpegSession = session;
 
+      // 流式转码：等待输出文件有足够数据就返回
+      final outputFile = File(task.outputPath);
+      const minFileSize = 2 * 1024 * 1024; // 至少 2MB 缓冲
+      const maxWaitTime = Duration(seconds: 60); // 最多等待 60 秒
+      const checkInterval = Duration(milliseconds: 500);
+
+      final startTime = DateTime.now();
+      var fileReady = false;
+      Timer? timeoutTimer;
+
       // 启动超时监控
-      Timer.periodic(const Duration(seconds: 10), (timer) {
-        if (completer.isCompleted || !task.isRunning) {
+      timeoutTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+        if (readyCompleter.isCompleted || !task.isRunning) {
           timer.cancel();
           return;
         }
@@ -433,23 +461,62 @@ class ClientTranscodingService implements NasTranscodingService {
         final timeSinceLastLog = DateTime.now().difference(lastLogTime);
         if (timeSinceLastLog > readTimeout) {
           logger.e('ClientTranscoding: FFmpeg 超时，${readTimeout.inSeconds}秒无输出');
+          hasError = true;
           task.cancel();
           task.error = '转码超时：输入源无响应';
           timer.cancel();
-          if (!completer.isCompleted) {
-            completer.complete();
+          if (!readyCompleter.isCompleted) {
+            readyCompleter.complete();
           }
         }
       });
 
-      // 等待转码完成或超时
-      await completer.future;
+      // 等待输出文件有足够数据
+      while (DateTime.now().difference(startTime) < maxWaitTime) {
+        // 检查是否已出错或取消
+        if (readyCompleter.isCompleted) {
+          break;
+        }
+
+        await Future<void>.delayed(checkInterval);
+
+        // 检查输出文件大小
+        if (await outputFile.exists()) {
+          final size = await outputFile.length();
+          if (size >= minFileSize) {
+            logger.i('ClientTranscoding: 流式输出就绪，文件大小: ${size ~/ 1024}KB');
+            fileReady = true;
+            break;
+          }
+        }
+      }
+
+      timeoutTimer.cancel();
+
+      if (fileReady) {
+        // 文件已有足够数据，可以开始播放
+        // 注意：转码仍在后台继续
+        task.isCompleted = true; // 标记为"可播放"状态
+        logger.i('ClientTranscoding: 流式转码已就绪 ${task.outputPath}');
+      } else if (!readyCompleter.isCompleted) {
+        // 等待超时且没有错误
+        hasError = true;
+        task.isRunning = false;
+        task.error = '等待转码输出超时';
+        task.cancel();
+        logger.e('ClientTranscoding: 等待转码输出超时');
+      }
+
+      // 完成等待
+      if (!readyCompleter.isCompleted) {
+        readyCompleter.complete();
+      }
     } catch (e, st) {
       task.isRunning = false;
       task.error = e.toString();
       AppError.handle(e, st, 'mobileTranscoding');
-      if (!completer.isCompleted) {
-        completer.complete();
+      if (!readyCompleter.isCompleted) {
+        readyCompleter.complete();
       }
     }
   }
@@ -496,7 +563,7 @@ class ClientTranscodingService implements NasTranscodingService {
       } else {
         // 流式转码：等待输出文件有足够数据就返回
         final outputFile = File(task.outputPath);
-        const minFileSize = 512 * 1024; // 至少 512KB
+        const minFileSize = 2 * 1024 * 1024; // 至少 2MB 缓冲
         const maxWaitTime = Duration(seconds: 30);
         const checkInterval = Duration(milliseconds: 500);
 
@@ -579,21 +646,195 @@ class ClientTranscodingService implements NasTranscodingService {
     }
   }
 
+  /// 添加视频编码器参数（根据平台选择硬件加速）
+  void _addVideoEncoderArgs(List<String> args) {
+    // 如果之前硬件编码失败，直接使用软件编码
+    if (_hwEncoderFailed) {
+      _addSoftwareEncoderArgs(args);
+      return;
+    }
+
+    if (Platform.isMacOS || Platform.isIOS) {
+      // Apple 平台：VideoToolbox 硬件编码
+      // FFmpegKit 内置支持，速度快 10-20 倍
+      args.addAll(['-c:v', 'h264_videotoolbox']);
+      args.addAll(['-profile:v', 'high']);
+      if (Platform.isMacOS) {
+        args.addAll(['-level', '4.1']); // Level 4.1 支持 1080p
+      }
+      logger.d('ClientTranscoding: 使用 VideoToolbox 硬件编码');
+    } else if (Platform.isAndroid) {
+      // Android：MediaCodec 硬件编码
+      // FFmpegKit 内置支持 MediaCodec
+      args.addAll(['-c:v', 'h264_mediacodec']);
+      // MediaCodec 可能需要特定的像素格式
+      logger.d('ClientTranscoding: 使用 MediaCodec 硬件编码');
+    } else if (Platform.isWindows) {
+      // Windows：尝试多种硬件编码器
+      final encoder = _detectedHwEncoder ?? _detectWindowsHwEncoder();
+      if (encoder.isNotEmpty) {
+        args.addAll(['-c:v', encoder]);
+        _addHwEncoderOptions(args, encoder);
+        logger.d('ClientTranscoding: 使用 $encoder 硬件编码');
+      } else {
+        _addSoftwareEncoderArgs(args);
+      }
+    } else if (Platform.isLinux) {
+      // Linux：尝试 VAAPI 或 NVENC
+      final encoder = _detectedHwEncoder ?? _detectLinuxHwEncoder();
+      if (encoder.isNotEmpty) {
+        args.addAll(['-c:v', encoder]);
+        _addHwEncoderOptions(args, encoder);
+        logger.d('ClientTranscoding: 使用 $encoder 硬件编码');
+      } else {
+        _addSoftwareEncoderArgs(args);
+      }
+    } else {
+      // 其他平台：软件编码
+      _addSoftwareEncoderArgs(args);
+    }
+  }
+
+  /// 添加软件编码器参数
+  void _addSoftwareEncoderArgs(List<String> args) {
+    args.addAll(['-c:v', 'libx264']);
+    args.addAll(['-preset', 'ultrafast']); // 最快速度
+    args.addAll(['-tune', 'zerolatency']); // 低延迟
+    logger.d('ClientTranscoding: 使用 libx264 软件编码');
+  }
+
+  /// 添加硬件编码器特定选项
+  void _addHwEncoderOptions(List<String> args, String encoder) {
+    if (encoder.contains('nvenc')) {
+      // NVIDIA NVENC 选项
+      args.addAll(['-preset', 'p1']); // 最快预设
+      args.addAll(['-tune', 'll']); // 低延迟
+      args.addAll(['-rc', 'vbr']); // 可变码率
+    } else if (encoder.contains('qsv')) {
+      // Intel Quick Sync 选项
+      args.addAll(['-preset', 'veryfast']);
+      args.addAll(['-look_ahead', '0']); // 禁用前瞻减少延迟
+    } else if (encoder.contains('amf')) {
+      // AMD AMF 选项
+      args.addAll(['-quality', 'speed']);
+      args.addAll(['-rc', 'vbr_latency']);
+    } else if (encoder.contains('vaapi')) {
+      // VAAPI 选项
+      args.addAll(['-vaapi_device', '/dev/dri/renderD128']);
+      // VAAPI 需要特定的滤镜来处理格式转换
+    }
+  }
+
+  /// 检测 Windows 平台可用的硬件编码器
+  String _detectWindowsHwEncoder() {
+    if (_detectedHwEncoder != null) return _detectedHwEncoder!;
+
+    // Windows 硬件编码器优先级：NVENC > QSV > AMF > 软件
+    // 注意：这里假设使用系统 FFmpeg，FFmpegKit 在 Windows 上可能不可用
+    final encoders = ['h264_nvenc', 'h264_qsv', 'h264_amf'];
+
+    for (final encoder in encoders) {
+      if (_checkEncoderAvailable(encoder)) {
+        _detectedHwEncoder = encoder;
+        logger.i('ClientTranscoding: Windows 检测到硬件编码器: $encoder');
+        return encoder;
+      }
+    }
+
+    _detectedHwEncoder = '';
+    logger.w('ClientTranscoding: Windows 未检测到硬件编码器，使用软件编码');
+    return '';
+  }
+
+  /// 检测 Linux 平台可用的硬件编码器
+  String _detectLinuxHwEncoder() {
+    if (_detectedHwEncoder != null) return _detectedHwEncoder!;
+
+    // Linux 硬件编码器优先级：NVENC > VAAPI > 软件
+    final encoders = ['h264_nvenc', 'h264_vaapi'];
+
+    for (final encoder in encoders) {
+      if (_checkEncoderAvailable(encoder)) {
+        _detectedHwEncoder = encoder;
+        logger.i('ClientTranscoding: Linux 检测到硬件编码器: $encoder');
+        return encoder;
+      }
+    }
+
+    _detectedHwEncoder = '';
+    logger.w('ClientTranscoding: Linux 未检测到硬件编码器，使用软件编码');
+    return '';
+  }
+
+  /// 检查编码器是否可用
+  bool _checkEncoderAvailable(String encoder) {
+    if (_ffmpegPath == null) return false;
+
+    try {
+      // 运行 ffmpeg -encoders 并检查输出
+      final result = Process.runSync(
+        _ffmpegPath!,
+        ['-encoders'],
+        stdoutEncoding: const SystemEncoding(),
+        stderrEncoding: const SystemEncoding(),
+      );
+
+      final output = result.stdout.toString();
+      return output.contains(encoder);
+    } catch (e) {
+      logger.w('ClientTranscoding: 检查编码器 $encoder 失败: $e');
+      return false;
+    }
+  }
+
+  /// 标记硬件编码失败，后续使用软件编码
+  void _markHwEncoderFailed() {
+    if (!_hwEncoderFailed) {
+      _hwEncoderFailed = true;
+      logger.w('ClientTranscoding: 硬件编码失败，切换到软件编码');
+    }
+  }
+
+  /// 检测是否是编码器相关的错误
+  bool _isEncoderError(String logs) {
+    final lowerLogs = logs.toLowerCase();
+    // 常见的硬件编码器错误关键词
+    return lowerLogs.contains('encoder') ||
+        lowerLogs.contains('videotoolbox') ||
+        lowerLogs.contains('mediacodec') ||
+        lowerLogs.contains('nvenc') ||
+        lowerLogs.contains('qsv') ||
+        lowerLogs.contains('vaapi') ||
+        lowerLogs.contains('amf') ||
+        lowerLogs.contains('hardware') ||
+        lowerLogs.contains('h264_') ||
+        lowerLogs.contains('hevc_') ||
+        lowerLogs.contains('no device') ||
+        lowerLogs.contains('device not found') ||
+        lowerLogs.contains('unsupported codec');
+  }
+
   /// 构建 FFmpeg 参数
   List<String> _buildFfmpegArgs(_TranscodingTask task) {
     final args = <String>[
       '-y', // 覆盖输出文件
-      '-i', task.inputPath, // 输入文件
     ];
 
-    // 起始位置
+    // 起始位置 - 放在 -i 之前实现输入文件快速跳转（input seeking）
+    // 这样 FFmpeg 会快速跳过前面的内容，不需要解码
     if (task.startPosition != null && task.startPosition! > Duration.zero) {
       args.addAll(['-ss', '${task.startPosition!.inSeconds}']);
+      logger.d('ClientTranscoding: 从 ${task.startPosition!.inSeconds}s 开始转码');
     }
 
-    // 视频编码参数
-    args.addAll(['-c:v', 'libx264']); // H.264 编码
-    args.addAll(['-preset', 'fast']); // 编码速度
+    // 输入文件
+    args.addAll(['-i', task.inputPath]);
+
+    // 视频编码参数 - 根据平台使用硬件加速
+    _addVideoEncoderArgs(args);
+
+    // 通用设置：确保 8-bit 标准像素格式（某些硬件编码器需要）
+    args.addAll(['-pix_fmt', 'yuv420p']);
 
     // 分辨率缩放
     if (!task.quality.isOriginal && task.quality.maxWidth != null && task.quality.maxHeight != null) {
@@ -625,9 +866,9 @@ class ClientTranscodingService implements NasTranscodingService {
       args.addAll(['-sn']); // 不包含字幕
     }
 
-    // 输出格式 - 使用 fragmented MP4 支持流式播放（边转边播）
-    args.addAll(['-f', 'mp4']);
-    args.addAll(['-movflags', 'frag_keyframe+empty_moov+default_base_moof']);
+    // 输出格式 - 使用 MKV 格式支持流式播放（边转边播）
+    // MKV 格式可以在转码过程中被播放，且 MPV 能正确处理增长中的文件
+    args.addAll(['-f', 'matroska']);
 
     // 输出文件
     args.add(task.outputPath);
