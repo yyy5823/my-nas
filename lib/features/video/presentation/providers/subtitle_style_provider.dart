@@ -20,18 +20,18 @@ class SubtitleStyle {
 
   /// 从 Map 创建
   factory SubtitleStyle.fromMap(Map<dynamic, dynamic> map) => SubtitleStyle(
-        fontSize: (map['fontSize'] as num?)?.toDouble() ?? 24.0,
-        fontColor: Color(map['fontColor'] as int? ?? 0xFFFFFFFF),
-        backgroundColor: Color(map['backgroundColor'] as int? ?? 0x8A000000),
-        showBackground: map['showBackground'] as bool? ?? false,
-        position: SubtitlePosition.values[map['position'] as int? ?? 0],
-        fontWeight: FontWeight.values[map['fontWeight'] as int? ?? 3],
-        hasOutline: map['hasOutline'] as bool? ?? true,
-        outlineColor: Color(map['outlineColor'] as int? ?? 0xFF000000),
-        outlineWidth: (map['outlineWidth'] as num?)?.toDouble() ?? 2.0,
-        delay: (map['delay'] as num?)?.toDouble() ?? 0.0,
-        bottomPadding: (map['bottomPadding'] as num?)?.toDouble() ?? 48.0,
-      );
+    fontSize: (map['fontSize'] as num?)?.toDouble() ?? 24.0,
+    fontColor: Color(map['fontColor'] as int? ?? 0xFFFFFFFF),
+    backgroundColor: Color(map['backgroundColor'] as int? ?? 0x8A000000),
+    showBackground: map['showBackground'] as bool? ?? false,
+    position: SubtitlePosition.values[map['position'] as int? ?? 0],
+    fontWeight: FontWeight.values[map['fontWeight'] as int? ?? 3],
+    hasOutline: map['hasOutline'] as bool? ?? true,
+    outlineColor: Color(map['outlineColor'] as int? ?? 0xFF000000),
+    outlineWidth: (map['outlineWidth'] as num?)?.toDouble() ?? 2.0,
+    delay: (map['delay'] as num?)?.toDouble() ?? 0.0,
+    bottomPadding: (map['bottomPadding'] as num?)?.toDouble() ?? 48.0,
+  );
 
   final double fontSize;
   final Color fontColor;
@@ -70,43 +70,38 @@ class SubtitleStyle {
     double? outlineWidth,
     double? delay,
     double? bottomPadding,
-  }) =>
-      SubtitleStyle(
-        fontSize: fontSize ?? this.fontSize,
-        fontColor: fontColor ?? this.fontColor,
-        backgroundColor: backgroundColor ?? this.backgroundColor,
-        showBackground: showBackground ?? this.showBackground,
-        position: position ?? this.position,
-        fontWeight: fontWeight ?? this.fontWeight,
-        hasOutline: hasOutline ?? this.hasOutline,
-        outlineColor: outlineColor ?? this.outlineColor,
-        outlineWidth: outlineWidth ?? this.outlineWidth,
-        delay: delay ?? this.delay,
-        bottomPadding: bottomPadding ?? this.bottomPadding,
-      );
+  }) => SubtitleStyle(
+    fontSize: fontSize ?? this.fontSize,
+    fontColor: fontColor ?? this.fontColor,
+    backgroundColor: backgroundColor ?? this.backgroundColor,
+    showBackground: showBackground ?? this.showBackground,
+    position: position ?? this.position,
+    fontWeight: fontWeight ?? this.fontWeight,
+    hasOutline: hasOutline ?? this.hasOutline,
+    outlineColor: outlineColor ?? this.outlineColor,
+    outlineWidth: outlineWidth ?? this.outlineWidth,
+    delay: delay ?? this.delay,
+    bottomPadding: bottomPadding ?? this.bottomPadding,
+  );
 
   /// 转换为 Map
   Map<String, dynamic> toMap() => {
-        'fontSize': fontSize,
-        'fontColor': fontColor.toARGB32(),
-        'backgroundColor': backgroundColor.toARGB32(),
-        'showBackground': showBackground,
-        'position': position.index,
-        'fontWeight': FontWeight.values.indexOf(fontWeight),
-        'hasOutline': hasOutline,
-        'outlineColor': outlineColor.toARGB32(),
-        'outlineWidth': outlineWidth,
-        'delay': delay,
-        'bottomPadding': bottomPadding,
-      };
+    'fontSize': fontSize,
+    'fontColor': fontColor.toARGB32(),
+    'backgroundColor': backgroundColor.toARGB32(),
+    'showBackground': showBackground,
+    'position': position.index,
+    'fontWeight': FontWeight.values.indexOf(fontWeight),
+    'hasOutline': hasOutline,
+    'outlineColor': outlineColor.toARGB32(),
+    'outlineWidth': outlineWidth,
+    'delay': delay,
+    'bottomPadding': bottomPadding,
+  };
 }
 
 /// 字幕位置
-enum SubtitlePosition {
-  top,
-  center,
-  bottom,
-}
+enum SubtitlePosition { top, center, bottom }
 
 /// 字幕样式管理
 class SubtitleStyleNotifier extends StateNotifier<SubtitleStyle> {
@@ -214,7 +209,9 @@ class SubtitleStyleNotifier extends StateNotifier<SubtitleStyle> {
 
 /// 字幕样式 provider
 final subtitleStyleProvider =
-    StateNotifierProvider<SubtitleStyleNotifier, SubtitleStyle>((ref) => SubtitleStyleNotifier());
+    StateNotifierProvider<SubtitleStyleNotifier, SubtitleStyle>(
+      (ref) => SubtitleStyleNotifier(),
+    );
 
 /// 预设字幕颜色
 const subtitleColors = [

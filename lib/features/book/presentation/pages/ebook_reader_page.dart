@@ -942,9 +942,10 @@ class _EbookReaderPageState extends ConsumerState<EbookReaderPage> {
   }
 
   /// 判断是否需要点击区域翻页
-  /// 滑动模式和滚动模式使用 WebView 内置手势，不需要点击翻页
+  /// 滚动模式是连续滚动，不需要点击翻页
+  /// 其他模式（无动画、滑动、仿真、覆盖）都需要支持点击侧边翻页
   bool _needsTapToTurn(BookPageTurnMode mode) =>
-      mode == BookPageTurnMode.none; // 只有无动画模式需要点击翻页
+      mode != BookPageTurnMode.scroll;
 
   /// 三区域点击处理
   /// 使用 Listener 只监听点击，不拦截滑动手势，让 WebView 正常处理滑动翻页

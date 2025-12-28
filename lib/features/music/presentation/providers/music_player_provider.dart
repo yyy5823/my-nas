@@ -187,6 +187,9 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   // 当 play() 正在执行时，新的 play() 调用会等待或取消
   bool _isPlayOperationInProgress = false;
 
+  // 随机数生成器（用于随机播放模式）
+  final math.Random _random = math.Random();
+
   // NCM 解密服务
   final NcmDecryptService _ncmDecryptService = NcmDecryptService();
 
@@ -513,7 +516,7 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       if (queue.length == 1) return 0;
       int nextIndex;
       do {
-        nextIndex = DateTime.now().millisecondsSinceEpoch % queue.length;
+        nextIndex = _random.nextInt(queue.length);
       } while (nextIndex == state.currentIndex);
       return nextIndex;
     } else {
@@ -1324,21 +1327,10 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     final queue = _ref.read(playQueueProvider);
     if (queue.isEmpty) return;
 
-    int nextIndex;
-    if (state.playMode == PlayMode.shuffle) {
-      // 随机选择一个不同的索引
-      if (queue.length == 1) {
-        nextIndex = 0;
-      } else {
-        do {
-          nextIndex = DateTime.now().millisecondsSinceEpoch % queue.length;
-        } while (nextIndex == state.currentIndex);
-      }
-    } else {
-      nextIndex = (state.currentIndex + 1) % queue.length;
+    final nextIndex = _getNextIndex();
+    if (nextIndex >= 0) {
+      await playAt(nextIndex);
     }
-
-    await playAt(nextIndex);
   }
 
   /// 上一曲

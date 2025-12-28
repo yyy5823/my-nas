@@ -79,7 +79,11 @@ dependencies:
   just_audio_windows: ^0.2.2
   just_audio_media_kit: ^2.1.0  # macOS/Linux support (uses media_kit_libs_video)
   media_kit_libs_linux: ^1.1.3  # Linux audio libs
-  audio_service: ^0.18.18  # 包含 iOS setPlaybackState entitlement 修复
+  # audio_service: 使用本地修复版本
+  # 修复 iOS playbackState 不设置的 bug (Issue #1139, PR #1140)
+  # 原因: #if TARGET_OS_OSX 错误地排除了 iOS
+  audio_service:
+    path: packages/audio_service_fixed
   audio_session: ^0.1.25
 
   # Media - Casting (DLNA/AirPlay)

@@ -273,6 +273,18 @@ class BookListNotifier extends StateNotifier<BookListState> {
   /// 后台元数据提取是否正在运行
   bool _isExtractingMetadata = false;
 
+  /// 防抖计时器，避免频繁刷新
+  Timer? _debounceTimer;
+
+  /// 延迟刷新，避免频繁触发
+  void _scheduleRefresh() {
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 300), () {
+      logger.i('BookListNotifier: 媒体库配置变化，刷新图书列表');
+      _loadFromSqlite();
+    });
+  }
+
   /// 支持的电子书扩展名
   static const _supportedExtensions = [
     '.epub',
@@ -322,6 +334,22 @@ class BookListNotifier extends StateNotifier<BookListState> {
 
         if (nextConnected > prevConnected && state is BookListNotConnected) {
           loadBooks();
+        }
+      });
+
+      // 监听媒体库配置变化（启用/停用/移除路径）
+      _ref.listen<AsyncValue<MediaLibraryConfig>>(mediaLibraryConfigProvider, (previous, next) {
+        final prevPaths =
+            previous?.valueOrNull?.getEnabledPathsForType(MediaType.book) ?? [];
+        final nextPaths =
+            next.valueOrNull?.getEnabledPathsForType(MediaType.book) ?? [];
+
+        // 比较路径是否变化（包括 sourceId 和 path）
+        final prevKeys = prevPaths.map((p) => '${p.sourceId}|${p.path}').toSet();
+        final nextKeys = nextPaths.map((p) => '${p.sourceId}|${p.path}').toSet();
+
+        if (prevKeys.length != nextKeys.length || !prevKeys.containsAll(nextKeys)) {
+          _scheduleRefresh();
         }
       });
     } on Exception catch (e, st) {
@@ -603,6 +631,8 @@ class BookListNotifier extends StateNotifier<BookListState> {
 
       final books = <BookFileWithSource>[];
       var lastUpdateCount = 0;
+      var lastSavedCount = 0;
+      const batchSaveSize = 30; // 每 30 本保存一次并刷新 UI
 
       await _scanForBooksWithProgress(
         connection.adapter.fileSystem,
@@ -612,6 +642,7 @@ class BookListNotifier extends StateNotifier<BookListState> {
         rootPathPrefix: pathPrefix,
         progressService: progressService,
         onBatchFound: () {
+          // 更新进度显示
           if (books.length - lastUpdateCount >= 5) {
             lastUpdateCount = books.length;
             progressService.emitProgress(MediaScanProgress(
@@ -623,13 +654,41 @@ class BookListNotifier extends StateNotifier<BookListState> {
               currentPath: '$pathPrefix (${books.length})',
             ));
           }
+
+          // 边扫边显示：每 batchSaveSize 本保存到数据库并刷新 UI
+          if (books.length - lastSavedCount >= batchSaveSize) {
+            final batchBooks = books.sublist(lastSavedCount, books.length);
+            lastSavedCount = books.length;
+
+            final entities = batchBooks
+                .map((b) => BookEntity(
+                      sourceId: b.sourceId,
+                      filePath: b.path,
+                      fileName: b.name,
+                      format: BookItem.formatFromExtension(b.name),
+                      size: b.size,
+                      modifiedTime: b.modifiedTime,
+                      lastUpdated: DateTime.now(),
+                    ))
+                .toList();
+
+            // 异步保存并刷新 UI，不阻塞扫描
+            AppError.fireAndForget(
+              Future(() async {
+                await _db.upsertBatch(entities);
+                logger.d('BookListNotifier: 边扫边显示 - 保存 ${entities.length} 本书');
+                await _loadFromSqlite();
+              }),
+              action: 'bookScanBatchSave',
+            );
+          }
         },
       );
 
       logger.i('BookListNotifier: 目录 $pathPrefix 扫描完成，找到 ${books.length} 本书');
 
-      // 保存到数据库
-      if (books.isNotEmpty) {
+      // 保存剩余的书籍到数据库
+      if (books.length > lastSavedCount) {
         progressService.emitProgress(MediaScanProgress(
           mediaType: MediaType.book,
           phase: MediaScanPhase.saving,
@@ -639,7 +698,8 @@ class BookListNotifier extends StateNotifier<BookListState> {
           totalCount: books.length,
         ));
 
-        final entities = books
+        final remainingBooks = books.sublist(lastSavedCount);
+        final entities = remainingBooks
             .map((b) => BookEntity(
                   sourceId: b.sourceId,
                   filePath: b.path,
@@ -652,11 +712,12 @@ class BookListNotifier extends StateNotifier<BookListState> {
             .toList();
 
         await _db.upsertBatch(entities);
+        logger.d('BookListNotifier: 保存剩余 ${entities.length} 本书');
       }
 
       progressService.endScan(MediaType.book, sourceId, pathPrefix, success: true);
 
-      // 重新加载数据
+      // 最终刷新 UI
       await _loadFromSqlite();
 
       return books.length;

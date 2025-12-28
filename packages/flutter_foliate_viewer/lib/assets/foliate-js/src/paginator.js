@@ -387,7 +387,6 @@ export class Paginator extends HTMLElement {
   ]
   // Page turn style: 'slide' (default), 'simulation', 'cover'
   #pageTurnStyle = 'slide'
-  #flipOverlay = null
   #root = this.attachShadow({ mode: 'open' })
   #observer = new ResizeObserver(() => this.render())
   #top
@@ -419,6 +418,8 @@ export class Paginator extends HTMLElement {
   #prevOverflowY = ''
   #momentumTimer = null
   #pendingRelocate = null
+  #snapping = false // Prevent concurrent snap operations
+  #sectionChangeTime = 0 // Timestamp of last section change, used to prevent immediate bounce-back
   #cancelMomentumTimer() {
     if (this.#momentumTimer) {
       clearTimeout(this.#momentumTimer)
@@ -548,47 +549,16 @@ export class Paginator extends HTMLElement {
             font-size: .75em;
             opacity: .6;
         }
-        #flip-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            pointer-events: none;
-            z-index: 100;
-            display: none;
-        }
-        #flip-overlay.active {
-            display: block;
-        }
-        #flip-shadow {
-            position: absolute;
-            top: 0;
-            bottom: 0;
-            width: 80px;
-            pointer-events: none;
-        }
-        #flip-page {
-            position: absolute;
-            top: 0;
-            bottom: 0;
-            pointer-events: none;
-        }
         </style>
         <div id="top">
             <div id="background" part="filter"></div>
             <div id="container"></div>
-            <div id="flip-overlay">
-                <div id="flip-shadow"></div>
-                <div id="flip-page"></div>
-            </div>
         </div>
         `
 
     this.#top = this.#root.getElementById('top')
     this.#background = this.#root.getElementById('background')
     this.#container = this.#root.getElementById('container')
-    this.#flipOverlay = this.#root.getElementById('flip-overlay')
     // this.#header = this.#root.getElementById('header')
     // this.#footer = this.#root.getElementById('footer')
 
@@ -644,6 +614,20 @@ export class Paginator extends HTMLElement {
         break
       case 'page-turn-style':
         this.#pageTurnStyle = value || 'slide'
+        // Reset state when page turn style changes
+        this.#snapping = false
+        this.#locked = false
+        this.#touchState = null
+        this.#touchScrolled = false
+        this.#restoreMomentum()
+        // Snap to nearest page without animation to fix any intermediate scroll state
+        if (!this.scrolled && this.#view) {
+          const page = this.page
+          if (page >= 0 && this.size > 0) {
+            this.#scrollToPage(this.#rtl ? -page : page, 'mode-change', { animate: false })
+          }
+        }
+        console.log('[Paginator] page-turn-style changed to:', this.#pageTurnStyle)
         break
     }
   }
@@ -651,7 +635,24 @@ export class Paginator extends HTMLElement {
     return this.#pageTurnStyle
   }
   set pageTurnStyle(value) {
+    const oldValue = this.#pageTurnStyle
     this.#pageTurnStyle = value || 'slide'
+    // Only reset if value actually changed
+    if (oldValue !== this.#pageTurnStyle) {
+      // Reset state when page turn style changes
+      this.#snapping = false
+      this.#locked = false
+      this.#touchState = null
+      this.#touchScrolled = false
+      this.#restoreMomentum()
+      // Snap to nearest page without animation
+      if (!this.scrolled && this.#view) {
+        const page = this.page
+        if (page >= 0 && this.size > 0) {
+          this.#scrollToPage(this.#rtl ? -page : page, 'mode-change', { animate: false })
+        }
+      }
+    }
     this.setAttribute('page-turn-style', this.#pageTurnStyle)
   }
   open(book) {
@@ -812,186 +813,310 @@ export class Paginator extends HTMLElement {
     if (horizontal) element.scrollBy({ left: delta, top: 0, behavior: 'auto' })
     else element.scrollBy({ left: 0, top: delta, behavior: 'auto' })
   }
-  // Show flip animation for simulation and cover modes
-  async #showFlipAnimation(direction, duration) {
-    const overlay = this.#flipOverlay
-    if (!overlay) return
-
-    const shadow = overlay.querySelector('#flip-shadow')
-    const page = overlay.querySelector('#flip-page')
+  // Prepare 3D flip animation
+  // Returns the overlay element and a function to run the animation
+  #prepareFlipAnimation(direction, duration) {
     const isForward = direction > 0
     const bgColor = this.getAttribute('background-color') || '#ffffff'
 
-    // Setup initial state
-    overlay.classList.add('active')
+    // Container with 3D perspective
+    const container = document.createElement('div')
+    container.style.cssText = `
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      pointer-events: none;
+      z-index: 100;
+      perspective: 2000px;
+      perspective-origin: ${isForward ? '0% 50%' : '100% 50%'};
+    `
 
     if (this.#pageTurnStyle === 'simulation') {
-      // Simulation mode: page curl with shadow
-      shadow.style.background = `linear-gradient(${isForward ? 'to left' : 'to right'},
-        transparent 0%,
-        rgba(0,0,0,0.15) 30%,
-        rgba(0,0,0,0.3) 50%,
-        rgba(0,0,0,0.15) 70%,
-        transparent 100%)`
-      page.style.background = bgColor
-      page.style.opacity = '0.95'
+      // 3D Page flip simulation with curl effect
+      // Create multiple segments to simulate page curve
+      const segments = 5
+      const segmentWidth = 100 / segments
 
-      // Initial positions
-      if (isForward) {
-        shadow.style.right = '0'
-        shadow.style.left = 'auto'
-        page.style.right = '0'
-        page.style.left = 'auto'
-        page.style.width = '0'
-      } else {
-        shadow.style.left = '0'
-        shadow.style.right = 'auto'
-        page.style.left = '0'
-        page.style.right = 'auto'
-        page.style.width = '0'
+      const pageWrapper = document.createElement('div')
+      pageWrapper.style.cssText = `
+        position: absolute;
+        top: 0; bottom: 0;
+        width: 100%;
+        transform-style: preserve-3d;
+        transform-origin: ${isForward ? 'left center' : 'right center'};
+      `
+
+      // Create page segments for curve effect
+      for (let i = 0; i < segments; i++) {
+        const segment = document.createElement('div')
+        segment.className = 'page-segment'
+        segment.style.cssText = `
+          position: absolute;
+          top: 0; bottom: 0;
+          width: ${segmentWidth}%;
+          left: ${i * segmentWidth}%;
+          background: ${bgColor};
+          transform-style: preserve-3d;
+          backface-visibility: hidden;
+        `
+        // Add subtle gradient for depth
+        if (i === segments - 1 && isForward) {
+          segment.style.background = `linear-gradient(to right, ${bgColor} 80%, rgba(0,0,0,0.03) 100%)`
+        } else if (i === 0 && !isForward) {
+          segment.style.background = `linear-gradient(to left, ${bgColor} 80%, rgba(0,0,0,0.03) 100%)`
+        }
+        pageWrapper.appendChild(segment)
       }
+
+      // Shadow on the page being revealed (under the flipping page)
+      const underShadow = document.createElement('div')
+      underShadow.style.cssText = `
+        position: absolute;
+        top: 0; bottom: 0;
+        width: 100%;
+        background: transparent;
+        pointer-events: none;
+        z-index: -1;
+      `
+
+      // Shadow cast by the lifted page
+      const castShadow = document.createElement('div')
+      castShadow.style.cssText = `
+        position: absolute;
+        top: 5%; bottom: 5%;
+        width: 80px;
+        ${isForward ? 'left: 0;' : 'right: 0;'}
+        background: linear-gradient(${isForward ? 'to right' : 'to left'},
+          rgba(0,0,0,0.3) 0%,
+          rgba(0,0,0,0.1) 40%,
+          transparent 100%);
+        opacity: 0;
+        pointer-events: none;
+        filter: blur(3px);
+      `
+
+      container.appendChild(underShadow)
+      container.appendChild(pageWrapper)
+      container.appendChild(castShadow)
+
+      const animate = () => new Promise(resolve => {
+        let start
+        const step = now => {
+          start ??= now
+          const progress = Math.min(1, (now - start) / duration)
+          // Use custom easing for more natural feel
+          const eased = 1 - Math.pow(1 - progress, 3) // ease-out cubic
+
+          // Rotation angle: 0 to 180 degrees
+          const baseAngle = eased * 180
+          const rotateDir = isForward ? -1 : 1
+
+          // Apply rotation to wrapper
+          pageWrapper.style.transform = `rotateY(${rotateDir * baseAngle}deg)`
+
+          // Create curve effect by rotating segments slightly differently
+          const segmentElements = pageWrapper.querySelectorAll('.page-segment')
+          segmentElements.forEach((seg, i) => {
+            // Curve is strongest in the middle of the flip
+            const curveFactor = Math.sin(progress * Math.PI) * 0.15
+            const segmentCurve = (isForward ? (segments - 1 - i) : i) * curveFactor * 15
+            seg.style.transform = `rotateY(${rotateDir * segmentCurve}deg)`
+          })
+
+          // Shadow intensity follows the flip
+          const shadowIntensity = Math.sin(progress * Math.PI)
+          castShadow.style.opacity = shadowIntensity * 0.8
+
+          // Move shadow position as page lifts
+          const shadowOffset = Math.sin(progress * Math.PI) * 30
+          if (isForward) {
+            castShadow.style.left = `${shadowOffset}px`
+          } else {
+            castShadow.style.right = `${shadowOffset}px`
+          }
+
+          // Darken the revealed area slightly
+          const revealDarkness = Math.sin(progress * Math.PI) * 0.1
+          underShadow.style.background = `rgba(0,0,0,${revealDarkness})`
+
+          if (progress < 1) requestAnimationFrame(step)
+          else resolve()
+        }
+        requestAnimationFrame(step)
+      })
+
+      return { overlay: container, animate }
+
     } else if (this.#pageTurnStyle === 'cover') {
-      // Cover mode: slide in with edge shadow
-      shadow.style.background = `linear-gradient(${isForward ? 'to right' : 'to left'},
-        rgba(0,0,0,0.3) 0%,
-        transparent 100%)`
-      shadow.style.width = '30px'
-      page.style.background = bgColor
-      page.style.opacity = '1'
-      page.style.width = '100%'
-      page.style.boxShadow = `${isForward ? '-' : ''}8px 0 20px rgba(0,0,0,0.3)`
+      // Cover mode: 3D page slides over
+      const page = document.createElement('div')
+      page.style.cssText = `
+        position: absolute;
+        top: 0; bottom: 0;
+        width: 100%;
+        background: ${bgColor};
+        transform-style: preserve-3d;
+        transform-origin: ${isForward ? 'right center' : 'left center'};
+        box-shadow: ${isForward ? '-5px' : '5px'} 0 25px rgba(0,0,0,0.3);
+      `
 
-      // Initial positions - page starts off-screen
-      if (isForward) {
-        shadow.style.left = 'auto'
-        shadow.style.right = '100%'
-        page.style.left = 'auto'
-        page.style.right = '-100%'
-        page.style.transform = 'translateX(100%)'
-      } else {
-        shadow.style.right = 'auto'
-        shadow.style.left = '100%'
-        page.style.right = 'auto'
-        page.style.left = '-100%'
-        page.style.transform = 'translateX(-100%)'
-      }
+      // Add slight page texture
+      const pageInner = document.createElement('div')
+      pageInner.style.cssText = `
+        position: absolute;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: linear-gradient(${isForward ? 'to left' : 'to right'},
+          transparent 0%,
+          rgba(0,0,0,0.02) 100%);
+      `
+      page.appendChild(pageInner)
+
+      // Shadow underneath
+      const shadow = document.createElement('div')
+      shadow.style.cssText = `
+        position: absolute;
+        top: 0; bottom: 0;
+        width: 100px;
+        ${isForward ? 'left: 0;' : 'right: 0;'}
+        background: linear-gradient(${isForward ? 'to right' : 'to left'},
+          rgba(0,0,0,0.2) 0%,
+          transparent 100%);
+        opacity: 0;
+        z-index: -1;
+      `
+
+      container.appendChild(shadow)
+      container.appendChild(page)
+
+      const animate = () => new Promise(resolve => {
+        let start
+        const step = now => {
+          start ??= now
+          const progress = Math.min(1, (now - start) / duration)
+          const eased = 1 - Math.pow(1 - progress, 2.5) // ease-out
+
+          // Combine translation with slight rotation for 3D effect
+          const translateX = eased * 100
+          const rotateY = eased * 15 // Slight rotation for depth
+
+          if (isForward) {
+            page.style.transform = `translateX(-${translateX}%) rotateY(${rotateY}deg)`
+          } else {
+            page.style.transform = `translateX(${translateX}%) rotateY(-${rotateY}deg)`
+          }
+
+          // Shadow follows
+          const shadowOpacity = Math.sin(progress * Math.PI) * 0.8
+          shadow.style.opacity = shadowOpacity
+
+          if (progress < 1) requestAnimationFrame(step)
+          else resolve()
+        }
+        requestAnimationFrame(step)
+      })
+
+      return { overlay: container, animate }
     }
 
-    // Animate using requestAnimationFrame
-    return new Promise(resolve => {
-      let start
-      const step = now => {
-        start ??= now
-        const elapsed = now - start
-        const progress = Math.min(1, elapsed / duration)
-        const eased = easeOutSine(progress)
-
-        if (this.#pageTurnStyle === 'simulation') {
-          // Simulation: expand the page area
-          const width = eased * 100
-          page.style.width = `${width}%`
-
-          // Move shadow with the edge
-          const edgePos = (1 - eased) * 100
-          if (isForward) {
-            shadow.style.right = `${width}%`
-            shadow.style.transform = `translateX(50%)`
-          } else {
-            shadow.style.left = `${width}%`
-            shadow.style.transform = `translateX(-50%)`
-          }
-
-          // Fade out shadow near end
-          const shadowOpacity = progress > 0.8 ? (1 - progress) * 5 : 1
-          shadow.style.opacity = shadowOpacity
-        } else if (this.#pageTurnStyle === 'cover') {
-          // Cover: slide page in
-          const translateX = (1 - eased) * 100
-          page.style.transform = `translateX(${isForward ? '' : '-'}${translateX}%)`
-
-          // Move shadow with page edge
-          if (isForward) {
-            shadow.style.right = `${eased * 100}%`
-          } else {
-            shadow.style.left = `${eased * 100}%`
-          }
-
-          // Fade out shadow
-          shadow.style.opacity = 1 - eased
-        }
-
-        if (progress < 1) {
-          requestAnimationFrame(step)
-        } else {
-          // Clean up
-          overlay.classList.remove('active')
-          shadow.style = ''
-          page.style = ''
-          resolve()
-        }
-      }
-      requestAnimationFrame(step)
-    })
+    return null
   }
-  snap(vx, vy, touchState) {
-    const state = touchState ?? this.#touchState
-    const velocity = this.#vertical ? vy : vx
-    const { pages, size } = this
-    if (!pages || size === 0) {
-      this.#restoreMomentum()
+  async snap(vx, vy, touchState) {
+    // Prevent concurrent snap operations
+    if (this.#snapping) {
+      console.log('[Paginator] Snap already in progress, ignoring')
       return
     }
-    const currentOffset = this.#container[this.scrollProp]
-    const signedOffset = this.#rtl ? -currentOffset : currentOffset
-    let page = Math.round(signedOffset / size)
-    const velocityThreshold = 0.25
-    if (Math.abs(velocity) > velocityThreshold)
-      page += velocity > 0 ? 1 : -1
-    const originPage = state?.startPage ?? this.page
-    if (!this.scrolled) {
-      const deltaPages = page - originPage
-      if (deltaPages > 1) page = originPage + 1
-      else if (deltaPages < -1) page = originPage - 1
-    }
-    page = Math.max(0, Math.min(pages - 1, page))
-    const targetOffset = page * size
-    const distance = Math.abs(targetOffset - signedOffset)
-    const baseDuration = 450
-    const duration = Math.max(260, Math.min(380,
-      baseDuration * (distance / (size || 1) + 0.2)))
+    this.#snapping = true
 
-    const pageArg = this.#rtl ? -page : page
-    this.#disableMomentum()
+    try {
+      const state = touchState ?? this.#touchState
+      const velocity = this.#vertical ? vy : vx
+      const { pages, size } = this
+      if (!pages || size === 0) {
+        this.#restoreMomentum()
+        return
+      }
+      const currentOffset = this.#container[this.scrollProp]
+      const signedOffset = this.#rtl ? -currentOffset : currentOffset
+      let page = Math.round(signedOffset / size)
+      const velocityThreshold = 0.25
+      if (Math.abs(velocity) > velocityThreshold)
+        page += velocity > 0 ? 1 : -1
+      const originPage = state?.startPage ?? this.page
+      if (!this.scrolled) {
+        const deltaPages = page - originPage
+        if (deltaPages > 1) page = originPage + 1
+        else if (deltaPages < -1) page = originPage - 1
+      }
+      page = Math.max(0, Math.min(pages - 1, page))
+      const targetOffset = page * size
+      const distance = Math.abs(targetOffset - signedOffset)
+      const baseDuration = 450
+      const duration = Math.max(260, Math.min(380,
+        baseDuration * (distance / (size || 1) + 0.2)))
 
-    // For simulation and cover modes, show flip animation
-    const useFlipAnimation = (this.#pageTurnStyle === 'simulation' || this.#pageTurnStyle === 'cover')
-      && !this.scrolled && page !== originPage
+      const pageArg = this.#rtl ? -page : page
+      this.#disableMomentum()
 
-    if (useFlipAnimation) {
-      const direction = page > originPage ? 1 : -1
-      // Show animation while scrolling
-      const animationPromise = this.#showFlipAnimation(direction, duration)
-      const scrollPromise = this.#scrollToPage(pageArg, 'snap', {
-        animate: false, // Don't animate scroll - animation handles visuals
-        restoreMomentum: true,
-        momentumDelay: 20
-      })
-      return Promise.all([animationPromise, scrollPromise]).then(() => {
+      // For simulation and cover modes, show flip animation
+      const useFlipAnimation = (this.#pageTurnStyle === 'simulation' || this.#pageTurnStyle === 'cover')
+        && !this.scrolled && page !== originPage
+
+      if (useFlipAnimation) {
+        const direction = page > originPage ? 1 : -1
+        // Use appropriate duration for 3D flip (longer than slide animation)
+        const flipDuration = this.#pageTurnStyle === 'simulation' ? 500 : 400
+        let flipData = null
+
+        try {
+          // 1. Prepare overlay BEFORE scrolling (covers current page)
+          flipData = this.#prepareFlipAnimation(direction, flipDuration)
+          if (flipData) {
+            this.#top.appendChild(flipData.overlay)
+          }
+
+          // 2. Scroll to target page instantly (hidden by overlay)
+          await this.#scrollToPage(pageArg, 'snap', {
+            animate: false,
+            restoreMomentum: true,
+            momentumDelay: 20
+          })
+
+          // 3. Run animation to reveal new page
+          if (flipData) {
+            await flipData.animate()
+          }
+
+        } catch (e) {
+          console.warn('[Paginator] Flip animation failed:', e)
+        } finally {
+          // Always clean up overlay
+          if (flipData?.overlay?.parentNode) {
+            flipData.overlay.parentNode.removeChild(flipData.overlay)
+          }
+        }
+
+        // Check if we need to go to next/prev section
         const dir = page <= 0 ? -1 : page >= pages - 1 ? 1 : null
-        if (dir) return this.#goTo({
+        if (dir) {
+          await this.#goTo({
+            index: this.#adjacentIndex(dir),
+            anchor: dir < 0 ? () => 1 : () => 0,
+          })
+        }
+        return
+      }
+
+      await this.#scrollToPage(pageArg, 'snap', { animate: true, duration, restoreMomentum: true, momentumDelay: 20, initialVelocity: velocity })
+      const dir = page <= 0 ? -1 : page >= pages - 1 ? 1 : null
+      if (dir) {
+        await this.#goTo({
           index: this.#adjacentIndex(dir),
           anchor: dir < 0 ? () => 1 : () => 0,
         })
-      })
+      }
+    } finally {
+      this.#snapping = false
     }
-
-    return this.#scrollToPage(pageArg, 'snap', { animate: true, duration, restoreMomentum: true, momentumDelay: 20, initialVelocity: velocity }).then(() => {
-      const dir = page <= 0 ? -1 : page >= pages - 1 ? 1 : null
-      if (dir) return this.#goTo({
-        index: this.#adjacentIndex(dir),
-        anchor: dir < 0 ? () => 1 : () => 0,
-      })
-    })
   }
   #onTouchStart(e) {
     const touch = e.changedTouches[0]
@@ -1112,7 +1237,21 @@ export class Paginator extends HTMLElement {
 
     if (horizontalDrag && horizontalAxis) {
       this.#touchScrolled = true
-      // rely on native scrolling for horizontal paging
+      // In paged mode, limit scroll to prevent showing multiple pages
+      if (!this.scrolled && state.startPage !== undefined) {
+        const { size } = this
+        if (size > 0) {
+          const startOffset = state.startPage * size
+          const minOffset = Math.max(0, startOffset - size) // Allow at most prev page
+          const maxOffset = Math.min((this.pages - 1) * size, startOffset + size) // Allow at most next page
+          const currentOffset = this.#container[this.scrollProp]
+          const signedOffset = this.#rtl ? -currentOffset : currentOffset
+          if (signedOffset < minOffset || signedOffset > maxOffset) {
+            const clampedOffset = Math.max(minOffset, Math.min(maxOffset, signedOffset))
+            this.#container[this.scrollProp] = this.#rtl ? -clampedOffset : clampedOffset
+          }
+        }
+      }
     }
   }
   #onTouchEnd(e) {
@@ -1365,52 +1504,73 @@ export class Paginator extends HTMLElement {
     this.#pendingRelocate = null
     this.dispatchEvent(new CustomEvent('relocate', { detail }))
   }
-  #handleScrollBoundaries() {
-    if (!this.scrolled || this.#locked) return
-
-    // Only trigger transitions when very close to boundaries (95% through)
-    const threshold = Math.min(50, this.size * 0.05) // Small threshold or 5% of size
-    const atEnd = this.viewSize - this.end <= threshold
-    const atStart = this.start <= threshold
-
-    // Only auto-load if we're actually at the boundary, not just approaching
-    if (atEnd && !this.#loadingNext) {
-      const nextIndex = this.#adjacentIndex(1)
-      if (nextIndex != null) {
-        this.#loadingNext = true
-        // Small delay to ensure scroll has finished
-        setTimeout(() => {
-          this.#goTo({
-            index: nextIndex,
-            anchor: () => 0,
-          }).then(() => {
-            this.#loadingNext = false
-          }).catch(() => {
-            this.#loadingNext = false
-          })
-        }, 200)
-      }
+  async #handleScrollBoundaries() {
+    if (!this.scrolled) return
+    if (this.#locked || this.#loadingNext || this.#loadingPrev) {
+      return
     }
 
-    if (atStart && !this.#loadingPrev) {
+    // Prevent immediate bounce-back after section change
+    // Wait at least 500ms before allowing another section change
+    const now = Date.now()
+    if (now - this.#sectionChangeTime < 500) {
+      return
+    }
+
+    const threshold = Math.min(50, this.size * 0.05)
+    const { start, end, viewSize } = this
+    const atEnd = viewSize - end <= threshold
+    const atStart = start <= threshold
+
+    if (atEnd) {
+      const nextIndex = this.#adjacentIndex(1)
+      if (nextIndex != null && nextIndex !== this.#index) {
+        console.log('[Paginator] Scroll: loading next section', nextIndex, 'from', this.#index)
+        this.#loadingNext = true
+        this.#locked = true
+        try {
+          await this.#goTo({
+            index: nextIndex,
+            anchor: () => 0,
+          })
+          this.#sectionChangeTime = Date.now()
+          console.log('[Paginator] Next section loaded, now at index', this.#index)
+        } catch (e) {
+          console.error('[Paginator] Failed to load next section:', e)
+        } finally {
+          this.#loadingNext = false
+          this.#locked = false
+        }
+      }
+    } else if (atStart) {
       const prevIndex = this.#adjacentIndex(-1)
-      if (prevIndex != null) {
+      if (prevIndex != null && prevIndex !== this.#index) {
+        console.log('[Paginator] Scroll: loading prev section', prevIndex, 'from', this.#index)
         this.#loadingPrev = true
-        setTimeout(() => {
-          this.#goTo({
+        this.#locked = true
+        try {
+          await this.#goTo({
             index: prevIndex,
             anchor: () => 1,
-          }).then(() => {
-            this.#loadingPrev = false
-          }).catch(() => {
-            this.#loadingPrev = false
           })
-        }, 200)
+          this.#sectionChangeTime = Date.now()
+          console.log('[Paginator] Prev section loaded, now at index', this.#index)
+        } catch (e) {
+          console.error('[Paginator] Failed to load prev section:', e)
+        } finally {
+          this.#loadingPrev = false
+          this.#locked = false
+        }
       }
     }
   }
   async #display(promise) {
     const { index, src, anchor, onLoad, select } = await promise
+    // Guard against corrupted state from failed section loads
+    if (index === undefined || index === null) {
+      console.warn('[Paginator] #display: invalid index, skipping')
+      return
+    }
     this.#index = index
     if (src) {
       const view = this.#createView()
@@ -1497,17 +1657,110 @@ export class Paginator extends HTMLElement {
       if (this.sections[index]?.linear !== 'no') return index
   }
   async #turnPage(dir, distance) {
-    // if (this.#locked) return
+    // Skip if already processing
+    if (this.#locked) {
+      console.log('[Paginator] turnPage: locked, skipping')
+      return
+    }
+    if (this.#snapping) {
+      console.log('[Paginator] turnPage: snapping, skipping')
+      return
+    }
+
     this.#locked = true
-    const prev = dir === -1
-    const shouldGo = await (prev ? this.#scrollPrev(distance) : this.#scrollNext(distance))
-    
-    if (shouldGo) await this.#goTo({
-      index: this.#adjacentIndex(dir),
-      anchor: prev ? () => 1 : () => 0,
-    })
-    if (shouldGo || !this.hasAttribute('animated')) await wait(100)
-    this.#locked = false
+
+    try {
+      const prev = dir === -1
+      const useFlipAnimation = (this.#pageTurnStyle === 'simulation' || this.#pageTurnStyle === 'cover')
+        && !this.scrolled
+
+      console.log('[Paginator] turnPage:', { dir, prev, useFlipAnimation, pageTurnStyle: this.#pageTurnStyle })
+
+      if (useFlipAnimation) {
+        // Use 3D flip animation for simulation and cover modes
+        const { page, pages, size } = this
+        console.log('[Paginator] turnPage flip:', { page, pages, size })
+
+        if (!pages || size === 0) {
+          console.log('[Paginator] turnPage: no pages or size')
+          return
+        }
+
+        // Check boundaries first
+        const canGoPrev = page > 1 || this.#adjacentIndex(-1) != null
+        const canGoNext = page < pages - 2 || this.#adjacentIndex(1) != null
+
+        if (prev && !canGoPrev) {
+          console.log('[Paginator] turnPage: at absolute start')
+          return
+        }
+        if (!prev && !canGoNext) {
+          console.log('[Paginator] turnPage: at absolute end')
+          return
+        }
+
+        // Check if we need to go to adjacent section
+        if (prev && page <= 1) {
+          console.log('[Paginator] turnPage: going to prev section')
+          await this.#goTo({
+            index: this.#adjacentIndex(-1),
+            anchor: () => 1,
+          })
+          return
+        }
+        if (!prev && page >= pages - 2) {
+          console.log('[Paginator] turnPage: going to next section')
+          await this.#goTo({
+            index: this.#adjacentIndex(1),
+            anchor: () => 0,
+          })
+          return
+        }
+
+        // Calculate target page within current section
+        const targetPage = prev ? page - 1 : page + 1
+        console.log('[Paginator] turnPage: targetPage =', targetPage)
+
+        // Use flip animation
+        const flipDuration = this.#pageTurnStyle === 'simulation' ? 500 : 400
+        let flipData = null
+
+        try {
+          flipData = this.#prepareFlipAnimation(dir, flipDuration)
+          if (flipData) {
+            this.#top.appendChild(flipData.overlay)
+          }
+
+          // Scroll to target page instantly
+          const pageArg = this.#rtl ? -targetPage : targetPage
+          await this.#scrollToPage(pageArg, 'page', { animate: false })
+
+          // Run flip animation
+          if (flipData) {
+            await flipData.animate()
+          }
+        } catch (e) {
+          console.warn('[Paginator] turnPage flip animation failed:', e)
+        } finally {
+          if (flipData?.overlay?.parentNode) {
+            flipData.overlay.parentNode.removeChild(flipData.overlay)
+          }
+        }
+
+        return
+      }
+
+      // Default behavior for other modes (slide, noAnimation)
+      const shouldGo = await (prev ? this.#scrollPrev(distance) : this.#scrollNext(distance))
+
+      if (shouldGo) await this.#goTo({
+        index: this.#adjacentIndex(dir),
+        anchor: prev ? () => 1 : () => 0,
+      })
+      if (shouldGo || !this.hasAttribute('animated')) await wait(100)
+    } finally {
+      this.#locked = false
+    }
   }
   prev(distance) {
     return this.#turnPage(-1, distance)

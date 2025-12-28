@@ -123,11 +123,14 @@ class SubtitleStyleSheet extends ConsumerWidget {
                       left: 0,
                       right: 0,
                       top: style.position == SubtitlePosition.top ? 4 : null,
-                      bottom:
-                          style.position == SubtitlePosition.bottom ? 4 : null,
+                      bottom: style.position == SubtitlePosition.bottom
+                          ? 4
+                          : null,
                       child: style.position == SubtitlePosition.center
                           ? Positioned.fill(
-                              child: Center(child: _buildSubtitlePreview(style)),
+                              child: Center(
+                                child: _buildSubtitlePreview(style),
+                              ),
                             )
                           : _buildSubtitlePreview(style),
                     ),
@@ -210,7 +213,10 @@ class SubtitleStyleSheet extends ConsumerWidget {
                           children: [
                             const Text(
                               '显示背景',
-                              style: TextStyle(color: Colors.white70, fontSize: 14),
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 14,
+                              ),
                             ),
                             const Spacer(),
                             Switch(
@@ -230,7 +236,10 @@ class SubtitleStyleSheet extends ConsumerWidget {
                             alignment: Alignment.centerLeft,
                             child: Text(
                               '背景颜色',
-                              style: TextStyle(color: Colors.white54, fontSize: 12),
+                              style: TextStyle(
+                                color: Colors.white54,
+                                fontSize: 12,
+                              ),
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -238,7 +247,8 @@ class SubtitleStyleSheet extends ConsumerWidget {
                             spacing: 8,
                             runSpacing: 8,
                             children: subtitleBackgrounds.map((color) {
-                              final isSelected = color.toARGB32() ==
+                              final isSelected =
+                                  color.toARGB32() ==
                                   style.backgroundColor.toARGB32();
                               return _ColorButton(
                                 color: color,
@@ -262,21 +272,24 @@ class SubtitleStyleSheet extends ConsumerWidget {
                           label: '顶部',
                           icon: Icons.vertical_align_top_rounded,
                           isSelected: style.position == SubtitlePosition.top,
-                          onTap: () => notifier.setPosition(SubtitlePosition.top),
+                          onTap: () =>
+                              notifier.setPosition(SubtitlePosition.top),
                         ),
                         const SizedBox(width: 8),
                         _PositionChip(
                           label: '居中',
                           icon: Icons.vertical_align_center_rounded,
                           isSelected: style.position == SubtitlePosition.center,
-                          onTap: () => notifier.setPosition(SubtitlePosition.center),
+                          onTap: () =>
+                              notifier.setPosition(SubtitlePosition.center),
                         ),
                         const SizedBox(width: 8),
                         _PositionChip(
                           label: '底部',
                           icon: Icons.vertical_align_bottom_rounded,
                           isSelected: style.position == SubtitlePosition.bottom,
-                          onTap: () => notifier.setPosition(SubtitlePosition.bottom),
+                          onTap: () =>
+                              notifier.setPosition(SubtitlePosition.bottom),
                         ),
                       ],
                     ),
@@ -290,7 +303,8 @@ class SubtitleStyleSheet extends ConsumerWidget {
                         _PositionChip(
                           label: '正常',
                           isSelected: style.fontWeight == FontWeight.normal,
-                          onTap: () => notifier.setFontWeight(FontWeight.normal),
+                          onTap: () =>
+                              notifier.setFontWeight(FontWeight.normal),
                         ),
                         const SizedBox(width: 8),
                         _PositionChip(
@@ -317,7 +331,10 @@ class SubtitleStyleSheet extends ConsumerWidget {
                           children: [
                             const Text(
                               '启用描边',
-                              style: TextStyle(color: Colors.white70, fontSize: 14),
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 14,
+                              ),
                             ),
                             const Spacer(),
                             Switch(
@@ -335,7 +352,10 @@ class SubtitleStyleSheet extends ConsumerWidget {
                             children: [
                               const Text(
                                 '描边宽度',
-                                style: TextStyle(color: Colors.white54, fontSize: 12),
+                                style: TextStyle(
+                                  color: Colors.white54,
+                                  fontSize: 12,
+                                ),
                               ),
                               Expanded(
                                 child: SliderTheme(
@@ -381,7 +401,8 @@ class SubtitleStyleSheet extends ConsumerWidget {
                           children: [
                             _DarkIconButton(
                               icon: Icons.remove_rounded,
-                              onPressed: () => notifier.setDelay(style.delay - 0.5),
+                              onPressed: () =>
+                                  notifier.setDelay(style.delay - 0.5),
                             ),
                             Expanded(
                               child: SliderTheme(
@@ -397,7 +418,8 @@ class SubtitleStyleSheet extends ConsumerWidget {
                             ),
                             _DarkIconButton(
                               icon: Icons.add_rounded,
-                              onPressed: () => notifier.setDelay(style.delay + 0.5),
+                              onPressed: () =>
+                                  notifier.setDelay(style.delay + 0.5),
                             ),
                             SizedBox(
                               width: 56,
@@ -405,7 +427,9 @@ class SubtitleStyleSheet extends ConsumerWidget {
                                 style.delayText,
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
-                                  color: style.delay != 0 ? Colors.white : Colors.white54,
+                                  color: style.delay != 0
+                                      ? Colors.white
+                                      : Colors.white54,
                                   fontSize: 13,
                                   fontWeight: FontWeight.w500,
                                 ),
@@ -458,8 +482,9 @@ class SubtitleStyleSheet extends ConsumerWidget {
                           children: [
                             _DarkIconButton(
                               icon: Icons.remove_rounded,
-                              onPressed: () =>
-                                  notifier.setBottomPadding(style.bottomPadding - 8),
+                              onPressed: () => notifier.setBottomPadding(
+                                style.bottomPadding - 8,
+                              ),
                             ),
                             Expanded(
                               child: SliderTheme(
@@ -475,8 +500,9 @@ class SubtitleStyleSheet extends ConsumerWidget {
                             ),
                             _DarkIconButton(
                               icon: Icons.add_rounded,
-                              onPressed: () =>
-                                  notifier.setBottomPadding(style.bottomPadding + 8),
+                              onPressed: () => notifier.setBottomPadding(
+                                style.bottomPadding + 8,
+                              ),
                             ),
                             SizedBox(
                               width: 56,
@@ -506,51 +532,50 @@ class SubtitleStyleSheet extends ConsumerWidget {
   }
 
   static SliderThemeData get _darkSliderTheme => SliderThemeData(
-        activeTrackColor: Colors.white,
-        inactiveTrackColor: Colors.white24,
-        thumbColor: Colors.white,
-        overlayColor: Colors.white24,
-        trackHeight: 2,
-        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-      );
+    activeTrackColor: Colors.white,
+    inactiveTrackColor: Colors.white24,
+    thumbColor: Colors.white,
+    overlayColor: Colors.white24,
+    trackHeight: 2,
+    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+  );
 
   Widget _buildSubtitlePreview(SubtitleStyle style) => Center(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(
-            // 只有开启背景时才显示背景颜色
-            color: style.showBackground ? style.backgroundColor : Colors.transparent,
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: Text(
-            '这是字幕预览效果',
-            style: TextStyle(
-              fontSize: style.fontSize * 0.5,
-              color: style.fontColor,
-              fontWeight: style.fontWeight,
-              shadows: style.hasOutline
-                  ? [
-                      Shadow(
-                        color: style.outlineColor,
-                        blurRadius: style.outlineWidth,
-                        offset: const Offset(1, 1),
-                      ),
-                      Shadow(
-                        color: style.outlineColor,
-                        blurRadius: style.outlineWidth,
-                        offset: const Offset(-1, -1),
-                      ),
-                    ]
-                  : null,
-            ),
-          ),
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        // 只有开启背景时才显示背景颜色
+        color: style.showBackground
+            ? style.backgroundColor
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        '这是字幕预览效果',
+        style: TextStyle(
+          fontSize: style.fontSize * 0.5,
+          color: style.fontColor,
+          fontWeight: style.fontWeight,
+          shadows: style.hasOutline
+              ? [
+                  Shadow(
+                    color: style.outlineColor,
+                    blurRadius: style.outlineWidth,
+                    offset: const Offset(1, 1),
+                  ),
+                  Shadow(
+                    color: style.outlineColor,
+                    blurRadius: style.outlineWidth,
+                    offset: const Offset(-1, -1),
+                  ),
+                ]
+              : null,
         ),
-      );
+      ),
+    ),
+  );
 
-  Widget _buildSection({
-    required String title,
-    required Widget child,
-  }) =>
+  Widget _buildSection({required String title, required Widget child}) =>
       Padding(
         padding: const EdgeInsets.symmetric(vertical: 12),
         child: Column(
@@ -580,11 +605,11 @@ class _DarkIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => IconButton(
-        onPressed: onPressed,
-        icon: Icon(icon, color: Colors.white60, size: 20),
-        padding: EdgeInsets.zero,
-        constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-      );
+    onPressed: onPressed,
+    icon: Icon(icon, color: Colors.white60, size: 20),
+    padding: EdgeInsets.zero,
+    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+  );
 }
 
 /// 位置/选项芯片（暗色风格）
@@ -603,42 +628,42 @@ class _PositionChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Expanded(
-        child: GestureDetector(
-          onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: isSelected ? Colors.white12 : Colors.transparent,
-              border: Border.all(
-                color: isSelected ? Colors.white38 : Colors.white24,
-              ),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (icon != null) ...[
-                  Icon(
-                    icon,
-                    size: 16,
-                    color: isSelected ? Colors.white : Colors.white60,
-                  ),
-                  const SizedBox(width: 4),
-                ],
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: isSelected ? Colors.white : Colors.white60,
-                    fontSize: 12,
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                  ),
-                ),
-              ],
-            ),
+    child: GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.white12 : Colors.transparent,
+          border: Border.all(
+            color: isSelected ? Colors.white38 : Colors.white24,
           ),
+          borderRadius: BorderRadius.circular(8),
         ),
-      );
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(
+                icon,
+                size: 16,
+                color: isSelected ? Colors.white : Colors.white60,
+              ),
+              const SizedBox(width: 4),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? Colors.white : Colors.white60,
+                fontSize: 12,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 /// 快捷芯片（暗色风格）
@@ -649,22 +674,19 @@ class _QuickChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: Colors.white12,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Text(
-            label,
-            style: const TextStyle(
-              color: Colors.white70,
-              fontSize: 11,
-            ),
-          ),
-        ),
-      );
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white12,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(color: Colors.white70, fontSize: 11),
+      ),
+    ),
+  );
 }
 
 /// 颜色选择按钮
@@ -683,31 +705,31 @@ class _ColorButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: isSelected ? Colors.white : Colors.white24,
-              width: isSelected ? 2 : 1,
-            ),
-          ),
-          child: showTransparent
-              ? CustomPaint(painter: _TransparentPainter())
-              : isSelected
-                  ? Icon(
-                      Icons.check_rounded,
-                      color: color.computeLuminance() > 0.5
-                          ? Colors.black
-                          : Colors.white,
-                      size: 18,
-                    )
-                  : null,
+    onTap: onTap,
+    child: Container(
+      width: 36,
+      height: 36,
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: isSelected ? Colors.white : Colors.white24,
+          width: isSelected ? 2 : 1,
         ),
-      );
+      ),
+      child: showTransparent
+          ? CustomPaint(painter: _TransparentPainter())
+          : isSelected
+          ? Icon(
+              Icons.check_rounded,
+              color: color.computeLuminance() > 0.5
+                  ? Colors.black
+                  : Colors.white,
+              size: 18,
+            )
+          : null,
+    ),
+  );
 }
 
 class _TransparentPainter extends CustomPainter {

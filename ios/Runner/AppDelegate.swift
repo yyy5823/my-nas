@@ -50,7 +50,27 @@ import UIKit
   /// 只有在 app 完全终止时才清理
   override func applicationDidEnterBackground(_ application: UIApplication) {
     super.applicationDidEnterBackground(application)
-    // 可以在这里添加日志或其他后台处理
     print("AppDelegate: App entered background")
+
+    // 重要：重新启用远程控制事件接收
+    // 当 app 从前台返回后台时，需要重新"声明"我们是活跃的音频播放器
+    // 这有助于 iOS 在灵动岛中正确显示 Now Playing 信息
+    application.beginReceivingRemoteControlEvents()
+    print("AppDelegate: Re-enabled remote control events")
+  }
+
+  /// App 即将返回前台
+  override func applicationWillEnterForeground(_ application: UIApplication) {
+    super.applicationWillEnterForeground(application)
+    print("AppDelegate: App will enter foreground")
+  }
+
+  /// App 已激活（返回前台）
+  override func applicationDidBecomeActive(_ application: UIApplication) {
+    super.applicationDidBecomeActive(application)
+    print("AppDelegate: App did become active")
+
+    // 确保远程控制事件仍然激活
+    application.beginReceivingRemoteControlEvents()
   }
 }

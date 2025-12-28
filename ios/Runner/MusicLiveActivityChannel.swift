@@ -103,19 +103,18 @@ extension MusicLiveActivityChannel {
 
     /// 强制刷新 Now Playing 信息
     ///
-    /// 业界最佳实践（来自 Apple Developer Forums）：
-    /// 1. 维护本地字典，不读取 nowPlayingInfo（只写入）
-    /// 2. 正确设置 playbackRate（播放=1.0，暂停=0.0）
-    /// 3. 使用 becomeNowPlayingApplication() 告诉系统当前 App 是音频播放器
+    /// 核心问题：iOS MediaRemote 框架有系统级去重机制
+    /// "Setting identical nowPlayingInfo, skipping update"
+    /// 即使修改 elapsedPlaybackTime，只要核心内容（标题、艺术家、封面像素）相同，iOS 就跳过
     ///
-    /// 参考:
-    /// - https://developer.apple.com/forums/thread/32475
-    /// - https://github.com/ryanheise/audio_service/issues/684
+    /// 解决方案：清空 → 延迟 → 重设
+    /// 参考: https://developer.apple.com/videos/play/wwdc2022/110338/
+    /// 参考: https://github.com/ryanheise/audio_service/issues/684
     func forceRefreshNowPlaying() {
         let center = MPNowPlayingInfoCenter.default()
         let commandCenter = MPRemoteCommandCenter.shared()
 
-        // 获取当前信息（用于备份，但主要依赖本地字典）
+        // 获取当前信息
         guard let currentInfo = center.nowPlayingInfo, !currentInfo.isEmpty else {
             print("MusicLiveActivityChannel: No nowPlayingInfo to refresh")
             return
@@ -124,42 +123,54 @@ extension MusicLiveActivityChannel {
         MusicLiveActivityChannel.refreshCounter += 1
         let counter = MusicLiveActivityChannel.refreshCounter
 
-        print("MusicLiveActivityChannel: Force refreshing Now Playing (counter=\(counter))")
+        print("MusicLiveActivityChannel: Force refreshing Now Playing (counter=\(counter)) - using clear-delay-reset strategy")
 
-        // 更新本地字典
-        var updatedInfo = currentInfo
+        // 保存当前信息到本地字典
+        MusicLiveActivityChannel.localNowPlayingInfo = currentInfo
 
-        // 关键：确保 playbackRate 正确设置
-        // 这是 iOS 判断 App 是否是"活跃音频播放器"的关键字段
-        let currentRate = updatedInfo[MPNowPlayingInfoPropertyPlaybackRate] as? Double ?? 1.0
-        updatedInfo[MPNowPlayingInfoPropertyPlaybackRate] = currentRate
+        // 获取当前播放速率
+        let currentRate = currentInfo[MPNowPlayingInfoPropertyPlaybackRate] as? Double ?? 1.0
 
-        // 更新 elapsedPlaybackTime 确保内容不同
-        if let elapsed = updatedInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] as? Double {
-            let offset = Double(counter) * 0.0001
-            updatedInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = elapsed + offset
+        // 步骤 1: 清空 nowPlayingInfo，强制 iOS 忘记当前状态
+        center.nowPlayingInfo = nil
+        center.playbackState = .stopped
+        print("MusicLiveActivityChannel: Cleared nowPlayingInfo")
+
+        // 步骤 2: 延迟后重新设置（给 iOS 充足时间处理清空操作）
+        // 使用 150ms 延迟确保 iOS MediaRemote 框架完成状态重置
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            // 重新构建 nowPlayingInfo
+            var updatedInfo = currentInfo
+
+            // 确保 playbackRate 正确设置
+            updatedInfo[MPNowPlayingInfoPropertyPlaybackRate] = currentRate
+
+            // 重新设置 nowPlayingInfo
+            center.nowPlayingInfo = updatedInfo
+
+            // 设置 playbackState
+            if currentRate > 0 {
+                center.playbackState = .playing
+            } else {
+                center.playbackState = .paused
+            }
+
+            // 确保 Remote Commands 处于激活状态
+            commandCenter.playCommand.isEnabled = true
+            commandCenter.pauseCommand.isEnabled = true
+            commandCenter.togglePlayPauseCommand.isEnabled = true
+            commandCenter.nextTrackCommand.isEnabled = true
+            commandCenter.previousTrackCommand.isEnabled = true
+
+            print("MusicLiveActivityChannel: Now Playing restored (rate=\(currentRate), state=\(currentRate > 0 ? "playing" : "paused"))")
         }
-
-        // 保存到本地字典
-        MusicLiveActivityChannel.localNowPlayingInfo = updatedInfo
-
-        // 方法 1：直接设置（不清除）
-        // 根据 Apple 论坛的建议，直接设置整个字典比清除再恢复更可靠
-        center.nowPlayingInfo = updatedInfo
-
-        // 方法 2：确保 Remote Commands 处于激活状态
-        // 这会让系统知道当前 App 是活跃的音频播放器
-        commandCenter.playCommand.isEnabled = true
-        commandCenter.pauseCommand.isEnabled = true
-        commandCenter.togglePlayPauseCommand.isEnabled = true
-
-        print("MusicLiveActivityChannel: Now Playing refreshed (rate=\(currentRate))")
     }
 
     /// 设置当前 App 为活跃的音频播放器
     /// 在需要确保灵动岛显示时调用
     func becomeActiveNowPlayingApp() {
         let center = MPNowPlayingInfoCenter.default()
+        let commandCenter = MPRemoteCommandCenter.shared()
 
         // 如果有本地缓存的信息，使用它来刷新
         if !MusicLiveActivityChannel.localNowPlayingInfo.isEmpty {
@@ -169,6 +180,15 @@ extension MusicLiveActivityChannel {
             info[MPNowPlayingInfoPropertyPlaybackRate] = 1.0
 
             center.nowPlayingInfo = info
+            center.playbackState = .playing
+
+            // 确保 Remote Commands 处于激活状态
+            commandCenter.playCommand.isEnabled = true
+            commandCenter.pauseCommand.isEnabled = true
+            commandCenter.togglePlayPauseCommand.isEnabled = true
+            commandCenter.nextTrackCommand.isEnabled = true
+            commandCenter.previousTrackCommand.isEnabled = true
+
             print("MusicLiveActivityChannel: Set as active Now Playing app")
         }
     }

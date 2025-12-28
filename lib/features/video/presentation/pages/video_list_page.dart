@@ -293,6 +293,29 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
       _onConnectionsChanged,
       fireImmediately: false,
     );
+
+    // 监听媒体库配置变化（启用/停用/移除路径）
+    _configSubscription = _ref.listen<AsyncValue<MediaLibraryConfig>>(
+      mediaLibraryConfigProvider,
+      (previous, next) {
+        final prevPaths =
+            previous?.valueOrNull?.getEnabledPathsForType(MediaType.video) ??
+                [];
+        final nextPaths =
+            next.valueOrNull?.getEnabledPathsForType(MediaType.video) ?? [];
+
+        // 比较路径是否变化（包括 sourceId 和 path）
+        final prevKeys = prevPaths.map((p) => '${p.sourceId}|${p.path}').toSet();
+        final nextKeys = nextPaths.map((p) => '${p.sourceId}|${p.path}').toSet();
+
+        if (prevKeys.length != nextKeys.length ||
+            !prevKeys.containsAll(nextKeys)) {
+          logger.i('VideoListNotifier: 媒体库配置变化，刷新视频列表');
+          _scheduleRefresh();
+        }
+      },
+      fireImmediately: false,
+    );
   }
 
   final Ref _ref;
@@ -305,6 +328,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
   StreamSubscription<VideoMetadata>? _videoUpdatedSubscription;
   StreamSubscription<ScrapeStats>? _scrapeStatsSubscription;
   ProviderSubscription<Map<String, SourceConnection>>? _connectionsSubscription;
+  ProviderSubscription<AsyncValue<MediaLibraryConfig>>? _configSubscription;
   int _lastCompletedCount = 0;
   int _lastTotalCount = 0; // 跟踪总数变化，用于扫描完成时刷新
   bool _hasCheckedResume = false;
@@ -372,6 +396,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
     _videoUpdatedSubscription?.cancel();
     _scrapeStatsSubscription?.cancel();
     _connectionsSubscription?.close();
+    _configSubscription?.close();
     _debounceTimer?.cancel();
     _incrementalSyncTimer?.cancel();
     super.dispose();

@@ -1441,6 +1441,12 @@ class MusicListNotifier extends StateNotifier<MusicListState> {
           totalCount: totalTracks,
           currentFile: '提取元数据',
         ));
+
+        // 边扫边显示：每批保存后刷新 UI
+        if (processedCount % 30 == 0) {
+          logger.d('MusicListNotifier: 边扫边显示 - 已处理 $processedCount 首');
+          await _loadCategorizedData();
+        }
       }
     }
 

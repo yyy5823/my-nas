@@ -71,12 +71,8 @@ class MusicAudioHandler extends BaseAudioHandler
     // 监听播放状态变化，更新 playbackState
     _player.playbackEventStream.listen(_broadcastState);
 
-    // 监听播放完成
-    _player.processingStateStream.listen((state) {
-      if (state == ProcessingState.completed) {
-        skipToNext();
-      }
-    });
+    // 注意：不在这里监听播放完成，由 MusicPlayerNotifier._onTrackCompleted() 处理
+    // MusicPlayerNotifier 会根据播放模式（列表循环/单曲循环/随机）决定下一步操作
 
     // 监听时长变化
     _player.durationStream.listen((duration) {
@@ -228,31 +224,26 @@ class MusicAudioHandler extends BaseAudioHandler
         }
 
       case AppLifecycleState.paused:
-        // App 已进入后台 - 这是最关键的时机！
-        // iOS 系统在此时读取 MPNowPlayingInfoCenter 的信息来显示灵动岛
-        // 必须在这里强制刷新，确保信息是最新的
+        // App 已进入后台 - iOS 在此时读取 MPNowPlayingInfoCenter 信息显示灵动岛
+        //
+        // 修复说明：audio_service 原生层已修改为始终调用 center.nowPlayingInfo = nowPlayingInfo
+        // 参考 Apple 推荐做法: https://developer.apple.com/forums/thread/32475
+        // "maintain a dictionary with the current info and always set the entire dictionary"
+        //
+        // 这样 iOS 系统会重新评估是否需要显示灵动岛，即使内容相同
         if (mediaItem.value != null) {
-          logger.i('MusicAudioHandler: App 已进入后台 (paused)，强制刷新 Now Playing');
-          // ignore: discarded_futures
-          _resetMediaItemForNowPlaying();
+          logger.i('MusicAudioHandler: App 已进入后台 (paused)，广播当前状态');
+
+          // 广播当前播放状态 - 这会触发 audio_service 调用 updateNowPlayingInfo
+          // 由于 audio_service 原生层已修改为始终设置 nowPlayingInfo，
+          // iOS 会重新评估是否显示灵动岛
+          _broadcastStateWithPlaying(_player.playing);
         }
 
       case AppLifecycleState.resumed:
         // App 返回前台
-        // 刷新 mediaItem 以确保下次进入后台时能正确显示
         logger.i('MusicAudioHandler: App 返回前台 (resumed)');
-        if (mediaItem.value != null) {
-          // 立即刷新一次
-          // ignore: discarded_futures
-          _resetMediaItemForNowPlaying();
-          // 延迟后再次刷新（确保封面和状态同步，防止竞态条件）
-          Future.delayed(const Duration(milliseconds: 500), () {
-            if (mediaItem.value != null) {
-              logger.i('MusicAudioHandler: 返回前台后延迟刷新 mediaItem');
-              _resetMediaItemForNowPlaying();
-            }
-          });
-        }
+        // 不需要特殊处理，audio_service 原生层会在下次进入后台时正确设置 nowPlayingInfo
 
       case AppLifecycleState.detached:
         // App 即将被销毁，不需要处理
@@ -270,8 +261,9 @@ class MusicAudioHandler extends BaseAudioHandler
   /// 分析发现：iOS 只比较关键字段（title, artist, album, artwork）
   /// duration 和 position 的变化会被忽略
   ///
-  /// 解决方案：每次刷新时重新保存 artwork 到新文件路径
-  /// 这样 artUri 会变化，iOS 会认为是新的 artwork
+  /// 解决方案：
+  /// 1. 有封面：重新保存 artwork 到新文件路径
+  /// 2. 无封面：生成动态占位图片（每次颜色略微不同）
   ///
   /// 参考：
   /// - https://developer.apple.com/forums/thread/32475
@@ -285,14 +277,17 @@ class MusicAudioHandler extends BaseAudioHandler
     final cleanTitle = currentItem.title.replaceAll('\u200B', '');
     logger.i('MusicAudioHandler: 刷新灵动岛 (counter=$_refreshCounter) - $cleanTitle');
 
-    // 关键：重新保存 artwork 到新文件路径
-    // iOS MediaRemote 只有在 artwork 变化时才会真正更新
-    var newArtUri = currentItem.artUri;
+    Uri? newArtUri;
+
+    // 如果有封面数据，重新保存到新路径以触发 iOS 的 artwork 变化检测
     if (_currentArtworkData != null && _currentArtworkData!.isNotEmpty) {
-      // 使用带时间戳的文件名，确保每次都是新路径
       final timestampedId = '${currentItem.id}_refresh_$_refreshCounter';
       newArtUri = await _saveArtworkToFile(_currentArtworkData!, timestampedId);
       logger.d('MusicAudioHandler: 重新保存 artwork 到新路径: $newArtUri');
+    } else {
+      // 没有封面数据，使用原来的 artUri
+      newArtUri = currentItem.artUri;
+      logger.d('MusicAudioHandler: 无封面数据，保持原有 artUri');
     }
 
     // 创建修改后的 MediaItem
@@ -302,7 +297,7 @@ class MusicAudioHandler extends BaseAudioHandler
       artist: currentItem.artist,
       album: currentItem.album,
       duration: _player.duration ?? currentItem.duration ?? Duration.zero,
-      artUri: newArtUri, // 使用新的 artwork 路径
+      artUri: newArtUri,
       extras: currentItem.extras,
     );
 
@@ -312,7 +307,7 @@ class MusicAudioHandler extends BaseAudioHandler
     // 广播当前播放状态
     _broadcastStateWithPlaying(_player.playing);
 
-    logger.i('MusicAudioHandler: 灵动岛刷新完成 - artwork refreshed');
+    logger.i('MusicAudioHandler: 灵动岛刷新完成 - counter=$_refreshCounter');
   }
 
   /// 广播指定的播放状态

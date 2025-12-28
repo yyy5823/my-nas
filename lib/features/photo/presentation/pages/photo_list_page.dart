@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/router/app_router.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
+import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/services/media_scan_progress_service.dart';
 import 'package:my_nas/core/utils/logger.dart';
@@ -532,6 +533,16 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
   final Ref _ref;
   final PhotoLibraryCacheService _cacheService = PhotoLibraryCacheService();
   final PhotoDatabaseService _db = PhotoDatabaseService();
+  Timer? _debounceTimer;
+
+  /// 延迟刷新，避免频繁触发
+  void _scheduleRefresh() {
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 300), () {
+      logger.i('PhotoListNotifier: 媒体库配置变化，刷新照片列表');
+      _loadFromSqlite();
+    });
+  }
 
   void _init() {
     logger.d('PhotoListNotifier: 开始初始化...');
@@ -569,6 +580,20 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
 
         if (nextConnected > prevConnected && state is PhotoListNotConnected) {
           loadPhotos();
+        }
+      });
+
+      // 监听媒体库配置变化（启用/停用/移除路径）
+      _ref.listen<AsyncValue<MediaLibraryConfig>>(mediaLibraryConfigProvider, (previous, next) {
+        final prevPaths = previous?.valueOrNull?.getEnabledPathsForType(MediaType.photo) ?? [];
+        final nextPaths = next.valueOrNull?.getEnabledPathsForType(MediaType.photo) ?? [];
+
+        // 比较路径是否变化（包括 sourceId 和 path）
+        final prevKeys = prevPaths.map((p) => '${p.sourceId}|${p.path}').toSet();
+        final nextKeys = nextPaths.map((p) => '${p.sourceId}|${p.path}').toSet();
+
+        if (prevKeys.length != nextKeys.length || !prevKeys.containsAll(nextKeys)) {
+          _scheduleRefresh();
         }
       });
     } on Exception catch (e) {
@@ -851,6 +876,8 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
       // 扫描文件系统
       final photos = <PhotoFileWithSource>[];
       var lastUpdateCount = 0;
+      var lastSavedCount = 0;
+      const batchSaveSize = 50; // 每 50 张保存一次并刷新 UI
 
       await _scanFolderRecursivelyWithProgress(
         connection.adapter.fileSystem,
@@ -860,6 +887,7 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
         rootPathPrefix: pathPrefix,
         progressService: progressService,
         onBatchFound: () {
+          // 更新进度显示
           if (photos.length - lastUpdateCount >= 5) {
             lastUpdateCount = photos.length;
             progressService.emitProgress(MediaScanProgress(
@@ -871,13 +899,41 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
               currentPath: '$pathPrefix (${photos.length})',
             ));
           }
+
+          // 边扫边显示：每 batchSaveSize 张保存到数据库并刷新 UI
+          if (photos.length - lastSavedCount >= batchSaveSize) {
+            final batchPhotos = photos.sublist(lastSavedCount, photos.length);
+            lastSavedCount = photos.length;
+
+            final entities = batchPhotos
+                .map((p) => PhotoEntity(
+                      sourceId: p.sourceId,
+                      filePath: p.path,
+                      fileName: p.name,
+                      thumbnailUrl: p.thumbnailUrl,
+                      size: p.size,
+                      modifiedTime: p.modifiedTime,
+                      lastUpdated: DateTime.now(),
+                    ))
+                .toList();
+
+            // 异步保存并刷新 UI，不阻塞扫描
+            AppError.fireAndForget(
+              Future(() async {
+                await _db.upsertBatch(entities);
+                logger.d('PhotoListNotifier: 边扫边显示 - 保存 ${entities.length} 张照片');
+                await _loadFromSqlite();
+              }),
+              action: 'photoScanBatchSave',
+            );
+          }
         },
       );
 
       logger.i('PhotoListNotifier: 目录 $pathPrefix 扫描完成，找到 ${photos.length} 张照片');
 
-      // 保存到数据库
-      if (photos.isNotEmpty) {
+      // 保存剩余的照片到数据库
+      if (photos.length > lastSavedCount) {
         progressService.emitProgress(MediaScanProgress(
           mediaType: MediaType.photo,
           phase: MediaScanPhase.saving,
@@ -887,7 +943,8 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
           totalCount: photos.length,
         ));
 
-        final entities = photos
+        final remainingPhotos = photos.sublist(lastSavedCount);
+        final entities = remainingPhotos
             .map((p) => PhotoEntity(
                   sourceId: p.sourceId,
                   filePath: p.path,
@@ -900,12 +957,13 @@ class PhotoListNotifier extends StateNotifier<PhotoListState> {
             .toList();
 
         await _db.upsertBatch(entities);
+        logger.d('PhotoListNotifier: 保存剩余 ${entities.length} 张照片');
       }
 
       // 完成扫描
       progressService.endScan(MediaType.photo, sourceId, pathPrefix, success: true);
 
-      // 重新加载数据
+      // 最终刷新 UI
       await _loadFromSqlite();
 
       return photos.length;

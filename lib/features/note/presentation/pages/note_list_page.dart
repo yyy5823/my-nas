@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -115,9 +116,37 @@ class NotePageNotifier extends StateNotifier<NotePageState> {
         loadTree();
       }
     });
+
+    // 监听媒体库配置变化（启用/停用/移除路径）
+    _ref.listen<AsyncValue<MediaLibraryConfig>>(mediaLibraryConfigProvider, (previous, next) {
+      final prevPaths =
+          previous?.valueOrNull?.getEnabledPathsForType(MediaType.note) ?? [];
+      final nextPaths =
+          next.valueOrNull?.getEnabledPathsForType(MediaType.note) ?? [];
+
+      // 比较路径是否变化（包括 sourceId 和 path）
+      final prevKeys = prevPaths.map((p) => '${p.sourceId}|${p.path}').toSet();
+      final nextKeys = nextPaths.map((p) => '${p.sourceId}|${p.path}').toSet();
+
+      if (prevKeys.length != nextKeys.length || !prevKeys.containsAll(nextKeys)) {
+        _scheduleRefresh();
+      }
+    });
   }
 
   final Ref _ref;
+
+  /// 防抖计时器，避免频繁刷新
+  Timer? _debounceTimer;
+
+  /// 延迟刷新，避免频繁触发
+  void _scheduleRefresh() {
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 300), () {
+      logger.i('NotePageNotifier: 媒体库配置变化，刷新笔记列表');
+      loadTree();
+    });
+  }
 
   /// 加载目录树
   Future<void> loadTree() async {
