@@ -1,9 +1,10 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
+import 'package:my_nas/app/theme/ui_style.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/shared/providers/ui_style_provider.dart';
 
 /// 显示应用统一风格的底部弹窗
 ///
@@ -50,7 +51,7 @@ Future<T?> showAppBottomSheet<T>({
   );
 
 /// 可滚动的底部弹窗（使用 DraggableScrollableSheet）
-class _ScrollableBottomSheet extends StatelessWidget {
+class _ScrollableBottomSheet extends ConsumerWidget {
   const _ScrollableBottomSheet({
     required this.builder,
     this.title,
@@ -68,8 +69,10 @@ class _ScrollableBottomSheet extends StatelessWidget {
   final double maxChildSize;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final uiStyle = ref.watch(uiStyleProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final glassStyle = GlassTheme.getStyle(uiStyle, isDark: isDark);
 
     return DraggableScrollableSheet(
       initialChildSize: initialChildSize,
@@ -79,6 +82,7 @@ class _ScrollableBottomSheet extends StatelessWidget {
       builder: (context, scrollController) => _buildContainer(
         context,
         isDark,
+        glassStyle,
         child: Column(
           children: [
             _buildDragHandle(isDark),
@@ -95,28 +99,54 @@ class _ScrollableBottomSheet extends StatelessWidget {
     );
   }
 
-  Widget _buildContainer(BuildContext context, bool isDark, {required Widget child}) => ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: isDark
-                ? AppColors.darkSurface.withValues(alpha: 0.95)
-                : AppColors.lightSurface.withValues(alpha: 0.98),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            border: Border(
-              top: BorderSide(
-                color: isDark
-                    ? AppColors.glassStroke
-                    : AppColors.lightOutline.withValues(alpha: 0.2),
-              ),
-            ),
-          ),
-          child: child,
+  Widget _buildContainer(
+    BuildContext context,
+    bool isDark,
+    GlassStyle glassStyle, {
+    required Widget child,
+  }) {
+    final borderRadius = const BorderRadius.vertical(top: Radius.circular(24));
+    
+    // 计算背景色 - 底部弹窗使用稍高的不透明度
+    final bgColor = glassStyle.needsBlur
+        ? (isDark
+            ? AppColors.darkSurface.withValues(
+                alpha: (glassStyle.backgroundOpacity + 0.15).clamp(0.0, 1.0),
+              )
+            : AppColors.lightSurface.withValues(
+                alpha: (glassStyle.backgroundOpacity + 0.1).clamp(0.0, 1.0),
+              ))
+        : (isDark ? AppColors.darkSurface : AppColors.lightSurface);
+
+    final decoration = BoxDecoration(
+      color: bgColor,
+      borderRadius: borderRadius,
+      border: Border(
+        top: BorderSide(
+          color: isDark
+              ? AppColors.glassStroke
+              : AppColors.lightOutline.withValues(alpha: 0.2),
         ),
       ),
     );
+
+    Widget content = DecoratedBox(
+      decoration: decoration,
+      child: child,
+    );
+
+    if (glassStyle.needsBlur) {
+      content = ClipRRect(
+        borderRadius: borderRadius,
+        child: BackdropFilter(
+          filter: glassStyle.blurFilter!,
+          child: content,
+        ),
+      );
+    }
+
+    return content;
+  }
 
   Widget _buildDragHandle(bool isDark) => Container(
       margin: const EdgeInsets.only(top: 12, bottom: 8),
@@ -174,7 +204,7 @@ class _ScrollableBottomSheet extends StatelessWidget {
 }
 
 /// 固定高度的底部弹窗（内容较少时使用）
-class _FixedBottomSheet extends StatelessWidget {
+class _FixedBottomSheet extends ConsumerWidget {
   const _FixedBottomSheet({
     required this.builder,
     this.title,
@@ -186,78 +216,98 @@ class _FixedBottomSheet extends StatelessWidget {
   final Widget? titleWidget;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final uiStyle = ref.watch(uiStyleProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final glassStyle = GlassTheme.getStyle(uiStyle, isDark: isDark);
     final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
+    final borderRadius = const BorderRadius.vertical(top: Radius.circular(24));
 
-    return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: isDark
-                ? AppColors.darkSurface.withValues(alpha: 0.95)
-                : AppColors.lightSurface.withValues(alpha: 0.98),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            border: Border(
-              top: BorderSide(
-                color: isDark
-                    ? AppColors.glassStroke
-                    : AppColors.lightOutline.withValues(alpha: 0.2),
-              ),
-            ),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // 拖动指示器
-              Container(
-                margin: const EdgeInsets.only(top: 12, bottom: 8),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.3)
-                      : AppColors.lightOnSurfaceVariant.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              // 标题
-              if (titleWidget != null)
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.lg,
-                    vertical: AppSpacing.sm,
-                  ),
-                  child: titleWidget,
-                )
-              else if (title != null && title!.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.all(AppSpacing.lg),
-                  child: Text(
-                    title!,
-                    style: context.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
-                    ),
-                  ),
-                ),
-              // 内容（使用 SingleChildScrollView 确保内容可以滚动）
-              Flexible(
-                child: SingleChildScrollView(
-                  child: builder(context, null),
-                ),
-              ),
-              // 底部安全区域
-              SizedBox(
-                height: bottomPadding > 0 ? bottomPadding : AppSpacing.lg,
-              ),
-            ],
-          ),
+    // 计算背景色
+    final bgColor = glassStyle.needsBlur
+        ? (isDark
+            ? AppColors.darkSurface.withValues(
+                alpha: (glassStyle.backgroundOpacity + 0.15).clamp(0.0, 1.0),
+              )
+            : AppColors.lightSurface.withValues(
+                alpha: (glassStyle.backgroundOpacity + 0.1).clamp(0.0, 1.0),
+              ))
+        : (isDark ? AppColors.darkSurface : AppColors.lightSurface);
+
+    final decoration = BoxDecoration(
+      color: bgColor,
+      borderRadius: borderRadius,
+      border: Border(
+        top: BorderSide(
+          color: isDark
+              ? AppColors.glassStroke
+              : AppColors.lightOutline.withValues(alpha: 0.2),
         ),
       ),
     );
+
+    Widget content = DecoratedBox(
+      decoration: decoration,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 拖动指示器
+          Container(
+            margin: const EdgeInsets.only(top: 12, bottom: 8),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: isDark
+                  ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.3)
+                  : AppColors.lightOnSurfaceVariant.withValues(alpha: 0.3),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          // 标题
+          if (titleWidget != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.lg,
+                vertical: AppSpacing.sm,
+              ),
+              child: titleWidget,
+            )
+          else if (title != null && title!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.all(AppSpacing.lg),
+              child: Text(
+                title!,
+                style: context.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                ),
+              ),
+            ),
+          // 内容（使用 SingleChildScrollView 确保内容可以滚动）
+          Flexible(
+            child: SingleChildScrollView(
+              child: builder(context, null),
+            ),
+          ),
+          // 底部安全区域
+          SizedBox(
+            height: bottomPadding > 0 ? bottomPadding : AppSpacing.lg,
+          ),
+        ],
+      ),
+    );
+
+    if (glassStyle.needsBlur) {
+      content = ClipRRect(
+        borderRadius: borderRadius,
+        child: BackdropFilter(
+          filter: glassStyle.blurFilter!,
+          child: content,
+        ),
+      );
+    }
+
+    return content;
   }
 }
 

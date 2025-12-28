@@ -5,7 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
+import 'package:my_nas/features/video/domain/entities/audio_capability.dart';
+import 'package:my_nas/features/video/domain/entities/hdr_capability.dart';
 import 'package:my_nas/features/video/domain/entities/video_quality.dart';
+import 'package:my_nas/features/video/presentation/providers/hdr_audio_settings_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/quality_provider.dart';
 
 /// 视频播放器设置页面
@@ -16,6 +19,7 @@ class VideoPlayerSettingsPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final settings = ref.watch(qualitySettingsProvider);
+    final hdrAudioSettings = ref.watch(hdrAudioSettingsProvider);
 
     return Scaffold(
       backgroundColor: isDark ? AppColors.darkBackground : null,
@@ -165,10 +169,164 @@ class VideoPlayerSettingsPage extends ConsumerWidget {
             ],
           ),
 
+          const SizedBox(height: AppSpacing.xl),
+
+          // HDR 设置
+          _buildSectionHeader(context, 'HDR', Icons.hdr_on_rounded, isDark),
+          const SizedBox(height: AppSpacing.sm),
+          _buildSettingsCard(
+            context,
+            isDark,
+            children: [
+              // HDR 模式
+              _buildSettingsTile(
+                context,
+                isDark,
+                icon: Icons.auto_awesome_rounded,
+                iconColor: AppColors.primary,
+                title: 'HDR 模式',
+                subtitle: _getHdrModeLabel(hdrAudioSettings.settings.hdrMode),
+                onTap: () => _showHdrModePicker(context, ref, hdrAudioSettings, isDark),
+              ),
+              _buildDivider(isDark),
+              // 色调映射
+              _buildSettingsTile(
+                context,
+                isDark,
+                icon: Icons.tune_rounded,
+                iconColor: AppColors.accent,
+                title: '色调映射算法',
+                subtitle: _getToneMappingLabel(hdrAudioSettings.settings.toneMappingMode),
+                onTap: () => _showToneMappingPicker(context, ref, hdrAudioSettings, isDark),
+              ),
+              _buildDivider(isDark),
+              // 设备能力
+              _buildInfoTile(
+                context,
+                isDark,
+                icon: Icons.monitor_rounded,
+                iconColor: AppColors.info,
+                title: '设备 HDR 能力',
+                subtitle: _getHdrCapabilityText(hdrAudioSettings.hdrCapability),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: AppSpacing.xl),
+
+          // 音频直通设置
+          _buildSectionHeader(context, '音频直通', Icons.surround_sound_rounded, isDark),
+          const SizedBox(height: AppSpacing.sm),
+          _buildSettingsCard(
+            context,
+            isDark,
+            children: [
+              // 音频直通模式
+              _buildSettingsTile(
+                context,
+                isDark,
+                icon: Icons.speaker_rounded,
+                iconColor: AppColors.secondary,
+                title: '音频直通模式',
+                subtitle: _getAudioPassthroughLabel(hdrAudioSettings.settings.audioPassthroughMode),
+                onTap: () => _showAudioPassthroughPicker(context, ref, hdrAudioSettings, isDark),
+              ),
+              _buildDivider(isDark),
+              // 当前输出设备
+              _buildInfoTile(
+                context,
+                isDark,
+                icon: Icons.output_rounded,
+                iconColor: AppColors.tertiary,
+                title: '当前输出设备',
+                subtitle: _getOutputDeviceText(hdrAudioSettings.audioCapability),
+              ),
+              _buildDivider(isDark),
+              // 支持的编码
+              _buildInfoTile(
+                context,
+                isDark,
+                icon: Icons.audiotrack_rounded,
+                iconColor: AppColors.warning,
+                title: '支持的编码',
+                subtitle: _getSupportedCodecsText(hdrAudioSettings.audioCapability),
+              ),
+            ],
+          ),
+
           const SizedBox(height: AppSpacing.xxxl),
         ],
       ),
     );
+  }
+
+  String _getHdrModeLabel(HdrMode mode) => switch (mode) {
+        HdrMode.auto => '自动',
+        HdrMode.passthrough => 'HDR 直通',
+        HdrMode.tonemapping => '色调映射',
+        HdrMode.disabled => '禁用',
+      };
+
+  String _getToneMappingLabel(ToneMappingMode mode) => switch (mode) {
+        ToneMappingMode.auto => '自动',
+        ToneMappingMode.mobius => 'Mobius',
+        ToneMappingMode.reinhard => 'Reinhard',
+        ToneMappingMode.hable => 'Hable',
+        ToneMappingMode.bt2390 => 'BT.2390',
+        ToneMappingMode.clip => 'Clip',
+      };
+
+  String _getAudioPassthroughLabel(AudioPassthroughMode mode) => switch (mode) {
+        AudioPassthroughMode.auto => '自动',
+        AudioPassthroughMode.enabled => '启用',
+        AudioPassthroughMode.disabled => '禁用',
+      };
+
+  String _getHdrCapabilityText(HdrCapability? capability) {
+    if (capability == null) return '检测中...';
+    if (!capability.isSupported) return '不支持';
+    final types = capability.supportedTypes.map((t) => switch (t) {
+          HdrType.hdr10 => 'HDR10',
+          HdrType.hdr10Plus => 'HDR10+',
+          HdrType.hlg => 'HLG',
+          HdrType.dolbyVision => 'Dolby Vision',
+          HdrType.none => '',
+        }).where((s) => s.isNotEmpty).join(', ');
+    return types.isEmpty ? '支持 HDR' : '支持 $types';
+  }
+
+  String _getOutputDeviceText(AudioPassthroughCapability? capability) {
+    if (capability == null) return '检测中...';
+    final device = switch (capability.outputDevice) {
+      AudioOutputDevice.hdmi => 'HDMI',
+      AudioOutputDevice.spdif => 'S/PDIF 光纤',
+      AudioOutputDevice.arc => 'HDMI ARC/eARC',
+      AudioOutputDevice.bluetooth => '蓝牙',
+      AudioOutputDevice.speaker => '内置扬声器',
+      AudioOutputDevice.headphones => '耳机',
+      AudioOutputDevice.unknown => '未知',
+    };
+    if (capability.deviceName != null && capability.deviceName!.isNotEmpty) {
+      return '$device (${capability.deviceName})';
+    }
+    return device;
+  }
+
+  String _getSupportedCodecsText(AudioPassthroughCapability? capability) {
+    if (capability == null) return '检测中...';
+    if (!capability.isSupported || capability.supportedCodecs.isEmpty) {
+      return '不支持直通';
+    }
+    return capability.supportedCodecs.map((c) => switch (c) {
+          AudioCodec.pcm => 'PCM',
+          AudioCodec.ac3 => 'AC3',
+          AudioCodec.eac3 => 'DD+ (Atmos)',
+          AudioCodec.truehd => 'TrueHD',
+          AudioCodec.dts => 'DTS',
+          AudioCodec.dtsHd => 'DTS-HD MA',
+          AudioCodec.atmos => 'Dolby Atmos',
+          AudioCodec.dtsX => 'DTS:X',
+        }).join(', ');
   }
 
   Widget _buildSectionHeader(BuildContext context, String title, IconData icon, bool isDark) => Row(
@@ -748,6 +906,233 @@ class VideoPlayerSettingsPage extends ConsumerWidget {
                       color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
                       fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                     ),
+                  ),
+                ),
+                if (isSelected)
+                  Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: AppColors.primaryGradient,
+                    ),
+                    child: const Icon(
+                      Icons.check_rounded,
+                      color: Colors.white,
+                      size: 16,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+  void _showHdrModePicker(
+    BuildContext context,
+    WidgetRef ref,
+    HdrAudioSettingsState settings,
+    bool isDark,
+  ) {
+    final modes = [
+      (HdrMode.auto, '自动', '根据设备和视频自动选择最佳模式'),
+      (HdrMode.passthrough, 'HDR 直通', '直接输出 HDR 信号到支持的显示器'),
+      (HdrMode.tonemapping, '色调映射', '将 HDR 转换为 SDR 显示'),
+      (HdrMode.disabled, '禁用', '不进行任何 HDR 处理'),
+    ];
+
+    _showOptionPicker(
+      context: context,
+      ref: ref,
+      title: 'HDR 模式',
+      isDark: isDark,
+      options: modes.map((m) => (
+            value: m.$1,
+            label: m.$2,
+            description: m.$3,
+            isSelected: settings.settings.hdrMode == m.$1,
+          )).toList(),
+      onSelected: (mode) {
+        ref.read(hdrAudioSettingsProvider.notifier).setHdrMode(mode);
+      },
+    );
+  }
+
+  void _showToneMappingPicker(
+    BuildContext context,
+    WidgetRef ref,
+    HdrAudioSettingsState settings,
+    bool isDark,
+  ) {
+    final modes = [
+      (ToneMappingMode.auto, '自动', '由 MPV 自动选择算法'),
+      (ToneMappingMode.mobius, 'Mobius', '平滑过渡，适合大多数内容'),
+      (ToneMappingMode.reinhard, 'Reinhard', '经典算法，保留更多细节'),
+      (ToneMappingMode.hable, 'Hable', '电影感更强，对比度更高'),
+    ];
+
+    _showOptionPicker(
+      context: context,
+      ref: ref,
+      title: '色调映射算法',
+      isDark: isDark,
+      options: modes.map((m) => (
+            value: m.$1,
+            label: m.$2,
+            description: m.$3,
+            isSelected: settings.settings.toneMappingMode == m.$1,
+          )).toList(),
+      onSelected: (mode) {
+        ref.read(hdrAudioSettingsProvider.notifier).setToneMappingMode(mode);
+      },
+    );
+  }
+
+  void _showAudioPassthroughPicker(
+    BuildContext context,
+    WidgetRef ref,
+    HdrAudioSettingsState settings,
+    bool isDark,
+  ) {
+    final modes = [
+      (AudioPassthroughMode.auto, '自动', '根据输出设备和音频格式自动选择'),
+      (AudioPassthroughMode.enabled, '启用', '尝试直通所有支持的音频格式'),
+      (AudioPassthroughMode.disabled, '禁用', '始终解码音频后输出'),
+    ];
+
+    _showOptionPicker(
+      context: context,
+      ref: ref,
+      title: '音频直通模式',
+      isDark: isDark,
+      options: modes.map((m) => (
+            value: m.$1,
+            label: m.$2,
+            description: m.$3,
+            isSelected: settings.settings.audioPassthroughMode == m.$1,
+          )).toList(),
+      onSelected: (mode) {
+        ref.read(hdrAudioSettingsProvider.notifier).setAudioPassthroughMode(mode);
+      },
+    );
+  }
+
+  void _showOptionPicker<T>({
+    required BuildContext context,
+    required WidgetRef ref,
+    required String title,
+    required bool isDark,
+    required List<({T value, String label, String description, bool isSelected})> options,
+    required void Function(T) onSelected,
+  }) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: isDark
+                  ? AppColors.darkSurface.withValues(alpha: 0.95)
+                  : AppColors.lightSurface.withValues(alpha: 0.98),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              border: Border(
+                top: BorderSide(
+                  color: isDark ? AppColors.glassStroke : AppColors.lightOutline.withValues(alpha: 0.2),
+                ),
+              ),
+            ),
+            child: SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // 拖动指示器
+                  Container(
+                    margin: const EdgeInsets.only(top: 12),
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.3)
+                          : AppColors.lightOnSurfaceVariant.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(AppSpacing.lg),
+                    child: Text(
+                      title,
+                      style: context.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                      ),
+                    ),
+                  ),
+                  ...options.map(
+                    (option) => _buildPickerOption(
+                      context,
+                      isDark,
+                      label: option.label,
+                      description: option.description,
+                      isSelected: option.isSelected,
+                      onTap: () {
+                        onSelected(option.value);
+                        Navigator.pop(context);
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPickerOption(
+    BuildContext context,
+    bool isDark, {
+    required String label,
+    required String description,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) =>
+      Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.lg,
+              vertical: AppSpacing.md,
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        style: context.textTheme.bodyLarge?.copyWith(
+                          color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        description,
+                        style: context.textTheme.bodySmall?.copyWith(
+                          color: isDark
+                              ? AppColors.darkOnSurfaceVariant
+                              : AppColors.lightOnSurfaceVariant,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 if (isSelected)

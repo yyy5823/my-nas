@@ -49,6 +49,12 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
   // 选中的照片（用于删除）
   final Set<String> _selectedPhotos = {}; // 存储 uniqueKey
 
+  // 拖动选择相关状态
+  bool _isDragging = false;
+  bool _dragSelectMode = true; // true=选中模式, false=取消选中模式
+  String? _lastDraggedKey; // 上一个拖动经过的照片 key，避免重复处理
+  final Map<String, GlobalKey> _photoKeys = {}; // 照片的 GlobalKey 映射
+
   // 扫描进度
   HashProgress? _scanProgress;
   StreamSubscription<HashProgress>? _progressSubscription;
@@ -59,11 +65,19 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
   // 相似度阈值（汉明距离）
   int _similarityThreshold = 8;
 
+  /// 当前模式下是否有重复数据
+  bool get _hasAnyDuplicates => switch (_currentMode) {
+        0 => _nameSizeDuplicates.isNotEmpty,
+        1 => _hashDuplicates.isNotEmpty,
+        2 => _similarGroups.isNotEmpty,
+        _ => false,
+      };
+
   @override
   void initState() {
     super.initState();
-    // 加载数据并自动开始扫描待处理的照片
-    _loadDuplicates(autoStartScan: true);
+    // 仅加载数据，不自动开始扫描（需要用户手动点击）
+    _loadDuplicates();
   }
 
   @override
@@ -202,8 +216,261 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
     });
   }
 
+  /// 一键全选所有推荐删除的照片（每组保留第一张）
+  void _selectAllRecommended() {
+    setState(() {
+      _selectedPhotos.clear();
+      // 根据当前模式选择对应的数据
+      switch (_currentMode) {
+        case 0: // 快速检测
+          for (final photos in _nameSizeDuplicates.values) {
+            for (var i = 1; i < photos.length; i++) {
+              _selectedPhotos.add(photos[i].uniqueKey);
+            }
+          }
+        case 1: // 精确匹配
+          for (final photos in _hashDuplicates.values) {
+            for (var i = 1; i < photos.length; i++) {
+              _selectedPhotos.add(photos[i].uniqueKey);
+            }
+          }
+        case 2: // 视觉相似
+          for (final photos in _similarGroups) {
+            for (var i = 1; i < photos.length; i++) {
+              _selectedPhotos.add(photos[i].uniqueKey);
+            }
+          }
+      }
+    });
+  }
+
   void _clearSelection() {
     setState(_selectedPhotos.clear);
+  }
+
+  /// 获取或创建照片的 GlobalKey
+  GlobalKey _getPhotoKey(String uniqueKey) {
+    return _photoKeys.putIfAbsent(uniqueKey, GlobalKey.new);
+  }
+
+  /// 开始拖动选择
+  void _onDragStart(String photoKey) {
+    final isCurrentlySelected = _selectedPhotos.contains(photoKey);
+    setState(() {
+      _isDragging = true;
+      // 根据第一个触摸的照片状态决定模式：如果已选中则切换为取消模式，否则为选中模式
+      _dragSelectMode = !isCurrentlySelected;
+      _lastDraggedKey = photoKey;
+      // 立即处理第一个照片
+      if (_dragSelectMode) {
+        _selectedPhotos.add(photoKey);
+      } else {
+        _selectedPhotos.remove(photoKey);
+      }
+    });
+  }
+
+  /// 拖动过程中更新选择
+  void _onDragUpdate(Offset globalPosition) {
+    if (!_isDragging) return;
+
+    // 检查当前位置下是哪个照片
+    for (final entry in _photoKeys.entries) {
+      final key = entry.value;
+      final context = key.currentContext;
+      if (context == null) continue;
+
+      final box = context.findRenderObject() as RenderBox?;
+      if (box == null) continue;
+
+      final position = box.localToGlobal(Offset.zero);
+      final size = box.size;
+      final rect = Rect.fromLTWH(position.dx, position.dy, size.width, size.height);
+
+      if (rect.contains(globalPosition)) {
+        final photoKey = entry.key;
+        // 避免重复处理同一个照片
+        if (photoKey != _lastDraggedKey) {
+          setState(() {
+            _lastDraggedKey = photoKey;
+            if (_dragSelectMode) {
+              _selectedPhotos.add(photoKey);
+            } else {
+              _selectedPhotos.remove(photoKey);
+            }
+          });
+        }
+        break;
+      }
+    }
+  }
+
+  /// 结束拖动选择
+  void _onDragEnd() {
+    setState(() {
+      _isDragging = false;
+      _lastDraggedKey = null;
+    });
+  }
+
+  /// 构建可拖动选择的照片网格
+  Widget _buildDragSelectPhotoGrid({
+    required List<PhotoEntity> photos,
+    required Map<String, SourceConnectionState> connections,
+    required bool isDark,
+    required bool showSourceLabel,
+  }) {
+    return Listener(
+      onPointerDown: (event) {
+        // 检查点击位置对应哪个照片
+        for (final photo in photos) {
+          final key = _photoKeys[photo.uniqueKey];
+          if (key == null) continue;
+          final context = key.currentContext;
+          if (context == null) continue;
+          final box = context.findRenderObject() as RenderBox?;
+          if (box == null) continue;
+          final position = box.localToGlobal(Offset.zero);
+          final size = box.size;
+          final rect = Rect.fromLTWH(position.dx, position.dy, size.width, size.height);
+          if (rect.contains(event.position)) {
+            _onDragStart(photo.uniqueKey);
+            break;
+          }
+        }
+      },
+      onPointerMove: (event) => _onDragUpdate(event.position),
+      onPointerUp: (_) => _onDragEnd(),
+      onPointerCancel: (_) => _onDragEnd(),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: photos.asMap().entries.map((entry) {
+          final photoIndex = entry.key;
+          final photo = entry.value;
+          final isSelected = _selectedPhotos.contains(photo.uniqueKey);
+          final connection = connections[photo.sourceId];
+          final fileSystem = connection?.adapter.fileSystem;
+          final photoKey = _getPhotoKey(photo.uniqueKey);
+
+          return Container(
+            key: photoKey,
+            width: 100,
+            height: 100,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: isSelected
+                  ? Border.all(color: AppColors.error, width: 3)
+                  : null,
+            ),
+            child: Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(isSelected ? 5 : 8),
+                  child: StreamImage(
+                    url: photo.thumbnailUrl,
+                    path: photo.filePath,
+                    fileSystem: fileSystem,
+                    placeholder: ColoredBox(
+                      color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
+                      child: const Center(child: Icon(Icons.photo)),
+                    ),
+                    errorWidget: ColoredBox(
+                      color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
+                      child: const Center(child: Icon(Icons.broken_image)),
+                    ),
+                    cacheKey: photo.filePath,
+                  ),
+                ),
+                // 第一张标记为"保留"
+                if (photoIndex == 0)
+                  Positioned(
+                    top: 4,
+                    left: 4,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppColors.success,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        '推荐保留',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                // 选中标记
+                if (isSelected)
+                  Positioned(
+                    top: 4,
+                    right: 4,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        color: AppColors.error,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.delete, color: Colors.white, size: 16),
+                    ),
+                  ),
+                // 数据源标识（跨数据源时显示）
+                if (showSourceLabel && photos.map((p) => p.sourceId).toSet().length > 1)
+                  Positioned(
+                    top: photoIndex == 0 ? 24 : 4,
+                    left: 4,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppColors.info.withValues(alpha: 0.9),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        photo.sourceId.length > 8
+                            ? '${photo.sourceId.substring(0, 8)}...'
+                            : photo.sourceId,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 8,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                // 文件大小
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                        colors: [
+                          Colors.black.withValues(alpha: 0.7),
+                          Colors.transparent,
+                        ],
+                      ),
+                      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(8)),
+                    ),
+                    child: Text(
+                      photo.displaySize,
+                      style: const TextStyle(color: Colors.white, fontSize: 10),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+      ),
+    );
   }
 
   Future<void> _deleteSelected() async {
@@ -302,12 +569,18 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
               icon: Icon(Icons.delete_rounded, color: AppColors.error),
               tooltip: '删除选中',
             ),
+          ] else if (_hasAnyDuplicates) ...[
+            IconButton(
+              onPressed: _selectAllRecommended,
+              icon: const Icon(Icons.checklist_rounded),
+              tooltip: '一键全选推荐',
+            ),
           ],
           if (!_isScanning)
             IconButton(
               onPressed: _startScan,
-              icon: const Icon(Icons.refresh_rounded),
-              tooltip: '扫描哈希',
+              icon: const Icon(Icons.play_circle_outline_rounded),
+              tooltip: '开始扫描',
             ),
         ],
       ),
@@ -506,126 +779,14 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
               ],
             ),
           ),
-          // 照片网格
+          // 照片网格（支持拖动选择）
           Padding(
             padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: photos.asMap().entries.map((entry) {
-                final photoIndex = entry.key;
-                final photo = entry.value;
-                final isSelected = _selectedPhotos.contains(photo.uniqueKey);
-                final connection = connections[photo.sourceId];
-                final fileSystem = connection?.adapter.fileSystem;
-
-                return GestureDetector(
-                  onTap: () => _togglePhotoSelection(photo),
-                  child: Stack(
-                    children: [
-                      Container(
-                        width: 100,
-                        height: 100,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(8),
-                          border: isSelected
-                              ? Border.all(color: AppColors.error, width: 3)
-                              : null,
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: StreamImage(
-                            url: photo.thumbnailUrl,
-                            path: photo.filePath,
-                            fileSystem: fileSystem,
-                            placeholder: Container(
-                              color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
-                              child: const Icon(Icons.photo),
-                            ),
-                            errorWidget: Container(
-                              color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
-                              child: const Icon(Icons.broken_image),
-                            ),
-                            cacheKey: photo.filePath,
-                          ),
-                        ),
-                      ),
-                      // 第一张标记
-                      if (photoIndex == 0)
-                        Positioned(
-                          top: 4,
-                          left: 4,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppColors.success,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: const Text(
-                              '推荐保留',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ),
-                      // 选中标记
-                      if (isSelected)
-                        Positioned(
-                          top: 4,
-                          right: 4,
-                          child: Container(
-                            padding: const EdgeInsets.all(2),
-                            decoration: BoxDecoration(
-                              color: AppColors.error,
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.delete,
-                              color: Colors.white,
-                              size: 16,
-                            ),
-                          ),
-                        ),
-                      // 文件大小
-                      Positioned(
-                        bottom: 0,
-                        left: 0,
-                        right: 0,
-                        child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.bottomCenter,
-                              end: Alignment.topCenter,
-                              colors: [
-                                Colors.black.withValues(alpha: 0.7),
-                                Colors.transparent,
-                              ],
-                            ),
-                            borderRadius: const BorderRadius.vertical(
-                              bottom: Radius.circular(8),
-                            ),
-                          ),
-                          child: Text(
-                            photo.displaySize,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }).toList(),
+            child: _buildDragSelectPhotoGrid(
+              photos: photos,
+              connections: connections,
+              isDark: isDark,
+              showSourceLabel: false,
             ),
           ),
           // 文件路径
@@ -850,7 +1011,15 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
             ),
             if (progress != null) ...[
               const SizedBox(height: 12),
-              LinearProgressIndicator(value: progress.progress),
+              LinearProgressIndicator(
+                value: progress.progress,
+                backgroundColor: isDark
+                    ? AppColors.darkOutline
+                    : AppColors.lightOutline,
+                valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+                minHeight: 6,
+                borderRadius: BorderRadius.circular(3),
+              ),
               const SizedBox(height: 8),
               Text(
                 '已处理 ${progress.processed} / ${progress.total} 张'
@@ -1258,152 +1427,14 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
               ],
             ),
           ),
-          // 照片网格
+          // 照片网格（支持拖动选择）
           Padding(
             padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: photos.asMap().entries.map((entry) {
-                final index = entry.key;
-                final photo = entry.value;
-                final isSelected = _selectedPhotos.contains(photo.uniqueKey);
-                final connection = connections[photo.sourceId];
-                final fileSystem = connection?.adapter.fileSystem;
-
-                return GestureDetector(
-                  onTap: () => _togglePhotoSelection(photo),
-                  child: Stack(
-                    children: [
-                      Container(
-                        width: 100,
-                        height: 100,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(8),
-                          border: isSelected
-                              ? Border.all(color: AppColors.error, width: 3)
-                              : null,
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: StreamImage(
-                            url: photo.thumbnailUrl,
-                            path: photo.filePath,
-                            fileSystem: fileSystem,
-                            placeholder: Container(
-                              color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
-                              child: const Icon(Icons.photo),
-                            ),
-                            errorWidget: Container(
-                              color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
-                              child: const Icon(Icons.broken_image),
-                            ),
-                            cacheKey: photo.filePath,
-                          ),
-                        ),
-                      ),
-                      // 第一张标记为"保留"
-                      if (index == 0)
-                        Positioned(
-                          top: 4,
-                          left: 4,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppColors.success,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: const Text(
-                              '推荐保留',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ),
-                      // 选中标记
-                      if (isSelected)
-                        Positioned(
-                          top: 4,
-                          right: 4,
-                          child: Container(
-                            padding: const EdgeInsets.all(2),
-                            decoration: BoxDecoration(
-                              color: AppColors.error,
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.delete,
-                              color: Colors.white,
-                              size: 16,
-                            ),
-                          ),
-                        ),
-                      // 数据源标识（跨数据源时显示）
-                      if (_currentMode == 1 && photos.map((p) => p.sourceId).toSet().length > 1)
-                        Positioned(
-                          top: index == 0 ? 24 : 4,
-                          left: 4,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 4,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.blue.withValues(alpha: 0.9),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              photo.sourceId.length > 8
-                                  ? '${photo.sourceId.substring(0, 8)}...'
-                                  : photo.sourceId,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 8,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ),
-                      // 文件信息
-                      Positioned(
-                        bottom: 0,
-                        left: 0,
-                        right: 0,
-                        child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.bottomCenter,
-                              end: Alignment.topCenter,
-                              colors: [
-                                Colors.black.withValues(alpha: 0.7),
-                                Colors.transparent,
-                              ],
-                            ),
-                            borderRadius: const BorderRadius.vertical(
-                              bottom: Radius.circular(8),
-                            ),
-                          ),
-                          child: Text(
-                            photo.displaySize,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }).toList(),
+            child: _buildDragSelectPhotoGrid(
+              photos: photos,
+              connections: connections,
+              isDark: isDark,
+              showSourceLabel: _currentMode == 1,
             ),
           ),
           // 文件路径信息

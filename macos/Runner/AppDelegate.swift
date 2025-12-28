@@ -10,4 +10,26 @@ class AppDelegate: FlutterAppDelegate {
   override func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
     return true
   }
+
+  override func applicationDidFinishLaunching(_ notification: Notification) {
+    super.applicationDidFinishLaunching(notification)
+
+    // 注册自定义 MethodChannel 插件
+    guard let controller = mainFlutterWindow?.contentViewController as? FlutterViewController else {
+      return
+    }
+
+    // 注册 Widget 数据通道
+    _ = WidgetDataChannel(messenger: controller.engine.binaryMessenger)
+
+    // 注册显示能力检测通道 (HDR)
+    DisplayCapabilityChannel.register(
+      with: controller.engine.registrar(forPlugin: "DisplayCapabilityChannel")
+    )
+
+    // 注册音频能力检测通道 (直通)
+    AudioCapabilityChannel.register(
+      with: controller.engine.registrar(forPlugin: "AudioCapabilityChannel")
+    )
+  }
 }

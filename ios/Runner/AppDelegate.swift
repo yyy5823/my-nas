@@ -37,6 +37,16 @@ import UIKit
       WidgetDataChannel.register(with: registrar)
     }
 
+    // 注册显示能力检测通道 (HDR)
+    if let registrar = self.registrar(forPlugin: "DisplayCapabilityChannel") {
+      DisplayCapabilityChannel.register(with: registrar)
+    }
+
+    // 注册音频能力检测通道 (直通)
+    if let registrar = self.registrar(forPlugin: "AudioCapabilityChannel") {
+      AudioCapabilityChannel.register(with: registrar)
+    }
+
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 

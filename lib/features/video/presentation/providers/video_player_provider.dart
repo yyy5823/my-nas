@@ -10,11 +10,16 @@ import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/features/transfer/presentation/providers/transfer_provider.dart';
 import 'package:my_nas/features/video/data/services/audio_track_service.dart';
+import 'package:my_nas/features/video/data/services/capability/playback_capability_service.dart';
 import 'package:my_nas/features/video/data/services/pip_service.dart';
 import 'package:my_nas/features/video/data/services/subtitle_service.dart';
 import 'package:my_nas/features/video/data/services/video_history_service.dart';
 import 'package:my_nas/features/video/data/services/video_thumbnail_service.dart';
+import 'package:my_nas/features/video/domain/entities/audio_capability.dart';
+import 'package:my_nas/features/video/domain/entities/hdr_capability.dart';
+import 'package:my_nas/features/video/domain/entities/playback_configuration.dart';
 import 'package:my_nas/features/video/domain/entities/video_item.dart';
+import 'package:my_nas/features/video/presentation/providers/hdr_audio_settings_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/playback_settings_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/playlist_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/quality_provider.dart';
@@ -140,6 +145,7 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
   final VideoThumbnailService _thumbnailService = VideoThumbnailService();
   final AudioTrackService _audioTrackService = AudioTrackService();
   final PipService _pipService = PipService();
+  final PlaybackCapabilityService _capabilityService = PlaybackCapabilityService();
 
   /// 是否已经自动选择过音轨（每个视频只选择一次）
   bool _hasAutoSelectedAudioTrack = false;
@@ -259,6 +265,50 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
         await setAudioTrack(bestTrack);
         logger.i('VideoPlayerNotifier: 自动选择音轨 ${bestTrack.title ?? bestTrack.id}');
       }
+    }
+  }
+
+  /// 应用 HDR 和音频直通配置
+  ///
+  /// 根据用户设置和设备能力，配置 MPV 的 HDR 和音频直通参数
+  Future<void> _applyHdrAudioConfiguration() async {
+    try {
+      // 获取用户设置
+      final settingsState = _ref.read(hdrAudioSettingsProvider);
+      final userSettings = settingsState.settings;
+
+      // 获取设备能力（使用缓存）
+      final hdrCapability = settingsState.hdrCapability ??
+          await _capabilityService.getHdrCapability();
+      final audioCapability = settingsState.audioCapability ??
+          await _capabilityService.getAudioCapability();
+
+      // 生成播放配置
+      // 注意：由于此时视频还未加载，我们无法知道视频的 HDR/音频信息
+      // 因此使用默认的 VideoMediaInfo（假设可能是 HDR/高级音频）
+      // 这样配置会在视频是 HDR 时启用直通，在视频是 SDR 时 MPV 会自动忽略相关设置
+      final videoInfo = VideoMediaInfo(
+        isHdr: userSettings.hdrMode == HdrMode.auto ||
+            userSettings.hdrMode == HdrMode.passthrough,
+        hdrType: HdrType.hdr10, // 假设可能是 HDR10（最常见的格式）
+        audioCodec: AudioCodec.eac3, // 假设可能是 EAC3（支持 Dolby Atmos）
+        audioChannels: 8,
+      );
+
+      final config = _capabilityService.generateConfiguration(
+        videoInfo: videoInfo,
+        hdrCapability: hdrCapability,
+        audioCapability: audioCapability,
+        userSettings: userSettings,
+      );
+
+      // 应用配置到播放器
+      await _capabilityService.applyConfiguration(_player, config);
+
+      logger.i('VideoPlayer: HDR/音频配置已应用 - $config');
+    } catch (e, st) {
+      // 配置失败不影响正常播放
+      AppError.ignore(e, st, 'HDR/音频配置应用失败（非关键错误）');
     }
   }
 
@@ -527,6 +577,9 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
         logger.i('VideoPlayerNotifier: 从上次位置恢复 ${resumePosition.inSeconds}s');
       }
     }
+
+    // 应用 HDR/音频配置
+    await _applyHdrAudioConfiguration();
 
     // 打开视频并设置起始位置
     logger.d('VideoPlayer: 正在打开视频源...');

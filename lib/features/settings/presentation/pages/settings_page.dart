@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/app/theme/color_scheme_preset.dart';
+import 'package:my_nas/app/theme/ui_style.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/music/presentation/pages/music_scraper_sources_page.dart';
 import 'package:my_nas/features/music/presentation/providers/music_scraper_provider.dart';
@@ -17,6 +18,7 @@ import 'package:my_nas/features/video/presentation/pages/video_player_settings_p
 import 'package:my_nas/features/video/presentation/providers/scraper_provider.dart';
 import 'package:my_nas/shared/providers/language_preference_provider.dart';
 import 'package:my_nas/shared/providers/theme_provider.dart';
+import 'package:my_nas/shared/providers/ui_style_provider.dart';
 import 'package:my_nas/shared/services/download_service.dart';
 import 'package:my_nas/shared/widgets/download_manager_sheet.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -28,6 +30,7 @@ class SettingsPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeModeProvider);
     final colorPreset = ref.watch(colorSchemePresetProvider);
+    final uiStyle = ref.watch(uiStyleProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
@@ -79,6 +82,16 @@ class SettingsPage extends ConsumerWidget {
                       title: '配色方案',
                       subtitle: colorPreset.name,
                       onTap: () => _showColorSchemeDialog(context, ref, colorPreset, isDark),
+                    ),
+                    _buildDivider(isDark),
+                    _buildSettingsTile(
+                      context,
+                      isDark,
+                      icon: uiStyle.icon,
+                      iconColor: AppColors.accent,
+                      title: 'UI 风格',
+                      subtitle: uiStyle.label,
+                      onTap: () => _showUIStyleDialog(context, ref, uiStyle, isDark),
                     ),
                   ],
                 ),
@@ -426,6 +439,37 @@ class SettingsPage extends ConsumerWidget {
               isSelected: currentMode == mode,
               onTap: () {
                 ref.read(themeModeProvider.notifier).setThemeMode(mode);
+                Navigator.pop(context);
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
+  void _showUIStyleDialog(
+    BuildContext context,
+    WidgetRef ref,
+    UIStyle currentStyle,
+    bool isDark,
+  ) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _buildBottomSheet(
+        context,
+        isDark,
+        title: '选择 UI 风格',
+        children: [
+          for (final style in UIStyle.values)
+            _buildOptionTile(
+              context,
+              isDark,
+              icon: style.icon,
+              title: style.label,
+              isSelected: currentStyle == style,
+              onTap: () {
+                ref.read(uiStyleProvider.notifier).setStyle(style);
                 Navigator.pop(context);
               },
             ),
