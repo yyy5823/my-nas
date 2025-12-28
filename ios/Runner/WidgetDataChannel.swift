@@ -9,7 +9,7 @@ import Flutter
 import Foundation
 import WidgetKit
 
-class WidgetDataChannel: NSObject {
+class WidgetDataChannel: NSObject, FlutterPlugin {
     private static let channelName = "com.kkape.mynas/ios_widgets"
     private static let appGroupId = "group.com.kkape.mynas"
 
@@ -18,17 +18,6 @@ class WidgetDataChannel: NSObject {
     }
 
     static func register(with registrar: FlutterPluginRegistrar) {
-        let channel = FlutterMethodChannel(
-            name: channelName,
-            binaryMessenger: registrar.messenger()
-        )
-        let instance = WidgetDataChannel()
-        registrar.addMethodCallDelegate(instance, channel: channel)
-    }
-}
-
-extension WidgetDataChannel: FlutterPlugin {
-    static func register(with registrar: any FlutterPluginRegistrar) {
         let channel = FlutterMethodChannel(
             name: channelName,
             binaryMessenger: registrar.messenger()
