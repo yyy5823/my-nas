@@ -17,6 +17,7 @@ import 'package:my_nas/features/video/data/services/video_thumbnail_service.dart
 import 'package:my_nas/features/video/domain/entities/video_item.dart';
 import 'package:my_nas/features/video/presentation/providers/playback_settings_provider.dart';
 import 'package:my_nas/features/video/presentation/providers/playlist_provider.dart';
+import 'package:my_nas/features/video/presentation/providers/quality_provider.dart';
 
 /// 当前播放的视频（autoDispose: 离开播放器页面后自动清理）
 final currentVideoProvider = StateProvider.autoDispose<VideoItem?>((ref) => null);
@@ -549,6 +550,32 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
         watchedAt: DateTime.now(),
       ),
     );
+
+    // 初始化清晰度控制器
+    await _initQualityController(video);
+  }
+
+  /// 初始化清晰度控制器
+  Future<void> _initQualityController(VideoItem video) async {
+    // 获取源类型
+    SourceType sourceType = SourceType.local;
+    if (video.sourceId != null) {
+      final connections = _ref.read(activeConnectionsProvider);
+      final connection = connections[video.sourceId];
+      if (connection != null) {
+        sourceType = connection.source.type;
+      }
+    }
+
+    // 初始化清晰度 Provider
+    // 注意: VideoItem 目前没有视频尺寸信息，传递 null 让 QualityNotifier 使用默认清晰度列表
+    await _ref.read(qualityStateProvider.notifier).init(
+          sourceType: sourceType,
+          player: _player,
+          videoPath: video.path,
+        );
+
+    logger.d('VideoPlayer: 清晰度控制器已初始化, sourceType=$sourceType');
   }
 
   /// 播放/暂停切换

@@ -4,6 +4,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/video/data/services/quality/quality_monitor_service.dart';
+import 'package:my_nas/features/video/data/services/transcoding/client_transcoding_service.dart';
 import 'package:my_nas/features/video/data/services/transcoding/nas_transcoding_service.dart';
 import 'package:my_nas/features/video/data/services/transcoding/transcoding_capability.dart';
 import 'package:my_nas/features/video/domain/entities/video_quality.dart';
@@ -255,25 +256,45 @@ class QualityNotifier extends StateNotifier<QualityState> {
   late final TranscodingCapabilityService _capabilityService;
   late final QualityMonitorService _monitorService;
 
-  /// NAS 转码服务
+  /// NAS 转码服务（用于服务端转码）
   NasTranscodingService? _transcodingService;
+
+  /// 客户端转码服务（用于 SMB/FTP/WebDAV 等）
+  ClientTranscodingService? _clientTranscodingService;
 
   /// 清晰度切换后的回调
   QualitySwitchCallback? onQualitySwitched;
 
   /// 初始化（设置源类型和播放器）
-  void init({
+  Future<void> init({
     required SourceType sourceType,
     required Player player,
     required String videoPath,
     int? videoWidth,
     int? videoHeight,
     NasTranscodingService? transcodingService,
-  }) {
+    ClientTranscodingService? clientTranscodingService,
+  }) async {
     _transcodingService = transcodingService;
+    _clientTranscodingService = clientTranscodingService;
 
     // 检测转码能力
-    final capability = _capabilityService.getCapability(sourceType);
+    var capability = _capabilityService.getCapability(sourceType);
+
+    // 对于客户端转码，需要检查 FFmpeg 是否可用
+    if (capability == TranscodingCapability.clientSide) {
+      // 如果没有传入客户端转码服务，创建一个
+      _clientTranscodingService ??= ClientTranscodingService();
+      await _clientTranscodingService!.init();
+
+      // 如果客户端转码不可用，降级为不支持转码
+      if (!_clientTranscodingService!.isAvailable) {
+        capability = TranscodingCapability.none;
+        logger.w('清晰度: 客户端转码不可用 (FFmpeg 未找到)，禁用清晰度切换');
+      } else {
+        logger.i('清晰度: 客户端转码可用');
+      }
+    }
 
     // 计算可用清晰度
     List<VideoQuality> availableQualities;
@@ -339,10 +360,9 @@ class QualityNotifier extends StateNotifier<QualityState> {
       if (state.isServerSideTranscoding && _transcodingService != null) {
         // 服务端转码：从 NAS/媒体服务器获取转码流
         newStreamUrl = await _handleServerSideTranscoding(quality);
-      } else if (state.isClientSideTranscoding) {
-        // 客户端转码：Phase 5 实现
-        // 暂时返回 null，保持原画播放
-        logger.i('客户端转码将在 Phase 5 实现');
+      } else if (state.isClientSideTranscoding && _clientTranscodingService != null) {
+        // 客户端转码：使用本地 FFmpeg
+        newStreamUrl = await _handleClientSideTranscoding(quality);
       }
 
       // 停止之前的转码会话
@@ -406,6 +426,36 @@ class QualityNotifier extends StateNotifier<QualityState> {
     );
   }
 
+  /// 处理客户端转码
+  Future<String?> _handleClientSideTranscoding(VideoQuality quality) async {
+    if (_clientTranscodingService == null || state.videoPath == null) {
+      return null;
+    }
+
+    // 如果是原画，返回 null 表示使用原始流
+    if (quality.isOriginal) {
+      return null;
+    }
+
+    // 请求转码会话
+    final session = await _clientTranscodingService!.startSession(
+      videoPath: state.videoPath!,
+      quality: quality,
+    );
+
+    if (session != null) {
+      state = state.copyWith(activeSession: session);
+      logger.i('客户端转码会话已创建: ${session.sessionId}');
+      return session.streamUrl;
+    }
+
+    // 如果会话创建失败，尝试直接获取流 URL
+    return _clientTranscodingService!.getTranscodedStreamUrl(
+      videoPath: state.videoPath!,
+      quality: quality,
+    );
+  }
+
   /// 处理质量建议回调
   void _onQualitySuggestion(VideoQuality current, VideoQuality suggested) {
     state = state.copyWith(
@@ -463,8 +513,13 @@ class QualityNotifier extends StateNotifier<QualityState> {
 
   /// 停止当前转码会话
   Future<void> stopTranscoding() async {
-    if (state.activeSession != null && _transcodingService != null) {
-      await _transcodingService!.stopSession(state.activeSession!.sessionId);
+    if (state.activeSession != null) {
+      if (_transcodingService != null) {
+        await _transcodingService!.stopSession(state.activeSession!.sessionId);
+      }
+      if (_clientTranscodingService != null) {
+        await _clientTranscodingService!.stopSession(state.activeSession!.sessionId);
+      }
       state = state.copyWith(
         activeSession: null,
         transcodedStreamUrl: null,
@@ -475,9 +530,12 @@ class QualityNotifier extends StateNotifier<QualityState> {
   @override
   void dispose() {
     // 停止转码会话
-    if (state.activeSession != null && _transcodingService != null) {
-      _transcodingService!.stopSession(state.activeSession!.sessionId);
+    if (state.activeSession != null) {
+      _transcodingService?.stopSession(state.activeSession!.sessionId);
+      _clientTranscodingService?.stopSession(state.activeSession!.sessionId);
     }
+    // 清理客户端转码服务
+    _clientTranscodingService?.dispose();
     _monitorService.dispose();
     super.dispose();
   }
