@@ -14,6 +14,7 @@ class MusicSettings {
     this.autoPlayOnConnect = false,
     this.showLyrics = true,
     this.gaplessPlayback = true,
+    this.dynamicIslandEnabled = true, // 默认开启，不在 UI 上显示开关
   });
 
   factory MusicSettings.fromMap(Map<dynamic, dynamic> map) => MusicSettings(
@@ -23,6 +24,7 @@ class MusicSettings {
         autoPlayOnConnect: map['autoPlayOnConnect'] as bool? ?? false,
         showLyrics: map['showLyrics'] as bool? ?? true,
         gaplessPlayback: map['gaplessPlayback'] as bool? ?? true,
+        dynamicIslandEnabled: map['dynamicIslandEnabled'] as bool? ?? true,
       );
 
   final double volume;
@@ -31,6 +33,7 @@ class MusicSettings {
   final bool autoPlayOnConnect; // 连接后自动播放
   final bool showLyrics; // 显示歌词
   final bool gaplessPlayback; // 无缝播放
+  final bool dynamicIslandEnabled; // Android 灵动岛悬浮窗（默认开启，不在 UI 显示）
 
   MusicSettings copyWith({
     double? volume,
@@ -39,6 +42,7 @@ class MusicSettings {
     bool? autoPlayOnConnect,
     bool? showLyrics,
     bool? gaplessPlayback,
+    bool? dynamicIslandEnabled,
   }) =>
       MusicSettings(
         volume: volume ?? this.volume,
@@ -47,6 +51,7 @@ class MusicSettings {
         autoPlayOnConnect: autoPlayOnConnect ?? this.autoPlayOnConnect,
         showLyrics: showLyrics ?? this.showLyrics,
         gaplessPlayback: gaplessPlayback ?? this.gaplessPlayback,
+        dynamicIslandEnabled: dynamicIslandEnabled ?? this.dynamicIslandEnabled,
       );
 
   Map<String, dynamic> toMap() => {
@@ -56,6 +61,7 @@ class MusicSettings {
         'autoPlayOnConnect': autoPlayOnConnect,
         'showLyrics': showLyrics,
         'gaplessPlayback': gaplessPlayback,
+        'dynamicIslandEnabled': dynamicIslandEnabled,
       };
 }
 
@@ -142,6 +148,14 @@ class MusicSettingsNotifier extends StateNotifier<MusicSettings> {
   Future<void> setGaplessPlayback({required bool enabled}) async {
     state = state.copyWith(gaplessPlayback: enabled);
     await _save();
+  }
+
+  /// 设置 Android 灵动岛悬浮窗（功能保留，不在 UI 上显示开关）
+  Future<void> setDynamicIslandEnabled({required bool enabled}) async {
+    state = state.copyWith(dynamicIslandEnabled: enabled);
+    await _save();
+    // 同步到播放器
+    await _ref.read(musicPlayerControllerProvider.notifier).setDynamicIslandEnabled(enabled: enabled);
   }
 
   /// 重置设置

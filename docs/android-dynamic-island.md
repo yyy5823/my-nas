@@ -202,6 +202,32 @@ dependencies {
 3. **后台运行**：需要配合前台服务使用才能在后台正常显示
 4. **华为设备**：如果集成了 Live View Kit SDK，将自动使用原生实现
 
+## 设置项
+
+在 `MusicSettings` 中添加了 `dynamicIslandEnabled` 设置项，可以通过以下方式控制：
+
+```dart
+// 获取当前设置
+final settings = ref.read(musicSettingsProvider);
+final isEnabled = settings.dynamicIslandEnabled;
+
+// 切换设置
+ref.read(musicSettingsProvider.notifier).setDynamicIslandEnabled(enabled: !isEnabled);
+```
+
+## 集成位置
+
+- `music_player_provider.dart` - 音乐播放器状态管理
+  - `_initDynamicIsland()` - 初始化服务和设置回调
+  - `_startDynamicIsland()` - 开始播放时显示灵动岛
+  - `_updateDynamicIsland()` - 更新播放状态和封面
+  - `_hideDynamicIsland()` - 停止播放时隐藏灵动岛
+  - `setDynamicIslandEnabled()` - 启用/禁用灵动岛
+
+- `music_settings_provider.dart` - 设置管理
+  - `dynamicIslandEnabled` - 是否启用灵动岛
+  - `setDynamicIslandEnabled()` - 设置方法
+
 ## 后续优化
 
 1. [ ] 添加进度条拖动功能
@@ -209,3 +235,4 @@ dependencies {
 3. [ ] 添加更多动画效果
 4. [ ] 支持 OPPO 流体云（需要等待官方 API 发布）
 5. [ ] 支持小米灵动岛（需要等待官方 API 发布）
+6. [ ] 在设置页面添加灵动岛开关 UI

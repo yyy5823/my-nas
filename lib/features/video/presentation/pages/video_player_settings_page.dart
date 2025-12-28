@@ -969,6 +969,8 @@ class VideoPlayerSettingsPage extends ConsumerWidget {
       (ToneMappingMode.mobius, 'Mobius', '平滑过渡，适合大多数内容'),
       (ToneMappingMode.reinhard, 'Reinhard', '经典算法，保留更多细节'),
       (ToneMappingMode.hable, 'Hable', '电影感更强，对比度更高'),
+      (ToneMappingMode.bt2390, 'BT.2390', 'ITU 标准算法'),
+      (ToneMappingMode.clip, 'Clip', '简单裁剪，高性能'),
     ];
 
     _showOptionPicker(

@@ -113,8 +113,7 @@ class _ToastContainer extends StatelessWidget {
   final void Function(String id) onDismiss;
 
   @override
-  Widget build(BuildContext context) {
-    return Column(
+  Widget build(BuildContext context) => Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         for (final message in messages)
@@ -126,7 +125,6 @@ class _ToastContainer extends StatelessWidget {
           ),
       ],
     );
-  }
 }
 
 /// ToastOverlay 的便捷包装器

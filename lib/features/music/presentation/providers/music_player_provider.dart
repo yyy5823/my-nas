@@ -9,6 +9,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/services/media_proxy_server.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/music/data/services/android_dynamic_island_service.dart';
 import 'package:my_nas/features/music/data/services/music_audio_cache_service.dart';
 import 'package:my_nas/features/music/data/services/music_audio_handler.dart';
 import 'package:my_nas/features/music/data/services/music_cover_cache_service.dart';
@@ -209,6 +210,10 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
   DateTime? _lastStateSaveTime;
   static const _stateSaveInterval = Duration(seconds: 10);
 
+  // Android 灵动岛服务
+  final AndroidDynamicIslandService _dynamicIslandService = AndroidDynamicIslandService();
+  bool _dynamicIslandEnabled = true; // 默认开启，不在 UI 上显示开关
+
   AudioPlayer get player => _player;
 
   /// 初始化媒体代理服务器
@@ -237,6 +242,8 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     // 监听播放状态
     _player.playingStream.listen((playing) {
       state = state.copyWith(isPlaying: playing);
+      // 更新 Android 灵动岛播放状态
+      unawaited(_updateDynamicIsland());
     });
 
     // 监听缓冲状态
@@ -282,6 +289,115 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       },
     );
 
+    // 初始化 Android 灵动岛服务
+    _initDynamicIsland();
+  }
+
+  /// 初始化 Android 灵动岛服务
+  Future<void> _initDynamicIsland() async {
+    if (!Platform.isAndroid) return;
+
+    try {
+      await _dynamicIslandService.init();
+
+      // 从设置加载灵动岛开关状态（默认开启）
+      final settings = _ref.read(musicSettingsProvider);
+      _dynamicIslandEnabled = settings.dynamicIslandEnabled;
+
+      // 设置控制回调
+      _dynamicIslandService.onControlAction = (action) {
+        logger.i('MusicPlayer: 收到灵动岛控制命令: $action');
+        switch (action) {
+          case 'playPause':
+            playOrPause();
+          case 'next':
+            playNext();
+          case 'previous':
+            playPrevious();
+          case 'dismiss':
+            // 用户关闭了灵动岛，下次播放时会重新显示
+            break;
+          case _ when action.startsWith('seek:'):
+            final position = int.tryParse(action.substring(5));
+            if (position != null) {
+              seek(Duration(milliseconds: position));
+            }
+        }
+      };
+
+      logger.i('MusicPlayer: Android 灵动岛服务初始化完成');
+    } on Exception catch (e, st) {
+      logger.e('MusicPlayer: Android 灵动岛服务初始化失败', e, st);
+    }
+  }
+
+  /// 更新 Android 灵动岛状态
+  Future<void> _updateDynamicIsland({
+    MusicItem? music,
+    Uint8List? coverData,
+  }) async {
+    if (!Platform.isAndroid || !_dynamicIslandEnabled) return;
+
+    final currentMusic = music ?? _ref.read(currentMusicProvider);
+    if (currentMusic == null) return;
+
+    try {
+      await _dynamicIslandService.updateActivity(
+        music: currentMusic,
+        isPlaying: state.isPlaying,
+        position: state.position,
+        duration: state.duration,
+        coverData: coverData,
+      );
+    } on Exception catch (e, st) {
+      logger.e('MusicPlayer: 更新灵动岛失败', e, st);
+    }
+  }
+
+  /// 开始显示 Android 灵动岛
+  Future<void> _startDynamicIsland({
+    required MusicItem music,
+    Uint8List? coverData,
+  }) async {
+    if (!Platform.isAndroid || !_dynamicIslandEnabled) return;
+
+    try {
+      await _dynamicIslandService.startMusicActivity(
+        music: music,
+        isPlaying: true,
+        position: Duration.zero,
+        duration: state.duration,
+        coverData: coverData,
+      );
+    } on Exception catch (e, st) {
+      logger.e('MusicPlayer: 启动灵动岛失败', e, st);
+    }
+  }
+
+  /// 隐藏 Android 灵动岛
+  Future<void> _hideDynamicIsland() async {
+    if (!Platform.isAndroid) return;
+
+    try {
+      await _dynamicIslandService.endActivity();
+    } on Exception catch (e, st) {
+      logger.e('MusicPlayer: 隐藏灵动岛失败', e, st);
+    }
+  }
+
+  /// 设置 Android 灵动岛开关
+  Future<void> setDynamicIslandEnabled({required bool enabled}) async {
+    _dynamicIslandEnabled = enabled;
+    if (!enabled) {
+      await _hideDynamicIsland();
+    } else if (_ref.read(currentMusicProvider) != null && state.isPlaying) {
+      // 如果正在播放，显示灵动岛
+      await _startDynamicIsland(
+        music: _ref.read(currentMusicProvider)!,
+        coverData: _audioHandler.currentArtworkData,
+      );
+    }
+    logger.i('MusicPlayer: Android 灵动岛已${enabled ? "启用" : "禁用"}');
   }
 
   /// 配置 AudioSession
@@ -959,6 +1075,9 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
       }
       await _audioHandler.setCurrentMusic(music, artworkData: coverData);
 
+      // 启动 Android 灵动岛
+      unawaited(_startDynamicIsland(music: music, coverData: coverData));
+
       // 更新时长信息到 AudioHandler
       if (effectiveDuration != null && effectiveDuration > Duration.zero) {
         _audioHandler.updateDuration(effectiveDuration);
@@ -1235,6 +1354,8 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
               _audioHandler.updateArtwork(coverBytes),
               action: 'updateAudioHandlerArtwork',
             );
+            // 更新 Android 灵动岛封面
+            unawaited(_updateDynamicIsland(coverData: coverBytes));
           }
         } else {
           logger.w('MusicPlayer: 当前播放的音乐已变更，跳过更新');
@@ -1320,6 +1441,8 @@ class MusicPlayerNotifier extends StateNotifier<MusicPlayerState> {
     _cleanupCurrentProxy();
     state = state.copyWith(position: Duration.zero, duration: Duration.zero);
     _ref.read(currentMusicProvider.notifier).state = null;
+    // 隐藏 Android 灵动岛
+    unawaited(_hideDynamicIsland());
   }
 
   /// 下一曲

@@ -967,7 +967,7 @@ class _ComicCard extends ConsumerWidget {
               Expanded(
                 child: ClipRRect(
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                  child: Container(
+                  child: ColoredBox(
                     color: isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant,
                     child: comic.coverPath != null
                         ? _buildCover(ref)

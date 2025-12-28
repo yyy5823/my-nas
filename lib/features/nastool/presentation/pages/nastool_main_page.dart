@@ -44,9 +44,9 @@ class _NasToolMainPageState extends ConsumerState<NasToolMainPage> {
   Future<void> _connectToNasTool() async {
     final notifier = ref.read(nastoolConnectionProvider(widget.source.id).notifier);
     final connection = ref.read(nastoolConnectionProvider(widget.source.id));
-    
+
     // 如果未连接，则自动连接
-    if (connection == null || connection.status == NasToolConnectionStatus.disconnected || 
+    if (connection == null || connection.status == NasToolConnectionStatus.disconnected ||
         connection.status == NasToolConnectionStatus.error) {
       await notifier.connect(widget.source);
     }
@@ -1103,7 +1103,7 @@ class _MediaContentState extends ConsumerState<_MediaContent> {
                                   children: [
                                     Expanded(
                                       child: m.posterPath != null
-                                          ? Image.network('https://image.tmdb.org/t/p/w500${m.posterPath}', fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: AppColors.primary.withValues(alpha: 0.1), child: const Icon(Icons.movie_rounded, size: 48)))
+                                          ? Image.network('https://image.tmdb.org/t/p/w500${m.posterPath}', fit: BoxFit.cover, errorBuilder: (_, _, _) => ColoredBox(color: AppColors.primary.withValues(alpha: 0.1), child: const Icon(Icons.movie_rounded, size: 48)))
                                           : Container(color: AppColors.primary.withValues(alpha: 0.1), child: const Icon(Icons.movie_rounded, size: 48)),
                                     ),
                                     Padding(
@@ -1465,7 +1465,7 @@ class _SettingsContent extends ConsumerWidget {
                           title: Text(d.name ?? d.from ?? '', maxLines: 1, overflow: TextOverflow.ellipsis),
                           subtitle: Text('${d.from ?? ''} → ${d.to ?? "媒体库"}', maxLines: 1, overflow: TextOverflow.ellipsis),
                           trailing: IconButton(
-                            icon: const Icon(Icons.sync_rounded), 
+                            icon: const Icon(Icons.sync_rounded),
                             onPressed: d.id != null ? () async {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(content: Text('正在同步...'), duration: Duration(seconds: 1)),
@@ -1484,7 +1484,7 @@ class _SettingsContent extends ConsumerWidget {
                                   );
                                 }
                               }
-                            } : null, 
+                            } : null,
                             tooltip: '同步',
                           ),
                         )).toList(),

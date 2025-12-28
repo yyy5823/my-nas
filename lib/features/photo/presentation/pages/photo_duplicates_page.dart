@@ -7,6 +7,7 @@ import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/photo/data/services/photo_database_service.dart';
 import 'package:my_nas/features/photo/data/services/photo_hash_service.dart';
+import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/shared/widgets/stream_image.dart';
@@ -197,16 +198,6 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
     _hashService.cancel();
   }
 
-  void _togglePhotoSelection(PhotoEntity photo) {
-    setState(() {
-      if (_selectedPhotos.contains(photo.uniqueKey)) {
-        _selectedPhotos.remove(photo.uniqueKey);
-      } else {
-        _selectedPhotos.add(photo.uniqueKey);
-      }
-    });
-  }
-
   void _selectAllExceptFirst(List<PhotoEntity> photos) {
     setState(() {
       // 保留第一张（最新的），选中其他所有
@@ -316,7 +307,7 @@ class _PhotoDuplicatesPageState extends ConsumerState<PhotoDuplicatesPage> {
   /// 构建可拖动选择的照片网格
   Widget _buildDragSelectPhotoGrid({
     required List<PhotoEntity> photos,
-    required Map<String, SourceConnectionState> connections,
+    required Map<String, SourceConnection> connections,
     required bool isDark,
     required bool showSourceLabel,
   }) {

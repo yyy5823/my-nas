@@ -328,17 +328,17 @@ class BookListNotifier extends StateNotifier<BookListState> {
       await _loadFromSqlite();
 
       // 监听连接状态变化
-      _ref.listen<Map<String, SourceConnection>>(activeConnectionsProvider, (previous, next) {
+      _ref..listen<Map<String, SourceConnection>>(activeConnectionsProvider, (previous, next) {
         final prevConnected = previous?.values.where((c) => c.status == SourceStatus.connected).length ?? 0;
         final nextConnected = next.values.where((c) => c.status == SourceStatus.connected).length;
 
         if (nextConnected > prevConnected && state is BookListNotConnected) {
           loadBooks();
         }
-      });
+      })
 
       // 监听媒体库配置变化（启用/停用/移除路径）
-      _ref.listen<AsyncValue<MediaLibraryConfig>>(mediaLibraryConfigProvider, (previous, next) {
+      ..listen<AsyncValue<MediaLibraryConfig>>(mediaLibraryConfigProvider, (previous, next) {
         final prevPaths =
             previous?.valueOrNull?.getEnabledPathsForType(MediaType.book) ?? [];
         final nextPaths =

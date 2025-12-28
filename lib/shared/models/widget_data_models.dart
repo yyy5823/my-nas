@@ -18,7 +18,7 @@ class StorageWidgetData {
   final int usedBytes;
   final String nasName;
   final String adapterType;
-  final DateTime lastUpdated;
+  final DateTime? lastUpdated; // 可空：未连接时为 null
   final bool isConnected;
 
   /// 使用百分比 (0.0 - 1.0)
@@ -38,21 +38,23 @@ class StorageWidgetData {
         'usedBytes': usedBytes,
         'nasName': nasName,
         'adapterType': adapterType,
-        'lastUpdated': lastUpdated.millisecondsSinceEpoch,
+        'lastUpdated': lastUpdated?.millisecondsSinceEpoch,
         'isConnected': isConnected,
       };
 
-  factory StorageWidgetData.fromJson(Map<String, dynamic> json) =>
-      StorageWidgetData(
-        totalBytes: json['totalBytes'] as int? ?? 0,
-        usedBytes: json['usedBytes'] as int? ?? 0,
-        nasName: json['nasName'] as String? ?? 'NAS',
-        adapterType: json['adapterType'] as String? ?? 'unknown',
-        lastUpdated: DateTime.fromMillisecondsSinceEpoch(
-          json['lastUpdated'] as int? ?? 0,
-        ),
-        isConnected: json['isConnected'] as bool? ?? false,
-      );
+  factory StorageWidgetData.fromJson(Map<String, dynamic> json) {
+    final lastUpdatedMs = json['lastUpdated'] as int?;
+    return StorageWidgetData(
+      totalBytes: json['totalBytes'] as int? ?? 0,
+      usedBytes: json['usedBytes'] as int? ?? 0,
+      nasName: json['nasName'] as String? ?? 'NAS',
+      adapterType: json['adapterType'] as String? ?? 'unknown',
+      lastUpdated: lastUpdatedMs != null
+          ? DateTime.fromMillisecondsSinceEpoch(lastUpdatedMs)
+          : null,
+      isConnected: json['isConnected'] as bool? ?? false,
+    );
+  }
 
   /// 空数据（未连接状态）
   static const empty = StorageWidgetData(
