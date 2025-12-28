@@ -189,7 +189,7 @@ key.properties
 .claude
 
 # Development docs (not for public)
-/docs/
+# /docs/
 
 # Podfile.lock - 由 CocoaPods 自动生成，包含本地依赖版本
 # 不同开发环境可能有不同的版本，不需要提交
