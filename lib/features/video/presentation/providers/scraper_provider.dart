@@ -734,6 +734,7 @@ class MetadataEnrichmentNotifier extends StateNotifier<MetadataEnrichmentState> 
   /// 增强所有元数据
   ///
   /// 包括：电影系列信息、地区、类型、演员、导演等
+  /// 同时处理电影和剧集
   Future<void> enrichAllMetadata() async {
     if (state.isRunning) {
       logger.w('元数据增强正在进行中，跳过');
@@ -747,7 +748,7 @@ class MetadataEnrichmentNotifier extends StateNotifier<MetadataEnrichmentState> 
       final moviesWithoutCollection = await _dbService.getMoviesWithoutCollection();
       final moviesWithoutMetadata = await _dbService.getMoviesWithIncompleteMetadata();
 
-      // 合并去重
+      // 合并去重电影
       final movieSet = <int>{};
       final movies = <VideoMetadata>[];
       for (final movie in [...moviesWithoutCollection, ...moviesWithoutMetadata]) {
@@ -757,15 +758,29 @@ class MetadataEnrichmentNotifier extends StateNotifier<MetadataEnrichmentState> 
         }
       }
 
-      if (movies.isEmpty) {
-        logger.i('没有需要增强元数据的电影');
+      // 获取需要增强的剧集列表（有 TMDB ID 但缺少地区或类型信息）
+      final tvShowsWithoutMetadata = await _dbService.getTvShowsWithIncompleteMetadata();
+
+      // 合并去重剧集
+      final tvShowSet = <int>{};
+      final tvShows = <VideoMetadata>[];
+      for (final tvShow in tvShowsWithoutMetadata) {
+        if (tvShow.tmdbId != null && !tvShowSet.contains(tvShow.tmdbId)) {
+          tvShowSet.add(tvShow.tmdbId!);
+          tvShows.add(tvShow);
+        }
+      }
+
+      final totalItems = movies.length + tvShows.length;
+      if (totalItems == 0) {
+        logger.i('没有需要增强元数据的电影或剧集');
         return;
       }
 
       state = MetadataEnrichmentState(
         isRunning: true,
-        total: movies.length,
-        currentItem: '正在检查电影元数据...',
+        total: totalItems,
+        currentItem: '正在检查元数据...',
       );
 
       final tmdbService = TmdbService();
@@ -782,12 +797,13 @@ class MetadataEnrichmentNotifier extends StateNotifier<MetadataEnrichmentState> 
       var failCount = 0;
       var progress = 0;
 
+      // 处理电影
       for (final movie in movies) {
         if (movie.tmdbId == null) continue;
 
         state = state.copyWith(
           progress: progress,
-          currentItem: movie.displayTitle,
+          currentItem: '电影: ${movie.displayTitle}',
         );
 
         try {
@@ -855,7 +871,59 @@ class MetadataEnrichmentNotifier extends StateNotifier<MetadataEnrichmentState> 
             failCount++;
           }
         } on Exception catch (e, st) {
-          AppError.handle(e, st, 'MetadataEnrichmentNotifier.enrichAllMetadata');
+          AppError.handle(e, st, 'MetadataEnrichmentNotifier.enrichMovieMetadata');
+          failCount++;
+        }
+
+        progress++;
+
+        // 添加延迟避免 API 限流
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+      }
+
+      // 处理剧集
+      for (final tvShow in tvShows) {
+        if (tvShow.tmdbId == null) continue;
+
+        state = state.copyWith(
+          progress: progress,
+          currentItem: '剧集: ${tvShow.displayTitle}',
+        );
+
+        try {
+          // 获取剧集详情
+          final detail = await tmdbService.getTvDetail(tvShow.tmdbId!);
+          if (detail != null) {
+            // 获取需要更新的字段
+            final countriesText = detail.countriesText;
+            final genresText = detail.genresText;
+            final castNames = detail.cast.take(5).map((c) => c.name).join(', ');
+
+            // 检查是否需要更新
+            final needsCountries = (tvShow.countries == null || tvShow.countries!.isEmpty) &&
+                countriesText.isNotEmpty;
+            final needsGenres = (tvShow.genres == null || tvShow.genres!.isEmpty) &&
+                genresText.isNotEmpty;
+            final needsCast = (tvShow.cast == null || tvShow.cast!.isEmpty) &&
+                castNames.isNotEmpty;
+
+            if (needsCountries || needsGenres || needsCast) {
+              // 批量更新同一剧集的所有集（使用 TMDB ID 匹配）
+              await _dbService.updateTvShowMetadata(
+                showDirectory: tvShow.showDirectory,
+                tmdbId: tvShow.tmdbId!,
+                countries: needsCountries ? countriesText : null,
+                genres: needsGenres ? genresText : null,
+                cast: needsCast ? castNames : null,
+              );
+              logger.d('更新剧集元数据: ${tvShow.displayTitle} -> 地区=$countriesText, 类型=$genresText');
+            }
+            successCount++;
+          } else {
+            failCount++;
+          }
+        } on Exception catch (e, st) {
+          AppError.handle(e, st, 'MetadataEnrichmentNotifier.enrichTvShowMetadata');
           failCount++;
         }
 
@@ -868,12 +936,13 @@ class MetadataEnrichmentNotifier extends StateNotifier<MetadataEnrichmentState> 
       state = MetadataEnrichmentState(
         isRunning: false,
         progress: progress,
-        total: movies.length,
+        total: totalItems,
         successCount: successCount,
         failCount: failCount,
       );
 
-      logger.i('元数据增强完成: 成功=$successCount, 失败=$failCount');
+      logger.i('元数据增强完成: 电影=${movies.length}, 剧集=${tvShows.length}, '
+          '成功=$successCount, 失败=$failCount');
 
       // 刷新首页数据
       // 通过 invalidate video list provider 来触发刷新

@@ -49,11 +49,15 @@ class VideoPlayerState {
     this.isPictureInPicture = false,
     this.subtitleEnabled = true,
     this.errorMessage,
+    this.positionOffset = Duration.zero,
+    this.originalDuration = Duration.zero,
   });
 
   final bool isPlaying;
   final bool isBuffering;
+  /// 播放器报告的原始位置（转码流从 0 开始）
   final Duration position;
+  /// 转码流的时长（转码后的文件长度）
   final Duration duration;
   final double volume;
   final double speed;
@@ -61,12 +65,26 @@ class VideoPlayerState {
   final bool isPictureInPicture;
   final bool subtitleEnabled;
   final String? errorMessage;
+  /// 位置偏移量（转码起始位置）
+  final Duration positionOffset;
+  /// 原始视频总时长（用于进度条显示）
+  final Duration originalDuration;
 
+  /// 实际播放位置（播放器位置 + 偏移量）
+  Duration get actualPosition => position + positionOffset;
+
+  /// 显示用的总时长（如果有原始时长则使用原始时长）
+  Duration get displayDuration =>
+      originalDuration > Duration.zero ? originalDuration : duration + positionOffset;
+
+  /// 实际进度（基于原始视频时长）
   double get progress =>
-      duration.inMilliseconds > 0 ? position.inMilliseconds / duration.inMilliseconds : 0;
+      displayDuration.inMilliseconds > 0
+          ? actualPosition.inMilliseconds / displayDuration.inMilliseconds
+          : 0;
 
-  String get positionText => _formatDuration(position);
-  String get durationText => _formatDuration(duration);
+  String get positionText => _formatDuration(actualPosition);
+  String get durationText => _formatDuration(displayDuration);
 
   String _formatDuration(Duration d) {
     final hours = d.inHours;
@@ -90,6 +108,8 @@ class VideoPlayerState {
     bool? isPictureInPicture,
     bool? subtitleEnabled,
     String? errorMessage,
+    Duration? positionOffset,
+    Duration? originalDuration,
   }) =>
       VideoPlayerState(
         isPlaying: isPlaying ?? this.isPlaying,
@@ -102,6 +122,8 @@ class VideoPlayerState {
         isPictureInPicture: isPictureInPicture ?? this.isPictureInPicture,
         subtitleEnabled: subtitleEnabled ?? this.subtitleEnabled,
         errorMessage: errorMessage,
+        positionOffset: positionOffset ?? this.positionOffset,
+        originalDuration: originalDuration ?? this.originalDuration,
       );
 }
 
@@ -355,20 +377,24 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
       logger.d('VideoPlayerNotifier: 保存进度跳过 - 无当前视频');
       return;
     }
-    if (state.position.inSeconds < 5) {
+    // 使用实际位置（包含偏移量）
+    final actualPos = state.actualPosition;
+    final totalDuration = state.displayDuration;
+
+    if (actualPos.inSeconds < 5) {
       logger.d('VideoPlayerNotifier: 保存进度跳过 - 位置小于5秒');
       return;
     }
-    if (state.duration.inSeconds < 10) {
+    if (totalDuration.inSeconds < 10) {
       logger.d('VideoPlayerNotifier: 保存进度跳过 - 时长小于10秒');
       return;
     }
 
-    logger.d('VideoPlayerNotifier: 保存进度 ${_currentVideo!.path} => ${state.position.inSeconds}s / ${state.duration.inSeconds}s');
+    logger.d('VideoPlayerNotifier: 保存进度 ${_currentVideo!.path} => ${actualPos.inSeconds}s / ${totalDuration.inSeconds}s');
     await _historyService.saveProgress(
       videoPath: _currentVideo!.path,
-      position: state.position,
-      duration: state.duration,
+      position: actualPos,
+      duration: totalDuration,
     );
 
     // 每3次保存进度时（每30秒），同时保存进度截图
@@ -403,7 +429,12 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
 
     _currentVideo = video;
     _ref.read(currentVideoProvider.notifier).state = video;
-    state = state.copyWith();
+
+    // 重置偏移量（新视频从头播放，没有转码偏移）
+    state = state.copyWith(
+      positionOffset: Duration.zero,
+      originalDuration: Duration.zero,
+    );
 
     logger..i('VideoPlayer: 开始播放 ${video.name}')
     ..d('VideoPlayer: URL => ${video.url}')
@@ -595,17 +626,18 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
   Future<void> _onQualitySwitched(String newStreamUrl) async {
     logger.i('VideoPlayer: 切换到转码流 => $newStreamUrl');
 
-    // 保存当前播放位置（转码已从此位置开始，所以不需要 seek）
-    final currentPosition = state.position;
-    logger.d('VideoPlayer: 切换前位置 ${currentPosition.inSeconds}s');
+    // 保存原始视频的总时长（用于进度条显示）
+    final originalDuration = state.displayDuration;
+
+    // 获取转码起始位置（用于计算实际播放进度）
+    final qualityState = _ref.read(qualityStateProvider);
+    final positionOffset = qualityState.transcodingStartPosition;
+
+    logger.d('VideoPlayer: 切换前位置 ${state.actualPosition.inSeconds}s, 偏移量 ${positionOffset.inSeconds}s');
 
     // 打开新的流
     try {
       await _player.open(Media(newStreamUrl));
-
-      // 转码已从 currentPosition 开始，播放器会从头播放转码后的文件
-      // 这等同于从 currentPosition 开始播放
-      // 但我们仍需等待视频就绪后通知 UI 更新进度显示
 
       // 等待播放器准备好
       final completer = Completer<void>();
@@ -629,7 +661,14 @@ class VideoPlayerNotifier extends StateNotifier<VideoPlayerState> {
       });
 
       await completer.future;
-      logger.i('VideoPlayer: 转码流切换成功');
+
+      // 更新状态：设置偏移量和原始时长
+      state = state.copyWith(
+        positionOffset: positionOffset,
+        originalDuration: originalDuration,
+      );
+
+      logger.i('VideoPlayer: 转码流切换成功，偏移量=${positionOffset.inSeconds}s，原始时长=${originalDuration.inSeconds}s');
     } catch (e, st) {
       AppError.handle(e, st, 'switchToTranscodedStream');
       state = state.copyWith(errorMessage: '切换清晰度失败: $e');

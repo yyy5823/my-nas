@@ -168,6 +168,7 @@ class QualityState {
     this.videoUrl,
     this.transcodedStreamUrl,
     this.activeSession,
+    this.transcodingStartPosition = Duration.zero,
   });
 
   /// 当前清晰度
@@ -203,6 +204,10 @@ class QualityState {
   /// 当前活跃的转码会话
   final TranscodingSession? activeSession;
 
+  /// 转码起始位置（用于计算实际播放进度）
+  /// 当使用客户端转码时，转码从此位置开始，播放器报告的位置需要加上此偏移量
+  final Duration transcodingStartPosition;
+
   /// 是否支持清晰度切换
   bool get canSwitchQuality => capability != TranscodingCapability.none;
 
@@ -228,6 +233,7 @@ class QualityState {
     String? videoUrl,
     String? transcodedStreamUrl,
     TranscodingSession? activeSession,
+    Duration? transcodingStartPosition,
   }) =>
       QualityState(
         currentQuality: currentQuality ?? this.currentQuality,
@@ -241,6 +247,7 @@ class QualityState {
         videoUrl: videoUrl ?? this.videoUrl,
         transcodedStreamUrl: transcodedStreamUrl,
         activeSession: activeSession,
+        transcodingStartPosition: transcodingStartPosition ?? this.transcodingStartPosition,
       );
 }
 
@@ -427,12 +434,14 @@ class QualityNotifier extends StateNotifier<QualityState> {
       }
 
       // 更新状态
+      // 如果切换回原画（newStreamUrl 为 null），重置偏移量为零
       state = state.copyWith(
         currentQuality: quality,
         isLoading: false,
         showSuggestionDialog: false,
         suggestedQuality: null,
         transcodedStreamUrl: newStreamUrl,
+        transcodingStartPosition: newStreamUrl == null ? Duration.zero : null, // 原画时重置
       );
 
       // 更新监控服务
@@ -512,14 +521,17 @@ class QualityNotifier extends StateNotifier<QualityState> {
     );
 
     if (streamUrl != null) {
-      // 创建会话记录
+      // 创建会话记录，保存转码起始位置用于进度计算
       final session = TranscodingSession(
         sessionId: DateTime.now().millisecondsSinceEpoch.toString(),
         streamUrl: streamUrl,
         quality: quality,
       );
-      state = state.copyWith(activeSession: session);
-      logger.i('客户端转码: 转码完成，流 URL: $streamUrl');
+      state = state.copyWith(
+        activeSession: session,
+        transcodingStartPosition: currentPosition, // 保存起始位置用于进度偏移
+      );
+      logger.i('客户端转码: 转码完成，流 URL: $streamUrl，起始位置: ${currentPosition.inSeconds}s');
       return streamUrl;
     }
 

@@ -90,6 +90,15 @@ final relatedLocalVideosProvider = FutureProvider.autoDispose.family<List<VideoM
   return metadataService.getByTmdbId(tmdbId);
 });
 
+/// 电影版本 Provider（autoDispose）
+/// 获取同一电影的所有版本（不同清晰度）
+/// 支持有 TMDB ID 的电影（按 TMDB ID 匹配）和无 TMDB ID 的电影（按标题+年份匹配）
+final movieVersionsProvider = FutureProvider.autoDispose.family<List<VideoMetadata>, VideoMetadata>((ref, metadata) async {
+  final metadataService = ref.watch(videoMetadataServiceProvider);
+  await metadataService.init();
+  return metadataService.getMovieVersions(metadata);
+});
+
 /// 根据 TMDB ID 获取本地视频 Provider（返回第一个匹配的视频）
 /// 用于检查系列电影是否在本地可用
 final localVideoByTmdbIdProvider = FutureProvider.autoDispose.family<VideoMetadata?, int>((ref, tmdbId) async {

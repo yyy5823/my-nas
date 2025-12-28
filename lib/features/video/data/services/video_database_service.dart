@@ -1050,6 +1050,86 @@ class VideoDatabaseService {
     return results.map(_fromRow).toList();
   }
 
+  /// 获取同一电影的所有版本（不同清晰度）
+  ///
+  /// 按分辨率降序排序（4K > 1080p > 720p），相同分辨率按文件大小降序
+  /// 用于电影详情页显示版本选择
+  ///
+  /// [metadata] 电影元数据（用于匹配同一电影）
+  /// 返回所有匹配的版本列表，如果只有一个版本则返回单元素列表
+  Future<List<VideoMetadata>> getMovieVersions(VideoMetadata metadata) async {
+    if (!_initialized) await init();
+
+    // 分辨率优先级排序
+    const resolutionOrder = '''
+      CASE
+        WHEN $_colResolution IN ('4K', '2160p', 'UHD') THEN 4
+        WHEN $_colResolution = '1080p' THEN 3
+        WHEN $_colResolution = '720p' THEN 2
+        WHEN $_colResolution = '480p' THEN 1
+        ELSE 0
+      END
+    ''';
+
+    List<Map<String, Object?>> results;
+
+    if (metadata.tmdbId != null) {
+      // 如果有 TMDB ID，按 TMDB ID 匹配
+      results = await _db!.rawQuery('''
+        SELECT * FROM $_tableMetadata
+        WHERE $_colCategory = 0 AND $_colTmdbId = ?
+        ORDER BY $resolutionOrder DESC,
+                 COALESCE($_colFileSize, 0) DESC
+      ''', [metadata.tmdbId]);
+    } else if (metadata.title != null) {
+      // 如果没有 TMDB ID，按标题+年份匹配
+      results = await _db!.rawQuery('''
+        SELECT * FROM $_tableMetadata
+        WHERE $_colCategory = 0
+          AND $_colTmdbId IS NULL
+          AND LOWER(COALESCE($_colTitle, '')) = LOWER(?)
+          AND COALESCE($_colYear, 0) = ?
+        ORDER BY $resolutionOrder DESC,
+                 COALESCE($_colFileSize, 0) DESC
+      ''', [metadata.title, metadata.year ?? 0]);
+    } else {
+      // 没有匹配条件，返回单个元素
+      return [metadata];
+    }
+
+    if (results.isEmpty) {
+      return [metadata];
+    }
+
+    return results.map(_fromRow).toList();
+  }
+
+  /// 获取同一电影的版本数量
+  ///
+  /// 用于在列表页面显示版本标记
+  Future<int> getMovieVersionCount(VideoMetadata metadata) async {
+    if (!_initialized) await init();
+
+    int? count;
+
+    if (metadata.tmdbId != null) {
+      count = Sqflite.firstIntValue(await _db!.rawQuery('''
+        SELECT COUNT(*) FROM $_tableMetadata
+        WHERE $_colCategory = 0 AND $_colTmdbId = ?
+      ''', [metadata.tmdbId]));
+    } else if (metadata.title != null) {
+      count = Sqflite.firstIntValue(await _db!.rawQuery('''
+        SELECT COUNT(*) FROM $_tableMetadata
+        WHERE $_colCategory = 0
+          AND $_colTmdbId IS NULL
+          AND LOWER(COALESCE($_colTitle, '')) = LOWER(?)
+          AND COALESCE($_colYear, 0) = ?
+      ''', [metadata.title, metadata.year ?? 0]));
+    }
+
+    return count ?? 1;
+  }
+
   /// 根据 TMDB ID 获取剧集映射（使用索引）
   Future<Map<int, Map<int, VideoMetadata>>> getEpisodesByTmdbId(
       int tmdbId) async {
@@ -1317,6 +1397,8 @@ class VideoDatabaseService {
   ///
   /// [enabledPaths] 启用的路径列表，如果提供则只返回这些路径下的视频
   /// [includeUnrated] 是否包含无评分的已刮削视频（用于每日推荐等场景，扩大推荐池）
+  /// [randomSort] 是否使用随机排序（用于每日推荐，实现真正的随机推荐）
+  /// [randomSeed] 随机种子（配合 randomSort 使用，相同种子返回相同顺序）
   Future<List<VideoMetadata>> getTopRated({
     double minRating = 0.0, // 降低默认阈值，确保有数据返回
     MediaCategory? category,
@@ -1324,6 +1406,8 @@ class VideoDatabaseService {
     int offset = 0,
     List<({String sourceId, String path})>? enabledPaths,
     bool includeUnrated = false,
+    bool randomSort = false,
+    int? randomSeed,
   }) async {
     if (!_initialized) await init();
 
@@ -1352,12 +1436,30 @@ class VideoDatabaseService {
       whereArgs.addAll(pathFilter.args);
     }
 
+    // 确定排序方式
+    String orderByClause;
+    if (randomSort) {
+      // 使用随机排序：基于 randomSeed 生成伪随机但可重复的顺序
+      // SQLite 的 RANDOM() 每次调用都不同，无法直接使用种子
+      // 我们使用 (id * seed) % large_prime 来生成可重复的伪随机顺序
+      if (randomSeed != null) {
+        // 使用大质数和种子生成可重复的伪随机排序
+        // 这样相同的 seed 会返回相同的顺序
+        orderByClause = '(($_colId * $randomSeed) % 2147483647)';
+      } else {
+        // 无种子时使用 SQLite 的真随机
+        orderByClause = 'RANDOM()';
+      }
+    } else {
+      // 按评分降序，无评分的排在最后
+      orderByClause = '$_colRating DESC NULLS LAST, $_colTitle';
+    }
+
     final results = await _db!.query(
       _tableMetadata,
       where: where,
       whereArgs: whereArgs,
-      // 按评分降序，无评分的排在最后
-      orderBy: '$_colRating DESC NULLS LAST, $_colTitle',
+      orderBy: orderByClause,
       limit: limit,
       offset: offset,
     );
@@ -1908,7 +2010,7 @@ class VideoDatabaseService {
     return results.map(_fromRow).toList();
   }
 
-  /// 获取未观看的视频
+  /// 获取未观看的视频（去重：电影按 TMDB ID/标题+年份，剧集按剧目录/TMDB ID）
   ///
   /// 排除已在观看历史中的视频（通过传入已观看路径列表）
   /// [watchedPaths] 已观看的视频路径列表（从 VideoHistoryService.getAllWatchedPaths 获取）
@@ -1921,21 +2023,200 @@ class VideoDatabaseService {
   }) async {
     if (!_initialized) await init();
 
+    final pathFilter = _buildPathFilter(enabledPaths);
 
-    // 如果没有观看历史，返回全部视频
+    // 分辨率优先级排序（用于电影去重）
+    const resolutionOrder = '''
+      CASE
+        WHEN $_colResolution IN ('4K', '2160p', 'UHD') THEN 4
+        WHEN $_colResolution = '1080p' THEN 3
+        WHEN $_colResolution = '720p' THEN 2
+        WHEN $_colResolution = '480p' THEN 1
+        ELSE 0
+      END
+    ''';
+
+    // 查询去重后的电影
+    final movieSql = '''
+      SELECT * FROM $_tableMetadata m1
+      WHERE $_colCategory = 0${pathFilter.andWhere}
+        AND m1.rowid = (
+          SELECT m2.rowid FROM $_tableMetadata m2
+          WHERE m2.$_colCategory = 0${pathFilter.andWhere}
+            AND (
+              (m1.$_colTmdbId IS NOT NULL AND m2.$_colTmdbId = m1.$_colTmdbId)
+              OR (m1.$_colTmdbId IS NULL AND m2.$_colTmdbId IS NULL
+                  AND LOWER(COALESCE(m2.$_colTitle, '')) = LOWER(COALESCE(m1.$_colTitle, ''))
+                  AND COALESCE(m2.$_colYear, 0) = COALESCE(m1.$_colYear, 0))
+            )
+          ORDER BY $resolutionOrder DESC,
+                   COALESCE(m2.$_colFileSize, 0) DESC,
+                   m2.$_colRating DESC NULLS LAST
+          LIMIT 1
+        )
+      ORDER BY $_colFileModifiedTime DESC NULLS LAST
+    ''';
+
+    // 查询去重后的剧集（每部剧只返回一条记录）
+    final tvShowSql = '''
+      SELECT * FROM $_tableMetadata m1
+      WHERE $_colCategory = 1${pathFilter.andWhere}
+        AND m1.rowid = (
+          SELECT m2.rowid FROM $_tableMetadata m2
+          WHERE m2.$_colCategory = 1${pathFilter.andWhere}
+            AND (
+              (m1.$_colTmdbId IS NOT NULL AND m2.$_colTmdbId = m1.$_colTmdbId)
+              OR (m1.$_colTmdbId IS NULL AND m2.$_colTmdbId IS NULL
+                  AND m1.$_colShowDirectory IS NOT NULL AND m2.$_colShowDirectory = m1.$_colShowDirectory)
+              OR (m1.$_colTmdbId IS NULL AND m2.$_colTmdbId IS NULL
+                  AND m1.$_colShowDirectory IS NULL AND m2.$_colShowDirectory IS NULL
+                  AND LOWER(COALESCE(m2.$_colTitle, '')) = LOWER(COALESCE(m1.$_colTitle, '')))
+            )
+          ORDER BY m2.$_colRating DESC NULLS LAST,
+                   m2.$_colSeasonNumber ASC NULLS LAST,
+                   m2.$_colEpisodeNumber ASC NULLS LAST
+          LIMIT 1
+        )
+      ORDER BY $_colFileModifiedTime DESC NULLS LAST
+    ''';
+
+    final movieArgs = [...pathFilter.args, ...pathFilter.args];
+    final tvShowArgs = [...pathFilter.args, ...pathFilter.args];
+
+    // 并行查询电影和剧集
+    final results = await Future.wait([
+      _db!.rawQuery(movieSql, movieArgs),
+      _db!.rawQuery(tvShowSql, tvShowArgs),
+    ]);
+
+    final movies = results[0].map(_fromRow).toList();
+    final tvShows = results[1].map(_fromRow).toList();
+
+    // 合并并按文件修改时间排序
+    final allVideos = [...movies, ...tvShows]
+      ..sort((a, b) {
+        final aTime = a.fileModifiedTime ?? DateTime(1970);
+        final bTime = b.fileModifiedTime ?? DateTime(1970);
+        return bTime.compareTo(aTime);
+      });
+
+    // 如果没有观看历史，直接返回
     if (watchedPaths.isEmpty) {
-      return getAllVideosQuick(enabledPaths: enabledPaths, limit: limit);
+      return allVideos.take(limit).toList();
     }
 
-    // 构建排除条件：排除已观看的视频
-    // 使用 sourceId + '|' + filePath 作为唯一标识
-    final allVideos = await getAllVideosQuick(enabledPaths: enabledPaths);
-    final unwatched = allVideos
-        .where((v) => !watchedPaths.contains(v.filePath))
-        .take(limit)
-        .toList();
+    // 过滤掉已观看的视频
+    // 对于剧集，检查是否有任何一集被观看过（通过 TMDB ID 或 showDirectory 匹配）
+    final unwatched = <VideoMetadata>[];
+    for (final video in allVideos) {
+      if (unwatched.length >= limit) break;
+
+      if (video.category == MediaCategory.tvShow) {
+        // 对于剧集，检查是否整部剧都没看过
+        // 需要检查所有同剧的集数是否都没被观看
+        final isWatched = await _isTvShowWatched(video, watchedPaths, pathFilter);
+        if (!isWatched) {
+          unwatched.add(video);
+        }
+      } else {
+        // 对于电影，检查所有版本是否都没被观看
+        final isWatched = await _isMovieWatched(video, watchedPaths, pathFilter);
+        if (!isWatched) {
+          unwatched.add(video);
+        }
+      }
+    }
 
     return unwatched;
+  }
+
+  /// 检查电影是否已观看（检查所有版本）
+  Future<bool> _isMovieWatched(
+    VideoMetadata movie,
+    Set<String> watchedPaths,
+    ({String where, String andWhere, List<Object> args}) pathFilter,
+  ) async {
+    // 先检查当前版本
+    if (watchedPaths.contains(movie.filePath)) {
+      return true;
+    }
+
+    // 获取同一电影的所有版本路径
+    List<Map<String, Object?>> results;
+    if (movie.tmdbId != null) {
+      results = await _db!.rawQuery('''
+        SELECT $_colFilePath FROM $_tableMetadata
+        WHERE $_colCategory = 0 AND $_colTmdbId = ?${pathFilter.andWhere}
+      ''', [movie.tmdbId, ...pathFilter.args]);
+    } else if (movie.title != null) {
+      results = await _db!.rawQuery('''
+        SELECT $_colFilePath FROM $_tableMetadata
+        WHERE $_colCategory = 0
+          AND $_colTmdbId IS NULL
+          AND LOWER(COALESCE($_colTitle, '')) = LOWER(?)
+          AND COALESCE($_colYear, 0) = ?${pathFilter.andWhere}
+      ''', [movie.title, movie.year ?? 0, ...pathFilter.args]);
+    } else {
+      return watchedPaths.contains(movie.filePath);
+    }
+
+    // 检查任意版本是否被观看
+    for (final row in results) {
+      final path = row[_colFilePath] as String?;
+      if (path != null && watchedPaths.contains(path)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /// 检查剧集是否已观看（检查任意一集）
+  Future<bool> _isTvShowWatched(
+    VideoMetadata tvShow,
+    Set<String> watchedPaths,
+    ({String where, String andWhere, List<Object> args}) pathFilter,
+  ) async {
+    // 先检查当前集
+    if (watchedPaths.contains(tvShow.filePath)) {
+      return true;
+    }
+
+    // 获取同一剧集的所有集数路径
+    List<Map<String, Object?>> results;
+    if (tvShow.tmdbId != null) {
+      results = await _db!.rawQuery('''
+        SELECT $_colFilePath FROM $_tableMetadata
+        WHERE $_colCategory = 1 AND $_colTmdbId = ?${pathFilter.andWhere}
+      ''', [tvShow.tmdbId, ...pathFilter.args]);
+    } else if (tvShow.showDirectory != null) {
+      results = await _db!.rawQuery('''
+        SELECT $_colFilePath FROM $_tableMetadata
+        WHERE $_colCategory = 1
+          AND $_colTmdbId IS NULL
+          AND $_colShowDirectory = ?${pathFilter.andWhere}
+      ''', [tvShow.showDirectory, ...pathFilter.args]);
+    } else if (tvShow.title != null) {
+      results = await _db!.rawQuery('''
+        SELECT $_colFilePath FROM $_tableMetadata
+        WHERE $_colCategory = 1
+          AND $_colTmdbId IS NULL
+          AND $_colShowDirectory IS NULL
+          AND LOWER(COALESCE($_colTitle, '')) = LOWER(?)${pathFilter.andWhere}
+      ''', [tvShow.title, ...pathFilter.args]);
+    } else {
+      return watchedPaths.contains(tvShow.filePath);
+    }
+
+    // 检查任意一集是否被观看
+    for (final row in results) {
+      final path = row[_colFilePath] as String?;
+      if (path != null && watchedPaths.contains(path)) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   /// 获取所有存在的影片类型（去重）
@@ -2037,7 +2318,7 @@ class VideoDatabaseService {
     );
   }
 
-  /// 根据国家/地区获取电影
+  /// 根据国家/地区获取电影（去重，同一电影不同清晰度只返回最高清版本）
   Future<List<VideoMetadata>> getMoviesByCountry(
     String country, {
     int limit = 30,
@@ -2048,23 +2329,48 @@ class VideoDatabaseService {
     if (!_initialized) await init();
 
     final pathFilter = _buildPathFilter(enabledPaths);
+    final orderBy = _buildOrderBy(sortOption);
 
-    var where = '$_colCategory = 0 AND $_colCountries LIKE ?';
-    final whereArgs = <Object>['%$country%'];
+    // 分辨率优先级排序
+    const resolutionOrder = '''
+      CASE
+        WHEN $_colResolution IN ('4K', '2160p', 'UHD') THEN 4
+        WHEN $_colResolution = '1080p' THEN 3
+        WHEN $_colResolution = '720p' THEN 2
+        WHEN $_colResolution = '480p' THEN 1
+        ELSE 0
+      END
+    ''';
 
-    if (pathFilter.andWhere.isNotEmpty) {
-      where += pathFilter.andWhere;
-      whereArgs.addAll(pathFilter.args);
-    }
+    // 使用子查询去重：同一电影不同清晰度只返回最高清版本
+    final sql = '''
+      SELECT * FROM $_tableMetadata m1
+      WHERE $_colCategory = 0 AND $_colCountries LIKE ?${pathFilter.andWhere}
+        AND m1.rowid = (
+          SELECT m2.rowid FROM $_tableMetadata m2
+          WHERE m2.$_colCategory = 0 AND m2.$_colCountries LIKE ?${pathFilter.andWhere}
+            AND (
+              (m1.$_colTmdbId IS NOT NULL AND m2.$_colTmdbId = m1.$_colTmdbId)
+              OR (m1.$_colTmdbId IS NULL AND m2.$_colTmdbId IS NULL
+                  AND LOWER(COALESCE(m2.$_colTitle, '')) = LOWER(COALESCE(m1.$_colTitle, ''))
+                  AND COALESCE(m2.$_colYear, 0) = COALESCE(m1.$_colYear, 0))
+            )
+          ORDER BY $resolutionOrder DESC,
+                   COALESCE(m2.$_colFileSize, 0) DESC,
+                   m2.$_colRating DESC NULLS LAST
+          LIMIT 1
+        )
+      ORDER BY $orderBy
+      LIMIT $limit OFFSET $offset
+    ''';
 
-    final results = await _db!.query(
-      _tableMetadata,
-      where: where,
-      whereArgs: whereArgs,
-      orderBy: _buildOrderBy(sortOption),
-      limit: limit,
-      offset: offset,
-    );
+    final args = [
+      '%$country%',
+      ...pathFilter.args,
+      '%$country%',
+      ...pathFilter.args,
+    ];
+    final results = await _db!.rawQuery(sql, args);
 
     return results.map(_fromRow).toList();
   }
@@ -2127,7 +2433,7 @@ class VideoDatabaseService {
     return combined.take(limit).toList();
   }
 
-  /// 根据类型获取电影
+  /// 根据类型获取电影（去重，同一电影不同清晰度只返回最高清版本）
   ///
   /// [genre] 类型名称（如：动作、科幻、喜剧）
   /// [enabledPaths] 启用的路径列表
@@ -2141,23 +2447,48 @@ class VideoDatabaseService {
     if (!_initialized) await init();
 
     final pathFilter = _buildPathFilter(enabledPaths);
+    final orderBy = _buildOrderBy(sortOption);
 
-    var where = '$_colCategory = 0 AND $_colGenres LIKE ?';
-    final whereArgs = <Object>['%$genre%'];
+    // 分辨率优先级排序
+    const resolutionOrder = '''
+      CASE
+        WHEN $_colResolution IN ('4K', '2160p', 'UHD') THEN 4
+        WHEN $_colResolution = '1080p' THEN 3
+        WHEN $_colResolution = '720p' THEN 2
+        WHEN $_colResolution = '480p' THEN 1
+        ELSE 0
+      END
+    ''';
 
-    if (pathFilter.andWhere.isNotEmpty) {
-      where += pathFilter.andWhere;
-      whereArgs.addAll(pathFilter.args);
-    }
+    // 使用子查询去重：同一电影不同清晰度只返回最高清版本
+    final sql = '''
+      SELECT * FROM $_tableMetadata m1
+      WHERE $_colCategory = 0 AND $_colGenres LIKE ?${pathFilter.andWhere}
+        AND m1.rowid = (
+          SELECT m2.rowid FROM $_tableMetadata m2
+          WHERE m2.$_colCategory = 0 AND m2.$_colGenres LIKE ?${pathFilter.andWhere}
+            AND (
+              (m1.$_colTmdbId IS NOT NULL AND m2.$_colTmdbId = m1.$_colTmdbId)
+              OR (m1.$_colTmdbId IS NULL AND m2.$_colTmdbId IS NULL
+                  AND LOWER(COALESCE(m2.$_colTitle, '')) = LOWER(COALESCE(m1.$_colTitle, ''))
+                  AND COALESCE(m2.$_colYear, 0) = COALESCE(m1.$_colYear, 0))
+            )
+          ORDER BY $resolutionOrder DESC,
+                   COALESCE(m2.$_colFileSize, 0) DESC,
+                   m2.$_colRating DESC NULLS LAST
+          LIMIT 1
+        )
+      ORDER BY $orderBy
+      LIMIT $limit OFFSET $offset
+    ''';
 
-    final results = await _db!.query(
-      _tableMetadata,
-      where: where,
-      whereArgs: whereArgs,
-      orderBy: _buildOrderBy(sortOption),
-      limit: limit,
-      offset: offset,
-    );
+    final args = [
+      '%$genre%',
+      ...pathFilter.args,
+      '%$genre%',
+      ...pathFilter.args,
+    ];
+    final results = await _db!.rawQuery(sql, args);
 
     return results.map(_fromRow).toList();
   }
@@ -2765,7 +3096,9 @@ class VideoDatabaseService {
   ///
   /// 优化版本：使用单次批量查询代替循环查询
   /// 复杂度从 O(n) 降为 O(1)
-  Future<List<MovieCollection>> getMovieCollections({int minCount = 1}) async {
+  ///
+  /// [minCount] 系列中至少需要的不同电影数量，默认为 2（真正的系列至少有2部电影）
+  Future<List<MovieCollection>> getMovieCollections({int minCount = 2}) async {
     if (!_initialized) await init();
 
     final stopwatch = Stopwatch()..start();
@@ -2935,6 +3268,69 @@ class VideoDatabaseService {
     );
 
     return results.map(_fromRow).toList();
+  }
+
+  /// 获取有 TMDB ID 但缺少地区、类型等元数据的剧集（去重，每个剧集只返回一集）
+  ///
+  /// 用于批量更新元数据
+  Future<List<VideoMetadata>> getTvShowsWithIncompleteMetadata() async {
+    if (!_initialized) await init();
+
+    // 使用子查询获取每个剧集组的代表记录（按 showDirectory 或 title 分组）
+    // 只返回缺少地区或类型信息的剧集
+    final results = await _db!.rawQuery('''
+      SELECT * FROM $_tableMetadata m
+      WHERE m.$_colCategory = ?
+        AND m.$_colTmdbId IS NOT NULL
+        AND (
+          m.$_colCountries IS NULL OR m.$_colCountries = ''
+          OR m.$_colGenres IS NULL OR m.$_colGenres = ''
+        )
+        AND m.$_colId = (
+          SELECT MIN(m2.$_colId) FROM $_tableMetadata m2
+          WHERE m2.$_colCategory = ?
+            AND COALESCE(m2.$_colShowDirectory, m2.$_colTitle) = COALESCE(m.$_colShowDirectory, m.$_colTitle)
+        )
+    ''', [MediaCategory.tvShow.index, MediaCategory.tvShow.index]);
+
+    return results.map(_fromRow).toList();
+  }
+
+  /// 批量更新同一剧集所有集的元数据
+  ///
+  /// 用于更新地区、类型、演员等信息到同一剧集的所有集
+  /// [showDirectory] 剧集目录（用于分组匹配）
+  /// [tmdbId] TMDB ID（用于精确匹配）
+  /// [countries] 地区信息（可选，为 null 则不更新）
+  /// [genres] 类型信息（可选，为 null 则不更新）
+  /// [cast] 演员信息（可选，为 null 则不更新）
+  Future<int> updateTvShowMetadata({
+    String? showDirectory,
+    required int tmdbId,
+    String? countries,
+    String? genres,
+    String? cast,
+  }) async {
+    if (!_initialized) await init();
+
+    // 构建更新字段
+    final updates = <String, Object?>{};
+    if (countries != null) updates[_colCountries] = countries;
+    if (genres != null) updates[_colGenres] = genres;
+    if (cast != null) updates[_colCast] = cast;
+
+    if (updates.isEmpty) return 0;
+
+    // 更新所有匹配的剧集记录（使用 TMDB ID 匹配）
+    final count = await _db!.update(
+      _tableMetadata,
+      updates,
+      where: '$_colCategory = ? AND $_colTmdbId = ?',
+      whereArgs: [MediaCategory.tvShow.index, tmdbId],
+    );
+
+    logger.d('VideoDatabaseService: 更新剧集 TMDB ID=$tmdbId 的 $count 条记录');
+    return count;
   }
 
   /// 获取所有可用的年份列表（按分类筛选）

@@ -106,6 +106,21 @@ class VideoMetadataService {
     return _db.getByTmdbId(tmdbId);
   }
 
+  /// 获取同一电影的所有版本（不同清晰度）
+  ///
+  /// 按分辨率降序排序（4K > 1080p > 720p），相同分辨率按文件大小降序
+  /// 用于电影详情页显示版本选择
+  Future<List<VideoMetadata>> getMovieVersions(VideoMetadata metadata) async {
+    if (!_initialized) await init();
+    return _db.getMovieVersions(metadata);
+  }
+
+  /// 获取同一电影的版本数量
+  Future<int> getMovieVersionCount(VideoMetadata metadata) async {
+    if (!_initialized) await init();
+    return _db.getMovieVersionCount(metadata);
+  }
+
   /// 根据 TMDB ID 获取剧集映射
   Future<Map<int, Map<int, VideoMetadata>>> getEpisodesByTmdbId(int tmdbId) async {
     if (!_initialized) await init();
@@ -736,10 +751,12 @@ class VideoMetadataService {
 
   /// 从 TMDB 补充电影系列信息
   ///
-  /// 用于 NFO 刮削成功但缺少系列信息的情况
+  /// 用于刮削成功但缺少系列信息的情况
   /// 仅更新 collectionId、collectionName 和系列海报，不覆盖其他元数据
-  Future<void> _supplementCollectionFromTmdb(VideoMetadata metadata) async {
-    if (!_tmdbService.hasApiKey || metadata.tmdbId == null) return;
+  ///
+  /// [save] 是否保存到数据库，默认为 false（由调用者统一保存）
+  Future<bool> _supplementCollectionFromTmdb(VideoMetadata metadata, {bool save = false}) async {
+    if (!_tmdbService.hasApiKey || metadata.tmdbId == null) return false;
 
     try {
       final movieDetail = await _tmdbService.getMovieDetail(metadata.tmdbId!);
@@ -752,10 +769,61 @@ class VideoMetadataService {
           ..collectionBackdropUrl = collection.backdropUrl;
         logger.d('VideoMetadataService: 从 TMDB 补充系列信息 '
             '"${collection.name}" for "${metadata.title}"');
+
+        if (save) {
+          await this.save(metadata);
+        }
+        return true;
       }
     } on Exception catch (e) {
       logger.w('VideoMetadataService: 补充 TMDB 系列信息失败', e);
     }
+    return false;
+  }
+
+  /// 批量为缺少系列信息的电影补充数据
+  ///
+  /// 查找所有有 TMDB ID 但缺少 collectionId 的电影，从 TMDB 获取系列信息
+  /// 返回成功补充的电影数量
+  ///
+  /// [onProgress] 进度回调，参数为 (已处理数量, 总数量)
+  Future<int> supplementMissingCollections({
+    void Function(int processed, int total)? onProgress,
+  }) async {
+    if (!_tmdbService.hasApiKey) {
+      logger.w('VideoMetadataService: 无法补充系列信息，TMDB API Key 未配置');
+      return 0;
+    }
+
+    if (!_initialized) await init();
+
+    // 获取所有有 TMDB ID 但缺少 collectionId 的电影
+    final movies = await _db.getMoviesWithoutCollection();
+    if (movies.isEmpty) {
+      logger.d('VideoMetadataService: 没有需要补充系列信息的电影');
+      return 0;
+    }
+
+    logger.i('VideoMetadataService: 开始为 ${movies.length} 部电影补充系列信息');
+
+    var successCount = 0;
+    for (var i = 0; i < movies.length; i++) {
+      final movie = movies[i];
+      final success = await _supplementCollectionFromTmdb(movie, save: true);
+      if (success) {
+        successCount++;
+      }
+
+      onProgress?.call(i + 1, movies.length);
+
+      // 添加延迟避免 TMDB API 限流
+      if (i < movies.length - 1) {
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+      }
+    }
+
+    logger.i('VideoMetadataService: 系列信息补充完成，成功 $successCount/${movies.length}');
+    return successCount;
   }
 
   /// 手动搜索（从所有已启用的刮削源搜索）

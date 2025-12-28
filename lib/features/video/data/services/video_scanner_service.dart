@@ -746,6 +746,14 @@ class VideoScannerService {
       // 这样用户看到的缓存大小会更准确稳定
       await _dbService.checkpoint();
 
+      // 补充缺失的电影系列信息（用于后配置刮削源的情况）
+      // 后台执行，不阻塞主流程
+      _metadataService.supplementMissingCollections().then((count) {
+        if (count > 0) {
+          logger.i('VideoScannerService: 补充了 $count 部电影的系列信息');
+        }
+      }).ignore();
+
       // 刮削完成，广播最终统计
       final finalStats = await _dbService.getScrapeStats();
       _scrapeStatsController.add(finalStats);

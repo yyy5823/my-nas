@@ -323,16 +323,35 @@ static int forceUpdateCounter = 0;  // 用于强制刷新的计数器
     } else if ([@"androidForceEnableMediaButtons" isEqualToString:call.method]) {
         result(@{});
     } else if ([@"stopService" isEqualToString:call.method]) {
+        // 尝试十九：修复灵动岛上一首/下一首无法播放的问题
+        // 问题原因：切歌流程中 processingState 变为 idle 时，audio_service 会调用 stopService
+        // stopService 将 actionBits 设为 0，导致所有 Remote Command handlers 被移除
+        // 解决方案：保留 skipToNext 和 skipToPrevious 的 handlers，即使在 stopService 中
+        NSLog(@"audio_service: ===== stopService called =====");
+        NSLog(@"audio_service: stopService - commandCenter=%@, actionBits=%ld", commandCenter ? @"YES" : @"NO", actionBits);
+
         [commandCenter.changePlaybackRateCommand setEnabled:NO];
         [commandCenter.togglePlayPauseCommand setEnabled:NO];
         [commandCenter.togglePlayPauseCommand removeTarget:nil];
         [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo = nil;
         processingState = ApsIdle;
-        actionBits = 0;
+
+        // 重要修复（尝试十九）：
+        // 不要将 actionBits 设为 0，而是保留 skipToNext 和 skipToPrevious 的位
+        // ASkipToPrevious = 4, ASkipToNext = 5
+        // (1 << 4) | (1 << 5) = 16 | 32 = 48
+        // 这样即使 stopService 被调用，用户仍然可以使用灵动岛/锁屏的上一首/下一首按钮
+        long preservedBits = (1 << ASkipToPrevious) | (1 << ASkipToNext);
+        actionBits = preservedBits;
+        NSLog(@"audio_service: stopService - preserved actionBits=%ld (skipToPrevious + skipToNext)", actionBits);
+
         [self updateControls];
         _controlsUpdated = NO;
         startResult = nil;
-        commandCenter = nil;
+        // 重要修复：不要将 commandCenter 设为 nil
+        // 否则下次 setState 时 updateControls 会因为 commandCenter == nil 而跳过
+        // commandCenter = nil;
+        NSLog(@"audio_service: stopService - completed, commandCenter preserved");
         result(@{});
     } else if ([@"forceUpdateNowPlayingInfo" isEqualToString:call.method]) {
         // 强制刷新 nowPlayingInfo，绕过 iOS 去重机制

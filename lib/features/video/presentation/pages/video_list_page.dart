@@ -1002,13 +1002,19 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
 
     try {
       final batch1Stopwatch = Stopwatch()..start();
+      // 每日推荐使用基于日期的随机种子，每天推荐不同内容
+      final today = DateTime.now();
+      final dateSeed = today.year * 10000 + today.month * 100 + today.day;
+
       final batch1 =
           await Future.wait([
-            // 每日推荐使用 includeUnrated=true，包含所有已刮削视频，扩大推荐池
+            // 每日推荐使用随机排序，从所有已刮削视频中随机选择
             _db.getTopRated(
               limit: 100,
               enabledPaths: effectiveEnabledPaths,
               includeUnrated: true,
+              randomSort: true,
+              randomSeed: dateSeed,
             ),
             _db.getRecentlyUpdated(
               limit: 20,
@@ -1085,7 +1091,7 @@ class VideoListNotifier extends StateNotifier<VideoListState> {
               limit: 30,
               enabledPaths: effectiveEnabledPaths,
             ),
-            _db.getMovieCollections(minCount: 1),
+            _db.getMovieCollections(minCount: 2),
             _db.getByCategory(
               MediaCategory.unknown,
               limit: 30,

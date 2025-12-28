@@ -15,6 +15,7 @@ class NfoMetadata {
     this.rating,
     this.runtime,
     this.genres,
+    this.countries,
     this.director,
     this.actors,
     this.studio,
@@ -39,6 +40,7 @@ class NfoMetadata {
   final double? rating;
   final int? runtime;
   final List<String>? genres;
+  final List<String>? countries; // 国家/地区列表
   final String? director;
   final List<String>? actors;
   final String? studio;
@@ -78,6 +80,7 @@ class NfoMetadata {
       rating: rating,
       runtime: runtime,
       genres: genres?.join(' / '),
+      countries: countries?.join(', '),
       director: director,
       cast: actors?.take(5).join(', '),
       seasonNumber: seasonNumber,
@@ -504,6 +507,7 @@ class NfoScraperService {
         rating: _parseRating(root),
         runtime: _parseInt(_getElementText(root, 'runtime')),
         genres: _getGenres(root),
+        countries: _getCountries(root),
         director: _getElementText(root, 'director'),
         actors: _getActors(root),
         studio: _getElementText(root, 'studio'),
@@ -587,6 +591,26 @@ class NfoScraperService {
     try {
       final genres = root.findElements('genre').map((e) => e.innerText.trim()).toList();
       return genres.isNotEmpty ? genres : null;
+    } on Exception catch (_) {
+      return null;
+    }
+  }
+
+  /// 获取国家/地区列表
+  ///
+  /// NFO 文件中可能包含多个 `<country>` 标签，例如：
+  /// ```xml
+  /// <country>United States</country>
+  /// <country>United Kingdom</country>
+  /// ```
+  List<String>? _getCountries(XmlElement root) {
+    try {
+      final countries = root
+          .findElements('country')
+          .map((e) => e.innerText.trim())
+          .where((c) => c.isNotEmpty)
+          .toList();
+      return countries.isNotEmpty ? countries : null;
     } on Exception catch (_) {
       return null;
     }

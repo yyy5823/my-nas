@@ -1209,12 +1209,13 @@ class _VideoDetailPageState extends ConsumerState<VideoDetailPage> {
   ///
   /// 如果同一电影有多个质量版本，显示下拉选择器
   Widget _buildQualitySelector(bool isDark) {
-    // 仅对有 TMDB ID 的电影显示质量选择器
-    if (!_hasTmdbId || _isTvShow) {
+    // 仅对电影显示质量选择器（剧集使用剧集选择器）
+    if (_isTvShow) {
       return const SizedBox.shrink();
     }
 
-    final variantsAsync = ref.watch(relatedLocalVideosProvider(_selectedMetadata.tmdbId!));
+    // 使用 movieVersionsProvider 获取所有版本（支持有/无 TMDB ID）
+    final variantsAsync = ref.watch(movieVersionsProvider(_selectedMetadata));
 
     return variantsAsync.when(
       loading: () => const SizedBox.shrink(),
