@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/app/theme/color_scheme_preset.dart';
+import 'package:my_nas/app/theme/ui_style.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/downloader/presentation/pages/downloader_list_page.dart';
 import 'package:my_nas/features/media_management/presentation/pages/media_management_list_page.dart';
@@ -13,6 +14,7 @@ import 'package:my_nas/features/music/domain/entities/music_scraper_source.dart'
 import 'package:my_nas/features/music/presentation/pages/music_scraper_sources_page.dart';
 import 'package:my_nas/features/music/presentation/providers/music_scraper_provider.dart';
 import 'package:my_nas/features/pt_sites/presentation/pages/pt_sites_list_page.dart';
+import 'package:my_nas/features/settings/presentation/pages/error_report_settings_page.dart';
 import 'package:my_nas/features/sources/domain/entities/source_category.dart';
 import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
 import 'package:my_nas/features/sources/presentation/pages/media_library_page.dart';
@@ -23,9 +25,11 @@ import 'package:my_nas/features/transfer/presentation/providers/transfer_provide
 import 'package:my_nas/features/transfer/presentation/widgets/transfer_sheet.dart';
 import 'package:my_nas/features/video/domain/entities/scraper_source.dart';
 import 'package:my_nas/features/video/presentation/pages/scraper_sources_page.dart';
+import 'package:my_nas/features/video/presentation/pages/video_player_settings_page.dart';
 import 'package:my_nas/features/video/presentation/providers/scraper_provider.dart';
 import 'package:my_nas/shared/providers/language_preference_provider.dart';
 import 'package:my_nas/shared/providers/theme_provider.dart';
+import 'package:my_nas/shared/providers/ui_style_provider.dart';
 import 'package:my_nas/shared/widgets/update_dialog.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
@@ -36,6 +40,7 @@ class MinePage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeModeProvider);
     final colorPreset = ref.watch(colorSchemePresetProvider);
+    final uiStyle = ref.watch(uiStyleProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final connections = ref.watch(activeConnectionsProvider);
     final connectedCount = connections.values
@@ -86,6 +91,19 @@ class MinePage extends ConsumerWidget {
                   context,
                   isDark,
                   children: [
+                    _buildSettingsTile(
+                      context,
+                      isDark,
+                      icon: Icons.play_circle_rounded,
+                      iconColor: AppColors.primary,
+                      title: '播放器设置',
+                      subtitle: '清晰度、投屏、转码等',
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(builder: (_) => const VideoPlayerSettingsPage()),
+                      ),
+                    ),
+                    _buildDivider(isDark),
                     _VideoScraperSourcesTile(isDark: isDark),
                     _buildDivider(isDark),
                     _SubtitleSourcesTile(isDark: isDark),
@@ -161,6 +179,16 @@ class MinePage extends ConsumerWidget {
                       subtitle: colorPreset.name,
                       onTap: () => _showColorSchemeDialog(context, ref, colorPreset, isDark),
                     ),
+                    _buildDivider(isDark),
+                    _buildSettingsTile(
+                      context,
+                      isDark,
+                      icon: uiStyle.icon,
+                      iconColor: AppColors.accent,
+                      title: 'UI 风格',
+                      subtitle: uiStyle.label,
+                      onTap: () => _showUIStyleDialog(context, ref, uiStyle, isDark),
+                    ),
                   ],
                 ),
 
@@ -176,6 +204,19 @@ class MinePage extends ConsumerWidget {
                     _VersionTile(isDark: isDark),
                     _buildDivider(isDark),
                     CheckUpdateTile(isDark: isDark),
+                    _buildDivider(isDark),
+                    _buildSettingsTile(
+                      context,
+                      isDark,
+                      icon: Icons.bug_report_rounded,
+                      iconColor: AppColors.warning,
+                      title: '日志上报',
+                      subtitle: '帮助我们改进应用',
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(builder: (_) => const ErrorReportSettingsPage()),
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: AppSpacing.xxxl),
@@ -588,6 +629,135 @@ class MinePage extends ConsumerWidget {
                 ],
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showUIStyleDialog(
+    BuildContext context,
+    WidgetRef ref,
+    UIStyle currentStyle,
+    bool isDark,
+  ) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: isDark
+                  ? AppColors.darkSurface.withValues(alpha: 0.95)
+                  : AppColors.lightSurface.withValues(alpha: 0.98),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    margin: const EdgeInsets.only(top: 12),
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? AppColors.darkOnSurfaceVariant.withValues(alpha: 0.3)
+                          : AppColors.lightOnSurfaceVariant.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(AppSpacing.lg),
+                    child: Text(
+                      '选择 UI 风格',
+                      style: context.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                      ),
+                    ),
+                  ),
+                  for (final style in UIStyle.values)
+                    _buildUIStyleOption(context, ref, style, currentStyle, isDark),
+                  const SizedBox(height: AppSpacing.lg),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUIStyleOption(
+    BuildContext context,
+    WidgetRef ref,
+    UIStyle style,
+    UIStyle currentStyle,
+    bool isDark,
+  ) {
+    final isSelected = style == currentStyle;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          ref.read(uiStyleProvider.notifier).setStyle(style);
+          Navigator.pop(context);
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.md,
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? AppColors.primary.withValues(alpha: 0.15)
+                      : (isDark ? AppColors.darkSurfaceVariant : AppColors.lightSurfaceVariant)
+                          .withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  style.icon,
+                  color: isSelected
+                      ? AppColors.primary
+                      : (isDark ? AppColors.darkOnSurfaceVariant : AppColors.lightOnSurfaceVariant),
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Text(
+                  style.label,
+                  style: context.textTheme.bodyLarge?.copyWith(
+                    color: isDark ? AppColors.darkOnSurface : AppColors.lightOnSurface,
+                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                  ),
+                ),
+              ),
+              if (isSelected)
+                Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: AppColors.primaryGradient,
+                  ),
+                  child: const Icon(
+                    Icons.check_rounded,
+                    color: Colors.white,
+                    size: 16,
+                  ),
+                ),
+            ],
           ),
         ),
       ),

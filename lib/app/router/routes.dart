@@ -19,7 +19,6 @@ abstract final class Routes {
   static const String files = '/files';
   static const String book = '/book';
   static const String note = '/note';
-  static const String settings = '/settings';
 
   // Sub routes
   static const String videoPlayer = '/video/player';
