@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_foliate_viewer/flutter_foliate_viewer.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
+import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/core/widgets/keyboard_shortcuts.dart';
 import 'package:my_nas/features/book/data/services/book_file_cache_service.dart';
@@ -202,7 +203,9 @@ class _EbookReaderPageState extends ConsumerState<EbookReaderPage> {
   Future<void> _updateBatteryStatus() async {
     try {
       final battery = Battery();
-      final level = await battery.batteryLevel;
+      // 使用 dynamic 接收避免平台兼容性问题（macOS 可能返回 String）
+      final dynamic levelValue = await battery.batteryLevel;
+      final level = _parseBatteryLevel(levelValue);
       final state = await battery.batteryState;
       if (mounted) {
         setState(() {
@@ -219,18 +222,27 @@ class _EbookReaderPageState extends ConsumerState<EbookReaderPage> {
                 state == BatteryState.full;
           });
           // 状态变化时也更新电量
-          battery.batteryLevel.then((level) {
+          battery.batteryLevel.then((dynamic levelValue) {
             if (mounted) {
               setState(() {
-                _batteryLevel = level;
+                _batteryLevel = _parseBatteryLevel(levelValue);
               });
             }
           });
         }
       });
-    } on Exception catch (_) {
-      // 电池 API 可能在某些平台不可用
+    } catch (e, st) {
+      // 电池 API 可能在某些平台不可用，或返回类型不匹配
+      AppError.ignore(e, st, '电池状态获取失败，可能平台不支持');
     }
+  }
+
+  /// 安全解析电池电量值，处理不同平台可能返回不同类型的情况
+  int _parseBatteryLevel(dynamic value) {
+    if (value is int) return value;
+    if (value is String) return int.tryParse(value) ?? 100;
+    if (value is double) return value.toInt();
+    return 100;
   }
 
   Future<void> _initWakelock() async {

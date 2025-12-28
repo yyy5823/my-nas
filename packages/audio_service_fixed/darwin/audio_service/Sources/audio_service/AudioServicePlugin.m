@@ -81,7 +81,11 @@ static int forceUpdateCounter = 0;  // 用于强制刷新的计数器
                 NSLog(@"audio_service: [Block] applicationWillResignActive - playing=%d, hasNowPlayingInfo=%d",
                       playing, (nowPlayingInfo != nil && nowPlayingInfo.count > 0));
                 if (playing && nowPlayingInfo != nil && nowPlayingInfo.count > 0) {
-                    [strongInstance forceRefreshNowPlayingInfo];
+                    // 尝试十四（2024-12-28）：
+                    // 日志分析发现：MXSession 的 ClientType = None，因为 ClientIsPlaying = STOPPED
+                    // 这是因为 iOS 没有检测到 AudioToolbox 在播放
+                    // 解决方案：在进入后台前重新激活 AVAudioSession，强制 iOS 重新识别播放状态
+                    [strongInstance reactivateAudioSessionAndRefresh];
                 }
             }];
 
@@ -106,11 +110,33 @@ static int forceUpdateCounter = 0;  // 用于强制刷新的计数器
                 AudioServicePlugin *strongInstance = weakInstance;
                 if (!strongInstance) return;
 
-                NSLog(@"audio_service: [Block] applicationDidBecomeActive - playing=%d", playing);
-                // 重要：返回前台时 *不* 刷新 nowPlayingInfo
-                // 原因：如果在返回前台时刷新，iOS 可能认为下一次进入后台时
-                // nowPlayingInfo 没有变化（刚刚更新过），从而跳过灵动岛的显示
-                // 只在进入后台时（WillResignActive/DidEnterBackground）刷新
+                NSLog(@"audio_service: [Block] applicationDidBecomeActive - playing=%d, hasNowPlayingInfo=%d",
+                      playing, (nowPlayingInfo != nil && nowPlayingInfo.count > 0));
+
+                // 尝试十四（2024-12-28）：
+                // 日志分析发现：MXSession 的 ClientType = None，因为 iOS 没有检测到音频播放
+                // 解决方案：返回前台时立即重新激活 AVAudioSession，并延迟刷新播放状态
+                if (playing && nowPlayingInfo != nil && nowPlayingInfo.count > 0) {
+                    // 立即重新激活 AVAudioSession
+                    [strongInstance reactivateAudioSession];
+
+                    // 延迟 100ms 后重新设置播放状态
+                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(100 * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
+                        AudioServicePlugin *innerStrongInstance = weakInstance;
+                        if (!innerStrongInstance) return;
+
+                        if (playing && nowPlayingInfo != nil && nowPlayingInfo.count > 0) {
+                            MPNowPlayingInfoCenter *center = [MPNowPlayingInfoCenter defaultCenter];
+                            center.nowPlayingInfo = nowPlayingInfo;
+
+                            if (@available(iOS 13.0, *)) {
+                                center.playbackState = MPNowPlayingPlaybackStatePlaying;
+                            }
+
+                            NSLog(@"audio_service: [Block] applicationDidBecomeActive - restored playback state to Playing");
+                        }
+                    });
+                }
             }];
 
             NSLog(@"audio_service: 已注册 app 生命周期监听 (block-based observers)");
@@ -651,6 +677,55 @@ static int forceUpdateCounter = 0;  // 用于强制刷新的计数器
 }
 
 #if TARGET_OS_IPHONE
+/// 重新激活 AVAudioSession（尝试十四）
+///
+/// 日志分析发现：
+/// - MXSession 的 ClientType = None，因为 ClientIsPlaying = STOPPED
+/// - 这是因为 iOS 没有检测到 AudioToolbox 在播放
+///
+/// 解决方案：
+/// 在返回前台和进入后台前，强制重新激活 AVAudioSession
+/// 这会让 iOS 重新创建音频会话，并正确识别播放状态
+- (void)reactivateAudioSession {
+    NSError *error = nil;
+    AVAudioSession *session = [AVAudioSession sharedInstance];
+
+    // 设置 category 为 playback，确保后台播放
+    [session setCategory:AVAudioSessionCategoryPlayback
+                    mode:AVAudioSessionModeDefault
+                 options:0
+                   error:&error];
+    if (error) {
+        NSLog(@"audio_service: reactivateAudioSession setCategory failed: %@", error);
+        error = nil;
+    }
+
+    // 激活音频会话
+    BOOL success = [session setActive:YES error:&error];
+    if (error) {
+        NSLog(@"audio_service: reactivateAudioSession setActive failed: %@", error);
+    } else {
+        NSLog(@"audio_service: reactivateAudioSession success=%d", success);
+    }
+}
+
+/// 重新激活 AVAudioSession 并刷新 nowPlayingInfo（尝试十四）
+///
+/// 在进入后台前调用，确保：
+/// 1. AVAudioSession 处于激活状态
+/// 2. NowPlayingInfo 被正确刷新
+- (void)reactivateAudioSessionAndRefresh {
+    NSLog(@"audio_service: reactivateAudioSessionAndRefresh starting");
+
+    // 步骤1: 重新激活 AVAudioSession
+    [self reactivateAudioSession];
+
+    // 步骤2: 刷新 nowPlayingInfo
+    [self forceRefreshNowPlayingInfo];
+
+    NSLog(@"audio_service: reactivateAudioSessionAndRefresh completed");
+}
+
 /// 强制刷新 nowPlayingInfo，绕过 iOS 去重机制
 /// 使用多种策略确保 iOS 正确显示灵动岛
 ///

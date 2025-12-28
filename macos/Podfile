@@ -35,6 +35,17 @@ target 'Runner' do
   end
 end
 
+# Pre-install hook to fix ffmpeg_kit_flutter_new static framework issue
+pre_install do |installer|
+  installer.pod_targets.each do |pod|
+    if pod.name == 'ffmpeg_kit_flutter_new' || pod.name.start_with?('ffmpeg_kit_flutter_new/')
+      def pod.build_type;
+        Pod::BuildType.dynamic_framework
+      end
+    end
+  end
+end
+
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_macos_build_settings(target)

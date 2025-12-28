@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:audio_service/audio_service.dart';
+import 'package:audio_session/audio_session.dart';
 import 'package:flutter/widgets.dart';
 import 'package:image/image.dart' as img;
 import 'package:just_audio/just_audio.dart';
@@ -243,12 +244,61 @@ class MusicAudioHandler extends BaseAudioHandler
 
       case AppLifecycleState.resumed:
         // App 返回前台
-        logger.i('MusicAudioHandler: App 返回前台 (resumed)');
-        // 不需要特殊处理，audio_service 原生层会在下次进入后台时正确设置 nowPlayingInfo
+        logger.i('MusicAudioHandler: App 返回前台 (resumed), playing=${_player.playing}');
+
+        // 关键修复（2024-12-28 尝试十三）：
+        // 根据 Apple 文档：音频会话可能在应用不活跃时被系统自动停用。
+        // 必须在应用每次激活时显式重新激活音频会话。
+        // 参考：https://developer.apple.com/library/archive/documentation/Audio/Conceptual/AudioSessionProgrammingGuide/ConfiguringanAudioSession/ConfiguringanAudioSession.html
+        //
+        // 日志分析发现：
+        // - iOS 检测 IsPlayingOutput:NO，系统认为没有实际音频输出
+        // - DoesntActuallyPlayAudio = YES，系统认为应用不会实际播放音频
+        // - 这导致再次进入后台时灵动岛不触发
+        //
+        // 解决方案：在返回前台时重新激活 AudioSession
+        if (_player.playing && Platform.isIOS) {
+          unawaited(_reactivateAudioSessionOnResumed());
+        }
 
       case AppLifecycleState.detached:
         // App 即将被销毁，不需要处理
         break;
+    }
+  }
+
+  /// 返回前台时重新激活 AudioSession（尝试十三）
+  ///
+  /// 根据 Apple 文档，音频会话可能在应用不活跃时被系统自动停用。
+  /// 必须在应用每次激活时显式重新激活音频会话。
+  ///
+  /// 关键发现（日志分析）：
+  /// - iOS 使用 `IsPlayingOutput` 检测是否有实际音频输出
+  /// - 返回前台后，如果音频会话未激活，iOS 会设置 `IsPlayingOutput:NO`
+  /// - 这导致再次进入后台时，灵动岛不会触发
+  ///
+  /// 解决方案：
+  /// 1. 返回前台时立即重新激活 AudioSession
+  /// 2. 延迟 200ms 后广播播放状态（确保在原生层 100ms 延迟后执行）
+  Future<void> _reactivateAudioSessionOnResumed() async {
+    try {
+      final session = await AudioSession.instance;
+
+      // 重新激活音频会话
+      final success = await session.setActive(true);
+      logger.i('MusicAudioHandler: 返回前台后重新激活 AudioSession, success=$success');
+
+      // 延迟 200ms 后重新广播播放状态
+      // 原生层会延迟 100ms 后设置 MPNowPlayingInfoCenter.playbackState
+      // 我们在此之后再广播 Dart 层的 playbackState，确保顺序正确
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      if (_player.playing && mediaItem.value != null) {
+        logger.i('MusicAudioHandler: 返回前台后重新广播播放状态');
+        _broadcastStateWithPlaying(true);
+      }
+    } on Exception catch (e) {
+      logger.w('MusicAudioHandler: 返回前台后重新激活 AudioSession 失败: $e');
     }
   }
 

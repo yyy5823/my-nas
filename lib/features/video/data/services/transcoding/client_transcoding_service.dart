@@ -1,8 +1,7 @@
-import 'dart:async' show StreamController, TimeoutException, unawaited;
+import 'dart:async' show Completer, StreamController, Timer, TimeoutException, unawaited;
 import 'dart:io';
 
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit_config.dart';
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_session.dart';
 import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import 'package:ffmpeg_kit_flutter_new/statistics.dart';
@@ -70,20 +69,26 @@ class ClientTranscodingService implements NasTranscodingService {
 
   /// 检查 FFmpeg 是否可用
   Future<bool> _checkFfmpegAvailable() async {
-    // 在不同平台上检查 FFmpeg
-    if (Platform.isIOS || Platform.isAndroid) {
-      // 移动端使用 ffmpeg_kit_flutter
+    // iOS/Android/macOS 都使用 ffmpeg_kit_flutter（提供通用架构支持）
+    if (Platform.isIOS || Platform.isAndroid || Platform.isMacOS) {
       try {
         // 执行简单命令验证 FFmpeg 可用
         final session = await FFmpegKit.execute('-version');
         final returnCode = await session.getReturnCode();
-        return ReturnCode.isSuccess(returnCode);
+        final isAvailable = ReturnCode.isSuccess(returnCode);
+        if (isAvailable) {
+          logger.i('ClientTranscoding: FFmpegKit 可用');
+        } else {
+          final logs = await session.getAllLogsAsString();
+          logger.w('ClientTranscoding: FFmpegKit 不可用: $logs');
+        }
+        return isAvailable;
       } catch (e, st) {
-        AppError.ignore(e, st, '检查移动端 FFmpeg 可用性失败');
+        AppError.ignore(e, st, '检查 FFmpegKit 可用性失败');
         return false;
       }
-    } else if (Platform.isMacOS || Platform.isLinux || Platform.isWindows) {
-      // 桌面端检查 FFmpeg
+    } else if (Platform.isLinux || Platform.isWindows) {
+      // Linux/Windows 使用系统 FFmpeg
       _ffmpegPath = await _findDesktopFfmpeg();
       if (_ffmpegPath != null) {
         logger.i('ClientTranscoding: 找到 FFmpeg: $_ffmpegPath');
@@ -94,35 +99,9 @@ class ClientTranscodingService implements NasTranscodingService {
     return false;
   }
 
-  /// 查找桌面端 FFmpeg 可执行文件
+  /// 查找桌面端 FFmpeg 可执行文件（仅用于 Linux/Windows）
   Future<String?> _findDesktopFfmpeg() async {
-    // macOS: 优先使用打包在应用内的 FFmpeg
-    if (Platform.isMacOS) {
-      final bundledPath = await _getBundledFfmpegPath();
-      logger.d('ClientTranscoding: 检查打包的 FFmpeg 路径: $bundledPath');
-      if (bundledPath != null && await File(bundledPath).exists()) {
-        logger.d('ClientTranscoding: 打包的 FFmpeg 文件存在');
-        // 验证可执行（添加超时防止卡住）
-        try {
-          final result = await Process.run(bundledPath, ['-version'])
-              .timeout(const Duration(seconds: 5));
-          logger.d('ClientTranscoding: FFmpeg 执行测试退出码: ${result.exitCode}');
-          if (result.exitCode == 0) {
-            return bundledPath;
-          } else {
-            logger.w('ClientTranscoding: FFmpeg 执行失败: ${result.stderr}');
-          }
-        } on TimeoutException {
-          logger.w('ClientTranscoding: FFmpeg 执行超时');
-          // 继续尝试系统 FFmpeg
-        } catch (e) {
-          logger.w('ClientTranscoding: FFmpeg 执行异常: $e');
-          // 继续尝试系统 FFmpeg
-        }
-      } else {
-        logger.w('ClientTranscoding: 打包的 FFmpeg 文件不存在');
-      }
-    }
+    // 注意：macOS 现在使用 FFmpegKit，不需要单独的二进制文件
 
     // 尝试系统 PATH 中的 FFmpeg
     try {
@@ -135,23 +114,6 @@ class ClientTranscodingService implements NasTranscodingService {
     }
 
     return null;
-  }
-
-  /// 获取打包在 macOS 应用内的 FFmpeg 路径
-  Future<String?> _getBundledFfmpegPath() async {
-    if (!Platform.isMacOS) return null;
-
-    try {
-      // 获取应用可执行文件路径
-      final executable = Platform.resolvedExecutable;
-      // 应用结构: MyApp.app/Contents/MacOS/my_nas
-      // FFmpeg 位置: MyApp.app/Contents/MacOS/ffmpeg
-      final macosDir = File(executable).parent.path;
-      final ffmpegPath = '$macosDir/ffmpeg';
-      return ffmpegPath;
-    } catch (e) {
-      return null;
-    }
   }
 
   @override
@@ -345,11 +307,11 @@ class ClientTranscodingService implements NasTranscodingService {
       logger.i('ClientTranscoding: 开始转码 ${task.inputPath}');
       logger.d('ClientTranscoding: FFmpeg 命令 => $command');
 
-      if (Platform.isIOS || Platform.isAndroid) {
-        // 移动端使用 FFmpegKit
-        await _runMobileTranscoding(task, command);
+      if (Platform.isIOS || Platform.isAndroid || Platform.isMacOS) {
+        // iOS/Android/macOS 使用 FFmpegKit（通用架构支持）
+        await _runFFmpegKitTranscoding(task, command);
       } else {
-        // 桌面端使用 Process
+        // Linux/Windows 使用 Process
         await _runDesktopTranscoding(task, args, waitForComplete: waitForComplete);
       }
     } catch (e, st) {
@@ -387,46 +349,108 @@ class ClientTranscodingService implements NasTranscodingService {
     }
   }
 
-  /// 移动端转码（使用 FFmpegKit）
-  Future<void> _runMobileTranscoding(_TranscodingTask task, String command) async {
-    try {
-      // 设置进度回调
-      FFmpegKitConfig.enableStatisticsCallback((Statistics statistics) {
-        final timeInMs = statistics.getTime().toDouble();
-        if (timeInMs > 0) {
-          task.currentTime = Duration(milliseconds: timeInMs.round());
-          // 如果知道总时长，计算进度
-          if (task.totalDuration != null && task.totalDuration! > Duration.zero) {
-            task.progress = timeInMs / task.totalDuration!.inMilliseconds;
-          }
-        }
-        task.speed = '${(statistics.getSpeed()).toStringAsFixed(1)}x';
-      });
+  /// 使用 FFmpegKit 转码（iOS/Android/macOS）
+  Future<void> _runFFmpegKitTranscoding(_TranscodingTask task, String command) async {
+    final completer = Completer<void>();
+    var lastLogTime = DateTime.now();
+    const readTimeout = Duration(seconds: 60); // 60秒无输出则超时
 
-      // 执行转码
-      final session = await FFmpegKit.execute(command);
+    try {
+      // 使用 executeAsync 以便添加回调
+      final session = await FFmpegKit.executeAsync(
+        command,
+        // 完成回调
+        (FFmpegSession session) async {
+          task.ffmpegSession = session;
+          final returnCode = await session.getReturnCode();
+
+          if (ReturnCode.isSuccess(returnCode)) {
+            task.isRunning = false;
+            task.isCompleted = true;
+            logger.i('ClientTranscoding: 转码完成 ${task.outputPath}');
+          } else if (ReturnCode.isCancel(returnCode)) {
+            task.isRunning = false;
+            task.error = '转码已取消';
+            logger.i('ClientTranscoding: 转码已取消');
+          } else {
+            task.isRunning = false;
+            final logs = await session.getAllLogsAsString();
+            final errorSnippet = logs != null && logs.length > 500
+                ? logs.substring(logs.length - 500)
+                : logs ?? '';
+            task.error = '转码失败';
+            logger.e('ClientTranscoding: 转码失败 returnCode=$returnCode');
+            logger.e('ClientTranscoding: FFmpeg 输出:\n$errorSnippet');
+          }
+
+          if (!completer.isCompleted) {
+            completer.complete();
+          }
+        },
+        // 日志回调
+        (log) {
+          lastLogTime = DateTime.now();
+          final message = log.getMessage();
+          // 只记录关键日志，避免刷屏
+          if (message.contains('Error') ||
+              message.contains('error') ||
+              message.contains('Invalid') ||
+              message.contains('failed') ||
+              message.contains('Input #') ||
+              message.contains('Output #') ||
+              message.contains('Stream #')) {
+            logger.d('ClientTranscoding: FFmpeg: $message');
+          }
+        },
+        // 统计回调
+        (Statistics statistics) {
+          lastLogTime = DateTime.now();
+          final timeInMs = statistics.getTime().toDouble();
+          if (timeInMs > 0) {
+            task.currentTime = Duration(milliseconds: timeInMs.round());
+            // 如果知道总时长，计算进度
+            if (task.totalDuration != null && task.totalDuration! > Duration.zero) {
+              task.progress = timeInMs / task.totalDuration!.inMilliseconds;
+            }
+            // 每10秒输出一次进度日志
+            if (timeInMs.round() % 10000 < 500) {
+              logger.d('ClientTranscoding: 进度 ${(timeInMs / 1000).toStringAsFixed(1)}s, 速度=${statistics.getSpeed().toStringAsFixed(1)}x');
+            }
+          }
+          task.speed = '${(statistics.getSpeed()).toStringAsFixed(1)}x';
+        },
+      );
+
       task.ffmpegSession = session;
 
-      final returnCode = await session.getReturnCode();
+      // 启动超时监控
+      Timer.periodic(const Duration(seconds: 10), (timer) {
+        if (completer.isCompleted || !task.isRunning) {
+          timer.cancel();
+          return;
+        }
 
-      if (ReturnCode.isSuccess(returnCode)) {
-        task.isRunning = false;
-        task.isCompleted = true;
-        logger.i('ClientTranscoding: 转码完成 ${task.outputPath}');
-      } else if (ReturnCode.isCancel(returnCode)) {
-        task.isRunning = false;
-        task.error = '转码已取消';
-        logger.i('ClientTranscoding: 转码已取消');
-      } else {
-        task.isRunning = false;
-        final logs = await session.getAllLogsAsString();
-        task.error = '转码失败: $logs';
-        logger.e('ClientTranscoding: 转码失败 $returnCode');
-      }
+        final timeSinceLastLog = DateTime.now().difference(lastLogTime);
+        if (timeSinceLastLog > readTimeout) {
+          logger.e('ClientTranscoding: FFmpeg 超时，${readTimeout.inSeconds}秒无输出');
+          task.cancel();
+          task.error = '转码超时：输入源无响应';
+          timer.cancel();
+          if (!completer.isCompleted) {
+            completer.complete();
+          }
+        }
+      });
+
+      // 等待转码完成或超时
+      await completer.future;
     } catch (e, st) {
       task.isRunning = false;
       task.error = e.toString();
       AppError.handle(e, st, 'mobileTranscoding');
+      if (!completer.isCompleted) {
+        completer.complete();
+      }
     }
   }
 
