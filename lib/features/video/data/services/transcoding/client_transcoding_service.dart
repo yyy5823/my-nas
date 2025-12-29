@@ -75,8 +75,15 @@ class ClientTranscodingService implements NasTranscodingService {
 
   /// 检查 FFmpeg 是否可用
   Future<bool> _checkFfmpegAvailable() async {
-    // iOS/Android/macOS 使用 ffmpeg_kit_flutter（提供通用架构支持）
-    if (Platform.isIOS || Platform.isAndroid || Platform.isMacOS) {
+    // Android 不支持客户端转码（ffmpeg-kit 所有版本都有兼容性问题）
+    // Android 用户可使用服务端转码或原画播放（media_kit 支持大部分格式）
+    if (Platform.isAndroid) {
+      logger.i('ClientTranscoding: Android 平台不支持客户端转码');
+      return false;
+    }
+
+    // iOS/macOS 使用 ffmpeg_kit_flutter
+    if (Platform.isIOS || Platform.isMacOS) {
       try {
         // 执行简单命令验证 FFmpeg 可用
         final session = await FFmpegKit.execute('-version');

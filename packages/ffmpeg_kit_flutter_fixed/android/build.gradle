@@ -24,7 +24,7 @@ apply plugin: "com.android.library"
 apply plugin: "kotlin-android"
 
 android {
-    namespace = "com.antonkarpenko.ffmpegkit"
+    namespace = "com.arthenica.ffmpegkit"
 
     compileSdk = 35
 
@@ -51,6 +51,8 @@ android {
 
     dependencies {
         implementation("androidx.annotation:annotation:1.9.1")
-        implementation("com.antonkarpenko:ffmpeg-kit-full-gpl:2.1.0")
+        // 使用社区维护的 ffmpeg-kit fork（原 arthenica 版本已退役）
+        // https://central.sonatype.com/artifact/io.github.xch168/ffmpeg-kit-full-gpl
+        implementation("io.github.xch168:ffmpeg-kit-full-gpl:1.0.2")
     }
 }

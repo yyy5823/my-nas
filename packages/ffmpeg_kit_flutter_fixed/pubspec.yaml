@@ -11,9 +11,8 @@ environment:
 flutter:
   plugin:
     platforms:
-      android:
-        package: com.antonkarpenko.ffmpegkit
-        pluginClass: FFmpegKitFlutterPlugin
+      # Android 已禁用：所有可用的 ffmpeg-kit 版本都有兼容性问题
+      # Android 用户可使用服务端转码或原画播放（media_kit 支持大部分格式）
       ios:
         pluginClass: FFmpegKitFlutterPlugin
       macos:

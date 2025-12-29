@@ -1,6 +1,6 @@
-package com.antonkarpenko.ffmpegkit;
+package com.arthenica.ffmpegkit;
 
-import static com.antonkarpenko.ffmpegkit.FFmpegKitFlutterPlugin.LIBRARY_NAME;
+import static com.arthenica.ffmpegkit.FFmpegKitFlutterPlugin.LIBRARY_NAME;
 
 import android.util.Log;
 

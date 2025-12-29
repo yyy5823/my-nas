@@ -70,6 +70,24 @@
             android:foregroundServiceType="dataSync"
             android:exported="false" />
 
+        <!-- audio_service 媒体播放服务 -->
+        <service
+            android:name="com.ryanheise.audioservice.AudioService"
+            android:foregroundServiceType="mediaPlayback"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.media.browse.MediaBrowserService" />
+            </intent-filter>
+        </service>
+
+        <receiver
+            android:name="com.ryanheise.audioservice.MediaButtonReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
+
         <!-- FileProvider for APK installation (Android 7.0+) -->
         <provider
             android:name="androidx.core.content.FileProvider"
