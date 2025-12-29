@@ -188,6 +188,7 @@ class SmbAdapter implements NasAdapter {
           domain: '',
           username: username,
           password: password,
+          debugPrint: true, // 临时启用调试输出
         ).timeout(
           const Duration(seconds: 30),
           onTimeout: () {
