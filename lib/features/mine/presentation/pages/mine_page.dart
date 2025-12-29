@@ -6,6 +6,7 @@ import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_spacing.dart';
 import 'package:my_nas/app/theme/color_scheme_preset.dart';
 import 'package:my_nas/app/theme/ui_style.dart';
+import 'package:my_nas/shared/widgets/adaptive_glass_container.dart';
 import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/features/downloader/presentation/pages/downloader_list_page.dart';
 import 'package:my_nas/features/media_management/presentation/pages/media_management_list_page.dart';
@@ -225,7 +226,12 @@ class MinePage extends ConsumerWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: AppSpacing.xxxl),
+                // 底部间距：玻璃模式需要更大间距以避免被导航栏遮住
+                SizedBox(
+                  height: uiStyle.isGlass
+                      ? kBottomNavigationBarHeight + context.padding.bottom + AppSpacing.md
+                      : AppSpacing.xxxl,
+                ),
               ],
             ),
           ),
@@ -346,63 +352,13 @@ class MinePage extends ConsumerWidget {
     UIStyle uiStyle, {
     required List<Widget> children,
   }) {
-    final glassStyle = GlassTheme.getStyle(uiStyle, isDark: isDark);
-    final optimizedStyle = PlatformGlassConfig.getOptimizedStyle(glassStyle, isDark: isDark);
-    final enableGlass = PlatformGlassConfig.shouldEnableGlass(uiStyle);
-
-    // 计算背景色
-    final bgColor = enableGlass
-        ? GlassTheme.getBackgroundColor(optimizedStyle, isDark: isDark)
-        : (isDark
-            ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
-            : AppColors.lightSurface);
-
-    final borderColor = enableGlass
-        ? GlassTheme.getBorderColor(optimizedStyle, isDark: isDark)
-        : (isDark
-            ? AppColors.darkOutline.withValues(alpha: 0.2)
-            : AppColors.lightOutline.withValues(alpha: 0.3));
-
-    Widget card = DecoratedBox(
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: borderColor),
-        boxShadow: enableGlass
-            ? GlassTheme.getGlowShadows(optimizedStyle, isDark: isDark)
-            : (isDark
-                ? null
-                : [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.03),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ]),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: Column(
-          children: children,
-        ),
-      ),
+    // 使用自适应玻璃容器 - 自动根据平台选择原生/Flutter实现
+    return AdaptiveGlassContainer(
+      uiStyle: uiStyle,
+      isDark: isDark,
+      cornerRadius: 20,
+      child: Column(children: children),
     );
-
-    // 玻璃效果：添加模糊背景
-    if (enableGlass && optimizedStyle.needsBlur) {
-      card = ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(
-            sigmaX: optimizedStyle.blurIntensity,
-            sigmaY: optimizedStyle.blurIntensity,
-          ),
-          child: card,
-        ),
-      );
-    }
-
-    return card;
   }
 
   Widget _buildSettingsTile(
@@ -1521,6 +1477,7 @@ class _TransferCard extends ConsumerWidget {
     final uploadingCount = ref.watch(uploadingCountProvider);
     final cachingCount = ref.watch(cachingCountProvider);
     final cacheStats = ref.watch(cacheStatsProvider);
+    final uiStyle = ref.watch(uiStyleProvider);
 
     // 计算缓存总数和大小
     final cacheCount = cacheStats.when(
@@ -1537,78 +1494,59 @@ class _TransferCard extends ConsumerWidget {
       error: (_, _) => '未知',
     );
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: isDark
-            ? AppColors.darkSurfaceVariant.withValues(alpha: 0.3)
-            : AppColors.lightSurface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isDark
-              ? AppColors.darkOutline.withValues(alpha: 0.2)
-              : AppColors.lightOutline.withValues(alpha: 0.3),
-        ),
-        boxShadow: isDark
-            ? null
-            : [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.03),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: Column(
-          children: [
-            // 下载项
-            _buildTransferItem(
-              context,
-              icon: Icons.download_rounded,
-              label: '下载',
-              count: downloadingCount,
-              subtitle: downloadingCount > 0
-                  ? '$downloadingCount 个任务进行中'
-                  : '暂无下载任务',
-              color: AppColors.primary,
-              isActive: downloadingCount > 0,
-              onTap: () => showTransferDownloads(context),
-            ),
-            // 分隔线
-            _buildDivider(),
-            // 上传项
-            _buildTransferItem(
-              context,
-              icon: Icons.upload_rounded,
-              label: '上传',
-              count: uploadingCount,
-              subtitle: uploadingCount > 0
-                  ? '$uploadingCount 个任务进行中'
-                  : '暂无上传任务',
-              color: AppColors.accent,
-              isActive: uploadingCount > 0,
-              onTap: () => showTransferUploads(context),
-            ),
-            // 分隔线
-            _buildDivider(),
-            // 缓存项
-            _buildTransferItem(
-              context,
-              icon: Icons.storage_rounded,
-              label: '缓存',
-              count: cachingCount > 0 ? cachingCount : null,
-              subtitle: cachingCount > 0
-                  ? '$cachingCount 个任务进行中'
-                  : cacheCount > 0
-                      ? '$cacheCount 个缓存 ($cacheSizeText)'
-                      : '暂无缓存',
-              color: Colors.teal,
-              isActive: cachingCount > 0,
-              onTap: () => showTransferCache(context),
-            ),
-          ],
-        ),
+    // 使用自适应玻璃容器 - 自动根据平台选择原生/Flutter实现
+    return AdaptiveGlassContainer(
+      uiStyle: uiStyle,
+      isDark: isDark,
+      cornerRadius: 20,
+      child: Column(
+        children: [
+          // 下载项
+          _buildTransferItem(
+            context,
+            icon: Icons.download_rounded,
+            label: '下载',
+            count: downloadingCount,
+            subtitle: downloadingCount > 0
+                ? '$downloadingCount 个任务进行中'
+                : '暂无下载任务',
+            color: AppColors.primary,
+            isActive: downloadingCount > 0,
+            onTap: () => showTransferDownloads(context),
+          ),
+          // 分隔线
+          _buildDivider(),
+          // 上传项
+          _buildTransferItem(
+            context,
+            icon: Icons.upload_rounded,
+            label: '上传',
+            count: uploadingCount,
+            subtitle: uploadingCount > 0
+                ? '$uploadingCount 个任务进行中'
+                : '暂无上传任务',
+            color: AppColors.accent,
+            isActive: uploadingCount > 0,
+            onTap: () => showTransferUploads(context),
+          ),
+          // 分隔线
+          _buildDivider(),
+          // 缓存项
+          _buildTransferItem(
+            context,
+            icon: Icons.storage_rounded,
+            label: '缓存',
+            count: cachingCount > 0 ? cachingCount : null,
+            subtitle: cachingCount > 0
+                ? '$cachingCount 个任务进行中'
+                : cacheCount > 0
+                    ? '$cacheCount 个缓存 ($cacheSizeText)'
+                    : '暂无缓存',
+            color: Colors.teal,
+            isActive: cachingCount > 0,
+            onTap: () => showTransferCache(context),
+          ),
+        ],
       ),
     );
   }

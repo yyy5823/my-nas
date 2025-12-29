@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
+import 'package:my_nas/core/extensions/context_extensions.dart';
 import 'package:my_nas/core/services/media_scan_progress_service.dart';
 import 'package:my_nas/core/services/performance_mode_service.dart';
 import 'package:my_nas/core/utils/logger.dart';
@@ -16,6 +17,7 @@ import 'package:my_nas/features/comic/data/services/comic_library_cache_service.
 import 'package:my_nas/features/comic/presentation/pages/comic_list_page.dart';
 import 'package:my_nas/features/music/data/services/music_database_service.dart';
 import 'package:my_nas/features/music/presentation/pages/music_list_page.dart';
+import 'package:my_nas/features/music/presentation/widgets/batch_music_scrape_dialog.dart';
 import 'package:my_nas/features/photo/data/services/photo_database_service.dart';
 import 'package:my_nas/features/photo/presentation/pages/photo_list_page.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
@@ -29,7 +31,6 @@ import 'package:my_nas/features/video/presentation/pages/video_list_page.dart';
 import 'package:my_nas/nas_adapters/local/local_adapter.dart';
 import 'package:my_nas/nas_adapters/mobile/services/file_import_service.dart';
 import 'package:my_nas/nas_adapters/smb/smb_pool_config.dart';
-import 'package:my_nas/core/extensions/context_extensions.dart';
 
 class MediaLibraryPage extends ConsumerStatefulWidget {
   const MediaLibraryPage({super.key});
@@ -1727,6 +1728,33 @@ class _PathCardState extends ConsumerState<_PathCard> {
         }
       }
 
+      // 音乐专用：批量刮削按钮（仅在扫描完成后显示）
+      if (widget.mediaType == MediaType.music && _itemCount > 0) {
+        items.add(PopupMenuItem(
+          value: 'music_scrape',
+          enabled: isConnected && !isCurrentlyScanning,
+          child: Row(
+            children: [
+              Icon(
+                Icons.auto_fix_high_rounded,
+                color: isConnected && !isCurrentlyScanning
+                    ? AppColors.fileAudio
+                    : AppColors.disabled,
+              ),
+              const SizedBox(width: 12),
+              Text(
+                '批量刮削',
+                style: TextStyle(
+                  color: isConnected && !isCurrentlyScanning
+                      ? AppColors.fileAudio
+                      : AppColors.disabled,
+                ),
+              ),
+            ],
+          ),
+        ));
+      }
+
       // 本机书籍/漫画/文档：导入更多文件
       final isMobile = !kIsWeb && (Platform.isIOS || Platform.isAndroid);
       final isLocalSource = widget.source.type == SourceType.local;
@@ -1795,6 +1823,8 @@ class _PathCardState extends ConsumerState<_PathCard> {
         await _startScraping();
       case 'stop_scrape':
         _stopScraping();
+      case 'music_scrape':
+        await _startMusicScraping(context);
       case 'import_more':
         await _importMoreFiles(context);
       case 'toggle':
@@ -1996,6 +2026,36 @@ class _PathCardState extends ConsumerState<_PathCard> {
         setState(() => _isScraping = false);
         context.showErrorToast('重试刮削失败: $e');
       }
+    }
+  }
+
+  /// 启动音乐批量刮削
+  Future<void> _startMusicScraping(BuildContext context) async {
+    // 检查连接状态
+    if (widget.connection == null ||
+        widget.connection!.status != SourceStatus.connected) {
+      context.showWarningToast('请先连接源');
+      return;
+    }
+
+    // 检查是否有音乐
+    if (_itemCount == 0) {
+      context.showInfoToast('没有可刮削的音乐，请先扫描');
+      return;
+    }
+
+    // 显示批量刮削对话框
+    final result = await BatchMusicScrapeDialog.show(
+      context,
+      sourceId: widget.path.sourceId,
+      pathPrefix: widget.path.path,
+      connection: widget.connection!,
+    );
+
+    // 刮削完成后刷新统计
+    if ((result ?? false) && mounted) {
+      await _loadStats();
+      context.showSuccessToast('批量刮削完成');
     }
   }
 

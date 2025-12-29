@@ -31,5 +31,11 @@ class AppDelegate: FlutterAppDelegate {
     AudioCapabilityChannel.register(
       with: controller.engine.registrar(forPlugin: "AudioCapabilityChannel")
     )
+
+    // 注册原生模糊视图 Platform View
+    // 用于实现真正的 macOS 系统级毛玻璃效果
+    NativeBlurViewPlugin.register(
+      with: controller.engine.registrar(forPlugin: "NativeBlurViewPlugin")
+    )
   }
 }

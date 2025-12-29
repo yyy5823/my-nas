@@ -453,10 +453,29 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
       final db = MusicDatabaseService();
       await db.init();
 
-      // 获取现有的曲目数据并更新封面路径
+      // 获取现有的曲目数据并更新
       final existing = await db.get(sourceId, widget.music.path);
       if (existing != null) {
-        await db.upsert(existing.copyWith(coverPath: localCoverPath));
+        // 补充缺失的元数据字段（不覆盖已有数据）
+        await db.upsert(existing.copyWith(
+          coverPath: localCoverPath,
+          // 只在缺失时补充
+          title: (existing.title == null || existing.title!.isEmpty)
+              ? _detail?.title
+              : existing.title,
+          artist: (existing.artist == null || existing.artist!.isEmpty)
+              ? _detail?.artist
+              : existing.artist,
+          album: (existing.album == null || existing.album!.isEmpty)
+              ? _detail?.album
+              : existing.album,
+          year: existing.year ?? _detail?.year,
+          trackNumber: existing.trackNumber ?? _detail?.trackNumber,
+          genre: (existing.genre == null || existing.genre!.isEmpty)
+              ? _detail?.genres?.join(', ')
+              : existing.genre,
+          lastUpdated: DateTime.now(),
+        ));
       } else {
         // 如果数据库中没有这首歌，创建一个基本条目
         await db.upsert(MusicTrackEntity(
@@ -466,6 +485,9 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
           title: _detail?.title ?? widget.music.title,
           artist: _detail?.artist ?? widget.music.artist,
           album: _detail?.album ?? widget.music.album,
+          year: _detail?.year,
+          trackNumber: _detail?.trackNumber,
+          genre: _detail?.genres?.join(', '),
           coverPath: localCoverPath,
           duration: widget.music.duration?.inMilliseconds,
           lastUpdated: DateTime.now(),
@@ -478,6 +500,21 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
         ref.read(currentMusicProvider.notifier).state = currentMusic!.copyWith(
           coverData: coverData.toList(),
           coverUrl: 'file://$localCoverPath',
+          // 补充缺失的元数据
+          title: (currentMusic.title == null || currentMusic.title!.isEmpty)
+              ? _detail?.title
+              : currentMusic.title,
+          artist: (currentMusic.artist == null || currentMusic.artist!.isEmpty)
+              ? _detail?.artist
+              : currentMusic.artist,
+          album: (currentMusic.album == null || currentMusic.album!.isEmpty)
+              ? _detail?.album
+              : currentMusic.album,
+          year: currentMusic.year ?? _detail?.year,
+          trackNumber: currentMusic.trackNumber ?? _detail?.trackNumber,
+          genre: (currentMusic.genre == null || currentMusic.genre!.isEmpty)
+              ? _detail?.genres?.join(', ')
+              : currentMusic.genre,
         );
       }
     } on Exception catch (e, st) {

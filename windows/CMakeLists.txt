@@ -106,3 +106,21 @@ install(DIRECTORY "${PROJECT_BUILD_DIR}/${FLUTTER_ASSET_DIR_NAME}"
 install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   CONFIGURATIONS Profile;Release
   COMPONENT Runtime)
+
+# === FFmpeg Bundling ===
+# 打包 FFmpeg 到应用目录，用于客户端视频转码
+# 需要将 FFmpeg 静态版本放到 windows/ffmpeg/ 目录
+# 下载地址: https://www.gyan.dev/ffmpeg/builds/ (推荐 ffmpeg-release-essentials.zip)
+set(FFMPEG_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ffmpeg")
+if(EXISTS "${FFMPEG_SOURCE_DIR}")
+  install(DIRECTORY "${FFMPEG_SOURCE_DIR}/"
+    DESTINATION "${CMAKE_INSTALL_PREFIX}/ffmpeg"
+    COMPONENT Runtime
+    FILES_MATCHING
+    PATTERN "*.exe"
+    PATTERN "*.dll"
+  )
+  message(STATUS "FFmpeg will be bundled from: ${FFMPEG_SOURCE_DIR}")
+else()
+  message(STATUS "FFmpeg directory not found at ${FFMPEG_SOURCE_DIR}, skipping bundling")
+endif()

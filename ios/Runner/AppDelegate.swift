@@ -47,6 +47,12 @@ import UIKit
       AudioCapabilityChannel.register(with: registrar)
     }
 
+    // 注册原生模糊视图 Platform View
+    // 用于实现真正的 iOS 系统级毛玻璃效果
+    if let registrar = self.registrar(forPlugin: "NativeBlurViewPlugin") {
+      NativeBlurViewPlugin.register(with: registrar)
+    }
+
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 

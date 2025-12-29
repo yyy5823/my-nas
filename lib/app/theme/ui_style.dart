@@ -183,6 +183,12 @@ abstract final class GlassTheme {
 /// 跨平台玻璃效果配置
 /// 根据不同平台调整模糊效果以获得最佳性能和视觉效果
 abstract final class PlatformGlassConfig {
+  /// 当前平台是否支持原生模糊（iOS/macOS 使用系统 API）
+  static bool get supportsNativeBlur {
+    if (kIsWeb) return false;
+    return Platform.isIOS || Platform.isMacOS;
+  }
+
   /// 当前平台是否支持高性能模糊
   static bool get supportsHighQualityBlur {
     if (kIsWeb) return false;
@@ -232,6 +238,34 @@ abstract final class PlatformGlassConfig {
   static bool shouldEnableGlass(UIStyle style) {
     if (kIsWeb) return false;
     return style.isGlass;
+  }
+
+  /// 是否应该使用原生模糊实现
+  /// 在 iOS/macOS 上使用 UIVisualEffectView/NSVisualEffectView
+  static bool shouldUseNativeBlur(UIStyle style) {
+    if (!shouldEnableGlass(style)) return false;
+    return supportsNativeBlur;
+  }
+
+  /// 获取原生模糊样式名称（用于 iOS/macOS Platform View）
+  /// 根据 UIStyle 返回对应的原生材质类型
+  static String getNativeBlurStyle(UIStyle style, {required bool isDark}) {
+    if (Platform.isIOS) {
+      // iOS 使用 UIBlurEffect 样式
+      return switch (style) {
+        UIStyle.classic => 'regular',
+        UIStyle.liquidClear => 'systemThinMaterial',
+        UIStyle.liquidTinted => 'systemMaterial',
+      };
+    } else if (Platform.isMacOS) {
+      // macOS 使用 NSVisualEffectView.Material
+      return switch (style) {
+        UIStyle.classic => 'contentBackground',
+        UIStyle.liquidClear => 'hudWindow',
+        UIStyle.liquidTinted => 'contentBackground',
+      };
+    }
+    return 'systemMaterial';
   }
 
   /// 获取平台优化后的 GlassStyle

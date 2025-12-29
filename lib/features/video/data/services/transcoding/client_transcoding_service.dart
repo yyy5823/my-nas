@@ -18,10 +18,10 @@ import 'package:uuid/uuid.dart';
 /// 使用本地 FFmpeg 进行视频转码，适用于不支持服务端转码的源
 /// 例如: SMB, FTP, WebDAV 等
 ///
-/// 注意: 此服务需要设备支持 FFmpeg
-/// - iOS/Android: 使用 ffmpeg_kit_flutter 依赖
-/// - macOS: 使用打包在应用内的 FFmpeg
-/// - Linux/Windows: 需要本地安装 FFmpeg
+/// 各平台 FFmpeg 支持:
+/// - iOS/Android/macOS: 使用 ffmpeg_kit_flutter_new 依赖
+/// - Windows: 优先使用应用目录中打包的 FFmpeg（windows/ffmpeg/），回退到系统 PATH
+/// - Linux: 使用系统安装的 FFmpeg
 class ClientTranscodingService implements NasTranscodingService {
   ClientTranscodingService();
 
@@ -109,16 +109,50 @@ class ClientTranscodingService implements NasTranscodingService {
   Future<String?> _findDesktopFfmpeg() async {
     // 注意：macOS 现在使用 FFmpegKit，不需要单独的二进制文件
 
-    // 尝试系统 PATH 中的 FFmpeg
+    // 1. 优先查找应用目录中打包的 FFmpeg
+    final bundledPath = await _findBundledFfmpeg();
+    if (bundledPath != null) {
+      logger.d('ClientTranscoding: 使用打包的 FFmpeg: $bundledPath');
+      return bundledPath;
+    }
+
+    // 2. 回退到系统 PATH 中的 FFmpeg
     try {
       final result = await Process.run('ffmpeg', ['-version']);
       if (result.exitCode == 0) {
+        logger.d('ClientTranscoding: 使用系统 PATH 中的 FFmpeg');
         return 'ffmpeg';
       }
     } catch (_) {
       // FFmpeg 不在 PATH 中
     }
 
+    return null;
+  }
+
+  /// 查找应用目录中打包的 FFmpeg
+  Future<String?> _findBundledFfmpeg() async {
+    try {
+      // 获取应用程序可执行文件所在目录
+      final exePath = Platform.resolvedExecutable;
+      final exeDir = File(exePath).parent.path;
+
+      // Windows: 查找 ffmpeg/ffmpeg.exe
+      // Linux: 查找 ffmpeg/ffmpeg
+      final ffmpegExeName = Platform.isWindows ? 'ffmpeg.exe' : 'ffmpeg';
+      final bundledFfmpegPath = '$exeDir/ffmpeg/$ffmpegExeName';
+
+      final ffmpegFile = File(bundledFfmpegPath);
+      if (await ffmpegFile.exists()) {
+        // 验证可执行
+        final result = await Process.run(bundledFfmpegPath, ['-version']);
+        if (result.exitCode == 0) {
+          return bundledFfmpegPath;
+        }
+      }
+    } catch (e) {
+      logger.d('ClientTranscoding: 查找打包 FFmpeg 失败: $e');
+    }
     return null;
   }
 

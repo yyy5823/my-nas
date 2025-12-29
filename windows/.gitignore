@@ -1,5 +1,9 @@
 flutter/ephemeral/
 
+# FFmpeg binaries (too large to commit, download separately)
+ffmpeg/*.exe
+ffmpeg/*.dll
+
 # Visual Studio user-specific files.
 *.suo
 *.user
