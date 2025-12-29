@@ -132,8 +132,16 @@ class SmbAdapter implements NasAdapter {
       logger.d('SmbAdapter: DNS 解析耗时 ${stopwatch.elapsedMilliseconds}ms');
 
       if (addresses.isNotEmpty) {
-        final ip = addresses.first.address;
-        logger.i('SmbAdapter: DNS 解析成功 $host -> $ip');
+        // 优先使用 IPv4 地址，因为某些网络环境 IPv6 不稳定
+        final ipv4 = addresses
+            .where((addr) => addr.type == InternetAddressType.IPv4)
+            .firstOrNull;
+        final selectedAddr = ipv4 ?? addresses.first;
+        final ip = selectedAddr.address;
+        logger.i(
+          'SmbAdapter: DNS 解析成功 $host -> $ip '
+          '(共 ${addresses.length} 个地址, IPv4: ${ipv4 != null})',
+        );
         return ip;
       }
     } catch (e) {

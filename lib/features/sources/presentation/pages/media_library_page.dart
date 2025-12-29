@@ -16,8 +16,8 @@ import 'package:my_nas/features/book/presentation/pages/book_list_page.dart';
 import 'package:my_nas/features/comic/data/services/comic_library_cache_service.dart';
 import 'package:my_nas/features/comic/presentation/pages/comic_list_page.dart';
 import 'package:my_nas/features/music/data/services/music_database_service.dart';
+import 'package:my_nas/features/music/data/services/music_scrape_service.dart';
 import 'package:my_nas/features/music/presentation/pages/music_list_page.dart';
-import 'package:my_nas/features/music/presentation/widgets/batch_music_scrape_dialog.dart';
 import 'package:my_nas/features/photo/data/services/photo_database_service.dart';
 import 'package:my_nas/features/photo/presentation/pages/photo_list_page.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
@@ -1043,6 +1043,14 @@ class _PathCardState extends ConsumerState<_PathCard> {
   bool _isScraping = false;
   double _scrapeProgress = 0;
 
+  // 音乐专用：刮削状态
+  bool _isMusicScraping = false;
+  double _musicScrapeProgress = 0;
+  String? _musicScrapeDescription;
+  int _musicScrapeSuccess = 0;
+  int _musicScrapeSkip = 0;
+  int _musicScrapeFail = 0;
+
   // 导入状态（本机书籍/漫画/文档）
   bool _isImporting = false;
   double _importProgress = 0;
@@ -1059,6 +1067,7 @@ class _PathCardState extends ConsumerState<_PathCard> {
   StreamSubscription<VideoScanProgress>? _videoProgressSub;
   StreamSubscription<ScrapeStats>? _scrapeStatsSub;
   StreamSubscription<MediaScanProgress>? _mediaScanProgressSub;
+  StreamSubscription<MusicScrapeProgress>? _musicScrapeProgressSub;
 
   /// 检查是否应该更新进度 UI（节流）
   ///
@@ -1193,6 +1202,48 @@ class _PathCardState extends ConsumerState<_PathCard> {
         }
       });
     }
+
+    // 音乐类型：订阅刮削进度
+    if (widget.mediaType == MediaType.music) {
+      // 检查是否正在刮削当前目录
+      final scrapeService = MusicScrapeService();
+      _isMusicScraping = scrapeService.isScrapingPath(
+        widget.path.sourceId,
+        widget.path.path,
+      );
+
+      _musicScrapeProgressSub = scrapeService.progressStream.listen((progress) {
+        if (!mounted) return;
+
+        // 只处理属于当前目录的进度事件
+        final isMyProgress = progress.sourceId == widget.path.sourceId &&
+            progress.pathPrefix == widget.path.path;
+
+        if (isMyProgress) {
+          // 完成/取消/错误状态强制更新，进行中状态节流更新
+          final isTerminalPhase = progress.phase == MusicScrapePhase.completed ||
+              progress.phase == MusicScrapePhase.cancelled ||
+              progress.phase == MusicScrapePhase.error;
+          if (!_shouldUpdateProgress(forceUpdate: isTerminalPhase)) return;
+
+          setState(() {
+            _isMusicScraping = progress.phase == MusicScrapePhase.preparing ||
+                progress.phase == MusicScrapePhase.scraping;
+            _musicScrapeProgress = progress.progress;
+            _musicScrapeDescription = progress.currentTrack ?? progress.description;
+            _musicScrapeSuccess = progress.successCount;
+            _musicScrapeSkip = progress.skipCount;
+            _musicScrapeFail = progress.failCount;
+
+            if (isTerminalPhase) {
+              _isMusicScraping = false;
+              // 完成后重新加载统计
+              _loadStats();
+            }
+          });
+        }
+      });
+    }
   }
 
   Future<void> _loadInitialScrapeStats() async {
@@ -1230,6 +1281,7 @@ class _PathCardState extends ConsumerState<_PathCard> {
     _videoProgressSub?.cancel();
     _scrapeStatsSub?.cancel();
     _mediaScanProgressSub?.cancel();
+    _musicScrapeProgressSub?.cancel();
     super.dispose();
   }
 
@@ -1515,6 +1567,31 @@ class _PathCardState extends ConsumerState<_PathCard> {
               ),
             ],
 
+            // 音乐刮削进度
+            if (widget.mediaType == MediaType.music && _isMusicScraping) ...[
+              const SizedBox(height: 6),
+              _buildProgressRow(
+                theme: theme,
+                isDark: isDark,
+                progress: _musicScrapeProgress,
+                description: _musicScrapeDescription ?? '正在刮削...',
+                color: AppColors.fileAudio,
+              ),
+              const SizedBox(height: 4),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Text(
+                    '成功: $_musicScrapeSuccess  跳过: $_musicScrapeSkip  失败: $_musicScrapeFail',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: isDark ? Colors.grey[500] : Colors.grey[500],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+
             // 视频专用：刮削按钮（当有待刮削内容时显示）
             if (isVideo &&
                 _pendingScrapeCount > 0 &&
@@ -1732,20 +1809,20 @@ class _PathCardState extends ConsumerState<_PathCard> {
       if (widget.mediaType == MediaType.music && _itemCount > 0) {
         items.add(PopupMenuItem(
           value: 'music_scrape',
-          enabled: isConnected && !isCurrentlyScanning,
+          enabled: isConnected && !isCurrentlyScanning && !_isMusicScraping,
           child: Row(
             children: [
               Icon(
-                Icons.auto_fix_high_rounded,
-                color: isConnected && !isCurrentlyScanning
+                _isMusicScraping ? Icons.hourglass_empty : Icons.auto_fix_high_rounded,
+                color: isConnected && !isCurrentlyScanning && !_isMusicScraping
                     ? AppColors.fileAudio
                     : AppColors.disabled,
               ),
               const SizedBox(width: 12),
               Text(
-                '批量刮削',
+                _isMusicScraping ? '刮削中...' : '批量刮削',
                 style: TextStyle(
-                  color: isConnected && !isCurrentlyScanning
+                  color: isConnected && !isCurrentlyScanning && !_isMusicScraping
                       ? AppColors.fileAudio
                       : AppColors.disabled,
                 ),
@@ -1753,6 +1830,20 @@ class _PathCardState extends ConsumerState<_PathCard> {
             ],
           ),
         ));
+
+        // 停止音乐刮削
+        if (_isMusicScraping) {
+          items.add(PopupMenuItem(
+            value: 'stop_music_scrape',
+            child: Row(
+              children: [
+                Icon(Icons.stop_rounded, color: AppColors.error),
+                SizedBox(width: 12),
+                Text('停止刮削', style: TextStyle(color: AppColors.error)),
+              ],
+            ),
+          ));
+        }
       }
 
       // 本机书籍/漫画/文档：导入更多文件
@@ -1825,6 +1916,8 @@ class _PathCardState extends ConsumerState<_PathCard> {
         _stopScraping();
       case 'music_scrape':
         await _startMusicScraping(context);
+      case 'stop_music_scrape':
+        _stopMusicScraping();
       case 'import_more':
         await _importMoreFiles(context);
       case 'toggle':
@@ -2029,7 +2122,7 @@ class _PathCardState extends ConsumerState<_PathCard> {
     }
   }
 
-  /// 启动音乐批量刮削
+  /// 启动音乐批量刮削（后台执行，不阻塞用户操作）
   Future<void> _startMusicScraping(BuildContext context) async {
     // 检查连接状态
     if (widget.connection == null ||
@@ -2044,19 +2137,30 @@ class _PathCardState extends ConsumerState<_PathCard> {
       return;
     }
 
-    // 显示批量刮削对话框
-    final result = await BatchMusicScrapeDialog.show(
-      context,
+    // 检查是否已在刮削中
+    final scrapeService = MusicScrapeService();
+    if (scrapeService.isScraping) {
+      context.showInfoToast('刮削任务正在进行中...');
+      return;
+    }
+
+    // 启动后台刮削
+    setState(() => _isMusicScraping = true);
+    context.showSuccessToast('开始后台刮削，共 $_itemCount 首音乐');
+
+    // 使用 unawaited 让刮削在后台执行
+    unawaited(scrapeService.startScraping(
       sourceId: widget.path.sourceId,
       pathPrefix: widget.path.path,
       connection: widget.connection!,
-    );
+    ));
+  }
 
-    // 刮削完成后刷新统计
-    if ((result ?? false) && mounted) {
-      await _loadStats();
-      context.showSuccessToast('批量刮削完成');
-    }
+  /// 停止音乐刮削
+  void _stopMusicScraping() {
+    MusicScrapeService().stopScraping();
+    setState(() => _isMusicScraping = false);
+    context.showInfoToast('正在停止刮削...');
   }
 
   /// 导入更多文件（本机书籍/漫画/文档）

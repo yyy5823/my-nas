@@ -1,17 +1,16 @@
-import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
-import 'package:flutter/services.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/ui_style.dart';
 
-/// 自适应玻璃容器 - 根据平台自动选择最佳模糊实现
+/// 自适应玻璃容器 - 使用 Flutter BackdropFilter 实现真正的毛玻璃效果
 ///
-/// - iOS/macOS: 使用原生 UIVisualEffectView/NSVisualEffectView
-/// - Android/Windows/Linux: 使用 Flutter BackdropFilter
-/// - Web: 使用不透明背景（不支持模糊）
+/// 所有平台统一使用 Flutter BackdropFilter，可以正确模糊 Flutter 渲染的内容。
+/// 针对不同平台会自动调整模糊强度和背景不透明度以优化性能：
+/// - iOS/macOS: 完整模糊效果
+/// - Android/Windows/Linux: 降低模糊强度，提高背景不透明度以补偿
+/// - Web: 不支持模糊，使用不透明背景
 ///
 /// 使用示例:
 /// ```dart
@@ -53,18 +52,13 @@ class AdaptiveGlassContainer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 经典模式直接返回普通容器
-    if (!uiStyle.isGlass) {
+    // 经典模式或不支持玻璃效果的平台
+    if (!PlatformGlassConfig.shouldEnableGlass(uiStyle)) {
       return _buildClassicContainer();
     }
 
-    // Apple 平台使用原生实现
-    if (PlatformGlassConfig.shouldUseNativeBlur(uiStyle)) {
-      return _buildNativeBlurContainer();
-    }
-
-    // 其他平台使用 Flutter 实现
-    return _buildFlutterBlurContainer();
+    // 所有支持的平台统一使用 Flutter BackdropFilter
+    return _buildBlurContainer();
   }
 
   /// 经典模式 - 不透明背景
@@ -100,65 +94,8 @@ class AdaptiveGlassContainer extends StatelessWidget {
     );
   }
 
-  /// Apple 平台 - 原生模糊实现
-  Widget _buildNativeBlurContainer() {
-    final glassStyle = GlassTheme.getStyle(uiStyle, isDark: isDark);
-    final nativeStyle = PlatformGlassConfig.getNativeBlurStyle(uiStyle, isDark: isDark);
-
-    final creationParams = <String, dynamic>{
-      'style': nativeStyle,
-      'material': nativeStyle,
-      'isDark': isDark,
-      'cornerRadius': cornerRadius,
-      'enableBorder': enableBorder,
-      'borderOpacity': glassStyle.borderOpacity,
-      'enableVibrancy': false,
-      'blendingMode': 'behindWindow',
-    };
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(cornerRadius),
-      child: Stack(
-        fit: StackFit.passthrough,
-        children: [
-          // 原生模糊背景
-          Positioned.fill(
-            child: _buildPlatformView(creationParams),
-          ),
-          // Flutter 子组件
-          Padding(
-            padding: padding,
-            child: child,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPlatformView(Map<String, dynamic> creationParams) {
-    const viewType = 'com.kkape.mynas/native_blur_view';
-
-    if (Platform.isIOS) {
-      return UiKitView(
-        viewType: viewType,
-        creationParams: creationParams,
-        creationParamsCodec: const StandardMessageCodec(),
-        hitTestBehavior: PlatformViewHitTestBehavior.transparent,
-      );
-    } else if (Platform.isMacOS) {
-      return AppKitView(
-        viewType: viewType,
-        creationParams: creationParams,
-        creationParamsCodec: const StandardMessageCodec(),
-        hitTestBehavior: PlatformViewHitTestBehavior.transparent,
-      );
-    }
-
-    return const SizedBox.shrink();
-  }
-
-  /// 其他平台 - Flutter BackdropFilter 实现
-  Widget _buildFlutterBlurContainer() {
+  /// Flutter BackdropFilter 实现 - 真正的毛玻璃效果
+  Widget _buildBlurContainer() {
     final glassStyle = GlassTheme.getStyle(uiStyle, isDark: isDark);
     final optimizedStyle = PlatformGlassConfig.getOptimizedStyle(glassStyle, isDark: isDark);
 
@@ -201,16 +138,21 @@ class AdaptiveGlassContainer extends StatelessWidget {
 
 /// 自适应玻璃导航栏容器 - 专为导航栏优化的玻璃效果
 ///
+/// 使用 Flutter BackdropFilter 实现真正的毛玻璃效果，
+/// 可以正确模糊导航栏后面的 Flutter 内容（如列表、文字等）。
+///
 /// 特点:
+/// - 真正的毛玻璃模糊效果
 /// - 更高的背景不透明度确保可读性
 /// - 支持安全区域
-/// - 底部边框
+/// - 顶部/底部边框
 class AdaptiveGlassNavBar extends StatelessWidget {
   const AdaptiveGlassNavBar({
     required this.child,
     required this.uiStyle,
     required this.isDark,
     this.height,
+    this.isTop = false,
     super.key,
   });
 
@@ -219,118 +161,69 @@ class AdaptiveGlassNavBar extends StatelessWidget {
   final bool isDark;
   final double? height;
 
+  /// 是否为顶部导航栏（影响边框位置）
+  final bool isTop;
+
   @override
   Widget build(BuildContext context) {
-    if (!uiStyle.isGlass) {
-      return _buildClassicNavBar(context);
+    // 经典模式或不支持玻璃效果的平台
+    if (!PlatformGlassConfig.shouldEnableGlass(uiStyle)) {
+      return _buildClassicNavBar();
     }
 
-    if (PlatformGlassConfig.shouldUseNativeBlur(uiStyle)) {
-      return _buildNativeNavBar(context);
-    }
-
-    return _buildFlutterNavBar(context);
+    // 所有支持的平台统一使用 Flutter BackdropFilter
+    return _buildBlurNavBar();
   }
 
-  Widget _buildClassicNavBar(BuildContext context) {
+  Widget _buildClassicNavBar() {
     return Container(
       height: height,
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
         border: Border(
-          top: BorderSide(
-            color: isDark
-                ? AppColors.darkOutline.withValues(alpha: 0.2)
-                : AppColors.lightOutline.withValues(alpha: 0.3),
-          ),
+          top: isTop
+              ? BorderSide.none
+              : BorderSide(
+                  color: isDark
+                      ? AppColors.darkOutline.withValues(alpha: 0.2)
+                      : AppColors.lightOutline.withValues(alpha: 0.3),
+                ),
+          bottom: isTop
+              ? BorderSide(
+                  color: isDark
+                      ? AppColors.darkOutline.withValues(alpha: 0.2)
+                      : AppColors.lightOutline.withValues(alpha: 0.3),
+                )
+              : BorderSide.none,
         ),
       ),
       child: child,
     );
   }
 
-  Widget _buildNativeNavBar(BuildContext context) {
-    final nativeStyle = uiStyle == UIStyle.liquidClear ? 'systemChromeMaterial' : 'systemMaterial';
-
-    final creationParams = <String, dynamic>{
-      'style': nativeStyle,
-      'material': Platform.isMacOS ? 'headerView' : nativeStyle,
-      'isDark': isDark,
-      'cornerRadius': 0.0,
-      'enableBorder': false,
-      'borderOpacity': 0.0,
-      'enableVibrancy': false,
-      'blendingMode': 'behindWindow',
-    };
-
-    return Stack(
-      fit: StackFit.passthrough,
-      children: [
-        Positioned.fill(
-          child: _buildPlatformView(creationParams),
-        ),
-        // 顶部边框
-        Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          child: Container(
-            height: 0.5,
-            color: isDark
-                ? Colors.white.withValues(alpha: 0.1)
-                : Colors.black.withValues(alpha: 0.05),
-          ),
-        ),
-        SizedBox(
-          height: height,
-          child: child,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildPlatformView(Map<String, dynamic> creationParams) {
-    const viewType = 'com.kkape.mynas/native_blur_view';
-
-    if (Platform.isIOS) {
-      return UiKitView(
-        viewType: viewType,
-        creationParams: creationParams,
-        creationParamsCodec: const StandardMessageCodec(),
-        hitTestBehavior: PlatformViewHitTestBehavior.transparent,
-      );
-    } else if (Platform.isMacOS) {
-      return AppKitView(
-        viewType: viewType,
-        creationParams: creationParams,
-        creationParamsCodec: const StandardMessageCodec(),
-        hitTestBehavior: PlatformViewHitTestBehavior.transparent,
-      );
-    }
-
-    return const SizedBox.shrink();
-  }
-
-  Widget _buildFlutterNavBar(BuildContext context) {
+  Widget _buildBlurNavBar() {
     final glassStyle = GlassTheme.getNavBarStyle(uiStyle, isDark: isDark);
     final optimizedStyle = PlatformGlassConfig.getOptimizedStyle(glassStyle, isDark: isDark);
     final bgColor = GlassTheme.getBackgroundColor(optimizedStyle, isDark: isDark);
+
+    // 边框颜色
+    final borderColor = isDark
+        ? Colors.white.withValues(alpha: 0.1)
+        : Colors.black.withValues(alpha: 0.05);
 
     Widget navBar = Container(
       height: height,
       decoration: BoxDecoration(
         color: bgColor,
         border: Border(
-          top: BorderSide(
-            color: isDark
-                ? Colors.white.withValues(alpha: 0.1)
-                : Colors.black.withValues(alpha: 0.05),
-          ),
+          top: isTop ? BorderSide.none : BorderSide(color: borderColor, width: 0.5),
+          bottom: isTop ? BorderSide(color: borderColor, width: 0.5) : BorderSide.none,
         ),
       ),
       child: child,
     );
 
+    // 添加模糊效果
     if (optimizedStyle.needsBlur) {
       navBar = ClipRect(
         child: BackdropFilter(
