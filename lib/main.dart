@@ -173,7 +173,35 @@ Future<void> _initApp() async {
   // Load TMDB API key from settings
   await _loadTmdbApiKey();
 
+  // 注册第三方开源库许可证
+  _registerThirdPartyLicenses();
+
   logger.i('MyNAS initialized successfully');
+}
+
+/// 注册第三方开源库的许可证
+void _registerThirdPartyLicenses() {
+  // FFmpeg - GPL v3 许可证
+  LicenseRegistry.addLicense(() async* {
+    yield const LicenseEntryWithLineBreaks(
+      ['FFmpeg'],
+      '''FFmpeg - A complete, cross-platform solution to record, convert and stream audio and video.
+
+Copyright (c) 2000-2025 the FFmpeg developers
+
+This software is licensed under the GNU General Public License version 3 (GPL v3).
+
+You can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+Source Code: https://github.com/FFmpeg/FFmpeg
+Website: https://ffmpeg.org
+License: https://www.gnu.org/licenses/gpl-3.0.html
+
+This application uses FFmpeg for video transcoding functionality. FFmpeg is called as an external process and is not linked into the application code.''',
+    );
+  });
 }
 
 Future<void> _loadTmdbApiKey() async {

@@ -224,6 +224,16 @@ class MinePage extends ConsumerWidget {
                         MaterialPageRoute<void>(builder: (_) => const ErrorReportSettingsPage()),
                       ),
                     ),
+                    _buildDivider(isDark),
+                    _buildSettingsTile(
+                      context,
+                      isDark,
+                      icon: Icons.article_rounded,
+                      iconColor: AppColors.info,
+                      title: '开源许可证',
+                      subtitle: '查看第三方开源库声明',
+                      onTap: () => _showOpenSourceLicenses(context),
+                    ),
                   ],
                 ),
                 // 底部间距：玻璃模式需要更大间距以避免被导航栏遮住
@@ -563,6 +573,22 @@ class MinePage extends ConsumerWidget {
           ),
         ),
       ),
+    );
+  }
+
+  void _showOpenSourceLicenses(BuildContext context) {
+    // 显示开源许可证页面
+    showLicensePage(
+      context: context,
+      applicationName: 'MyNAS',
+      applicationLegalese: '© 2024 MyNAS. All rights reserved.\n\n'
+          '本应用使用了以下开源软件：\n\n'
+          '• FFmpeg - 视频转码（GPL v3）\n'
+          '  https://ffmpeg.org\n'
+          '  源代码：https://github.com/FFmpeg/FFmpeg\n\n'
+          '• media_kit - 媒体播放\n'
+          '• Flutter 及其相关库\n\n'
+          '完整的开源许可证信息请查看下方列表。',
     );
   }
 
