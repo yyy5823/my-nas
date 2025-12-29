@@ -13,7 +13,7 @@ class MainActivity : FlutterActivity() {
         flutterEngine.plugins.add(ChromaprintPlugin())
 
         // 注册小组件数据通道
-        WidgetDataChannel.register(this, flutterEngine.dartExecutor.binaryMessenger)
+        flutterEngine.plugins.add(WidgetDataChannel())
 
         // 注册灵动岛通道
         flutterEngine.plugins.add(DynamicIslandChannel())

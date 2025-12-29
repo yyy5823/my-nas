@@ -26,7 +26,7 @@ abstract class Configuration {
   /// Minimum protocol version, default SMB1
   DialectVersion get minimumVersion;
 
-  /// Maximum protocol version, default SMB210
+  /// Maximum protocol version, default SMB311
   DialectVersion get maximumVersion;
 
   /// Enforce secure negotiation, default true

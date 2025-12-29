@@ -108,7 +108,7 @@ abstract class SmbConnect {
           debugPrintLowLevel: debugPrintLowLevel,
           forceSmb1: forceSmb1,
           maximumVersion:
-              forceSmb1 ? DialectVersion.SMB1 : DialectVersion.SMB210,
+              forceSmb1 ? DialectVersion.SMB1 : DialectVersion.SMB311,
         ),
         host,
         onDisconnect: onDisconnect);

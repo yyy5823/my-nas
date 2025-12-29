@@ -13,7 +13,7 @@ import 'package:smb_connect/smb_connect.dart';
 /// SMB/CIFS NAS 适配器
 ///
 /// 使用 smb_connect 库实现 SMB 协议连接
-/// 支持 SMB 1.0, CIFS, SMB 2.0, SMB 2.1
+/// 支持 SMB 1.0, CIFS, SMB 2.x, SMB 3.x (包括 3.1.1)
 ///
 /// 特性：
 /// - 连接池管理：支持多连接并发，避免操作争用
@@ -325,7 +325,7 @@ class SmbAdapter implements NasAdapter {
       return 'SMB 网络名称无效\n请检查共享名称是否正确';
     }
     if (msg.contains('not supported') || msg.contains('status_not_supported')) {
-      return 'SMB 协议版本不支持\n服务器可能不支持 SMB 2.x';
+      return 'SMB 协议版本不兼容\n请检查服务器 SMB 协议设置';
     }
 
     // 默认错误消息

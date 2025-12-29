@@ -85,7 +85,7 @@ class DynamicIslandChannel : FlutterPlugin, MethodChannel.MethodCallHandler {
     }
 
     private fun setupCallback() {
-        manager?.setCallback(object : DynamicIslandCallback {
+        manager?.callback = object : DynamicIslandCallback {
             override fun onPlayPause() {
                 Log.d(TAG, "Callback: onPlayPause")
                 channel.invokeMethod(EVENT_ON_PLAY_PAUSE, null)
@@ -115,7 +115,7 @@ class DynamicIslandChannel : FlutterPlugin, MethodChannel.MethodCallHandler {
                 Log.d(TAG, "Callback: onExpand")
                 channel.invokeMethod(EVENT_ON_EXPAND, null)
             }
-        })
+        }
     }
 
     private fun handleInitialize(result: MethodChannel.Result) {

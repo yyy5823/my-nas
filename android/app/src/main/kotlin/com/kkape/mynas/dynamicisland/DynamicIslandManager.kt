@@ -8,7 +8,7 @@ import android.content.Context
  */
 abstract class DynamicIslandManager(protected val context: Context) {
 
-    protected var callback: DynamicIslandCallback? = null
+    var callback: DynamicIslandCallback? = null
     protected var currentState: DynamicIslandState = DynamicIslandState.HIDDEN
     protected var currentData: DynamicIslandData = DynamicIslandData.EMPTY
 
@@ -69,11 +69,12 @@ abstract class DynamicIslandManager(protected val context: Context) {
      */
     abstract fun release()
 
+    
     /**
-     * 设置回调
+     * 设置回调 - 直接通过属性赋值实现
      */
-    fun setCallback(callback: DynamicIslandCallback?) {
-        this.callback = callback
+    open fun setCallbackHandler(newCallback: DynamicIslandCallback?) {
+        this.callback = newCallback
     }
 
     /**
