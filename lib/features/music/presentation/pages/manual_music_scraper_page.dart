@@ -262,6 +262,12 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
       // 立即更新当前播放音乐的元数据（如果正在播放此歌曲）
       _updateCurrentMusicMetadata(coverData);
 
+      // 无论是否下载封面，都保存元数据到数据库
+      // 这确保年代、艺术家、专辑、流派等信息被正确保存
+      if (_selectedDetail != null) {
+        await _syncMetadataToDatabase();
+      }
+
       // 将文件标签写入加入后台队列（如果需要）
       if (_writeToFile && _audioFormat != null && _selectedDetail != null) {
         _queueTagWrite(coverData, coverMimeType);
@@ -300,14 +306,32 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
 
       if (localCoverPath == null) return;
 
-      // 2. 更新数据库中的封面路径
+      // 2. 更新数据库中的封面路径和元数据
       final db = MusicDatabaseService();
       await db.init();
 
       // 获取现有的曲目数据并更新封面路径
       final existing = await db.get(sourceId, widget.music.path);
       if (existing != null) {
-        await db.upsert(existing.copyWith(coverPath: localCoverPath));
+        // 补充缺失的元数据字段（不覆盖已有数据）
+        await db.upsert(existing.copyWith(
+          coverPath: localCoverPath,
+          title: (existing.title == null || existing.title!.isEmpty)
+              ? _selectedDetail?.title
+              : existing.title,
+          artist: (existing.artist == null || existing.artist!.isEmpty)
+              ? _selectedDetail?.artist
+              : existing.artist,
+          album: (existing.album == null || existing.album!.isEmpty)
+              ? _selectedDetail?.album
+              : existing.album,
+          year: existing.year ?? _selectedDetail?.year,
+          trackNumber: existing.trackNumber ?? _selectedDetail?.trackNumber,
+          genre: (existing.genre == null || existing.genre!.isEmpty)
+              ? _selectedDetail?.genres?.join(', ')
+              : existing.genre,
+          lastUpdated: DateTime.now(),
+        ));
       } else {
         // 如果数据库中没有这首歌，创建一个基本条目
         await db.upsert(MusicTrackEntity(
@@ -317,6 +341,9 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
           title: _selectedDetail?.title ?? widget.music.title,
           artist: _selectedDetail?.artist ?? widget.music.artist,
           album: _selectedDetail?.album ?? widget.music.album,
+          year: _selectedDetail?.year,
+          trackNumber: _selectedDetail?.trackNumber,
+          genre: _selectedDetail?.genres?.join(', '),
           coverPath: localCoverPath,
           duration: widget.music.duration?.inMilliseconds,
           lastUpdated: DateTime.now(),
@@ -333,14 +360,90 @@ class _ManualMusicScraperPageState extends ConsumerState<ManualMusicScraperPage>
     final currentMusic = ref.read(currentMusicProvider);
     if (currentMusic?.id != widget.music.id) return;
 
-    // 更新 currentMusicProvider 状态
+    // 更新 currentMusicProvider 状态（只补充缺失的字段）
     ref.read(currentMusicProvider.notifier).state = currentMusic!.copyWith(
-      title: _selectedDetail?.title ?? currentMusic.title,
-      artist: _selectedDetail?.artist ?? currentMusic.artist,
-      album: _selectedDetail?.album ?? currentMusic.album,
+      title: (currentMusic.title == null || currentMusic.title!.isEmpty)
+          ? _selectedDetail?.title
+          : currentMusic.title,
+      artist: (currentMusic.artist == null || currentMusic.artist!.isEmpty)
+          ? _selectedDetail?.artist
+          : currentMusic.artist,
+      album: (currentMusic.album == null || currentMusic.album!.isEmpty)
+          ? _selectedDetail?.album
+          : currentMusic.album,
+      year: currentMusic.year ?? _selectedDetail?.year,
+      trackNumber: currentMusic.trackNumber ?? _selectedDetail?.trackNumber,
+      genre: (currentMusic.genre == null || currentMusic.genre!.isEmpty)
+          ? _selectedDetail?.genres?.join(', ')
+          : currentMusic.genre,
       lyrics: _selectedLyrics?.lrcContent ?? _selectedLyrics?.plainText ?? currentMusic.lyrics,
       coverData: coverData?.toList() ?? currentMusic.coverData,
     );
+
+    // 更新播放队列中该歌曲的元数据
+    ref.read(playQueueProvider.notifier).updateTrackMetadata(
+      widget.music.id,
+      title: _selectedDetail?.title,
+      artist: _selectedDetail?.artist,
+      album: _selectedDetail?.album,
+      year: _selectedDetail?.year,
+      trackNumber: _selectedDetail?.trackNumber,
+      genre: _selectedDetail?.genres?.join(', '),
+    );
+  }
+
+  /// 同步元数据到数据库（不包含封面）
+  /// 当用户没有下载封面但需要保存元数据时调用
+  Future<void> _syncMetadataToDatabase() async {
+    final sourceId = widget.music.sourceId;
+    if (sourceId == null || _selectedDetail == null) return;
+
+    try {
+      final db = MusicDatabaseService();
+      await db.init();
+
+      // 获取现有的曲目数据并更新
+      final existing = await db.get(sourceId, widget.music.path);
+      if (existing != null) {
+        // 补充缺失的元数据字段（不覆盖已有数据）
+        final updated = existing.copyWith(
+          title: (existing.title == null || existing.title!.isEmpty)
+              ? _selectedDetail?.title
+              : existing.title,
+          artist: (existing.artist == null || existing.artist!.isEmpty)
+              ? _selectedDetail?.artist
+              : existing.artist,
+          album: (existing.album == null || existing.album!.isEmpty)
+              ? _selectedDetail?.album
+              : existing.album,
+          year: existing.year ?? _selectedDetail?.year,
+          trackNumber: existing.trackNumber ?? _selectedDetail?.trackNumber,
+          genre: (existing.genre == null || existing.genre!.isEmpty)
+              ? _selectedDetail?.genres?.join(', ')
+              : existing.genre,
+          lastUpdated: DateTime.now(),
+        );
+        await db.upsert(updated);
+      } else {
+        // 如果数据库中没有这首歌，创建一个基本条目
+        await db.upsert(MusicTrackEntity(
+          sourceId: sourceId,
+          filePath: widget.music.path,
+          fileName: widget.music.name,
+          title: _selectedDetail?.title ?? widget.music.title,
+          artist: _selectedDetail?.artist ?? widget.music.artist,
+          album: _selectedDetail?.album ?? widget.music.album,
+          year: _selectedDetail?.year,
+          trackNumber: _selectedDetail?.trackNumber,
+          genre: _selectedDetail?.genres?.join(', '),
+          duration: widget.music.duration?.inMilliseconds,
+          lastUpdated: DateTime.now(),
+        ));
+      }
+    } on Exception catch (e, st) {
+      // 非关键功能，静默失败
+      AppError.ignore(e, st, '同步元数据到数据库失败');
+    }
   }
 
   /// 将标签写入任务加入后台队列

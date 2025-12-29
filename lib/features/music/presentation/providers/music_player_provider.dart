@@ -156,6 +156,47 @@ class PlayQueueNotifier extends StateNotifier<List<MusicItem>> {
     newList.insert(newIndex, item);
     state = newList;
   }
+
+  /// 更新队列中指定歌曲的封面
+  void updateTrackCover(String musicId, {List<int>? coverData, String? coverUrl}) {
+    final newList = state.map((track) {
+      if (track.id == musicId) {
+        return track.copyWith(
+          coverData: coverData,
+          coverUrl: coverUrl,
+        );
+      }
+      return track;
+    }).toList();
+    state = newList;
+  }
+
+  /// 更新队列中指定歌曲的元数据（仅补充缺失的字段）
+  void updateTrackMetadata(
+    String musicId, {
+    String? title,
+    String? artist,
+    String? album,
+    int? year,
+    int? trackNumber,
+    String? genre,
+  }) {
+    final newList = state.map((track) {
+      if (track.id == musicId) {
+        return track.copyWith(
+          // 只补充缺失的字段
+          title: (track.title == null || track.title!.isEmpty) ? title : track.title,
+          artist: (track.artist == null || track.artist!.isEmpty) ? artist : track.artist,
+          album: (track.album == null || track.album!.isEmpty) ? album : track.album,
+          year: track.year ?? year,
+          trackNumber: track.trackNumber ?? trackNumber,
+          genre: (track.genre == null || track.genre!.isEmpty) ? genre : track.genre,
+        );
+      }
+      return track;
+    }).toList();
+    state = newList;
+  }
 }
 
 /// 音乐播放器管理

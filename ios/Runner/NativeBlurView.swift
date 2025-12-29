@@ -1,20 +1,23 @@
 import Flutter
 import UIKit
 
-/// iOS 原生模糊视图 - 使用 UIVisualEffectView 实现真正的系统级毛玻璃效果
+/// iOS 原生模糊视图 - 使用系统级毛玻璃效果
 ///
-/// 支持的模糊样式：
+/// iOS 26+: 使用 UIGlassEffect 实现真正的 Liquid Glass 效果
+/// - 折射、高光、菲涅尔效果
+/// - 动态光影响应设备运动
+/// - 支持交互动画
+///
+/// iOS 13-25: 使用 UIVisualEffectView + UIBlurEffect
 /// - systemUltraThinMaterial: 超薄材质（最透明）
 /// - systemThinMaterial: 薄材质
 /// - systemMaterial: 标准材质
 /// - systemThickMaterial: 厚材质
 /// - systemChromeMaterial: Chrome 材质（导航栏风格）
-/// - light / dark / extraLight: 传统模糊样式
 ///
 /// 特点：
 /// - 硬件加速，性能优异
 /// - 自动适配系统主题（亮色/暗色模式）
-/// - 真正的活力模糊效果（Vibrancy）
 /// - 与系统 UI 风格保持一致
 
 // MARK: - Platform View Factory
@@ -50,7 +53,7 @@ class NativeBlurViewFactory: NSObject, FlutterPlatformViewFactory {
 
 class NativeBlurPlatformView: NSObject, FlutterPlatformView {
     private let containerView: UIView
-    private let blurView: UIVisualEffectView
+    private let effectView: UIVisualEffectView
     private var vibrancyView: UIVisualEffectView?
     private let contentView: UIView
 
@@ -73,48 +76,80 @@ class NativeBlurPlatformView: NSObject, FlutterPlatformView {
         let enableBorder = params["enableBorder"] as? Bool ?? true
         let borderOpacity = params["borderOpacity"] as? Double ?? 0.2
         let enableVibrancy = params["enableVibrancy"] as? Bool ?? false
-
-        // 创建模糊效果
-        let blurEffect = NativeBlurPlatformView.createBlurEffect(style: style, isDark: isDark)
-        blurView = UIVisualEffectView(effect: blurEffect)
-        blurView.frame = frame
-        blurView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        let isInteractive = params["isInteractive"] as? Bool ?? false
+        let useLiquidGlass = params["useLiquidGlass"] as? Bool ?? true
 
         // 内容视图（用于放置子视图）
         contentView = UIView()
         contentView.backgroundColor = .clear
         contentView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
 
+        // 根据 iOS 版本选择效果
+        if #available(iOS 26.0, *), useLiquidGlass {
+            // iOS 26+: 使用 Liquid Glass 效果
+            let glassEffect = UIGlassEffect()
+            glassEffect.isInteractive = isInteractive
+
+            effectView = UIVisualEffectView(effect: glassEffect)
+            effectView.frame = frame
+            effectView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+
+            // 设置圆角 - 使用 layer.cornerRadius（兼容当前 SDK）
+            if cornerRadius > 0 {
+                effectView.layer.cornerRadius = CGFloat(cornerRadius)
+                effectView.layer.cornerCurve = .continuous
+                effectView.clipsToBounds = true
+            }
+        } else {
+            // iOS 13-25: 使用传统模糊效果
+            let blurEffect = NativeBlurPlatformView.createBlurEffect(style: style, isDark: isDark)
+            effectView = UIVisualEffectView(effect: blurEffect)
+            effectView.frame = frame
+            effectView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+
+            // 设置圆角
+            if cornerRadius > 0 {
+                effectView.layer.cornerRadius = CGFloat(cornerRadius)
+                if #available(iOS 13.0, *) {
+                    effectView.layer.cornerCurve = .continuous
+                }
+                effectView.clipsToBounds = true
+            }
+        }
+
         super.init()
 
         // 设置视图层级
-        containerView.addSubview(blurView)
+        containerView.addSubview(effectView)
 
-        // 如果启用 Vibrancy 效果
-        if enableVibrancy {
+        // 如果启用 Vibrancy 效果（仅 iOS 26 以下）
+        if #available(iOS 26.0, *) {
+            // iOS 26 的 UIGlassEffect 自带活力效果
+            effectView.contentView.addSubview(contentView)
+        } else if enableVibrancy, let blurEffect = effectView.effect as? UIBlurEffect {
             let vibrancyEffect = UIVibrancyEffect(blurEffect: blurEffect)
             let vibrancy = UIVisualEffectView(effect: vibrancyEffect)
-            vibrancy.frame = blurView.bounds
+            vibrancy.frame = effectView.bounds
             vibrancy.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-            blurView.contentView.addSubview(vibrancy)
+            effectView.contentView.addSubview(vibrancy)
             vibrancy.contentView.addSubview(contentView)
             vibrancyView = vibrancy
         } else {
-            blurView.contentView.addSubview(contentView)
+            effectView.contentView.addSubview(contentView)
         }
 
-        // 设置圆角
+        // 设置容器圆角
         if cornerRadius > 0 {
             containerView.layer.cornerRadius = CGFloat(cornerRadius)
-            blurView.layer.cornerRadius = CGFloat(cornerRadius)
             if #available(iOS 13.0, *) {
-                blurView.layer.cornerCurve = .continuous
                 containerView.layer.cornerCurve = .continuous
             }
         }
 
-        // 设置边框（模拟玻璃边缘高光）
-        if enableBorder {
+        // 设置边框（仅 iOS 26 以下需要手动添加）
+        if #available(iOS 26.0, *) {
+            // iOS 26 的 Liquid Glass 自带边框效果
+        } else if enableBorder {
             containerView.layer.borderWidth = 0.5
             let borderColor = isDark
                 ? UIColor.white.withAlphaComponent(CGFloat(borderOpacity))
@@ -127,7 +162,7 @@ class NativeBlurPlatformView: NSObject, FlutterPlatformView {
         return containerView
     }
 
-    /// 根据样式名称创建对应的 UIBlurEffect
+    /// 根据样式名称创建对应的 UIBlurEffect（iOS 13-25）
     private static func createBlurEffect(style: String, isDark: Bool) -> UIBlurEffect {
         if #available(iOS 13.0, *) {
             switch style {

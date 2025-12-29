@@ -180,147 +180,91 @@ abstract final class GlassTheme {
   }
 }
 
-/// 平台模糊支持级别
-enum BlurSupportLevel {
-  /// 完全支持 - 可以使用高质量模糊
-  full,
-
-  /// 部分支持 - 需要降低模糊强度以保证性能
-  partial,
-
-  /// 不支持 - 使用不透明背景替代
-  none,
-}
-
 /// 跨平台玻璃效果配置
 /// 根据不同平台调整模糊效果以获得最佳性能和视觉效果
-///
-/// 注意：所有平台统一使用 Flutter 的 BackdropFilter 实现真正的毛玻璃效果
-/// 原生 UIVisualEffectView/NSVisualEffectView 无法模糊 Flutter 渲染层的内容
 abstract final class PlatformGlassConfig {
-  /// 获取当前平台的模糊支持级别
-  static BlurSupportLevel get blurSupportLevel {
-    if (kIsWeb) return BlurSupportLevel.none;
-
-    if (Platform.isIOS || Platform.isMacOS) {
-      // Apple 平台 GPU 性能优异，完全支持
-      return BlurSupportLevel.full;
-    }
-
-    if (Platform.isAndroid) {
-      // Android 需要根据设备性能决定
-      // 保守起见使用部分支持，降低模糊强度
-      return BlurSupportLevel.partial;
-    }
-
-    if (Platform.isWindows) {
-      // Windows 桌面性能通常足够，但某些集成显卡可能有问题
-      // 使用部分支持以确保兼容性
-      return BlurSupportLevel.partial;
-    }
-
-    if (Platform.isLinux) {
-      // Linux 桌面性能差异较大
-      return BlurSupportLevel.partial;
-    }
-
-    return BlurSupportLevel.partial;
+  /// 当前平台是否支持原生模糊（iOS/macOS 使用系统 API）
+  static bool get supportsNativeBlur {
+    if (kIsWeb) return false;
+    return Platform.isIOS || Platform.isMacOS;
   }
 
   /// 当前平台是否支持高性能模糊
   static bool get supportsHighQualityBlur {
-    return blurSupportLevel == BlurSupportLevel.full;
-  }
-
-  /// 当前平台是否支持模糊效果
-  static bool get supportsBlur {
-    return blurSupportLevel != BlurSupportLevel.none;
+    if (kIsWeb) return false;
+    // iOS 和 macOS 原生支持高质量模糊
+    if (Platform.isIOS || Platform.isMacOS) return true;
+    // Android 12+ 和 Windows 11 也有较好支持
+    // 这里简单地假设现代设备都支持
+    return true;
   }
 
   /// 获取平台优化后的模糊强度
   static double getOptimizedBlurIntensity(double baseIntensity) {
-    return switch (blurSupportLevel) {
-      BlurSupportLevel.full => baseIntensity,
-      BlurSupportLevel.partial => _getPartialBlurIntensity(baseIntensity),
-      BlurSupportLevel.none => 0,
-    };
-  }
+    if (kIsWeb) return 0; // Web 不支持模糊
 
-  /// 部分支持平台的模糊强度计算
-  static double _getPartialBlurIntensity(double baseIntensity) {
-    if (kIsWeb) return 0;
+    if (Platform.isIOS || Platform.isMacOS) {
+      // Apple 平台性能好，可以使用完整模糊
+      return baseIntensity;
+    }
 
     if (Platform.isAndroid) {
-      // Android: 降低到 60% 以保证流畅度
-      // 高模糊值在低端设备上可能导致卡顿
-      return baseIntensity * 0.6;
+      // Android 降低一点模糊强度以保证性能
+      return baseIntensity * 0.8;
     }
 
-    if (Platform.isWindows) {
-      // Windows: 降低到 70%
-      // 某些集成显卡对高斯模糊性能较差
-      return baseIntensity * 0.7;
+    if (Platform.isWindows || Platform.isLinux) {
+      // 桌面平台可以使用完整模糊
+      return baseIntensity;
     }
 
-    if (Platform.isLinux) {
-      // Linux: 降低到 60%
-      return baseIntensity * 0.6;
-    }
-
-    return baseIntensity * 0.7;
+    return baseIntensity;
   }
 
   /// 获取平台特定的背景不透明度调整
-  /// 模糊强度降低时需要提高不透明度以保持可读性
+  /// 某些平台可能需要更高的不透明度以确保可读性
   static double getAdjustedOpacity(double baseOpacity, {required bool isDark}) {
-    return switch (blurSupportLevel) {
-      BlurSupportLevel.full => baseOpacity,
-      BlurSupportLevel.partial => _getPartialOpacity(baseOpacity, isDark: isDark),
-      BlurSupportLevel.none => 1.0,
-    };
-  }
-
-  /// 部分支持平台的不透明度计算
-  static double _getPartialOpacity(double baseOpacity, {required bool isDark}) {
-    if (kIsWeb) return 1.0;
-
-    // 模糊强度降低时，提高背景不透明度以补偿
-    // 公式：降低的模糊比例 * 补偿系数 + 原始不透明度
-    double opacityBoost;
+    if (kIsWeb) return 1.0; // Web 使用完全不透明
 
     if (Platform.isAndroid) {
-      // Android 模糊降到 60%，补偿 0.15
-      opacityBoost = 0.15;
-    } else if (Platform.isWindows) {
-      // Windows 模糊降到 70%，补偿 0.1
-      opacityBoost = 0.1;
-    } else {
-      opacityBoost = 0.12;
+      // Android 上稍微提高不透明度以补偿较低的模糊
+      return (baseOpacity + 0.1).clamp(0.0, 1.0);
     }
 
-    return (baseOpacity + opacityBoost).clamp(0.0, 0.95);
+    return baseOpacity;
   }
 
   /// 是否应该在此平台启用玻璃效果
   static bool shouldEnableGlass(UIStyle style) {
-    if (!style.isGlass) return false;
-    // 只有完全不支持模糊的平台才禁用玻璃效果
-    return blurSupportLevel != BlurSupportLevel.none;
+    if (kIsWeb) return false;
+    return style.isGlass;
   }
 
   /// 是否应该使用原生模糊实现
-  /// 注意：始终返回 false，因为原生实现无法模糊 Flutter 内容
-  /// 保留此方法以保持 API 兼容性
+  /// 在 iOS/macOS 上使用 UIVisualEffectView/NSVisualEffectView
   static bool shouldUseNativeBlur(UIStyle style) {
-    // 不再使用原生模糊，统一使用 Flutter BackdropFilter
-    // 原生 UIVisualEffectView/NSVisualEffectView 只能模糊窗口背景
-    // 无法模糊 Flutter 渲染层的内容（如列表、文字等）
-    return false;
+    if (!shouldEnableGlass(style)) return false;
+    return supportsNativeBlur;
   }
 
-  /// 获取原生模糊样式名称（已弃用，保留以兼容）
-  @Deprecated('不再使用原生模糊，请使用 Flutter BackdropFilter')
+  /// 获取原生模糊样式名称（用于 iOS/macOS Platform View）
+  /// 根据 UIStyle 返回对应的原生材质类型
   static String getNativeBlurStyle(UIStyle style, {required bool isDark}) {
+    if (Platform.isIOS) {
+      // iOS 使用 UIBlurEffect 样式
+      return switch (style) {
+        UIStyle.classic => 'regular',
+        UIStyle.liquidClear => 'systemThinMaterial',
+        UIStyle.liquidTinted => 'systemMaterial',
+      };
+    } else if (Platform.isMacOS) {
+      // macOS 使用 NSVisualEffectView.Material
+      return switch (style) {
+        UIStyle.classic => 'contentBackground',
+        UIStyle.liquidClear => 'hudWindow',
+        UIStyle.liquidTinted => 'contentBackground',
+      };
+    }
     return 'systemMaterial';
   }
 
@@ -330,11 +274,6 @@ abstract final class PlatformGlassConfig {
     required bool isDark,
   }) {
     if (!style.needsBlur) return style;
-
-    // 如果平台完全不支持模糊，返回经典样式
-    if (blurSupportLevel == BlurSupportLevel.none) {
-      return GlassStyle.classic;
-    }
 
     return GlassStyle(
       blurIntensity: getOptimizedBlurIntensity(style.blurIntensity),

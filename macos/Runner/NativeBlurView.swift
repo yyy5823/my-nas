@@ -1,9 +1,14 @@
 import Cocoa
 import FlutterMacOS
 
-/// macOS 原生模糊视图 - 使用 NSVisualEffectView 实现真正的系统级毛玻璃效果
+/// macOS 原生模糊视图 - 使用系统级毛玻璃效果
 ///
-/// 支持的材质类型：
+/// macOS Tahoe 26+: 使用 NSGlassEffectView 实现真正的 Liquid Glass 效果
+/// - 折射、高光、菲涅尔效果
+/// - 动态光影
+/// - 与 iOS 26 一致的设计语言
+///
+/// macOS 10.14-25: 使用 NSVisualEffectView
 /// - titlebar: 标题栏材质
 /// - menu: 菜单材质
 /// - popover: 弹出框材质
@@ -11,18 +16,12 @@ import FlutterMacOS
 /// - headerView: 头部视图材质
 /// - sheet: 表单材质
 /// - windowBackground: 窗口背景材质
-/// - hudWindow: HUD 窗口材质
-/// - fullScreenUI: 全屏 UI 材质
-/// - toolTip: 工具提示材质
 /// - contentBackground: 内容背景材质
-/// - underWindowBackground: 窗口下方背景材质
-/// - underPageBackground: 页面下方背景材质
 ///
 /// 特点：
 /// - 硬件加速，性能优异
 /// - 自动适配系统主题（亮色/暗色模式）
 /// - 与 macOS 系统 UI 风格保持一致
-/// - 支持活力效果（Vibrancy）
 
 // MARK: - Platform View Factory
 
@@ -54,16 +53,13 @@ class NativeBlurViewFactory: NSObject, FlutterPlatformViewFactory {
 // MARK: - Platform View
 
 class NativeBlurPlatformView: NSView {
-    private let visualEffectView: NSVisualEffectView
+    private var effectView: NSView?
 
     init(
         viewIdentifier viewId: Int64,
         arguments args: Any?,
         binaryMessenger messenger: FlutterBinaryMessenger?
     ) {
-        // 创建 NSVisualEffectView
-        visualEffectView = NSVisualEffectView()
-
         super.init(frame: .zero)
 
         // 解析参数
@@ -74,8 +70,75 @@ class NativeBlurPlatformView: NSView {
         let enableBorder = params["enableBorder"] as? Bool ?? true
         let borderOpacity = params["borderOpacity"] as? Double ?? 0.2
         let blendingMode = params["blendingMode"] as? String ?? "behindWindow"
+        let useLiquidGlass = params["useLiquidGlass"] as? Bool ?? true
 
-        // 配置 NSVisualEffectView
+        // 根据 macOS 版本选择效果
+        if #available(macOS 26.0, *), useLiquidGlass {
+            // macOS Tahoe 26+: 使用 Liquid Glass 效果
+            setupLiquidGlass(cornerRadius: cornerRadius, isDark: isDark)
+        } else {
+            // macOS 10.14-25: 使用传统 NSVisualEffectView
+            setupVisualEffectView(
+                material: material,
+                blendingMode: blendingMode,
+                isDark: isDark,
+                cornerRadius: cornerRadius,
+                enableBorder: enableBorder,
+                borderOpacity: borderOpacity
+            )
+        }
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    /// macOS Tahoe 26+: 设置 Liquid Glass 效果
+    @available(macOS 26.0, *)
+    private func setupLiquidGlass(cornerRadius: Double, isDark: Bool) {
+        // 创建 NSGlassEffectView
+        let glassView = NSGlassEffectView()
+        glassView.translatesAutoresizingMaskIntoConstraints = false
+
+        // 设置圆角
+        if cornerRadius > 0 {
+            glassView.cornerRadius = CGFloat(cornerRadius)
+        }
+
+        // 设置外观
+        if isDark {
+            glassView.appearance = NSAppearance(named: .darkAqua)
+        } else {
+            glassView.appearance = NSAppearance(named: .aqua)
+        }
+
+        // 添加到视图层级
+        self.addSubview(glassView)
+        effectView = glassView
+
+        // 设置约束
+        NSLayoutConstraint.activate([
+            glassView.topAnchor.constraint(equalTo: self.topAnchor),
+            glassView.bottomAnchor.constraint(equalTo: self.bottomAnchor),
+            glassView.leadingAnchor.constraint(equalTo: self.leadingAnchor),
+            glassView.trailingAnchor.constraint(equalTo: self.trailingAnchor),
+        ])
+    }
+
+    /// macOS 10.14-25: 设置传统 NSVisualEffectView
+    private func setupVisualEffectView(
+        material: String,
+        blendingMode: String,
+        isDark: Bool,
+        cornerRadius: Double,
+        enableBorder: Bool,
+        borderOpacity: Double
+    ) {
+        let visualEffectView = NSVisualEffectView()
+        visualEffectView.translatesAutoresizingMaskIntoConstraints = false
+        visualEffectView.wantsLayer = true
+
+        // 配置材质和混合模式
         visualEffectView.material = NativeBlurPlatformView.createMaterial(material)
         visualEffectView.blendingMode = NativeBlurPlatformView.createBlendingMode(blendingMode)
         visualEffectView.state = .active
@@ -87,12 +150,9 @@ class NativeBlurPlatformView: NSView {
             visualEffectView.appearance = NSAppearance(named: .aqua)
         }
 
-        // 配置视图
-        visualEffectView.translatesAutoresizingMaskIntoConstraints = false
-        visualEffectView.wantsLayer = true
-
         // 添加到视图层级
         self.addSubview(visualEffectView)
+        effectView = visualEffectView
 
         // 设置约束
         NSLayoutConstraint.activate([
@@ -119,10 +179,6 @@ class NativeBlurPlatformView: NSView {
                 : NSColor.black.withAlphaComponent(CGFloat(borderOpacity * 0.5))
             self.layer?.borderColor = borderColor.cgColor
         }
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
     }
 
     /// 根据材质名称创建对应的 NSVisualEffectView.Material

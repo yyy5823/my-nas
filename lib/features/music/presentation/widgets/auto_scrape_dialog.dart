@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -8,16 +9,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/features/music/data/services/fingerprint/fingerprint_service.dart';
+import 'package:my_nas/features/music/data/services/live_activity_service.dart';
 import 'package:my_nas/features/music/data/services/music_cover_cache_service.dart';
 import 'package:my_nas/features/music/data/services/music_database_service.dart';
+import 'package:my_nas/features/music/data/services/music_favorites_service.dart';
 import 'package:my_nas/features/music/data/services/music_tag_writer_service.dart';
 import 'package:my_nas/features/music/domain/entities/music_item.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_result.dart';
 import 'package:my_nas/features/music/domain/entities/music_scraper_source.dart';
 import 'package:my_nas/features/music/presentation/pages/manual_music_scraper_page.dart';
 import 'package:my_nas/features/music/presentation/providers/lyric_provider.dart';
+import 'package:my_nas/features/music/presentation/providers/music_favorites_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_player_provider.dart';
 import 'package:my_nas/features/music/presentation/providers/music_scraper_provider.dart';
+import 'package:my_nas/main.dart' show audioHandler;
 import 'package:my_nas/nas_adapters/base/nas_file_system.dart';
 import 'package:path/path.dart' as p;
 import 'package:my_nas/core/extensions/context_extensions.dart';
@@ -357,6 +362,12 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
         });
       }
 
+      // 无论是否下载封面，都保存元数据到数据库
+      // 这确保年代、艺术家、专辑、流派等信息被正确保存
+      if (_detail != null) {
+        await _syncMetadataToDatabase(coverData);
+      }
+
       setState(() {
         _status = _ScrapeStatus.completed;
         _statusMessage = '处理完成';
@@ -496,8 +507,10 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
 
       // 3. 更新当前播放状态（如果正在播放这首歌）
       final currentMusic = ref.read(currentMusicProvider);
-      if (currentMusic?.id == widget.music.id) {
-        ref.read(currentMusicProvider.notifier).state = currentMusic!.copyWith(
+      final isCurrentlyPlaying = currentMusic?.id == widget.music.id;
+
+      if (isCurrentlyPlaying) {
+        final updatedMusic = currentMusic!.copyWith(
           coverData: coverData.toList(),
           coverUrl: 'file://$localCoverPath',
           // 补充缺失的元数据
@@ -516,10 +529,126 @@ class _AutoScrapeDialogState extends ConsumerState<AutoScrapeDialog> {
               ? _detail?.genres?.join(', ')
               : currentMusic.genre,
         );
+        ref.read(currentMusicProvider.notifier).state = updatedMusic;
+
+        // 4. 更新 Now Playing / 锁屏控制中心的封面
+        await audioHandler.updateArtwork(coverData);
+
+        // 5. 更新灵动岛的封面（仅 iOS）
+        if (Platform.isIOS) {
+          await LiveActivityService().updateCoverImage(updatedMusic, coverData);
+        }
       }
+
+      // 6. 更新播放队列中该歌曲的封面（确保队列列表显示正确）
+      ref.read(playQueueProvider.notifier).updateTrackCover(
+        widget.music.id,
+        coverData: coverData.toList(),
+        coverUrl: 'file://$localCoverPath',
+      );
+
+      // 7. 更新收藏和播放历史中的封面
+      final newCoverUrl = 'file://$localCoverPath';
+      await MusicFavoritesService().updateCoverUrl(widget.music.path, newCoverUrl);
+
+      // 8. 刷新收藏和播放历史的 provider（使 UI 立即更新）
+      unawaited(ref.read(musicFavoritesProvider.notifier).refresh());
+      unawaited(ref.read(musicHistoryProvider.notifier).refresh());
     } on Exception catch (e, st) {
       // 非关键功能，静默失败
       AppError.ignore(e, st, '同步封面到本地缓存失败');
+    }
+  }
+
+  /// 同步元数据到数据库（不包含封面）
+  /// 当用户没有下载封面时，仍需要保存刮削到的元数据
+  Future<void> _syncMetadataToDatabase(Uint8List? coverData) async {
+    final sourceId = widget.music.sourceId;
+    if (sourceId == null || _detail == null) return;
+
+    try {
+      final db = MusicDatabaseService();
+      await db.init();
+
+      // 获取现有的曲目数据并更新
+      final existing = await db.get(sourceId, widget.music.path);
+      if (existing != null) {
+        // 补充缺失的元数据字段（不覆盖已有数据）
+        final updated = existing.copyWith(
+          title: (existing.title == null || existing.title!.isEmpty)
+              ? _detail?.title
+              : existing.title,
+          artist: (existing.artist == null || existing.artist!.isEmpty)
+              ? _detail?.artist
+              : existing.artist,
+          album: (existing.album == null || existing.album!.isEmpty)
+              ? _detail?.album
+              : existing.album,
+          year: existing.year ?? _detail?.year,
+          trackNumber: existing.trackNumber ?? _detail?.trackNumber,
+          genre: (existing.genre == null || existing.genre!.isEmpty)
+              ? _detail?.genres?.join(', ')
+              : existing.genre,
+          lastUpdated: DateTime.now(),
+        );
+        await db.upsert(updated);
+      } else {
+        // 如果数据库中没有这首歌，创建一个基本条目
+        await db.upsert(MusicTrackEntity(
+          sourceId: sourceId,
+          filePath: widget.music.path,
+          fileName: widget.music.name,
+          title: _detail?.title ?? widget.music.title,
+          artist: _detail?.artist ?? widget.music.artist,
+          album: _detail?.album ?? widget.music.album,
+          year: _detail?.year,
+          trackNumber: _detail?.trackNumber,
+          genre: _detail?.genres?.join(', '),
+          duration: widget.music.duration?.inMilliseconds,
+          lastUpdated: DateTime.now(),
+        ));
+      }
+
+      // 更新当前播放状态中的元数据（如果正在播放这首歌）
+      final currentMusic = ref.read(currentMusicProvider);
+      final isCurrentlyPlaying = currentMusic?.id == widget.music.id;
+
+      if (isCurrentlyPlaying) {
+        final updatedMusic = currentMusic!.copyWith(
+          // 如果有封面数据，也一并更新
+          coverData: coverData?.toList() ?? currentMusic.coverData,
+          // 补充缺失的元数据
+          title: (currentMusic.title == null || currentMusic.title!.isEmpty)
+              ? _detail?.title
+              : currentMusic.title,
+          artist: (currentMusic.artist == null || currentMusic.artist!.isEmpty)
+              ? _detail?.artist
+              : currentMusic.artist,
+          album: (currentMusic.album == null || currentMusic.album!.isEmpty)
+              ? _detail?.album
+              : currentMusic.album,
+          year: currentMusic.year ?? _detail?.year,
+          trackNumber: currentMusic.trackNumber ?? _detail?.trackNumber,
+          genre: (currentMusic.genre == null || currentMusic.genre!.isEmpty)
+              ? _detail?.genres?.join(', ')
+              : currentMusic.genre,
+        );
+        ref.read(currentMusicProvider.notifier).state = updatedMusic;
+      }
+
+      // 更新播放队列中该歌曲的元数据
+      ref.read(playQueueProvider.notifier).updateTrackMetadata(
+        widget.music.id,
+        title: _detail?.title,
+        artist: _detail?.artist,
+        album: _detail?.album,
+        year: _detail?.year,
+        trackNumber: _detail?.trackNumber,
+        genre: _detail?.genres?.join(', '),
+      );
+    } on Exception catch (e, st) {
+      // 非关键功能，静默失败
+      AppError.ignore(e, st, '同步元数据到数据库失败');
     }
   }
 

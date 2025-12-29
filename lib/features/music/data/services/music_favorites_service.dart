@@ -427,6 +427,66 @@ class MusicFavoritesService {
 
     await _lastPlayedBox!.delete('state');
   }
+
+  // ==================== 封面更新相关 ====================
+
+  /// 更新指定音乐的封面 URL
+  ///
+  /// 当刮削完成后调用此方法，更新收藏和播放历史中的封面
+  Future<void> updateCoverUrl(String musicPath, String? newCoverUrl) async {
+    await init();
+
+    // 更新收藏中的封面
+    if (_favoritesBox != null) {
+      final favData = _favoritesBox!.get(musicPath);
+      if (favData != null) {
+        try {
+          final fav = MusicFavoriteItem.fromMap(favData);
+          final updated = MusicFavoriteItem(
+            musicPath: fav.musicPath,
+            musicName: fav.musicName,
+            musicUrl: fav.musicUrl,
+            sourceId: fav.sourceId,
+            artist: fav.artist,
+            album: fav.album,
+            coverUrl: newCoverUrl,
+            duration: fav.duration,
+            addedAt: fav.addedAt,
+          );
+          await _favoritesBox!.put(musicPath, updated.toMap());
+          logger.d('MusicFavoritesService: 更新收藏封面 ${fav.musicName}');
+        } on Exception catch (_) {
+          // 跳过无效数据
+        }
+      }
+    }
+
+    // 更新播放历史中的封面
+    if (_historyBox != null) {
+      final histData = _historyBox!.get(musicPath);
+      if (histData != null) {
+        try {
+          final hist = MusicHistoryItem.fromMap(histData);
+          final updated = MusicHistoryItem(
+            musicPath: hist.musicPath,
+            musicName: hist.musicName,
+            musicUrl: hist.musicUrl,
+            sourceId: hist.sourceId,
+            artist: hist.artist,
+            album: hist.album,
+            coverUrl: newCoverUrl,
+            duration: hist.duration,
+            playedAt: hist.playedAt,
+            lastPosition: hist.lastPosition,
+          );
+          await _historyBox!.put(musicPath, updated.toMap());
+          logger.d('MusicFavoritesService: 更新播放历史封面 ${hist.musicName}');
+        } on Exception catch (_) {
+          // 跳过无效数据
+        }
+      }
+    }
+  }
 }
 
 /// 最后播放状态
