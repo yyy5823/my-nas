@@ -3,11 +3,14 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/sources/domain/entities/source_entity.dart';
+import 'package:my_nas/features/sources/presentation/providers/source_provider.dart';
 import 'package:my_nas/features/video/data/services/scraper_factory.dart';
 import 'package:my_nas/features/video/data/services/scraper_manager_service.dart';
 import 'package:my_nas/features/video/data/services/tmdb_service.dart';
 import 'package:my_nas/features/video/data/services/video_database_service.dart';
 import 'package:my_nas/features/video/data/services/video_metadata_service.dart';
+import 'package:my_nas/features/video/data/services/video_scanner_service.dart';
 import 'package:my_nas/features/video/domain/entities/scraper_result.dart';
 import 'package:my_nas/features/video/domain/entities/scraper_source.dart';
 import 'package:my_nas/features/video/domain/entities/video_metadata.dart';
@@ -720,14 +723,63 @@ class MetadataEnrichmentNotifier extends StateNotifier<MetadataEnrichmentState> 
   }
 
   void _onSourceChanged(ScraperSourceEvent event) {
-    // 仅当添加 TMDB 源时触发增强
-    if (event.type == ScraperSourceEventType.added &&
-        event.source.type == ScraperType.tmdb) {
-      logger.i('检测到新增 TMDB 刮削源，开始元数据增强');
+    // 当添加任何刮削源时，检查是否有待刮削的视频
+    if (event.type == ScraperSourceEventType.added) {
+      logger.i('检测到新增刮削源: ${event.source.name}');
       AppError.fireAndForget(
-        enrichAllMetadata(),
-        action: 'MetadataEnrichmentNotifier.enrichAllMetadata',
+        _scrapePendingVideosIfNeeded(),
+        action: 'MetadataEnrichmentNotifier._scrapePendingVideosIfNeeded',
       );
+
+      // 仅当添加 TMDB 源时触发元数据增强（补充电影系列信息等）
+      if (event.source.type == ScraperType.tmdb) {
+        logger.i('检测到新增 TMDB 刮削源，开始元数据增强');
+        AppError.fireAndForget(
+          enrichAllMetadata(),
+          action: 'MetadataEnrichmentNotifier.enrichAllMetadata',
+        );
+      }
+    }
+  }
+
+  /// 检查并刮削 pending 状态的视频
+  ///
+  /// 当配置完刮削源后，自动刮削之前扫描但未刮削的视频
+  Future<void> _scrapePendingVideosIfNeeded() async {
+    try {
+      await _dbService.init();
+
+      // 获取 pending 状态的视频数量
+      final stats = await _dbService.getScrapeStats();
+      if (stats.pending == 0) {
+        logger.i('没有待刮削的视频，跳过');
+        return;
+      }
+
+      logger.i('发现 ${stats.pending} 个待刮削视频，准备自动刮削');
+
+      // 获取活跃连接
+      final connections = _ref.read(activeConnectionsProvider);
+      final hasConnected = connections.values
+          .any((c) => c.status == SourceStatus.connected);
+
+      if (!hasConnected) {
+        logger.w('没有可用连接，跳过自动刮削');
+        return;
+      }
+
+      // 检查是否已经在刮削中
+      final scanner = VideoScannerService();
+      if (scanner.isScraping) {
+        logger.i('刮削任务正在进行中，跳过');
+        return;
+      }
+
+      // 触发刮削
+      logger.i('开始自动刮削 ${stats.pending} 个视频');
+      await scanner.scrapeMetadata(connections: connections);
+    } on Exception catch (e, st) {
+      AppError.handle(e, st, 'MetadataEnrichmentNotifier._scrapePendingVideosIfNeeded');
     }
   }
 

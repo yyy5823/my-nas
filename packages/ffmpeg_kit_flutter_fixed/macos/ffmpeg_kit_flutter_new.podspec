@@ -1,13 +1,17 @@
 Pod::Spec.new do |s|
   s.name             = 'ffmpeg_kit_flutter_new'
   s.version          = '1.0.0'
-  s.summary          = 'FFmpeg Kit for Flutter'
-  s.description      = 'A Flutter plugin for running FFmpeg and FFprobe commands.'
+  s.summary          = 'FFmpeg Kit for Flutter - Stub for macOS'
+  s.description      = <<-DESC
+    A Flutter plugin for running FFmpeg and FFprobe commands.
+    Note: macOS uses a stub implementation. FFmpegKit official binaries were retired in January 2025.
+    macOS uses system ffmpeg via Process instead.
+  DESC
   s.homepage         = 'https://github.com/sk3llo/ffmpeg_kit_flutter'
   s.license          = { :file => '../LICENSE' }
-  s.author           = { 'Anton Karpenko' => 'kapraton@gmail' }
+  s.author           = { 'Anton Karpenko' => 'kapraton@gmail.com' }
 
-  s.platform            = :osx
+  s.platform            = :osx, '10.15'
   s.requires_arc        = true
   s.static_framework    = true
 
@@ -15,31 +19,10 @@ Pod::Spec.new do |s|
   s.source_files        = 'Classes/**/*'
   s.public_header_files = 'Classes/**/*.h'
 
-  s.default_subspec     = 'full-gpl'
-
   s.dependency          'FlutterMacOS'
-  s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }
 
-  s.subspec 'full-gpl' do |ss|
-    # Adding pre-install hook for macOS
-    s.prepare_command = <<-CMD
-      if [ ! -d "./Frameworks" ]; then
-        chmod +x ../scripts/setup_macos.sh
-        ../scripts/setup_macos.sh
-      fi
-    CMD
-    ss.source_files         = 'Classes/**/*'
-    ss.public_header_files  = 'Classes/**/*.h'
-    ss.osx.vendored_frameworks = 'Frameworks/ffmpegkit.framework',
-                                 'Frameworks/libavcodec.framework',
-                                 'Frameworks/libavdevice.framework',
-                                 'Frameworks/libavfilter.framework',
-                                 'Frameworks/libavformat.framework',
-                                 'Frameworks/libavutil.framework',
-                                 'Frameworks/libswresample.framework',
-                                 'Frameworks/libswscale.framework'
-    ss.osx.frameworks = 'AudioToolbox', 'CoreMedia'
-    ss.libraries = 'z', 'bz2', 'c++', 'iconv'
-    ss.osx.deployment_target = '10.15'
-  end
+  # Note: macOS uses stub implementation - no FFmpegKit frameworks required
+  # The Dart code handles transcoding via system ffmpeg Process
+
+  s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }
 end
