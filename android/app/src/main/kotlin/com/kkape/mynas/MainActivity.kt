@@ -4,6 +4,7 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import com.kkape.mynas.widgets.WidgetDataChannel
 import com.kkape.mynas.dynamicisland.DynamicIslandChannel
+import com.kkape.mynas.transcoding.MediaCodecTranscodingPlugin
 
 class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -23,5 +24,8 @@ class MainActivity : FlutterActivity() {
 
         // 注册音频能力检测插件 (直通)
         flutterEngine.plugins.add(AudioCapabilityPlugin())
+
+        // 注册 MediaCodec 转码插件
+        flutterEngine.plugins.add(MediaCodecTranscodingPlugin())
     }
 }

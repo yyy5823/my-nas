@@ -7,6 +7,7 @@ import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import 'package:ffmpeg_kit_flutter_new/statistics.dart';
 import 'package:my_nas/core/errors/errors.dart';
 import 'package:my_nas/core/utils/logger.dart';
+import 'package:my_nas/features/video/data/services/transcoding/android_mediacodec_transcoding.dart';
 import 'package:my_nas/features/video/data/services/transcoding/nas_transcoding_service.dart';
 import 'package:my_nas/features/video/data/services/transcoding/transcoding_capability.dart';
 import 'package:my_nas/features/video/domain/entities/video_quality.dart';
@@ -75,10 +76,18 @@ class ClientTranscodingService implements NasTranscodingService {
 
   /// 检查 FFmpeg 是否可用
   Future<bool> _checkFfmpegAvailable() async {
-    // Android 不支持客户端转码（ffmpeg-kit 所有版本都有兼容性问题）
-    // Android 用户可使用服务端转码或原画播放（media_kit 支持大部分格式）
+    // Android 使用 MediaCodec 硬件转码
     if (Platform.isAndroid) {
-      logger.i('ClientTranscoding: Android 平台不支持客户端转码');
+      try {
+        await AndroidMediaCodecTranscoding.instance.init();
+        if (AndroidMediaCodecTranscoding.instance.isAvailable) {
+          logger.i('ClientTranscoding: Android 使用 MediaCodec 硬件转码');
+          return true;
+        }
+      } catch (e, st) {
+        AppError.ignore(e, st, '初始化 MediaCodec 转码失败');
+      }
+      logger.w('ClientTranscoding: Android MediaCodec 不可用');
       return false;
     }
 
@@ -330,6 +339,11 @@ class ClientTranscodingService implements NasTranscodingService {
 
     // 清理临时文件
     await _cleanupTempFiles();
+
+    // 释放 Android MediaCodec 资源
+    if (Platform.isAndroid) {
+      await AndroidMediaCodecTranscoding.instance.dispose();
+    }
   }
 
   /// 启动转码任务
@@ -349,24 +363,92 @@ class ClientTranscodingService implements NasTranscodingService {
         }
       }
 
-      // 构建 FFmpeg 命令参数
-      final args = _buildFfmpegArgs(task);
-      final command = args.join(' ');
-
       logger.i('ClientTranscoding: 开始转码 ${task.inputPath}');
-      logger.d('ClientTranscoding: FFmpeg 命令 => $command');
 
-      if (Platform.isIOS || Platform.isAndroid || Platform.isMacOS) {
-        // iOS/Android/macOS 使用 FFmpegKit（通用架构支持）
+      if (Platform.isAndroid) {
+        // Android 使用 MediaCodec 硬件转码
+        await _runMediaCodecTranscoding(task);
+      } else if (Platform.isIOS || Platform.isMacOS) {
+        // iOS/macOS 使用 FFmpegKit
+        final args = _buildFfmpegArgs(task);
+        final command = args.join(' ');
+        logger.d('ClientTranscoding: FFmpeg 命令 => $command');
         await _runFFmpegKitTranscoding(task, command);
       } else {
         // Linux/Windows 使用 Process
+        final args = _buildFfmpegArgs(task);
+        final command = args.join(' ');
+        logger.d('ClientTranscoding: FFmpeg 命令 => $command');
         await _runDesktopTranscoding(task, args, waitForComplete: waitForComplete);
       }
     } catch (e, st) {
       task.isRunning = false;
       task.error = e.toString();
       AppError.handle(e, st, 'clientStartTranscoding');
+    }
+  }
+
+  /// 使用 MediaCodec 转码（Android）
+  Future<void> _runMediaCodecTranscoding(_TranscodingTask task) async {
+    final mediaCodec = AndroidMediaCodecTranscoding.instance;
+
+    if (!mediaCodec.isAvailable) {
+      task.isRunning = false;
+      task.error = 'MediaCodec 不可用';
+      return;
+    }
+
+    try {
+      final session = await mediaCodec.startTranscode(
+        inputPath: task.inputPath,
+        quality: task.quality,
+        startPosition: task.startPosition,
+      );
+
+      if (session == null) {
+        task.isRunning = false;
+        task.error = '无法启动 MediaCodec 转码';
+        return;
+      }
+
+      // 监听进度
+      session.progressStream.listen((progress) {
+        task.progress = progress.progress;
+        task.speed = progress.speed;
+
+        if (progress.status == TranscodeStatus.transcoding) {
+          // 每隔一段时间输出日志
+          if ((progress.progress * 100).toInt() % 10 == 0) {
+            logger.d('ClientTranscoding: MediaCodec 进度 ${(progress.progress * 100).toStringAsFixed(1)}%');
+          }
+        }
+      });
+
+      // 等待转码完成
+      final result = await session.resultFuture;
+
+      task.isRunning = false;
+
+      switch (result) {
+        case TranscodeResultSuccess(:final outputPath):
+          // 更新输出路径（MediaCodec 可能使用不同的路径）
+          task.isCompleted = true;
+          // 复制到预期的输出路径
+          final srcFile = File(outputPath);
+          if (await srcFile.exists() && outputPath != task.outputPath) {
+            await srcFile.copy(task.outputPath);
+            await srcFile.delete();
+          }
+          logger.i('ClientTranscoding: MediaCodec 转码完成 ${task.outputPath}');
+
+        case TranscodeResultError(:final message):
+          task.error = message;
+          logger.e('ClientTranscoding: MediaCodec 转码失败: $message');
+      }
+    } catch (e, st) {
+      task.isRunning = false;
+      task.error = e.toString();
+      AppError.handle(e, st, 'mediacodecTranscoding');
     }
   }
 
