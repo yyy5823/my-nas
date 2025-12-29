@@ -75,9 +75,10 @@ dependencies:
   media_kit_libs_video: ^1.0.5
 
   # FFmpeg for client-side transcoding (iOS/Android/macOS)
-  # 使用社区维护的 fork，原项目已于 2025年1月 退役
+  # 使用本地副本，原项目 ffmpeg_kit_flutter 已于 2025年1月退役
   # 包含 FFmpeg v8.0.0 和 FFprobe，支持常用音视频编解码器
-  ffmpeg_kit_flutter_new: ^4.1.0
+  ffmpeg_kit_flutter_new:
+    path: packages/ffmpeg_kit_flutter_fixed
 
   # Media - Audio
   just_audio: ^0.9.42

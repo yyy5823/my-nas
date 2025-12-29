@@ -75,7 +75,7 @@ class ClientTranscodingService implements NasTranscodingService {
 
   /// 检查 FFmpeg 是否可用
   Future<bool> _checkFfmpegAvailable() async {
-    // iOS/Android/macOS 都使用 ffmpeg_kit_flutter（提供通用架构支持）
+    // iOS/Android/macOS 使用 ffmpeg_kit_flutter（提供通用架构支持）
     if (Platform.isIOS || Platform.isAndroid || Platform.isMacOS) {
       try {
         // 执行简单命令验证 FFmpeg 可用
@@ -93,8 +93,10 @@ class ClientTranscodingService implements NasTranscodingService {
         AppError.ignore(e, st, '检查 FFmpegKit 可用性失败');
         return false;
       }
-    } else if (Platform.isLinux || Platform.isWindows) {
-      // Linux/Windows 使用系统 FFmpeg
+    }
+
+    // Linux/Windows 使用系统/打包的 FFmpeg
+    if (Platform.isLinux || Platform.isWindows) {
       _ffmpegPath = await _findDesktopFfmpeg();
       if (_ffmpegPath != null) {
         logger.i('ClientTranscoding: 找到 FFmpeg: $_ffmpegPath');
