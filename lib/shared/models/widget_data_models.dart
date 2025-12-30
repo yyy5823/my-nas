@@ -444,3 +444,120 @@ class QuickAccessWidgetData {
     ],
   );
 }
+
+/// 小组件主题数据
+/// 用于同步应用配色方案到原生小组件
+class ThemeWidgetData {
+  const ThemeWidgetData({
+    required this.presetId,
+    required this.primary,
+    required this.primaryLight,
+    required this.primaryDark,
+    required this.secondary,
+    required this.accent,
+    required this.music,
+    required this.video,
+    required this.photo,
+    required this.book,
+    required this.download,
+    required this.darkBackground,
+    required this.darkSurface,
+    required this.darkSurfaceVariant,
+    required this.success,
+    required this.warning,
+    required this.error,
+  });
+
+  /// 配色方案ID
+  final String presetId;
+
+  /// 主色 (ARGB)
+  final int primary;
+  final int primaryLight;
+  final int primaryDark;
+
+  /// 次要色 (ARGB)
+  final int secondary;
+
+  /// 强调色 (ARGB)
+  final int accent;
+
+  /// 功能性颜色 (ARGB)
+  final int music;
+  final int video;
+  final int photo;
+  final int book;
+  final int download;
+
+  /// 深色背景 (ARGB)
+  final int darkBackground;
+  final int darkSurface;
+  final int darkSurfaceVariant;
+
+  /// 状态颜色 (ARGB)
+  final int success;
+  final int warning;
+  final int error;
+
+  Map<String, dynamic> toJson() => {
+        'presetId': presetId,
+        'primary': primary,
+        'primaryLight': primaryLight,
+        'primaryDark': primaryDark,
+        'secondary': secondary,
+        'accent': accent,
+        'music': music,
+        'video': video,
+        'photo': photo,
+        'book': book,
+        'download': download,
+        'darkBackground': darkBackground,
+        'darkSurface': darkSurface,
+        'darkSurfaceVariant': darkSurfaceVariant,
+        'success': success,
+        'warning': warning,
+        'error': error,
+      };
+
+  factory ThemeWidgetData.fromJson(Map<String, dynamic> json) =>
+      ThemeWidgetData(
+        presetId: json['presetId'] as String? ?? 'teal',
+        primary: json['primary'] as int? ?? 0xFF14B8A6,
+        primaryLight: json['primaryLight'] as int? ?? 0xFF2DD4BF,
+        primaryDark: json['primaryDark'] as int? ?? 0xFF0D9488,
+        secondary: json['secondary'] as int? ?? 0xFF06B6D4,
+        accent: json['accent'] as int? ?? 0xFF06B6D4,
+        music: json['music'] as int? ?? 0xFF8B5CF6,
+        video: json['video'] as int? ?? 0xFFEC4899,
+        photo: json['photo'] as int? ?? 0xFF10B981,
+        book: json['book'] as int? ?? 0xFFF59E0B,
+        download: json['download'] as int? ?? 0xFF3B82F6,
+        darkBackground: json['darkBackground'] as int? ?? 0xFF0D0D0D,
+        darkSurface: json['darkSurface'] as int? ?? 0xFF1A1A1A,
+        darkSurfaceVariant: json['darkSurfaceVariant'] as int? ?? 0xFF242424,
+        success: json['success'] as int? ?? 0xFF22C55E,
+        warning: json['warning'] as int? ?? 0xFFF59E0B,
+        error: json['error'] as int? ?? 0xFFEF4444,
+      );
+
+  /// 默认主题 (Teal)
+  static const defaultTheme = ThemeWidgetData(
+    presetId: 'teal',
+    primary: 0xFF14B8A6,
+    primaryLight: 0xFF2DD4BF,
+    primaryDark: 0xFF0D9488,
+    secondary: 0xFF06B6D4,
+    accent: 0xFF06B6D4,
+    music: 0xFF8B5CF6,
+    video: 0xFFEC4899,
+    photo: 0xFF10B981,
+    book: 0xFFF59E0B,
+    download: 0xFF3B82F6,
+    darkBackground: 0xFF0D0D0D,
+    darkSurface: 0xFF1A1A1A,
+    darkSurfaceVariant: 0xFF242424,
+    success: 0xFF22C55E,
+    warning: 0xFFF59E0B,
+    error: 0xFFEF4444,
+  );
+}

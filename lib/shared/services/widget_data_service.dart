@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
+import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/utils/logger.dart';
 import 'package:my_nas/features/sources/data/services/source_manager_service.dart';
@@ -68,6 +69,7 @@ class WidgetDataService {
       updateStorageWidget(),
       updateDownloadWidget(),
       updateQuickAccessWidget(),
+      updateThemeWidget(),
       // 媒体小组件由播放器状态变化触发，不在此处更新
     ]);
   }
@@ -276,6 +278,51 @@ class WidgetDataService {
   /// 清除媒体播放小组件
   Future<void> clearMediaWidget() async {
     await updateMediaWidget(MediaWidgetData.empty);
+  }
+
+  // ==================== 主题小组件 ====================
+
+  /// 更新小组件主题
+  ///
+  /// 将当前配色方案同步到原生小组件
+  /// 由主题切换时调用
+  Future<void> updateThemeWidget([ThemeWidgetData? data]) async {
+    final channel = _currentChannel;
+    if (channel == null) return;
+
+    try {
+      final widgetData = data ?? _buildThemeWidgetData();
+      await channel.invokeMethod('updateThemeWidget', widgetData.toJson());
+      logger.d('WidgetDataService: 主题小组件已更新 - ${widgetData.presetId}');
+    } on PlatformException catch (e, st) {
+      AppError.ignore(e, st, '更新主题小组件失败 (PlatformException)');
+    } on Exception catch (e, st) {
+      AppError.ignore(e, st, '更新主题小组件失败');
+    }
+  }
+
+  /// 从当前配色方案构建主题数据
+  ThemeWidgetData _buildThemeWidgetData() {
+    final preset = AppColors.currentPreset;
+    return ThemeWidgetData(
+      presetId: preset.id,
+      primary: preset.primary.toARGB32(),
+      primaryLight: preset.primaryLight.toARGB32(),
+      primaryDark: preset.primaryDark.toARGB32(),
+      secondary: preset.secondary.toARGB32(),
+      accent: preset.accent.toARGB32(),
+      music: preset.music.toARGB32(),
+      video: preset.video.toARGB32(),
+      photo: preset.photo.toARGB32(),
+      book: preset.book.toARGB32(),
+      download: preset.download.toARGB32(),
+      darkBackground: preset.darkBackground.toARGB32(),
+      darkSurface: preset.darkSurface.toARGB32(),
+      darkSurfaceVariant: preset.darkSurfaceVariant.toARGB32(),
+      success: AppColors.success.toARGB32(),
+      warning: AppColors.warning.toARGB32(),
+      error: AppColors.error.toARGB32(),
+    );
   }
 
   // ==================== 连接状态 ====================

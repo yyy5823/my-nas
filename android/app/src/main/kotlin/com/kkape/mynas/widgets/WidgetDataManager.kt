@@ -35,6 +35,9 @@ class WidgetDataManager(private val context: Context) {
         // Media Widget keys
         const val KEY_MEDIA_DATA = "media_data"
         const val KEY_COVER_IMAGE_PATH = "cover_image_path"
+
+        // Theme Widget keys
+        const val KEY_THEME_DATA = "theme_data"
     }
 
     // ==================== Storage Data ====================
@@ -306,6 +309,89 @@ class WidgetDataManager(private val context: Context) {
         } catch (e: Exception) {
             null
         }
+    }
+
+    // ==================== Theme Data ====================
+
+    data class ThemeData(
+        val presetId: String,
+        val primary: Int,
+        val primaryLight: Int,
+        val primaryDark: Int,
+        val secondary: Int,
+        val accent: Int,
+        val music: Int,
+        val video: Int,
+        val photo: Int,
+        val book: Int,
+        val download: Int,
+        val darkBackground: Int,
+        val darkSurface: Int,
+        val darkSurfaceVariant: Int,
+        val success: Int,
+        val warning: Int,
+        val error: Int
+    ) {
+        companion object {
+            // 默认主题 (Teal)
+            val DEFAULT = ThemeData(
+                presetId = "teal",
+                primary = 0xFF14B8A6.toInt(),
+                primaryLight = 0xFF2DD4BF.toInt(),
+                primaryDark = 0xFF0D9488.toInt(),
+                secondary = 0xFF06B6D4.toInt(),
+                accent = 0xFF06B6D4.toInt(),
+                music = 0xFF8B5CF6.toInt(),
+                video = 0xFFEC4899.toInt(),
+                photo = 0xFF10B981.toInt(),
+                book = 0xFFF59E0B.toInt(),
+                download = 0xFF3B82F6.toInt(),
+                darkBackground = 0xFF0D0D0D.toInt(),
+                darkSurface = 0xFF1A1A1A.toInt(),
+                darkSurfaceVariant = 0xFF242424.toInt(),
+                success = 0xFF22C55E.toInt(),
+                warning = 0xFFF59E0B.toInt(),
+                error = 0xFFEF4444.toInt()
+            )
+
+            fun fromJson(json: JSONObject): ThemeData {
+                return ThemeData(
+                    presetId = json.optString("presetId", "teal"),
+                    primary = json.optInt("primary", DEFAULT.primary),
+                    primaryLight = json.optInt("primaryLight", DEFAULT.primaryLight),
+                    primaryDark = json.optInt("primaryDark", DEFAULT.primaryDark),
+                    secondary = json.optInt("secondary", DEFAULT.secondary),
+                    accent = json.optInt("accent", DEFAULT.accent),
+                    music = json.optInt("music", DEFAULT.music),
+                    video = json.optInt("video", DEFAULT.video),
+                    photo = json.optInt("photo", DEFAULT.photo),
+                    book = json.optInt("book", DEFAULT.book),
+                    download = json.optInt("download", DEFAULT.download),
+                    darkBackground = json.optInt("darkBackground", DEFAULT.darkBackground),
+                    darkSurface = json.optInt("darkSurface", DEFAULT.darkSurface),
+                    darkSurfaceVariant = json.optInt("darkSurfaceVariant", DEFAULT.darkSurfaceVariant),
+                    success = json.optInt("success", DEFAULT.success),
+                    warning = json.optInt("warning", DEFAULT.warning),
+                    error = json.optInt("error", DEFAULT.error)
+                )
+            }
+        }
+    }
+
+    fun getThemeData(): ThemeData {
+        val jsonStr = prefs.getString(KEY_THEME_DATA, null) ?: return ThemeData.DEFAULT
+        return try {
+            ThemeData.fromJson(JSONObject(jsonStr))
+        } catch (e: Exception) {
+            ThemeData.DEFAULT
+        }
+    }
+
+    fun saveThemeData(data: Map<String, Any?>) {
+        val json = JSONObject(data)
+        prefs.edit()
+            .putString(KEY_THEME_DATA, json.toString())
+            .apply()
     }
 
     // ==================== Utility ====================

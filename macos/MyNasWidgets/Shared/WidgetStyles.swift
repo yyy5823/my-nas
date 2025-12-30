@@ -3,20 +3,54 @@ import WidgetKit
 import AppKit
 
 // MARK: - Widget Theme
+/// 动态读取应用配色方案，支持主题同步
 
 struct WidgetTheme {
-    static let primaryColor = Color.blue
-    static let secondaryColor = Color.gray
-    static let backgroundColor = Color(nsColor: .windowBackgroundColor)
-    static let surfaceColor = Color(nsColor: .controlBackgroundColor)
+    /// 获取当前主题数据
+    private static var theme: ThemeData {
+        WidgetDataManager.shared.getThemeData()
+    }
 
-    static let musicColor = Color.pink
-    static let videoColor = Color.purple
-    static let readingColor = Color.orange
+    // 主色调 - 动态
+    static var primaryColor: Color { theme.primaryColor }
+    static var primaryLightColor: Color { theme.primaryLightColor }
+    static var primaryDarkColor: Color { theme.primaryDarkColor }
+    static var secondaryColor: Color { theme.secondaryColor }
+    static var accentColor: Color { theme.accentColor }
 
-    static let successColor = Color.green
-    static let warningColor = Color.orange
-    static let errorColor = Color.red
+    // 背景色 - 动态
+    static var backgroundColor: Color { theme.darkBackgroundColor }
+    static var surfaceColor: Color { theme.darkSurfaceColor }
+    static var surfaceVariantColor: Color { theme.darkSurfaceVariantColor }
+
+    // 功能性颜色 - 动态
+    static var musicColor: Color { theme.musicColor }
+    static var videoColor: Color { theme.videoColor }
+    static var photoColor: Color { theme.photoColor }
+    static var readingColor: Color { theme.bookColor }
+    static var downloadColor: Color { theme.downloadColor }
+
+    // 状态颜色 - 动态
+    static var successColor: Color { theme.successColor }
+    static var warningColor: Color { theme.warningColor }
+    static var errorColor: Color { theme.errorColor }
+
+    // 背景渐变 - 动态
+    static var backgroundGradient: LinearGradient {
+        theme.backgroundGradient
+    }
+
+    /// 根据快捷访问类型获取颜色
+    static func color(for type: String) -> Color {
+        switch type {
+        case "music": return musicColor
+        case "video": return videoColor
+        case "photo": return photoColor
+        case "reading": return readingColor
+        case "files": return downloadColor
+        default: return primaryColor
+        }
+    }
 }
 
 // MARK: - Common Views

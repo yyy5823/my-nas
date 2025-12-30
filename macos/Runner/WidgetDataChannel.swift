@@ -30,6 +30,8 @@ class WidgetDataChannel {
             updateMediaWidget(call.arguments as? [String: Any], result: result)
         case "updateQuickAccessWidget":
             updateQuickAccessWidget(call.arguments as? [String: Any], result: result)
+        case "updateThemeWidget":
+            updateThemeWidget(call.arguments as? [String: Any], result: result)
         case "updateConnectionStatus":
             updateConnectionStatus(call.arguments as? [String: Any], result: result)
         case "refreshAllWidgets":
@@ -143,6 +145,25 @@ class WidgetDataChannel {
         if #available(macOS 14.0, *) {
             WidgetCenter.shared.reloadTimelines(ofKind: "QuickAccessWidget")
         }
+        result(nil)
+    }
+
+    // MARK: - Theme Widget
+
+    private func updateThemeWidget(_ args: [String: Any]?, result: FlutterResult) {
+        guard let args = args else {
+            result(FlutterError(code: "INVALID_ARGS", message: "Missing arguments", details: nil))
+            return
+        }
+
+        if let data = try? JSONSerialization.data(withJSONObject: args) {
+            userDefaults?.set(data, forKey: "widget_theme_data")
+            // Reload all widgets to apply new theme
+            if #available(macOS 14.0, *) {
+                WidgetCenter.shared.reloadAllTimelines()
+            }
+        }
+
         result(nil)
     }
 

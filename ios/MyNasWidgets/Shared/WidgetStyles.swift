@@ -9,37 +9,62 @@ import SwiftUI
 import WidgetKit
 
 /// 小组件主题颜色
+/// 动态读取应用配色方案，支持主题同步
 struct WidgetTheme {
-    // 主色调
-    static let primaryColor = Color(hex: "00d4aa") // 青绿色
-    static let secondaryColor = Color(hex: "6c5ce7") // 紫色
+    /// 获取当前主题数据
+    private static var theme: WidgetDataManager.ThemeData {
+        WidgetDataManager.shared.getThemeData()
+    }
 
-    // 背景色
-    static let backgroundGradientStart = Color(hex: "1a1a2e")
-    static let backgroundGradientEnd = Color(hex: "16213e")
+    // 主色调 - 动态
+    static var primaryColor: Color { theme.primaryColor }
+    static var primaryLightColor: Color { theme.primaryLightColor }
+    static var primaryDarkColor: Color { theme.primaryDarkColor }
+    static var secondaryColor: Color { theme.secondaryColor }
+    static var accentColor: Color { theme.accentColor }
 
-    // 文字颜色
+    // 功能性颜色 - 动态
+    static var musicColor: Color { theme.musicColor }
+    static var videoColor: Color { theme.videoColor }
+    static var photoColor: Color { theme.photoColor }
+    static var bookColor: Color { theme.bookColor }
+    static var downloadColor: Color { theme.downloadColor }
+
+    // 背景色 - 动态
+    static var darkBackgroundColor: Color { theme.darkBackgroundColor }
+    static var darkSurfaceColor: Color { theme.darkSurfaceColor }
+    static var darkSurfaceVariantColor: Color { theme.darkSurfaceVariantColor }
+
+    // 文字颜色 - 固定
     static let textPrimary = Color.white
     static let textSecondary = Color.gray
 
-    // 状态颜色
-    static let successColor = Color.green
-    static let warningColor = Color.orange
-    static let errorColor = Color.red
+    // 状态颜色 - 动态
+    static var successColor: Color { theme.successColor }
+    static var warningColor: Color { theme.warningColor }
+    static var errorColor: Color { theme.errorColor }
 
-    // 背景渐变
+    // 背景渐变 - 动态
     static var backgroundGradient: LinearGradient {
-        LinearGradient(
-            colors: [backgroundGradientStart, backgroundGradientEnd],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+        theme.backgroundGradient
     }
 
     // 卡片背景
     static var cardBackground: some View {
         RoundedRectangle(cornerRadius: 12)
             .fill(Color.white.opacity(0.1))
+    }
+
+    /// 根据快捷访问类型获取颜色
+    static func color(for type: String) -> Color {
+        switch type {
+        case "music": return musicColor
+        case "video": return videoColor
+        case "photo": return photoColor
+        case "reading": return bookColor
+        case "files": return downloadColor
+        default: return primaryColor
+        }
     }
 }
 

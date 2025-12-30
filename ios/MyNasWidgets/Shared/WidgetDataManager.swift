@@ -210,6 +210,85 @@ class WidgetDataManager {
         return data
     }
 
+    // MARK: - Theme Data
+
+    struct ThemeData: Codable {
+        let presetId: String
+        let primary: Int
+        let primaryLight: Int
+        let primaryDark: Int
+        let secondary: Int
+        let accent: Int
+        let music: Int
+        let video: Int
+        let photo: Int
+        let book: Int
+        let download: Int
+        let darkBackground: Int
+        let darkSurface: Int
+        let darkSurfaceVariant: Int
+        let success: Int
+        let warning: Int
+        let error: Int
+
+        /// 默认主题 (Teal)
+        static let defaultTheme = ThemeData(
+            presetId: "teal",
+            primary: 0xFF14B8A6,
+            primaryLight: 0xFF2DD4BF,
+            primaryDark: 0xFF0D9488,
+            secondary: 0xFF06B6D4,
+            accent: 0xFF06B6D4,
+            music: 0xFF8B5CF6,
+            video: 0xFFEC4899,
+            photo: 0xFF10B981,
+            book: 0xFFF59E0B,
+            download: 0xFF3B82F6,
+            darkBackground: 0xFF0D0D0D,
+            darkSurface: 0xFF1A1A1A,
+            darkSurfaceVariant: 0xFF242424,
+            success: 0xFF22C55E,
+            warning: 0xFFF59E0B,
+            error: 0xFFEF4444
+        )
+
+        /// 转换为 SwiftUI Color
+        var primaryColor: Color { Color(argb: primary) }
+        var primaryLightColor: Color { Color(argb: primaryLight) }
+        var primaryDarkColor: Color { Color(argb: primaryDark) }
+        var secondaryColor: Color { Color(argb: secondary) }
+        var accentColor: Color { Color(argb: accent) }
+        var musicColor: Color { Color(argb: music) }
+        var videoColor: Color { Color(argb: video) }
+        var photoColor: Color { Color(argb: photo) }
+        var bookColor: Color { Color(argb: book) }
+        var downloadColor: Color { Color(argb: download) }
+        var darkBackgroundColor: Color { Color(argb: darkBackground) }
+        var darkSurfaceColor: Color { Color(argb: darkSurface) }
+        var darkSurfaceVariantColor: Color { Color(argb: darkSurfaceVariant) }
+        var successColor: Color { Color(argb: success) }
+        var warningColor: Color { Color(argb: warning) }
+        var errorColor: Color { Color(argb: error) }
+
+        /// 背景渐变
+        var backgroundGradient: LinearGradient {
+            LinearGradient(
+                colors: [darkSurfaceColor, darkBackgroundColor],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+    }
+
+    func getThemeData() -> ThemeData {
+        guard let defaults = userDefaults,
+              let jsonData = defaults.data(forKey: "widget_theme_data"),
+              let data = try? JSONDecoder().decode(ThemeData.self, from: jsonData) else {
+            return .defaultTheme
+        }
+        return data
+    }
+
     // MARK: - Connection Status
 
     func isNasConnected() -> Bool {

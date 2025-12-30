@@ -6,6 +6,7 @@ import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:my_nas/app/router/app_router.dart';
 import 'package:my_nas/app/theme/app_colors.dart';
 import 'package:my_nas/app/theme/app_theme.dart';
+import 'package:my_nas/app/theme/color_scheme_preset.dart';
 import 'package:my_nas/core/errors/app_error_handler.dart';
 import 'package:my_nas/core/services/background_task_service.dart';
 import 'package:my_nas/core/services/deep_link_service.dart';
@@ -18,6 +19,7 @@ import 'package:my_nas/features/sources/presentation/providers/source_provider.d
 import 'package:my_nas/features/video/data/services/video_database_service.dart';
 import 'package:my_nas/features/video/data/services/video_scanner_service.dart';
 import 'package:my_nas/shared/providers/theme_provider.dart';
+import 'package:my_nas/shared/services/widget_data_service.dart';
 import 'package:my_nas/shared/widgets/stream_image.dart';
 import 'package:my_nas/shared/widgets/toast_overlay.dart';
 
@@ -187,6 +189,13 @@ class _MyNasAppState extends ConsumerState<MyNasApp> with WidgetsBindingObserver
 
     // 同步更新 AppColors 的静态配色方案
     AppColors.setPreset(colorPreset);
+
+    // 监听配色方案变化，同步更新原生 Widget 主题
+    ref.listen<ColorSchemePreset>(colorSchemePresetProvider, (previous, next) {
+      if (previous != next) {
+        WidgetDataService().updateThemeWidget();
+      }
+    });
 
     return MaterialApp.router(
       title: 'MyNAS',

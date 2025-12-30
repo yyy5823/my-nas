@@ -45,6 +45,7 @@ class WidgetDataChannel : FlutterPlugin, MethodChannel.MethodCallHandler {
             "updateDownloadWidget" -> handleUpdateDownloadWidget(call, result)
             "updateQuickAccessWidget" -> handleUpdateQuickAccessWidget(call, result)
             "updateMediaWidget" -> handleUpdateMediaWidget(call, result)
+            "updateThemeWidget" -> handleUpdateThemeWidget(call, result)
             "refreshAllWidgets" -> handleRefreshAllWidgets(result)
             else -> result.notImplemented()
         }
@@ -125,6 +126,28 @@ class WidgetDataChannel : FlutterPlugin, MethodChannel.MethodCallHandler {
             dataManager.saveMediaData(data)
 
             // Update widgets
+            updateWidgetsByClass(MediaWidget::class.java)
+
+            result.success(null)
+        } catch (e: Exception) {
+            result.error("ERROR", e.message, null)
+        }
+    }
+
+    private fun handleUpdateThemeWidget(call: MethodCall, result: MethodChannel.Result) {
+        try {
+            @Suppress("UNCHECKED_CAST")
+            val data = call.arguments as? Map<String, Any?> ?: run {
+                result.error("INVALID_ARGS", "Invalid arguments", null)
+                return
+            }
+
+            dataManager.saveThemeData(data)
+
+            // Update all widgets to apply new theme
+            updateWidgetsByClass(StorageWidget::class.java)
+            updateWidgetsByClass(DownloadWidget::class.java)
+            updateWidgetsByClass(QuickAccessWidget::class.java)
             updateWidgetsByClass(MediaWidget::class.java)
 
             result.success(null)

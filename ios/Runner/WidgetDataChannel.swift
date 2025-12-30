@@ -36,6 +36,8 @@ class WidgetDataChannel: NSObject, FlutterPlugin {
             handleUpdateQuickAccessWidget(call: call, result: result)
         case "updateMediaWidget":
             handleUpdateMediaWidget(call: call, result: result)
+        case "updateThemeWidget":
+            handleUpdateThemeWidget(call: call, result: result)
         case "updateConnectionStatus":
             handleUpdateConnectionStatus(call: call, result: result)
         case "refreshAllWidgets":
@@ -154,6 +156,31 @@ class WidgetDataChannel: NSObject, FlutterPlugin {
             // Reload widgets
             if #available(iOS 14.0, *) {
                 WidgetCenter.shared.reloadTimelines(ofKind: "MediaWidget")
+            }
+
+            result(nil)
+        } catch {
+            result(FlutterError(code: "ENCODE_ERROR", message: error.localizedDescription, details: nil))
+        }
+    }
+
+    // MARK: - Theme Widget
+
+    private func handleUpdateThemeWidget(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let args = call.arguments as? [String: Any],
+              let defaults = userDefaults else {
+            result(FlutterError(code: "INVALID_ARGS", message: "Invalid arguments", details: nil))
+            return
+        }
+
+        do {
+            let jsonData = try JSONSerialization.data(withJSONObject: args)
+            defaults.set(jsonData, forKey: "widget_theme_data")
+            defaults.synchronize()
+
+            // Reload all widgets to apply new theme
+            if #available(iOS 14.0, *) {
+                WidgetCenter.shared.reloadAllTimelines()
             }
 
             result(nil)
