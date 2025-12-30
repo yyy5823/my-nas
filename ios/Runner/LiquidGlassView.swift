@@ -1,18 +1,21 @@
 import Flutter
 import UIKit
-import SwiftUI
 
 /// iOS 26 Liquid Glass 原生视图
 ///
-/// 实现真正的 iOS 26 Liquid Glass 效果：
+/// 使用原生 UITabBarController 实现真正的 iOS 26 Liquid Glass 效果
+/// iOS 26 的 UITabBar 自动获得 Liquid Glass 样式，无需任何自定义代码
+///
+/// 特点：
 /// - 透明背景
-/// - 只有选中的 tab 有玻璃效果
-/// - 玻璃块可以在 tab 之间变形移动
-/// - 支持长按拖动切换
+/// - 只有选中的 tab 有玻璃"药丸"效果
+/// - 选中指示器可以长按拖动切换
+/// - 平滑的变形动画
+/// - 按压交互效果
 
 // MARK: - Navigation Bar Item
 
-struct LiquidGlassNavItem: Identifiable {
+struct LiquidGlassNavItem {
     let id: Int
     let icon: String           // SF Symbol name (未选中)
     let selectedIcon: String   // SF Symbol name (选中)
@@ -50,17 +53,10 @@ class LiquidGlassViewFactory: NSObject, FlutterPlatformViewFactory {
 // MARK: - Platform View
 
 class LiquidGlassPlatformView: NSObject, FlutterPlatformView {
-    private let containerView: UIView
-    private var hostingController: UIViewController?
+    private let tabBarController: LiquidGlassTabBarController
     private let viewId: Int64
     private let messenger: FlutterBinaryMessenger?
     private var methodChannel: FlutterMethodChannel?
-
-    // 当前状态
-    private var currentSelectedIndex: Int = 0
-    private var items: [LiquidGlassNavItem] = []
-    private var viewType: String = "navBar"
-    private var isDark: Bool = false
 
     init(
         frame: CGRect,
@@ -70,50 +66,54 @@ class LiquidGlassPlatformView: NSObject, FlutterPlatformView {
     ) {
         self.viewId = viewId
         self.messenger = messenger
-        containerView = UIView(frame: frame)
-        containerView.backgroundColor = .clear
-        containerView.clipsToBounds = false
 
-        super.init()
+        // 解析参数
+        var items: [LiquidGlassNavItem] = []
+        var selectedIndex = 0
+        var isDark = false
+
+        if let params = args as? [String: Any] {
+            isDark = params["isDark"] as? Bool ?? false
+            selectedIndex = params["selectedIndex"] as? Int ?? 0
+
+            if let itemsData = params["items"] as? [[String: Any]] {
+                items = itemsData.enumerated().map { index, item in
+                    let icon = item["icon"] as? String ?? "circle"
+                    let selectedIcon = item["selectedIcon"] as? String ?? icon
+                    return LiquidGlassNavItem(
+                        id: index,
+                        icon: icon,
+                        selectedIcon: selectedIcon,
+                        label: item["label"] as? String ?? ""
+                    )
+                }
+            }
+        }
 
         NSLog("🔮 LiquidGlassView: init with frame: \(frame), viewId: \(viewId)")
         NSLog("🔮 LiquidGlassView: iOS version: \(UIDevice.current.systemVersion)")
+        NSLog("🔮 LiquidGlassView: Parsed \(items.count) items, selectedIndex: \(selectedIndex)")
 
-        // 解析参数
-        parseArguments(args)
+        // 创建 TabBarController
+        tabBarController = LiquidGlassTabBarController(
+            items: items,
+            selectedIndex: selectedIndex,
+            isDark: isDark
+        )
+
+        super.init()
 
         // 设置 Method Channel
         setupMethodChannel()
 
-        // 创建视图
-        setupView()
+        // 设置回调
+        tabBarController.onTabSelected = { [weak self] index in
+            self?.handleNavTap(index)
+        }
     }
 
     func view() -> UIView {
-        return containerView
-    }
-
-    private func parseArguments(_ args: Any?) {
-        guard let params = args as? [String: Any] else { return }
-
-        viewType = params["viewType"] as? String ?? "navBar"
-        isDark = params["isDark"] as? Bool ?? false
-        currentSelectedIndex = params["selectedIndex"] as? Int ?? 0
-
-        if let itemsData = params["items"] as? [[String: Any]] {
-            items = itemsData.enumerated().map { index, item in
-                let icon = item["icon"] as? String ?? "circle"
-                let selectedIcon = item["selectedIcon"] as? String ?? icon
-                return LiquidGlassNavItem(
-                    id: index,
-                    icon: icon,
-                    selectedIcon: selectedIcon,
-                    label: item["label"] as? String ?? ""
-                )
-            }
-        }
-
-        NSLog("🔮 LiquidGlassView: Parsed \(items.count) items, selectedIndex: \(currentSelectedIndex)")
+        return tabBarController.view
     }
 
     private func setupMethodChannel() {
@@ -126,12 +126,22 @@ class LiquidGlassPlatformView: NSObject, FlutterPlatformView {
             switch call.method {
             case "updateSelectedIndex":
                 if let index = call.arguments as? Int {
-                    self?.updateSelectedIndex(index)
+                    self?.tabBarController.updateSelectedIndex(index)
                 }
                 result(nil)
             case "updateItems":
                 if let itemsData = call.arguments as? [[String: Any]] {
-                    self?.updateItems(itemsData)
+                    let items = itemsData.enumerated().map { index, item in
+                        let icon = item["icon"] as? String ?? "circle"
+                        let selectedIcon = item["selectedIcon"] as? String ?? icon
+                        return LiquidGlassNavItem(
+                            id: index,
+                            icon: icon,
+                            selectedIcon: selectedIcon,
+                            label: item["label"] as? String ?? ""
+                        )
+                    }
+                    self?.tabBarController.updateItems(items)
                 }
                 result(nil)
             default:
@@ -140,242 +150,132 @@ class LiquidGlassPlatformView: NSObject, FlutterPlatformView {
         }
     }
 
-    private func setupView() {
-        // 移除旧视图
-        containerView.subviews.forEach { $0.removeFromSuperview() }
-        hostingController?.view.removeFromSuperview()
-        hostingController = nil
-
-        NSLog("🔮 LiquidGlassView: setupView - viewType: \(viewType)")
-
-        if #available(iOS 26.0, *) {
-            NSLog("🔮 LiquidGlassView: Using SwiftUI with GlassEffectContainer (iOS 26+)")
-            setupSwiftUIView()
-        } else {
-            NSLog("🔮 LiquidGlassView: Using UIKit fallback")
-            setupFallbackView()
-        }
-    }
-
-    // MARK: - iOS 26+ SwiftUI Implementation
-
-    @available(iOS 26.0, *)
-    private func setupSwiftUIView() {
-        let navBarView = LiquidGlassNavBarView(
-            items: items,
-            selectedIndex: currentSelectedIndex,
-            onTap: { [weak self] index in
-                self?.handleNavTap(index)
-            }
-        )
-
-        let hostingController = UIHostingController(rootView: navBarView)
-        hostingController.view.backgroundColor = .clear
-        hostingController.view.translatesAutoresizingMaskIntoConstraints = false
-
-        containerView.addSubview(hostingController.view)
-
-        NSLayoutConstraint.activate([
-            hostingController.view.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-            hostingController.view.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-            hostingController.view.topAnchor.constraint(equalTo: containerView.topAnchor),
-            hostingController.view.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
-        ])
-
-        self.hostingController = hostingController
-
-        NSLog("🔮 LiquidGlassView: SwiftUI NavBar created successfully")
-    }
-
     private func handleNavTap(_ index: Int) {
         NSLog("🔮 LiquidGlassView: handleNavTap called with index: \(index)")
-        guard index != currentSelectedIndex else {
-            NSLog("🔮 LiquidGlassView: Same index, ignoring tap")
-            return
-        }
-
-        currentSelectedIndex = index
-
         // 通知 Flutter
-        NSLog("🔮 LiquidGlassView: Invoking Flutter method 'onNavTap' with index: \(index)")
         methodChannel?.invokeMethod("onNavTap", arguments: index)
-    }
-
-    private func updateSelectedIndex(_ index: Int) {
-        guard index != currentSelectedIndex else { return }
-        currentSelectedIndex = index
-        // 重新创建视图以更新选中状态
-        setupView()
-    }
-
-    private func updateItems(_ itemsData: [[String: Any]]) {
-        items = itemsData.enumerated().map { index, item in
-            let icon = item["icon"] as? String ?? "circle"
-            let selectedIcon = item["selectedIcon"] as? String ?? icon
-            return LiquidGlassNavItem(
-                id: index,
-                icon: icon,
-                selectedIcon: selectedIcon,
-                label: item["label"] as? String ?? ""
-            )
-        }
-        setupView()
-    }
-
-    // MARK: - Fallback View (iOS < 26)
-
-    private func setupFallbackView() {
-        let blurEffect = UIBlurEffect(style: isDark ? .systemUltraThinMaterialDark : .systemUltraThinMaterialLight)
-        let effectView = UIVisualEffectView(effect: blurEffect)
-        effectView.translatesAutoresizingMaskIntoConstraints = false
-        effectView.layer.cornerRadius = 35
-        effectView.layer.cornerCurve = .continuous
-        effectView.clipsToBounds = true
-
-        containerView.addSubview(effectView)
-
-        NSLayoutConstraint.activate([
-            effectView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-            effectView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-            effectView.topAnchor.constraint(equalTo: containerView.topAnchor),
-            effectView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
-        ])
-
-        // 添加导航按钮
-        let stackView = UIStackView()
-        stackView.axis = .horizontal
-        stackView.distribution = .fillEqually
-        stackView.alignment = .center
-        stackView.translatesAutoresizingMaskIntoConstraints = false
-
-        effectView.contentView.addSubview(stackView)
-
-        NSLayoutConstraint.activate([
-            stackView.leadingAnchor.constraint(equalTo: effectView.contentView.leadingAnchor),
-            stackView.trailingAnchor.constraint(equalTo: effectView.contentView.trailingAnchor),
-            stackView.topAnchor.constraint(equalTo: effectView.contentView.topAnchor),
-            stackView.bottomAnchor.constraint(equalTo: effectView.contentView.bottomAnchor),
-        ])
-
-        for (index, item) in items.enumerated() {
-            let button = createFallbackNavButton(item: item, index: index)
-            stackView.addArrangedSubview(button)
-        }
-    }
-
-    private func createFallbackNavButton(item: LiquidGlassNavItem, index: Int) -> UIView {
-        let container = UIView()
-        container.tag = index
-        container.translatesAutoresizingMaskIntoConstraints = false
-
-        let stack = UIStackView()
-        stack.axis = .vertical
-        stack.alignment = .center
-        stack.spacing = 4
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        stack.isUserInteractionEnabled = false
-
-        let isSelected = index == currentSelectedIndex
-        let iconName = isSelected ? item.selectedIcon : item.icon
-
-        let imageView = UIImageView()
-        let config = UIImage.SymbolConfiguration(pointSize: 22, weight: .medium)
-        imageView.image = UIImage(systemName: iconName, withConfiguration: config)
-        imageView.tintColor = isSelected ? .label : .secondaryLabel
-        imageView.contentMode = .scaleAspectFit
-        imageView.translatesAutoresizingMaskIntoConstraints = false
-
-        NSLayoutConstraint.activate([
-            imageView.widthAnchor.constraint(equalToConstant: 24),
-            imageView.heightAnchor.constraint(equalToConstant: 24)
-        ])
-
-        let label = UILabel()
-        label.text = item.label
-        label.font = .systemFont(ofSize: 10, weight: isSelected ? .semibold : .regular)
-        label.textColor = isSelected ? .label : .secondaryLabel
-        label.textAlignment = .center
-
-        stack.addArrangedSubview(imageView)
-        stack.addArrangedSubview(label)
-
-        container.addSubview(stack)
-
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 8),
-            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -8),
-            stack.topAnchor.constraint(equalTo: container.topAnchor, constant: 4),
-            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -4)
-        ])
-
-        let tap = UITapGestureRecognizer(target: self, action: #selector(handleFallbackTap(_:)))
-        container.addGestureRecognizer(tap)
-        container.isUserInteractionEnabled = true
-
-        return container
-    }
-
-    @objc private func handleFallbackTap(_ gesture: UITapGestureRecognizer) {
-        guard let view = gesture.view else { return }
-        handleNavTap(view.tag)
     }
 }
 
-// MARK: - SwiftUI Views
+// MARK: - Tab Bar Controller
 
-@available(iOS 26.0, *)
-struct LiquidGlassNavBarView: View {
-    let items: [LiquidGlassNavItem]
-    let selectedIndex: Int
-    let onTap: (Int) -> Void
+/// 使用原生 UITabBarController 实现 Liquid Glass 效果
+/// iOS 26 的 UITabBar 自动获得 Liquid Glass 样式
+class LiquidGlassTabBarController: UITabBarController, UITabBarControllerDelegate {
+    private var items: [LiquidGlassNavItem]
+    private var isDark: Bool
+    var onTabSelected: ((Int) -> Void)?
 
-    @Namespace private var namespace
-    @State private var draggedIndex: Int?
-    @GestureState private var dragOffset: CGFloat = 0
-
-    var body: some View {
-        GlassEffectContainer(spacing: 8) {
-            HStack(spacing: 0) {
-                ForEach(items) { item in
-                    navButton(for: item)
-                }
-            }
-            .padding(.horizontal, 8)
-        }
-        .frame(height: 70)
+    init(items: [LiquidGlassNavItem], selectedIndex: Int, isDark: Bool) {
+        self.items = items
+        self.isDark = isDark
+        super.init(nibName: nil, bundle: nil)
+        self.selectedIndex = selectedIndex
     }
 
-    @ViewBuilder
-    private func navButton(for item: LiquidGlassNavItem) -> some View {
-        let isSelected = item.id == selectedIndex
-
-        Button {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
-                onTap(item.id)
-            }
-        } label: {
-            VStack(spacing: 4) {
-                Image(systemName: isSelected ? item.selectedIcon : item.icon)
-                    .font(.system(size: 22, weight: .medium))
-                    .symbolRenderingMode(.hierarchical)
-
-                Text(item.label)
-                    .font(.system(size: 10, weight: isSelected ? .semibold : .regular))
-            }
-            .foregroundStyle(isSelected ? .primary : .secondary)
-            .frame(maxWidth: .infinity)
-            .frame(height: 54)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        // 只有选中的 item 有玻璃效果
-        .glassEffect(
-            isSelected ? .regular.interactive() : .identity,
-            in: .capsule
-        )
-        // 使用相同的 ID 让玻璃块在 items 之间变形移动
-        .glassEffectID("navSelection", in: namespace)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
     }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+
+        NSLog("🔮 LiquidGlassTabBarController: viewDidLoad")
+
+        // 设置透明背景
+        view.backgroundColor = .clear
+        view.isOpaque = false
+
+        // 设置代理
+        delegate = self
+
+        // 配置外观
+        configureAppearance()
+
+        // 创建 tab items
+        rebuildTabs()
+
+        NSLog("🔮 LiquidGlassTabBarController: Setup complete, iOS 26+ will automatically apply Liquid Glass")
+    }
+
+    private func configureAppearance() {
+        // 配置 TabBar 外观
+        let appearance = UITabBarAppearance()
+
+        if #available(iOS 26.0, *) {
+            // iOS 26+: 使用透明背景，让系统自动应用 Liquid Glass
+            appearance.configureWithTransparentBackground()
+            NSLog("🔮 LiquidGlassTabBarController: Using transparent background for iOS 26 Liquid Glass")
+        } else {
+            // iOS < 26: 使用模糊效果作为回退
+            appearance.configureWithDefaultBackground()
+            appearance.backgroundEffect = UIBlurEffect(style: isDark ? .systemUltraThinMaterialDark : .systemUltraThinMaterialLight)
+            NSLog("🔮 LiquidGlassTabBarController: Using blur effect fallback for iOS < 26")
+        }
+
+        // 应用外观
+        tabBar.standardAppearance = appearance
+        if #available(iOS 15.0, *) {
+            tabBar.scrollEdgeAppearance = appearance
+        }
+
+        // 设置 TabBar 透明
+        tabBar.isTranslucent = true
+        tabBar.backgroundColor = .clear
+    }
+
+    private func rebuildTabs() {
+        var controllers: [UIViewController] = []
+
+        for item in items {
+            // 创建空的 ViewController 作为占位
+            let dummyVC = UIViewController()
+            dummyVC.view.backgroundColor = .clear
+
+            // 配置 tab bar item
+            let image = UIImage(systemName: item.icon)
+            let selectedImage = UIImage(systemName: item.selectedIcon)
+
+            dummyVC.tabBarItem = UITabBarItem(
+                title: item.label,
+                image: image,
+                selectedImage: selectedImage
+            )
+            dummyVC.tabBarItem.tag = item.id
+
+            controllers.append(dummyVC)
+
+            NSLog("🔮 LiquidGlassTabBarController: Added tab '\(item.label)' with icon '\(item.icon)'")
+        }
+
+        setViewControllers(controllers, animated: false)
+        NSLog("🔮 LiquidGlassTabBarController: Created \(controllers.count) tabs")
+    }
+
+    func updateSelectedIndex(_ index: Int) {
+        guard index != selectedIndex, index >= 0, index < (viewControllers?.count ?? 0) else { return }
+        selectedIndex = index
+        NSLog("🔮 LiquidGlassTabBarController: Updated selectedIndex to \(index)")
+    }
+
+    func updateItems(_ newItems: [LiquidGlassNavItem]) {
+        items = newItems
+        rebuildTabs()
+    }
+
+    // MARK: - UITabBarControllerDelegate
+
+    func tabBarController(_ tabBarController: UITabBarController, didSelect viewController: UIViewController) {
+        let index = viewController.tabBarItem.tag
+        NSLog("🔮 LiquidGlassTabBarController: Tab selected: \(index)")
+        onTabSelected?(index)
+    }
+
+    // iOS 26+ 的交互效果由系统自动处理：
+    // - 选中指示器的玻璃"药丸"效果
+    // - 长按拖动切换 tab
+    // - 按压动画效果
+    // - tab 之间的变形动画
 }
 
 // MARK: - Plugin Registration
@@ -388,9 +288,9 @@ class LiquidGlassPlugin: NSObject, FlutterPlugin {
         NSLog("🔮 LiquidGlassPlugin: Registered")
 
         if #available(iOS 26.0, *) {
-            NSLog("🔮 LiquidGlassPlugin: iOS 26+ detected, using SwiftUI GlassEffectContainer")
+            NSLog("🔮 LiquidGlassPlugin: iOS 26+ detected, UITabBar will automatically get Liquid Glass")
         } else {
-            NSLog("🔮 LiquidGlassPlugin: iOS < 26, using UIKit fallback")
+            NSLog("🔮 LiquidGlassPlugin: iOS < 26, using blur effect fallback")
         }
     }
 }
