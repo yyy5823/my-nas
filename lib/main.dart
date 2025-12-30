@@ -126,6 +126,9 @@ Future<void> _initApp() async {
 
   logger.i('Initializing MyNAS...');
 
+  // Initialize Hive for local storage (需要在 ErrorReportService 之前初始化)
+  await Hive.initFlutter();
+
   // 初始化错误报告服务（非阻塞，在后台连接）
   AppError.fireAndForget(
     ErrorReportService.instance.initialize(),
@@ -152,9 +155,6 @@ Future<void> _initApp() async {
   // Initialize JustAudioMediaKit to use MediaKit as audio backend
   // This fixes the just_audio_windows threading issue on Windows
   JustAudioMediaKit.ensureInitialized();
-
-  // Initialize Hive for local storage (需要在音频处理器之前初始化以读取设置)
-  await Hive.initFlutter();
 
   // 初始化性能模式服务（需要 SharedPreferences，会打开 settings box）
   await PerformanceModeService().init();

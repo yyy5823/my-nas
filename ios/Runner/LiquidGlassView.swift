@@ -1,17 +1,18 @@
 import Flutter
 import UIKit
+import SwiftUI
 
 /// iOS 26 Liquid Glass 原生视图
 ///
-/// 使用 UIKit 的 UIGlassEffect + UIVisualEffectView 实现真正的 Liquid Glass 效果
-/// 这是 WWDC25 推荐的 UIKit 实现方式
-///
-/// iOS 26+: 使用原生 UIGlassEffect API
-/// iOS < 26: 回退到 UIBlurEffect
+/// 实现真正的 iOS 26 Liquid Glass 效果：
+/// - 透明背景
+/// - 只有选中的 tab 有玻璃效果
+/// - 玻璃块可以在 tab 之间变形移动
+/// - 支持长按拖动切换
 
 // MARK: - Navigation Bar Item
 
-struct LiquidGlassNavItem {
+struct LiquidGlassNavItem: Identifiable {
     let id: Int
     let icon: String           // SF Symbol name (未选中)
     let selectedIcon: String   // SF Symbol name (选中)
@@ -50,8 +51,7 @@ class LiquidGlassViewFactory: NSObject, FlutterPlatformViewFactory {
 
 class LiquidGlassPlatformView: NSObject, FlutterPlatformView {
     private let containerView: UIView
-    private var glassEffectView: UIVisualEffectView?
-    private var glassContainerView: UIVisualEffectView?
+    private var hostingController: UIViewController?
     private let viewId: Int64
     private let messenger: FlutterBinaryMessenger?
     private var methodChannel: FlutterMethodChannel?
@@ -61,11 +61,6 @@ class LiquidGlassPlatformView: NSObject, FlutterPlatformView {
     private var items: [LiquidGlassNavItem] = []
     private var viewType: String = "navBar"
     private var isDark: Bool = false
-    private var cornerRadius: CGFloat = 30
-    private var isInteractive: Bool = true
-
-    // UI 元素
-    private var navButtons: [UIView] = []
 
     init(
         frame: CGRect,
@@ -104,8 +99,6 @@ class LiquidGlassPlatformView: NSObject, FlutterPlatformView {
         viewType = params["viewType"] as? String ?? "navBar"
         isDark = params["isDark"] as? Bool ?? false
         currentSelectedIndex = params["selectedIndex"] as? Int ?? 0
-        cornerRadius = CGFloat(params["cornerRadius"] as? Double ?? 30)
-        isInteractive = params["isInteractive"] as? Bool ?? true
 
         if let itemsData = params["items"] as? [[String: Any]] {
             items = itemsData.enumerated().map { index, item in
@@ -119,6 +112,8 @@ class LiquidGlassPlatformView: NSObject, FlutterPlatformView {
                 )
             }
         }
+
+        NSLog("🔮 LiquidGlassView: Parsed \(items.count) items, selectedIndex: \(currentSelectedIndex)")
     }
 
     private func setupMethodChannel() {
@@ -146,77 +141,105 @@ class LiquidGlassPlatformView: NSObject, FlutterPlatformView {
     }
 
     private func setupView() {
-        // 移除所有子视图
+        // 移除旧视图
         containerView.subviews.forEach { $0.removeFromSuperview() }
-        glassEffectView = nil
-        glassContainerView = nil
-        navButtons.removeAll()
+        hostingController?.view.removeFromSuperview()
+        hostingController = nil
 
-        NSLog("🔮 LiquidGlassView: setupView - viewType: \(viewType), iOS 26+: \(ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26)")
+        NSLog("🔮 LiquidGlassView: setupView - viewType: \(viewType)")
 
         if #available(iOS 26.0, *) {
-            NSLog("🔮 LiquidGlassView: Using UIGlassEffect (iOS 26+)")
-            setupUIKitLiquidGlassView()
+            NSLog("🔮 LiquidGlassView: Using SwiftUI with GlassEffectContainer (iOS 26+)")
+            setupSwiftUIView()
         } else {
-            NSLog("🔮 LiquidGlassView: Using UIBlurEffect fallback")
+            NSLog("🔮 LiquidGlassView: Using UIKit fallback")
             setupFallbackView()
         }
     }
 
-    // MARK: - iOS 26+ UIKit Liquid Glass Implementation
+    // MARK: - iOS 26+ SwiftUI Implementation
 
     @available(iOS 26.0, *)
-    private func setupUIKitLiquidGlassView() {
-        switch viewType {
-        case "navBar":
-            setupNavBarWithGlassEffect()
-        case "card":
-            setupCardWithGlassEffect()
-        case "sheet":
-            setupSheetWithGlassEffect()
-        default:
-            setupCardWithGlassEffect()
-        }
+    private func setupSwiftUIView() {
+        let navBarView = LiquidGlassNavBarView(
+            items: items,
+            selectedIndex: currentSelectedIndex,
+            onTap: { [weak self] index in
+                self?.handleNavTap(index)
+            }
+        )
+
+        let hostingController = UIHostingController(rootView: navBarView)
+        hostingController.view.backgroundColor = .clear
+        hostingController.view.translatesAutoresizingMaskIntoConstraints = false
+
+        containerView.addSubview(hostingController.view)
+
+        NSLayoutConstraint.activate([
+            hostingController.view.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            hostingController.view.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            hostingController.view.topAnchor.constraint(equalTo: containerView.topAnchor),
+            hostingController.view.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
+        ])
+
+        self.hostingController = hostingController
+
+        NSLog("🔮 LiquidGlassView: SwiftUI NavBar created successfully")
     }
 
-    @available(iOS 26.0, *)
-    private func setupNavBarWithGlassEffect() {
-        // 创建 Glass Container (用于多个玻璃元素的容器)
-        let containerEffect = UIGlassContainerEffect()
-        containerEffect.spacing = 20
-        let containerEffectView = UIVisualEffectView(effect: containerEffect)
-        containerEffectView.translatesAutoresizingMaskIntoConstraints = false
-        containerView.addSubview(containerEffectView)
+    private func handleNavTap(_ index: Int) {
+        NSLog("🔮 LiquidGlassView: handleNavTap called with index: \(index)")
+        guard index != currentSelectedIndex else {
+            NSLog("🔮 LiquidGlassView: Same index, ignoring tap")
+            return
+        }
 
-        NSLayoutConstraint.activate([
-            containerEffectView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-            containerEffectView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-            containerEffectView.topAnchor.constraint(equalTo: containerView.topAnchor),
-            containerEffectView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
-        ])
+        currentSelectedIndex = index
 
-        glassContainerView = containerEffectView
+        // 通知 Flutter
+        NSLog("🔮 LiquidGlassView: Invoking Flutter method 'onNavTap' with index: \(index)")
+        methodChannel?.invokeMethod("onNavTap", arguments: index)
+    }
 
-        // 创建主玻璃效果视图
-        let glassEffect = UIGlassEffect()
-        glassEffect.isInteractive = isInteractive
+    private func updateSelectedIndex(_ index: Int) {
+        guard index != currentSelectedIndex else { return }
+        currentSelectedIndex = index
+        // 重新创建视图以更新选中状态
+        setupView()
+    }
 
-        let effectView = UIVisualEffectView(effect: nil)
+    private func updateItems(_ itemsData: [[String: Any]]) {
+        items = itemsData.enumerated().map { index, item in
+            let icon = item["icon"] as? String ?? "circle"
+            let selectedIcon = item["selectedIcon"] as? String ?? icon
+            return LiquidGlassNavItem(
+                id: index,
+                icon: icon,
+                selectedIcon: selectedIcon,
+                label: item["label"] as? String ?? ""
+            )
+        }
+        setupView()
+    }
+
+    // MARK: - Fallback View (iOS < 26)
+
+    private func setupFallbackView() {
+        let blurEffect = UIBlurEffect(style: isDark ? .systemUltraThinMaterialDark : .systemUltraThinMaterialLight)
+        let effectView = UIVisualEffectView(effect: blurEffect)
         effectView.translatesAutoresizingMaskIntoConstraints = false
-        // 设置圆角 - iOS 26 使用 cornerConfiguration
-        effectView.layer.cornerRadius = cornerRadius
+        effectView.layer.cornerRadius = 35
         effectView.layer.cornerCurve = .continuous
         effectView.clipsToBounds = true
-        containerEffectView.contentView.addSubview(effectView)
+
+        containerView.addSubview(effectView)
 
         NSLayoutConstraint.activate([
-            effectView.leadingAnchor.constraint(equalTo: containerEffectView.contentView.leadingAnchor),
-            effectView.trailingAnchor.constraint(equalTo: containerEffectView.contentView.trailingAnchor),
-            effectView.topAnchor.constraint(equalTo: containerEffectView.contentView.topAnchor),
-            effectView.bottomAnchor.constraint(equalTo: containerEffectView.contentView.bottomAnchor),
+            effectView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            effectView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            effectView.topAnchor.constraint(equalTo: containerView.topAnchor),
+            effectView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
         ])
-
-        glassEffectView = effectView
 
         // 添加导航按钮
         let stackView = UIStackView()
@@ -228,96 +251,29 @@ class LiquidGlassPlatformView: NSObject, FlutterPlatformView {
         effectView.contentView.addSubview(stackView)
 
         NSLayoutConstraint.activate([
-            stackView.leadingAnchor.constraint(equalTo: effectView.contentView.leadingAnchor, constant: 16),
-            stackView.trailingAnchor.constraint(equalTo: effectView.contentView.trailingAnchor, constant: -16),
-            stackView.topAnchor.constraint(equalTo: effectView.contentView.topAnchor, constant: 8),
-            stackView.bottomAnchor.constraint(equalTo: effectView.contentView.bottomAnchor, constant: -8),
+            stackView.leadingAnchor.constraint(equalTo: effectView.contentView.leadingAnchor),
+            stackView.trailingAnchor.constraint(equalTo: effectView.contentView.trailingAnchor),
+            stackView.topAnchor.constraint(equalTo: effectView.contentView.topAnchor),
+            stackView.bottomAnchor.constraint(equalTo: effectView.contentView.bottomAnchor),
         ])
 
         for (index, item) in items.enumerated() {
-            let button = createNavButton(item: item, index: index)
+            let button = createFallbackNavButton(item: item, index: index)
             stackView.addArrangedSubview(button)
-            navButtons.append(button)
-        }
-
-        // 使用动画应用玻璃效果 (materialize animation)
-        UIView.animate(withDuration: 0.3) {
-            effectView.effect = glassEffect
-        }
-
-        // 添加阴影
-        containerView.layer.shadowColor = UIColor.black.cgColor
-        containerView.layer.shadowOpacity = 0.15
-        containerView.layer.shadowOffset = CGSize(width: 0, height: 10)
-        containerView.layer.shadowRadius = 20
-
-        NSLog("🔮 LiquidGlassView: NavBar with UIGlassEffect created successfully")
-    }
-
-    @available(iOS 26.0, *)
-    private func setupCardWithGlassEffect() {
-        let glassEffect = UIGlassEffect()
-        glassEffect.isInteractive = isInteractive
-
-        let effectView = UIVisualEffectView(effect: nil)
-        effectView.translatesAutoresizingMaskIntoConstraints = false
-        effectView.layer.cornerRadius = cornerRadius
-        effectView.layer.cornerCurve = .continuous
-        effectView.clipsToBounds = true
-        containerView.addSubview(effectView)
-
-        NSLayoutConstraint.activate([
-            effectView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-            effectView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-            effectView.topAnchor.constraint(equalTo: containerView.topAnchor),
-            effectView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
-        ])
-
-        glassEffectView = effectView
-
-        UIView.animate(withDuration: 0.3) {
-            effectView.effect = glassEffect
         }
     }
 
-    @available(iOS 26.0, *)
-    private func setupSheetWithGlassEffect() {
-        let glassEffect = UIGlassEffect()
-
-        let effectView = UIVisualEffectView(effect: nil)
-        effectView.translatesAutoresizingMaskIntoConstraints = false
-        // 只有顶部圆角
-        effectView.layer.cornerRadius = cornerRadius
-        effectView.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
-        effectView.layer.cornerCurve = .continuous
-        effectView.clipsToBounds = true
-        containerView.addSubview(effectView)
-
-        NSLayoutConstraint.activate([
-            effectView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-            effectView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-            effectView.topAnchor.constraint(equalTo: containerView.topAnchor),
-            effectView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
-        ])
-
-        glassEffectView = effectView
-
-        UIView.animate(withDuration: 0.3) {
-            effectView.effect = glassEffect
-        }
-    }
-
-    // MARK: - Navigation Button Creation
-
-    private func createNavButton(item: LiquidGlassNavItem, index: Int) -> UIView {
+    private func createFallbackNavButton(item: LiquidGlassNavItem, index: Int) -> UIView {
         let container = UIView()
         container.tag = index
+        container.translatesAutoresizingMaskIntoConstraints = false
 
         let stack = UIStackView()
         stack.axis = .vertical
         stack.alignment = .center
         stack.spacing = 4
         stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.isUserInteractionEnabled = false
 
         let isSelected = index == currentSelectedIndex
         let iconName = isSelected ? item.selectedIcon : item.icon
@@ -346,142 +302,79 @@ class LiquidGlassPlatformView: NSObject, FlutterPlatformView {
         container.addSubview(stack)
 
         NSLayoutConstraint.activate([
-            stack.centerXAnchor.constraint(equalTo: container.centerXAnchor),
-            stack.centerYAnchor.constraint(equalTo: container.centerYAnchor)
+            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 8),
+            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -8),
+            stack.topAnchor.constraint(equalTo: container.topAnchor, constant: 4),
+            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -4)
         ])
 
-        // 添加点击手势
-        let tap = UITapGestureRecognizer(target: self, action: #selector(handleNavTapGesture(_:)))
+        let tap = UITapGestureRecognizer(target: self, action: #selector(handleFallbackTap(_:)))
         container.addGestureRecognizer(tap)
         container.isUserInteractionEnabled = true
 
         return container
     }
 
-    @objc private func handleNavTapGesture(_ gesture: UITapGestureRecognizer) {
+    @objc private func handleFallbackTap(_ gesture: UITapGestureRecognizer) {
         guard let view = gesture.view else { return }
         handleNavTap(view.tag)
     }
+}
 
-    private func handleNavTap(_ index: Int) {
-        guard index != currentSelectedIndex else { return }
+// MARK: - SwiftUI Views
 
-        currentSelectedIndex = index
+@available(iOS 26.0, *)
+struct LiquidGlassNavBarView: View {
+    let items: [LiquidGlassNavItem]
+    let selectedIndex: Int
+    let onTap: (Int) -> Void
 
-        // 通知 Flutter
-        methodChannel?.invokeMethod("onNavTap", arguments: index)
+    @Namespace private var namespace
+    @State private var draggedIndex: Int?
+    @GestureState private var dragOffset: CGFloat = 0
 
-        // 更新按钮状态
-        updateNavButtonStates()
-    }
-
-    private func updateNavButtonStates() {
-        for (index, button) in navButtons.enumerated() {
-            guard let stack = button.subviews.first as? UIStackView,
-                  let imageView = stack.arrangedSubviews.first as? UIImageView,
-                  let label = stack.arrangedSubviews.last as? UILabel else { continue }
-
-            let isSelected = index == currentSelectedIndex
-            let item = items[index]
-            let iconName = isSelected ? item.selectedIcon : item.icon
-
-            UIView.animate(withDuration: 0.2) {
-                let config = UIImage.SymbolConfiguration(pointSize: 22, weight: .medium)
-                imageView.image = UIImage(systemName: iconName, withConfiguration: config)
-                imageView.tintColor = isSelected ? .label : .secondaryLabel
-                label.font = .systemFont(ofSize: 10, weight: isSelected ? .semibold : .regular)
-                label.textColor = isSelected ? .label : .secondaryLabel
+    var body: some View {
+        GlassEffectContainer(spacing: 8) {
+            HStack(spacing: 0) {
+                ForEach(items) { item in
+                    navButton(for: item)
+                }
             }
+            .padding(.horizontal, 8)
         }
+        .frame(height: 70)
     }
 
-    private func updateSelectedIndex(_ index: Int) {
-        guard index != currentSelectedIndex else { return }
-        currentSelectedIndex = index
-        updateNavButtonStates()
-    }
+    @ViewBuilder
+    private func navButton(for item: LiquidGlassNavItem) -> some View {
+        let isSelected = item.id == selectedIndex
 
-    private func updateItems(_ itemsData: [[String: Any]]) {
-        items = itemsData.enumerated().map { index, item in
-            let icon = item["icon"] as? String ?? "circle"
-            let selectedIcon = item["selectedIcon"] as? String ?? icon
-            return LiquidGlassNavItem(
-                id: index,
-                icon: icon,
-                selectedIcon: selectedIcon,
-                label: item["label"] as? String ?? ""
-            )
-        }
-        setupView()
-    }
-
-    // MARK: - Fallback View (iOS < 26)
-
-    private func setupFallbackView() {
-        let blurEffect = UIBlurEffect(style: isDark ? .systemUltraThinMaterialDark : .systemUltraThinMaterialLight)
-        let effectView = UIVisualEffectView(effect: blurEffect)
-        effectView.translatesAutoresizingMaskIntoConstraints = false
-        effectView.layer.cornerRadius = cornerRadius
-        effectView.layer.cornerCurve = .continuous
-        effectView.clipsToBounds = true
-
-        // 阴影容器
-        let shadowView = UIView()
-        shadowView.translatesAutoresizingMaskIntoConstraints = false
-        shadowView.backgroundColor = .clear
-        shadowView.layer.shadowColor = UIColor.black.cgColor
-        shadowView.layer.shadowOpacity = 0.15
-        shadowView.layer.shadowOffset = CGSize(width: 0, height: 10)
-        shadowView.layer.shadowRadius = 20
-
-        containerView.addSubview(shadowView)
-        shadowView.addSubview(effectView)
-
-        NSLayoutConstraint.activate([
-            shadowView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-            shadowView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-            shadowView.topAnchor.constraint(equalTo: containerView.topAnchor),
-            shadowView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
-        ])
-
-        NSLayoutConstraint.activate([
-            effectView.leadingAnchor.constraint(equalTo: shadowView.leadingAnchor),
-            effectView.trailingAnchor.constraint(equalTo: shadowView.trailingAnchor),
-            effectView.topAnchor.constraint(equalTo: shadowView.topAnchor),
-            effectView.bottomAnchor.constraint(equalTo: shadowView.bottomAnchor),
-        ])
-
-        // 添加高光边框
-        effectView.layer.borderWidth = 0.5
-        effectView.layer.borderColor = (isDark
-            ? UIColor.white.withAlphaComponent(0.2)
-            : UIColor.black.withAlphaComponent(0.1)).cgColor
-
-        glassEffectView = effectView
-
-        // 如果是导航栏，添加按钮
-        if viewType == "navBar" {
-            let stackView = UIStackView()
-            stackView.axis = .horizontal
-            stackView.distribution = .fillEqually
-            stackView.alignment = .center
-            stackView.translatesAutoresizingMaskIntoConstraints = false
-
-            effectView.contentView.addSubview(stackView)
-
-            NSLayoutConstraint.activate([
-                stackView.leadingAnchor.constraint(equalTo: effectView.contentView.leadingAnchor),
-                stackView.trailingAnchor.constraint(equalTo: effectView.contentView.trailingAnchor),
-                stackView.topAnchor.constraint(equalTo: effectView.contentView.topAnchor),
-                stackView.bottomAnchor.constraint(equalTo: effectView.contentView.bottomAnchor),
-            ])
-
-            for (index, item) in items.enumerated() {
-                let button = createNavButton(item: item, index: index)
-                stackView.addArrangedSubview(button)
-                navButtons.append(button)
+        Button {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                onTap(item.id)
             }
+        } label: {
+            VStack(spacing: 4) {
+                Image(systemName: isSelected ? item.selectedIcon : item.icon)
+                    .font(.system(size: 22, weight: .medium))
+                    .symbolRenderingMode(.hierarchical)
+
+                Text(item.label)
+                    .font(.system(size: 10, weight: isSelected ? .semibold : .regular))
+            }
+            .foregroundStyle(isSelected ? .primary : .secondary)
+            .frame(maxWidth: .infinity)
+            .frame(height: 54)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        // 只有选中的 item 有玻璃效果
+        .glassEffect(
+            isSelected ? .regular.interactive() : .identity,
+            in: .capsule
+        )
+        // 使用相同的 ID 让玻璃块在 items 之间变形移动
+        .glassEffectID("navSelection", in: namespace)
     }
 }
 
@@ -495,9 +388,9 @@ class LiquidGlassPlugin: NSObject, FlutterPlugin {
         NSLog("🔮 LiquidGlassPlugin: Registered")
 
         if #available(iOS 26.0, *) {
-            NSLog("🔮 LiquidGlassPlugin: UIGlassEffect available")
+            NSLog("🔮 LiquidGlassPlugin: iOS 26+ detected, using SwiftUI GlassEffectContainer")
         } else {
-            NSLog("🔮 LiquidGlassPlugin: UIGlassEffect NOT available")
+            NSLog("🔮 LiquidGlassPlugin: iOS < 26, using UIKit fallback")
         }
     }
 }

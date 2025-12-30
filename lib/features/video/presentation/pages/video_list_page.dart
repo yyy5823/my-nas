@@ -6886,33 +6886,46 @@ class _MoviesPaginatedPageState extends ConsumerState<_MoviesPaginatedPage> {
                       ],
                     ),
                   )
-                : GridView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.all(16),
-                    gridDelegate:
-                        const SliverGridDelegateWithMaxCrossAxisExtent(
-                          maxCrossAxisExtent: 150,
-                          childAspectRatio: 0.55,
-                          crossAxisSpacing: 12,
-                          mainAxisSpacing: 16,
-                        ),
-                    itemCount: _movies.length + (_hasMore ? 1 : 0),
-                    itemBuilder: (context, index) {
-                      if (index >= _movies.length) {
-                        return const Center(
-                          child: Padding(
-                            padding: EdgeInsets.all(16),
-                            child: CircularProgressIndicator(),
-                          ),
-                        );
-                      }
+                : LayoutBuilder(
+                    builder: (context, constraints) {
+                      // 根据屏幕宽度调整卡片大小
+                      final screenWidth = constraints.maxWidth;
+                      final isMobile = screenWidth < 600;
 
-                      final movie = _movies[index];
-                      return _VerticalPosterCard(
-                        metadata: movie,
-                        onTap: () => _openVideoDetail(context, movie),
-                        isDark: isDark,
-                        showMargin: false,
+                      // 移动端使用更小的卡片
+                      final maxExtent = isMobile ? 120.0 : 150.0;
+                      // 调整宽高比，确保有足够空间显示标题
+                      // 海报比例 2:3 (0.667)，加上标题区域约 45px
+                      final aspectRatio = isMobile ? 0.48 : 0.52;
+
+                      return GridView.builder(
+                        controller: _scrollController,
+                        padding: EdgeInsets.all(isMobile ? 12 : 16),
+                        gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: maxExtent,
+                          childAspectRatio: aspectRatio,
+                          crossAxisSpacing: isMobile ? 10 : 12,
+                          mainAxisSpacing: isMobile ? 12 : 16,
+                        ),
+                        itemCount: _movies.length + (_hasMore ? 1 : 0),
+                        itemBuilder: (context, index) {
+                          if (index >= _movies.length) {
+                            return const Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(16),
+                                child: CircularProgressIndicator(),
+                              ),
+                            );
+                          }
+
+                          final movie = _movies[index];
+                          return _VerticalPosterCard(
+                            metadata: movie,
+                            onTap: () => _openVideoDetail(context, movie),
+                            isDark: isDark,
+                            showMargin: false,
+                          );
+                        },
                       );
                     },
                   ),
@@ -7657,33 +7670,45 @@ class _TvShowsPaginatedPageState extends ConsumerState<_TvShowsPaginatedPage> {
                       ],
                     ),
                   )
-                : GridView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.all(16),
-                    gridDelegate:
-                        const SliverGridDelegateWithMaxCrossAxisExtent(
-                          maxCrossAxisExtent: 150,
-                          childAspectRatio: 0.55,
-                          crossAxisSpacing: 12,
-                          mainAxisSpacing: 16,
-                        ),
-                    itemCount: _tvShows.length + (_hasMore ? 1 : 0),
-                    itemBuilder: (context, index) {
-                      if (index >= _tvShows.length) {
-                        return const Center(
-                          child: Padding(
-                            padding: EdgeInsets.all(16),
-                            child: CircularProgressIndicator(),
-                          ),
-                        );
-                      }
+                : LayoutBuilder(
+                    builder: (context, constraints) {
+                      // 根据屏幕宽度调整卡片大小
+                      final screenWidth = constraints.maxWidth;
+                      final isMobile = screenWidth < 600;
 
-                      final tvShow = _tvShows[index];
-                      return _VerticalPosterCard(
-                        metadata: tvShow,
-                        onTap: () => _openVideoDetail(context, tvShow),
-                        isDark: isDark,
-                        showMargin: false,
+                      // 移动端使用更小的卡片
+                      final maxExtent = isMobile ? 120.0 : 150.0;
+                      // 调整宽高比，确保有足够空间显示标题
+                      final aspectRatio = isMobile ? 0.48 : 0.52;
+
+                      return GridView.builder(
+                        controller: _scrollController,
+                        padding: EdgeInsets.all(isMobile ? 12 : 16),
+                        gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: maxExtent,
+                          childAspectRatio: aspectRatio,
+                          crossAxisSpacing: isMobile ? 10 : 12,
+                          mainAxisSpacing: isMobile ? 12 : 16,
+                        ),
+                        itemCount: _tvShows.length + (_hasMore ? 1 : 0),
+                        itemBuilder: (context, index) {
+                          if (index >= _tvShows.length) {
+                            return const Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(16),
+                                child: CircularProgressIndicator(),
+                              ),
+                            );
+                          }
+
+                          final tvShow = _tvShows[index];
+                          return _VerticalPosterCard(
+                            metadata: tvShow,
+                            onTap: () => _openVideoDetail(context, tvShow),
+                            isDark: isDark,
+                            showMargin: false,
+                          );
+                        },
                       );
                     },
                   ),
@@ -7875,6 +7900,7 @@ class _OthersPaginatedPageState extends ConsumerState<_OthersPaginatedPage> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final screenWidth = MediaQuery.of(context).size.width;
+    final isMobile = screenWidth < 600;
     final crossAxisCount = screenWidth > 1200
         ? 8
         : screenWidth > 800
@@ -7882,7 +7908,9 @@ class _OthersPaginatedPageState extends ConsumerState<_OthersPaginatedPage> {
         : screenWidth > 600
         ? 4
         : 3;
-    final spacing = screenWidth > 600 ? 16.0 : 8.0;
+    final spacing = isMobile ? 10.0 : 16.0;
+    // 移动端使用更小的宽高比，确保有足够空间显示标题
+    final aspectRatio = isMobile ? 0.48 : 0.52;
 
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF0D0D0D) : Colors.grey[50],
@@ -7936,7 +7964,7 @@ class _OthersPaginatedPageState extends ConsumerState<_OthersPaginatedPage> {
               gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: crossAxisCount,
                 // 海报比例 2:3 + 标题区域，需要足够高度避免溢出
-                childAspectRatio: 0.55,
+                childAspectRatio: aspectRatio,
                 crossAxisSpacing: spacing,
                 mainAxisSpacing: spacing,
               ),
@@ -9271,34 +9299,46 @@ class _FilteredVideosPaginatedPageState
                 ],
               ),
             )
-          : GridView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(12),
-              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: 150,
-                // 海报比例 2:3 (高度=宽度*1.5) + 标题区域约 40px
-                // 150*1.5=225 + 40 = 265, 150/265 ≈ 0.566
-                childAspectRatio: 0.55,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 12,
-              ),
-              itemCount: _videos.length + (_hasMore ? 1 : 0),
-              itemBuilder: (context, index) {
-                if (index >= _videos.length) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(16),
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  );
-                }
+          : LayoutBuilder(
+              builder: (context, constraints) {
+                // 根据屏幕宽度调整卡片大小
+                final screenWidth = constraints.maxWidth;
+                final isMobile = screenWidth < 600;
 
-                final video = _videos[index];
-                return _VerticalPosterCard(
-                  metadata: video,
-                  isDark: isDark,
-                  onTap: () => widget.onVideoTap(video),
-                  showMargin: false,
+                // 移动端使用更小的卡片
+                final maxExtent = isMobile ? 120.0 : 150.0;
+                // 调整宽高比，确保有足够空间显示标题
+                final aspectRatio = isMobile ? 0.48 : 0.52;
+
+                return GridView.builder(
+                  controller: _scrollController,
+                  padding: EdgeInsets.all(isMobile ? 10 : 12),
+                  gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: maxExtent,
+                    // 海报比例 2:3 + 标题区域
+                    childAspectRatio: aspectRatio,
+                    crossAxisSpacing: isMobile ? 8 : 10,
+                    mainAxisSpacing: isMobile ? 10 : 12,
+                  ),
+                  itemCount: _videos.length + (_hasMore ? 1 : 0),
+                  itemBuilder: (context, index) {
+                    if (index >= _videos.length) {
+                      return const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(16),
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      );
+                    }
+
+                    final video = _videos[index];
+                    return _VerticalPosterCard(
+                      metadata: video,
+                      isDark: isDark,
+                      onTap: () => widget.onVideoTap(video),
+                      showMargin: false,
+                    );
+                  },
                 );
               },
             ),

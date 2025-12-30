@@ -167,8 +167,6 @@ class _LiquidGlassNavBarState extends State<LiquidGlassNavBar> {
       'isDark': isDark,
       'selectedIndex': widget.selectedIndex,
       'items': widget.items.map((e) => e.toMap()).toList(),
-      'cornerRadius': 30.0,
-      'isInteractive': true,
     };
 
     return SizedBox(
